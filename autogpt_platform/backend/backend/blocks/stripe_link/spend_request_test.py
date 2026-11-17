@@ -7,6 +7,7 @@ are split along that line — card create/retrieve are gated, while everything
 the Shared Payment Token flow needs stays available on every deployment.
 """
 
+import logging
 from typing import Any
 
 import httpx
@@ -187,6 +188,28 @@ async def test_the_card_block_asks_for_the_card_without_an_opt_in():
     assert outputs["card_cvc"] == "123"
     assert outputs["card_exp_month"] == 12
     assert outputs["card_exp_year"] == 2030
+
+
+@pytest.mark.asyncio
+async def test_the_card_block_never_hands_out_a_private_checkout_card():
+    """The private checkout's card goes only to its worker, even through a
+    service where the setting that turns this block off is missing."""
+    outputs, _ = await run_card(
+        {
+            "status": "approved",
+            "metadata": {"autogpt_checkout_id": "a" * 32},
+            "card": {
+                "number": "4242424242424242",
+                "cvc": "123",
+                "exp_month": 12,
+                "exp_year": 2030,
+            },
+        }
+    )
+
+    assert "card_number" not in outputs
+    assert "card_cvc" not in outputs
+    assert "private checkout" in outputs["error"]
 
 
 @pytest.mark.asyncio
@@ -414,6 +437,33 @@ async def test_link_error_falls_back_when_the_body_is_not_json(monkeypatch):
 
     with pytest.raises(Exception, match="400"):
         await sr.link_api_request(TEST_CREDENTIALS, "GET", "/spend_requests/x")
+
+
+@pytest.mark.asyncio
+async def test_an_unexplained_error_body_stays_out_of_the_logs(monkeypatch, caplog):
+    """An upstream body can carry wallet or account data; only the status is
+    logged."""
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def request(self, **kwargs):
+            return _Resp(None, text="balance 1234.56 for acct_canary")
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: _Client())
+
+    with (
+        caplog.at_level(logging.DEBUG, logger=_auth.logger.name),
+        pytest.raises(RuntimeError),
+    ):
+        await _auth.link_api_request(TEST_CREDENTIALS, "GET", "/balances")
+
+    assert "400" in caplog.text
+    assert "acct_canary" not in caplog.text
 
 
 @pytest.mark.asyncio

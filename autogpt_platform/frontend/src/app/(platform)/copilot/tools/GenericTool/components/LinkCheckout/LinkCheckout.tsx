@@ -1,5 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { InChatApproval } from "./components/InChatApproval/InChatApproval";
+import { SharedPageNote } from "./components/SharedPageNote";
 import { checkoutPresentation } from "./helpers";
 import { useLinkCheckout } from "./useLinkCheckout";
 
@@ -20,6 +21,8 @@ export function LinkCheckout({ output }: Props) {
   } = useLinkCheckout(output);
   const {
     merchant,
+    address,
+    sharedPage,
     total,
     approvalUrl,
     linkLabel,
@@ -48,6 +51,17 @@ export function LinkCheckout({ output }: Props) {
           </p>
         )}
       </div>
+      {!fromRecord && address && (
+        <p className="flex flex-col text-body text-foreground-secondary">
+          <span>
+            Paying on{" "}
+            <span className="font-medium break-all text-foreground-strong">
+              {address}
+            </span>
+          </span>
+          {sharedPage && <SharedPageNote />}
+        </p>
+      )}
       {testMode && (
         <p className="text-body font-medium text-foreground-secondary">
           Test payment · no charge

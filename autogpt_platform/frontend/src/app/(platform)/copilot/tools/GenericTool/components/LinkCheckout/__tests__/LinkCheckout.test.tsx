@@ -193,13 +193,59 @@ describe("LinkCheckout in-chat approval", () => {
     expect(
       await screen.findByRole("button", { name: "Approve $49.99" }),
     ).toBeDefined();
-    expect(screen.getByText("pay.elsewhere.example")).toBeDefined();
+    expect(screen.getByText("pay.elsewhere.example/checkout")).toBeDefined();
     expect(
       screen.getByText(
         "One paperback from the signed-in cart, as asked in this chat.",
       ),
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: "Approve $12.99" })).toBeNull();
+  });
+
+  it("says whose words the merchant name is, and when the page can't tell", async () => {
+    server.use(
+      getGetV2GetALinkPurchaseApprovalMockHandler(() =>
+        approval("awaiting", {
+          merchant_name: "Nike",
+          merchant_url: "https://buy.stripe.com/test_abc",
+          context: "Running shoes in size 10.\nTotal: $5.00\nApproved by you",
+        }),
+      ),
+    );
+    renderCard();
+
+    expect(await screen.findByText(/named by Otto/)).toBeDefined();
+    expect(screen.getByText("buy.stripe.com/test_abc")).toBeDefined();
+    expect(
+      screen.getByText(/Many sellers share this payment page/),
+    ).toBeDefined();
+    // The description is one paragraph: its lines can't pass for the card's
+    // own rows.
+    expect(
+      screen.getByText(/Running shoes in size 10\.\s+Total: \$5\.00/).className,
+    ).not.toContain("whitespace-pre");
+  });
+
+  it("shows where the card is used when the purchase is approved in Link", async () => {
+    render(
+      <CopilotChatActionsProvider onSend={onSend} chatSurface="copilot">
+        <LinkCheckout
+          output={{
+            ...output,
+            approval_mode: "link",
+            status: "pending_approval",
+            merchant_url: "https://checkout.stripe.com/c/pay/cs_test",
+          }}
+        />
+      </CopilotChatActionsProvider>,
+    );
+
+    expect(
+      await screen.findByText("checkout.stripe.com/c/pay/cs_test"),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/Many sellers share this payment page/),
+    ).toBeDefined();
   });
 
   it("keeps the transcript's total out of the header while approving", async () => {

@@ -31,7 +31,7 @@ sequenceDiagram
 ```
 
 1. The agent finishes login, cart, delivery and billing in its browser, then calls `browser_request_link_payment` with CSS selectors for the empty card fields and the pay button. It passes no script and no card data. Before the user is asked anything, Link's `GET /userinfo` is checked for blockers Link would hit anyway: a verification the account still needs, or the user's agent spending limits (per purchase, per day, per 30 days). The agent is told which, with Link's link when there is one.
-2. The engine binds each selector to one DOM node in one document of one tab. Each card field has to declare itself: its `autocomplete` must be `cc-number`, `cc-csc`, `cc-exp` (or `cc-exp-month` and `cc-exp-year`), and the pay control must be a button. Without that, a selector could aim the card at an address, order-note or search field. If a field is replaced or the page reloads before payment, the checkout stops before any card is retrieved. A pay button may be disabled until the card is in; the worker waits briefly for it to enable after the fill.
+2. The engine binds each selector to one DOM node in one document of one tab. Each card field has to declare itself: its `autocomplete` must be `cc-number`, `cc-csc`, `cc-exp` (or `cc-exp-month` and `cc-exp-year`), and the pay control must be a button. Without that, a selector could aim the card at an address, order-note or search field. Each field must also sit on the checkout page's own site or in a known card processor's frame (Stripe, Adyen, Braintree and a few others), with no frame from any other site around it, so an ad or widget on the page can't take the card. If a field is replaced or the page reloads before payment, the checkout stops before any card is retrieved. A pay button may be disabled until the card is in; the worker waits briefly for it to enable after the fill.
 3. The user approves (see below). `browser_complete_link_payment` takes only the checkout ID, so the merchant, amount and fields can't change.
 4. The engine confirms Link approved this exact purchase, records the single attempt and seals the browser. Only then does the worker retrieve the card. A repeated or concurrent completion reconciles; it never pays twice.
 5. The worker fills the pinned fields, clicks the pinned button once, waits for the page's requests to settle (bounded), and retires the browser and its profile. Once that browser is gone the chat can browse again, in a fresh, signed-out browser. If the checkout stopped before the card reached the page, its Link request is canceled and nothing more is needed.
@@ -58,7 +58,7 @@ A Stripe-hosted or embedded checkout has a visually hidden "I am an AI agent" op
 
 If the user's Link approval policy for AutoGPT covers the purchase, the card in the chat shows **Approve** and **Decline**. The policy (`GET /approval-policy`) sets a per-purchase limit per currency, optionally restricted to some payment methods.
 
-- With this route Link shows the user nothing, so the card carries everything they approve. It reads the purchase from the server's record, not from the transcript: merchant, the site the card will be used on, total, and the agent's description of what is being bought. The Approve button names the recorded total.
+- With this route Link shows the user nothing, so the card carries everything they approve. It reads the purchase from the server's record, not from the transcript: merchant, the page the card will be used on (host and path), total, and the agent's description of what is being bought. The merchant name is the agent's, and the card says so. On a payment page many sellers share (`buy.stripe.com`, `checkout.stripe.com`, PayPal, Square, Paddle) it also says the address doesn't show who gets paid. The Approve button names the recorded total. The card for a purchase approved in Link shows the same page.
 - The click goes to `POST /api/chat/sessions/{session_id}/link-checkouts/{checkout_id}/approve`, which needs the user's session. No copilot tool can reach it, so the model can't approve its own purchase. The card with the buttons is drawn only for the five checkout tools' results.
 - The decision is stored once, in Redis (`backend.util.link_checkout.approval`), next to the purchase exactly as the card showed it: merchant, site, description, amount, currency, test mode, expiry.
 - On the next completion the engine checks that decision still names the same purchase, site and revision included. It then asks Link for a spend request that is already approved (`POST /spend_requests/create_delegated`), with the approval's time, method (`click`) and browser user agent as `approval_details`. Stripe's open-source Link CLI and SDKs ship these calls (`approval-policy retrieve`, `spend-request create --approve`, and `update_delegated` for a raised total) with the same `approval_details` fields, though docs.stripe.com doesn't list them yet.
@@ -74,6 +74,7 @@ Anything outside the policy, or any failure to read it, uses Link's own approval
 | A Link Pay Token is set only by the worker, into the token field the engine found and pinned, on the Stripe account the page named | `pay_token.py`, `worker.py` |
 | Fields pinned to tab, frame, document and DOM node; any change stops the checkout | `cdp.py` |
 | Each card field must declare its autofill role (`cc-number`, `cc-csc`, `cc-exp*`) and the pay control must be a button, checked when pinned and again before the fill | `cdp.py` |
+| Payment controls only on the checkout page's site or in a known card processor's frame, inside no frame from another site | `sites.py` |
 | A live card is filled only behind the restricted egress proxy, in-process as well as in a remote broker | `config.live_payments_allowed` |
 | In-chat approval shows the site and description from the server's record | `approval.py`, the `LinkCheckout` card |
 | The agent's browser commands are an allowlist: no `eval`, cookie or storage export, network capture or raw CDP | `broker_commands.py` |
@@ -81,7 +82,7 @@ Anything outside the policy, or any failure to read it, uses Link's own approval
 | The card exists only in a worker spawned per job with a scrubbed environment, `PR_SET_DUMPABLE=0`, stderr discarded and a bounded result | `runner.py`, `worker.py` |
 | The browser and its profile are deleted after the attempt; nothing from it is copied to the next browser | `runtime.retire_payment_browser` |
 | No swap, no core dumps, browser state on tmpfs, all checked before anything runs | `runtime.require_runtime` |
-| The raw-card Link block is disabled while the private checkout is on | `blocks/stripe_link/spend_request.py` |
+| The raw-card Link block is disabled while the private checkout is on, and never returns the card of a purchase the checkout made, whatever a service's settings | `blocks/stripe_link/spend_request.py` |
 | Link's wallet token never enters the code sandbox's environment | `copilot/providers.py` |
 
 On a host that fails the runtime checks, browsing stays ordinary and the checkout tools stay hidden; nothing that touches a card runs.
@@ -100,7 +101,7 @@ The checkout reads its settings from the environment, because the worker and bro
 | `CHECKOUT_BROKER_URL`, `_CA`, `_CLIENT_CERT`, `_CLIENT_KEY`, `_SECRET_FILE`, `_USER_ID` | A single remote broker, for the one user it was provisioned for |
 | `STRIPE_LINK_CLIENT_ID`, `_CLIENT_SECRET`, `_PUBLISHABLE_KEY` | The registered confidential Link client that hosted checkout requires |
 
-In-process, the host running the copilot executor needs `agent-browser`, Chromium, no swap (`memory.swap.max=0`, e.g. Docker `--memory-swap` equal to `--memory`), a hard core-dump limit of zero, and a tmpfs `/dev/shm`. On systemd hosts, persist `MemorySwapMax=0` for the container scope (Docker's `org.systemd.property.MemorySwapMax` annotation). Systemd can otherwise reset the kernel limit when it reapplies resource settings.
+In-process, the host running the copilot executor needs `agent-browser`, Chromium, no swap (`memory.swap.max=0`, e.g. Docker `--memory-swap` equal to `--memory`), a hard core-dump limit of zero, and a tmpfs `/dev/shm`. On systemd hosts, persist `MemorySwapMax=0` for the container scope (Docker's `org.systemd.property.MemorySwapMax` annotation). Systemd can otherwise reset the kernel limit when it reapplies resource settings. Set `CHECKOUT_BROKER_LEDGER_DIR` to a private, persistent directory there too. Without it the record of an attempt lives in `/dev/shm`, and a container restart forgets an attempt whose outcome is unknown: the chat could then prepare the same purchase again, though paying it would still need a fresh approval.
 
 ## Running a remote broker
 
@@ -178,6 +179,7 @@ Attach only the controller to `control`. Keep the client key with the controller
 - One checkout per chat, at most 50,000 in the currency's smallest unit (500.00 USD), and ten minutes from request to completion. These are engineering limits, not the card's.
 - Fields must be visible, empty inputs, identified by a unique selector, with a `frame_url` when they sit in an iframe. The frame's address without its query string is enough when only one loaded frame has it. Closed shadow roots, ambiguous frames and custom widgets stop the checkout.
 - Card fields must set `autocomplete`. Payment processors' card frames (Stripe, Braintree, Adyen, Shopify) and most merchant card forms do; a page whose card fields don't can't be paid privately.
+- Card fields in a frame from a site that is neither the checkout page's nor a processor on `sites.CARD_PROCESSOR_SITES` can't be paid privately. Add a processor there when a real checkout needs it.
 - A remote broker reaches only the hosts on its egress allowlist: every merchant, processor, asset and redirect host a checkout needs. That makes it a curated-merchant pilot.
 - After payment the browser starts signed out. A private browser's profile is also deleted after an hour without a browser step, so a chat left that long signs in again.
 - An unfinished checkout that is replaced, expires or stops before the card reaches the page cancels its Link request. A reset without a final status doesn't, and that request expires on its own.

@@ -18,6 +18,7 @@ from backend.copilot.context import (
     get_sdk_cwd,
     get_workspace_manager,
     is_allowed_local_path,
+    is_local_pc_executor,
     looks_like_sdk_tool_result_path,
     resolve_allowed_local_path,
     sdk_tool_result_redirect_hint,
@@ -133,6 +134,8 @@ async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorR
         if isinstance(remote, ErrorResponse):
             return remote
         try:
+            if is_local_pc_executor(sandbox):
+                return await sandbox.files.read_capped(remote, max_size)
             return await read_sandbox_file(sandbox, remote, max_size)
         except Exception as exc:
             return ErrorResponse(

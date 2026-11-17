@@ -12,6 +12,8 @@ const PENDING_TTL_MS = 2 * 60 * 1000;
 // asks what the user actually wants before touching anything. Never instruct it
 // to start a workflow here — one click on Hire ran a Gmail send (SECRT-2622) —
 // so any redesign of this message, including this one, stays ask-first.
+// The server sends the same text for chat and API hires
+// (EXPERT_KICKOFF_PROMPT in backend/copilot/expert_kickoff.py); change both.
 const KICKOFF_PROMPT =
   "You were just hired. Call expert_onboarding once, and nothing else, this " +
   "turn: a one-sentence greeting introducing yourself in your voice, with " +

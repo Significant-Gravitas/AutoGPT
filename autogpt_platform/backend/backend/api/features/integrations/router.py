@@ -747,6 +747,15 @@ async def device_auth_initiate(
     ] = None,
 ) -> DeviceAuthInitiateResponse:
     handler = _get_device_auth_handler(provider)
+    if provider == ProviderName.STRIPE_LINK and STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED:
+        # This deployment connects Link through its registered client. Link's
+        # public device client stays registered only so the grants it issued
+        # earlier keep refreshing and revoking.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Stripe Link connects by signing in to Link here, not with a "
+            "device code.",
+        )
 
     # Cheapest endpoint to abuse: it takes no state token, and each call mints
     # a device code upstream.
@@ -1193,6 +1202,14 @@ async def create_credentials(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Codex credentials must be created through ChatGPT sign-in",
+        )
+    if provider == ProviderName.STRIPE_LINK:
+        # A Link grant's metadata says which client issued it, and refresh,
+        # revocation and the checkout's hosted check all trust that; only the
+        # connect flows may write it.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Stripe Link credentials must be created by connecting Link",
         )
     if (
         isinstance(credentials, OAuth2Credentials)
@@ -1942,7 +1959,33 @@ async def _upgrade_existing_credential(
     if not merged.username and existing.username:
         merged.username = existing.username
     await creds_manager.update(user_id, merged)
+    if provider_matches(existing.provider, ProviderName.STRIPE_LINK.value):
+        await _end_replaced_link_grant(existing, merged)
     return merged
+
+
+async def _end_replaced_link_grant(
+    replaced: OAuth2Credentials, current: OAuth2Credentials
+) -> None:
+    """Reconnecting a wallet through Link's other client overwrites the old
+    grant's tokens, which would leave that grant live at Link until it
+    expires. End it through the client that issued it; failing that, the
+    reconnect still stands."""
+    if is_hosted_link_credential(replaced) == is_hosted_link_credential(current):
+        return
+    if (
+        is_hosted_link_credential(replaced)
+        and not STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED
+    ):
+        return
+    try:
+        await _revocation_handler(replaced, ProviderName.STRIPE_LINK).revoke_tokens(
+            replaced
+        )
+    except Exception as e:
+        logger.warning(
+            f"Could not revoke a replaced Stripe Link grant: {type(e).__name__}"
+        )
 
 
 def _same_account(existing: OAuth2Credentials, new: OAuth2Credentials) -> bool:

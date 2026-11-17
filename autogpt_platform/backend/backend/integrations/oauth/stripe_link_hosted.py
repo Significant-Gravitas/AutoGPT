@@ -20,6 +20,7 @@ that issued them even while older device-code credentials remain in use.
 """
 
 import logging
+import re
 import time
 from typing import ClassVar, Optional
 from urllib.parse import urlencode
@@ -29,6 +30,7 @@ from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scopes
+from backend.integrations.oauth.refresh_failure import OAuthTokenRequestError
 from backend.integrations.oauth.stripe_link import (
     LINK_AUTH_BASE_URL,
     LINK_HTTP_TIMEOUT,
@@ -47,6 +49,9 @@ STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED = bool(
 )
 
 HOSTED_FLOW = "authorization_code"
+
+# What an OAuth error code looks like (RFC 6749 section 5.2).
+_ERROR_CODE = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 
 
 def is_hosted_link_credential(credentials: OAuth2Credentials) -> bool:
@@ -159,7 +164,7 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
                     "token_type_hint": "refresh_token",
                 },
             )
-        except (RuntimeError, httpx.HTTPError) as e:
+        except (OAuthTokenRequestError, RuntimeError, httpx.HTTPError) as e:
             logger.warning(f"Stripe Link grant was not revoked: {type(e).__name__}")
             return False
         return True
@@ -189,16 +194,33 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
             )
         if response.status_code != 200:
             # The body can echo the submitted form, secret included, and the
-            # message is persisted and shown to users.
+            # message is persisted and shown to users: only the status and
+            # OAuth's error code leave here, which is what lets the refresh
+            # path tell a dead grant (invalid_grant) from a passing failure.
             logger.warning(
                 "Stripe Link %s request failed with HTTP %s",
                 endpoint,
                 response.status_code,
             )
-            raise RuntimeError(
-                f"Stripe Link authorization failed (HTTP {response.status_code})"
+            raise OAuthTokenRequestError(
+                "Stripe Link",
+                status_code=response.status_code,
+                error_code=_oauth_error_code(response),
             )
         return {} if endpoint == "revoke" else response.json()
+
+
+def _oauth_error_code(response: httpx.Response) -> str | None:
+    """RFC 6749's ``error`` field, if the body is the JSON error it describes.
+
+    The code is persisted and shown in error messages, so anything not shaped
+    like one (the same rule ``refresh_failure`` applies) is dropped."""
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    code = body.get("error") if isinstance(body, dict) else None
+    return code if isinstance(code, str) and _ERROR_CODE.fullmatch(code) else None
 
 
 def revocation_handler() -> StripeLinkHostedOAuthHandler:

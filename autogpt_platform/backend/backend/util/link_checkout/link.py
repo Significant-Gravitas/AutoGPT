@@ -18,6 +18,9 @@ from backend.util.link_checkout.models import CheckoutIntent, SpendRequest, Work
 
 LINK_API_BASE_URL = "https://api.link.com"
 LINK_HTTP_TIMEOUT = 15.0
+# Marks a spend request as the private checkout's: its card goes only to the
+# checkout's own worker.
+CHECKOUT_METADATA_KEY = "autogpt_checkout_id"
 # Hosts Link sends a customer to for approval or a required action.
 _LINK_ACTION_DOMAINS = ("link.com", "stripe.com")
 _DEFAULT_PORTS = {"https": 443, "http": 80}
@@ -157,7 +160,7 @@ def _create_body(intent: CheckoutIntent, idempotency_key: str) -> dict:
         "context": plan.context,
         "amount": plan.amount,
         "currency": plan.currency,
-        "metadata": {"autogpt_checkout_id": intent.id},
+        "metadata": {CHECKOUT_METADATA_KEY: intent.id},
         "totals": [{"type": "total", "display_text": "Total", "amount": plan.amount}],
     }
     pay_token = intent.browser.pay_token

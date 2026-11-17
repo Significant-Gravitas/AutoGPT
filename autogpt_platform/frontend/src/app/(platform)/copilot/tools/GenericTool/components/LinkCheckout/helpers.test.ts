@@ -3,7 +3,8 @@ import {
   checkoutPresentation,
   continueAfterDecision,
   isLinkCheckoutOutput,
-  purchaseHost,
+  isSharedCheckoutPage,
+  purchaseAddress,
 } from "./helpers";
 
 describe("Link checkout presentation", () => {
@@ -124,9 +125,26 @@ describe("isLinkCheckoutOutput", () => {
   });
 });
 
-describe("purchaseHost", () => {
-  it("shows the site the card is used on, and nothing for a bad URL", () => {
-    expect(purchaseHost("https://shop.example/checkout")).toBe("shop.example");
-    expect(purchaseHost("not a url")).toBe("");
+describe("purchaseAddress", () => {
+  it("shows the page the card is used on, and nothing for a bad URL", () => {
+    expect(purchaseAddress("https://shop.example/checkout")).toBe(
+      "shop.example/checkout",
+    );
+    expect(purchaseAddress("https://shop.example/")).toBe("shop.example");
+    expect(purchaseAddress("not a url")).toBe("");
+    expect(purchaseAddress(undefined)).toBe("");
+  });
+});
+
+describe("isSharedCheckoutPage", () => {
+  it.each([
+    ["https://buy.stripe.com/test_abc", true],
+    ["https://checkout.stripe.com/c/pay/cs_test", true],
+    ["https://www.paypal.com/checkoutnow?token=x", true],
+    ["https://shop.example/checkout", false],
+    ["https://buy.stripe.com.evil.example/x", false],
+    ["not a url", false],
+  ])("%s -> %s", (url, shared) => {
+    expect(isSharedCheckoutPage(url)).toBe(shared);
   });
 });

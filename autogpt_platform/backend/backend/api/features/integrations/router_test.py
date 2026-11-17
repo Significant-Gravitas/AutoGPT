@@ -6,10 +6,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
 import fastapi.testclient
+import httpx
 import pytest
 from pydantic import SecretStr
 
-from backend.api.features.integrations.router import _get_provider_oauth_handler, router
+from backend.api.features.integrations.router import (
+    _get_provider_oauth_handler,
+    _upgrade_existing_credential,
+    router,
+)
 from backend.api.features.integrations.router import settings as router_settings
 from backend.data.integrations import Webhook
 from backend.data.model import (
@@ -23,6 +28,7 @@ from backend.integrations.managed_providers.ayrshare import (
     AyrshareProvisioningError,
 )
 from backend.integrations.oauth import stripe_link_hosted
+from backend.integrations.oauth.stripe_link import DEVICE_GRANT_METADATA
 from backend.integrations.oauth.stripe_link_hosted import StripeLinkHostedOAuthHandler
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
@@ -1200,8 +1206,13 @@ class TestStripeLinkClientSelection:
         """The grant can no longer be revoked from here, but the disconnect the
         user asked for has happened and must not come back as an error."""
         cred = _make_oauth2_cred("link-cred", "stripe_link")
-        cred.metadata = {"link_oauth_flow": "authorization_code"}
-        resolve = MagicMock()
+        cred.metadata = {
+            "link_oauth_flow": "authorization_code",
+            "link_client_id": "cid",
+        }
+        # The handler a hosted grant is revoked with: an unconfigured client
+        # must never reach it (it would revoke with an empty client).
+        hosted_handler = MagicMock(return_value=MagicMock(revoke_tokens=AsyncMock()))
 
         with (
             patch("backend.api.features.integrations.router.creds_manager") as mgr,
@@ -1211,8 +1222,8 @@ class TestStripeLinkClientSelection:
                 new=AsyncMock(),
             ),
             patch(
-                "backend.api.features.integrations.router._get_provider_oauth_handler",
-                resolve,
+                "backend.api.features.integrations.router.revocation_handler",
+                hosted_handler,
             ),
             patch(
                 "backend.api.features.integrations.router.STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED",
@@ -1226,7 +1237,163 @@ class TestStripeLinkClientSelection:
         assert resp.status_code == 200
         assert resp.json()["revoked"] is False
         mgr.delete.assert_awaited_once()
-        resolve.assert_not_called()
+        hosted_handler.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_device_reconnect_of_a_hosted_wallet_stops_reading_as_hosted(self):
+        """Reconnecting a wallet merges into its credential and keeps keys the
+        new grant lacks, so the device grant's own flow must replace the hosted
+        marker, or refresh and revocation keep going to the hosted client."""
+        hosted = _make_oauth2_cred("link-cred", "stripe_link")
+        hosted.username = "wallet@example.com"
+        hosted.metadata = {
+            "link_oauth_flow": "authorization_code",
+            "link_client_id": "cid",
+        }
+        device = OAuth2Credentials(
+            provider="stripe_link",
+            access_token=SecretStr("device-access"),
+            refresh_token=SecretStr("device-refresh"),
+            scopes=["payment_methods.agentic"],
+            username="wallet@example.com",
+            metadata=dict(DEVICE_GRANT_METADATA),
+        )
+
+        with patch("backend.api.features.integrations.router.creds_manager") as mgr:
+            mgr.store.get_creds_by_id = AsyncMock(return_value=hosted)
+            mgr.update = AsyncMock()
+            merged = await _upgrade_existing_credential("user-1", "link-cred", device)
+
+        assert merged.id == "link-cred"
+        assert not stripe_link_hosted.is_hosted_link_credential(merged)
+        assert (
+            merged.metadata["link_client_id"] == DEVICE_GRANT_METADATA["link_client_id"]
+        )
+
+    def test_link_credentials_cannot_be_created_by_hand(self):
+        """Refresh, revocation and the checkout's hosted check all trust the
+        metadata saying which client issued a grant, so only the connect flows
+        may store one."""
+        with patch("backend.api.features.integrations.router.creds_manager") as mgr:
+            mgr.create = AsyncMock()
+            resp = client.post(
+                "/stripe_link/credentials",
+                json={
+                    "provider": "stripe_link",
+                    "type": "oauth2",
+                    "title": "Imported",
+                    "access_token": "liwltoken_device",
+                    "refresh_token": "liwlrefresh_device",
+                    "scopes": ["payment_methods.agentic", "userinfo:read"],
+                    "metadata": {
+                        "link_oauth_flow": "authorization_code",
+                        "link_client_id": "lwlpk_registered",
+                    },
+                },
+            )
+
+        assert resp.status_code == 400
+        mgr.create.assert_not_called()
+
+    def test_device_auth_is_refused_with_the_registered_client_configured(self):
+        handler = MagicMock(initiate_device_auth=AsyncMock())
+        with (
+            patch(
+                "backend.api.features.integrations.router._get_device_auth_handler",
+                return_value=handler,
+            ),
+            patch(
+                "backend.api.features.integrations.router."
+                "STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED",
+                True,
+            ),
+            patch(
+                "backend.api.features.integrations.router._throttle_upstream",
+                new=AsyncMock(return_value=False),
+            ),
+        ):
+            resp = client.post("/stripe_link/device-auth/initiate")
+
+        assert resp.status_code == 400
+        handler.initiate_device_auth.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("old_hosted", "new_hosted", "configured", "revoked"),
+        [
+            # A hosted reconnect of a device-code wallet ends the device grant.
+            (False, True, True, True),
+            # The same client reconnecting replaces its own grant.
+            (True, True, True, False),
+            (False, False, True, False),
+            # Nothing here can end a hosted grant once its client is gone.
+            (True, False, False, False),
+        ],
+    )
+    async def test_a_reconnect_through_the_other_client_ends_the_old_grant(
+        self, old_hosted, new_hosted, configured, revoked
+    ):
+        hosted_metadata = {
+            "link_oauth_flow": "authorization_code",
+            "link_client_id": "cid",
+        }
+        old = _make_oauth2_cred("link-cred", "stripe_link")
+        old.username = "wallet@example.com"
+        old.metadata = dict(hosted_metadata if old_hosted else DEVICE_GRANT_METADATA)
+        new = _make_oauth2_cred("new-grant", "stripe_link")
+        new.username = "wallet@example.com"
+        new.metadata = dict(hosted_metadata if new_hosted else DEVICE_GRANT_METADATA)
+        revoke = AsyncMock(return_value=True)
+
+        with (
+            patch("backend.api.features.integrations.router.creds_manager") as mgr,
+            patch(
+                "backend.api.features.integrations.router._revocation_handler",
+                return_value=MagicMock(revoke_tokens=revoke),
+            ),
+            patch(
+                "backend.api.features.integrations.router."
+                "STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED",
+                configured,
+            ),
+        ):
+            mgr.store.get_creds_by_id = AsyncMock(return_value=old)
+            mgr.update = AsyncMock()
+            merged = await _upgrade_existing_credential("user-1", "link-cred", new)
+
+        assert merged.access_token == new.access_token
+        if revoked:
+            revoke.assert_awaited_once_with(old)
+        else:
+            revoke.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_revocation_does_not_undo_the_reconnect(self):
+        old = _make_oauth2_cred("link-cred", "stripe_link")
+        old.metadata = dict(DEVICE_GRANT_METADATA)
+        new = _make_oauth2_cred("new-grant", "stripe_link")
+        new.metadata = {"link_oauth_flow": "authorization_code", "link_client_id": "c"}
+
+        with (
+            patch("backend.api.features.integrations.router.creds_manager") as mgr,
+            patch(
+                "backend.api.features.integrations.router._revocation_handler",
+                return_value=MagicMock(
+                    revoke_tokens=AsyncMock(side_effect=httpx.ConnectError("down"))
+                ),
+            ),
+            patch(
+                "backend.api.features.integrations.router."
+                "STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED",
+                True,
+            ),
+        ):
+            mgr.store.get_creds_by_id = AsyncMock(return_value=old)
+            mgr.update = AsyncMock()
+            merged = await _upgrade_existing_credential("user-1", "link-cred", new)
+
+        mgr.update.assert_awaited_once()
+        assert stripe_link_hosted.is_hosted_link_credential(merged)
 
 
 class TestDeviceAuthEndpoints:

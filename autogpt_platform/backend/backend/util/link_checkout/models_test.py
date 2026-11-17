@@ -32,6 +32,25 @@ def test_plan_validation_errors_never_echo_the_input(plan):
     assert "4242424242424242" not in str(failure.value)
 
 
+def test_a_plan_too_long_for_the_worker_is_refused_when_it_is_made(plan):
+    """The worker reads a bounded job. Every field within its own limit can
+    still add up to more, and that must be refused before anything is
+    recorded, not after the attempt."""
+    frame = "https://js.stripe.com/" + "a" * 2000
+    with pytest.raises(ValidationError, match="too long"):
+        CheckoutPlan.model_validate(
+            {
+                **plan.model_dump(),
+                # Each escapes to six bytes in JSON.
+                "context": "\u0001" * 2000,
+                "frame_urls": {
+                    role: f"{frame}?{role}"
+                    for role in ("number", "cvc", "expiry", "submit")
+                },
+            }
+        )
+
+
 def test_link_is_shown_the_checkout_page_without_its_query(plan):
     plan.checkout_url = "https://shop.example/checkout?session=secret#pay"
     assert plan.merchant_url() == "https://shop.example/checkout"

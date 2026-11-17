@@ -24,6 +24,12 @@ from pydantic import (
 SPEND_REQUEST_ID = r"^lsrq_[A-Za-z0-9_-]+$"
 CHECKOUT_ID = r"^[a-f0-9]{32}$"
 
+# The most the worker reads of its job. The plan rides in it with the binding,
+# the token and the approval, so it gets half: a job cut short there would be
+# refused only after the attempt was recorded, leaving it unknown.
+JOB_MAX_BYTES = 32_768
+PLAN_MAX_BYTES = JOB_MAX_BYTES // 2
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
@@ -134,6 +140,8 @@ class CheckoutPlan(StrictModel):
         targets = [t for t in self.payment_fields().values() if t is not None]
         if len({(t.frame_url, t.selector) for t in targets}) != len(targets):
             raise ValueError("Payment fields and submit must be distinct")
+        if len(self.model_dump_json().encode()) > PLAN_MAX_BYTES:
+            raise ValueError("The plan is too long; shorten the context or frame URLs")
         return self
 
 

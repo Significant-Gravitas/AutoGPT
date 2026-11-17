@@ -26,6 +26,7 @@ from backend.util.link_checkout.link import (
     validate_spend,
 )
 from backend.util.link_checkout.models import (
+    JOB_MAX_BYTES,
     Card,
     WorkerJob,
     WorkerReceipt,
@@ -203,7 +204,7 @@ def main() -> None:
     logging.disable(logging.CRITICAL)
     result = WorkerResult(error="private_checkout_failed")
     try:
-        job = WorkerJob.model_validate_json(sys.stdin.buffer.read(32_768))
+        job = WorkerJob.model_validate_json(sys.stdin.buffer.read(JOB_MAX_BYTES))
         result = asyncio.run(execute(job))
     except LinkDuplicate:
         result = WorkerResult(error="link_duplicate")

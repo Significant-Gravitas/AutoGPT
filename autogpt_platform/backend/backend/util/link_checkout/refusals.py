@@ -20,6 +20,12 @@ FRAME_NOT_FOUND = (
     "No single loaded frame has that frame URL. Give the frame's address; if "
     "several frames share it, include its full query string."
 )
+FRAME_ELSEWHERE = (
+    "The payment fields must be on the checkout page's own site or in a known "
+    "card processor's frame (such as Stripe, Adyen or Braintree), inside no "
+    "frame from any other site. These are not, so this page cannot be paid "
+    "privately."
+)
 INVALID_SELECTOR = (
     "Each selector must be plain CSS that document.querySelectorAll accepts; "
     "extensions such as :visible, :has-text() or :text-is() are not supported."
@@ -74,6 +80,7 @@ MESSAGES = frozenset(
         NOT_CARD_FIELDS,
         FIELDS_NOT_READY,
         FRAME_NOT_FOUND,
+        FRAME_ELSEWHERE,
         INVALID_SELECTOR,
         LIVE_PAYMENTS_DISABLED,
         DUPLICATE_REQUEST,

@@ -8,12 +8,14 @@ import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 
 from backend.data.account_deletion import is_account_closed
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.graph import (
     GraphModel,
     GraphModelWithoutNodes,
+    foreign_sub_graph_refs,
     get_graph,
     get_graph_as_admin,
     get_sub_graphs,
@@ -21,6 +23,7 @@ from backend.data.graph import (
 from backend.data.includes import AGENT_GRAPH_INCLUDE
 from backend.data.notifications import NotificationEventModel, VerdictData
 from backend.data.profile import ensure_user_profile
+from backend.data.tenancy import require_role_where_resource_lives
 from backend.notifications.queue import queue_notification_async
 from backend.util.exceptions import (
     ConflictError,
@@ -962,7 +965,7 @@ async def create_store_submission(
             ]
         graph = await prisma.models.AgentGraph.prisma().find_first(
             where=graph_where,
-            include={"User": {"include": {"Profile": True}}},
+            include={"User": {"include": {"Profile": True}}, "Nodes": True},
         )
 
         if not graph:
@@ -980,11 +983,26 @@ async def create_store_submission(
                     f"Workflow #{graph_id} v{graph_version} not found "
                     f"for this user (#{user_id})"
                 )
+        # The workflow can live in a team the request doesn't name.
+        await require_role_where_resource_lives(
+            user_id,
+            graph.organizationId,
+            graph.teamId,
+            OrgAction.PUBLISH_TO_STORE,
+            TeamAction.PUBLISH_AGENTS,
+        )
 
         if not graph.User or not graph.User.Profile:
             logger.warning(f"User #{user_id} does not have a Profile")
             raise PreconditionFailed(
                 "User must create a Marketplace Profile before submitting a workflow"
+            )
+
+        if foreign_refs := await foreign_sub_graph_refs(graph):
+            raise PreconditionFailed(
+                "This workflow runs sub-workflows that are neither yours nor "
+                f"published in the Marketplace: {_format_graph_refs(foreign_refs)}. "
+                "Remove them before submitting it."
             )
 
         async with transaction() as tx:
@@ -1589,6 +1607,12 @@ async def review_store_submission(
 
         # If approving, update the listing to indicate it has an approved version
         if is_approved:
+            if foreign_refs := await foreign_sub_graph_refs(submission.AgentGraph):
+                raise PreconditionFailed(
+                    "This workflow runs sub-workflows that are neither its "
+                    "creator's nor published in the Marketplace: "
+                    f"{_format_graph_refs(foreign_refs)}, so it can't be approved."
+                )
             sub_graphs = await get_sub_graphs(submission.AgentGraph)
             async with transaction() as tx:
                 # Handle sub-agent approvals in transaction
@@ -1984,6 +2008,10 @@ def _owns_listing(
             listing.owningOrgId is None and listing.owningUserId == user_id
         )
     return listing.owningUserId == user_id
+
+
+def _format_graph_refs(refs: list[tuple[str, int]]) -> str:
+    return ", ".join(f"#{graph_id} v{version}" for graph_id, version in refs)
 
 
 def _create_sub_agent_version_data(

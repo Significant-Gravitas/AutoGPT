@@ -6,13 +6,19 @@ checks only the allowlist. The web app's routes and External API v2 both come
 through here, so neither can update one and leave the others behind.
 
 Every function loads the caller's own run first and raises `NotFoundError`
-otherwise, so nothing is written for a run someone else owns.
+otherwise, so nothing is written for a run someone else owns. Sharing and
+deleting also need the caller's role in the run's own org and team to allow
+it (`require_role_where_resource_lives`), whatever org the request names;
+withdrawing a share doesn't, since it only takes exposure away.
 """
 
 from datetime import datetime, timezone
 
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
+
 from backend.data import execution as execution_db
 from backend.data.sharing.tokens import generate_share_token
+from backend.data.tenancy import require_role_where_resource_lives
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
@@ -26,6 +32,13 @@ async def share_execution(user_id: str, execution_id: str) -> str:
     written, so links from an earlier share stop working.
     """
     execution = await _own_execution(user_id, execution_id)
+    await require_role_where_resource_lives(
+        user_id,
+        execution.organization_id,
+        execution.team_id,
+        OrgAction.SHARE_RESOURCES,
+        TeamAction.VIEW_EXECUTIONS,
+    )
     share_token = generate_share_token()
 
     await execution_db.delete_shared_execution_files(execution_id=execution_id)
@@ -67,6 +80,15 @@ async def delete_execution(user_id: str, execution_id: str) -> None:
     The shared page already hides deleted runs, but the file download checks
     only the allowlist, which would otherwise outlive the run.
     """
+    execution = await execution_db.get_graph_execution_meta(user_id, execution_id)
+    if execution is not None:
+        await require_role_where_resource_lives(
+            user_id,
+            execution.organization_id,
+            execution.team_id,
+            OrgAction.CREATE_RESOURCES,
+            TeamAction.CREATE_AGENTS,
+        )
     await execution_db.delete_graph_execution(
         graph_exec_id=execution_id, user_id=user_id
     )
