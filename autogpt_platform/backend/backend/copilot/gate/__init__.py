@@ -44,14 +44,15 @@ from .policy import (
     strictest_mode,
     verdict_for_effect,
 )
+from .spent_approval import take_spent
 from .subject import Subject
 
 logger = logging.getLogger(__name__)
 
 _ALREADY_HELD = "This exact call is already waiting for the user's approval."
 _CONSUMED = (
-    "This approval was already used by an identical call that ran. "
-    "Do not retry; tell the user what ran."
+    "This approval was already used by an identical call, or withdrawn. "
+    "Do not retry; tell the user."
 )
 _REJECTED = (
     "The user declined this action. Do not retry it, do not adjust the "
@@ -215,7 +216,7 @@ async def check_action(
     review_id = review_store.review_id_for(session_id, user_id, tool_name, args)
 
     # A held call the fold is running: the fold spent its approval already.
-    review = held.take_spent(review_id)
+    review = take_spent(review_id)
     if review is not None:
         if review_store.is_spend_card(review):
             await raise_ceiling(CEILING_UNIT_MICRODOLLARS)

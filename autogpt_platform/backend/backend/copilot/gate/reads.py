@@ -45,6 +45,7 @@ from . import shadow
 from .content import ContentVerdict, Image, judge_content
 from .headline import Headline, named
 from .policy import DEFAULT_MODE
+from .spent_approval import UnconfirmedSpend
 
 logger = logging.getLogger(__name__)
 
@@ -229,7 +230,12 @@ async def answered_read(
     if review.status != ReviewStatus.APPROVED:
         await review_store.discard(review, user_id)
         return "rejected", _REJECTED
-    if not await review_store.consume(review, user_id):
+    try:
+        consumed = await review_store.consume(review, user_id)
+    except Exception as failed:
+        # Nothing was delivered: the fold says so rather than "it may have run".
+        raise UnconfirmedSpend(review.node_exec_id) from failed
+    if not consumed:
         # An identical re-read already received the released bytes.
         return "closed", _DELIVERED
     approved_at = review.reviewed_at or review.updated_at or review.created_at

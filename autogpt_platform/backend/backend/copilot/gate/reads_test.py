@@ -22,6 +22,7 @@ from backend.copilot.gate import ALLOW, Decision, held, reads
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads import read_review_id
+from backend.copilot.gate.spent_approval import UnconfirmedSpend
 from backend.copilot.model import (
     AutopilotMode,
     ChatMessage,
@@ -661,6 +662,22 @@ async def test_a_released_read_a_re_read_already_took_is_not_reported_declined(r
 
     assert outcome == "closed"
     assert "declined" not in late and _MARKER not in late
+
+
+async def test_a_late_read_whose_spend_fails_is_not_reported_as_delivered(rows):
+    """The spend raising leaves the bytes unreleased, so the fold must hear
+    that nothing was delivered, not that the read may have run."""
+    tool = _Fetch(_MARKER)
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await tool.execute("user-1", _session(), "call-7", url="u")
+    rows.answer(ReviewStatus.APPROVED)
+    (review,) = rows.rows.values()
+
+    with patch.object(
+        review_store, "consume", AsyncMock(side_effect=ConnectionError("db"))
+    ):
+        with pytest.raises(UnconfirmedSpend):
+            await reads.answered_read("user-1", review)
 
 
 async def test_a_re_read_that_loses_the_race_is_not_told_the_user_declined(rows):

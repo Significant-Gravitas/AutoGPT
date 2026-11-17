@@ -100,6 +100,7 @@ def gate():
         find_review=AsyncMock(return_value=None),
         open_review=AsyncMock(side_effect=_opened),
         consume=AsyncMock(return_value=True),
+        discard=AsyncMock(),
     )
     with (
         patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)),
@@ -107,6 +108,7 @@ def gate():
         patch(f"{_GATE}.review_store.find_review", store.find_review),
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.review_store.consume", store.consume),
+        patch(f"{_GATE}.review_store.discard", store.discard),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value=None)),
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()),
@@ -513,6 +515,7 @@ async def test_a_rejection_asks_for_the_subject_not_the_tool(gate, ran):
     ):
         await _run_capability(_session(), GetWikipediaSummaryBlock().id, {"topic": "x"})
     set_ask.assert_awaited_once_with("session-1", "block:abc", "user-1", None)
+    gate.discard.assert_awaited_once_with(gate.find_review.return_value, "user-1")
 
 
 async def test_the_gate_off_resolves_no_subject():
