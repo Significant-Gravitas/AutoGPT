@@ -41,3 +41,19 @@ describe("experimental dream flag defaults fail closed", () => {
     expect(result.current).toBe(true);
   });
 });
+
+describe("Local PC flag defaults fail closed", () => {
+  beforeEach(() => {
+    Object.keys(process.env)
+      .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
+      .forEach((k) => delete process.env[k]);
+  });
+
+  it.each([Flag.LOCAL_PC_EXECUTOR, Flag.WORKFLOW_RECORDING])(
+    "resolves %s to false when the flag service has not answered, so the picker and recording stay hidden",
+    (flag) => {
+      const { result } = renderHook(() => useGetFlag(flag));
+      expect(result.current).toBe(false);
+    },
+  );
+});

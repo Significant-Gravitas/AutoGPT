@@ -7,6 +7,7 @@ from backend.api.features.experts import experts_db
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.execution import ExecutionTrigger, GraphExecutionMeta
 from backend.data.model import CredentialsMetaInput
+from backend.data.tenancy import require_role_where_resource_lives
 from backend.executor.utils import add_graph_execution
 from backend.util.exceptions import (
     ExpertRunPausedError,
@@ -252,7 +253,10 @@ async def execute_preset(
     preset_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     ctx: autogpt_auth_lib.RequestContext = Security(
-        autogpt_auth_lib.get_request_context
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.EXECUTE_RESOURCES,
+            autogpt_auth_lib.TeamAction.EXECUTE_AGENTS,
+        )
     ),
     inputs: dict[str, Any] = Body(..., embed=True, default_factory=dict),
     credential_inputs: dict[str, CredentialsMetaInput] = Body(
@@ -294,6 +298,14 @@ async def execute_preset(
         (preset.organization_id, preset.team_id)
         if preset.organization_id
         else (ctx.org_id, ctx.team_id)
+    )
+    # So the caller's role there must allow the run, not only in the request's.
+    await require_role_where_resource_lives(
+        user_id,
+        exec_org_id,
+        exec_team_id,
+        autogpt_auth_lib.OrgAction.EXECUTE_RESOURCES,
+        autogpt_auth_lib.TeamAction.EXECUTE_AGENTS,
     )
 
     try:

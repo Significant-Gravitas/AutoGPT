@@ -20,7 +20,9 @@ class OrgAction(str, Enum):
     PUBLISH_TO_STORE = "PUBLISH_TO_STORE"
     TRANSFER_RESOURCES = "TRANSFER_RESOURCES"
     VIEW_ORG = "VIEW_ORG"
+    VIEW_RESOURCES = "VIEW_RESOURCES"
     CREATE_RESOURCES = "CREATE_RESOURCES"
+    EXECUTE_RESOURCES = "EXECUTE_RESOURCES"
     SHARE_RESOURCES = "SHARE_RESOURCES"
 
 
@@ -32,6 +34,9 @@ class TeamAction(str, Enum):
     CREATE_AGENTS = "CREATE_AGENTS"
     USE_CREDENTIALS = "USE_CREDENTIALS"
     VIEW_EXECUTIONS = "VIEW_EXECUTIONS"
+    VIEW_AGENTS = "VIEW_AGENTS"
+    EXECUTE_AGENTS = "EXECUTE_AGENTS"
+    PUBLISH_AGENTS = "PUBLISH_AGENTS"
     DELETE_AGENTS = "DELETE_AGENTS"
 
 
@@ -48,7 +53,9 @@ _ORG_PERMISSIONS: dict[OrgAction, set[str]] = {
     OrgAction.PUBLISH_TO_STORE: {"owner", "admin", "member"},
     OrgAction.TRANSFER_RESOURCES: {"owner", "admin"},
     OrgAction.VIEW_ORG: {"owner", "admin", "billing_manager", "member"},
+    OrgAction.VIEW_RESOURCES: {"owner", "admin", "member"},
     OrgAction.CREATE_RESOURCES: {"owner", "admin", "member"},
+    OrgAction.EXECUTE_RESOURCES: {"owner", "admin", "member"},
     OrgAction.SHARE_RESOURCES: {"owner", "admin", "member"},
 }
 
@@ -62,6 +69,9 @@ _TEAM_PERMISSIONS: dict[TeamAction, set[str]] = {
     TeamAction.CREATE_AGENTS: {"team_admin", "team_member"},
     TeamAction.USE_CREDENTIALS: {"team_admin", "team_member"},
     TeamAction.VIEW_EXECUTIONS: {"team_admin", "team_member"},
+    TeamAction.VIEW_AGENTS: {"team_admin", "team_member"},
+    TeamAction.EXECUTE_AGENTS: {"team_admin", "team_member"},
+    TeamAction.PUBLISH_AGENTS: {"team_admin", "team_member"},
     TeamAction.DELETE_AGENTS: {"team_admin"},
 }
 

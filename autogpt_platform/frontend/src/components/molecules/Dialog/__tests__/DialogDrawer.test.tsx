@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { Dialog } from "../Dialog";
 
 vi.mock("@/lib/hooks/useBreakpoint", () => ({
@@ -63,4 +63,47 @@ describe("Dialog as Drawer (small screen)", () => {
     const closeButton = within(dialog).getByLabelText("Close");
     expect(closeButton).toBeDefined();
   });
+
+  test("leaves focus where it was on open by default", async () => {
+    const opener = focusOpener();
+
+    renderOpenDrawer({ autoFocus: false });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
+  test("moves focus into the drawer on open with autoFocus", async () => {
+    const opener = focusOpener();
+
+    renderOpenDrawer({ autoFocus: true });
+
+    const dialog = screen.getByRole("dialog");
+    await waitFor(() =>
+      expect(dialog.contains(document.activeElement)).toBe(true),
+    );
+    opener.remove();
+  });
 });
+
+function focusOpener() {
+  const opener = document.createElement("button");
+  document.body.appendChild(opener);
+  opener.focus();
+  return opener;
+}
+
+function renderOpenDrawer({ autoFocus }: { autoFocus: boolean }) {
+  return render(
+    <Dialog
+      title="Drawer"
+      autoFocus={autoFocus}
+      controlled={{ isOpen: true, set: vi.fn() }}
+    >
+      <Dialog.Content>
+        <p>Drawer body</p>
+      </Dialog.Content>
+    </Dialog>,
+  );
+}

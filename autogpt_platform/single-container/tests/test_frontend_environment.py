@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -12,6 +13,14 @@ SINGLE_CONTAINER_DIR = Path(__file__).resolve().parents[1]
 RUN_FRONTEND_PATH = SINGLE_CONTAINER_DIR / "run-frontend.sh"
 SUPERVISOR_PATH = SINGLE_CONTAINER_DIR / "supervisor" / "supervisord.conf"
 BOOTSTRAP_PATH = SINGLE_CONTAINER_DIR / "bootstrap.sh"
+AUTH_DB_POOL_PATH = (
+    SINGLE_CONTAINER_DIR.parent
+    / "frontend"
+    / "src"
+    / "lib"
+    / "auth"
+    / "auth-db-pool.ts"
+)
 
 
 class FrontendEnvironmentTest(unittest.TestCase):
@@ -44,6 +53,7 @@ class FrontendEnvironmentTest(unittest.TestCase):
             "TRANSCRIPTION_MODEL": "whisper-1",
         }
         forbidden = {
+            "BAN_RECORD_HASH_KEY": "ban-record-hash-key",
             "DATABASE_URL": "postgresql://postgres:db-password@127.0.0.1/postgres",  # pragma: allowlist secret
             "DB_PASS": "database-password",
             "DIRECT_URL": "postgresql://superuser:secret@127.0.0.1/postgres",
@@ -195,6 +205,18 @@ class FrontendEnvironmentTest(unittest.TestCase):
         self.assertIn("REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC", policy)
         self.assertNotIn("GRANT ALL", policy)
         self.assertNotIn("GRANT CREATE", policy)
+
+    def test_frontend_role_limit_leaves_headroom_over_the_auth_pool(self) -> None:
+        # Postgres counts a connection until its backend exits, so a role limit
+        # equal to the pool's size let a burst of sign-ups hit "too many
+        # connections" and send token mints to the backend unauthenticated.
+        bootstrap = BOOTSTRAP_PATH.read_text(encoding="utf-8")
+        pool = AUTH_DB_POOL_PATH.read_text(encoding="utf-8")
+        role_limit = re.search(r"CONNECTION LIMIT (\d+)", bootstrap)
+        pool_max = re.search(r"AUTH_DB_POOL_MAX = (\d+);", pool)
+        assert role_limit is not None and pool_max is not None
+        self.assertGreaterEqual(int(role_limit.group(1)), 2 * int(pool_max.group(1)))
+        self.assertIn("max: AUTH_DB_POOL_MAX,", pool)
 
 
 if __name__ == "__main__":

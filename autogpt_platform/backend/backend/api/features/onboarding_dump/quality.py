@@ -9,7 +9,8 @@ personalize from it.
 Layered on purpose so the common cases stay free:
 
 1. Deterministic reject — unmistakably unusable text (empty, no letters,
-   a looping/repeated transcript) never reaches a model.
+   a looping/repeated transcript, or for voice a stock phrase speech-to-text
+   invents from silence, see ``stt_artifacts``) never reaches a model.
 2. Deterministic pass — clearly substantial text (a real rambling dump)
    never pays for a model call either.
 3. Everything in between gets one cheap LLM judgement: "is there enough
@@ -34,6 +35,7 @@ from prisma.enums import BrainDumpInputMode
 from pydantic import BaseModel
 
 from backend.api.features.onboarding_dump.structured import request_json
+from backend.api.features.onboarding_dump.stt_artifacts import is_stt_artifact
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -146,7 +148,7 @@ async def check_transcript_quality(
     ambiguous middle costs an LLM call.
     """
     text = transcript.strip()
-    verdict = _deterministic_verdict(text)
+    verdict = _deterministic_verdict(text, input_mode)
     if verdict == "reject":
         return QualityRejection(error_code=NO_USABLE_SPEECH, reason="deterministic")
     if verdict == "pass":
@@ -159,7 +161,9 @@ def count_words(transcript: str) -> int:
     return len(_words(transcript))
 
 
-def _deterministic_verdict(text: str) -> Literal["pass", "reject", "ambiguous"]:
+def _deterministic_verdict(
+    text: str, input_mode: BrainDumpInputMode
+) -> Literal["pass", "reject", "ambiguous"]:
     if not text or not any(ch.isalnum() for ch in text):
         return "reject"
 
@@ -167,6 +171,8 @@ def _deterministic_verdict(text: str) -> Literal["pass", "reject", "ambiguous"]:
     if not words:
         return "reject"
     if _is_looping(text[:REPETITION_WINDOW_CHARS]):
+        return "reject"
+    if input_mode == BrainDumpInputMode.voice and is_stt_artifact(text):
         return "reject"
 
     alnum_chars = sum(1 for ch in text if ch.isalnum())

@@ -48,6 +48,23 @@
     }
   },
   {
+    "name": "mcp_aimlapi",
+    "display_name": "AI/ML API",
+    "description": "Find and compare AI models, run chat, embeddings, image, video and audio generation, and call Agent Tools such as web search and page extraction.",
+    "mcp_server": {
+      "server_url": "https://mcp.aimlapi.com/mcp",
+      "documentation_url": "https://docs.aimlapi.com/quickstart/mcp",
+      "setup_instructions": "Sign in with your AI/ML API account, or use an API key from https://aimlapi.com/app/keys (the same key the AI/ML API models use). Generation, chat, embeddings, tool searches and Agent Tool runs are billed to your AI/ML API balance; model lookups and account checks are free.",
+      "connection_mode": "hosted",
+      "icon_id": "aiml_api",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "provider": "aiml_api"
+    }
+  },
+  {
     "name": "mcp_airtable",
     "display_name": "Airtable",
     "description": "Search bases and manage records and schemas within your Airtable permissions.",

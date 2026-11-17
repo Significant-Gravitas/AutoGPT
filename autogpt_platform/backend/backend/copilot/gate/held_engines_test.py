@@ -293,7 +293,7 @@ async def test_a_sdk_turn_that_ends_early_keeps_the_results_of_calls_it_ran(stop
     [
         # The second card is not claimed yet, so it stays held.
         ("closed at the next card's status", [_RESULT.content]),
-        # Cut inside the fold's own save: both rows are on the session only.
+        # Cancel the save after both approved actions have already run.
         ("cancelled inside the fold's save", [_RESULT.content, _SECOND.content]),
     ],
 )
@@ -316,8 +316,14 @@ async def test_a_stopped_baseline_turn_keeps_what_ran_and_ends_its_box_turn(
         raise AssertionError("the turn was stopped before the model")
         yield
 
+    interrupted = False
+
     async def cut(_session: ChatSession, _log_prefix: str) -> ChatSession:
-        raise asyncio.CancelledError
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            raise asyncio.CancelledError
+        return await _numbered(_session, _log_prefix)
 
     fold_save = cut if stop.startswith("cancelled") else _numbered
     svc = "backend.copilot.baseline.service"
@@ -338,6 +344,14 @@ async def test_a_stopped_baseline_turn_keeps_what_ran_and_ends_its_box_turn(
             fold_save,
         ),
         patch(f"{svc}.persist_session_safe", _numbered),
+        patch(
+            "backend.copilot.pending_message_reconciliation.chat_db",
+            return_value=MagicMock(get_chat_messages_by_ids=AsyncMock(return_value=[])),
+        ),
+        patch(
+            "backend.copilot.pending_message_helpers.restore_pending_messages",
+            AsyncMock(),
+        ),
     ):
         turn = stream_chat_completion_baseline(
             session_id=session.session_id,

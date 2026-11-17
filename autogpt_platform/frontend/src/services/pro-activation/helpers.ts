@@ -20,6 +20,10 @@ export function safeReturnTo(path: string) {
     : "/settings/billing";
 }
 
+export function isCheckoutReturn(search: URLSearchParams) {
+  return search.get("subscription") === "success";
+}
+
 export function invoiceURL(value?: string | null) {
   if (!value) return null;
   try {

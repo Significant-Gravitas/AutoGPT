@@ -1,5 +1,6 @@
 import { Input } from "@/components/atoms/Input/Input";
-import { isJsonTextFor } from "@/lib/json-text";
+import { LongNumberHint } from "@/components/contextual/LongNumberHint/LongNumberHint";
+import { hasLongWholeNumber, isJsonTextFor } from "@/lib/json-text";
 import { useId, useState } from "react";
 
 interface Props {
@@ -46,19 +47,28 @@ export function JsonDataInput({
     }
   }
 
+  const longNumberHintId = hasLongWholeNumber(text)
+    ? `${id}-long-number`
+    : undefined;
+
   return (
-    <Input
-      id={id}
-      label="Value"
-      hideLabel
-      size="small"
-      type="textarea"
-      rows={6}
-      value={text}
-      onChange={(e) => handleChange(e.target.value)}
-      placeholder="Edit JSON data"
-      className="font-mono text-body"
-    />
+    <div className="mb-6 flex flex-col gap-2">
+      <Input
+        id={id}
+        label="Value"
+        hideLabel
+        size="small"
+        type="textarea"
+        rows={6}
+        value={text}
+        onChange={(e) => handleChange(e.target.value)}
+        placeholder="Edit JSON data"
+        aria-describedby={longNumberHintId}
+        wrapperClassName="mb-0"
+        className="font-mono text-body"
+      />
+      <LongNumberHint text={text} id={longNumberHintId} />
+    </div>
   );
 }
 

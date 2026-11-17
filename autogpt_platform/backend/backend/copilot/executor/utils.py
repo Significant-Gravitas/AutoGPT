@@ -573,8 +573,13 @@ async def schedule_turn(
 
     if user_id:
         inflight_cap = get_inflight_turn_limit()
-        if await count_inflight_turns(user_id) >= inflight_cap:
-            raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
+        inflight = await count_inflight_turns(user_id)
+        if inflight >= inflight_cap:
+            raise ConcurrentTurnLimitError(
+                inflight_turn_limit_message(inflight_cap),
+                cap=inflight_cap,
+                used=inflight,
+            )
 
     capacity = get_delegated_turn_limit() if delegated else get_inflight_turn_limit()
     async with acquire_turn_slot(user_id, session_id, capacity=capacity) as slot:
@@ -791,8 +796,11 @@ async def queue_spawned_turn(
     from backend.copilot.turn_queue import count_inflight_turns, enqueue_turn
 
     inflight_cap = get_inflight_turn_limit()
-    if await count_inflight_turns(user_id) >= inflight_cap:
-        raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
+    inflight = await count_inflight_turns(user_id)
+    if inflight >= inflight_cap:
+        raise ConcurrentTurnLimitError(
+            inflight_turn_limit_message(inflight_cap), cap=inflight_cap, used=inflight
+        )
     envelope = await _admitted_turn_envelope(
         str(uuid4()), session_id, user_id, permissions, spawn
     )
@@ -968,12 +976,11 @@ async def schedule_chat_turn(
         if (message_already_persisted or require_fresh_slot) and not slot.admitted:
             return None
         if user_id and not slot.admitted:
-            # Two sends of one text racing past the in-flight check: the
-            # second only refreshed the first's slot, so it rides that turn,
-            # as the save below would collapse it. Any other text is refused
-            # before it is saved, so the client keeps its message and its id.
+            # Legacy sends may ride the turn holding the same text. A distinct
+            # client message ID must stay retryable even when its text matches.
             if (
-                message
+                dedupe_content
+                and message
                 and not message_already_persisted
                 and await _repeats_trailing_message(
                     session_id, message, is_user_message
@@ -989,8 +996,6 @@ async def schedule_chat_turn(
                 content=message,
                 metadata=message_metadata,
             )
-            # A refreshed slot means a turn already runs for this chat, so the
-            # same text again is a double send, whatever id it carries.
             is_duplicate = (
                 await append_and_save_message(
                     session_id,

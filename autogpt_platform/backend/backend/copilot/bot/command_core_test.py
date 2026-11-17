@@ -6,7 +6,13 @@ import pytest
 
 from backend.util.exceptions import LinkAlreadyExistsError
 
-from .command_core import dm_link_reply, setup_reply, unlink_reply
+from .command_core import (
+    AdminCheck,
+    admin_only_reply,
+    dm_link_reply,
+    setup_reply,
+    unlink_reply,
+)
 
 _CORE = "backend.copilot.bot.command_core"
 
@@ -19,11 +25,13 @@ def _api(**overrides) -> MagicMock:
     return api
 
 
-async def _setup(api) -> object:
+async def _setup(api, admin_check: AdminCheck = AdminCheck.ADMIN) -> object:
     return await setup_reply(
         api,
         platform="slack",
         server_noun="workspace",
+        admin_check=admin_check,
+        admin_role="workspace admin or owner",
         platform_server_id="T1",
         platform_user_id="U1",
         platform_username="bently",
@@ -39,6 +47,59 @@ async def test_setup_success_returns_link_button():
     assert reply.button_label == "Link Workspace"
     assert "Set up AutoGPT for acme" in reply.text
     assert "expires in 30 minutes" in reply.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "admin_check,expected",
+    [
+        (
+            AdminCheck.NOT_ADMIN,
+            (
+                "Only a workspace admin or owner can link this workspace to an "
+                "AutoGPT account, because everyone here would then use AutoGPT "
+                "through that account. Ask a workspace admin or owner to run "
+                "/setup. To use AutoGPT with your own account, send me a "
+                "direct message."
+            ),
+        ),
+        (
+            AdminCheck.UNVERIFIED,
+            (
+                "I couldn't confirm that you're a workspace admin or owner, so "
+                "I can't link this workspace right now. Please try again in a "
+                "moment."
+            ),
+        ),
+    ],
+    ids=["not-admin", "unverified"],
+)
+async def test_setup_by_anyone_but_an_admin_mints_no_link(admin_check, expected):
+    api = _api()
+    reply = await _setup(api, admin_check)
+    api.create_link_token.assert_not_awaited()
+    assert reply.button_url is None
+    assert reply.text == expected
+
+
+def test_admin_only_reply_lets_an_admin_through():
+    assert (
+        admin_only_reply(
+            AdminCheck.ADMIN, server_noun="group", admin_role="group admin"
+        )
+        is None
+    )
+
+
+def test_admin_only_reply_ends_a_failed_check_with_the_platforms_hint():
+    reply = admin_only_reply(
+        AdminCheck.UNVERIFIED,
+        server_noun="team",
+        admin_role="team owner",
+        retry_hint="Ask your Teams admin.",
+    )
+    assert reply is not None
+    assert reply.text.endswith("link this team right now. Ask your Teams admin.")
 
 
 @pytest.mark.asyncio

@@ -58,7 +58,7 @@ async def test_user_stop_suppresses_cancellation_without_hiding_failures(mocker,
     async def no_trial_cost(*args):
         yield
 
-    mocker.patch.object(processor, "is_user_banned", AsyncMock(return_value=False))
+    mocker.patch.object(processor, "account_refusal", AsyncMock(return_value=None))
     mocker.patch.object(processor, "refusal_for", AsyncMock(return_value=None))
     mocker.patch.object(
         processor, "close_browser_daemon", AsyncMock(return_value=False)

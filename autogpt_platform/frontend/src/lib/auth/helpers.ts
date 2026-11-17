@@ -2,6 +2,7 @@ import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 
 export const PROTECTED_PAGES = [
+  "/account-closed",
   "/auth/authorize",
   "/auth/integrations",
   "/copilot",
