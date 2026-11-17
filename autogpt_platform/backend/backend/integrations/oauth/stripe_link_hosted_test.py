@@ -208,6 +208,34 @@ async def test_refresh_reads_a_comma_delimited_granted_scope(handler, link):
 
 
 @pytest.mark.asyncio
+async def test_a_refresh_naming_fewer_scopes_still_keeps_the_rotated_token(
+    handler, link
+):
+    """The credentials store refuses a narrower set of scopes. Adopting one
+    would lose the refresh token Link just rotated, and the next refresh would
+    replay the dead one."""
+    _, responses = link
+    responses["/auth/token"] = httpx.Response(
+        200,
+        json={
+            "access_token": "liwltoken_new",
+            "refresh_token": "liwlrefresh_rotated",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "scope": "userinfo:read",
+        },
+    )
+    stored = hosted_credentials()
+    stored_scopes = set(stored.scopes)
+
+    refreshed = await handler.refresh_tokens(stored)
+
+    assert refreshed.refresh_token is not None
+    assert refreshed.refresh_token.get_secret_value() == "liwlrefresh_rotated"
+    assert set(refreshed.scopes) == stored_scopes
+
+
+@pytest.mark.asyncio
 async def test_a_grant_from_another_client_is_not_refreshed_or_revoked(handler, link):
     """After the client is rotated nothing here can refresh the old grant. It
     is a dead grant (RFC 6749 calls one issued to another client

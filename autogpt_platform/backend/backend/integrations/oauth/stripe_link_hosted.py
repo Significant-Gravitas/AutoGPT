@@ -141,8 +141,12 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
             credentials.access_token_expires_at = int(time.time()) + int(
                 data["expires_in"]
             )
-        if data.get("scope"):
-            credentials.scopes = parse_granted_scopes(data["scope"], credentials.scopes)
+        granted = parse_granted_scopes(data.get("scope"), credentials.scopes)
+        # Adopted only when it covers what is stored: the store refuses a
+        # narrower set, and refusing this update would lose the refresh token
+        # Link just rotated.
+        if set(granted) >= set(credentials.scopes):
+            credentials.scopes = granted
         return credentials
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
