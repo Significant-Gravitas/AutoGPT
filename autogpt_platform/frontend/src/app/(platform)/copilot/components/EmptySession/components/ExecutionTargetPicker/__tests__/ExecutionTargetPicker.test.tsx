@@ -470,19 +470,55 @@ describe("ExecutionTargetPicker", () => {
       directoryRef: "folder-1",
       displayPath: "C:\\Projects",
     };
-    useCopilotUIStore.setState({ newChatExecutionTarget: selectedTarget });
-    mockMachines();
+    // The computers are checked only while the folder dialog is open.
+    useCopilotUIStore.setState({
+      newChatExecutionTarget: selectedTarget,
+      isExecutionTargetPickerOpen: true,
+    });
+    const checkStarted = vi.fn();
+    let finishCheck = () => {};
+    server.use(
+      http.get(EXECUTORS_URL, async () => {
+        checkStarted();
+        await new Promise<void>((resolve) => {
+          finishCheck = resolve;
+        });
+        return HttpResponse.json({ executors: [MACHINE] });
+      }),
+      http.post(DIRECTORIES_URL, () =>
+        HttpResponse.json({
+          connection_id: "connection-1",
+          browse_id: "browse-1",
+          current: null,
+          parent_ref: null,
+          entries: [],
+          truncated: false,
+          expires_at: "2026-07-10T18:00:00Z",
+        }),
+      ),
+    );
 
     render(<ExecutionTargetPicker />);
 
-    expect(useCopilotUIStore.getState().newChatExecutionTarget).toEqual(
-      selectedTarget,
-    );
-    await waitFor(() => {
+    try {
+      await waitFor(() => expect(checkStarted).toHaveBeenCalled());
+      expect(
+        await screen.findByText("Looking for connected computers…"),
+      ).toBeDefined();
       expect(useCopilotUIStore.getState().newChatExecutionTarget).toEqual(
         selectedTarget,
       );
-    });
+    } finally {
+      finishCheck();
+    }
+
+    // The folders load once the computers have, so the check is over.
+    expect(
+      await screen.findByText("This folder has no subfolders."),
+    ).toBeDefined();
+    expect(useCopilotUIStore.getState().newChatExecutionTarget).toEqual(
+      selectedTarget,
+    );
   });
 
   it("surfaces stale directory failures and offers retry", async () => {
