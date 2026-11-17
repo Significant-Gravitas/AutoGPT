@@ -8,21 +8,6 @@ import {
   signupTestUser,
 } from "./utils/signup";
 
-// The flag ships off: the frontend inlines its override at build time and the
-// backend routes 404 without theirs. CI sets both in platform-fullstack-ci.yml
-// and the Playwright config reads frontend/.env. A skip still fails CI, whose
-// report validator rejects skipped tests.
-const isAccountDeletionForcedOn = ["1", "true", "yes", "on"].includes(
-  (process.env.NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION ?? "")
-    .trim()
-    .toLowerCase(),
-);
-
-test.skip(
-  !isAccountDeletionForcedOn,
-  "Set NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true in frontend/.env (then rebuild) and FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true in backend/.env",
-);
-
 test("account deletion happy path: user closes their account from Settings, then signs in and keeps it", async ({
   page,
 }) => {

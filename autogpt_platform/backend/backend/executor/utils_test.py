@@ -2692,6 +2692,31 @@ async def test_a_sub_run_moved_to_the_runners_org_is_billed_there(
 
 
 @pytest.mark.asyncio
+async def test_a_sub_run_is_checked_against_the_run_that_starts_it(
+    mocker: MockerFixture,
+):
+    """Which graph a sub-graph run may start depends on whose graph the run that
+    starts it runs, so the check gets that run. A top-level run has none."""
+    import backend.executor.utils as executor_utils
+    from backend.data.execution import ExecutionContext
+
+    _mock_add_graph_execution_create_path(mocker)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="runner",
+        execution_context=ExecutionContext(
+            user_id="runner", parent_execution_id="parent-execution"
+        ),
+    )
+    await add_graph_execution(graph_id="g", user_id="runner")
+
+    calls = executor_utils.validate_and_construct_node_execution_input.call_args_list
+    parents = [call.kwargs["parent_graph_exec_id"] for call in calls]
+    assert parents == ["parent-execution", None]
+
+
+@pytest.mark.asyncio
 async def test_the_org_check_runs_over_rpc_where_sub_runs_start(
     mocker: MockerFixture,
 ):

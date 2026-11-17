@@ -11,7 +11,6 @@ import {
   setImpersonationViewer,
 } from "@/lib/impersonation";
 import { server } from "@/mocks/mock-server";
-import { Flag } from "@/services/feature-flags/use-get-flag";
 import {
   CLOSED_TOAST,
   mockAccountDeletionAPI,
@@ -32,7 +31,6 @@ import userEvent from "@testing-library/user-event";
 import SettingsPreferencesPage from "../page";
 
 const mocks = vi.hoisted(() => ({
-  useGetFlag: vi.fn(),
   logOut: vi.fn(),
   replace: vi.fn(),
 }));
@@ -74,20 +72,6 @@ vi.mock("next/navigation", async (importOriginal) => {
   };
 });
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return { ...actual, useGetFlag: mocks.useGetFlag };
-});
-
-function setAccountDeletionFlag(enabled: boolean) {
-  mocks.useGetFlag.mockImplementation(
-    (flag: Flag) => enabled && flag === Flag.SELF_SERVE_ACCOUNT_DELETION,
-  );
-}
-
 type User = ReturnType<typeof userEvent.setup>;
 
 const OPENED = { kind: "opened", surface: "settings" };
@@ -125,7 +109,6 @@ async function flushRequests() {
 beforeEach(() => {
   mocks.logOut.mockReset().mockResolvedValue(undefined);
   mocks.replace.mockReset();
-  setAccountDeletionFlag(true);
   server.use(
     getGetV1GetNotificationPreferencesMockHandler({
       user_id: "user-1",
@@ -147,15 +130,6 @@ afterEach(() => {
 });
 
 describe("Settings > Account delete card", () => {
-  test("is not shown while the account deletion flag is off", async () => {
-    setAccountDeletionFlag(false);
-
-    render(<SettingsPreferencesPage />);
-
-    expect(await screen.findByText("Time zone")).toBeDefined();
-    expect(screen.queryByText("Delete account")).toBeNull();
-  });
-
   test("is not shown while an admin is impersonating the user", async () => {
     ImpersonationState.set("user-1", "admin-1");
     setImpersonationViewer({ id: "admin-1", role: "admin" });

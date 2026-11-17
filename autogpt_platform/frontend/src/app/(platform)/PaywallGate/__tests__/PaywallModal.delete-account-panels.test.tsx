@@ -1,4 +1,3 @@
-import { Flag } from "@/services/feature-flags/use-get-flag";
 import {
   GMAIL,
   fakeCredentialStore,
@@ -48,17 +47,6 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
   useParams: () => ({}),
 }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: Flag) => flag === Flag.SELF_SERVE_ACCOUNT_DELETION,
-  };
-});
 
 async function openDeleteFlow() {
   const user = userEvent.setup();
