@@ -1,10 +1,13 @@
+import type { GenericEndpointContext } from "@better-auth/core";
 import { APIError } from "better-auth/api";
 import {
   SIGN_IN_CODE_INVALID,
   SIGN_IN_CODE_LIMIT,
+  SIGN_IN_CODE_LOCKED,
   SIGN_IN_CODE_TOO_SOON,
   SIGN_IN_CODE_UNSENT,
 } from "./sign-in-code";
+import { forgetPendingCookie } from "./sign-in-code-cookie";
 
 // The code endpoints' refusals (sign-in-code-plugin.ts), by the code /login
 // reads from them. The expired one also drops the cookie: sign-in-code-cookie.ts.
@@ -36,5 +39,14 @@ export function codeEmailRefused(
     message: limited
       ? "Too many codes for this address."
       : "The code couldn't be sent.",
+  });
+}
+
+/** The address has had too many wrong codes for now; the sign-in ends. */
+export function lockedOutError(ctx: GenericEndpointContext) {
+  forgetPendingCookie(ctx);
+  return new APIError("TOO_MANY_REQUESTS", {
+    code: SIGN_IN_CODE_LOCKED,
+    message: "Too many wrong codes for this address.",
   });
 }

@@ -70,8 +70,10 @@ class AuthEmailRequest(BaseModel):
             raise ValueError(f"A {self.type} email has no link")
         if self.provider is None:
             raise ValueError(f"A {self.type} email needs a provider")
-        if (self.code is None) != (self.type != "sign_in_code"):
-            raise ValueError("Only a sign_in_code email has a code, and it needs one")
+        if self.type == "sign_in_code" and self.code is None:
+            raise ValueError("A sign_in_code email needs a code")
+        if self.type != "sign_in_code" and self.code is not None:
+            raise ValueError(f"A {self.type} email takes no code")
         return self
 
 

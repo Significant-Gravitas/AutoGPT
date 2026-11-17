@@ -9,6 +9,7 @@ import {
   SIGN_IN_CODE_RESEND_SECONDS,
   SIGN_IN_CODE_TTL_SECONDS,
 } from "./sign-in-code";
+import { CODE_PROVIDER_IDS } from "./mailbox-provider";
 import { pendingCookieName } from "./sign-in-code-cookie";
 
 // A sign-in waiting on its code: a `sign-in-code:<id>` row in Better Auth's
@@ -17,16 +18,6 @@ import { pendingCookieName } from "./sign-in-code-cookie";
 
 // Documented in docs/platform/rate-limits.md: update it with any change here.
 export const MAX_CODE_ATTEMPTS = 5;
-
-// The providers whose sign-ins the code covers. Better Auth trusts exactly
-// these to link (auth.ts), so the hook that asks for the code stands in for
-// its verified-address check: keep the two one list.
-export const CODE_PROVIDER_IDS = [
-  "google",
-  "microsoft",
-  "github",
-  "discord",
-] as const;
 
 const RECORD_PREFIX = "sign-in-code:";
 const TRY_PREFIX = "sign-in-code-try:";

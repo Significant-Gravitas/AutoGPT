@@ -18,7 +18,13 @@ import {
   forgetPendingCookie,
   setPendingCookie,
 } from "./sign-in-code-cookie";
-import { codeEmailRefused, tooSoon, wrongCode } from "./sign-in-code-errors";
+import {
+  codeEmailRefused,
+  lockedOutError,
+  tooSoon,
+  wrongCode,
+} from "./sign-in-code-errors";
+import { isLockedOut, recordWrongCode } from "./sign-in-code-lockout";
 import {
   claimCodeEmail,
   releaseCodeEmail,
@@ -101,6 +107,11 @@ async function verify(ctx: GenericEndpointContext, typed: string) {
     forgetPendingCookie(ctx);
     return finishSignIn(ctx, record);
   }
+  if (attempt !== null && !(await recordWrongCode(ctx.context, record.email))) {
+    // The address has had too many wrong codes: none for it for a while.
+    await consumePending(ctx.context, pending);
+    throw lockedOutError(ctx);
+  }
   if (attempt !== null && attempt < MAX_CODE_ATTEMPTS - 1) throw wrongCode();
   // The code's last try: the sign-in ends, unless a new code replaced this one.
   if (await consumePending(ctx.context, pending)) throw expiredError(ctx);
@@ -119,6 +130,7 @@ async function resend(ctx: GenericEndpointContext) {
   const { id, record } = pending;
   const wait = secondsUntilResend(record);
   if (wait > 0) throw tooSoon(wait);
+  if (await isLockedOut(ctx.context, record.email)) throw lockedOutError(ctx);
   const claim = await claimCodeEmail(ctx.context, record.email);
   if ("refusal" in claim) throw codeEmailRefused(claim.refusal);
   const code = newCode();
@@ -164,7 +176,9 @@ async function finishSignIn(
       image: record.image,
     },
     account: { providerId: record.providerId, accountId: record.accountId },
-    disableSignUp: provider.options?.disableSignUp === true,
+    // A code only joins an account. If the address's account went away since,
+    // nothing is created in its place.
+    disableSignUp: true,
     requireExactAccountBinding: true,
     source: { method: "oauth", oauth: { providerId: record.providerId } },
   });

@@ -36,10 +36,10 @@ def sign_in_email_content(
 
 
 def _code_content(provider: str) -> AuthEmailContent:
-    """Sent when a provider sign-in can't vouch for this address: before the
-    provider joins an existing account, or creates one. Whoever started it
-    types the code into the page that asked, so it isn't a link: the mailbox's
-    owner can't approve someone else's sign-in by clicking."""
+    """Sent before a provider joins the existing account that uses this
+    address, when the provider doesn't run the mailbox. Whoever started the
+    sign-in types the code into the page that asked, so it isn't a link: the
+    mailbox's owner can't approve someone else's sign-in by clicking."""
     return AuthEmailContent(
         subject="Your AutoGPT sign-in code",
         eyebrow="ACCOUNT · SIGN-IN CODE",

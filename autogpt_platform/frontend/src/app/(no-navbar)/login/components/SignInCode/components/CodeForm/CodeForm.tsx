@@ -25,6 +25,7 @@ export function CodeForm(props: Props) {
         placeholder="123456"
         inputMode="numeric"
         autoComplete="one-time-code"
+        // Room for a space or two typed in the middle; the server drops them.
         maxLength={SIGN_IN_CODE_LENGTH + 2}
         value={code}
         onChange={(event) => handleCodeChange(event.target.value)}

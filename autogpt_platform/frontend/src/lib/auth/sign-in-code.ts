@@ -18,6 +18,7 @@ export const SIGN_IN_CODE_EXPIRED = "sign_in_code_expired";
 export const SIGN_IN_CODE_TOO_SOON = "sign_in_code_too_soon";
 export const SIGN_IN_CODE_LIMIT = "sign_in_code_limit";
 export const SIGN_IN_CODE_UNSENT = "sign_in_code_unsent";
+export const SIGN_IN_CODE_LOCKED = "sign_in_code_locked";
 
 // Under Better Auth's /api/auth.
 export const SIGN_IN_CODE_PATHS = {
@@ -38,16 +39,33 @@ export const SIGN_IN_CODE_START_ERRORS: Record<string, string> = {
     "We've already sent several codes to this address. Try again in an hour, or log in the way you usually do.",
   [SIGN_IN_CODE_UNSENT]:
     "We couldn't email you a code. Try again in a moment, or log in the way you usually do.",
+  [SIGN_IN_CODE_LOCKED]:
+    "Too many wrong codes were entered for this address, so we've stopped sending it codes for now. Log in the way you usually do.",
 };
 
-const PROVIDER_NAMES: Record<string, string> = {
+// Every "Continue with" provider, by Better Auth's id: the one list the
+// code, its emails and /login name providers from.
+export const SIGN_IN_PROVIDERS = [
+  "google",
+  "microsoft",
+  "github",
+  "discord",
+  "apple",
+] as const;
+export type SignInProvider = (typeof SIGN_IN_PROVIDERS)[number];
+
+const PROVIDER_NAMES: Record<SignInProvider, string> = {
   google: "Google",
   microsoft: "Microsoft",
-  apple: "Apple",
   github: "GitHub",
   discord: "Discord",
+  apple: "Apple",
 };
 
+export function isSignInProvider(value: unknown): value is SignInProvider {
+  return SIGN_IN_PROVIDERS.some((provider) => provider === value);
+}
+
 export function signInProviderName(provider: string) {
-  return PROVIDER_NAMES[provider] ?? "that account";
+  return isSignInProvider(provider) ? PROVIDER_NAMES[provider] : "that account";
 }

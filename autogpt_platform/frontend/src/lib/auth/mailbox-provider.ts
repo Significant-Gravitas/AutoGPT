@@ -1,4 +1,16 @@
 import { isMicrosoftMailboxAccount } from "./microsoft-login";
+import type { SignInProvider } from "./sign-in-code";
+
+// The providers whose sign-in joins an existing account straight away only
+// when it runs the mailbox, and otherwise after the code emailed there
+// (require-sign-in-code.ts). Apple keeps Better Auth's rule: Apple verifies
+// every address it hands out, and its native sign-in has no page for a code.
+export const CODE_PROVIDER_IDS = [
+  "google",
+  "microsoft",
+  "github",
+  "discord",
+] as const satisfies readonly SignInProvider[];
 
 // Gmail's own domains: a Google account with one of these addresses is that
 // mailbox.

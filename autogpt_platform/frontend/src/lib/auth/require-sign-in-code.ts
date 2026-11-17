@@ -3,8 +3,13 @@ import type {
   ValidateUserInfoResult,
   ValidateUserInfoSource,
 } from "better-auth";
-import { providerRunsMailbox } from "./mailbox-provider";
-import { SIGN_IN_CODE_SENT, SIGN_IN_CODE_UNSENT } from "./sign-in-code";
+import { CODE_PROVIDER_IDS, providerRunsMailbox } from "./mailbox-provider";
+import { ACCOUNT_NOT_LINKED_CODE } from "./microsoft-login";
+import {
+  SIGN_IN_CODE_LOCKED,
+  SIGN_IN_CODE_SENT,
+  SIGN_IN_CODE_UNSENT,
+} from "./sign-in-code";
 import { hashCode, newCode, newPendingID } from "./sign-in-code-crypto";
 import {
   claimCodeEmail,
@@ -12,8 +17,8 @@ import {
   sendCode,
 } from "./sign-in-code-emails";
 import { setPendingCookie } from "./sign-in-code-cookie";
+import { isLockedOut } from "./sign-in-code-lockout";
 import {
-  CODE_PROVIDER_IDS,
   forgetPending,
   type PendingSignIn,
   storePending,
@@ -21,29 +26,30 @@ import {
 import { accountIDOf, providerConfirmedByCode } from "./sign-in-provider";
 
 /**
- * A provider sign-in that can't vouch for its address finishes with a code
- * emailed there, typed into the page that started it:
+ * A provider sign-in that would join an existing account finishes with a code
+ * emailed to the address, typed into the page that started it, unless the
+ * provider runs that mailbox (mailbox-provider.ts). Better Auth would
+ * otherwise link any provider that says it verified the address, and a
+ * provider that vouched for addresses it never verified would open every
+ * account that uses them.
  *
- * - Joining an existing account, unless the provider runs that mailbox
- *   (mailbox-provider.ts). Better Auth would otherwise link any provider that
- *   says it verified the address, and a provider that vouched for addresses
- *   it never verified would open every account that uses them.
- * - Creating an account for an address the provider didn't verify, which
- *   provider-verified-email.ts would otherwise refuse.
+ * An address the provider didn't verify still joins nothing and creates
+ * nothing, as before: anyone can open such a provider account with someone
+ * else's address, so a code for it would only invite guessing. Better Auth
+ * refuses those links before this hook runs; it refuses them here too.
  *
  * The code can't be a link: the mailbox's owner could then approve someone
  * else's sign-in with a click. It is checked against the browser that started
  * the sign-in (a signed cookie), and finishing it runs Better Auth's own
- * sign-in with the provider account the callback saw, so every sign-up check
- * and session hook still applies (sign-in-code-plugin.ts).
+ * sign-in with the provider account the callback saw, so every session hook
+ * still applies (sign-in-code-plugin.ts).
  *
  * Apple keeps Better Auth's rule: Apple verifies every address it hands out,
  * and its native sign-in has no page to type a code into.
  *
- * This is Better Auth's `user.validateUserInfo`, which runs before a provider
- * sign-in joins an account or creates one. Returning an error stops it and
- * sends the browser to the sign-in's error URL with that code: /login, which
- * then asks for the code.
+ * This is Better Auth's `user.validateUserInfo`. Returning an error stops the
+ * sign-in and sends the browser to its error URL with that code: /login,
+ * which then asks for the code.
  */
 export async function requireSignInCode(
   data: { user: Record<string, unknown>; source: ValidateUserInfoSource },
@@ -51,19 +57,19 @@ export async function requireSignInCode(
 ): Promise<ValidateUserInfoResult | undefined> {
   const { user, source } = data;
   if (source.method !== "oauth" || !source.oauth) return;
+  if (source.action !== "link-account") return;
   const { providerId, profile } = source.oauth;
   if (!isCodeProvider(providerId)) return;
   // The code's own endpoint, finishing the sign-in it was emailed for.
   if (providerConfirmedByCode(ctx) === providerId) return;
   const email = typeof user.email === "string" ? user.email.toLowerCase() : "";
-  if (!email) return;
-  const emailVerified = user.emailVerified === true;
-  if (source.action === "link-account") {
-    if (providerRunsMailbox(providerId, { email, emailVerified, profile })) {
-      return;
-    }
-  } else if (source.action !== "create-user" || emailVerified) {
-    return;
+  if (!email || user.emailVerified !== true) {
+    return { error: ACCOUNT_NOT_LINKED_CODE };
+  }
+  const claim = { email, emailVerified: true, profile };
+  if (providerRunsMailbox(providerId, claim)) return;
+  if (await isLockedOut(ctx.context, email)) {
+    return { error: SIGN_IN_CODE_LOCKED };
   }
   const accountId = await accountIDOf(ctx, providerId, profile);
   if (!accountId) return { error: SIGN_IN_CODE_UNSENT };

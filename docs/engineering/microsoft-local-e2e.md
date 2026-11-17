@@ -84,14 +84,16 @@ calendar, files, Teams and Work IQ tools follow it.
   own Outlook.com, Hotmail, Live or MSN address, or a work address with
   `xms_edov`. A guest's address is never trusted: a guest signs in through
   an organization that isn't its own, which vouches for addresses it never
-  verified. An address Microsoft vouches for creates an account straight
-  away; any other one, a guest's included, creates an account only once the
-  code emailed there is typed into /login (`require-sign-in-code.ts`).
-  Joining an existing account takes that
-  code too, unless the Microsoft account is that Outlook.com mailbox
-  (`mailbox-provider.ts`): an organization vouching for its domain doesn't
-  run the mailbox. Every provider follows the same rule, and the redirect
-  is the same whether or not an account uses the address. "Outlook.com"
+  verified. Any other address joins no existing account (Better Auth
+  answers `account_not_linked`) and creates none
+  (`microsoft-sign-up-policy.ts` refuses with the same
+  `account_not_linked`), so the redirect is the same either way and doesn't
+  reveal whether an account uses the address. An address Microsoft vouches
+  for joins an existing account only once the code emailed there is typed
+  into /login (`require-sign-in-code.ts`), unless the Microsoft account is
+  that Outlook.com mailbox (`mailbox-provider.ts`): an organization vouching
+  for its domain doesn't run the mailbox. Every provider follows the same
+  rule. "Outlook.com"
   here means the domains in `MICROSOFT_MAIL_DOMAINS`, each checked to route
   mail to Outlook.com's consumer servers. Sign-in reads only name and email:
   it asks for `openid profile email` and no Graph permission, and Better

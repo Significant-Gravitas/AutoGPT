@@ -5,6 +5,7 @@ import {
   undeliverableEmailError,
 } from "./email-deliverability";
 import { mintServiceToken } from "./service-token";
+import type { SignInProvider } from "./sign-in-code";
 
 export type AuthLinkEmailType =
   | "reset_password"
@@ -13,13 +14,8 @@ export type AuthLinkEmailType =
   | "change_email"
   | "set_password";
 
-// The providers the backend's sign-in emails can name, by Better Auth's id.
-export type SignInEmailProvider =
-  | "google"
-  | "microsoft"
-  | "apple"
-  | "github"
-  | "discord";
+// The providers the backend's sign-in emails can name.
+export type SignInEmailProvider = SignInProvider;
 
 type SendAuthEmailArgs =
   | {

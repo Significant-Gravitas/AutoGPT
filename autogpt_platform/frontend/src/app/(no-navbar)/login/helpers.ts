@@ -7,9 +7,8 @@ import { SIGN_IN_CODE_START_ERRORS } from "@/lib/auth/sign-in-code";
 export const ACCOUNT_BANNED_NOTICE_COPY =
   "This account has been banned. If you think this is a mistake, please contact support.";
 
-// Better Auth's answer when the account that uses the address never verified
-// it, and provider-verified-email.ts's for an unverified address no emailed
-// code covers, so it says neither which.
+// Same for an account using the address and for an address the provider
+// didn't verify (provider-verified-email.ts), so it says neither.
 export const ACCOUNT_NOT_LINKED_NOTICE_COPY =
   "We can't sign you in with that account. If you already have an AutoGPT account, log in the way you usually do. If not, sign up with your email address.";
 

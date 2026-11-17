@@ -4,8 +4,8 @@
 // next.
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isWaitlistError } from "@/app/api/auth/utils";
 import { server } from "@/mocks/mock-server";
+import { recordWrongCode } from "../sign-in-code-lockout";
 
 // Runs the real Better Auth handler with this app's auth options (from
 // ../auth) on an in-memory database, the providers' own endpoints answered by
@@ -139,7 +139,7 @@ async function createAuth() {
   };
   testDB.current = db;
   const { auth } = await import("../auth");
-  return { handler: auth.handler as Handler, db };
+  return { handler: auth.handler as Handler, db, context: await auth.$context };
 }
 
 type TestDB = Awaited<ReturnType<typeof createAuth>>["db"];
@@ -482,19 +482,6 @@ describe("joining an existing account", () => {
         microsoft: { tid: "company-tenant", xms_edov: true },
       },
     ],
-    [
-      "a personal Microsoft account's other address",
-      "microsoft",
-      { email: "pat@company.example", microsoft: { tid: PERSONAL_TENANT } },
-    ],
-    [
-      "a guest in another organization",
-      "microsoft",
-      {
-        email: "pat@company.example",
-        microsoft: { tid: "other-tenant", idp: "live.com", xms_edov: true },
-      },
-    ],
     ["GitHub's verified address", "github", { email: "pat@company.example" }],
     ["Discord's verified address", "discord", { email: "pat@company.example" }],
   ])("asks for a code before %s joins it", async (_case, provider, person) => {
@@ -519,6 +506,40 @@ describe("joining an existing account", () => {
     expect(db.UserAuthSession).toEqual([]);
     expect(browser.has("sign_in_code")).toBe(true);
   });
+
+  it.each<[string, Provider, Person]>([
+    [
+      "a personal Microsoft account's other address",
+      "microsoft",
+      { email: "pat@company.example", microsoft: { tid: PERSONAL_TENANT } },
+    ],
+    [
+      "a guest in another organization",
+      "microsoft",
+      {
+        email: "pat@company.example",
+        microsoft: { tid: "other-tenant", idp: "live.com", xms_edov: true },
+      },
+    ],
+    [
+      "GitHub's unverified address",
+      "github",
+      { email: "pat@company.example", verified: false },
+    ],
+  ])(
+    "still refuses %s, and emails no code: anyone can open one",
+    async (_case, provider, person) => {
+      const { handler, db } = await createAuth();
+      existingAccount(db, person.email);
+      answerAs(provider, person);
+
+      const landing = await new Browser(handler).signInWith(provider);
+
+      expect(landing.searchParams.get("error")).toBe("account_not_linked");
+      expect(emailsOfType("sign_in_code")).toEqual([]);
+      expect(linkedAccounts(db, provider)).toEqual([]);
+    },
+  );
 
   it("links the provider account it saw once the code is entered, then signs in with one click", async () => {
     const { handler, db } = await createAuth();
@@ -609,40 +630,7 @@ describe("signing up", () => {
     ]);
   });
 
-  it("creates the account for an address the provider didn't verify once its code is entered", async () => {
-    const { handler, db } = await createAuth();
-    answerAs("microsoft", {
-      email: "pat@gmail.example",
-      microsoft: { tid: PERSONAL_TENANT },
-    });
-    const browser = new Browser(handler);
-
-    const landing = await browser.signInWith("microsoft");
-    expect(landing.searchParams.get("error")).toBe("sign_in_code_sent");
-    expect(db.UserAuthIdentity).toEqual([]);
-
-    const response = await browser.enterCode(emailedCode());
-
-    expect(await response.json()).toEqual({
-      provider: "microsoft",
-      newUser: true,
-    });
-    expect(db.UserAuthIdentity).toEqual([
-      expect.objectContaining({
-        email: "pat@gmail.example",
-        emailVerified: true,
-      }),
-    ]);
-    expect(linkedAccounts(db, "microsoft")).toEqual([
-      expect.objectContaining({ accountId: "microsoft-account-id" }),
-    ]);
-    expect(db.UserAuthSession).toHaveLength(1);
-    // A sign-up's first sign-in method gets no notice.
-    await backgroundTasksDone();
-    expect(emailsOfType("sign_in_method_added")).toEqual([]);
-  });
-
-  it("answers the same whether or not an account uses the address", async () => {
+  it("still creates no account for an address the provider didn't verify, whether or not one uses it", async () => {
     const person = {
       email: "pat@gmail.example",
       microsoft: { tid: PERSONAL_TENANT },
@@ -659,42 +647,11 @@ describe("signing up", () => {
       "microsoft",
     );
 
+    // The same answer either way, so it doesn't say whether one does.
+    expect(first.searchParams.get("error")).toBe("account_not_linked");
     expect(first.toString()).toBe(second.toString());
-  });
-
-  it("still applies the sign-up checks when the code creates the account", async () => {
-    const { handler, db } = await createAuth();
-    // A team address signs up through Google only.
-    answerAs("microsoft", {
-      email: "pat@agpt.co",
-      microsoft: { tid: PERSONAL_TENANT },
-    });
-    const browser = new Browser(handler);
-    await browser.signInWith("microsoft");
-
-    const response = await browser.enterCode(emailedCode());
-
-    expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({
-      code: "team_email_requires_google",
-    });
-    expect(db.UserAuthIdentity).toEqual([]);
-    expect(db.UserAuthSession).toEqual([]);
-  });
-
-  it("refuses an address off the sign-up allowlist after its code, as /login expects", async () => {
-    vi.stubEnv("AUTH_SIGNUP_ALLOWLIST", "invited@example.com");
-    const { handler, db } = await createAuth();
-    answerAs("github", { email: "pat@company.example", verified: false });
-    const browser = new Browser(handler);
-    await browser.signInWith("github");
-
-    const response = await browser.enterCode(emailedCode());
-    const body = await response.json();
-
-    expect(response.status).toBe(403);
-    expect(isWaitlistError(body.code, body.message)).toBe(true);
-    expect(db.UserAuthIdentity).toEqual([]);
+    expect(emailsOfType("sign_in_code")).toEqual([]);
+    expect(withoutAccount.db.UserAuthIdentity).toEqual([]);
   });
 });
 
@@ -974,6 +931,60 @@ describe("the code", () => {
         /^sign-in-code(-email)?:/.test(String(row.identifier)),
       ),
     ).toEqual([]);
+  });
+
+  it("stops sending codes to an address after twenty wrong ones in thirty days", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-17T12:30:00Z"));
+    const { browser, handler, context } = await waitingOnCode();
+    const code = emailedCode();
+    // Nineteen wrong codes already, from earlier sign-ins.
+    for (let count = 0; count < 19; count++) {
+      await recordWrongCode(context, "pat@company.example");
+    }
+
+    const twentieth = await browser.enterCode(wrong(code));
+    const past = await browser.enterCode(wrong(code));
+    const again = await new Browser(handler).signInWith("github");
+
+    expect(await twentieth.json()).toMatchObject({
+      code: "sign_in_code_invalid",
+    });
+    expect(await past.json()).toMatchObject({ code: "sign_in_code_locked" });
+    expect(again.searchParams.get("error")).toBe("sign_in_code_locked");
+    expect(emailsOfType("sign_in_code")).toHaveLength(1);
+  });
+
+  it("checks at most ten codes a minute from one IP address", async () => {
+    vi.stubEnv("TRUST_X_FORWARDED_FOR", "true");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-17T12:30:30Z"));
+    const { handler } = await createAuth();
+    const browser = new Browser(handler);
+
+    const statuses = [];
+    for (let attempt = 0; attempt < 11; attempt++) {
+      const answer = await browser.enterCode("000000", "203.0.113.7");
+      statuses.push(answer.status);
+    }
+
+    expect(statuses).toEqual([...Array(10).fill(400), 429]);
+  });
+
+  it("counts each new code toward the five an hour", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-17T12:30:00Z"));
+    const { browser, db } = await waitingOnCode();
+
+    const answers = [];
+    for (let resend = 0; resend < 5; resend++) {
+      ageCode(db, 61_000);
+      const answer = await browser.resendCode();
+      answers.push(answer.ok ? "sent" : (await answer.json()).code);
+    }
+
+    expect(answers).toEqual([...Array(4).fill("sent"), "sign_in_code_limit"]);
+    expect(emailsOfType("sign_in_code")).toHaveLength(5);
   });
 
   it("is emailed at most five times an hour to one address", async () => {

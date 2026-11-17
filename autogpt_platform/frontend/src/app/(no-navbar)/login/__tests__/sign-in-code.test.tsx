@@ -241,34 +241,47 @@ describe("LoginPage while a sign-in waits on its emailed code", () => {
       }),
     );
     expect(resent).toBe(true);
+    expect(screen.getByText(/You can ask for another in \d+s/)).toBeDefined();
     expect(
-      screen.getByRole("button", { name: /Send a new code in \d+s/ }),
-    ).toBeDefined();
+      (
+        screen.getByRole("button", {
+          name: "Send a new code",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 
   test("counts time the tab slept toward the next code", async () => {
     answerStatus(PENDING);
     openLogin(WAITING);
-    await screen.findByRole("button", { name: /Send a new code in \d+s/ });
+    await screen.findByText(/You can ask for another in \d+s/);
 
     // The tab sleeps 90 seconds: the clock moves on, and no timer runs in
     // between.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.now() + 90_000);
 
+    await waitFor(() =>
+      expect(screen.queryByText(/You can ask for another in/)).toBeNull(),
+    );
     expect(
-      await screen.findByRole("button", { name: "Send a new code" }),
-    ).toBeDefined();
+      (
+        screen.getByRole("button", {
+          name: "Send a new code",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
   });
 
   test("holds the new code until a minute after the last one", async () => {
     answerStatus(PENDING);
     openLogin(WAITING);
 
-    const resend = await screen.findByRole("button", {
-      name: /Send a new code in \d+s/,
-    });
-
+    expect(
+      await screen.findByText(/You can ask for another in (59|60)s/),
+    ).toBeDefined();
+    // One name throughout, so a screen reader doesn't announce it each second.
+    const resend = screen.getByRole("button", { name: "Send a new code" });
     expect((resend as HTMLButtonElement).disabled).toBe(true);
   });
 });
@@ -278,6 +291,10 @@ describe("LoginPage after a sign-in whose code couldn't go out", () => {
     [
       "sign_in_code_limit",
       "We've already sent several codes to this address. Try again in an hour, or log in the way you usually do.",
+    ],
+    [
+      "sign_in_code_locked",
+      "Too many wrong codes were entered for this address, so we've stopped sending it codes for now. Log in the way you usually do.",
     ],
     [
       "sign_in_code_unsent",

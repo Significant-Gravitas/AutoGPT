@@ -28,8 +28,15 @@ export function ResendCode(props: Props) {
         onClick={handleResend}
         className="mt-6 w-full"
       >
-        {cooldown > 0 ? `Send a new code in ${cooldown}s` : "Send a new code"}
+        Send a new code
       </Button>
+      {/* Beside the button, not in its name, so a screen reader doesn't
+          announce the button again every second. */}
+      {cooldown > 0 ? (
+        <Text variant="small" tone="muted" className="mt-2">
+          You can ask for another in {cooldown}s.
+        </Text>
+      ) : null}
     </>
   );
 }

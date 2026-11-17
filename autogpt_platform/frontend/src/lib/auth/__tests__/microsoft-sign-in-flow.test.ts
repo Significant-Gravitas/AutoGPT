@@ -63,7 +63,7 @@ vi.mock("../disposable-email", async (importOriginal) => ({
 
 const baseURL = "http://localhost:3000";
 const callbackURL = `${baseURL}/auth/callback?provider=microsoft`;
-// Where a sign-in that waits on an emailed code lands (sign-in-code-plugin.ts).
+// Where a sign-in that waits on an emailed code lands (require-sign-in-code.ts).
 const CODE_SENT =
   "/login?error=sign_in_code_sent&error_description=sign_in_code_sent";
 const PERSONAL_TENANT = "9188040d-6c67-4c5b-b112-36a304b66dad";
@@ -282,24 +282,20 @@ describe("Continue with Microsoft", () => {
         xms_edov: true,
       },
     ],
-  ])(
-    "keeps %s out of the account that uses it until the code emailed there is entered",
-    async (_case, claims) => {
-      const { handler, db } = await createAuthHandler();
-      existingAccount(db, "pat@company.example");
+  ])("keeps %s out of the account that uses it", async (_case, claims) => {
+    const { handler, db } = await createAuthHandler();
+    existingAccount(db, "pat@company.example");
 
-      const landing = await continueWithMicrosoft(handler, {
-        sub: "pairwise",
-        oid: "someone-else",
-        ...claims,
-      });
+    const landing = await continueWithMicrosoft(handler, {
+      sub: "pairwise",
+      oid: "someone-else",
+      ...claims,
+    });
 
-      expect(landing).toBe(CODE_SENT);
-      expect(codesSentTo()).toEqual(["pat@company.example"]);
-      expect(db.UserAuthAccount).toEqual([]);
-      expect(db.UserAuthSession).toEqual([]);
-    },
-  );
+    expect(landing).toBe("/login?error=account_not_linked");
+    expect(db.UserAuthAccount).toEqual([]);
+    expect(db.UserAuthSession).toEqual([]);
+  });
 
   it("keeps the login page's deep link when it refuses a sign-in", async () => {
     const { handler, db } = await createAuthHandler();
@@ -316,15 +312,13 @@ describe("Continue with Microsoft", () => {
       "/login?next=%2Flink%2Fabc",
     );
 
-    // Entering the code there, or logging in the usual way, still opens it.
-    expect(landing).toBe(
-      "/login?next=%2Flink%2Fabc&error=sign_in_code_sent&error_description=sign_in_code_sent",
-    );
+    // Logging in the usual way from there still opens the link.
+    expect(landing).toBe("/login?next=%2Flink%2Fabc&error=account_not_linked");
     expect(db.UserAuthSession).toEqual([]);
   });
 
   it.each([true, false])(
-    "creates no account for an address Microsoft didn't confirm until its code is entered (verification required: %s)",
+    "creates no account for an address Microsoft didn't confirm (verification required: %s)",
     async (requireVerification) => {
       const { handler, db } = await createAuthHandler(requireVerification);
 
@@ -335,9 +329,8 @@ describe("Continue with Microsoft", () => {
         email: "pat@gmail.example",
       });
 
-      // The same answer as when an account uses the address.
-      expect(landing).toBe(CODE_SENT);
-      expect(codesSentTo()).toEqual(["pat@gmail.example"]);
+      // Better Auth's answer when an account uses the address, to the byte.
+      expect(landing).toBe("/login?error=account_not_linked");
       expect(db.UserAuthIdentity).toEqual([]);
       expect(db.UserAuthAccount).toEqual([]);
       expect(db.UserAuthSession).toEqual([]);
@@ -395,15 +388,14 @@ describe("Continue with Microsoft", () => {
       xms_edov: true,
     });
     // Unconfirmed, it gets every provider's answer for an unverified address,
-    // the same as when an account uses it. The sign-up its code finishes is
-    // refused the same way (sign-in-code-flow.test.ts).
+    // the same as when an account uses it.
     const unconfirmed = await continueWithMicrosoft(handler, teamAddress);
 
     expect(refusal(confirmed)).toEqual({
       path: "/login",
       error: "team_email_requires_google",
     });
-    expect(unconfirmed).toBe(CODE_SENT);
+    expect(unconfirmed).toBe("/login?error=account_not_linked");
     expect(db.UserAuthIdentity).toEqual([]);
     expect(db.UserAuthSession).toEqual([]);
   });

@@ -223,17 +223,18 @@ The 10-minute windows for the first row start on the clock: at :00, :10, :20 and
 
 ### Confirming a sign-in with an emailed code
 
-When a sign-in provider such as Google or Microsoft can't vouch for an email address, the Platform emails a 6-digit code there before the sign-in joins an existing account or creates a new one. The code is typed into the login page that asked for it.
+When you continue with a sign-in provider such as Google or Microsoft, and an account already uses your email address, the Platform may email you a 6-digit code before that provider joins the account. It doesn't when the provider runs your mailbox (Gmail through Google, Outlook.com through Microsoft). You type the code into the login page that asked for it.
 
-| Limit                                                           | Counted per   | What you see                                                                                              |
-| --------------------------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------- |
-| 5 codes an hour, from sign-ins and **Send a new code** together | email address | The login page says several codes have already gone to the address, and no new one is sent                |
-| **Send a new code** once a minute                               | sign-in       | `429` and "Wait a moment before asking for another code."                                                 |
-| 5 tries per code                                                | sign-in       | After the fifth wrong code the sign-in ends: sign in again for a new code                                 |
-| 10 code checks a minute                                         | IP address    | `429`, with "Too many attempts. Please try again in 1 minute." — the wait named in seconds under a minute |
+| Limit                                                                      | Counted per   | What you see                                                                                              |
+| -------------------------------------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------- |
+| 5 codes in each clock hour, from sign-ins and **Send a new code** together | email address | The login page says several codes have already gone to the address, and no new one is sent                |
+| 20 wrong codes in a 30-day window                                          | email address | The sign-in ends, and no code goes to the address until the window ends: log in the way you usually do    |
+| **Send a new code** once a minute                                          | sign-in       | `429` and "Wait a moment before asking for another code."                                                 |
+| 5 tries per code                                                           | sign-in       | After the fifth wrong code the sign-in ends: sign in again for a new code                                 |
+| 10 code checks a minute                                                    | IP address    | `429`, with "Too many attempts. Please try again in 1 minute." — the wait named in seconds under a minute |
 
 - A code expires after 10 minutes, works once, and only in the browser that started the sign-in. A code that couldn't be sent doesn't count toward the five an hour.
-- The hour and the minute start on the clock. None of these are configurable.
+- The hour and the minute start on the clock, and the 30-day windows are fixed too, not rolling. None of these are configurable.
 
 ### The authentication API
 

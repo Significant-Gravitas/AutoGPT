@@ -4,8 +4,12 @@ import {
   claimWindowSlot,
   releaseWindowSlot,
 } from "./auth-email-cooldown";
-import { sendAuthEmail, type SignInEmailProvider } from "./email";
-import { SIGN_IN_CODE_LIMIT, SIGN_IN_CODE_UNSENT } from "./sign-in-code";
+import { sendAuthEmail } from "./email";
+import {
+  isSignInProvider,
+  SIGN_IN_CODE_LIMIT,
+  SIGN_IN_CODE_UNSENT,
+} from "./sign-in-code";
 import type { PendingSignIn } from "./sign-in-code-store";
 
 // Documented in docs/platform/rate-limits.md: update it with any change here.
@@ -13,15 +17,6 @@ const CODE_EMAILS_PER_ADDRESS = { max: 5, windowSeconds: 60 * 60 };
 // The provider's callback waits on the code's email before it redirects, so
 // a mailer that stalls fails the sign-in instead of hanging it.
 const SEND_TIMEOUT_MS = 10_000;
-
-// The providers a sign-in method notice can name.
-const NOTICE_PROVIDERS: ReadonlySet<string> = new Set([
-  "google",
-  "microsoft",
-  "github",
-  "discord",
-  "apple",
-]);
 
 type CodeEmailClaim =
   | { slot: string }
@@ -102,7 +97,7 @@ export async function alertNewSignInMethod(
   context: AuthEmailContext,
   account: { userId: string; providerId: string },
 ) {
-  if (!isNoticeProvider(account.providerId)) return;
+  if (!isSignInProvider(account.providerId)) return;
   const accounts = await context.adapter.findMany({
     model: "account",
     where: [{ field: "userId", value: account.userId }],
@@ -126,10 +121,4 @@ function logFailure(message: string, error: unknown) {
   console.error(message, {
     error: error instanceof Error ? error.message : String(error),
   });
-}
-
-function isNoticeProvider(
-  providerId: string,
-): providerId is SignInEmailProvider {
-  return NOTICE_PROVIDERS.has(providerId);
 }
