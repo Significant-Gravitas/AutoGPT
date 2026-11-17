@@ -188,6 +188,8 @@ would fail the very starts the setting is for; nothing the shim installs
 sets it. Two first starts with different `AUTOGPT_SHIM_FALLBACK_DIR`
 values take different locks though they share the keychain's one key, so
 that is a misconfiguration: an account's starts all need the same value.
+The stored sign-in's lock file is in the same folder, for the same reason
+([OAUTH_FLOW.md](OAUTH_FLOW.md#one-change-at-a-time-across-processes)).
 
 Malformed stored keys are preserved and rejected rather than regenerated.
 Before appending to an existing active log, startup verifies its chain using

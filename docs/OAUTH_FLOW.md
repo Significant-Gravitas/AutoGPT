@@ -194,24 +194,75 @@ keychain. Like the sign-in, it sends no client secret, so it too needs the
 platform's [public-client support](#public-client-support-a-platform-prerequisite).
 - On refresh failure (expired refresh token), prompt user to re-auth via CLI: `autogpt-shim auth`
 - The platform rotates the refresh token on every exchange, so once one goes
-  through, the token the keychain holds is used up. A new pair the keychain
-  then fails to store (locked meanwhile, say) is kept in memory and stored by
-  the next try, which doesn't exchange again. The shim retries in the same
-  process, since a restart would lose the pair. A sign-in stored meanwhile
-  (`autogpt-shim auth`) goes ahead of the kept pair.
+  through, the token the keychain holds is used up, and the platform treats
+  it sent again as reuse and revokes the sign-in. So the stored sign-in is
+  changed one step at a time, across processes
+  ([below](#one-change-at-a-time-across-processes)).
+- A new pair the keychain fails to store (locked meanwhile, say) is kept in
+  memory and stored by the next try, which doesn't exchange again. The shim
+  retries in the same process, since a restart would lose the pair, and it
+  keeps the stored sign-in's turn with the pair, so that no other process
+  reads the used-up token and sends it.
 - A refreshed pair, kept or new, is stored only while the keychain still
-  holds the refresh token its exchange used up. A sign-in stored during the
-  exchange is kept instead, and a record `autogpt-shim revoke` removed
-  stays removed. The keychain has no compare-and-replace, so the shim reads
-  the record and writes the pair back to back in one thread: a sign-in
+  holds the refresh token its exchange used up. With the turn held, nothing
+  else changes the record meanwhile. Where the lock file can't be used
+  (below), this look at the keychain is what keeps a sign-in stored during
+  the exchange, and keeps a record `autogpt-shim revoke` removed from coming
+  back; the keychain has no compare-and-replace, so there the shim reads
+  the record and writes the pair back to back in one thread, and a sign-in
   stored in the moment between that read and that write is still replaced.
 - A session stopped while its refresh waits for the token endpoint (a chat's
   session detached, say) doesn't drop the answer: the refresh runs on in a
-  task of its own, holding the refresh lock, and stores the new pair. A
-  shim that exits meanwhile loses it, as it does an answer that never
-  arrives (a timeout after the platform rotated the token), and then needs
-  `autogpt-shim auth`: the platform treats the used-up token sent again as
-  reuse and revokes the sign-in.
+  task of its own, holding the refresh lock and the turn, and stores the new
+  pair. A shim that exits meanwhile loses it, as it does a pair it kept and
+  hadn't stored yet, and an answer that never arrives (a timeout after the
+  platform rotated the token), and then needs `autogpt-shim auth`.
+
+### One change at a time, across processes
+
+A deployment's sign-in is one keychain record, and every shim process of the
+account shares it: a second daemon (the service, and a `start` run by hand),
+`autogpt-shim auth`, `autogpt-shim revoke`. What changes the record takes its
+turn:
+
+- a refresh, from reading the stored pair to storing the new one;
+- a sign-in, while it stores its pair;
+- a sign-out, from reading the tokens it revokes to removing the record.
+
+So two processes never send the same refresh token: the one that waited
+finds the pair the other stored and connects with it, sending no exchange
+of its own. A sign-in or a sign-out never lands between a refresh's look at
+the keychain and its write. And a sign-out that waited for a refresh revokes
+the pair that refresh stored, not the one it used up.
+
+The turn is an exclusive lock on a lock file named for the record,
+`.oauth_v1_<digest>.lock`, in `AUTOGPT_SHIM_FALLBACK_DIR` (default
+`~/.autogpt-local-executor`), beside the audit key's lock. It is created
+`0600`, holds nothing, and stays there. It is in the person's own folder
+because every process of the account has to take the same file, whatever
+config file or audit log each was started with.
+
+- A process waits up to 60 seconds for its turn, trying every 50 ms rather
+  than blocking on the lock. One that still doesn't have it changes nothing:
+  a refresh sends no exchange and is tried again, as one that found the
+  keychain locked is, and `auth` and `revoke` stop and say that another
+  process is still changing the sign-in.
+- The turn is held across the exchange with the platform, so an exchange
+  gets 30 seconds in all, and so do a sign-out's revocations. Past that the
+  refresh fails as one whose endpoint couldn't be reached does, and is tried
+  again.
+- While a process keeps a refreshed pair it couldn't store, it keeps the
+  turn too. Until it stores the pair, or stops, another process's refresh
+  waits and is tried again, and `auth` and `revoke` stop as above. A sign-in
+  can then be stored once that process has stored its pair or been stopped.
+- Where the lock file can't be made or locked at all (a folder the shim
+  can't write to, a filesystem without file locks), the shim says so once
+  in its log and goes on without it, so that a sign-in and a refresh still
+  work. There the processes of one account take turns only within each
+  process: two for one deployment that refresh at the same moment can each
+  send the stored refresh token, which ends the sign-in. Run one process
+  for the deployment, or set `AUTOGPT_SHIM_FALLBACK_DIR`, to the same value
+  for every process of the account, to a folder that takes file locks.
 
 Tokens stored in OS keychain:
 - macOS: Keychain Services via `keyring` library

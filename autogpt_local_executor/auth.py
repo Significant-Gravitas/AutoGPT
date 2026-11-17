@@ -11,30 +11,48 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
+import contextvars
 import errno
 import hashlib
 import io
 import json
 import logging
+import os
 import secrets
 import selectors
 import socket
 import sys
+import threading
 import time
 import urllib.parse
 import webbrowser
+from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any
+from pathlib import Path
+from typing import IO, Any
 
 import httpx
 import keyring
 
+from .audit import _fallback_path
 from .config import ShimConfig, _validate_platform_endpoint
 
 logger = logging.getLogger(__name__)
 
 KEYCHAIN_SERVICE = "autogpt-local-executor"
+# How long a token exchange, or a sign-out's revocations, may take in all.
+# The stored sign-in's turn (KeychainTokenStore.turn) is held across them, so
+# an endpoint that took a request and then went quiet would otherwise hold
+# every other process's sign-in, sign-out and refresh for as long.
+EXCHANGE_SECONDS = 30.0
+# How long a sign-in, a sign-out or a refresh waits for the stored sign-in's
+# turn: longer than a refresh or a sign-out holds it, so one that waits
+# behind another goes on when that one is done.
+TURN_WAIT_SECONDS = 60.0
+# How often a wait for the turn tries again.
+_TURN_POLL_SECONDS = 0.05
 # How long `autogpt-shim auth` waits for the browser to come back.
 CALLBACK_TIMEOUT_SECONDS = 300.0
 # The redirect ports the OAuth app registers (41899-41910).
@@ -173,6 +191,245 @@ class RefreshedTokens:
     refresh_token: str
 
 
+class SignInBusyError(RuntimeError):
+    """Another use of this deployment's stored sign-in, most likely another
+    process's, kept its turn (KeychainTokenStore.turn) for as long as this
+    one could wait. Its text is safe to show."""
+
+
+class ExchangeTimeoutError(TimeoutError):
+    """A token exchange, or a sign-out's revocations, took longer than
+    EXCHANGE_SECONDS in all."""
+
+
+_BUSY = (
+    "Another AutoGPT Local PC process on this computer is still changing or refreshing "
+    "this deployment's stored sign-in. Try again shortly; if this goes on, stop that "
+    "process first."
+)
+
+# This process's own lock for each record's turn, by its lock file's name.
+# The lock file alone doesn't serve inside one process everywhere: where
+# flock is emulated with POSIX record locks (Linux on NFS), a process's second
+# handle takes a lock its first one holds, and closing either lets go of both.
+_process_turns: dict[str, threading.Lock] = {}
+# The lock files this process has said it can't use, to say each once.
+_unusable_lock_files: set[str] = set()
+_process_turns_guard = threading.Lock()
+# The records whose turn the running task holds. What it does inside one
+# (revoke_tokens' clear_tokens, the refresh the daemon wraps in the turn) is
+# part of that turn and doesn't wait for it again. A thread or a task it
+# starts there gets a copy, as part of the same work.
+_turns_held: contextvars.ContextVar[frozenset[str]] = contextvars.ContextVar(
+    "stored_sign_in_turns_held", default=frozenset()
+)
+
+
+def _lock_file(record_key: str) -> Path:
+    """Where a record's lock file is: `.<record key>.lock` beside the audit
+    key's lock, in AUTOGPT_SHIM_FALLBACK_DIR (the person's own
+    ~/.autogpt-local-executor unless it is set).
+
+    Every process of the account that uses a record has to take the same
+    file, so it can't sit by the audit log or the config file, which two
+    processes for one deployment can each have their own of. It is named for
+    the record, so deployments don't wait for one another. And it is the
+    person's own, in their folder and created 0600: another account that
+    could open it could hold it, and every sign-in and refresh would wait.
+    AUTOGPT_SHIM_FALLBACK_DIR moves it with the audit key's lock, for a home
+    without file locks."""
+    return _fallback_path().with_name(f".{record_key}.lock")
+
+
+def _lock_without_waiting(handle: IO[bytes]) -> bool:
+    """Take an exclusive lock on an open lock file, the lock audit._file_lock
+    takes, without waiting for it: False while another handle holds it, this
+    process's or another's. Any other failure is raised: the file can't be
+    locked at all."""
+    if sys.platform == "win32":
+        import msvcrt
+
+        try:
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError as exc:
+            # EACCES while another handle holds the lock, as in _file_lock.
+            if exc.errno in (errno.EACCES, errno.EDEADLK):
+                return False
+            raise
+    else:
+        import fcntl
+
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False
+    return True
+
+
+def _unlock(handle: IO[bytes]) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+class _Turn:
+    """One hold of a stored sign-in's turn: this process's lock for the
+    record, and an exclusive lock on the record's lock file (_lock_file),
+    which every process takes.
+
+    take() tries for both, again and again until its deadline, and waits in
+    no blocking call: a worker thread left in one would keep `asyncio.run`
+    from returning, and with it the exit the shim's supervisor restarts it
+    after. release() lets go, from any thread, and ends a take() under way.
+
+    A lock file that can't be made or locked at all (a read-only folder, a
+    filesystem without file locks) is said once and done without: the turn
+    is then this process's alone, and between processes what is left is the
+    refresh's own look at the keychain before it writes
+    (KeychainTokenStore.store_refreshed)."""
+
+    def __init__(self, record_key: str) -> None:
+        self._path: Path | None
+        try:
+            self._path = _lock_file(record_key)
+        except RuntimeError:
+            # No home folder to keep it in (Path.home).
+            self._path = None
+        self._name = str(self._path) if self._path is not None else f".{record_key}.lock"
+        with _process_turns_guard:
+            self._in_process = _process_turns.setdefault(self._name, threading.Lock())
+        # Guards _held against a release() during a take().
+        self._state = threading.Lock()
+        self._held = False
+        self._over = threading.Event()
+        self._handle: IO[bytes] | None = None
+        self._file_locked = False
+        self._without_file = False
+
+    def take(self, wait: float) -> None:
+        """Take the turn within `wait` seconds, else raise SignInBusyError."""
+        deadline = time.monotonic() + wait
+        taken = said = False
+        try:
+            while not self._try():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or self._over.is_set():
+                    raise SignInBusyError(_BUSY)
+                if not said:
+                    said = True
+                    logger.info(
+                        "Waiting for another use of this deployment's stored sign-in to "
+                        "finish: a sign-in, a sign-out or a token refresh, most likely in "
+                        "another AutoGPT Local PC process."
+                    )
+                self._over.wait(min(_TURN_POLL_SECONDS, remaining))
+            taken = True
+        finally:
+            if not taken:
+                self._close_file()
+
+    def release(self) -> None:
+        """Let go of the turn, or give up on a take() still under way."""
+        with self._state:
+            self._over.set()
+            held, self._held = self._held, False
+        if held:
+            self._close_file()
+            self._in_process.release()
+
+    def _try(self) -> bool:
+        if not self._in_process.acquire(blocking=False):
+            return False
+        taken = False
+        try:
+            if self._lock_file_now():
+                with self._state:
+                    # Given up on meanwhile (release): not taken after all.
+                    taken = self._held = not self._over.is_set()
+        finally:
+            if not taken:
+                self._unlock_file()
+                self._in_process.release()
+        return taken
+
+    def _lock_file_now(self) -> bool:
+        """Lock the record's lock file without waiting: False while another
+        handle holds it, True once it is locked or is done without."""
+        if self._without_file:
+            return True
+        try:
+            if self._handle is None:
+                if self._path is None:
+                    raise FileNotFoundError("no home folder to keep it in")
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                flags = os.O_RDWR | os.O_CREAT | os.O_APPEND | getattr(os, "O_BINARY", 0)
+                self._handle = os.fdopen(os.open(self._path, flags, 0o600), "a+b")
+            self._file_locked = _lock_without_waiting(self._handle)
+        except OSError as exc:
+            self._do_without_the_file(exc)
+            return True
+        return self._file_locked
+
+    def _do_without_the_file(self, exc: OSError) -> None:
+        self._close_file()
+        self._without_file = True
+        with _process_turns_guard:
+            said = self._name in _unusable_lock_files
+            _unusable_lock_files.add(self._name)
+        if not said:
+            logger.warning(
+                "The stored sign-in's lock file %s can't be used (%s). Going on without it: "
+                "two AutoGPT Local PC processes for this deployment that refresh the sign-in "
+                "at the same moment can end it. Run one process for the deployment, or set "
+                "AUTOGPT_SHIM_FALLBACK_DIR to a folder that takes file locks.",
+                self._name,
+                exc,
+            )
+
+    def _unlock_file(self) -> None:
+        if self._file_locked and self._handle is not None:
+            self._file_locked = False
+            with contextlib.suppress(OSError):
+                _unlock(self._handle)
+
+    def _close_file(self) -> None:
+        self._unlock_file()
+        handle, self._handle = self._handle, None
+        if handle is not None:
+            with contextlib.suppress(OSError):
+                handle.close()
+
+
+async def _let_go(turn: _Turn) -> None:
+    """Release `turn` in a worker thread, as it was taken (unlocking and
+    closing its file is file work too), and to the end even if the caller is
+    cancelled meanwhile."""
+    await asyncio.shield(asyncio.to_thread(turn.release))
+
+
+@contextlib.asynccontextmanager
+async def _within_exchange_time() -> AsyncIterator[None]:
+    """Give the block EXCHANGE_SECONDS in all, then ExchangeTimeoutError: the
+    stored sign-in's turn is held while it runs."""
+    limit = asyncio.timeout(EXCHANGE_SECONDS)
+    try:
+        async with limit:
+            yield
+    except TimeoutError:
+        if limit.expired():
+            raise ExchangeTimeoutError(
+                f"The platform took longer than {EXCHANGE_SECONDS:g} s to answer."
+            ) from None
+        raise
+
+
 class KeychainTokenStore:
     """
     Stores OAuth tokens in the OS keychain using the `keyring` library.
@@ -181,6 +438,10 @@ class KeychainTokenStore:
         macOS   → Keychain Services
         Linux   → Secret Service (GNOME Keyring / KWallet)
         Windows → Windows Credential Manager
+
+    Every shim process of the account shares a deployment's record: a second
+    daemon, `autogpt-shim auth`, `autogpt-shim revoke`. What changes it takes
+    the record's turn (turn), across processes.
     """
 
     def __init__(self, config: ShimConfig) -> None:
@@ -190,24 +451,85 @@ class KeychainTokenStore:
         # A refreshed pair not stored yet (OAuthFlow.refresh_token), kept for
         # every session of this process: they share the store.
         self.unsaved_refresh: RefreshedTokens | None = None
+        # The turn kept with it (turn), so that no other process sends the
+        # refresh token its exchange used up.
+        self._kept_turn: _Turn | None = None
+
+    @contextlib.asynccontextmanager
+    async def turn(self, wait: float | None = None) -> AsyncIterator[None]:
+        """Hold this record's turn while the block runs. One sign-in,
+        sign-out or refresh at a time has the stored sign-in, in whatever
+        process, from its first read to its last write: two refreshes at
+        once would each send the same refresh token, which the platform
+        takes for reuse, and a sign-in or sign-out could land between a
+        refresh's look at the keychain and its write.
+
+        The turn is this process's lock for the record and an exclusive lock
+        on the record's lock file (_Turn, _lock_file). It is waited for at
+        most `wait` seconds (TURN_WAIT_SECONDS unless given), in a worker
+        thread that tries again and again rather than block; past that,
+        SignInBusyError, and the caller has changed nothing. What the
+        running task does inside its own turn doesn't wait for it again.
+
+        While a refreshed pair isn't stored yet (unsaved_refresh), the store
+        keeps the turn when the block ends, and the next block goes on with
+        it: the keychain still holds the refresh token that exchange used
+        up, which another process would otherwise read and send. So until
+        the pair is stored, or this process ends, another process's refresh
+        fails as busy, and so do its sign-in and sign-out."""
+        if self._record_key in _turns_held.get():
+            yield
+            return
+        turn, self._kept_turn = self._kept_turn, None
+        if turn is None:
+            turn = _Turn(self._record_key)
+            try:
+                await asyncio.to_thread(turn.take, TURN_WAIT_SECONDS if wait is None else wait)
+            except BaseException:
+                # Cancelled while it waited, say: the wait ends, and a turn
+                # it took just then is let go.
+                await _let_go(turn)
+                raise
+        held = _turns_held.set(_turns_held.get() | {self._record_key})
+        try:
+            yield
+        finally:
+            _turns_held.reset(held)
+            if self.unsaved_refresh is not None:
+                self._kept_turn = turn
+            else:
+                await _let_go(turn)
 
     async def get_access_token(self) -> str | None:
         record = await asyncio.to_thread(self._read_record)
         return record["access_token"] if record is not None else None
 
     async def store_tokens(self, access_token: str, refresh_token: str) -> None:
-        """Persist one versioned, deployment-bound token pair atomically."""
+        """Persist one versioned, deployment-bound token pair atomically, in
+        the record's turn (turn): a sign-in waits for a refresh or a
+        sign-out under way in any process, and replaces a refreshed pair
+        this store still keeps unsaved."""
         record = self._record(access_token, refresh_token)
-        await asyncio.to_thread(keyring.set_password, KEYCHAIN_SERVICE, self._record_key, record)
+        async with self.turn():
+            await asyncio.to_thread(
+                keyring.set_password, KEYCHAIN_SERVICE, self._record_key, record
+            )
+            self.unsaved_refresh = None
 
     async def store_refreshed(self, tokens: RefreshedTokens) -> bool:
         """Store a refreshed pair while the keychain still holds the refresh
         token its exchange used up, and say whether it did. Otherwise the
         keychain is left as it is: a sign-in stored since (`autogpt-shim
         auth`) is newer, and a record removed since (`autogpt-shim revoke`)
-        signed this computer out. The keychain can't compare and replace in
-        one step, so the read and the write run back to back in one thread;
-        a sign-in stored between those two calls is still replaced."""
+        signed this computer out.
+
+        For a caller that holds the record's turn (turn), as
+        OAuthFlow.refresh_token does: no other process's sign-in, sign-out
+        or refresh then lands between this look at the keychain and the
+        write. The look stays for where the lock file can't be used. The
+        keychain can't compare and replace in one step, so there the read
+        and the write run back to back in one thread, and a sign-in stored
+        between those two calls is still replaced."""
         record = self._record(tokens.access_token, tokens.refresh_token)
 
         def store_if_unchanged() -> bool:
@@ -234,8 +556,14 @@ class KeychainTokenStore:
             separators=(",", ":"),
         )
 
-    def clear_tokens(self) -> None:
-        """Remove only this deployment's record."""
+    async def clear_tokens(self) -> None:
+        """Remove only this deployment's record, in the record's turn (turn),
+        and with it a refreshed pair this store still keeps unsaved."""
+        async with self.turn():
+            await asyncio.to_thread(self._delete_record)
+            self.unsaved_refresh = None
+
+    def _delete_record(self) -> None:
         try:
             keyring.delete_password(KEYCHAIN_SERVICE, self._record_key)
         except keyring.errors.PasswordDeleteError:
@@ -337,33 +665,43 @@ class OAuthFlow:
 
         The platform rotates the refresh token on every exchange, so once one
         goes through the token the keychain holds is used up, and sending it
-        again ends the sign-in. A new pair the keychain then fails to store
-        (locked meanwhile, say) is kept on the token store until a later
-        refresh stores it, without exchanging again, for as long as the
-        keychain still holds the token that exchange used up: a sign-in
-        stored since (`autogpt-shim auth`) goes ahead of it. A restart loses
-        it, so the daemon retries in the same process. The new pair is
-        stored on those terms too (store_refreshed), so a sign-in stored, or
-        a sign-out made, while the exchange ran is kept."""
+        again ends the sign-in. So the whole refresh, from reading the
+        stored token to storing the new pair, runs in the record's turn
+        (KeychainTokenStore.turn): another process's refresh, sign-in or
+        sign-out waits for it, and one that can't have its turn in time
+        raises SignInBusyError without exchanging. The exchange itself ends
+        within EXCHANGE_SECONDS (ExchangeTimeoutError past that).
+
+        A new pair the keychain then fails to store (locked meanwhile, say)
+        is kept on the token store, the turn with it, until a later refresh
+        stores it without exchanging again: no other process can read the
+        used-up token and send it meanwhile. A restart loses the pair, so
+        the daemon retries in the same process. The pair is stored only
+        while the keychain still holds the token its exchange used up
+        (store_refreshed): the turn keeps other processes' changes out, and
+        where the lock file can't be used that look keeps a sign-in stored,
+        or a sign-out made, while the exchange ran."""
         self._ensure_scope()
-        refresh = await self.token_store.get_refresh_token()
-        tokens = self.token_store.unsaved_refresh
-        if tokens is not None and tokens.used_refresh_token != refresh:
-            tokens = self.token_store.unsaved_refresh = None
-        if tokens is None:
-            if not refresh:
-                raise ValueError("No refresh token stored. Run `autogpt-shim auth` first.")
-            tokens = self.token_store.unsaved_refresh = await self._exchange_refresh_token(refresh)
-        self._ensure_scope()
-        if not await self.token_store.store_refreshed(tokens):
-            logger.info(
-                "The stored sign-in changed during the token refresh; keeping it, "
-                "not the refreshed pair."
-            )
-        self.token_store.unsaved_refresh = None
+        async with self.token_store.turn():
+            refresh = await self.token_store.get_refresh_token()
+            tokens = self.token_store.unsaved_refresh
+            if tokens is not None and tokens.used_refresh_token != refresh:
+                tokens = self.token_store.unsaved_refresh = None
+            if tokens is None:
+                if not refresh:
+                    raise ValueError("No refresh token stored. Run `autogpt-shim auth` first.")
+                tokens = await self._exchange_refresh_token(refresh)
+                self.token_store.unsaved_refresh = tokens
+            self._ensure_scope()
+            if not await self.token_store.store_refreshed(tokens):
+                logger.info(
+                    "The stored sign-in changed during the token refresh; keeping it, "
+                    "not the refreshed pair."
+                )
+            self.token_store.unsaved_refresh = None
 
     async def _exchange_refresh_token(self, refresh: str) -> RefreshedTokens:
-        async with httpx.AsyncClient() as client:
+        async with _within_exchange_time(), httpx.AsyncClient() as client:
             self._ensure_scope()
             resp = await client.post(
                 self._scope.token_url,
@@ -387,31 +725,39 @@ class OAuthFlow:
         The desktop shim is a public client, so it sends the well-known client
         id with an empty secret. Any HTTP or keychain read error aborts before
         local deletion, leaving the credentials available for a retry.
+
+        From reading the tokens to deleting them, it holds the record's turn
+        (KeychainTokenStore.turn): a refresh under way in another process
+        ends first, so the pair revoked is the one it stored, and none
+        starts until the record is gone. The revocations end within
+        EXCHANGE_SECONDS in all (ExchangeTimeoutError past that), as the turn
+        is held meanwhile.
         """
         self._ensure_scope()
-        access = await self.token_store.get_access_token()
-        refresh = await self.token_store.get_refresh_token()
-        tokens = (
-            (access, "access_token"),
-            (refresh, "refresh_token"),
-        )
-        async with httpx.AsyncClient() as client:
-            for token, token_type_hint in tokens:
-                if not token:
-                    continue
-                self._ensure_scope()
-                resp = await client.post(
-                    self._scope.revoke_url,
-                    json={
-                        "token": token,
-                        "token_type_hint": token_type_hint,
-                        "client_id": self._scope.client_id,
-                        "client_secret": "",
-                    },
-                )
-                resp.raise_for_status()
-        self._ensure_scope()
-        self.token_store.clear_tokens()
+        async with self.token_store.turn():
+            access = await self.token_store.get_access_token()
+            refresh = await self.token_store.get_refresh_token()
+            tokens = (
+                (access, "access_token"),
+                (refresh, "refresh_token"),
+            )
+            async with _within_exchange_time(), httpx.AsyncClient() as client:
+                for token, token_type_hint in tokens:
+                    if not token:
+                        continue
+                    self._ensure_scope()
+                    resp = await client.post(
+                        self._scope.revoke_url,
+                        json={
+                            "token": token,
+                            "token_type_hint": token_type_hint,
+                            "client_id": self._scope.client_id,
+                            "client_secret": "",
+                        },
+                    )
+                    resp.raise_for_status()
+            self._ensure_scope()
+            await self.token_store.clear_tokens()
 
     @staticmethod
     def _generate_pkce_pair() -> tuple[str, str]:

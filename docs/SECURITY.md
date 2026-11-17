@@ -206,6 +206,15 @@ normal network access. OS isolation and destination approval are future work.
   explicit authentication instead of forwarding another deployment's tokens.
   Legacy unscoped tokens are never forwarded, migrated, or deleted automatically;
   see [OAuth migration guidance](OAUTH_FLOW.md#deployment-bound-credentials).
+- The record is changed one step at a time, across processes: a refresh, a
+  sign-in and a sign-out each take the record's lock file,
+  `.oauth_v1_<digest>.lock` in `AUTOGPT_SHIM_FALLBACK_DIR`, created `0600`
+  and holding no token. Two shim processes for one deployment therefore
+  never send the same refresh token, which the platform would take for
+  reuse and answer by revoking the sign-in, and a sign-in or sign-out never
+  lands inside a refresh. Where that file can't be made or locked, the shim
+  says so once and goes on without it; see
+  [OAUTH_FLOW.md](OAUTH_FLOW.md#one-change-at-a-time-across-processes).
 - Authenticated WebSocket redirects are rejected, including same-origin path
   changes. OAuth HTTP requests do not follow redirects.
 - `autogpt-shim revoke` posts both access and refresh tokens to
