@@ -34,7 +34,9 @@ rules:
 
   superfluous-actions:
     ignore:
-      # Classic's PyPI release; Classic is no longer actively maintained.
+      # Classic's PyPI release (Classic is no longer actively maintained).
+      # Swapping its release action for `gh release` would change a release
+      # path we can't test without publishing a release.
       - classic-benchmark_publish_package.yml
 
   use-trusted-publishing:
