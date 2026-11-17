@@ -5479,15 +5479,10 @@
           }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
-              "schema": {
-                "anyOf": [
-                  { "$ref": "#/components/schemas/LinkPurchaseDecision" },
-                  { "type": "null" }
-                ],
-                "title": "Decision"
-              }
+              "schema": { "$ref": "#/components/schemas/LinkPurchaseDecision" }
             }
           }
         },
@@ -5545,15 +5540,10 @@
           }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
-              "schema": {
-                "anyOf": [
-                  { "$ref": "#/components/schemas/LinkPurchaseDecision" },
-                  { "type": "null" }
-                ],
-                "title": "Decision"
-              }
+              "schema": { "$ref": "#/components/schemas/LinkPurchaseDecision" }
             }
           }
         },
@@ -31577,16 +31567,12 @@
       },
       "LinkPurchaseDecision": {
         "properties": {
-          "revision": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Revision",
-            "default": 0
-          }
+          "revision": { "type": "integer", "minimum": 0.0, "title": "Revision" }
         },
         "type": "object",
+        "required": ["revision"],
         "title": "LinkPurchaseDecision",
-        "description": "The revision of the purchase the customer decided on, as their card\nshowed it. Omitted by older clients, which only ever saw the first."
+        "description": "The revision of the purchase the customer decided on, as their card\nshowed it. Required, so a decision is never a bodiless request."
       },
       "LinkTokenInfoResponse": {
         "properties": {

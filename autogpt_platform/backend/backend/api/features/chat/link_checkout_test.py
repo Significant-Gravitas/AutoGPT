@@ -111,8 +111,10 @@ async def test_the_card_reads_the_purchase_as_recorded(purchase):
 async def test_approving_records_the_click_and_is_idempotent(purchase):
     await purchase()
 
-    first = client.post(url("approve"), headers={"User-Agent": "Mozilla/5.0"})
-    again = client.post(url("approve"))
+    first = client.post(
+        url("approve"), json={"revision": 0}, headers={"User-Agent": "Mozilla/5.0"}
+    )
+    again = client.post(url("approve"), json={"revision": 0})
 
     assert first.status_code == again.status_code == 200
     assert first.json()["state"] == "approved"
@@ -125,8 +127,25 @@ async def test_approving_records_the_click_and_is_idempotent(purchase):
 async def test_declined_cannot_be_approved_later(purchase):
     await purchase()
 
-    assert client.post(url("decline")).json()["state"] == "declined"
-    assert client.post(url("approve")).status_code == 409
+    assert client.post(url("decline"), json={"revision": 0}).json()["state"] == (
+        "declined"
+    )
+    assert client.post(url("approve"), json={"revision": 0}).status_code == 409
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("decision", ["approve", "decline"])
+@pytest.mark.parametrize("body", [None, {}])
+async def test_a_decision_must_name_the_revision_the_card_showed(
+    purchase, decision, body
+):
+    """A bodiless POST is the easiest request to forge from another site, so
+    no decision is ever one."""
+    await purchase()
+
+    assert client.post(url(decision), json=body).status_code == 422
+    view = await approval.read_approval(CHECKOUT_ID)
+    assert view is not None and view.state == "awaiting"
 
 
 @pytest.mark.asyncio
@@ -134,7 +153,7 @@ async def test_an_expired_purchase_cannot_be_approved(purchase):
     await purchase(expires_in=-1)
 
     assert client.get(url()).json()["state"] == "expired"
-    assert client.post(url("approve")).status_code == 409
+    assert client.post(url("approve"), json={"revision": 0}).status_code == 409
 
 
 @pytest.mark.asyncio
@@ -142,7 +161,7 @@ async def test_another_users_purchase_is_not_found(purchase):
     await purchase(user_id="someone-else")
 
     assert client.get(url()).status_code == 404
-    assert client.post(url("approve")).status_code == 404
+    assert client.post(url("approve"), json={"revision": 0}).status_code == 404
     view = await approval.read_approval(CHECKOUT_ID)
     assert view is not None and view.state == "awaiting"
 
@@ -185,7 +204,6 @@ async def test_a_raised_purchase_is_decided_on_the_revision_the_card_showed(
     )
     assert card["reason"] == "Sales tax was added on the final step."
     # A card still showing the first total cannot approve the raised one.
-    assert client.post(url("approve")).status_code == 409
     assert client.post(url("approve"), json={"revision": 0}).status_code == 409
 
     approved = client.post(url("approve"), json={"revision": 1})

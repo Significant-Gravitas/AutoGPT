@@ -65,9 +65,9 @@ class LinkPurchaseApproval(BaseModel):
 
 class LinkPurchaseDecision(BaseModel):
     """The revision of the purchase the customer decided on, as their card
-    showed it. Omitted by older clients, which only ever saw the first."""
+    showed it. Required, so a decision is never a bodiless request."""
 
-    revision: int = Field(default=0, ge=0)
+    revision: int = Field(ge=0)
 
 
 @router.get(
@@ -105,7 +105,7 @@ async def approve_link_purchase(
     checkout_id: CheckoutId,
     request: Request,
     user_id: Annotated[str, Security(auth.get_user_id)],
-    decision: Annotated[LinkPurchaseDecision | None, Body()] = None,
+    decision: Annotated[LinkPurchaseDecision, Body()],
 ) -> LinkPurchaseApproval:
     """Record the customer's approval. Approving twice is idempotent."""
     return await _decide(
@@ -127,7 +127,7 @@ async def decline_link_purchase(
     checkout_id: CheckoutId,
     request: Request,
     user_id: Annotated[str, Security(auth.get_user_id)],
-    decision: Annotated[LinkPurchaseDecision | None, Body()] = None,
+    decision: Annotated[LinkPurchaseDecision, Body()],
 ) -> LinkPurchaseApproval:
     return await _decide(
         session_id, checkout_id, user_id, request, decision, approve=False
@@ -139,7 +139,7 @@ async def _decide(
     checkout_id: str,
     user_id: str,
     request: Request,
-    decision: LinkPurchaseDecision | None,
+    decision: LinkPurchaseDecision,
     *,
     approve: bool,
 ) -> LinkPurchaseApproval:
@@ -150,7 +150,7 @@ async def _decide(
             session_id,
             approve=approve,
             user_agent=request.headers.get("user-agent"),
-            revision=decision.revision if decision else 0,
+            revision=decision.revision,
         )
     except ApprovalConflict as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
