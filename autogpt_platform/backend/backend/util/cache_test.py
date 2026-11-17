@@ -17,7 +17,12 @@ from unittest.mock import Mock
 
 import pytest
 
-from backend.util.cache import cached, clear_thread_cache, thread_cached
+from backend.util.cache import (
+    _SCAN_BATCH_SIZE,
+    cached,
+    clear_thread_cache,
+    thread_cached,
+)
 
 
 class TestThreadCached:
@@ -679,6 +684,21 @@ class TestCache:
 
 class TestSharedCache:
     """Tests for shared_cache (Redis-backed) functionality."""
+
+    def test_scans_walk_redis_in_large_batches(self, mocker):
+        redis = mocker.MagicMock()
+        redis.scan_iter.side_effect = lambda *args, **kwargs: iter([])
+        mocker.patch("backend.util.cache._get_redis", return_value=redis)
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        def batched_scan_function() -> int:
+            return 1
+
+        batched_scan_function.cache_info()
+        batched_scan_function.cache_clear()
+
+        batch_sizes = [c.kwargs.get("count") for c in redis.scan_iter.call_args_list]
+        assert batch_sizes == [_SCAN_BATCH_SIZE, _SCAN_BATCH_SIZE]
 
     def test_sync_shared_cache_basic(self):
         """Test basic shared cache functionality with sync function."""

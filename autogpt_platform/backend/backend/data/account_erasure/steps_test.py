@@ -1,5 +1,5 @@
-"""The steps that stop the account's work again, cancel its sole orgs'
-plans and remove its memory: dry runs only read, applies reuse the
+"""The steps that stop the account's work again, cancel its own and its sole
+orgs' plans and remove its memory: dry runs only read, applies reuse the
 platform's own functions, and an account with nothing left is a no-op."""
 
 from types import SimpleNamespace
@@ -121,16 +121,16 @@ def stripe_configured(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_org_subscriptions_are_cancelled_now_like_the_accounts_own(
+async def test_subscriptions_are_cancelled_now_like_closing_does(
     monkeypatch, stripe_configured
 ):
     expire = AsyncMock()
     cancel = AsyncMock(return_value=1)
     monkeypatch.setattr(subscriptions, "expire_all_open_checkouts", expire)
     monkeypatch.setattr(subscriptions, "_cancel_customer_subscriptions", cancel)
-    subject = SUBJECT.model_copy(update={"org_stripe_customer_ids": ["cus_a", "cus_b"]})
+    subject = SUBJECT.model_copy(update={"stripe_customer_ids": ["cus_a", "cus_b"]})
 
-    report = await subscriptions.cancel_org_subscriptions(subject, dry_run=False)
+    report = await subscriptions.cancel_subscriptions(subject, dry_run=False)
 
     assert [c.args[0] for c in expire.await_args_list] == ["cus_a", "cus_b"]
     assert [c.args[0] for c in cancel.await_args_list] == ["cus_a", "cus_b"]
@@ -144,24 +144,24 @@ async def test_org_subscriptions_are_cancelled_now_like_the_accounts_own(
 
 
 @pytest.mark.asyncio
-async def test_an_org_subscriptions_dry_run_only_counts(monkeypatch, stripe_configured):
+async def test_a_subscriptions_dry_run_only_counts(monkeypatch, stripe_configured):
     cancel = AsyncMock()
     monkeypatch.setattr(subscriptions, "_cancel_customer_subscriptions", cancel)
     monkeypatch.setattr(subscriptions, "_count_cancellable", AsyncMock(return_value=1))
-    subject = SUBJECT.model_copy(update={"org_stripe_customer_ids": ["cus_a"]})
+    subject = SUBJECT.model_copy(update={"stripe_customer_ids": ["cus_a"]})
 
-    report = await subscriptions.cancel_org_subscriptions(subject, dry_run=True)
+    report = await subscriptions.cancel_subscriptions(subject, dry_run=True)
 
     cancel.assert_not_awaited()
     assert report.counts == {"subscriptions": 1}
 
 
 @pytest.mark.asyncio
-async def test_no_org_customer_is_a_no_op(monkeypatch):
+async def test_no_customer_is_a_no_op(monkeypatch):
     cancel = AsyncMock()
     monkeypatch.setattr(subscriptions, "_cancel_customer_subscriptions", cancel)
 
-    report = await subscriptions.cancel_org_subscriptions(SUBJECT, dry_run=False)
+    report = await subscriptions.cancel_subscriptions(SUBJECT, dry_run=False)
 
     cancel.assert_not_awaited()
     assert report.counts == {"subscriptions": 0}

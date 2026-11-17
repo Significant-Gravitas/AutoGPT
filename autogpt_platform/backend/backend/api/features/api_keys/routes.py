@@ -9,6 +9,7 @@ from backend.api.features.api_keys.model import (
     CreateAPIKeyResponse,
     UpdatePermissionsRequest,
 )
+from backend.data.account_deletion import refuse_closed_account
 from backend.data.auth import api_key as api_key_db
 from backend.data.tenancy import get_user_team_ids
 
@@ -30,6 +31,8 @@ async def create_api_key(
             detail="You are not an active member of that team",
         )
 
+    # Auth's closed-account cache can lag the close by a few seconds.
+    await refuse_closed_account(user_id)
     api_key_info, plain_text_key = await api_key_db.create_api_key(
         name=request.name,
         user_id=user_id,

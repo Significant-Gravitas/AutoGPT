@@ -55,7 +55,9 @@ from .tenancy import (
     TenantContext,
     require_auth,
     require_paid_permission,
+    require_paid_resource_permission,
     require_permission,
+    require_resource_permission,
 )
 
 logger = logging.getLogger(__name__)
@@ -156,7 +158,7 @@ async def add_agent_to_library(
     username: str,
     agent_name: str,
     auth: TenantContext = Security(
-        require_paid_permission(APIKeyPermission.WRITE_LIBRARY)
+        require_paid_resource_permission(APIKeyPermission.WRITE_LIBRARY)
     ),
 ) -> LibraryAgent:
     """Add a marketplace agent to the authenticated user's library."""
@@ -299,7 +301,9 @@ async def update_profile(
 )
 async def list_submissions(
     page: PageRequest = Depends(page_request),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_STORE)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_STORE)
+    ),
 ) -> Page[MarketplaceAgentSubmission]:
     """List the authenticated user's marketplace listing submissions."""
     result = await store_db.get_store_submissions(
@@ -324,7 +328,7 @@ async def list_submissions(
 async def create_submission(
     request: MarketplaceAgentSubmissionCreateRequest,
     auth: TenantContext = Security(
-        require_paid_permission(APIKeyPermission.WRITE_STORE)
+        require_paid_resource_permission(APIKeyPermission.WRITE_STORE)
     ),
 ) -> MarketplaceAgentSubmission:
     """Submit a new marketplace listing for review."""
@@ -358,7 +362,7 @@ async def edit_submission(
     request: MarketplaceAgentSubmissionEditRequest,
     version_id: str = Path(description="Store listing version ID"),
     auth: TenantContext = Security(
-        require_paid_permission(APIKeyPermission.WRITE_STORE)
+        require_paid_resource_permission(APIKeyPermission.WRITE_STORE)
     ),
 ) -> MarketplaceAgentSubmission:
     """Replace a pending marketplace listing submission.
@@ -391,7 +395,9 @@ async def edit_submission(
 )
 async def delete_submission(
     version_id: str,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_STORE)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.WRITE_STORE)
+    ),
 ) -> None:
     """Delete a marketplace listing submission. Approved listings can not be deleted."""
     # Raising, so an approved listing is a 400 and a failure a 500, not a 404.
