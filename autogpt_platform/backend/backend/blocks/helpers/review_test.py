@@ -28,6 +28,7 @@ async def test_handle_review_decision_threads_org_to_review_row():
     get_or_create = AsyncMock(return_value=approved)
 
     with (
+        _stored_reviews({}),
         patch.object(HITLReviewHelper, "check_approval", AsyncMock(return_value=None)),
         patch.object(HITLReviewHelper, "get_or_create_human_review", get_or_create),
     ):
@@ -54,6 +55,7 @@ async def test_handle_review_decision_threads_org_to_review_row():
 # ---- the chat's approval gate answers an irreversible step's pause --------
 
 _WORKFLOW = "backend.copilot.gate.workflow"
+_REVIEW = "backend.blocks.helpers.review"
 _STEP = SimpleNamespace(
     graph_exec_id="ge-1",
     node_exec_id="ne-1",
@@ -74,8 +76,16 @@ def _approved(message: str = "ok") -> ReviewResult:
     )
 
 
-def _pause(**helpers):
-    """The block's own pause, with the review helper's DB calls stubbed."""
+def _stored_reviews(rows: dict[str, SimpleNamespace]):
+    """The reviews already stored, by step, as the Prisma-or-RPC read returns
+    them."""
+    reads = SimpleNamespace(get_reviews_by_node_exec_ids=AsyncMock(return_value=rows))
+    return patch(f"{_REVIEW}.review_db", return_value=reads)
+
+
+def _pause(rows: dict[str, SimpleNamespace] | None = None, **helpers):
+    """The block's own pause, with the review helper's DB calls stubbed and
+    ``rows`` the reviews already stored."""
     stubs = {
         "check_approval": AsyncMock(return_value=None),
         "get_or_create_human_review": AsyncMock(return_value=None),
@@ -85,7 +95,7 @@ def _pause(**helpers):
         **helpers,
     }
     patches = [patch.object(HITLReviewHelper, k, v) for k, v in stubs.items()]
-    return stubs, patches
+    return stubs, [*patches, _stored_reviews(rows or {})]
 
 
 async def _run(
@@ -260,3 +270,73 @@ async def test_a_sub_graphs_step_names_its_own_run_not_its_parents():
     graphs.get_graph_metadata.assert_awaited_once_with("g-1", 1)
     recorded = stubs["record_gate_approval"].await_args.kwargs
     assert (recorded["graph_exec_id"], recorded["graph_id"]) == ("ge-1", "g-1")
+
+
+# ---- the order of a step's decision ---------------------------------------
+
+_EDITED = {"channel_name": "general", "message_content": "edited"}
+_APPROVE_FUTURE = ReviewResult(
+    data=_INPUT,
+    status=ReviewStatus.APPROVED,
+    message="Auto-approved (user approved all future actions for this node)",
+    processed=True,
+    node_exec_id="auto_approve_ge-1_n-1",
+)
+
+
+@pytest.mark.parametrize("ask", [True, False], ids=["safe_mode_on", "safe_mode_off"])
+@pytest.mark.parametrize(
+    "stored, runs_with",
+    [
+        (None, _INPUT),
+        (ReviewStatus.WAITING, _INPUT),
+        (ReviewStatus.APPROVED, _EDITED),
+        (ReviewStatus.REJECTED, None),
+    ],
+    ids=["no_review", "unanswered", "approved", "rejected"],
+)
+async def test_a_steps_own_answer_decides_it_whatever_the_safe_mode(
+    stored: ReviewStatus | None, runs_with: dict | None, ask: bool
+):
+    """The step's own answer comes first: a rejection stops it and an approval
+    runs the reviewer's data, whatever the safe mode, and an "approve future"
+    for the node never outranks it. A review still waiting is no answer."""
+    rows = (
+        {}
+        if stored is None
+        else {
+            "ne-1": SimpleNamespace(
+                payload=_EDITED,
+                status=stored,
+                review_message="",
+                processed=False,
+            )
+        }
+    )
+    stubs, patches = _pause(
+        rows, check_approval=AsyncMock(return_value=_APPROVE_FUTURE)
+    )
+    for p in patches:
+        p.start()
+    try:
+        decision = await HITLReviewHelper.handle_review_decision(
+            input_data=_INPUT,
+            user_id="u1",
+            node_id="n-1",
+            node_exec_id="ne-1",
+            graph_exec_id="ge-1",
+            graph_id="g-1",
+            graph_version=1,
+            ask=ask,
+        )
+    finally:
+        for p in patches:
+            p.stop()
+
+    assert decision is not None
+    if runs_with is None:
+        assert not decision.should_proceed
+    else:
+        assert decision.should_proceed
+        assert decision.review_result.data == runs_with
+    stubs["get_or_create_human_review"].assert_not_awaited()

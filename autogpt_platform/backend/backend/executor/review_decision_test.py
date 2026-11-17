@@ -70,7 +70,6 @@ def _default_team_untenanted():
     """Look up the user's own org and team for real, as production does."""
 
 
-@pytest.mark.xfail(strict=True, reason="safe mode is read before the stored decision")
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("safe_mode", SAFE_MODES)
 async def test_a_rejected_step_stays_stopped_after_the_safe_mode_is_turned_off(
@@ -95,7 +94,6 @@ async def test_a_rejected_step_stays_stopped_after_the_safe_mode_is_turned_off(
         await _assert_stopped_by_the_rejection(user, run.id, gated, review)
 
 
-@pytest.mark.xfail(strict=True, reason="safe mode is read before the stored decision")
 @pytest.mark.asyncio(loop_scope="session")
 async def test_an_approve_future_on_another_item_does_not_run_a_rejected_one(
     server: SpinTestServer,
@@ -147,7 +145,6 @@ async def test_an_approve_future_on_another_item_does_not_run_a_rejected_one(
     await _assert_answered(reviews["first"].node_exec_id, ReviewStatus.REJECTED)
 
 
-@pytest.mark.xfail(strict=True, reason="safe mode is read before the stored decision")
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("safe_mode", SAFE_MODES)
 async def test_a_late_original_with_a_stale_safe_mode_does_not_run_a_rejected_step(
@@ -186,7 +183,6 @@ async def test_a_late_original_with_a_stale_safe_mode_does_not_run_a_rejected_st
         await _assert_stopped_by_the_rejection(user, run.id, gated, review)
 
 
-@pytest.mark.xfail(strict=True, reason="safe mode is read before the stored decision")
 @pytest.mark.asyncio(loop_scope="session")
 async def test_an_approved_step_runs_once_with_the_reviewers_data(
     server: SpinTestServer,

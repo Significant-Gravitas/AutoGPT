@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
 
+from backend.data.db_accessors import review_db
 from backend.data.human_review import ReviewResult
 from backend.util.clients import get_database_manager_async_client
 
@@ -18,6 +19,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+SAFE_MODE_OFF_MESSAGE = "Auto-approved (safe mode disabled)"
+
 
 class ReviewDecision(BaseModel):
     """Result of a review decision."""
@@ -25,6 +28,20 @@ class ReviewDecision(BaseModel):
     should_proceed: bool
     message: str
     review_result: ReviewResult
+
+    @staticmethod
+    def from_result(review_result: ReviewResult) -> "ReviewDecision":
+        should_proceed = review_result.status == ReviewStatus.APPROVED
+        return ReviewDecision(
+            should_proceed=should_proceed,
+            message=review_result.message
+            or (
+                "Execution approved by reviewer"
+                if should_proceed
+                else "Execution rejected by reviewer"
+            ),
+            review_result=review_result,
+        )
 
 
 class HITLReviewHelper:
@@ -34,6 +51,32 @@ class HITLReviewHelper:
     async def check_approval(**kwargs) -> Optional[ReviewResult]:
         """Check if there's an existing approval for this node execution."""
         return await get_database_manager_async_client().check_approval(**kwargs)
+
+    @staticmethod
+    async def get_existing_decision(
+        node_exec_id: str, user_id: str
+    ) -> Optional[ReviewDecision]:
+        """The answer a person already gave on this step, or None while it has
+        none (no review, or one still waiting).
+
+        A read error propagates: an answer that can't be read is never taken
+        for no answer, which would run a step its reviewer may have rejected.
+        """
+        reviews = await review_db().get_reviews_by_node_exec_ids(
+            [node_exec_id], user_id
+        )
+        review = reviews.get(node_exec_id)
+        if review is None or review.status == ReviewStatus.WAITING:
+            return None
+        return ReviewDecision.from_result(
+            ReviewResult(
+                data=review.payload,
+                status=review.status,
+                message=review.review_message or "",
+                processed=review.processed,
+                node_exec_id=node_exec_id,
+            )
+        )
 
     @staticmethod
     async def get_or_create_human_review(**kwargs) -> Optional[ReviewResult]:
@@ -108,12 +151,9 @@ class HITLReviewHelper:
         """
         from backend.data.execution import ExecutionStatus
 
-        # Note: Safe mode checks (human_in_the_loop_safe_mode, sensitive_action_safe_mode)
-        # are handled by the caller:
-        # - HITL blocks check human_in_the_loop_safe_mode in their run() method
-        # - Sensitive action blocks check sensitive_action_safe_mode in is_block_exec_need_review()
-        # This function only handles checking for existing approvals.
-        # Check if this node has already been approved (normal or auto-approval)
+        # Reached only for a step with no answer of its own and its safe mode
+        # on (handle_review_decision). An "approve future" stands in for the
+        # answer here, so it can never outrank one the step was given.
         if approval_result := await HITLReviewHelper.check_approval(
             node_exec_id=node_exec_id,
             node_id=node_id,
@@ -283,9 +323,17 @@ class HITLReviewHelper:
         chat_session_id: Optional[str] = None,
         block: "Block | None" = None,
         execution_context: "ExecutionContext | None" = None,
+        ask: bool = True,
     ) -> Optional[ReviewDecision]:
         """
-        Handle a review request and return the decision in a single call.
+        Decide a step that may need a person's review, in this order:
+
+        1. The answer a person already gave on this step. It binds whatever
+           the safe mode or the run's queue message says now: a resume, or a
+           late or duplicate delivery of the run, may carry another one.
+        2. With ``ask`` off (the step's safe mode), an approval of
+           ``input_data`` as it is.
+        3. An "approve future" for this node, or else a review to wait for.
 
         Args:
             input_data: The input data to be reviewed
@@ -298,11 +346,37 @@ class HITLReviewHelper:
             chat_session_id: The chat asking, when not a graph execution
             block_name: Name of the block requesting review
             editable: Whether the reviewer can edit the data
+            ask: Whether a step with no answer stops for review
 
         Returns:
             ReviewDecision if review is complete (approved/rejected),
             None if execution should pause (awaiting review)
         """
+        if decision := await HITLReviewHelper.get_existing_decision(
+            node_exec_id=node_exec_id, user_id=user_id
+        ):
+            if not decision.review_result.processed:
+                await HITLReviewHelper.update_review_processed_status(
+                    node_exec_id=node_exec_id, processed=True
+                )
+            return decision
+
+        if not ask:
+            logger.debug(
+                "Block %s runs node %s unreviewed: safe mode off",
+                block_name,
+                node_exec_id,
+            )
+            return ReviewDecision.from_result(
+                ReviewResult(
+                    data=input_data,
+                    status=ReviewStatus.APPROVED,
+                    message=SAFE_MODE_OFF_MESSAGE,
+                    processed=True,
+                    node_exec_id=node_exec_id,
+                )
+            )
+
         review_result = await HITLReviewHelper._handle_review_request(
             input_data=input_data,
             user_id=user_id,
@@ -324,15 +398,4 @@ class HITLReviewHelper:
         if review_result is None:
             # Still awaiting review - return None to pause execution
             return None
-
-        # Review is complete, determine outcome
-        should_proceed = review_result.status == ReviewStatus.APPROVED
-        message = review_result.message or (
-            "Execution approved by reviewer"
-            if should_proceed
-            else "Execution rejected by reviewer"
-        )
-
-        return ReviewDecision(
-            should_proceed=should_proceed, message=message, review_result=review_result
-        )
+        return ReviewDecision.from_result(review_result)

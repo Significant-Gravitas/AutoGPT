@@ -923,14 +923,13 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             - should_pause: True if execution should be paused for review
             - input_data_to_use: The input data to use (may be modified by reviewer)
         """
-        if not (
-            self.is_irreversible_action and execution_context.sensitive_action_safe_mode
-        ):
+        if not self.is_irreversible_action:
             return False, input_data
 
         from backend.blocks.helpers.review import HITLReviewHelper
 
-        # Handle the review request and get decision
+        # A reviewer's answer on this step decides it even with the safe mode
+        # off; the safe mode only decides whether a step with none asks.
         decision = await HITLReviewHelper.handle_review_decision(
             input_data=input_data,
             user_id=user_id,
@@ -949,6 +948,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             ),
             block=self,
             execution_context=execution_context,
+            ask=execution_context.sensitive_action_safe_mode,
         )
 
         if decision is None:

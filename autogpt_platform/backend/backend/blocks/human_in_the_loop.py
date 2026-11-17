@@ -1,4 +1,3 @@
-import logging
 from typing import Any
 
 from prisma.enums import ReviewStatus
@@ -15,8 +14,6 @@ from backend.blocks.helpers.review import HITLReviewHelper
 from backend.data.execution import ExecutionContext
 from backend.data.human_review import ReviewResult
 from backend.data.model import SchemaField
-
-logger = logging.getLogger(__name__)
 
 
 class HumanInTheLoopBlock(Block):
@@ -133,14 +130,8 @@ class HumanInTheLoopBlock(Block):
         execution_context: ExecutionContext,
         **_kwargs,
     ) -> BlockOutput:
-        if not execution_context.human_in_the_loop_safe_mode:
-            logger.info(
-                f"HITL block skipping review for node {node_exec_id} - safe mode disabled"
-            )
-            yield "approved_data", input_data.data
-            yield "review_message", "Auto-approved (safe mode disabled)"
-            return
-
+        # A reviewer's answer on this step decides it even with the safe mode
+        # off; the safe mode only decides whether a step with none asks.
         decision = await self.handle_review_decision(
             input_data=input_data.data,
             user_id=user_id,
@@ -153,6 +144,7 @@ class HumanInTheLoopBlock(Block):
             editable=input_data.editable,
             organization_id=execution_context.organization_id,
             team_id=execution_context.team_id,
+            ask=execution_context.human_in_the_loop_safe_mode,
         )
 
         if decision is None:

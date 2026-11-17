@@ -3505,9 +3505,14 @@ async def test_pause_override_parks_a_marked_block_with_library_setting_off(
     context = graph_exec.to_graph_execution_entry.call_args.kwargs["execution_context"]
     assert context.sensitive_action_safe_mode is pause
 
+    mocker.patch.object(
+        HITLReviewHelper,
+        "get_existing_decision",
+        new=mocker.AsyncMock(return_value=None),
+    )
     park = mocker.patch.object(
         HITLReviewHelper,
-        "handle_review_decision",
+        "_handle_review_request",
         new=mocker.AsyncMock(return_value=None),
     )
     block = SendEmailBlock()
