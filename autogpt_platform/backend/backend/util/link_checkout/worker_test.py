@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import SecretStr
+from websockets.asyncio.server import serve
 
 from backend.util.link_checkout import cdp, network, sites, worker
 from backend.util.link_checkout.models import Card, WorkerJob
@@ -550,3 +551,27 @@ async def test_card_fields_on_the_pages_site_or_in_a_processors_frame_are_pinned
 )
 def test_a_site_is_a_registrable_domain_or_a_bare_address(url, expected):
     assert sites.site(url) == expected
+
+
+@pytest.mark.asyncio
+async def test_the_devtools_connection_never_goes_through_a_proxy(monkeypatch):
+    """The browser's DevTools port is on loopback. A proxy from the
+    environment, which websockets uses by default, would take the connection
+    somewhere that cannot reach it."""
+
+    async def echo(socket):
+        async for message in socket:
+            await socket.send(message)
+
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        # Nothing listens on the discard port, so a proxied connection fails.
+        monkeypatch.setenv(name, "http://127.0.0.1:9")
+        monkeypatch.setenv(name.lower(), "http://127.0.0.1:9")
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+
+    async with serve(echo, "127.0.0.1", 0) as server:
+        port = next(iter(server.sockets)).getsockname()[1]
+        async with cdp.connection(f"ws://127.0.0.1:{port}/devtools") as socket:
+            await socket.send("ping")
+            assert await socket.recv() == "ping"
