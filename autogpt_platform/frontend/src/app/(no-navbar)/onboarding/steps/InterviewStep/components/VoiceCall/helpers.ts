@@ -11,6 +11,24 @@ import {
 import { describeWait, type Refusal } from "../../helpers";
 import type { RelayMessage } from "./protocol";
 
+// The browser's language, which a call starts in when it offers it. The
+// server reads only the tag's language and ignores one it cannot.
+const MAX_LANGUAGE_TAG_CHARS = 35;
+
+export function browserLanguage() {
+  if (typeof navigator === "undefined") return undefined;
+  const tag = navigator.language;
+  return tag && tag.length <= MAX_LANGUAGE_TAG_CHARS ? tag : undefined;
+}
+
+// A start's body with the call's language on it, when there is one.
+export function withLanguage<T extends object>(
+  body: T | undefined,
+  language: string | undefined,
+) {
+  return language ? { ...body, language } : body;
+}
+
 // A dropped socket may re-attach to its call for this long, as the relay
 // holds the call for it, trying this often.
 export const REATTACH_WINDOW_MS = 15_000;

@@ -2945,6 +2945,36 @@ describe("onboarding interview by voice: one interview, typed or spoken", () => 
   });
 });
 
+describe("onboarding interview by voice: the call's language", () => {
+  it("starts the call in the browser's language", async () => {
+    const language = vi
+      .spyOn(navigator, "language", "get")
+      .mockReturnValue("es-MX");
+    try {
+      render(<OnboardingPage />);
+      await liveCall();
+
+      expect(JSON.parse(String(mintBodies[0]))).toEqual({ language: "es-MX" });
+    } finally {
+      language.mockRestore();
+    }
+  });
+
+  it("sends no language when the browser names none it could be", async () => {
+    const language = vi
+      .spyOn(navigator, "language", "get")
+      .mockReturnValue("x".repeat(36));
+    try {
+      render(<OnboardingPage />);
+      await liveCall();
+
+      expect(mintBodies).toEqual([""]);
+    } finally {
+      language.mockRestore();
+    }
+  });
+});
+
 describe("onboarding interview by voice: the call's room", () => {
   const AUDIO_FAILED =
     "We couldn't connect the call's audio. Try again, or type instead.";
@@ -2953,8 +2983,11 @@ describe("onboarding interview by voice: the call's room", () => {
     render(<OnboardingPage />);
     const { socket, room } = await liveRoomCall();
 
-    // The start asks for nothing: every call takes its room.
-    expect(mintBodies).toEqual([""]);
+    // The start asks for nothing but the browser's language: every call
+    // takes its room.
+    expect(mintBodies.map((body) => JSON.parse(String(body)))).toEqual([
+      { language: "en-US" },
+    ]);
     expect(room.url).toBe(ROOM_URL);
     expect(room.token).toBe(ROOM_TOKEN);
     // The microphone the call opened, published once, as a microphone. The
@@ -3688,6 +3721,7 @@ describe("onboarding interview by voice: the ending screens", () => {
     const socket = await liveCall();
     expect(JSON.parse(String(mintBodies[0]))).toEqual({
       ending_pick: "09-first-task",
+      language: "en-US",
     });
 
     endCall(socket, "finished");
@@ -3704,7 +3738,7 @@ describe("onboarding interview by voice: the ending screens", () => {
     await liveCall();
 
     expect(screen.queryByText("Ending (testers)")).toBeNull();
-    expect(mintBodies).toEqual([""]);
+    expect(JSON.parse(String(mintBodies[0]))).toEqual({ language: "en-US" });
   });
 
   it("sends no pick for Default", async () => {
@@ -3714,7 +3748,7 @@ describe("onboarding interview by voice: the ending screens", () => {
     expect(await screen.findByText("Ending (testers)")).toBeDefined();
     await liveCall();
 
-    expect(mintBodies).toEqual([""]);
+    expect(JSON.parse(String(mintBodies[0]))).toEqual({ language: "en-US" });
   });
 });
 
@@ -3776,7 +3810,10 @@ describe("onboarding interview by voice: starting over", () => {
       .click(screen.getByRole("button", { name: "Call again" }));
 
     await waitFor(() => expect(mints).toBe(1));
-    expect(JSON.parse(String(mintBodies[0]))).toEqual({ start_over: true });
+    expect(JSON.parse(String(mintBodies[0]))).toEqual({
+      start_over: true,
+      language: "en-US",
+    });
     expect(tracked("ending_action").map((event) => event?.action)).toEqual([
       "start_over",
       "call_again",
@@ -3843,7 +3880,10 @@ describe("onboarding interview by voice: starting over", () => {
       .click(screen.getByRole("button", { name: "Call again" }));
 
     await waitFor(() => expect(mints).toBe(1));
-    expect(JSON.parse(String(mintBodies[0]))).toEqual({ start_over: true });
+    expect(JSON.parse(String(mintBodies[0]))).toEqual({
+      start_over: true,
+      language: "en-US",
+    });
     expect(tracked("ending_action")).toEqual([
       { mode: "text", ending: "team", action: "start_over" },
       { mode: "text", ending: "team", action: "call_again" },

@@ -14197,7 +14197,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Start Onboarding Voice Call",
-        "description": "Start a voice call for the person's onboarding interview.\n\nAnswers with the call's room, which carries its audio, and the browser's\ntoken for it, and with the relay's call socket and a start token good for\nthis one call within a minute. The browser joins the room and opens the\nsocket at the same time, and sends the token as the socket's first\nmessage; a browser that cannot join the room ends the call (``/end``).\nThe call counts against the person's allowance once it is ready on the\nrelay.\n\n404 while the interview or voice is off for the person, though a call\nunder way can still be read, ended and finished; 409 once their\ninterview is over, or while a call of theirs is live (``call_id`` names\nit); 429 past their call allowance; 503 past the platform's voice budget\nor live-call ceiling, or while voice cannot be served. A 429 or 503 carries its wait\nin the body (``retry_after_seconds``) as well as in ``Retry-After``.\n\n``ending_pick`` is a tester's pick of the call's ending, honoured while\nthe ending picker is on for them and the arm fits a call, and ignored\notherwise.\n\n``start_over`` asks for the call to start a fresh interview in place of\none that is over: instead of the 409, it is set aside once every other\ncheck passes. A live call still refuses it (409 ``call_in_progress``).",
+        "description": "Start a voice call for the person's onboarding interview.\n\nAnswers with the call's room, which carries its audio, and the browser's\ntoken for it, and with the relay's call socket and a start token good for\nthis one call within a minute. The browser joins the room and opens the\nsocket at the same time, and sends the token as the socket's first\nmessage; a browser that cannot join the room ends the call (``/end``).\nThe call counts against the person's allowance once it is ready on the\nrelay.\n\n404 while the interview or voice is off for the person, though a call\nunder way can still be read, ended and finished; 409 once their\ninterview is over, or while a call of theirs is live (``call_id`` names\nit); 429 past their call allowance; 503 past the platform's voice budget\nor live-call ceiling, or while voice cannot be served. A 429 or 503 carries its wait\nin the body (``retry_after_seconds``) as well as in ``Retry-After``.\n\n``ending_pick`` is a tester's pick of the call's ending, honoured while\nthe ending picker is on for them and the arm fits a call, and ignored\notherwise.\n\n``start_over`` asks for the call to start a fresh interview in place of\none that is over: instead of the 409, it is set aside once every other\ncheck passes. A live call still refuses it (409 ``call_in_progress``).\n\n``language`` is the browser's language tag: the call starts in it when\nthe call offers it, and in English otherwise.",
         "operationId": "start_onboarding_voice_call",
         "requestBody": {
           "content": {
@@ -42574,6 +42574,13 @@
             "type": "boolean",
             "title": "Start Over",
             "default": false
+          },
+          "language": {
+            "anyOf": [
+              { "type": "string", "maxLength": 35 },
+              { "type": "null" }
+            ],
+            "title": "Language"
           }
         },
         "type": "object",

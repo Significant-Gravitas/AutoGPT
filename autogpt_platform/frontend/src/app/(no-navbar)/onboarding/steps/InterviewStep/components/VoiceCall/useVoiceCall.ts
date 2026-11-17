@@ -54,6 +54,7 @@ import { endingWithEarlierTake, leavesNoTake } from "./earlierTake";
 import { newOttoListening, ottoListeningSummary } from "./ottoStats";
 import {
   answerOf,
+  browserLanguage,
   type CallEnding,
   type CallPhase,
   type CallStartFailure,
@@ -81,6 +82,7 @@ import {
   timeLeftCopy,
   voiceFinishOutcome,
   withCaption,
+  withLanguage,
 } from "./helpers";
 import {
   CALL_IN_PROGRESS,
@@ -404,7 +406,10 @@ export function useVoiceCall(args: Args) {
       const isStartOver = isStartOverRef.current;
       isStartOverRef.current = false;
       const response = await startOnboardingVoiceCall(
-        startBody(argsRef.current.isEndingPickerOn, "voice", isStartOver),
+        withLanguage(
+          startBody(argsRef.current.isEndingPickerOn, "voice", isStartOver),
+          browserLanguage(),
+        ),
       );
       const named = response.status === 200 ? response.data : null;
       const room = named ? roomPassOf(named.room) : null;
