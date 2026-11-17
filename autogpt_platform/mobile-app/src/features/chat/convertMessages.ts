@@ -19,6 +19,9 @@ interface Options {
 
 // The backend appends this block to a user message that carried attachments.
 const ATTACHED_FILES_RE = /\n?\n?\[Attached files\]\n[\s\S]*$/;
+// One line per file or folder in that block (backend `build_files_block`).
+const ATTACHED_LINE_RE =
+  /^- (.+) \((?:[^,()]+, [\d.]+ KB|folder, \d+ file\(s\) directly inside)\), (?:file|folder)_id=[0-9a-f-]+$/;
 
 /**
  * Stored chat rows as AI SDK messages. With a turn still running, its rows are
@@ -58,7 +61,14 @@ export function toUIMessages(
       previous.id = id;
       continue;
     }
-    messages.push({ id, role, parts });
+    const fileNames = role === "user" ? attachedFileNames(row.content) : [];
+    messages.push({
+      id,
+      role,
+      parts,
+      // As a live send keeps them, so an attachment-only bubble still names its files.
+      ...(fileNames.length ? { metadata: { fileIDs: [], fileNames } } : {}),
+    });
   }
   return messages;
 }
@@ -94,6 +104,15 @@ function buildParts(row: Row, outputs: Map<string, unknown>) {
   return parts;
 }
 
+/** The names listed in a user message's `[Attached files]` block. */
+function attachedFileNames(content: string | null) {
+  const block = ATTACHED_FILES_RE.exec(content ?? "")?.[0] ?? "";
+  return block.split("\n").flatMap((line) => {
+    const name = ATTACHED_LINE_RE.exec(line.trim())?.[1];
+    return name ? [name] : [];
+  });
+}
+
 function toToolPart(raw: unknown, outputs: Map<string, unknown>) {
   if (!raw || typeof raw !== "object") return null;
   const call = raw as {
@@ -106,13 +125,20 @@ function toToolPart(raw: unknown, outputs: Map<string, unknown>) {
     typeof call.function?.name === "string" ? call.function.name.trim() : "";
   if (!toolCallId || !name) return null;
 
-  return {
+  const base = {
     type: `tool-${name}`,
     toolCallId,
     title: typeof call.display_name === "string" ? call.display_name : undefined,
     input: parseJSON(call.function?.arguments),
+  };
+  // Stored rows hold no running turn, so a call with no result was cut off.
+  if (!outputs.has(toolCallId)) {
+    return { ...base, state: "output-error", errorText: "Stopped before it finished" } as Part;
+  }
+  return {
+    ...base,
     state: "output-available",
-    output: parseJSON(outputs.get(toolCallId) ?? ""),
+    output: parseJSON(outputs.get(toolCallId)),
   } as Part;
 }
 

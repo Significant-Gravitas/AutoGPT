@@ -55,8 +55,22 @@ describe("turnLanded", () => {
     message("l3", "user", "hello"),
   ];
 
-  it("is true while the turn still runs on the server", () => {
-    expect(turnLanded([], local, { turn_id: "t1" })).toBe(true);
+  it("is true while the turn this send started still runs on the server", () => {
+    const rows = [
+      { role: "user", content: "earlier" },
+      { role: "assistant", content: "ok" },
+      { role: "user", content: "hello" },
+    ];
+    expect(turnLanded(rows, local, { turn_id: "t1" })).toBe(true);
+  });
+
+  it("is false for a running turn another device started", () => {
+    const rows = [
+      { role: "user", content: "earlier" },
+      { role: "assistant", content: "ok" },
+      { role: "user", content: "something else" },
+    ];
+    expect(turnLanded(rows, local, { turn_id: "t1" })).toBe(false);
   });
 
   it("is true for an answered message with attached files", () => {

@@ -151,6 +151,37 @@ describe("toUIMessages", () => {
     ]);
   });
 
+  it("keeps the names of an attachment-only message for its bubble", () => {
+    const messages = toUIMessages("s1", [
+      {
+        role: "user",
+        content:
+          "\n\n[Attached files]\n- a.pdf (application/pdf, 12.0 KB), file_id=f1\n" +
+          "- Q3 (folder, 3 file(s) directly inside), folder_id=d1\n" +
+          "Use read_workspace_file with the file_id to access file contents.",
+        sequence: 1,
+      },
+    ]);
+
+    expect(messages[0].metadata).toEqual({ fileIDs: [], fileNames: ["a.pdf", "Q3"] });
+  });
+
+  it("marks a stored tool call with no result as cut off", () => {
+    const messages = toUIMessages("s1", [
+      {
+        role: "assistant",
+        content: null,
+        sequence: 1,
+        tool_calls: [{ id: "c1", function: { name: "web_search", arguments: "{}" } }],
+      },
+    ]);
+
+    expect(messages[0].parts[0]).toMatchObject({
+      toolCallId: "c1",
+      state: "output-error",
+    });
+  });
+
   it("ignores rows it cannot read and system rows", () => {
     const rows = [
       null,

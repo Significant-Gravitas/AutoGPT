@@ -24,6 +24,7 @@ export function paceTextStream(
   const reader = source.getReader();
   const queue: UIMessageChunk[] = [];
   let isSourceDone = false;
+  let failure: { error: unknown } | null = null;
   let hasText = false;
   let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -46,9 +47,16 @@ export function paceTextStream(
 
       timer = setInterval(() => {
         emit(takeTick(queue));
-        if (isSourceDone && queue.length === 0) {
+        if (!isSourceDone || queue.length > 0) return;
+        if (!failure) {
           stopTimer();
           controller.close();
+          return;
+        }
+        // Erroring drops what the SDK has not read yet, so wait until it has.
+        if ((controller.desiredSize ?? 0) >= 1) {
+          stopTimer();
+          controller.error(failure.error);
         }
       }, TICK_MS);
 
@@ -61,14 +69,9 @@ export function paceTextStream(
           }
           isSourceDone = true;
         } catch (error) {
-          // What already arrived still shows; then the SDK sees the failure.
-          stopTimer();
-          try {
-            emit(queue.splice(0));
-            controller.error(error);
-          } catch {
-            // The reader already cancelled this stream.
-          }
+          // What already arrived still drains and shows; then the SDK sees the failure.
+          failure = { error };
+          isSourceDone = true;
         }
       })();
     },

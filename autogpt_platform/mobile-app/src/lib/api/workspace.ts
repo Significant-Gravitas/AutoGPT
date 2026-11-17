@@ -40,18 +40,29 @@ export const workspaceKeys = {
   thumbnailHeaders: ["workspace", "thumbnail-headers"] as const,
 };
 
-export async function listSessionFiles(sessionID: string) {
-  const data = await apiRequest<FileList>("/api/workspace/files", {
-    query: { session_id: sessionID },
-  });
-  return data.files;
+const FILES_PAGE_SIZE = 200;
+// A guard against a server that keeps saying there is more.
+const MAX_FILE_PAGES = 25;
+
+export function listSessionFiles(sessionID: string) {
+  return listAllFiles({ session_id: sessionID });
 }
 
-export async function listExpertFiles(expertID: string) {
-  const data = await apiRequest<FileList>("/api/workspace/files", {
-    query: { expert_id: expertID, origin: "generated", limit: 200 },
-  });
-  return data.files;
+export function listExpertFiles(expertID: string) {
+  return listAllFiles({ expert_id: expertID, origin: "generated" });
+}
+
+/** Every page of a file listing; the route answers 200 at a time. */
+async function listAllFiles(filter: Record<string, string>) {
+  const files: WorkspaceFile[] = [];
+  for (let page = 0; page < MAX_FILE_PAGES; page += 1) {
+    const data = await apiRequest<FileList>("/api/workspace/files", {
+      query: { ...filter, limit: FILES_PAGE_SIZE, offset: files.length },
+    });
+    files.push(...data.files);
+    if (!data.has_more || data.files.length === 0) break;
+  }
+  return files;
 }
 
 export function fileDownloadURL(fileID: string) {

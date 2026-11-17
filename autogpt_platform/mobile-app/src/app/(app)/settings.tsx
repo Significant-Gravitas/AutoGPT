@@ -1,11 +1,11 @@
-import { Platform, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Text, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { WebView } from "react-native-webview";
 
 import { Button } from "@/components/Button";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useSettingsScreen } from "@/features/settings/useSettingsScreen";
-import { createStyles, spacing, type } from "@/lib/theme";
+import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 export default function SettingsScreen() {
   const {
@@ -20,6 +20,7 @@ export default function SettingsScreen() {
     handleStateChange,
   } = useSettingsScreen();
   const styles = useStyles();
+  const colors = useColors();
 
   function renderNotice(message: string) {
     return (
@@ -46,6 +47,16 @@ export default function SettingsScreen() {
         originWhitelist={["*"]}
         onShouldStartLoadWithRequest={handleNavigation}
         onNavigationStateChange={handleStateChange}
+        // A spinner until the page arrives, and our retry if it never does.
+        startInLoadingState
+        renderLoading={() => (
+          <View style={[styles.center, styles.overlay]}>
+            <ActivityIndicator color={colors.textTertiary} />
+          </View>
+        )}
+        renderError={() =>
+          renderNotice("Settings didn't load. Check your connection and try again.")
+        }
         style={styles.webview}
       />
     );
@@ -70,6 +81,7 @@ const useStyles = createStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.background },
   body: { flex: 1 },
   webview: { flex: 1, backgroundColor: colors.background },
+  overlay: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.background },
   center: {
     flex: 1,
     alignItems: "center",

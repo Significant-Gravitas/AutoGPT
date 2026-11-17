@@ -31,12 +31,18 @@ const storagePersister = createAsyncStoragePersister({
 
 let waiting: PersistedClient | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+// Saves run one after another, and a removal waits for the last, so a save
+// already handed to storage can't write the old account's copy after it.
+let saving: Promise<void> = Promise.resolve();
 
 function saveWaiting() {
   saveTimer = null;
   const client = waiting;
   waiting = null;
-  if (client) void storagePersister.persistClient(trimClient(client));
+  if (!client) return;
+  saving = saving
+    .then(() => storagePersister.persistClient(trimClient(client)))
+    .catch(() => undefined);
 }
 
 /**
@@ -53,6 +59,7 @@ export const queryPersister: Persister = {
     if (saveTimer !== null) clearTimeout(saveTimer);
     saveTimer = null;
     waiting = null;
+    await saving;
     await storagePersister.removeClient();
   },
 };

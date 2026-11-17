@@ -1,6 +1,7 @@
-import { View } from "react-native";
+import { Text, View } from "react-native";
 
-import { createStyles, spacing } from "@/lib/theme";
+import { Button } from "@/components/Button";
+import { createStyles, spacing, type } from "@/lib/theme";
 
 import { useExpertActivity } from "../useExpertActivity";
 import { ActivityEmptyState } from "./ActivityEmptyState";
@@ -15,12 +16,15 @@ interface Props {
 }
 
 export function ActivityTab({ expertID, expertName, isOpen }: Props) {
-  const { upcoming, recent, computer } = useExpertActivity(expertID, isOpen);
+  const { upcoming, recent, computer, hasFailed, retryFailed } = useExpertActivity(
+    expertID,
+    isOpen,
+  );
   const styles = useStyles();
   const sections = [upcoming, recent, computer];
   const isEmpty = sections.every((section) => !section.isLoading && !section.isShown);
 
-  if (isEmpty) {
+  if (isEmpty && !hasFailed) {
     return <ActivityEmptyState expertName={expertName} />;
   }
 
@@ -48,10 +52,20 @@ export function ActivityTab({ expertID, expertName, isOpen }: Props) {
           state={computer.state}
         />
       ) : null}
+      {hasFailed ? (
+        <View style={styles.failed}>
+          <Text style={styles.failedText}>
+            {isEmpty ? "Couldn't load this activity." : "Some activity didn't load."}
+          </Text>
+          <Button label="Try again" onPress={retryFailed} variant="secondary" size="small" />
+        </View>
+      ) : null}
     </View>
   );
 }
 
-const useStyles = createStyles(() => ({
+const useStyles = createStyles((colors) => ({
   tab: { gap: spacing.xl },
+  failed: { alignItems: "flex-start", gap: spacing.sm },
+  failedText: { ...type.small, color: colors.textSecondary },
 }));

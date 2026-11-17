@@ -14,19 +14,19 @@ export function isRecoverableChatError(error: Error) {
 }
 
 /**
- * True when the server took the turn the local chat last sent: it is still
- * running, or the server holds as many user messages as the chat, the last
- * one is the sent text, and a reply follows it. A repeated "ok" that never
- * left the phone, or a message stored without a reply, is not landed.
+ * True when the server took the turn the local chat last sent: it holds as
+ * many user messages as the chat, the last one is the sent text, and either
+ * that turn is still running or a reply follows it. A repeated "ok" that
+ * never left the phone, a message stored without a reply, or a turn another
+ * device started is not landed.
  */
 export function turnLanded(
   rawMessages: unknown[],
   localMessages: UIMessage[],
   activeStream: object | null,
 ) {
-  if (activeStream !== null) return true;
   const sent = lastUserText(localMessages);
-  if (sent === null) return false;
+  if (sent === null) return activeStream !== null;
   const roles = rawMessages.map(rowRole);
   const serverUsers = roles.filter((role) => role === "user").length;
   const localUsers = localMessages.filter((m) => m.role === "user").length;
@@ -34,6 +34,8 @@ export function turnLanded(
   const lastUser = roles.lastIndexOf("user");
   const content = rowContent(rawMessages[lastUser]);
   if (content === null || !content.startsWith(sent)) return false;
+  // The running turn is the one this send started, as far as the rows can tell.
+  if (activeStream !== null) return true;
   return roles
     .slice(lastUser + 1)
     .some((role) => role === "assistant" || role === "reasoning");
