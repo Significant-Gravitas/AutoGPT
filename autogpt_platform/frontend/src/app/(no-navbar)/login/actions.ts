@@ -3,6 +3,10 @@
 import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
 import { auth } from "@/lib/auth/auth";
 import {
+  ACCOUNT_CLOSED_PATH,
+  isAccountClosedError,
+} from "@/lib/auth/closed-account";
+import {
   EMAIL_NOT_VERIFIED_CODE,
   getEmailVerificationCallbackURL,
 } from "@/lib/auth/email-verification";
@@ -73,6 +77,11 @@ export async function login(
     try {
       accountCreated = wasAccountCreated(await postV1GetOrCreateUser());
     } catch (createUserError) {
+      // An account its owner deleted: signing in is how they keep it, so the
+      // session stays and they see when it will be erased.
+      if (isAccountClosedError(createUserError)) {
+        return { success: true, next: ACCOUNT_CLOSED_PATH };
+      }
       // The session cookie is already set; revoke it so the browser's auth
       // state matches the failure the UI is about to show.
       await rollbackSession();

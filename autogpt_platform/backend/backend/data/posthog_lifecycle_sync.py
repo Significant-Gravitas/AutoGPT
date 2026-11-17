@@ -1,5 +1,5 @@
-"""Keep subscription status and lifecycle dates on the PostHog person, and
-the same status and dates on the MailerLite subscriber.
+"""Keep subscription status, lifecycle dates and the plan tier on the PostHog
+person, and the same status and dates on the MailerLite subscriber.
 
 These are person properties, not events: each sync sends one ``$set`` on the
 platform user id, the same id the browser passes to ``identify``, so they land
@@ -10,7 +10,9 @@ so both agree on who is a paying subscriber.
 Three ways in, all best-effort (a failure is logged, never raised):
 
 - ``schedule_posthog_lifecycle_sync`` after a write that can change the
-  snapshot (signup, ``sync_subscription_from_stripe``), and after a group
+  snapshot (signup, ``sync_subscription_from_stripe``, the tier writes
+  outside it: ``credit.set_subscription_tier`` and the admin's
+  ``rate_limit.set_user_tier``), and after a group
   join that can create the MailerLite subscriber
   (``lifecycle_audience.resync_after_group_change``). It runs
   in the background, so a webhook or a signup never waits on Stripe, PostHog
@@ -19,6 +21,14 @@ Three ways in, all best-effort (a failure is logged, never raised):
   for a missed hook and for a trial that runs out on the clock. PostHog only:
   MailerLite's safety net is its field backfill (``cli mailerlite-backfill``).
 - ``scripts/backfill_posthog_lifecycle.py``, the same sweep run by hand.
+
+The sync mirrors stored state, not anyone's action, so it runs the same while
+an admin acts as the user. A sign-in also sets the stored tier
+(``set_tier_on_sign_in``), for accounts the sweep doesn't cover; that one is
+dropped while an admin acts as the user, like every other ``$set`` of a
+request. It reads the row without the sync's coordination, so a tier change
+landing during a sign-in can be overwritten by the older read until the next
+sign-in or sync.
 """
 
 import asyncio
@@ -51,6 +61,7 @@ from backend.notifications.lifecycle_audience import (
     mailerlite_lifecycle_enabled,
     queue_lifecycle_fields,
 )
+from backend.util import posthog_client
 from backend.util.posthog_client import get_posthog_client
 from backend.util.posthog_events import PostHogEvent
 
@@ -259,6 +270,7 @@ async def _snapshot_for(
             id=row.id,
             created_at=row.createdAt,
             stripe_customer_id=row.stripeCustomerId,
+            subscription_tier=row.subscriptionTier,
         ),
         trial=TrialState.from_db(trial_row) if trial_row else None,
         subscriptions=stripe_subscriptions,
@@ -303,6 +315,24 @@ def send_lifecycle_snapshot(user_id: str, snapshot: LifecycleSnapshot) -> bool:
             f"Failed to send lifecycle properties for user {user_id}", exc_info=True
         )
         return False
+
+
+def set_tier_on_sign_in(user_id: str, tier: str | None) -> None:
+    """At a sign-in, set the stored tier on the person, so an account the
+    daily sweep doesn't cover (no Stripe customer, no trial) gets it without
+    waiting for its tier to change, and one whose last sync was lost is
+    repaired. Never raises."""
+    try:
+        value = getattr(tier, "value", tier)
+        if not value:
+            return
+        posthog_client.capture(
+            user_id,
+            PostHogEvent.SET_PERSON_PROPERTIES,
+            {"$set": {"subscription_tier": str(value)}},
+        )
+    except Exception:
+        logger.warning(f"Could not set the PostHog tier of {user_id}")
 
 
 async def start_posthog_lifecycle_sweep() -> bool:
@@ -440,7 +470,8 @@ async def all_subscriptions_by_customer() -> dict[str, list[StripeSubscriptionFa
 
 _USER_BATCH = """
     SELECT u."id", u."createdAt" AS created_at,
-           u."stripeCustomerId" AS stripe_customer_id
+           u."stripeCustomerId" AS stripe_customer_id,
+           u."subscriptionTier"::text AS subscription_tier
     FROM {schema_prefix}"User" u
     WHERE u."id" > $1 AND ($3::boolean OR u."stripeCustomerId" IS NOT NULL
         OR EXISTS (SELECT 1 FROM {schema_prefix}"SubscriptionTrial" t

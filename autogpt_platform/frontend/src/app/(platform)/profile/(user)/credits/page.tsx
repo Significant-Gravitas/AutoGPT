@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   useToast,
@@ -76,6 +77,54 @@ function CoPilotUsageSection() {
 }
 
 export default function CreditsPage() {
+  const identityKey = useAuthStore((state) => state.user?.id ?? null);
+
+  return <CreditsPageContent identityKey={identityKey} />;
+}
+
+interface Props {
+  identityKey: string | null;
+}
+
+function CreditsPageContent({ identityKey }: Props) {
+  const api = useBackendAPI();
+  const searchParams = useSearchParams();
+  const toastOnFail = useToastOnFail();
+  const topupStatus = searchParams.get("topup") as "success" | "cancel" | null;
+  const fulfillmentIdentityRef = useRef<string | null>(null);
+  const creditState = useCredits({
+    identityKey,
+    fetchInitialAutoTopUpConfig: identityKey !== null,
+    fetchInitialRefundRequests: identityKey !== null,
+    fetchInitialTransactionHistory: identityKey !== null,
+  });
+
+  useEffect(() => {
+    if (topupStatus !== "success") {
+      fulfillmentIdentityRef.current = null;
+      return;
+    }
+    if (identityKey === null || fulfillmentIdentityRef.current !== null) return;
+    fulfillmentIdentityRef.current = identityKey;
+    api.fulfillCheckout().catch(toastOnFail("fulfill checkout"));
+  }, [api, identityKey, toastOnFail, topupStatus]);
+
+  return (
+    <CreditsPageView
+      key={identityKey ?? "logged-out"}
+      creditState={creditState}
+      identityKey={identityKey}
+      topupStatus={topupStatus}
+    />
+  );
+}
+
+interface ViewProps extends Props {
+  creditState: ReturnType<typeof useCredits>;
+  topupStatus: "success" | "cancel" | null;
+}
+
+function CreditsPageView({ creditState, identityKey, topupStatus }: ViewProps) {
   const api = useBackendAPI();
   const {
     requestTopUp,
@@ -86,14 +135,8 @@ export default function CreditsPage() {
     formatCredits,
     refundTopUp,
     refundRequests,
-  } = useCredits({
-    fetchInitialAutoTopUpConfig: true,
-    fetchInitialRefundRequests: true,
-    fetchInitialTransactionHistory: true,
-  });
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const topupStatus = searchParams.get("topup") as "success" | "cancel" | null;
+    openBillingPortal,
+  } = creditState;
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();
   const checkoutRedirect = useCheckoutRedirect();
@@ -104,6 +147,7 @@ export default function CreditsPage() {
     CreditTransaction[]
   >([]);
   const openRefundModal = () => {
+    if (identityKey === null) return;
     api.getTransactionHistory(null, 20, "TOP_UP").then((history) => {
       setTopUpTransactions(history.transactions);
       setIsRefundModalOpen(true);
@@ -112,6 +156,7 @@ export default function CreditsPage() {
   const refundCredits = (transaction_key: string, reason: string) =>
     refundTopUp(transaction_key, reason)
       .then((amount) => {
+        if (amount === null) return;
         if (amount > 0) {
           toast({
             title: "Refund approved! 🎉",
@@ -127,20 +172,6 @@ export default function CreditsPage() {
       })
       .catch(toastOnFail("refund transaction"));
 
-  useEffect(() => {
-    if (api && topupStatus === "success") {
-      api.fulfillCheckout().catch(toastOnFail("fulfill checkout"));
-    }
-  }, [api, topupStatus, toastOnFail]);
-
-  const openBillingPortal = () =>
-    api
-      .getUserPaymentPortalLink()
-      .then((portal) => {
-        router.push(portal.url);
-      })
-      .catch(toastOnFail("open billing portal"));
-
   const submitTopUp = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (isRequestingTopUp || checkoutRedirect.isRedirecting) return;
@@ -149,7 +180,9 @@ export default function CreditsPage() {
       parseInt(new FormData(form).get("topUpAmount") as string) * 100;
     setIsRequestingTopUp(true);
     requestTopUp(amount)
-      .then(() => checkoutRedirect.markRedirecting())
+      .then((isRedirecting) => {
+        if (isRedirecting) checkoutRedirect.markRedirecting();
+      })
       .catch(toastOnFail("request top-up"))
       .finally(() => setIsRequestingTopUp(false));
   };
@@ -161,7 +194,8 @@ export default function CreditsPage() {
     const amount = parseInt(formData.get("topUpAmount") as string) * 100;
     const threshold = parseInt(formData.get("threshold") as string) * 100;
     updateAutoTopUpConfig(amount, threshold)
-      .then(() => {
+      .then((updated) => {
+        if (!updated) return;
         toast({ title: "Auto top-up config updated! 🎉" });
       })
       .catch(toastOnFail("update auto top-up config"));
@@ -305,7 +339,8 @@ export default function CreditsPage() {
                   variant="compact-destructive"
                   size="compact"
                   onClick={() =>
-                    updateAutoTopUpConfig(0, 0).then(() => {
+                    updateAutoTopUpConfig(0, 0).then((updated) => {
+                      if (!updated) return;
                       toast({ title: "Auto top-up config disabled! 🎉" });
                     })
                   }
@@ -344,7 +379,9 @@ export default function CreditsPage() {
             size="compact"
             type="submit"
             className="w-full"
-            onClick={() => openBillingPortal()}
+            onClick={() =>
+              openBillingPortal().catch(toastOnFail("open billing portal"))
+            }
           >
             Open Portal
           </Button>

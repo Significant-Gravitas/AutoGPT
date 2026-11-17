@@ -32,6 +32,8 @@ EAGER_CORE: frozenset[str] = frozenset(
         "run_agent",
         "find_library_agent",
         "ask_question",
+        # A presentation tool: Otto would never go searching for one.
+        "render_ui",
         "web_search",
         "web_fetch",
         # The three go together: read and write take a file id or path that
@@ -63,6 +65,10 @@ EAGER_CORE: frozenset[str] = frozenset(
         # the card it exists to open is unreachable, and so is the
         # ``run_capability`` that would reach it.
         "expert_onboarding",
+        # Both open a chat card, and a deferred tool renders as a generic
+        # tool row instead of its card.
+        "request_work_check",
+        "flag_mistake",
     }
 )
 

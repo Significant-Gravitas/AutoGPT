@@ -24,6 +24,7 @@ from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import allowed_providers
 from backend.copilot.sdk.env import config as chat_config
+from backend.util.sandbox_limits import SandboxLimitError
 
 from .base import BaseTool
 from .models import DesktopStreamToolResponse, ErrorResponse, ToolResponseBase
@@ -76,6 +77,17 @@ class StartDesktopTool(BaseTool):
                 message="No active session to turn a screen on for.",
                 error="session_unavailable",
             )
+        # Local PC turns never register this tool; this guards every other
+        # way in, since a cloud box is not the machine this chat runs on.
+        if session.metadata.execution_target.kind == "local":
+            return ErrorResponse(
+                message=(
+                    "This chat runs on the user's Local PC, so there is no "
+                    "cloud desktop to turn on."
+                ),
+                error="local_pc_session",
+                session_id=session_id,
+            )
         api_key = chat_config.active_e2b_api_key
         if not api_key:
             return ErrorResponse(
@@ -109,6 +121,10 @@ class StartDesktopTool(BaseTool):
                 # The turn's own ceiling: a box this creates must not get
                 # every provider (KEEP is for the UI, which has no turn).
                 providers=allowed_providers(get_current_permissions()),
+            )
+        except SandboxLimitError as refusal:
+            return ErrorResponse(
+                message=str(refusal), error=refusal.code, session_id=session_id
             )
         except Exception as exc:
             logger.error("[E2B] start_desktop failed: %s", exc, exc_info=True)

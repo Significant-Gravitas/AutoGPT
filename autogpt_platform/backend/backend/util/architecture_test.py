@@ -239,7 +239,6 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "integrations/oauth/todoist_test.py time.time": 1,
     "monitoring/auth_identity_monitor_test.py time.monotonic": 1,
     "notifications/checkout_backfill_test.py asyncio.sleep": 6,
-    "notifications/consumer_test.py asyncio.sleep": 5,
     "notifications/mailerlite_backfill_test.py asyncio.sleep": 1,
     "notifications/mailerlite_field_backfill_test.py asyncio.sleep": 1,
     "notifications/role_backfill_test.py asyncio.sleep": 1,
@@ -1106,9 +1105,17 @@ def test_only_cli_io_writes_to_the_cli_stdin():
 # `commands.run` goes through `run_sandbox_command`, or, like bash_exec,
 # follows a background handle with callbacks that stop at a limit; a code
 # interpreter sandbox is created or connected as `OutputLimitedCodeSandbox`.
+# A Local PC's files are read with `files.read_capped`, which asks its
+# companion for no more than the limit. Its commands run in one request whose
+# reply the companion cuts to a bounded prefix and the relay refuses past its
+# envelope limit; local_pc_file_tools.py holds only such commands.
 
 _SANDBOX_COMMAND_RUNNERS = frozenset(
-    {"util/sandbox_output.py", "copilot/tools/bash_exec.py"}
+    {
+        "util/sandbox_output.py",
+        "copilot/tools/bash_exec.py",
+        "copilot/sdk/local_pc_file_tools.py",
+    }
 )
 
 
@@ -1507,3 +1514,70 @@ def _calls_by_function(tree: ast.Module):
             yield from walk(child, function)
 
     yield from walk(tree, "<module>")
+
+
+# ---------------------------------------------------------------------------
+# Rule: no csv.Sniffer
+# ---------------------------------------------------------------------------
+#
+# Motivation: csv.Sniffer guesses a dialect with regular expressions that,
+# before CPython 3.13.15 (gh-109638, gh-98820), backtrack catastrophically on
+# quote-heavy text, and the Python the backend image installs has neither fix.
+# `re` holds the GIL while it matches, so a few KB of crafted CSV parsed for
+# AutoPilot stopped the whole process, worker thread or not. Guess a delimiter
+# by parsing the first rows with csv.reader instead
+# (backend.util.csv_delimiter.guess_delimiter).
+
+
+def test_no_csv_sniffer():
+    offenders: list[str] = []
+    for py in _iter_backend_py_files():
+        rel = py.relative_to(BACKEND_ROOT)
+        if _is_test_file(rel):
+            continue
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        offenders += [
+            f"  backend/{rel.as_posix()}:{line}" for line in _csv_sniffer_uses(tree)
+        ]
+    assert not offenders, (
+        "Don't use csv.Sniffer: its regular expressions can take hours on a few "
+        "KB of crafted text while holding the GIL. Guess a delimiter by parsing "
+        "the first rows with csv.reader (see backend.util.csv_delimiter):\n"
+        + "\n".join(sorted(offenders))
+    )
+
+
+@pytest.mark.parametrize(
+    "source, flagged",
+    [
+        ("import csv\ncsv.Sniffer().sniff(sample)", True),
+        ("import csv as c\nc.Sniffer()", True),
+        ("from csv import Sniffer\nSniffer().sniff(sample)", True),
+        ("from csv import Sniffer as S\nS()", True),
+        ("import csv\ncsv.reader(io.StringIO(text))", False),
+        ("class Sniffer:\n    pass\n\n\nSniffer()", False),
+    ],
+)
+def test_csv_sniffer_scan_reads_each_form(source: str, flagged: bool):
+    assert bool(_csv_sniffer_uses(ast.parse(source))) is flagged
+
+
+def _csv_sniffer_uses(tree: ast.Module) -> list[int]:
+    """Lines that reach csv.Sniffer: an attribute of a name bound to the csv
+    module, or an import of Sniffer from csv."""
+    csv_names: set[str] = set()
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            csv_names.update(a.asname or a.name for a in node.names if a.name == "csv")
+        elif isinstance(node, ast.ImportFrom) and node.module == "csv":
+            lines += [node.lineno for a in node.names if a.name == "Sniffer"]
+    lines += [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and node.attr == "Sniffer"
+        and isinstance(node.value, ast.Name)
+        and node.value.id in csv_names
+    ]
+    return sorted(lines)

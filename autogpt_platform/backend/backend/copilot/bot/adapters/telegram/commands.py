@@ -13,6 +13,7 @@ from typing import Any, Awaitable, Callable, Optional
 from backend.copilot.bot import sessions
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.command_core import (
+    AdminCheck,
     CommandReply,
     dm_link_reply,
     setup_reply,
@@ -29,6 +30,16 @@ logger = logging.getLogger(__name__)
 # login_url button, so the /link page can verify who tapped it.
 SendLink = Callable[[str, str, str, str], Awaitable[None]]
 
+# getChatMember statuses of the members who administer a group.
+_ADMIN_STATUSES = frozenset({"creator", "administrator"})
+
+_GROUP_BUTTON_NOTE = "Only the admin who ran /setup can use this button."
+
+_GROUP_LINK_UNAVAILABLE = (
+    "I can't link this group right now: Telegram didn't accept the sign-in "
+    "button that confirms who is linking it. Please try again later."
+)
+
 # Published to Telegram's command menu via setMyCommands on startup.
 COMMAND_MENU = [
     {"command": "setup", "description": "Link this group to an AutoGPT account"},
@@ -40,7 +51,8 @@ COMMAND_MENU = [
 _HELP_TEXT = (
     "**AutoGPT for Telegram**\n"
     "• Message me directly to chat with your personal AutoGPT account.\n"
-    "• Add me to a group and run /setup to link it to an AutoGPT account.\n"
+    "• Add me to a group, and a group admin can run /setup to link it to an "
+    "AutoGPT account.\n"
     "• Mention me (or reply to my messages) in a group to chat.\n"
     "• Run /new to start a fresh conversation (and go back to Otto).\n"
     "• Start a message with `expert=NAME` to ask one of your experts "
@@ -143,21 +155,96 @@ async def handle(
             else:
                 await _send(client, chat_id, reply, message)
             return
-        reply = await setup_reply(
-            api,
-            platform="telegram",
-            server_noun="group",
-            platform_server_id=chat_id,
-            platform_user_id=str(sender.get("id", "")),
-            platform_username=sender.get("username")
-            or sender.get("first_name")
-            or "unknown",
-            server_name=chat.get("title") or "",
-            channel_id=chat_id,
-        )
-        await _send(client, chat_id, reply, message)
+        await _setup_group(api, client, message)
         return
     logger.debug("Ignoring unknown Telegram command /%s", command)
+
+
+async def _setup_group(
+    api: BotBackend, client: TelegramClient, message: dict[str, Any]
+) -> None:
+    """Link a group to the AutoGPT account of the admin who ran /setup.
+
+    The link is posted in the group, so it goes out as a ``login_url`` button:
+    Telegram signs the identity of whoever taps it, and confirming a group
+    link requires that identity to be this admin's. A plain URL button would
+    carry no identity, so when Telegram refuses the login button no link is
+    posted at all.
+    """
+    chat = message.get("chat") or {}
+    sender = message.get("from") or {}
+    chat_id = str(chat.get("id", ""))
+    reply = await setup_reply(
+        api,
+        platform="telegram",
+        server_noun="group",
+        admin_check=await _group_admin_check(client, chat_id, sender.get("id")),
+        admin_role="group admin",
+        platform_server_id=chat_id,
+        platform_user_id=str(sender.get("id", "")),
+        platform_username=sender.get("username")
+        or sender.get("first_name")
+        or "unknown",
+        server_name=chat.get("title") or "",
+        channel_id=chat_id,
+    )
+    if reply.button_label and reply.button_url:
+        await _send_login_button(client, chat_id, reply, message)
+    else:
+        await _send(client, chat_id, reply, message)
+
+
+async def _group_admin_check(
+    client: TelegramClient, chat_id: str, user_id: int | None
+) -> AdminCheck:
+    """Ask Telegram whether ``user_id`` is the group's creator or an admin."""
+    if not user_id:
+        return AdminCheck.UNVERIFIED
+    try:
+        member = await client.call("getChatMember", chat_id=chat_id, user_id=user_id)
+    except Exception:
+        logger.warning("Telegram getChatMember failed during /setup", exc_info=True)
+        return AdminCheck.UNVERIFIED
+    if (member or {}).get("status") in _ADMIN_STATUSES:
+        return AdminCheck.ADMIN
+    return AdminCheck.NOT_ADMIN
+
+
+async def _send_login_button(
+    client: TelegramClient,
+    chat_id: str,
+    reply: CommandReply,
+    message: dict[str, Any],
+) -> None:
+    try:
+        await client.call(
+            "sendMessage",
+            chat_id=chat_id,
+            text=to_html(f"{reply.text}\n\n{_GROUP_BUTTON_NOTE}"),
+            parse_mode="HTML",
+            message_thread_id=message.get("message_thread_id"),
+            reply_markup={
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": reply.button_label,
+                            "login_url": {"url": reply.button_url},
+                        }
+                    ]
+                ]
+            },
+        )
+    except Exception:
+        # Telegram takes a login_url only for an HTTPS link on the domain
+        # registered for the bot with @BotFather (/setdomain).
+        logger.warning(
+            "Telegram refused the group setup button; is the link domain "
+            "registered with @BotFather (/setdomain)?",
+            exc_info=True,
+        )
+        await _send(
+            client, chat_id, CommandReply(text=_GROUP_LINK_UNAVAILABLE), message
+        )
 
 
 async def _send(

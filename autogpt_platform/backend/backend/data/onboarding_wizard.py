@@ -10,9 +10,11 @@ class OnboardingWizardConflict(RuntimeError):
         )
 
 
-# In the order the wizard shows them (frontend onboarding/store.ts):
-# `OnboardingRole.from_wizard` reads whether a step comes after the role step.
+# The wizard's steps (frontend onboarding/store.ts), in its default order.
+# Experiments and the paywall can move them, so read an order from a draft's
+# completedSteps, never from this list.
 WizardStep = Literal[
+    "access",
     "team",
     "autopilot",
     "role",

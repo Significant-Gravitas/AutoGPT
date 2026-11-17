@@ -46,6 +46,7 @@ import sentry_sdk
 import yaml
 
 from backend.util.bounded_yaml import load_bounded_yaml
+from backend.util.csv_delimiter import guess_delimiter
 from backend.util.zip_member import ZipMemberTooLarge, check_unpacked_size
 
 logger = logging.getLogger(__name__)
@@ -285,17 +286,17 @@ def _parse_delimited(content: str, *, delimiter: str) -> Any:
     rows = [row for row in reader if _row_has_content(row)]
     if not rows:
         return content
-    # If the declared delimiter produces only single-column rows, try
-    # sniffing the actual delimiter — catches misidentified files (e.g.
-    # a tab-delimited file with a .csv extension).
+    # If the declared delimiter produces only single-column rows, try the
+    # other common delimiters — catches misidentified files (e.g. a
+    # tab-delimited file with a .csv extension).
     if len(rows[0]) == 1:
-        try:
-            dialect = csv.Sniffer().sniff(content[:8192])
-            if dialect.delimiter != delimiter:
-                reader = csv.reader(io.StringIO(content), dialect)
+        guessed = guess_delimiter(content, delimiter)
+        if guessed is not None:
+            try:
+                reader = csv.reader(io.StringIO(content), delimiter=guessed)
                 rows = [row for row in reader if _row_has_content(row)]
-        except csv.Error:
-            pass
+            except csv.Error:
+                pass
     if rows and len(rows[0]) >= 2:
         return rows
     return content
@@ -306,7 +307,7 @@ def _row_has_content(row: list[str]) -> bool:
 
     ``csv.reader`` never yields ``[]`` — truly blank lines yield ``[""]``.
     This predicate filters those out consistently across the initial read
-    and the sniffer-fallback re-read.
+    and the fallback-delimiter re-read.
     """
     return any(cell for cell in row)
 

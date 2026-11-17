@@ -8,6 +8,7 @@ import stripe
 from prisma.enums import NotificationType
 
 from backend.data.credit import (
+    TRIAL_ENDED_FOR_CHECKOUT_CANCELLATION_COMMENT,
     _invoice_subscription_id,
     _invoice_subscription_metadata,
     _track_billing_event,
@@ -389,7 +390,9 @@ async def _queue_notice(
 ) -> User | None:
     """Queue any other trial notice; None when it was not queued."""
     user = await user_db().get_user_by_id(user_id)
-    if kind == "ended" and await _another_plan_is_live(trial, current):
+    if kind == "ended" and (
+        _ended_for_checkout(current) or await _another_plan_is_live(trial, current)
+    ):
         await leave_trial_group(user)
         return None
     claim = trial_notice_key(trial, kind)
@@ -484,6 +487,14 @@ def _running_trial_skip_reason(
     ):
         return "canceled within the last day"
     return None
+
+
+def _ended_for_checkout(current: dict) -> bool:
+    """A trial with no card to charge, ended so Checkout could sell the plan
+    the person chose. They are paying for a plan, so "your trial has ended"
+    is not news; they still leave the trial group."""
+    details = current.get("cancellation_details") or {}
+    return details.get("comment") == TRIAL_ENDED_FOR_CHECKOUT_CANCELLATION_COMMENT
 
 
 async def _another_plan_is_live(trial: TrialState, current: dict) -> bool:

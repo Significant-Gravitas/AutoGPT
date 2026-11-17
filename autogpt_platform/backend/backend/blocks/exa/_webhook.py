@@ -9,10 +9,14 @@ Two kinds of Exa webhook arrive through this manager:
 * ``search_monitor`` -- a manual webhook. The user pastes the block's URL into a
   Search Monitor's ``webhook.url``; Exa returns that monitor's ``webhookSecret``
   once, at creation, and the user pastes it into the trigger block's
-  ``webhook_secret`` input, which is read here at verification time.
+  ``webhook_secret`` input. It is read here at verification time, from the
+  trigger's node or, for a trigger set up as a preset, from the trigger config
+  the preset stores beside its graph inputs.
 
 Both are signed the same way: an ``Exa-Signature: t=<unix_ts>,v1=<hex>[,v1=...]``
-header carrying HMAC-SHA256 of ``"<t>.<raw body>"`` keyed with the secret.
+header carrying HMAC-SHA256 of ``"<t>.<raw body>"`` keyed with the secret, and
+a delivery is accepted only while ``t`` is within
+``SIGNATURE_TOLERANCE_SECONDS`` of now.
 See https://exa.ai/docs/websets/api/webhooks/verifying-signatures and
 https://exa.ai/docs/monitors/quickstart (Receive webhook updates).
 """
@@ -20,11 +24,13 @@ https://exa.ai/docs/monitors/quickstart (Receive webhook updates).
 import hashlib
 import hmac
 import logging
+import time
 from enum import Enum
 
 from fastapi import HTTPException, Request
 from pydantic import SecretStr, TypeAdapter, ValidationError
 
+from backend.api.features.library.model import preset_trigger_configs
 from backend.blocks._platform_credentials import is_platform_credential
 from backend.data.integrations import WebhookWithRelations
 from backend.data.model import Credentials
@@ -35,6 +41,10 @@ from ._exa_rest import WEBSETS_API_BASE, ExaApiError, exa_request, path_segment
 logger = logging.getLogger(__name__)
 
 SIGNATURE_HEADER = "Exa-Signature"
+# How far a delivery's signed ``t`` may be from now before it is refused, so a
+# signed delivery can't be sent again later. Exa's verification guide suggests
+# five minutes, the window the platform's other signed webhooks use too.
+SIGNATURE_TOLERANCE_SECONDS = 300
 # Input on the Search Monitor trigger block that holds the monitor's secret.
 SEARCH_MONITOR_SECRET_INPUT = "webhook_secret"  # pragma: allowlist secret
 
@@ -152,7 +162,10 @@ class ExaWebhookManager(BaseWebhooksManager):
                 )
             secrets = [secret]
         verify_exa_signature(
-            secrets, request.headers.get(SIGNATURE_HEADER), await request.body()
+            secrets,
+            request.headers.get(SIGNATURE_HEADER),
+            await request.body(),
+            webhook_id=webhook.id,
         )
 
     @classmethod
@@ -259,9 +272,13 @@ async def _delete_unusable_webhook(
 
 
 def verify_exa_signature(
-    secrets: list[str], signature_header: str | None, body: bytes
+    secrets: list[str],
+    signature_header: str | None,
+    body: bytes,
+    webhook_id: str = "",
 ) -> None:
-    """Raise 403 unless ``signature_header`` signs ``body`` with one of ``secrets``."""
+    """Raise 403 unless ``signature_header`` signs ``body`` with one of ``secrets``
+    at a time within ``SIGNATURE_TOLERANCE_SECONDS`` of now."""
     if not signature_header:
         raise HTTPException(
             status_code=403, detail=f"Missing {SIGNATURE_HEADER} header"
@@ -294,16 +311,49 @@ def verify_exa_signature(
         for sig in provided_signatures
     ):
         raise HTTPException(status_code=403, detail="Invalid webhook signature")
+    # Checked once the signature holds, so a delivery refused for its time is
+    # one Exa really sent: worth a log line, which other requests never reach.
+    _reject_stale_timestamp(timestamp, webhook_id)
+
+
+def _reject_stale_timestamp(timestamp: str, webhook_id: str) -> None:
+    """Raise 403 unless ``timestamp`` (Unix seconds) is close enough to now."""
+    # `int()` parses arbitrarily large values, so the subtraction can raise
+    # OverflowError as well as ValueError: both mean a malformed header.
+    try:
+        age = time.time() - int(timestamp)
+    except (ValueError, OverflowError) as exc:
+        logger.warning(
+            f"Refused a signed Exa delivery to webhook #{webhook_id}: its "
+            f"timestamp {timestamp[:32]!r} isn't whole Unix seconds"
+        )
+        raise HTTPException(
+            status_code=403, detail=f"Malformed {SIGNATURE_HEADER} header"
+        ) from exc
+    if abs(age) > SIGNATURE_TOLERANCE_SECONDS:
+        when = f"{age:.0f}s ago" if age >= 0 else f"{-age:.0f}s ahead of now"
+        logger.warning(
+            f"Refused a signed Exa delivery to webhook #{webhook_id}: signed "
+            f"{when}, outside the {SIGNATURE_TOLERANCE_SECONDS}s window"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Exa webhook timestamp is outside the accepted window",
+        )
 
 
 def _search_monitor_secrets(webhook: WebhookWithRelations) -> list[str]:
     """Every monitor secret set on the nodes/presets using this webhook.
 
     Triggers for different monitors can share one webhook, each with its own
-    monitor's secret, so a delivery signed with any of them is authentic.
+    monitor's secret, so a delivery signed with any of them is authentic. A
+    preset keeps the trigger block's inputs nested beside its graph inputs, so
+    they are read through ``preset_trigger_configs``, as the other managers do.
     """
     sources = [node.input_default for node in webhook.triggered_nodes] + [
-        preset.inputs for preset in webhook.triggered_presets
+        config
+        for preset in webhook.triggered_presets
+        for config in preset_trigger_configs(preset.inputs)
     ]
     found = {
         secret

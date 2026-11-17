@@ -14,12 +14,14 @@ from typing import Any, cast
 
 from pydantic import BaseModel, Field
 
+from backend.copilot.context import is_unattended_turn
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.data.model import Credentials, CredentialsFieldInfo, CredentialsType
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
+from backend.integrations.service_identity import credential_display_name
 
 from .models import AgentSavedResponse, ErrorResponse, ToolResponseBase
 from .utils import find_matching_credential
@@ -215,16 +217,22 @@ async def resolve_routine_owner(
     return RoutineOwner(expert_id=expert.id)
 
 
-async def settle_expert_grants(user_id: str, session: ChatSession) -> None:
-    """An expert installing a workflow on itself must not widen its own grants.
+async def settle_expert_grants(
+    user_id: str, session: ChatSession, expert_id: str
+) -> None:
+    """Only the owner, typing in their own Otto chat, widens an expert's grants.
 
     The allow-list is seeded from the expert's workflows on first read, so
-    settle it before the install lands; otherwise the new workflow's
-    credentials would be granted by the expert's own action.
+    settle it before any other install lands; otherwise the new workflow's
+    credentials would be granted by an action the owner did not take.
     """
-    if session.expert_id is None:
+    if (
+        session.expert_id is None
+        and session.metadata.origin == "interactive"
+        and not is_unattended_turn()
+    ):
         return
-    await experts_db().settle_credential_seed(user_id, session.expert_id)
+    await experts_db().settle_credential_seed(user_id, expert_id)
 
 
 async def install_saved_agent(
@@ -239,7 +247,7 @@ async def install_saved_agent(
     if session.expert_id is None or not isinstance(result, AgentSavedResponse):
         return result
     try:
-        await settle_expert_grants(user_id, session)
+        await settle_expert_grants(user_id, session, session.expert_id)
         await experts_db().install_workflow(
             user_id, session.expert_id, library_agent_id=result.library_agent_id
         )
@@ -318,7 +326,7 @@ async def annotate_expert_grants(
                 "credentials": [
                     {
                         "id": c.id,
-                        "title": c.title or str(c.provider),
+                        "title": credential_display_name(c),
                         "type": str(c.type),
                     }
                     for c in candidates
