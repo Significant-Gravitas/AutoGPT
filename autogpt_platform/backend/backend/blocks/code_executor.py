@@ -239,7 +239,7 @@ class BaseE2BExecutorMixin:
                 code,
                 language=language.value,
                 envs={
-                    **await proxy_trust_envs(sandbox, egress_owner),
+                    **await proxy_trust_envs(sandbox),
                     **(envs or {}),
                 },
                 on_error=lambda e: kill_sandbox(sandbox),  # Kill the sandbox on error

@@ -231,8 +231,9 @@ Node, and the browsers' policies. So:
   2. Wait until every box running before that release has reconnected or
      stopped. E2B stops a box after 24 hours of running at most, so 24 hours
      is always enough. A box still running on the old set fails TLS to bound
-     hosts once the key changes. A paused box is fine: it installs the new
-     set when it resumes.
+     hosts once the key changes. A paused box installs the new set when it
+     resumes, but a browser left open in it read its policies when it
+     started: it trusts the new CA only once restarted.
   3. Switch the proxy to the new key.
   4. Drop the old certificate from the setting. Each box removes it from its
      store, bundle and browser policies, and from its NSS database, on its
@@ -244,7 +245,10 @@ The backend only sends boxes here once `E2B_EGRESS_PROXY_ADDRESS` is set, and
 E2B fails closed. Setting that address and provisioning the CA are **one release
 step**: the proxy reachable at that address, the CA mounted into every replica,
 and its certificate in the backend's `E2B_EGRESS_PROXY_CA_CERT`. Any one of them missing shows up
-as every box losing either its egress or its TLS to bound hosts.
+as every box losing either its egress or its TLS to bound hosts. A desktop
+paused with a browser open before the switch gets the CA when it resumes,
+but that browser read its policies when it started: it reaches bound hosts
+only once restarted.
 
 The same address is also what switches boxes from real tokens to placeholders
 (see "What a box holds"): from the moment it is set, a connected account works

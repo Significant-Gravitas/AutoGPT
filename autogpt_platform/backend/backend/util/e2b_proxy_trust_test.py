@@ -22,6 +22,7 @@ from backend.util.e2b_proxy_trust import (
     ca_certs,
     fingerprint,
     trust_proxy_ca,
+    trusted_envs,
 )
 from backend.util.e2b_proxy_trust_script import INSTALL_SCRIPT
 from backend.util.sandbox_login import LoginChainChanged
@@ -202,7 +203,7 @@ class TestTheInstall:
         assert json.loads(envs["AGPT_CHROME_POLICY"]) == {
             "CACertificates": [_der_b64(_PEM)]
         }
-        assert store == {"e2b:egress:ca:sb-1": f"{fingerprint([_PEM])} bundle"}
+        assert store == {"e2b:egress:ca:sb-1": f"{fingerprint([_PEM])} bundle complete"}
 
     @pytest.mark.asyncio
     async def test_a_chats_box_reconnects_through_the_login_chain_check(self):
@@ -258,13 +259,13 @@ class TestTheInstall:
         assert store == {}
 
     @pytest.mark.asyncio
-    async def test_a_profile_not_taken_into_the_baseline_is_not_recorded(self):
+    async def test_a_profile_not_taken_into_the_baseline_counts_as_partial(self):
         store: dict[str, str] = {}
         patches, mocks = _install(store)
         mocks["accept_platform_file"].side_effect = ConnectionError
         with _setting(_PEM), _applied(patches):
             assert await trust_proxy_ca(_box(), chat=True) == _WITH_BUNDLE
-        assert store == {}
+        assert store["e2b:egress:ca:sb-1"].endswith(" partial")
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -299,7 +300,7 @@ class TestTheInstall:
         patches, _ = _install(store, stdout="install: complete\n")
         with _setting(_PEM), _applied(patches):
             assert await trust_proxy_ca(_box()) == {"NODE_EXTRA_CA_CERTS": CA_FILE}
-        assert store["e2b:egress:ca:sb-1"].endswith(" nobundle")
+        assert store["e2b:egress:ca:sb-1"].endswith(" nobundle complete")
         patches, mocks = _install(store)
         with _setting(_PEM), _applied(patches):
             assert await trust_proxy_ca(_box()) == {"NODE_EXTRA_CA_CERTS": CA_FILE}
@@ -312,18 +313,26 @@ class TestTheInstall:
         with _setting(_PEM), _applied(patches):
             await trust_proxy_ca(_box())
         mocks["run_sandbox_command"].assert_awaited_once()
-        assert store["e2b:egress:ca:sb-1"] == f"{fingerprint([_PEM])} bundle"
+        assert store["e2b:egress:ca:sb-1"] == f"{fingerprint([_PEM])} bundle complete"
 
     @pytest.mark.asyncio
-    async def test_a_partial_install_is_not_recorded_so_it_is_tried_again(self):
+    async def test_a_partial_install_is_tried_again_and_still_looked_up(self):
         store: dict[str, str] = {}
-        patches, _ = _install(
+        patches, mocks = _install(
             store, stdout="bundle: ok\ninstall: incomplete: firefox\n"
         )
         with _setting(_PEM), _applied(patches):
             # The clients it did reach still trust the CA.
             assert await trust_proxy_ca(_box()) == _WITH_BUNDLE
-        assert store == {}
+            assert store["e2b:egress:ca:sb-1"] == (
+                f"{fingerprint([_PEM])} bundle partial"
+            )
+            # A lookup finds those paths without installing again...
+            assert await trusted_envs("sb-1") == _WITH_BUNDLE
+            assert mocks["run_sandbox_command"].await_count == 1
+            # ...and the next create or reconnect does install again.
+            await trust_proxy_ca(_box())
+            assert mocks["run_sandbox_command"].await_count == 2
 
     @pytest.mark.asyncio
     async def test_a_failed_install_is_not_raised_or_recorded(self):
@@ -345,3 +354,26 @@ class TestTheInstall:
 
 def test_the_profile_points_python_at_the_bundle_only_when_it_is_there():
     assert f"if [ -s {BUNDLE_FILE} ]" in PROFILE
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "record, envs",
+    [
+        ("{fp} bundle complete", _WITH_BUNDLE),
+        ("{fp} nobundle complete", {"NODE_EXTRA_CA_CERTS": CA_FILE}),
+        ("an-older-set bundle complete", {}),
+        (None, {}),
+    ],
+)
+async def test_a_lookup_reads_the_record_and_never_installs(record, envs):
+    store = (
+        {}
+        if record is None
+        else {"e2b:egress:ca:sb-1": record.format(fp=fingerprint([_PEM]))}
+    )
+    patches, mocks = _install(store)
+    with _setting(_PEM), _applied(patches):
+        assert await trusted_envs("sb-1") == envs
+    mocks["run_sandbox_command"].assert_not_awaited()
+    mocks["run_internal"].assert_not_awaited()

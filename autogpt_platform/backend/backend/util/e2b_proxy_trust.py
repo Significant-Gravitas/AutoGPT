@@ -166,8 +166,8 @@ async def trust_proxy_ca(
         return None
     want = fingerprint(certs)
     recorded = await _recorded(sandbox.sandbox_id)
-    if recorded and recorded[0] == want:
-        return _envs(recorded[1:] == ["bundle"])
+    if recorded[:1] == [want] and "partial" not in recorded:
+        return _envs("bundle" in recorded)
     out = await _install(
         sandbox, certs, want, guarded=await _guarded(sandbox, fresh, chat)
     )
@@ -175,10 +175,11 @@ async def trust_proxy_ca(
         return None
     accepted = await _accept_profile(sandbox)
     bundle = "bundle: ok" in out
-    if "install: complete" in out and accepted:
-        await _record(sandbox.sandbox_id, want, bundle)
-    else:
-        # Not recorded, so the next reconnect tries again.
+    complete = "install: complete" in out and accepted
+    # A partial install is recorded as such: the next create or reconnect
+    # tries again, and a lookup still finds the paths it did write.
+    await _record(sandbox.sandbox_id, want, bundle, complete)
+    if not complete:
         logger.warning(
             "[E2B] The swap proxy's CA was only partly installed in %.12s: %s%s",
             sandbox.sandbox_id,
@@ -211,8 +212,22 @@ def _configured_certs(sandbox_id: str) -> Optional[list[str]]:
     return certs
 
 
+async def trusted_envs(sandbox_id: str) -> dict[str, str]:
+    """The environment a process outside a login shell needs, for a box the
+    last install reached with the current CA set; empty otherwise.  Only a
+    lookup: the install itself belongs to the box's create and reconnect."""
+    certs = _configured_certs(sandbox_id)
+    if certs is None:
+        return {}
+    recorded = await _recorded(sandbox_id)
+    if recorded[:1] != [fingerprint(certs)]:
+        return {}
+    return _envs("bundle" in recorded)
+
+
 async def _recorded(sandbox_id: str) -> list[str]:
-    """The box's record, ``[fingerprint, "bundle" | "nobundle"]``, or empty."""
+    """The box's record, ``[fingerprint, "bundle" | "nobundle",
+    "complete" | "partial"]``, or empty."""
     try:
         redis = await get_redis_async()
         return _text(await redis.get(_TRUSTED_KEY_PREFIX + sandbox_id)).split()
@@ -221,12 +236,13 @@ async def _recorded(sandbox_id: str) -> list[str]:
         return []
 
 
-async def _record(sandbox_id: str, want: str, bundle: bool) -> None:
+async def _record(sandbox_id: str, want: str, bundle: bool, complete: bool) -> None:
     try:
         redis = await get_redis_async()
         await redis.set(
             _TRUSTED_KEY_PREFIX + sandbox_id,
-            f"{want} {'bundle' if bundle else 'nobundle'}",
+            f"{want} {'bundle' if bundle else 'nobundle'}"
+            f" {'complete' if complete else 'partial'}",
             ex=_TRUSTED_TTL,
         )
     except Exception:

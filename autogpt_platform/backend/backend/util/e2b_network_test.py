@@ -889,7 +889,7 @@ class TestProxyCA:
             with _configured(None):
                 await create_sandbox(cls, _BLOCK_OWNER, template="t", api_key="own")
                 await connect_sandbox(cls, "sb-1", _BLOCK_OWNER, api_key="own")
-                assert await proxy_trust_envs(box, _BLOCK_OWNER) == {}
+                assert await proxy_trust_envs(box) == {}
             with _configured(_PROXY):
                 # A connect that only pauses or kills the box pins nothing.
                 await connect_sandbox(
@@ -933,18 +933,16 @@ class TestProxyCA:
         trust.assert_not_awaited()
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "installed, envs",
-        [
-            ({"NODE_EXTRA_CA_CERTS": "/ca.pem"}, {"NODE_EXTRA_CA_CERTS": "/ca.pem"}),
-            (None, {}),
-        ],
-    )
-    async def test_a_kernel_gets_what_the_install_says_the_box_needs(
-        self, installed, envs
+    async def test_a_kernel_gets_what_the_boxs_install_recorded_without_installing(
+        self,
     ):
+        envs = {"NODE_EXTRA_CA_CERTS": "/ca.pem"}
+        lookup, trust = AsyncMock(return_value=envs), AsyncMock()
         with (
             _configured(_PROXY),
-            patch(f"{_M}.trust_proxy_ca", AsyncMock(return_value=installed)),
+            patch(f"{_M}.trusted_envs", lookup),
+            patch(f"{_M}.trust_proxy_ca", trust),
         ):
-            assert await proxy_trust_envs(_box(), _BLOCK_OWNER) == envs
+            assert await proxy_trust_envs(_box("sb-1")) == envs
+        lookup.assert_awaited_once_with("sb-1")
+        trust.assert_not_awaited()

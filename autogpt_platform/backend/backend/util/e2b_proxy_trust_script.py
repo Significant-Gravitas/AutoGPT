@@ -88,17 +88,22 @@ if command -v certutil >/dev/null 2>&1 && id user >/dev/null 2>&1; then
     done" >/dev/null 2>&1 || fail nss
 fi
 
-# Firefox reads one policies.json: merged into whichever it has, never replaced.
+# Firefox reads one policies.json, and one at /etc replaces the image's own
+# distribution file. So the CA is merged into whichever files the box has,
+# never replacing one, and only a box with none gets one: in the
+# distribution directory where there is one, which overrides nothing.
 if command -v python3 >/dev/null 2>&1; then
   python3 - "$dir" <<'PY' >/dev/null 2>&1 || fail firefox
 import glob, json, os, sys
 ours = sys.argv[1] + "/"
-targets = ["/etc/firefox/policies/policies.json"] + [
+etc = "/etc/firefox/policies/policies.json"
+dist = [
     os.path.join(d, "policies.json")
     for d in ("/usr/lib/firefox/distribution", "/usr/lib/firefox-esr/distribution",
               "/opt/firefox/distribution")
     if os.path.isdir(d)
 ]
+targets = [p for p in (etc, *dist) if os.path.exists(p)] or dist[:1] or [etc]
 for path in targets:
     try:
         with open(path) as f:

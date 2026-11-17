@@ -58,7 +58,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.data.model import APIKeyCredentials
 from backend.data.redis_client import get_redis_async
 from backend.integrations.credentials_store import is_system_credential
-from backend.util.e2b_proxy_trust import trust_proxy_ca
+from backend.util.e2b_proxy_trust import trust_proxy_ca, trusted_envs
 from backend.util.sandbox_limits import USER_KEY, start_slot, stopped, tagged
 from backend.util.settings import Secrets, Settings
 
@@ -324,13 +324,14 @@ async def _connect_pinned(
     return sandbox
 
 
-async def proxy_trust_envs(sandbox: AsyncSandbox, owner: EgressOwner) -> dict[str, str]:
-    """Environment for a process in *owner*'s *sandbox* that does not read
-    ``/etc/profile.d`` (a code interpreter's kernel) to trust the proxy's CA.
-    Empty with no proxy configured, or when the box could not be made to."""
+async def proxy_trust_envs(sandbox: AsyncSandbox) -> dict[str, str]:
+    """Environment for a process in *sandbox* that does not read
+    ``/etc/profile.d`` (a code interpreter's kernel) to trust the proxy's CA,
+    as the box's create or reconnect installed it.  Empty with no proxy
+    configured, or when that install did not reach the box."""
     if proxy_address() is None:
         return {}
-    return await trust_proxy_ca(sandbox, chat=owner.kind != "block") or {}
+    return await trusted_envs(sandbox.sandbox_id)
 
 
 async def reattach_command(
