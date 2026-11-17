@@ -145,6 +145,39 @@ describe("LinkCheckout in-chat approval", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("says the total changed when a raise lands before the click", async () => {
+    let raised = false;
+    server.use(
+      getGetV2GetALinkPurchaseApprovalMockHandler(() =>
+        raised
+          ? approval("awaiting", { amount: 1499, revision: 1 })
+          : approval("awaiting"),
+      ),
+      http.post("*/link-checkouts/:checkoutId/approve", () => {
+        raised = true;
+        return HttpResponse.json(
+          { detail: "This purchase has a newer total" },
+          { status: 409 },
+        );
+      }),
+    );
+    renderCard();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Approve $12.99" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "The total changed to $14.99. Check the purchase and decide again.",
+      ),
+    ).toBeDefined();
+    expect(
+      await screen.findByRole("button", { name: "Approve $14.99" }),
+    ).toBeDefined();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("shows a raised total with what it replaced and why, and approves that revision", async () => {
     let state: LinkPurchaseApproval["state"] = "awaiting";
     const raised = {

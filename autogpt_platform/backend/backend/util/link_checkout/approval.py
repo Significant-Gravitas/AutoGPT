@@ -27,6 +27,17 @@ from backend.util.link_checkout.models import CHECKOUT_ID, ApprovalDetails
 # "expired" rather than "not found".
 _TTL_SECONDS = 20 * 60
 
+# Writes a raised revision's record only over an earlier one. The revision is
+# kept beside the record, which is encrypted; a record with none is the first.
+_REOPEN = """
+if tonumber(redis.call('GET', KEYS[2]) or '0') >= tonumber(ARGV[1]) then
+    return 0
+end
+redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+redis.call('SET', KEYS[2], ARGV[1], 'EX', ARGV[3])
+return 1
+"""
+
 
 class PendingApproval(BaseModel):
     checkout_id: str = Field(pattern=CHECKOUT_ID)
@@ -82,15 +93,22 @@ async def open_approval(pending: PendingApproval) -> None:
         raise RuntimeError("This checkout already has an approval record")
 
 
-async def reopen_approval(pending: PendingApproval) -> None:
+async def reopen_approval(pending: PendingApproval) -> bool:
     """Replace the purchase with a new revision (a raised total), which waits
-    for a decision of its own."""
+    for a decision of its own. Only a later revision replaces it, in one step,
+    so of two raises that finish out of order the later one stands. False when
+    the record already holds this revision or a later one."""
     redis = await get_redis_async()
-    await redis.set(
+    written = await redis.eval(
+        _REOPEN,
+        2,
         _record_key(pending.checkout_id),
+        _revision_key(pending.checkout_id),
+        pending.revision,
         JSONCryptor().encrypt(pending.model_dump(mode="json")),
-        ex=_TTL_SECONDS,
+        _TTL_SECONDS,
     )
+    return bool(written)
 
 
 async def read_approval(checkout_id: str) -> ApprovalView | None:
@@ -187,9 +205,13 @@ def _text(value: str | bytes) -> str:
     return value.decode() if isinstance(value, bytes) else value
 
 
-# The hash tag keeps both keys of one checkout on the same cluster slot.
+# The hash tag keeps every key of one checkout on the same cluster slot.
 def _record_key(checkout_id: str) -> str:
     return f"copilot:link_approval:{{{checkout_id}}}:record"
+
+
+def _revision_key(checkout_id: str) -> str:
+    return f"copilot:link_approval:{{{checkout_id}}}:revision"
 
 
 def _decision_key(checkout_id: str, revision: int) -> str:

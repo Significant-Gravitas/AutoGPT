@@ -73,7 +73,7 @@ async def purchase_blocker(
         url = link_action_url(verification.action_url)
         step = _VERIFICATION_STEPS[verification.status]
         return PurchaseBlocker(
-            message=f"Link needs the customer to {step} before an agent can pay. "
+            message=f"Link needs the customer to {step} before Otto can pay. "
             + (f"Give them this link: {url} " if url else "Ask them to open Link. ")
             + "Prepare the purchase again once they are done.",
             action_url=url,
@@ -92,7 +92,7 @@ async def purchase_blocker(
         if allowed is not None and amount > allowed:
             return PurchaseBlocker(
                 message=f"This purchase ({_dollars(amount)}) is over the "
-                f"customer's {name} limit for agent spending in Link "
+                f"customer's {name} spending limit for AI purchases in Link "
                 f"({_dollars(allowed)}). Ask them to raise it in the Link app, "
                 "or choose a smaller purchase."
             )

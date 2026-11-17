@@ -47,9 +47,9 @@ async def test_nothing_in_the_way_lets_the_purchase_go_ahead(user_info):
 @pytest.mark.parametrize(
     "spend_limits,words",
     [
-        (limits(per_purchase=2000), "per-purchase limit"),
-        (limits(daily=1000), "remaining daily limit"),
-        (limits(thirty_day=500), "remaining 30-day limit"),
+        (limits(per_purchase=2000), "per-purchase spending limit"),
+        (limits(daily=1000), "remaining daily spending limit"),
+        (limits(thirty_day=500), "remaining 30-day spending limit"),
     ],
 )
 async def test_a_purchase_over_an_agent_limit_is_stopped_before_approval(

@@ -11,6 +11,7 @@ import fastapi
 import fastapi.testclient
 import pytest
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from fakeredis.aioredis import FakeRedis
 
 from backend.api.features.chat import link_checkout as routes
 from backend.copilot.rate_limit import enforce_payment_paywall
@@ -30,20 +31,6 @@ CONTEXT = "One paperback from the signed-in cart, shipped to the saved address."
 CHECKOUT_ID = "d" * 32
 
 
-class FakeRedis:
-    def __init__(self):
-        self.values: dict[str, str] = {}
-
-    async def get(self, key: str) -> str | None:
-        return self.values.get(key)
-
-    async def set(self, key: str, value: str, nx: bool = False, ex: int = 0) -> bool:
-        if nx and key in self.values:
-            return False
-        self.values[key] = value
-        return True
-
-
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
@@ -57,7 +44,9 @@ def setup_app_auth(mock_jwt_user):
 @pytest.fixture
 def purchase(monkeypatch, test_user_id):
     monkeypatch.setattr(
-        approval, "get_redis_async", AsyncMock(return_value=FakeRedis())
+        approval,
+        "get_redis_async",
+        AsyncMock(return_value=FakeRedis(decode_responses=True)),
     )
 
     async def open_for(user_id: str = test_user_id, expires_in: float = 60):

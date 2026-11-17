@@ -4,6 +4,7 @@ from typing import Literal
 from unittest.mock import AsyncMock
 
 import pytest
+from fakeredis.aioredis import FakeRedis
 
 from backend.util.link_checkout import (
     approval,
@@ -62,25 +63,10 @@ def principal():
     return Principal(user_id="owner", session_id="chat")
 
 
-class FakeRedis:
-    """The two commands the approval store uses."""
-
-    def __init__(self):
-        self.values: dict[str, str] = {}
-
-    async def get(self, key: str) -> str | None:
-        return self.values.get(key)
-
-    async def set(self, key: str, value: str, nx: bool = False, ex: int = 0) -> bool:
-        if nx and key in self.values:
-            return False
-        self.values[key] = value
-        return True
-
-
 @pytest.fixture
 def fake_redis(monkeypatch) -> FakeRedis:
-    redis = FakeRedis()
+    """The approval store's Redis, Lua scripts included."""
+    redis = FakeRedis(decode_responses=True)
     monkeypatch.setattr(approval, "get_redis_async", AsyncMock(return_value=redis))
     return redis
 
