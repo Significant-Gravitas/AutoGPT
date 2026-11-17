@@ -51,7 +51,6 @@ class ReadRSSFeedBlock(Block):
         polling_rate: int = SchemaField(
             description="The number of seconds to wait between polling attempts.",
             placeholder="300",
-            ge=1,
         )
         max_duration_seconds: int = SchemaField(
             description="Maximum time to poll continuously before this block finishes.",
@@ -156,33 +155,43 @@ class ReadRSSFeedBlock(Block):
             return {"entries": []}
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        start_time = datetime.now(timezone.utc) - timedelta(
+        # The window cutoff is fixed at run start: advancing it to the newest
+        # pub_date seen would skip entries from feeds that stamp local time as
+        # UTC and entries that appear late with an older pub_date. Links already
+        # emitted in this run are skipped instead; the set stays small because
+        # the run is bounded by max_duration_seconds.
+        window_start = datetime.now(timezone.utc) - timedelta(
             minutes=input_data.time_period
         )
-        seen_links_at_start_time: set[str] = set()
+        emitted_links: set[str] = set()
         deadline = monotonic() + input_data.max_duration_seconds
 
         while True:
-            if input_data.run_continuously and monotonic() >= deadline:
-                break
-
             if input_data.run_continuously:
-                feed = await self.parse_feed(input_data.rss_url)
+                remaining_seconds = deadline - monotonic()
+                if remaining_seconds <= 0:
+                    break
+                try:
+                    feed = await asyncio.wait_for(
+                        self.parse_feed(input_data.rss_url),
+                        timeout=remaining_seconds,
+                    )
+                except asyncio.TimeoutError:
+                    # A throttled or stuck feed finishes the run normally at the
+                    # configured duration instead of failing at the executor cap.
+                    break
             else:
                 feed = await asyncio.wait_for(
                     self.parse_feed(input_data.rss_url),
                     timeout=DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
                 )
-            all_entries = []
-            poll_start_time = start_time
-            latest_pub_date = start_time
-            latest_links_at_time = set(seen_links_at_start_time)
-            seen_links_this_poll: set[str] = set()
 
+            all_entries = []
             for entry in feed["entries"]:
                 pub_date = datetime(*entry["published_parsed"][:6], tzinfo=timezone.utc)
-
-                if pub_date < poll_start_time:
+                if pub_date < window_start:
+                    continue
+                if entry["link"] in emitted_links:
                     continue
 
                 rss_entry = RSSEntry(
@@ -193,26 +202,9 @@ class ReadRSSFeedBlock(Block):
                     author=entry.get("author", ""),
                     categories=[tag["term"] for tag in entry.get("tags", [])],
                 )
-                if rss_entry.link in seen_links_this_poll:
-                    continue
-                if (
-                    pub_date == poll_start_time
-                    and rss_entry.link in seen_links_at_start_time
-                ):
-                    continue
-
-                seen_links_this_poll.add(rss_entry.link)
+                emitted_links.add(rss_entry.link)
                 all_entries.append(rss_entry)
                 yield "entry", rss_entry
-
-                if pub_date > latest_pub_date:
-                    latest_pub_date = pub_date
-                    latest_links_at_time = {rss_entry.link}
-                elif pub_date == latest_pub_date:
-                    latest_links_at_time.add(rss_entry.link)
-
-            start_time = latest_pub_date
-            seen_links_at_start_time = latest_links_at_time
 
             yield "entries", all_entries
             if not input_data.run_continuously:
@@ -221,4 +213,4 @@ class ReadRSSFeedBlock(Block):
             remaining_seconds = deadline - monotonic()
             if remaining_seconds <= 0:
                 break
-            await async_sleep(min(input_data.polling_rate, remaining_seconds))
+            await async_sleep(min(max(input_data.polling_rate, 1), remaining_seconds))
