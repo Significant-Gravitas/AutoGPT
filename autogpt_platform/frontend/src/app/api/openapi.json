@@ -14063,7 +14063,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Start Onboarding Interview",
-        "description": "Open the person's onboarding interview, with Otto speaking first.\n\nThe first call starts Otto's greeting; every later one adopts the same\ninterview, so Back, a reload and a second tab land in one conversation.\n``turn_id`` is set only when this call started the greeting. A greeting\nalready being written is answered without one, like an interview under\nway: the client reads the session, which resumes the running turn. An\ninterview that is over is answered the same way, with its ``stage``, so\nthe client shows how it ended and the finish button.\n\n404 while the interview is off for the person. A person has one\ninterview, typed or spoken: 409 ``call_in_progress`` while a voice call\nof theirs is live, and 409 ``onboarding_interview_closed`` once a call\ntook the interview (its words accepted from a call that ran to its\nclose, or that the person confirmed), each naming the call\n(``call_id``). A call that was cut off, or that the person hung up,\nleaves the typed interview open. 429 at its turn budget, 503 while the\nbudget, the chat stream or the person's calls cannot be read. A 429 or\n503 carries its wait in the body (``retry_after_seconds``) as well as in\n``Retry-After``: the browser's API client keeps a refusal's body, not its\nheaders.\n\n``ending_pick`` is a tester's pick of the ending, kept for the interview's\nclose while the ending picker is on for them, and ignored otherwise.",
+        "description": "Open the person's onboarding interview, with Otto speaking first.\n\nThe first call starts Otto's greeting; every later one adopts the same\ninterview, so Back, a reload and a second tab land in one conversation.\n``turn_id`` is set only when this call started the greeting. A greeting\nalready being written is answered without one, like an interview under\nway: the client reads the session, which resumes the running turn. An\ninterview that is over is answered the same way, with its ``stage``, so\nthe client shows how it ended and the finish button.\n\n404 while the interview is off for the person. A person has one\ninterview, typed or spoken: 409 ``call_in_progress`` while a voice call\nof theirs is live, and 409 ``onboarding_interview_closed`` once a call\ntook the interview (its words accepted from a call that ran to its\nclose, or that the person confirmed), each naming the call\n(``call_id``). A call that was cut off, or that the person hung up,\nleaves the typed interview open. 429 at its turn budget, 503 while the\nbudget, the chat stream or the person's calls cannot be read. A 429 or\n503 carries its wait in the body (``retry_after_seconds``) as well as in\n``Retry-After``: the browser's API client keeps a refusal's body, not its\nheaders.\n\n``ending_pick`` is a tester's pick of the ending, kept for the interview's\nclose while the ending picker is on for them, and ignored otherwise.\n\n``start_over`` asks for a fresh interview in place of one that is over,\ntyped or taken by a call: it is set aside and a new typed interview\nopens, once the turn budget would admit its greeting. A live call still\nrefuses it (409 ``call_in_progress``). An interview that is not over\nopens as it would without it.",
         "operationId": "start_onboarding_interview",
         "requestBody": {
           "content": {
@@ -14197,7 +14197,7 @@
       "post": {
         "tags": ["v1", "onboarding", "onboarding", "brain-dump"],
         "summary": "Start Onboarding Voice Call",
-        "description": "Start a voice call for the person's onboarding interview.\n\nAnswers with the call's room, which carries its audio, and the browser's\ntoken for it, and with the relay's call socket and a start token good for\nthis one call within a minute. The browser joins the room and opens the\nsocket at the same time, and sends the token as the socket's first\nmessage; a browser that cannot join the room ends the call (``/end``).\nThe call counts against the person's allowance once it is ready on the\nrelay.\n\n404 while the interview or voice is off for the person, though a call\nunder way can still be read, ended and finished; 409 once their\ninterview is over, or while a call of theirs is live (``call_id`` names\nit); 429 past their call allowance; 503 past the platform's voice budget\nor live-call ceiling, or while voice cannot be served. A 429 or 503 carries its wait\nin the body (``retry_after_seconds``) as well as in ``Retry-After``.\n\n``ending_pick`` is a tester's pick of the call's ending, honoured while\nthe ending picker is on for them and the arm fits a call, and ignored\notherwise.",
+        "description": "Start a voice call for the person's onboarding interview.\n\nAnswers with the call's room, which carries its audio, and the browser's\ntoken for it, and with the relay's call socket and a start token good for\nthis one call within a minute. The browser joins the room and opens the\nsocket at the same time, and sends the token as the socket's first\nmessage; a browser that cannot join the room ends the call (``/end``).\nThe call counts against the person's allowance once it is ready on the\nrelay.\n\n404 while the interview or voice is off for the person, though a call\nunder way can still be read, ended and finished; 409 once their\ninterview is over, or while a call of theirs is live (``call_id`` names\nit); 429 past their call allowance; 503 past the platform's voice budget\nor live-call ceiling, or while voice cannot be served. A 429 or 503 carries its wait\nin the body (``retry_after_seconds``) as well as in ``Retry-After``.\n\n``ending_pick`` is a tester's pick of the call's ending, honoured while\nthe ending picker is on for them and the arm fits a call, and ignored\notherwise.\n\n``start_over`` asks for the call to start a fresh interview in place of\none that is over: instead of the 409, it is set aside once every other\ncheck passes. A live call still refuses it (409 ``call_in_progress``).",
         "operationId": "start_onboarding_voice_call",
         "requestBody": {
           "content": {
@@ -30848,6 +30848,11 @@
               { "type": "null" }
             ],
             "title": "Ending Pick"
+          },
+          "start_over": {
+            "type": "boolean",
+            "title": "Start Over",
+            "default": false
           }
         },
         "type": "object",
@@ -42564,6 +42569,11 @@
               { "type": "null" }
             ],
             "title": "Ending Pick"
+          },
+          "start_over": {
+            "type": "boolean",
+            "title": "Start Over",
+            "default": false
           }
         },
         "type": "object",
