@@ -34,7 +34,7 @@ export async function claimCodeEmail(
   context: AuthEmailContext,
   email: string,
 ): Promise<CodeEmailClaim> {
-  const key = createHash("sha256").update(email).digest("hex");
+  const key = createHash("sha256").update(email.toLowerCase()).digest("hex");
   try {
     const slot = await claimWindowSlot(
       context,

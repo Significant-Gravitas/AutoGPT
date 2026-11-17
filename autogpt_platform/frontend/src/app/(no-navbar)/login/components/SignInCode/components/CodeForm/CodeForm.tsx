@@ -1,12 +1,12 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { SIGN_IN_CODE_LENGTH } from "@/lib/auth/sign-in-code";
-import { SIGN_IN_CODE_INPUT_ID } from "../../helpers";
+import { SIGN_IN_CODE_INPUT_ID, type SignInCodeEnd } from "../../helpers";
 import { useCodeForm } from "./useCodeForm";
 
 interface Props {
   next: string | null;
-  onExpired: () => void;
+  onEnded: (end: SignInCodeEnd) => void;
   onWaitlisted: () => void;
 }
 

@@ -33,10 +33,10 @@ import { accountIDOf, providerConfirmedByCode } from "./sign-in-provider";
  * provider that vouched for addresses it never verified would open every
  * account that uses them.
  *
- * An address the provider didn't verify still joins nothing and creates
- * nothing, as before: anyone can open such a provider account with someone
- * else's address, so a code for it would only invite guessing. Better Auth
- * refuses those links before this hook runs; it refuses them here too.
+ * An address the provider didn't verify joins nothing and creates nothing:
+ * anyone can open such a provider account with someone else's address, so a
+ * code for it would only invite guessing. Better Auth refuses those links
+ * before this hook runs; it refuses them here too.
  *
  * The code can't be a link: the mailbox's owner could then approve someone
  * else's sign-in with a click. It is checked against the browser that started

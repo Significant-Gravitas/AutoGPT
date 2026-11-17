@@ -695,7 +695,9 @@ describe("the code", () => {
     const fifth = await browser.enterCode(wrong(code));
     const late = await browser.enterCode(code);
 
-    expect(await fifth.json()).toMatchObject({ code: "sign_in_code_expired" });
+    expect(await fifth.json()).toMatchObject({
+      code: "sign_in_code_out_of_tries",
+    });
     expect(await late.json()).toMatchObject({ code: "sign_in_code_expired" });
     expect(linkedAccounts(db, "github")).toEqual([]);
     expect(db.UserAuthSession).toEqual([]);
@@ -720,6 +722,20 @@ describe("the code", () => {
     expect(
       answers.filter((answer) => answer === "sign_in_code_invalid").length,
     ).toBeLessThanOrEqual(4);
+    // The sign-in ends once; every other answer says it's over.
+    expect(
+      answers.filter((answer) => answer === "sign_in_code_out_of_tries"),
+    ).toHaveLength(1);
+    expect(
+      answers.filter(
+        (answer) =>
+          ![
+            "sign_in_code_invalid",
+            "sign_in_code_out_of_tries",
+            "sign_in_code_expired",
+          ].includes(answer),
+      ),
+    ).toEqual([]);
     expect(await (await later.enterCode(code)).json()).toMatchObject({
       code: "sign_in_code_expired",
     });
@@ -761,6 +777,23 @@ describe("the code", () => {
     const again = await browser.enterCode(code);
 
     expect(await again.json()).toMatchObject({ code: "sign_in_code_expired" });
+  });
+
+  it("joins nothing once the account it was sent for is gone", async () => {
+    const { browser, db } = await waitingOnCode();
+    const code = emailedCode();
+    // The account is deleted while its code is on the way.
+    db.UserAuthIdentity.length = 0;
+    db.UserAuthAccount.length = 0;
+
+    const response = await browser.enterCode(code);
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: "signup_disabled" });
+    expect(db.UserAuthIdentity).toEqual([]);
+    expect(db.UserAuthAccount).toEqual([]);
+    expect(db.UserAuthSession).toEqual([]);
+    expect(browser.has("session_token")).toBe(false);
   });
 
   it("only finishes the sign-in in the browser that started it", async () => {
@@ -1004,6 +1037,37 @@ describe("the code", () => {
     expect(await past.json()).toMatchObject({ code: "sign_in_code_locked" });
     expect(again.searchParams.get("error")).toBe("sign_in_code_locked");
     expect(emailsOfType("sign_in_code")).toHaveLength(1);
+  });
+
+  it("ends the sign-in when a wrong code can't be counted", async () => {
+    const { browser, db } = await waitingOnCode();
+    const code = emailedCode();
+    // The database fails to record the address's wrong code.
+    dbGate.current = async (method, [query]) => {
+      const { model, data } = query as {
+        model?: string;
+        data?: { identifier?: unknown };
+      };
+      if (
+        method === "create" &&
+        model === "verification" &&
+        String(data?.identifier).startsWith("sign-in-code-wrong:")
+      ) {
+        throw new Error("database unavailable");
+      }
+    };
+
+    const uncounted = await browser.enterCode(wrong(code));
+    dbGate.current = null;
+    const late = await browser.enterCode(code);
+
+    expect(uncounted.status).toBe(503);
+    expect(await uncounted.json()).toMatchObject({
+      code: "sign_in_code_unchecked",
+    });
+    expect(await late.json()).toMatchObject({ code: "sign_in_code_expired" });
+    expect(linkedAccounts(db, "github")).toEqual([]);
+    expect(db.UserAuthSession).toEqual([]);
   });
 
   it("checks at most ten codes a minute from one IP address", async () => {

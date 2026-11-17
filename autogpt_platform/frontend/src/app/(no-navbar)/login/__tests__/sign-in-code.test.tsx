@@ -147,23 +147,53 @@ describe("LoginPage while a sign-in waits on its emailed code", () => {
     expect(pageLocation.href).toBe("http://localhost/");
   });
 
-  test("a sign-in that ran out offers the way back to the form", async () => {
-    answerStatus(PENDING);
+  test.each([
+    ["sign_in_code_expired", 400, "This sign-in has expired"],
+    ["sign_in_code_out_of_tries", 400, "Too many wrong codes"],
+    ["sign_in_code_locked", 429, "Codes are paused for this address"],
+    ["sign_in_code_unchecked", 503, "Something went wrong"],
+  ])(
+    "after %s, says why the sign-in ended and offers the way back to the form",
+    async (code, status, title) => {
+      answerStatus(PENDING);
+      server.use(
+        http.post("*/api/auth/sign-in-code/verify", () =>
+          HttpResponse.json({ code, message: "" }, { status }),
+        ),
+      );
+      openLogin(WAITING);
+
+      await enterCode("123456");
+      expect(await screen.findByRole("heading", { name: title })).toBeDefined();
+      expect(screen.queryByLabelText("Code")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Back to log in" }));
+
+      expect(mocks.replace).toHaveBeenCalledWith("/login?next=%2Fmarketplace");
+    },
+  );
+
+  test("a new code refused because the address is locked ends the sign-in", async () => {
+    answerStatus({ ...PENDING, resendInSeconds: 0 });
     server.use(
-      http.post("*/api/auth/sign-in-code/verify", () =>
+      http.post("*/api/auth/sign-in-code/resend", () =>
         HttpResponse.json(
-          { code: "sign_in_code_expired", message: "Expired." },
-          { status: 400 },
+          { code: "sign_in_code_locked", message: "" },
+          { status: 429 },
         ),
       ),
     );
     openLogin(WAITING);
 
-    await enterCode("123456");
-    expect(await screen.findByText("This sign-in has expired")).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Back to log in" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Send a new code" }),
+    );
 
-    expect(mocks.replace).toHaveBeenCalledWith("/login?next=%2Fmarketplace");
+    expect(
+      await screen.findByRole("heading", {
+        name: "Codes are paused for this address",
+      }),
+    ).toBeDefined();
+    expect(mocks.toast).not.toHaveBeenCalled();
   });
 
   test("Wrong account? goes back to the form, keeping the deep link", async () => {
@@ -241,7 +271,9 @@ describe("LoginPage while a sign-in waits on its emailed code", () => {
       }),
     );
     expect(resent).toBe(true);
-    expect(screen.getByText(/You can ask for another in \d+s/)).toBeDefined();
+    expect(
+      await screen.findByText(/You can ask for another in \d+s/),
+    ).toBeDefined();
     expect(
       (
         screen.getByRole("button", {

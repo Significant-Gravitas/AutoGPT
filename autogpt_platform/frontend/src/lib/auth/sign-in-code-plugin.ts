@@ -19,7 +19,9 @@ import {
 import {
   codeEmailRefused,
   lockedOutError,
+  outOfTriesError,
   tooSoon,
+  uncheckedError,
   wrongCode,
 } from "./sign-in-code-errors";
 import { isLockedOut, recordWrongCode } from "./sign-in-code-lockout";
@@ -33,6 +35,7 @@ import {
   consumePending,
   findPending,
   MAX_CODE_ATTEMPTS,
+  type Pending,
   replacePending,
   restorePending,
   secondsUntilResend,
@@ -104,15 +107,21 @@ async function verify(ctx: GenericEndpointContext, typed: string) {
     forgetPendingCookie(ctx);
     return finishSignIn(ctx, record);
   }
-  if (attempt !== null && !(await recordWrongCode(ctx.context, record.email))) {
-    // The address has had too many wrong codes: none for it for a while.
-    await consumePending(ctx.context, pending);
-    throw lockedOutError(ctx);
-  }
+  if (attempt !== null) await countWrongCode(ctx, pending);
   if (attempt !== null && attempt < MAX_CODE_ATTEMPTS - 1) throw wrongCode();
   // The code's last try: the sign-in ends, unless a new code replaced this one.
-  if (await consumePending(ctx.context, pending)) throw expiredError(ctx);
+  if (await consumePending(ctx.context, pending)) throw outOfTriesError(ctx);
   throw await afterLostVersion(ctx);
+}
+
+// Past the address's limit the sign-in ends, and no code goes to the address
+// for a while. It ends too when the wrong code can't be counted, so an outage
+// can't let guesses past the limit.
+async function countWrongCode(ctx: GenericEndpointContext, pending: Pending) {
+  const counted = await recordWrongCode(ctx.context, pending.record.email);
+  if (counted === "counted") return;
+  await consumePending(ctx.context, pending);
+  throw counted === "locked" ? lockedOutError(ctx) : uncheckedError(ctx);
 }
 
 // A newer code replaced the one this check read, or another request used it

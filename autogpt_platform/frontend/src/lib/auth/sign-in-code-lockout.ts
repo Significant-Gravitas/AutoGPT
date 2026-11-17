@@ -16,23 +16,23 @@ export function wrongCodeIdentifier(email: string) {
 
 /**
  * Counts a wrong code against its address: one row each, which only one
- * request can insert, so codes checked at once all count. False once the
- * address has none left, or when the count can't be kept.
+ * request can insert, so codes checked at once all count. "locked" once the
+ * address has none left; "failed" when the count can't be kept.
  */
 export async function recordWrongCode(
   context: AuthEmailContext,
   email: string,
-) {
+): Promise<"counted" | "locked" | "failed"> {
   try {
     const slot = await claimWindowSlot(
       context,
       wrongCodeIdentifier(email),
       WRONG_CODES_PER_ADDRESS,
     );
-    return slot !== null;
+    return slot === null ? "locked" : "counted";
   } catch (error) {
     logFailure("Failed to count a wrong sign-in code", error);
-    return false;
+    return "failed";
   }
 }
 

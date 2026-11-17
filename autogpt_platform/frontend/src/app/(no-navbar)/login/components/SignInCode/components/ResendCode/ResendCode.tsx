@@ -1,12 +1,13 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { SIGN_IN_CODE_TTL_SECONDS } from "@/lib/auth/sign-in-code";
+import type { SignInCodeEnd } from "../../helpers";
 import { useResendCode } from "./useResendCode";
 
 interface Props {
   email: string | null;
   resendAt: number;
-  onExpired: () => void;
+  onEnded: (end: SignInCodeEnd) => void;
   onResent: () => void;
 }
 

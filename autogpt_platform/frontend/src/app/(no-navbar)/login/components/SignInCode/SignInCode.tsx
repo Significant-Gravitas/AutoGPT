@@ -3,7 +3,7 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { WaitlistErrorContent } from "@/components/auth/WaitlistErrorContent";
 import { CodeEntry } from "./components/CodeEntry/CodeEntry";
-import { ExpiredSignIn } from "./components/ExpiredSignIn/ExpiredSignIn";
+import { EndedSignIn } from "./components/EndedSignIn/EndedSignIn";
 import { useSignInCode } from "./useSignInCode";
 
 interface Props {
@@ -24,14 +24,16 @@ export function SignInCode({ next, onBack }: Props) {
   if (signIn.screen === "waitlisted") {
     return <WaitlistErrorContent onBackToLogin={onBack} />;
   }
-  if (signIn.screen === "expired") return <ExpiredSignIn onBack={onBack} />;
+  if (signIn.screen !== "code") {
+    return <EndedSignIn end={signIn.screen} onBack={onBack} />;
+  }
   return (
     <CodeEntry
       next={next}
       email={signIn.email}
       providerName={signIn.providerName}
       resendAt={signIn.resendAt}
-      onExpired={signIn.handleExpired}
+      onEnded={signIn.handleEnded}
       onWaitlisted={signIn.handleWaitlisted}
       onBack={onBack}
     />

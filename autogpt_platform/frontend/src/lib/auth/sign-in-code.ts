@@ -19,6 +19,10 @@ export const SIGN_IN_CODE_TOO_SOON = "sign_in_code_too_soon";
 export const SIGN_IN_CODE_LIMIT = "sign_in_code_limit";
 export const SIGN_IN_CODE_UNSENT = "sign_in_code_unsent";
 export const SIGN_IN_CODE_LOCKED = "sign_in_code_locked";
+// The code's last try was wrong.
+export const SIGN_IN_CODE_OUT_OF_TRIES = "sign_in_code_out_of_tries";
+// A wrong code that couldn't be counted against its address.
+export const SIGN_IN_CODE_UNCHECKED = "sign_in_code_unchecked";
 
 // Under Better Auth's /api/auth.
 export const SIGN_IN_CODE_PATHS = {

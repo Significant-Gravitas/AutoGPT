@@ -7,8 +7,8 @@ import type { PendingRecord } from "./sign-in-code-store";
 import { findProvider, markConfirmedByCode } from "./sign-in-provider";
 
 // Better Auth's own sign-in for the provider account the callback saw, with
-// the address now proven. It links that account to the address's account, or
-// creates one, through every database hook, then starts the session. The
+// the address now proven. It links that account to the address's account
+// through every database hook, then starts the session. The
 // account row gets no provider tokens: the callback's were never kept, and
 // nothing reads a sign-in account's tokens (`/get-access-token` is off). The
 // provider's next sign-in stores them.

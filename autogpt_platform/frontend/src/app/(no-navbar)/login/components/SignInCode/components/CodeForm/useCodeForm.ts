@@ -3,16 +3,17 @@ import { type FormEvent, useEffect, useState } from "react";
 import {
   SIGN_IN_CODE_COPY,
   SIGN_IN_CODE_INPUT_ID,
+  type SignInCodeEnd,
   submitSignInCode,
 } from "../../helpers";
 
 interface Args {
   next: string | null;
-  onExpired: () => void;
+  onEnded: (end: SignInCodeEnd) => void;
   onWaitlisted: () => void;
 }
 
-export function useCodeForm({ next, onExpired, onWaitlisted }: Args) {
+export function useCodeForm({ next, onEnded, onWaitlisted }: Args) {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -34,7 +35,7 @@ export function useCodeForm({ next, onExpired, onWaitlisted }: Args) {
       return;
     }
     setIsVerifying(false);
-    if (outcome?.kind === "expired") onExpired();
+    if (outcome?.kind === "ended") onEnded(outcome.end);
     else if (outcome?.kind === "waitlisted") onWaitlisted();
     else if (outcome?.kind === "invalid") setError(SIGN_IN_CODE_COPY.invalid);
     else setError(outcome?.message ?? SIGN_IN_CODE_COPY.failed);

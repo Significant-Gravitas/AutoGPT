@@ -3,18 +3,19 @@ import {
   isWaitlistSignInError,
 } from "@/lib/auth/microsoft-login";
 import {
+  isSignInProvider,
   type PendingSignInCode,
   SIGN_IN_CODE_EXPIRED,
   SIGN_IN_CODE_INVALID,
   SIGN_IN_CODE_LIMIT,
   SIGN_IN_CODE_LOCKED,
+  SIGN_IN_CODE_OUT_OF_TRIES,
   SIGN_IN_CODE_PATHS,
-  SIGN_IN_CODE_START_ERRORS,
   SIGN_IN_CODE_TOO_SOON,
+  SIGN_IN_CODE_UNCHECKED,
   SIGN_IN_CODE_UNSENT,
 } from "@/lib/auth/sign-in-code";
 import type { LoginProvider } from "@/types/auth";
-import { isSignInProvider } from "@/lib/auth/sign-in-code";
 
 // Focused when the screen replaces the form: on a phone that opens the number
 // keyboard, which offers the emailed code.
@@ -30,16 +31,25 @@ export const SIGN_IN_CODE_COPY = {
   failed: "That didn't work. Try again in a moment.",
 } as const;
 
+// The answers after which the sign-in is over, each with its own screen.
+const END_CODES = [
+  SIGN_IN_CODE_EXPIRED,
+  SIGN_IN_CODE_OUT_OF_TRIES,
+  SIGN_IN_CODE_LOCKED,
+  SIGN_IN_CODE_UNCHECKED,
+] as const;
+export type SignInCodeEnd = (typeof END_CODES)[number];
+
 export type SignInCodeOutcome =
   | { kind: "signed-in"; provider: LoginProvider }
   | { kind: "invalid" }
-  | { kind: "expired" }
+  | { kind: "ended"; end: SignInCodeEnd }
   | { kind: "waitlisted" }
   | { kind: "refused"; message: string };
 
 export type ResendOutcome =
   | { kind: "sent"; resendInSeconds: number }
-  | { kind: "expired" }
+  | { kind: "ended"; end: SignInCodeEnd }
   | { kind: "failed"; message: string };
 
 interface ErrorBody {
@@ -73,13 +83,7 @@ export async function submitSignInCode(
   }
   const errorCode = typeof body.code === "string" ? body.code : null;
   if (errorCode === SIGN_IN_CODE_INVALID) return { kind: "invalid" };
-  if (errorCode === SIGN_IN_CODE_EXPIRED) return { kind: "expired" };
-  if (errorCode === SIGN_IN_CODE_LOCKED) {
-    return {
-      kind: "refused",
-      message: SIGN_IN_CODE_START_ERRORS[SIGN_IN_CODE_LOCKED],
-    };
-  }
+  if (isEnd(errorCode)) return { kind: "ended", end: errorCode };
   if (response.status === 429) {
     return { kind: "refused", message: SIGN_IN_CODE_COPY.rateLimited };
   }
@@ -103,18 +107,12 @@ export async function resendSignInCode(): Promise<ResendOutcome> {
       resendInSeconds: Number(body.resendInSeconds) || 0,
     };
   }
+  if (isEnd(body.code)) return { kind: "ended", end: body.code };
   switch (body.code) {
-    case SIGN_IN_CODE_EXPIRED:
-      return { kind: "expired" };
     case SIGN_IN_CODE_TOO_SOON:
       return { kind: "failed", message: SIGN_IN_CODE_COPY.tooSoon };
     case SIGN_IN_CODE_LIMIT:
       return { kind: "failed", message: SIGN_IN_CODE_COPY.limit };
-    case SIGN_IN_CODE_LOCKED:
-      return {
-        kind: "failed",
-        message: SIGN_IN_CODE_START_ERRORS[SIGN_IN_CODE_LOCKED],
-      };
     case SIGN_IN_CODE_UNSENT:
       return { kind: "failed", message: SIGN_IN_CODE_COPY.unsent };
     default:
@@ -126,6 +124,10 @@ export async function resendSignInCode(): Promise<ResendOutcome> {
             : SIGN_IN_CODE_COPY.failed,
       };
   }
+}
+
+function isEnd(code: unknown): code is SignInCodeEnd {
+  return END_CODES.some((end) => end === code);
 }
 
 function post(path: string, body: object) {
