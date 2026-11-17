@@ -43,6 +43,9 @@ function namesAPerson(role: string) {
 }
 
 export function expertRoleLabel(role: string) {
-  const displayRole = ROLE_LABELS[role] ?? role;
+  // Own keys only: a role like "constructor" must not read Object's.
+  const displayRole = Object.prototype.hasOwnProperty.call(ROLE_LABELS, role)
+    ? ROLE_LABELS[role]
+    : role;
   return namesAPerson(displayRole) ? displayRole : `${displayRole} expert`;
 }

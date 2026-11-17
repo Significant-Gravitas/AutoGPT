@@ -41,7 +41,7 @@ export function useDictation({ getDraft, onText }: Args) {
   const [error, setError] = useState<string | null>(null);
   // Async steps read the phase after an await; state there would be stale.
   const phaseRef = useRef<Phase>("idle");
-  const isStarting = useRef(false);
+  const isAudioBusy = useRef(false);
   const isMounted = useRef(true);
   const autoStop = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -65,8 +65,8 @@ export function useDictation({ getDraft, onText }: Args) {
   }
 
   async function start() {
-    if (phaseRef.current !== "idle" || isStarting.current) return;
-    isStarting.current = true;
+    if (phaseRef.current !== "idle" || isAudioBusy.current) return;
+    isAudioBusy.current = true;
     setError(null);
     try {
       const permission = await requestRecordingPermissionsAsync();
@@ -88,7 +88,7 @@ export function useDictation({ getDraft, onText }: Args) {
       setError(NOT_CAUGHT_MESSAGE);
       await stopRecorder();
     } finally {
-      isStarting.current = false;
+      isAudioBusy.current = false;
     }
   }
 
@@ -96,7 +96,13 @@ export function useDictation({ getDraft, onText }: Args) {
     if (phaseRef.current !== "recording") return;
     clearAutoStop();
     setPhase("idle");
-    await stopRecorder();
+    // start() waits: this stop's audio-mode reset would end a new recording.
+    isAudioBusy.current = true;
+    try {
+      await stopRecorder();
+    } finally {
+      isAudioBusy.current = false;
+    }
   }
 
   async function confirm() {

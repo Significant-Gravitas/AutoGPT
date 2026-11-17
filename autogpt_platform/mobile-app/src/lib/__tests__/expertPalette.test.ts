@@ -35,6 +35,12 @@ describe("expertPalette", () => {
     expect(expertTint({ role: "Head of AI", categories: ["sales"] })).toBe(OTTO_TINT);
   });
 
+  it("falls back for a portrait id that names an inherited property", () => {
+    expect(
+      expertTint({ avatarUrl: "/autogpt-characters/v2.1/constructor/neutral/128.webp" }),
+    ).toBe(palette.general.hex);
+  });
+
   it("takes a managed identity's family from its URL", () => {
     expect(
       expertTint({

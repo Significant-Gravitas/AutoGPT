@@ -20,6 +20,16 @@ describe("splitMarkdownBlocks", () => {
     expect(splitMarkdownBlocks(text)).toEqual([text]);
   });
 
+  it("does not close a fence on a line that only starts with the marker", () => {
+    const text = "~~~md\n~~~js\n\nconst x = 1;\n~~~\n\nAfter";
+    expect(splitMarkdownBlocks(text)).toEqual(["~~~md\n~~~js\n\nconst x = 1;\n~~~\n", "After"]);
+  });
+
+  it("keeps a reply with a reference definition whole, so its links resolve", () => {
+    const text = "See [the docs][ref].\n\n[ref]: https://example.com";
+    expect(splitMarkdownBlocks(text)).toEqual([text]);
+  });
+
   it("keeps an unfinished fence open while it streams", () => {
     const text = "Intro\n\n```\ncode\n\nmore";
     expect(splitMarkdownBlocks(text)).toHaveLength(2);

@@ -43,6 +43,7 @@ export function statusLine(
   expert: Pick<Expert, "setup_status" | "schedules_paused_at" | "last_run_at">,
   now = Date.now(),
 ) {
+  if (expert.setup_status === "failed") return "Setup failed";
   if (expert.setup_status !== "ready") return "Getting set up";
   if (expert.schedules_paused_at) return "Paused";
   if (expert.last_run_at) {

@@ -39,7 +39,7 @@ export function AppearancePicker() {
               key={option.value}
               accessibilityRole="radio"
               accessibilityLabel={option.label}
-              accessibilityState={{ selected: isSelected }}
+              accessibilityState={{ checked: isSelected }}
               onPress={() => pick(option.value)}
               style={[styles.segment, isSelected && styles.selected]}
             >
