@@ -1,7 +1,11 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { makeCronExpression } from "@/lib/cron-expression-utils";
+import {
+  makeCronExpression,
+  parseCustomInterval,
+} from "@/lib/cron-expression-utils";
+import { type CustomIntervalDraft } from "@/lib/hooks/useCustomIntervalField";
 import { FrequencySelect } from "./FrequencySelect";
 import { WeeklyPicker } from "./WeeklyPicker";
 import { MonthlyPicker } from "./MonthlyPicker";
@@ -33,10 +37,10 @@ export function CronScheduler({
   const [selectedWeekDays, setSelectedWeekDays] = useState<number[]>([]);
   const [selectedMonthDays, setSelectedMonthDays] = useState<number[]>([]);
   const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
-  const [customInterval, setCustomInterval] = useState<{
-    value: number;
-    unit: "minutes" | "hours" | "days";
-  }>({ value: 1, unit: "minutes" });
+  const [customInterval, setCustomInterval] = useState<CustomIntervalDraft>({
+    value: "1",
+    unit: "minutes",
+  });
 
   // Parse provided cron only once to avoid feedback loops
   const parsedOnceRef = useRef(false);
@@ -94,7 +98,7 @@ export function CronScheduler({
       setFrequency("custom");
       const interval = parseInt(minute.substring(2));
       if (!isNaN(interval))
-        setCustomInterval({ value: interval, unit: "minutes" });
+        setCustomInterval({ value: String(interval), unit: "minutes" });
       return;
     }
 
@@ -108,7 +112,7 @@ export function CronScheduler({
       setFrequency("custom");
       const interval = parseInt(hour.substring(2));
       if (!isNaN(interval))
-        setCustomInterval({ value: interval, unit: "hours" });
+        setCustomInterval({ value: String(interval), unit: "hours" });
       return;
     }
 
@@ -122,7 +126,7 @@ export function CronScheduler({
       setFrequency("custom");
       const interval = parseInt(dayOfMonth.substring(2));
       if (!isNaN(interval)) {
-        setCustomInterval({ value: interval, unit: "days" });
+        setCustomInterval({ value: String(interval), unit: "days" });
         const hourNum = parseInt(hour);
         const minuteNum = parseInt(minute);
         if (!isNaN(hourNum) && !isNaN(minuteNum))
@@ -210,7 +214,10 @@ export function CronScheduler({
         months: frequency === "yearly" ? selectedMonths : [],
         customInterval:
           frequency === "custom"
-            ? customInterval
+            ? {
+                unit: customInterval.unit,
+                value: parseCustomInterval(customInterval.value),
+              }
             : { unit: "minutes", value: 1 },
       }),
     [

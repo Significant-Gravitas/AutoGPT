@@ -13,9 +13,13 @@ import { Button } from "@/components/atoms/Button/Button";
 import {
   CronFrequency,
   CUSTOM_INTERVAL_MAX,
-  clampCustomIntervalValue,
   makeCronExpression,
+  parseCustomInterval,
 } from "@/lib/cron-expression-utils";
+import {
+  type CustomIntervalDraft,
+  useCustomIntervalField,
+} from "@/lib/hooks/useCustomIntervalField";
 
 const weekDays = [
   { label: "Su", value: 0 },
@@ -57,10 +61,14 @@ export function CronScheduler({
   const [selectedWeekDays, setSelectedWeekDays] = useState<number[]>([]);
   const [selectedMonthDays, setSelectedMonthDays] = useState<number[]>([]);
   const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
-  const [customInterval, setCustomInterval] = useState<{
-    value: number;
-    unit: "minutes" | "hours" | "days";
-  }>({ value: 1, unit: "minutes" });
+  const [customInterval, setCustomInterval] = useState<CustomIntervalDraft>({
+    value: "1",
+    unit: "minutes",
+  });
+  const intervalField = useCustomIntervalField({
+    interval: customInterval,
+    onChange: setCustomInterval,
+  });
 
   // Parse initial cron expression and set state
   useEffect(() => {
@@ -111,7 +119,7 @@ export function CronScheduler({
       setFrequency("custom");
       const interval = parseInt(minute.substring(2));
       if (!isNaN(interval)) {
-        setCustomInterval({ value: interval, unit: "minutes" });
+        setCustomInterval({ value: String(interval), unit: "minutes" });
       }
     } else if (
       hour.startsWith("*/") &&
@@ -123,7 +131,7 @@ export function CronScheduler({
       setFrequency("custom");
       const interval = parseInt(hour.substring(2));
       if (!isNaN(interval)) {
-        setCustomInterval({ value: interval, unit: "hours" });
+        setCustomInterval({ value: String(interval), unit: "hours" });
       }
     } else if (
       dayOfMonth.startsWith("*/") &&
@@ -135,7 +143,7 @@ export function CronScheduler({
       setFrequency("custom");
       const interval = parseInt(dayOfMonth.substring(2));
       if (!isNaN(interval)) {
-        setCustomInterval({ value: interval, unit: "days" });
+        setCustomInterval({ value: String(interval), unit: "days" });
         const hourNum = parseInt(hour);
         const minuteNum = parseInt(minute);
         if (!isNaN(hourNum) && !isNaN(minuteNum)) {
@@ -214,7 +222,12 @@ export function CronScheduler({
             : [],
       months: frequency === "yearly" ? selectedMonths : [],
       customInterval:
-        frequency === "custom" ? customInterval : { unit: "minutes", value: 1 },
+        frequency === "custom"
+          ? {
+              unit: customInterval.unit,
+              value: parseCustomInterval(customInterval.value),
+            }
+          : { unit: "minutes", value: 1 },
     });
     onCronExpressionChange(cronExpr);
   }, [
@@ -273,42 +286,37 @@ export function CronScheduler({
         )}
 
         {frequency === "custom" && (
-          <div className="flex items-center gap-2">
-            <Label>Every</Label>
-            <BaseInput
-              type="number"
-              min="1"
-              max={CUSTOM_INTERVAL_MAX[customInterval.unit]}
-              className="w-20"
-              value={customInterval.value}
-              onChange={(e) =>
-                setCustomInterval({
-                  ...customInterval,
-                  value: clampCustomIntervalValue(
-                    customInterval.unit,
-                    parseInt(e.target.value),
-                  ),
-                })
-              }
-            />
-            <Select
-              value={customInterval.unit}
-              onValueChange={(value: any) =>
-                setCustomInterval({
-                  unit: value,
-                  value: clampCustomIntervalValue(value, customInterval.value),
-                })
-              }
-            >
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="minutes">Minutes</SelectItem>
-                <SelectItem value="hours">Hours</SelectItem>
-                <SelectItem value="days">Days</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label>Every</Label>
+              <BaseInput
+                type="number"
+                min="1"
+                max={CUSTOM_INTERVAL_MAX[customInterval.unit]}
+                className="w-20"
+                value={customInterval.value}
+                onChange={intervalField.handleValueChange}
+                onBlur={intervalField.handleBlur}
+              />
+              <Select
+                value={customInterval.unit}
+                onValueChange={intervalField.handleUnitChange}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="minutes">Minutes</SelectItem>
+                  <SelectItem value="hours">Hours</SelectItem>
+                  <SelectItem value="days">Days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {intervalField.error && (
+              <Text variant="body-tight" tone="error">
+                {intervalField.error}
+              </Text>
+            )}
           </div>
         )}
       </div>

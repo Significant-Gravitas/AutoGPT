@@ -3,18 +3,21 @@
 import React from "react";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
+import { CUSTOM_INTERVAL_MAX } from "@/lib/cron-expression-utils";
 import {
-  CUSTOM_INTERVAL_MAX,
-  clampCustomIntervalValue,
-} from "@/lib/cron-expression-utils";
+  type CustomIntervalDraft,
+  useCustomIntervalField,
+} from "@/lib/hooks/useCustomIntervalField";
 
-export function CustomInterval({
-  value,
-  onChange,
-}: {
-  value: { value: number; unit: "minutes" | "hours" | "days" };
-  onChange: (v: { value: number; unit: "minutes" | "hours" | "days" }) => void;
-}) {
+interface Props {
+  value: CustomIntervalDraft;
+  onChange: (v: CustomIntervalDraft) => void;
+}
+
+export function CustomInterval({ value, onChange }: Props) {
+  const { error, handleValueChange, handleBlur, handleUnitChange } =
+    useCustomIntervalField({ interval: value, onChange });
+
   return (
     <div className="flex items-end gap-3">
       <Input
@@ -24,15 +27,9 @@ export function CustomInterval({
         min={1}
         max={CUSTOM_INTERVAL_MAX[value.unit]}
         value={value.value}
-        onChange={(e) =>
-          onChange({
-            ...value,
-            value: clampCustomIntervalValue(
-              value.unit,
-              parseInt(e.target.value),
-            ),
-          })
-        }
+        onChange={handleValueChange}
+        onBlur={handleBlur}
+        error={error}
         className="max-w-24"
         size="small"
       />
@@ -41,13 +38,7 @@ export function CustomInterval({
         label="Interval"
         size="small"
         value={value.unit}
-        onValueChange={(v) => {
-          const unit = v as "minutes" | "hours" | "days";
-          onChange({
-            unit,
-            value: clampCustomIntervalValue(unit, value.value),
-          });
-        }}
+        onValueChange={handleUnitChange}
         options={[
           { label: "Minutes", value: "minutes" },
           { label: "Hours", value: "hours" },

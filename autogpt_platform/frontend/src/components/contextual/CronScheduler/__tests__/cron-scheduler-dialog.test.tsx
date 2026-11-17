@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
 
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
@@ -14,5 +15,32 @@ describe("CronExpressionDialog", () => {
 
     expect(setOpen).toHaveBeenCalledWith(false);
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  test("a custom interval keeps what is typed and submits only once it is in range (#15275)", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<CronExpressionDialog open setOpen={vi.fn()} onSubmit={onSubmit} />);
+
+    const [repeat] = await screen.findAllByRole("combobox");
+    await user.click(repeat);
+    await user.click(await screen.findByRole("option", { name: "Custom" }));
+    const field = screen.getByRole<HTMLInputElement>("spinbutton");
+
+    await user.clear(field);
+    expect(field.value).toBe("");
+    await user.type(field, "90");
+    expect(field.value).toBe("90");
+    expect(screen.queryByText("Enter 1 to 60 minutes")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.getByText("Enter 1 to 60 minutes")).toBeDefined();
+    expect(field.value).toBe("90");
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    await user.clear(field);
+    await user.type(field, "60");
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith("0 * * * *");
   });
 });
