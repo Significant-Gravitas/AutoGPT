@@ -24,7 +24,11 @@ from backend.executor.utils import (
     CancelExecutionEvent,
     create_execution_queue_config,
 )
-from backend.util.clients import get_async_execution_queue, get_scheduler_client
+from backend.util.clients import (
+    get_async_execution_queue,
+    get_scheduler_client,
+    read_schedules,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -380,7 +384,7 @@ async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
     # mis-counted as `validation_failed`. Copilot-turn schedules are
     # session-scoped (not orphan-prone in the same way) and surface in the
     # copilot UI, not in the platform health dashboard.
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
 
     # Filter user vs system schedules
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
@@ -647,7 +651,7 @@ async def get_all_schedules_details(
 
     # Get all graph schedules — diagnostics only surfaces graph-kind schedules
     # (copilot-turn followups are session-scoped and shown in the copilot UI).
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
 
     # Filter to user schedules only
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
@@ -702,7 +706,7 @@ async def get_orphaned_schedules_details() -> List[OrphanedScheduleDetail]:
     scheduler = get_scheduler_client()
 
     # Get all graph schedules — orphan detection is graph-specific.
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
 
     # Detect orphans with categorization
@@ -755,7 +759,7 @@ async def cleanup_orphaned_schedules_bulk(
     # Fetch all graph schedules once to avoid N+1 queries — orphan cleanup
     # is graph-specific (copilot-turn schedules self-clean via
     # `_self_delete_copilot_turn_schedule`).
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
     schedule_map = {s.id: s for s in all_schedules}
 
     # Delete schedules in parallel

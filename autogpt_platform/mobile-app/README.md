@@ -12,7 +12,8 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 - **Steps:** what the expert is doing shows as a live list and folds to one line when the reply lands.
 - **Attach and dictate:** in a chat, attach photos and files; anywhere the composer is, dictate into the field.
 - **Chat panel:** in an expert's chat, their profile with Activity (upcoming routines, recent runs, computer state) and Library (files) tabs; in a chat with Otto, the chat's files. Share the chat from its top bar.
-- **Team:** the experts you have hired; tap one to chat. Create a new expert from the header.
+- **Team:** the experts you have hired; tap one to chat. Create a new expert from the header, or hire one from the Marketplace.
+- **Marketplace:** every expert you can hire, with search and areas. Hire from the list or from an expert's page, which shows what they do and their skills; the new expert says hello in their first chat.
 - **Settings:** the web `/settings` page in a WebView, reached from the user row at the foot of the drawer.
 - **Themes:** light and dark, following the phone's setting.
 

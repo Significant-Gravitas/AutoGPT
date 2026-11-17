@@ -690,16 +690,16 @@ def test_qwen3_8_max_0902_bills_at_authored_rates():
 
 
 def test_qwen4_max_bills_at_authored_rates():
-    """Qwen 4 Max (OpenRouter, $1.50/$4.50 per 1M, $0.075/1M cached read,
-    $1.875/1M cache write) must match the authored catalog entry."""
+    """Qwen 4 Max (OpenRouter, $1.425/$4.275 per 1M, $0.07125/1M cached
+    read, $1.78125/1M cache write) must match the authored catalog entry."""
     qwen = LLMModel("qwen/qwen4-max")
     assert qwen is LLMModel.QWEN4_MAX
     assert MODEL_COST[qwen] == 4
     assert TOKEN_COST[qwen].model_dump() == {
-        "input": 225.0,
-        "output": 675.0,
-        "cache_read": 11.25,
-        "cache_creation": 281.25,
+        "input": 213.75,
+        "output": 641.25,
+        "cache_read": 10.6875,
+        "cache_creation": 267.1875,
     }
     assert MODEL_METADATA[qwen].max_output_tokens == 393216
     entry = next(m for m in CATALOG.models if m.slug == "qwen/qwen4-max")

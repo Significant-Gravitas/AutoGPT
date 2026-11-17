@@ -14,6 +14,8 @@ export interface Expert {
   last_run_status: string | null;
   schedules_paused_at: string | null;
   setup_status: string;
+  /** The roster template this expert was hired from; null for a created one. */
+  source_template_id: string | null;
 }
 
 export const expertKeys = {
@@ -24,6 +26,28 @@ export function listExperts() {
   return apiRequest<Expert[]>("/api/experts");
 }
 
+export interface BundledSkill {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+}
+
+/** A roster expert as the marketplace shows it. */
+export interface ExpertTemplate extends Expert {
+  bio: string | null;
+  bundled_skills: BundledSkill[];
+}
+
+export const templateKeys = {
+  list: ["expert-templates"] as const,
+};
+
+// Unpaginated: the roster is small, and the app filters it on the phone.
+export function listTemplates() {
+  return apiRequest<ExpertTemplate[]>("/api/experts/templates");
+}
+
 export interface CreateExpertBody {
   name: string;
   role: string | null;
@@ -32,48 +56,61 @@ export interface CreateExpertBody {
   color: string | null;
 }
 
-interface RaiseResult {
+interface ExpertResult {
   expert: Expert;
 }
 
-/** A refused create; a 409 names the limit it hit in `code` and `limit`. */
-export class CreateExpertError extends ApiError {
+/** A refused create or hire; a 409 names the limit it hit in `code` and `limit`. */
+export class ExpertLimitError extends ApiError {
   code: string | null;
   limit: number | null;
 
   constructor(status: number, message: string, code: string | null, limit: number | null) {
     super(status, message);
-    this.name = "CreateExpertError";
+    this.name = "ExpertLimitError";
     this.code = code;
     this.limit = limit;
   }
 }
 
-// Not `apiRequest`: its error keeps only a string `detail`, and the limit
-// a 409 hit arrives as `{ code, limit }`.
-export async function createExpert(body: CreateExpertBody) {
-  const mark = sessionMark();
-  let response = await postRaise(body);
-  if (response.status === 401) {
-    // Never create the expert for an account that signed in after this started.
-    assertSameSession(mark);
-    clearAccessToken();
-    response = await postRaise(body);
-    assertSameSession(mark);
-  }
-  if (!response.ok) throw await createExpertError(response);
-  return (await response.json()) as RaiseResult;
+export function createExpert(body: CreateExpertBody) {
+  return postExpertJSON("/api/experts/raise", body);
 }
 
-async function postRaise(body: CreateExpertBody) {
-  return fetch(apiUrl("/api/experts/raise"), {
+// No `surface`: the server then sends the new expert's hello itself.
+export function hireExpert(templateID: string) {
+  return postExpertJSON("/api/experts", { template_id: templateID });
+}
+
+// Not `apiRequest`: its error keeps only a string `detail`, and the limit
+// a 409 hit arrives as `{ code, limit }`.
+async function postExpertJSON(path: string, body: unknown) {
+  const mark = sessionMark();
+  let response = await post(path, body);
+  if (response.status === 401) {
+    // Never act for an account that signed in after this started.
+    assertSameSession(mark);
+    clearAccessToken();
+    response = await post(path, body);
+    assertSameSession(mark);
+  }
+  if (!response.ok) {
+    const error = await limitError(response);
+    assertSameSession(mark);
+    throw error;
+  }
+  return (await response.json()) as ExpertResult;
+}
+
+async function post(path: string, body: unknown) {
+  return fetch(apiUrl(path), {
     method: "POST",
     headers: { ...(await authHeaders()), "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 }
 
-async function createExpertError(response: Response) {
+async function limitError(response: Response) {
   let detail: unknown = null;
   try {
     detail = ((await response.json()) as { detail?: unknown }).detail ?? null;
@@ -83,7 +120,7 @@ async function createExpertError(response: Response) {
   const fields = typeof detail === "object" && detail !== null
     ? (detail as { code?: unknown; limit?: unknown })
     : {};
-  return new CreateExpertError(
+  return new ExpertLimitError(
     response.status,
     typeof detail === "string" ? detail : `Request failed (${response.status})`,
     typeof fields.code === "string" ? fields.code : null,
