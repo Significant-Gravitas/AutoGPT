@@ -1,14 +1,9 @@
 import { Add01Icon, ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
-import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import type { ReactNode } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
-import Animated, { LinearTransition } from "react-native-reanimated";
+import { TextInput, View } from "react-native";
 
 import { IconButton } from "@/components/IconButton";
-import { createStyles, radius, spacing, type, useColors, useScheme } from "@/lib/theme";
-
-// A field that grows a line eases into its new height.
-const grow = LinearTransition.duration(140);
+import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 interface Props {
   text: string;
@@ -24,10 +19,9 @@ interface Props {
   trailing?: ReactNode;
   /** Stands in for the send button, e.g. dictation while the field is empty. */
   action?: ReactNode;
-  /** `card` puts the text above a row of buttons, with no outline of its own. */
-  layout?: "bar" | "card";
 }
 
+/** The text above a row of buttons; the card around it is the composer's. */
 export function ComposerField({
   text,
   onChangeText,
@@ -40,12 +34,9 @@ export function ComposerField({
   isDisabled,
   trailing,
   action,
-  layout = "bar",
 }: Props) {
   const styles = useStyles();
   const colors = useColors();
-  const scheme = useScheme();
-  const isCard = layout === "card";
 
   const attach = onAttach ? (
     <IconButton
@@ -53,7 +44,7 @@ export function ComposerField({
       label="Attach"
       onPress={onAttach}
       disabled={isDisabled}
-      variant={isCard ? "tray" : "icon"}
+      variant="tray"
     />
   ) : null;
   const input = (
@@ -66,7 +57,7 @@ export function ComposerField({
       placeholder={placeholder}
       placeholderTextColor={colors.textTertiary}
       selectionColor={colors.brand}
-      style={[styles.input, isCard && styles.cardInput]}
+      style={styles.input}
     />
   );
   const send =
@@ -83,76 +74,24 @@ export function ComposerField({
       />
     ));
 
-  if (isCard) {
-    return (
-      <View>
-        {input}
-        <View style={styles.cardRow}>
-          {attach}
-          <View style={styles.spacer} />
-          {trailing}
-          {send}
-        </View>
-      </View>
-    );
-  }
-
-  const row = (
-    <>
-      {attach}
-      {input}
-      {trailing}
-      {send}
-    </>
-  );
-  // On iOS 26 the bar is Liquid Glass, so the thread shows through as it scrolls under.
-  if (isLiquidGlassAvailable()) {
-    return (
-      <Animated.View layout={grow}>
-        <GlassView
-          glassEffectStyle="regular"
-          colorScheme={scheme}
-          isInteractive
-          style={[styles.field, styles.glass, onAttach && styles.withAttach]}
-        >
-          {row}
-        </GlassView>
-      </Animated.View>
-    );
-  }
   return (
-    <Animated.View layout={grow} style={[styles.field, onAttach && styles.withAttach]}>
-      {row}
-    </Animated.View>
+    <View>
+      {input}
+      <View style={styles.row}>
+        {attach}
+        <View style={styles.spacer} />
+        {trailing}
+        {send}
+      </View>
+    </View>
   );
 }
 
 const useStyles = createStyles((colors) => ({
-  field: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing.sm,
-    paddingLeft: spacing.lg,
-    paddingRight: spacing.xs,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.lg + 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  glass: { backgroundColor: "transparent", borderWidth: 0 },
-  withAttach: { paddingLeft: spacing.xs },
+  // One line tall, growing to about six.
   input: {
     ...type.body,
-    flex: 1,
-    maxHeight: 140,
-    paddingTop: 9,
-    paddingBottom: 9,
     color: colors.text,
-  },
-  // One line tall, growing to about six.
-  cardInput: {
-    flex: 0,
     minHeight: 52,
     maxHeight: 156,
     paddingTop: 16,
@@ -160,7 +99,7 @@ const useStyles = createStyles((colors) => ({
     paddingHorizontal: spacing.lg,
     textAlignVertical: "top",
   },
-  cardRow: {
+  row: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,

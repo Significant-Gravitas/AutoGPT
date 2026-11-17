@@ -3,8 +3,6 @@ import { useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { isLiquidGlassAvailable } from "expo-glass-effect";
-
 import { IconButton } from "@/components/IconButton";
 import { tapSend } from "@/lib/haptics";
 import { createStyles, spacing, type, useScheme } from "@/lib/theme";
@@ -26,8 +24,6 @@ interface Props {
   attachments?: Attachment[];
   onRemoveAttachment?: (id: string) => void;
   onRetryAttachment?: (id: string) => void;
-  /** `bar` is one row for a chat; `card` stacks the text over its buttons, for Home. */
-  layout?: "bar" | "card";
 }
 
 export function Composer({
@@ -40,11 +36,9 @@ export function Composer({
   attachments = [],
   onRemoveAttachment,
   onRetryAttachment,
-  layout = "bar",
 }: Props) {
   const styles = useStyles();
   const scheme = useScheme();
-  const isCard = layout === "card";
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
   // State lands a render late; the ref stops a second press in the same frame.
@@ -55,9 +49,8 @@ export function Composer({
     onText: (dictated) => setText((prev) => appendDictation(prev, dictated)),
   });
   const hasReadyFile = attachments.some((item) => item.status === "ready");
-  // The card's main button dictates until there is something to send.
-  const dictatesFirst =
-    isCard && !isBusy && text.trim().length === 0 && attachments.length === 0;
+  // The main button dictates until there is something to send.
+  const dictatesFirst = !isBusy && text.trim().length === 0 && attachments.length === 0;
   const canSend =
     (text.trim().length > 0 || hasReadyFile) &&
     !isUploading(attachments) &&
@@ -102,7 +95,6 @@ export function Composer({
     />
   ) : (
     <ComposerField
-      layout={layout}
       text={text}
       onChangeText={setText}
       placeholder={placeholder}
@@ -137,13 +129,7 @@ export function Composer({
   );
 
   return (
-    <View
-      style={[
-        styles.wrap,
-        isCard ? styles.cardWrap : { paddingBottom: insets.bottom + spacing.sm },
-        !isCard && isLiquidGlassAvailable() && styles.clearWrap,
-      ]}
-    >
+    <View style={[styles.wrap, { paddingBottom: insets.bottom + spacing.sm }]}>
       {dictation.error ? <Text style={styles.error}>{dictation.error}</Text> : null}
       {attachments.length > 0 ? (
         <AttachmentChips
@@ -152,13 +138,9 @@ export function Composer({
           onRetry={onRetryAttachment}
         />
       ) : null}
-      {isCard ? (
-        <View style={[styles.card, scheme === "light" && styles.shadow]}>
-          {dictation.isActive ? <View style={styles.recording}>{body}</View> : body}
-        </View>
-      ) : (
-        body
-      )}
+      <View style={[styles.card, scheme === "light" && styles.shadow]}>
+        {dictation.isActive ? <View style={styles.recording}>{body}</View> : body}
+      </View>
     </View>
   );
 }
@@ -169,8 +151,6 @@ const useStyles = createStyles((colors) => ({
     paddingTop: spacing.sm,
     backgroundColor: colors.background,
   },
-  cardWrap: { paddingHorizontal: 0, paddingTop: 0, backgroundColor: "transparent" },
-  clearWrap: { backgroundColor: "transparent" },
   card: {
     borderRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
@@ -185,7 +165,7 @@ const useStyles = createStyles((colors) => ({
     elevation: 4,
   },
   // The card keeps its height while the recording bar stands in for the text.
-  recording: { minHeight: 140, justifyContent: "flex-end", padding: spacing.sm },
+  recording: { minHeight: 104, justifyContent: "flex-end", padding: spacing.sm },
   error: {
     ...type.small,
     color: colors.error,

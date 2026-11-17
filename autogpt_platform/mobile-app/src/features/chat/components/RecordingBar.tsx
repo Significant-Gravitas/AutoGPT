@@ -1,9 +1,9 @@
 import { Cancel01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { useAudioRecorderState, type AudioRecorder } from "expo-audio";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 
 import { IconButton } from "@/components/IconButton";
-import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
+import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 import { elapsedLabel, meterLevel } from "../dictationHelpers";
 
@@ -65,12 +65,6 @@ const useStyles = createStyles((colors) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.lg + 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
   },
   meter: { flexDirection: "row", alignItems: "center", gap: 3, height: BAR_MIN + BAR_RANGE },
   level: { width: 3, borderRadius: 2, backgroundColor: colors.brand },

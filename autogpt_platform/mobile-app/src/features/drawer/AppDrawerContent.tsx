@@ -1,4 +1,4 @@
-import { PencilEdit02Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
+import { Cancel01Icon, PencilEdit02Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
 import {
   ActivityIndicator,
@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { IconButton } from "@/components/IconButton";
 import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 import { DrawerSearchField } from "./components/DrawerSearchField";
@@ -54,6 +55,11 @@ export function AppDrawerContent({ navigation }: Props) {
     void refetch();
   }
 
+  // The drawer covers the whole screen, so there is no page left to tap.
+  function handleClose() {
+    navigation.closeDrawer();
+  }
+
   function renderEmpty() {
     if (isLoading) return <ActivityIndicator color={colors.textTertiary} />;
     return (
@@ -73,7 +79,12 @@ export function AppDrawerContent({ navigation }: Props) {
       ]}
     >
       <View style={styles.section}>
-        <DrawerSearchField value={query} onChangeText={setQuery} />
+        <View style={styles.top}>
+          <View style={styles.search}>
+            <DrawerSearchField value={query} onChangeText={setQuery} />
+          </View>
+          <IconButton icon={Cancel01Icon} label="Close menu" onPress={handleClose} />
+        </View>
         <DrawerRow icon={PencilEdit02Icon} label="New chat" onPress={newChat} />
         <DrawerRow icon={UserGroupIcon} label="Your team" onPress={openTeam} />
       </View>
@@ -141,6 +152,8 @@ const useStyles = createStyles((colors) => ({
     backgroundColor: colors.background,
   },
   section: { gap: spacing.xs },
+  top: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  search: { flex: 1 },
   list: { flex: 1 },
   listContent: { flexGrow: 1, gap: 2 },
   searchContent: { flexGrow: 1, gap: 2, paddingTop: spacing.sm },

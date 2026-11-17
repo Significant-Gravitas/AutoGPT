@@ -10,8 +10,10 @@ export default function AppLayout() {
       drawerContent={(props) => <AppDrawerContent {...props} />}
       screenOptions={{
         headerShown: false,
-        drawerType: "front",
-        drawerStyle: { width: "84%", backgroundColor: colors.background },
+        // Full width, pushing the page aside as it opens.
+        drawerType: "slide",
+        drawerStyle: { width: "100%", backgroundColor: colors.background },
+        overlayColor: "transparent",
       }}
     >
       <Drawer.Screen name="index" />

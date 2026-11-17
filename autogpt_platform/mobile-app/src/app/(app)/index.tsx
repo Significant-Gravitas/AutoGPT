@@ -1,6 +1,5 @@
 import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Composer } from "@/features/chat/components/Composer";
@@ -13,7 +12,6 @@ export default function HomeScreen() {
   const home = useHomeScreen();
   const styles = useStyles();
   const colors = useColors();
-  const insets = useSafeAreaInsets();
 
   function handleSend(text: string) {
     void home.submit(text);
@@ -63,23 +61,15 @@ export default function HomeScreen() {
             {home.error ?? home.files.message}
           </Text>
         ) : null}
-        <View
-          style={[
-            styles.composer,
-            { paddingBottom: insets.bottom + spacing.sm },
-          ]}
-        >
-          <Composer
-            layout="card"
-            onSend={home.submit}
-            isDisabled={home.isStarting}
-            placeholder={home.placeholder}
-            onAttach={handleAttach}
-            attachments={home.files.attachments}
-            onRemoveAttachment={home.files.remove}
-            onRetryAttachment={home.files.retry}
-          />
-        </View>
+        <Composer
+          onSend={home.submit}
+          isDisabled={home.isStarting}
+          placeholder={home.placeholder}
+          onAttach={handleAttach}
+          attachments={home.files.attachments}
+          onRemoveAttachment={home.files.remove}
+          onRetryAttachment={home.files.retry}
+        />
       </KeyboardAvoidingView>
     </View>
   );
@@ -94,7 +84,6 @@ const useStyles = createStyles((colors) => ({
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.md,
   },
-  composer: { paddingHorizontal: spacing.md },
   error: {
     ...type.small,
     color: colors.error,
