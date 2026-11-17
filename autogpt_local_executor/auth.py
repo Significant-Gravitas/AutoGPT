@@ -456,7 +456,7 @@ class KeychainTokenStore:
         self._kept_turn: _Turn | None = None
 
     @contextlib.asynccontextmanager
-    async def turn(self, wait: float | None = None) -> AsyncIterator[None]:
+    async def turn(self) -> AsyncIterator[None]:
         """Hold this record's turn while the block runs. One sign-in,
         sign-out or refresh at a time has the stored sign-in, in whatever
         process, from its first read to its last write: two refreshes at
@@ -466,10 +466,10 @@ class KeychainTokenStore:
 
         The turn is this process's lock for the record and an exclusive lock
         on the record's lock file (_Turn, _lock_file). It is waited for at
-        most `wait` seconds (TURN_WAIT_SECONDS unless given), in a worker
-        thread that tries again and again rather than block; past that,
-        SignInBusyError, and the caller has changed nothing. What the
-        running task does inside its own turn doesn't wait for it again.
+        most TURN_WAIT_SECONDS, in a worker thread that tries again and
+        again rather than block; past that, SignInBusyError, and the caller
+        has changed nothing. What the running task does inside its own turn
+        doesn't wait for it again.
 
         While a refreshed pair isn't stored yet (unsaved_refresh), the store
         keeps the turn when the block ends, and the next block goes on with
@@ -484,7 +484,7 @@ class KeychainTokenStore:
         if turn is None:
             turn = _Turn(self._record_key)
             try:
-                await asyncio.to_thread(turn.take, TURN_WAIT_SECONDS if wait is None else wait)
+                await asyncio.to_thread(turn.take, TURN_WAIT_SECONDS)
             except BaseException:
                 # Cancelled while it waited, say: the wait ends, and a turn
                 # it took just then is let go.
