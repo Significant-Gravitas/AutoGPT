@@ -24,7 +24,9 @@ function errorOf(interval: CustomIntervalDraft) {
 }
 
 function isAboveMax(interval: CustomIntervalDraft) {
-  return parseCustomInterval(interval.value) > CUSTOM_INTERVAL_MAX[interval.unit];
+  return (
+    parseCustomInterval(interval.value) > CUSTOM_INTERVAL_MAX[interval.unit]
+  );
 }
 
 function isCustomIntervalUnit(unit: string): unit is CustomIntervalUnit {
