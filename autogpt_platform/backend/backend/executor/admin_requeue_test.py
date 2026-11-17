@@ -42,6 +42,7 @@ from backend.data.human_review import get_pending_reviews_for_execution
 from backend.data.model import APIKeyCredentials, User
 from backend.data.onboarding import get_user_onboarding
 from backend.data.rabbitmq import SyncRabbitMQ
+from backend.data.redis_client import get_redis_async
 from backend.executor import manager as executor_manager
 from backend.executor import utils as executor_utils
 from backend.executor.manager import ExecutionManager
@@ -165,7 +166,7 @@ async def test_a_late_original_delivery_does_not_get_past_a_review(
     assert refused.value.status_code == 404
 
     await _deliver(held)
-    await _let_the_executor_catch_up(server, user)
+    await _let_the_executor_catch_up(server, user, run.id)
 
     review = await _assert_waiting_for_review(
         user, run.id, _node_of(test_graph, StoreValueBlock)
@@ -201,7 +202,7 @@ async def test_a_late_original_delivery_with_a_stale_safe_mode_stays_parked(
             lambda: _row_in(run.id, ExecutionStatus.REVIEW), "the run to reach review"
         )
         await _deliver(held)
-        await _let_the_executor_catch_up(server, user)
+        await _let_the_executor_catch_up(server, user, run.id)
 
         await _assert_waiting_for_review(user, run.id, gated)
 
@@ -315,10 +316,15 @@ async def _set_safe_mode(
     )
 
 
-async def _let_the_executor_catch_up(server: SpinTestServer, user: User) -> None:
-    """Run a workflow queued after the late delivery and wait for it to end:
-    the executor takes deliveries in order, so by then it has handled the
-    late one, which would have moved the run out of REVIEW if it resumed it."""
+async def _let_the_executor_catch_up(
+    server: SpinTestServer, user: User, graph_exec_id: str
+) -> None:
+    """Wait until the executor has handled the late delivery of the run.
+
+    A workflow queued after it runs to the end, and the executor takes its
+    deliveries in order: the late one has been taken, and the run's cluster
+    lock, held from when it was taken until it was handled, is free again.
+    Had it been turned away instead, it would be back in a queue."""
     marker_graph = await _create_graph(server, create_test_graph(), user)
     marker = await server.agent_server.test_execute_graph(
         user_id=user.id,
@@ -327,6 +333,14 @@ async def _let_the_executor_catch_up(server: SpinTestServer, user: User) -> None
         node_input={"input_1": "Hello", "input_2": "World"},
     )
     await wait_execution(user.id, marker.id, 60)
+    redis = await get_redis_async()
+
+    async def handled() -> bool:
+        if await redis.exists(f"exec_lock:{graph_exec_id}"):
+            return False
+        return await _run_queues_drained()
+
+    await _wait_for(handled, "the late delivery to be handled")
 
 
 async def _assert_waiting_for_review(user: User, graph_exec_id: str, gated: str):
@@ -389,9 +403,10 @@ async def _requeue(graph_exec_id: str) -> RequeueExecutionResponse:
 async def _requeue_all_at_once(
     graph_exec_id: str, times: int
 ) -> list[RequeueExecutionResponse]:
-    """Requeue ``times`` times, every requeue reading the run before any of
-    them publishes, so each one finds it still QUEUED."""
-    read_run = executor_utils.execution_db.get_graph_execution
+    """Requeue ``times`` times, every requeue making its last read of the run,
+    the one right before its publish, before any of them publishes, so each
+    one finds it still QUEUED."""
+    read_run = executor_utils.execution_db.get_graph_execution_meta
     all_read = asyncio.Barrier(times)
 
     async def read_then_wait_for_the_others(*args, **kwargs):
@@ -401,7 +416,7 @@ async def _requeue_all_at_once(
 
     with patch.object(
         executor_utils.execution_db,
-        "get_graph_execution",
+        "get_graph_execution_meta",
         new=read_then_wait_for_the_others,
     ):
         return list(
