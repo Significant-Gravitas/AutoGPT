@@ -4,7 +4,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.util.testing import Rendezvous, is_tcp_port_reachable
+from backend.util.testing import (
+    Rendezvous,
+    is_tcp_port_reachable,
+    unreachable_tcp_endpoints,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +59,28 @@ def test_is_tcp_port_reachable_propagates_unexpected_errors() -> None:
     ):
         with pytest.raises(ValueError, match="invalid endpoint"):
             is_tcp_port_reachable("redis.example", 6379)
+
+
+@pytest.mark.asyncio
+async def test_unreachable_tcp_endpoints_names_only_the_one_that_is_down() -> None:
+    """The test server's preflight: a listening service passes at once, and
+    a closed port is reported once the wait runs out, not retried forever."""
+    listening = await asyncio.start_server(lambda _r, w: w.close(), "127.0.0.1", 0)
+    closed = await asyncio.start_server(lambda _r, w: w.close(), "127.0.0.1", 0)
+    up = listening.sockets[0].getsockname()[1]
+    down = closed.sockets[0].getsockname()[1]
+    closed.close()
+    await closed.wait_closed()
+    try:
+        missing = await unreachable_tcp_endpoints(
+            {"Postgres": ("127.0.0.1", up), "Redis": ("127.0.0.1", down)},
+            within=0.2,
+        )
+    finally:
+        listening.close()
+        await listening.wait_closed()
+
+    assert missing == [f"Redis at 127.0.0.1:{down}"]
 
 
 @pytest.mark.asyncio

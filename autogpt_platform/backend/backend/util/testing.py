@@ -32,6 +32,35 @@ def is_tcp_port_reachable(
     return True
 
 
+async def unreachable_tcp_endpoints(
+    endpoints: dict[str, tuple[str, int]], *, within: float
+) -> list[str]:
+    """The ``endpoints`` that accepted no TCP connection within ``within``
+    seconds, each named with its address.
+
+    Each is tried again until then, so a service still starting gets its
+    time, and one that is down is reported instead of leaving its clients
+    retrying forever. Not cached, unlike :func:`is_tcp_port_reachable`.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + within
+    waiting = dict(endpoints)
+    while True:
+        for name, (host, port) in list(waiting.items()):
+            try:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host, port), timeout=1.0
+                )
+            except (OSError, TimeoutError):
+                continue
+            writer.close()
+            del waiting[name]
+        if not waiting or loop.time() >= deadline:
+            break
+        await asyncio.sleep(0.5)
+    return [f"{name} at {host}:{port}" for name, (host, port) in waiting.items()]
+
+
 class Rendezvous:
     """Fakes that answer only once all ``parties`` of them are being awaited.
 
