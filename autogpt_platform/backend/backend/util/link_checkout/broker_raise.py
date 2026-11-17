@@ -23,7 +23,7 @@ from backend.util.link_checkout.broker_protocol import (
 from backend.util.link_checkout.checkout_record import read_intent, replace_intent
 from backend.util.link_checkout.checkout_view import view
 from backend.util.link_checkout.link import link_action_url, validate_spend
-from backend.util.link_checkout.models import CheckoutIntent
+from backend.util.link_checkout.models import ApprovalMode, CheckoutIntent
 from backend.util.link_checkout.refusals import (
     RAISE_CLOSED,
     RAISE_NOT_HIGHER,
@@ -52,9 +52,7 @@ async def raise_checkout(request: RaiseCheckout) -> CheckoutView:
                 "plan": intent.plan.model_copy(update={"amount": request.amount}),
                 "revision": intent.revision + 1,
                 "expires_at": time.time() + CHECKOUT_TTL_SECONDS,
-                "approval_mode": (
-                    "link" if intent.spend_request_id else request.approval_mode
-                ),
+                "approval_mode": _raised_approval_mode(intent, request),
             }
         )
         if raised.spend_request_id is not None:
@@ -85,6 +83,11 @@ async def _raise_in_link(
         if current.status == "approved"
         else None
     )
+    if spend is not None and spend.status == "approved":
+        # Link still calls the request approved, now at a total the customer
+        # never approved. Nothing can rest on that: ask again from scratch, as
+        # for a request Link won't raise.
+        spend = None
     if spend is None:
         canceled = await broker_link.cancel(intent, token)
         if canceled is None or canceled.status not in TERMINAL_STATUSES:
@@ -101,6 +104,21 @@ async def _raise_in_link(
     validate_spend(raised, spend)
     replace_intent(directory, raised)
     return view(raised, spend)
+
+
+def _raised_approval_mode(
+    intent: CheckoutIntent, request: RaiseCheckout
+) -> ApprovalMode:
+    """Only a purchase awaiting approval in the chat alone can stay there. One
+    with a request in Link, or meant for Link from the start, is approved in
+    Link again."""
+    if (
+        intent.spend_request_id
+        or intent.approval_mode == "link"
+        or intent.plan.approved_in_link_only()
+    ):
+        return "link"
+    return request.approval_mode
 
 
 def raises_total(amount: int, current: int, revision: int) -> bool:

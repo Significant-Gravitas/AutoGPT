@@ -23,8 +23,9 @@ _MESSAGES = {
 
 # Link's `requires_action` guidance. What happens next follows the resolution
 # (Link: "branch on resolution, not on type"); the type only words the step.
-# Only `auto_resume` keeps the request alive; the others end it, and it then
-# expires on its own.
+# Only `auto_resume` keeps the request alive; the two `create_new_spend_request`
+# resolutions end it, and it then expires on its own. A resolution Link adds
+# later might keep it alive, so it is not taken to end anything.
 # https://docs.stripe.com/agentic-commerce/link-agent-wallet/use-link-wallet-pay-online#next-actions
 AUTO_RESUME = "auto_resume"
 _BY_RESOLUTION = {
@@ -36,6 +37,14 @@ _BY_RESOLUTION = {
     "pay. Give the customer the link to finish what Link needs, then prepare a "
     "new checkout.",
 }
+_ENDING_RESOLUTIONS = frozenset(
+    {"create_new_spend_request", "create_new_spend_request_after_completion"}
+)
+_UNKNOWN_RESOLUTION = (
+    "Link needs a step from the customer that this checkout doesn't know. Give "
+    "them the link, and check the status again before starting another "
+    "purchase: this request may still pay."
+)
 _BY_TYPE = {
     "three_d_secure": "The card issuer wants the customer to verify this "
     "purchase. Give them the verification link; the request resumes once they "
@@ -127,13 +136,11 @@ def payment_status(
         result.action_url = link_action_url(action.action_url)
         result.action_message = action.display_message[:MAX_ACTION_MESSAGE_CHARS]
         result.resolution = resolution
-        result.final = resolution != AUTO_RESUME
+        result.final = resolution in _ENDING_RESOLUTIONS
         result.message = (
             _BY_TYPE[action.type]
             if _TYPE_RESOLUTION.get(action.type) == resolution
-            else _BY_RESOLUTION.get(
-                resolution, _BY_RESOLUTION["create_new_spend_request"]
-            )
+            else _BY_RESOLUTION.get(resolution, _UNKNOWN_RESOLUTION)
         )
     return result
 

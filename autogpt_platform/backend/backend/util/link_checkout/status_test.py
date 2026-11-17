@@ -123,7 +123,10 @@ def test_the_resolution_decides_even_when_the_type_says_otherwise():
     unknown = payment_status(
         action_required("a_resolution_link_adds_later", "", "Hmm", "three_d_secure")
     )
-    assert unknown.final is True
+    # It might keep the request alive, so the chat must not start another
+    # purchase on the strength of it.
+    assert unknown.final is False
+    assert "may still pay" in unknown.message
 
 
 def test_a_failed_payment_names_only_well_formed_codes(intent):

@@ -107,7 +107,8 @@ async def _raise(
         **principal.model_dump(), checkout_id=request.checkout_id
     )
     current = await engine.get(reference)
-    problem = _cannot_raise(current, request.amount)
+    previous = await read_approval(request.checkout_id)
+    problem = _cannot_raise(current, request.amount, previous)
     if problem:
         return failure(session, problem)
     async with link_credentials(
@@ -117,9 +118,11 @@ async def _raise(
         blocker = await purchase_blocker(token, request.amount, current.currency)
         if blocker is not None:
             return failure(session, blocker.message)
-        # A request already in Link is raised there; only a purchase that
-        # exists in the chat alone can stay there.
-        in_app = current.spend_request_id is None and await in_app_approval_allowed(
+        # A request already in Link is raised there; only a purchase awaiting
+        # approval in the chat alone can stay there.
+        in_app = (
+            current.approval_mode == "in_app" and current.spend_request_id is None
+        ) and await in_app_approval_allowed(
             token,
             Purchase(
                 amount=request.amount,
@@ -150,7 +153,18 @@ async def _raise(
     return checkout_response(view, session, approval, message=message)
 
 
-def _cannot_raise(current: CheckoutView, amount: int) -> str:
+def _cannot_raise(
+    current: CheckoutView, amount: int, previous: ApprovalView | None
+) -> str:
+    if (
+        previous is not None
+        and previous.state == "declined"
+        and previous.pending.revision == current.revision
+    ):
+        return (
+            "The user declined this purchase in the chat. Don't ask again with "
+            "another total; ask them what they want instead."
+        )
     if current.attempted:
         return (
             "This checkout was already attempted, so its total can't change. "

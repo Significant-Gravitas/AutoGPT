@@ -99,6 +99,8 @@ class FakeWorker:
         self.create_error: Literal["link_rejected", "link_duplicate"] | None = None
         self.delegated_error: Literal["link_rejected", "link_duplicate"] | None = None
         self.raise_error: Literal["link_rejected"] | None = None
+        # What Link reports right after raising a request's total.
+        self.raise_status = "pending_approval"
         # The total each job carried, in order: a raise sends the new one.
         self.amounts: list[int] = []
         # Link answers a create with a request for another amount.
@@ -141,7 +143,7 @@ class FakeWorker:
             spend.status = "canceled"
         elif job.action == "raise":
             # Raised, then waiting for the customer's approval in Link again.
-            spend.status = "pending_approval"
+            spend.status = self.raise_status
         elif job.action != "create":
             spend.status = self.status
         return WorkerResult(spend=spend)

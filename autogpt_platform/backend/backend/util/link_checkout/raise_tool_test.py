@@ -206,6 +206,24 @@ async def test_link_refusing_a_raise_asks_again_for_the_new_total(tools, plan):
 
 
 @pytest.mark.asyncio
+async def test_a_raise_link_still_calls_approved_is_asked_for_again(tools, plan):
+    """Were Link to keep the raised request approved, the higher total would
+    be paid on the approval of the lower one. The raise asks again from
+    scratch instead, as for a raise Link refuses."""
+    created = await request(plan)
+    tools.raise_status = "approved"
+
+    raised = parsed(await raise_to(created.checkout_id, 250))
+
+    assert (raised.amount, raised.status) == (250, "pending_approval")
+    assert raised.spend_request_id != created.spend_request_id
+    assert tools.calls == ["create", "status", "raise", "cancel", "create"]
+    paid = await complete(created.checkout_id)
+    assert paid.status == "submitted"
+    assert tools.amounts[-1] == 250
+
+
+@pytest.mark.asyncio
 async def test_a_request_not_yet_approved_is_asked_for_again(tools, plan):
     """Link raises only an approved request; one still waiting for approval
     is canceled and asked for again at the new total."""
@@ -227,6 +245,52 @@ async def test_a_purchase_declined_in_link_cannot_be_raised(tools, plan):
 
     assert RAISE_CLOSED in result.output
     assert tools.calls == ["create", "status"]
+
+
+@pytest.mark.asyncio
+async def test_a_purchase_declined_in_the_chat_is_not_asked_again_by_a_raise(
+    tools, plan, monkeypatch
+):
+    for module in (request_tools, raise_tools):
+        monkeypatch.setattr(
+            module, "in_app_approval_allowed", AsyncMock(return_value=True)
+        )
+    created = await request(plan)
+    await approval.decide(
+        created.checkout_id, "owner", "chat", approve=False, user_agent=None
+    )
+
+    result = await raise_to(created.checkout_id, 101)
+
+    assert (
+        "declined this purchase"
+        in ErrorResponse.model_validate_json(result.output).message
+    )
+    record = await approval.read_approval(created.checkout_id)
+    assert record is not None
+    assert (record.state, record.pending.revision) == ("declined", 0)
+    assert tools.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_link_purchase_whose_request_failed_stays_in_link_when_raised(
+    tools, plan, monkeypatch
+):
+    """A purchase meant for Link with no request there yet is raised in Link
+    too. A card in the chat would have nothing to say what is bought."""
+    created = await request(plan)
+    tools.status = "pending_approval"
+    tools.create_error = "link_rejected"
+    await raise_to(created.checkout_id, 250)
+    tools.create_error = None
+    monkeypatch.setattr(
+        raise_tools, "in_app_approval_allowed", AsyncMock(return_value=True)
+    )
+
+    raised = parsed(await raise_to(created.checkout_id, 300))
+
+    assert (raised.approval_mode, raised.status) == ("link", "pending_approval")
+    assert await approval.read_approval(created.checkout_id) is None
 
 
 @pytest.mark.asyncio
