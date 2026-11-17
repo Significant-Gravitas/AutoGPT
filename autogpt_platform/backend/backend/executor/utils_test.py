@@ -3967,6 +3967,7 @@ async def test_admin_requeue_leaves_a_row_that_left_queued_alone(
     execution_store.update_graph_execution_stats = mocker.AsyncMock(
         return_value=mocker.MagicMock(status=ExecutionStatus.QUEUED)
     )
+    recorded = mocker.patch("backend.executor.utils.record_graph_execution")
 
     with pytest.raises(ExecutionNotRequeuedError):
         await add_graph_execution(
@@ -3980,6 +3981,8 @@ async def test_admin_requeue_leaves_a_row_that_left_queued_alone(
     queue.publish_message.assert_not_called()
     execution_store.update_graph_execution_stats.assert_not_called()
     execution_store.update_node_execution_status_batch.assert_not_called()
+    # A refusal is not an execute outcome: no "error" in the executions metric.
+    recorded.assert_not_called()
 
 
 @pytest.mark.asyncio
