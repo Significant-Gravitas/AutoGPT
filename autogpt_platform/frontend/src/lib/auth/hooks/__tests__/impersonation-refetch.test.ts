@@ -30,6 +30,9 @@ const admin = {
 type SentRequest = { url: string; actingAs: string | undefined };
 
 let sent: SentRequest[] = [];
+let held: Array<() => void> = [];
+let holding = true;
+let stopObservers: Array<() => void> = [];
 
 function makeRouter() {
   return {
@@ -42,18 +45,24 @@ function makeRouter() {
   } as unknown as AppRouterInstance;
 }
 
-// Answers after a short delay, so the requests a page sends on load are still
-// in flight when the signed-in user arrives. The body names whoever the
-// request was made for.
+// Holds every answer until releaseResponses(), so the requests a page sends on
+// load are still in flight when the signed-in user arrives. The body names
+// whoever the request was made for.
 async function fakeBackend(url: string, init?: RequestInit) {
   const headers = (init?.headers ?? {}) as Record<string, string>;
   const actingAs = headers[IMPERSONATION_HEADER_NAME];
   sent.push({ url, actingAs });
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  if (holding) await new Promise<void>((resolve) => held.push(resolve));
   return new Response(JSON.stringify({ owner: actingAs ?? "caller" }), {
     status: 200,
     headers: { "content-type": "application/json" },
   });
+}
+
+function releaseResponses() {
+  holding = false;
+  held.forEach((resolve) => resolve());
+  held = [];
 }
 
 // The Library page's agent list and the orgs list: neither waits for sign-in.
@@ -71,16 +80,11 @@ function watchPageQueries() {
     queryKey: ["/api/orgs"],
     queryFn: () => customMutator("/api/orgs", { method: "GET" }),
   });
-  const stopLibrary = library.subscribe(() => {});
-  const stopOrgs = orgs.subscribe(() => {});
-  return {
-    library,
-    orgs,
-    stop() {
-      stopLibrary();
-      stopOrgs();
-    },
-  };
+  stopObservers.push(
+    library.subscribe(() => {}),
+    orgs.subscribe(() => {}),
+  );
+  return { library, orgs };
 }
 
 function signIn(user: User) {
@@ -98,6 +102,8 @@ function sentTo(path: string) {
 
 beforeEach(() => {
   sent = [];
+  held = [];
+  holding = true;
   localStorage.clear();
   sessionStorage.clear();
   ImpersonationState.clear();
@@ -105,6 +111,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  stopObservers.forEach((stop) => stop());
+  stopObservers = [];
+  releaseResponses();
   useAuthStore.getState().cleanup();
   useAuthStore.setState({
     user: null,
@@ -117,6 +126,7 @@ afterEach(() => {
   });
   getQueryClient().clear();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -124,8 +134,14 @@ describe("page queries started before the admin's session is known", () => {
   it("are sent again as the impersonated user once the admin is signed in", async () => {
     ImpersonationState.set("user-a", admin.id);
     const page = watchPageQueries();
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    const invalidate = vi.spyOn(getQueryClient(), "invalidateQueries");
 
     await signIn(admin);
+    // Answer only once the store has asked for everything to be fetched
+    // again, so that request is made while the first ones are in flight.
+    await vi.waitFor(() => expect(invalidate).toHaveBeenCalled());
+    releaseResponses();
 
     await vi.waitFor(() => {
       expect(page.library.getCurrentResult().data?.pages[0]).toMatchObject({
@@ -140,13 +156,14 @@ describe("page queries started before the admin's session is known", () => {
     expect(sentTo("/api/library/agents")[0].actingAs).toBeUndefined();
     expect(sentTo("/api/library/agents").at(-1)?.actingAs).toBe("user-a");
     expect(sentTo("/api/orgs").at(-1)?.actingAs).toBe("user-a");
-    page.stop();
   });
 
   it("are not sent again when nobody is being impersonated", async () => {
     const page = watchPageQueries();
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
 
     await signIn(admin);
+    releaseResponses();
 
     await vi.waitFor(() => {
       expect(page.library.getCurrentResult().data?.pages[0]).toMatchObject({
@@ -156,6 +173,5 @@ describe("page queries started before the admin's session is known", () => {
     expect(sentTo("/api/library/agents")).toHaveLength(1);
     expect(sentTo("/api/orgs")).toHaveLength(1);
     expect(sent.every((request) => request.actingAs === undefined)).toBe(true);
-    page.stop();
   });
 });
