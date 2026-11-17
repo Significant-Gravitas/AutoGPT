@@ -392,3 +392,62 @@ async def test_judgements_past_the_cap_are_dropped_not_queued(rows, events):
         pending = await _cancel_once_judging(hanging)
     assert len(pending) == 1
     hanging.assert_awaited_once()
+
+
+class _FailingFetch(_Fetch):
+    """A read that raises, its error quoting the page it was reading."""
+
+    async def _execute(self, user_id, session, **kwargs):
+        raise RuntimeError(f"502 Bad Gateway: {self.content}")
+
+
+_UNSCREENED = pytest.mark.xfail(
+    strict=True, reason="#16883: a raised read's error skips the screen"
+)
+
+
+@pytest.mark.parametrize(
+    "value, mode",
+    [
+        pytest.param(True, "enforce", marks=_UNSCREENED),
+        pytest.param("shadow", "shadow", marks=_UNSCREENED),
+        (False, "off"),
+    ],
+)
+async def test_a_read_that_raises_is_screened_on_its_error_like_an_output(
+    rows, events, value, mode
+):
+    judge = AsyncMock(return_value=_HELD)
+    with _flags(value), patch(f"{_READS}.judge_content", judge):
+        result = await _read(_FailingFetch(_PAGE))
+        await _settled()
+
+    assert not result.success
+    if mode == "enforce":
+        assert _PAGE not in result.output
+        assert json.loads(result.output)["type"] == "approval_required"
+        (row,) = rows.rows.values()
+        # Released, it is the same error, still a failure.
+        assert _PAGE in row.payload["content"] and row.payload["success"] is False
+    else:
+        assert json.loads(result.output)["error"] == f"502 Bad Gateway: {_PAGE}"
+        assert rows.rows == {}
+    assert judge.await_count == int(mode != "off")
+    if mode != "off":
+        assert _PAGE in judge.await_args.kwargs["text"]
+    assert len(_recorded(events)) == int(mode == "shadow")
+
+
+async def test_an_external_caller_gets_no_detail_of_a_read_that_raises(rows, events):
+    # As the External API opens one: an automation session nobody answers.
+    session = ChatSession.new("user-1", dry_run=False, origin="automation")
+    session.external_caller = True
+    judge = AsyncMock(return_value=_HELD)
+    with _flags(True), patch(f"{_READS}.judge_content", judge):
+        result = await _read(_FailingFetch(_PAGE), session)
+
+    assert not result.success
+    assert json.loads(result.output)["error"] is None
+    assert _PAGE not in result.output
+    judge.assert_not_awaited()
+    assert rows.rows == {}

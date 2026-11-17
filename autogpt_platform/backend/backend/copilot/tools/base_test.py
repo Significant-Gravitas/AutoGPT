@@ -1174,7 +1174,7 @@ class TestGateTracesOfGoogleCalls:
     is redacted whole."""
 
     @staticmethod
-    def _block_tool(provider: str | None):
+    def _block_tool(provider: str | None, raises: bool = False):
         class _Block(BaseTool):
             @property
             def name(self) -> str:
@@ -1189,6 +1189,8 @@ class TestGateTracesOfGoogleCalls:
                 return {"type": "object", "properties": {}}
 
             async def _execute(self, user_id, session, **kwargs):
+                if raises:
+                    raise RuntimeError("could not read the email")
                 return BlockOutputResponse(
                     message="ran",
                     block_id="b",
@@ -1201,16 +1203,42 @@ class TestGateTracesOfGoogleCalls:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "names_google_block, provider, action_redacted, read_redacted",
+        "names_google_block, provider, raises, action_redacted, read_redacted",
         [
-            (True, None, True, True),
-            (False, "google", False, True),
-            (False, None, False, False),
+            (True, None, False, True, True),
+            (False, "google", False, False, True),
+            (False, None, False, False, False),
+            pytest.param(
+                True,
+                None,
+                True,
+                True,
+                True,
+                marks=pytest.mark.xfail(
+                    strict=True, reason="#16883: a raised read's error skips the screen"
+                ),
+            ),
+            pytest.param(
+                False,
+                None,
+                True,
+                False,
+                False,
+                marks=pytest.mark.xfail(
+                    strict=True, reason="#16883: a raised read's error skips the screen"
+                ),
+            ),
         ],
-        ids=["names a Google block", "returns Google data", "neither"],
+        ids=[
+            "names a Google block",
+            "returns Google data",
+            "neither",
+            "names a Google block and fails",
+            "fails",
+        ],
     )
     async def test_redacted_while_the_gate_runs(
-        self, names_google_block, provider, action_redacted, read_redacted
+        self, names_google_block, provider, raises, action_redacted, read_redacted
     ):
         block = GmailReadBlock() if names_google_block else GetWikipediaSummaryBlock()
         traced: dict[str, object] = {}
@@ -1231,7 +1259,7 @@ class TestGateTracesOfGoogleCalls:
             patch("backend.copilot.gate.reads.screen_read", side_effect=read),
             patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
         ):
-            await self._block_tool(provider).execute(
+            await self._block_tool(provider, raises).execute(
                 "u1", MagicMock(session_id="s1"), "call-1", id=block.id
             )
 
