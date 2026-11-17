@@ -5,8 +5,11 @@ from datetime import timedelta
 from typing import Callable
 
 import stripe
+from autogpt_libs.auth.closed_accounts import ACCOUNT_CLOSED_DETAIL
+from fastapi import HTTPException
 from pydantic import BaseModel
 
+from backend.data import account_deletion
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import get_subscription_trial
@@ -70,6 +73,21 @@ async def expire_all_open_checkouts(customer_id: str) -> None:
     )
     async for session in stripe_list_items(sessions):
         await stripe_call(stripe.checkout.Session.expire_async, session.id)
+
+
+async def expire_if_account_closed(user_id: str, session_id: str) -> None:
+    """Right after a Checkout is made: expire it and refuse (HTTP 401) if the
+    account closed while Stripe made it.
+
+    Starting a Checkout refuses a closed account first
+    (``refuse_closed_account``), but the account can close between that read
+    and Stripe's reply. Either this read sees the close, or the close came
+    after the Checkout existed and closing's sweep, which runs after it,
+    expires the Checkout (``cancel_all_subscriptions_now``).
+    """
+    if await account_deletion.is_account_closed(user_id):
+        await stripe_call(stripe.checkout.Session.expire_async, session_id)
+        raise HTTPException(status_code=401, detail=ACCOUNT_CLOSED_DETAIL)
 
 
 async def other_plan_is_live(customer_id: str, exclude_subscription_id: str) -> bool:

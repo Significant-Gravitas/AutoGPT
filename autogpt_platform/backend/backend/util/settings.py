@@ -411,6 +411,24 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=5 * 60,
         description="Interval in seconds between account erasure sweeps.",
     )
+    account_erasure_stall_check_interval_secs: int = Field(
+        default=60 * 60,
+        ge=60,
+        description=(
+            "Interval in seconds between checks for account erasures that "
+            "started and did not finish. Runs whether or not the erasure job is "
+            "on, since the erase-account CLI claims requests too."
+        ),
+    )
+    account_erasure_stall_alert_secs: int = Field(
+        default=3 * 60 * 60,
+        ge=30 * 60,
+        description=(
+            "Age in seconds of an erasure's claim (startedAt) with no completedAt "
+            "after which it pages: a failed step, a service left unset or a "
+            "crashed run (docs/engineering/account-deletion.md)."
+        ),
+    )
     account_erasure_unused_services: List[str] = Field(
         default=[],
         description=(
@@ -767,6 +785,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ),
     )
 
+    schedule_list_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        description=(
+            "How long a schedule list someone is waiting on (schedule pages, admin "
+            "diagnostics) waits for the scheduler before answering 503."
+        ),
+    )
+
     # Prefer the cluster env var so the new image can co-exist with old-image
     # pods still reading the unsuffixed RABBITMQ_HOST during a rollout.
     rabbitmq_host: str = Field(
@@ -980,9 +1007,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=3310,
         description="The port for the ClamAV daemon",
     )
-    clamav_service_timeout: int = Field(
-        default=60,
-        description="The timeout in seconds for the ClamAV daemon",
+    clamav_service_timeout: int | None = Field(
+        default=None,
+        gt=0,
+        description="Seconds to wait for the ClamAV daemon; unset, a scan's "
+        "deadline grows with the file (60 s plus 1 s per MiB)",
     )
     clamav_service_enabled: bool = Field(
         default=True,

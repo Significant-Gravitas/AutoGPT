@@ -4,7 +4,6 @@ import functools
 import hashlib
 import logging
 import os
-import re
 import tempfile
 import threading
 import time
@@ -31,7 +30,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.util import ZoneInfo
+from apscheduler.util import ZoneInfo, obj_to_ref
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine, inspect, or_, select
@@ -95,7 +94,12 @@ from backend.copilot.limit_tracking import (
     track_turn_cap,
     track_turn_refusal,
 )
-from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
+from backend.copilot.model import (
+    ChatSessionInfo,
+    create_chat_session,
+    get_chat_session,
+    get_chat_session_metadata,
+)
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
 from backend.copilot.scheduled_chats.notices import (
@@ -125,6 +129,7 @@ from backend.monitoring import (
     report_execution_accuracy_alerts,
     report_late_executions,
     report_orphaned_auth_identities,
+    report_stalled_account_erasures,
     send_due_briefings,
 )
 from backend.monitoring.instrumentation import SCHEDULER_JOBS
@@ -135,7 +140,7 @@ from backend.util.clients import (
     get_scheduler_client,
 )
 from backend.util.cloud_storage import cleanup_expired_files_async
-from backend.util.cron import check_cron_fires, check_cron_length
+from backend.util.cron import check_cron_fires, validate_cron
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -642,10 +647,21 @@ async def _execute_copilot_turn(**kwargs):
             )
         else:
             session = await get_chat_session(args.session_id, args.user_id)
-            if session is None:
+            # A reset evicts the cached chat only best-effort, so a stale copy
+            # can still say it is open: read whether it is archived from the
+            # database instead.
+            stored = (
+                await get_chat_session_metadata(args.session_id, args.user_id)
+                if session is not None
+                else None
+            )
+            if session is None or stored is None or stored.archived_at is not None:
+                # An archived chat belongs to an expert that was reset: it is
+                # closed, so a follow-up aimed at it retires with it.
                 logger.info(
                     f"Copilot turn schedule {args.schedule_id} skipped — session "
-                    f"{args.session_id[:12]} no longer exists; removing schedule"
+                    f"{args.session_id[:12]} no longer exists or is archived; "
+                    "removing schedule"
                 )
                 await _self_delete_copilot_turn_schedule(args)
                 return
@@ -1284,10 +1300,16 @@ async def _at_reset_chat(args: "CopilotTurnJobArgs") -> PaginatedMessages | None
         if args.session_id
         else None
     )
-    if chat is None or chat.session.expert_id != args.expert_id:
+    if (
+        chat is None
+        or chat.session.expert_id != args.expert_id
+        # Archived by an expert reset: closed, so its turns retire with it.
+        or chat.session.archived_at is not None
+    ):
         logger.info(
             f"At-reset turn {args.schedule_id} skipped — session "
-            f"{_session_id_label(args)} is gone or out of scope; removing it"
+            f"{_session_id_label(args)} is gone, archived or out of scope; "
+            "removing it"
         )
         await _self_delete_copilot_turn_schedule(args)
         return None
@@ -2860,65 +2882,6 @@ def _resolve_timezone(user_timezone: str | None, user_id: str) -> str:
     return "UTC"
 
 
-_DOW_DIGIT_RE = re.compile(r"\d")
-
-
-def _unix_dow_to_apscheduler(n: int) -> int:
-    """Map Unix-cron day-of-week (0=Sun..6=Sat, 7=Sun) to APScheduler's
-    (0=Mon..6=Sun). APScheduler's ``CronTrigger.from_crontab`` does NOT
-    perform this translation despite the docstring implying Unix semantics,
-    so numeric day-of-week fields silently fire one day late.
-    """
-    return (n - 1) % 7
-
-
-def _convert_dow_token(token: str) -> str:
-    """Convert a single comma-separated token of a day-of-week field from
-    Unix-cron numbering to APScheduler numbering. Handles ``*``, plain
-    numbers, ranges (including wrap-around like ``5-2``), step modifiers,
-    and lets named tokens (``mon-fri``) pass through unchanged."""
-    if "/" in token:
-        body, step = token.split("/", 1)
-    else:
-        body, step = token, None
-
-    if body in ("*", "?"):
-        result = body
-    elif "-" in body:
-        start, end = body.split("-", 1)
-        if start.isdigit() and end.isdigit():
-            start_aps = _unix_dow_to_apscheduler(int(start))
-            end_aps = _unix_dow_to_apscheduler(int(end))
-            if start_aps > end_aps:
-                # Unix wrap-around (e.g. Sat→Tue = 6-2) → split into two
-                # APS-valid ranges joined by a comma.
-                tail = f"/{step}" if step else ""
-                return f"{start_aps}-6{tail},0-{end_aps}{tail}"
-            result = f"{start_aps}-{end_aps}"
-        else:
-            result = f"{start}-{end}"
-    elif body.isdigit():
-        result = str(_unix_dow_to_apscheduler(int(body)))
-    else:
-        result = body
-
-    return f"{result}/{step}" if step else result
-
-
-def _normalize_cron_day_of_week(cron: str) -> str:
-    """Rewrite the day-of-week field of a 5-field Unix cron string into the
-    numbering APScheduler expects. Leaves the field untouched if it contains
-    no digits (``mon-fri``), is ``*``/``?``, or the cron is malformed."""
-    parts = cron.split()
-    if len(parts) != 5:
-        return cron
-    dow = parts[4]
-    if dow in ("*", "?") or not _DOW_DIGIT_RE.search(dow):
-        return cron
-    parts[4] = ",".join(_convert_dow_token(t) for t in dow.split(","))
-    return " ".join(parts)
-
-
 def _build_trigger(
     *, cron: str | None, run_at: datetime | None, user_timezone: str
 ) -> Union[CronTrigger, DateTrigger]:
@@ -2926,20 +2889,11 @@ def _build_trigger(
         raise ValueError("Exactly one of `cron` or `run_at` must be provided")
     try:
         if cron is not None:
-            return _build_cron_trigger(cron, user_timezone)
+            return validate_cron(cron, user_timezone)
         return DateTrigger(run_date=run_at, timezone=user_timezone)
     except ZoneInfoNotFoundError as e:
         # A KeyError, which the API would turn into a 500, not a 400.
         raise ValueError(f"Unknown timezone {user_timezone!r}") from e
-
-
-def _build_cron_trigger(cron: str, user_timezone: str) -> CronTrigger:
-    check_cron_length(cron)
-    trigger = CronTrigger.from_crontab(
-        _normalize_cron_day_of_week(cron), timezone=user_timezone
-    )
-    check_cron_fires(trigger, cron)
-    return trigger
 
 
 def _updated_graph_job_args(
@@ -3243,6 +3197,18 @@ class Scheduler(AppService):
                     jobstore=Jobstores.EXECUTION.value,
                 )
 
+            # Account erasures that started and did not finish, from the job
+            # or the CLI. Runs whether the job is on or not.
+            system_jobs.add_job(
+                report_stalled_account_erasures,
+                id="report_stalled_account_erasures",
+                trigger="interval",
+                replace_existing=True,
+                max_instances=1,
+                seconds=config.account_erasure_stall_check_interval_secs,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
             # Cloud Storage Cleanup - configurable interval
             system_jobs.add_job(
                 cleanup_expired_files,
@@ -3400,6 +3366,12 @@ class Scheduler(AppService):
             self._register_recording_purge()
             self._register_memory_cron_reconcile()
             self._register_community_sweep()
+            # Off the startup path: a full scan of the jobstore.
+            threading.Thread(
+                target=self._drop_stored_misfire_graces,
+                daemon=True,
+                name="DropStoredMisfireGraces",
+            ).start()
         self._report_parked_jobs()
         self._start_schedule_index_backfill()
         threading.Thread(
@@ -3489,6 +3461,47 @@ class Scheduler(AppService):
                     f"{len(parked)} job(s) in jobstore '{alias}' are PARKED and will "
                     f"not run until repaired: {parked}"
                 )
+
+    def _drop_stored_misfire_graces(self) -> None:
+        """Put user schedules saved before the job defaults on them: their stored
+        one-second grace skips any run that fires over a second late. Selected
+        by function, because the memory crons' grace is deliberate."""
+        dropped = 0
+        token = WRITE_TIMEOUT.set(MEMORY_CRON_WRITE_TIMEOUT_SECONDS)
+        try:
+            # The store's own bounded read, so the scan holds no APScheduler lock.
+            for job in self._execution_jobstore._get_jobs(
+                statement_timeout=MEMORY_CRON_LISTING_TIMEOUT_SECONDS
+            ):
+                if (
+                    job.func_ref not in _USER_SCHEDULE_FUNC_REFS
+                    or job.misfire_grace_time is None
+                ):
+                    continue
+                try:
+                    self.scheduler.modify_job(
+                        job.id,
+                        jobstore=Jobstores.EXECUTION.value,
+                        misfire_grace_time=None,
+                    )
+                except JobLookupError:
+                    continue  # Deleted since the scan.
+                except Exception:
+                    logger.warning(
+                        f"Could not drop the misfire grace of schedule {job.id}; "
+                        "the next start retries it",
+                        exc_info=True,
+                    )
+                    continue
+                dropped += 1
+        except Exception:
+            logger.exception(
+                f"Dropping stored misfire graces stopped after {dropped} schedule(s)"
+            )
+            return
+        finally:
+            WRITE_TIMEOUT.reset(token)
+        logger.info(f"Dropped the misfire grace of {dropped} stored user schedule(s)")
 
     def cleanup(self):
         # `run_service` builds the scheduler before it starts it, and a stopped
@@ -4508,6 +4521,11 @@ class Scheduler(AppService):
         return report_orphaned_auth_identities()
 
     @expose
+    def execute_report_stalled_account_erasures(self):
+        """Manually trigger the check for stalled account erasures."""
+        return report_stalled_account_erasures()
+
+    @expose
     def execute_cleanup_expired_files(self):
         """Manually trigger cleanup of expired cloud storage files."""
         return cleanup_expired_files()
@@ -5173,6 +5191,11 @@ class Scheduler(AppService):
 
         result = run_async(run_ratification_pass(user_id))
         return result.model_dump(mode="json")
+
+
+_USER_SCHEDULE_FUNC_REFS = frozenset(
+    obj_to_ref(func) for func in (execute_graph, execute_copilot_turn)
+)
 
 
 class _JobList:

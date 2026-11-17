@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import json
 import uuid
@@ -9,13 +10,18 @@ import prisma.models
 import pytest
 import pytest_mock
 from autogpt_libs.auth import get_optional_user_id
+from autogpt_libs.auth.dependencies import get_request_context
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from autogpt_libs.auth.models import RequestContext
 from pydantic import BaseModel
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.store.db import StoreAgentsSortOptions
 from backend.api.utils.exceptions import add_exception_handlers
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.graph import GraphModelWithoutNodes
 
+from . import cache as store_cache
 from . import model as store_model
 from . import routes as store_routes
 
@@ -1110,3 +1116,121 @@ def test_post_review_accepts_in_range_score(mocker: pytest_mock.MockFixture) -> 
     assert response.json()["score"] == 5
     mock_create.assert_called_once()
     assert mock_create.call_args.kwargs["score"] == 5
+
+
+@pytest.mark.parametrize("caller, status", [("anonymous", 401), ("user", 403)])
+def test_cache_metrics_are_for_admins_only(
+    caller: str, status: int, mocker: pytest_mock.MockFixture
+) -> None:
+    if caller == "anonymous":
+        app.dependency_overrides.pop(get_jwt_payload)
+    scans = _record_cache_info_calls(mocker)
+
+    response = client.get("/metrics/cache")
+
+    assert response.status_code == status
+    assert scans == []
+
+
+def test_cache_metrics_scan_redis_off_the_event_loop(
+    mock_jwt_admin, mocker: pytest_mock.MockFixture
+) -> None:
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    scans = _record_cache_info_calls(mocker)
+
+    response = client.get("/metrics/cache")
+
+    assert response.status_code == 200
+    assert 'store_cache_entries{cache="store_agents"} 3' in response.text
+    assert scans == ["off the event loop"] * 4
+
+
+def _record_cache_info_calls(mocker: pytest_mock.MockFixture) -> list[str]:
+    scans: list[str] = []
+
+    def cache_info() -> dict[str, int | None]:
+        try:
+            asyncio.get_running_loop()
+            scans.append("on the event loop")
+        except RuntimeError:
+            scans.append("off the event loop")
+        return {"size": 3, "maxsize": None, "ttl_seconds": 300}
+
+    for cached_function in (
+        store_cache.get_cached_store_agents,
+        store_cache.get_cached_agent_details,
+        store_cache.get_cached_store_creators,
+        store_cache.get_cached_creator_details,
+    ):
+        mocker.patch.object(cached_function, "cache_info", cache_info)
+    return scans
+
+
+SUBMISSION_ROUTE_CALLS = [
+    ("get", "/submissions", None),
+    (
+        "post",
+        "/submissions",
+        {
+            "graph_id": "graph-1",
+            "graph_version": 1,
+            "slug": "a-listing",
+            "name": "A listing",
+            "sub_heading": "Does a thing",
+            "categories": ["research"],
+        },
+    ),
+    (
+        "put",
+        "/submissions/version-1",
+        {"name": "A listing", "sub_heading": "x", "categories": ["research"]},
+    ),
+    ("delete", "/submissions/version-1", None),
+]
+
+
+@pytest.mark.parametrize(
+    "billing_role",
+    ["org", "team"],
+)
+@pytest.mark.parametrize(
+    "method,path,body",
+    SUBMISSION_ROUTE_CALLS,
+    ids=[f"{m} {p}" for m, p, _ in SUBMISSION_ROUTE_CALLS],
+)
+def test_a_billing_manager_role_is_refused_marketplace_submissions(
+    mocker: pytest_mock.MockFixture,
+    method: str,
+    path: str,
+    body: dict | None,
+    billing_role: str,
+) -> None:
+    """Submitting, editing, withdrawing and listing an org's submissions need
+    a role that covers its workflows; managing billing doesn't."""
+    app.dependency_overrides[enforce_payment_paywall] = lambda: None
+    app.dependency_overrides[get_request_context] = lambda: RequestContext(
+        user_id="test-user-id",
+        org_id=TEST_ORG_ID,
+        team_id="team-1" if billing_role == "team" else None,
+        is_org_owner=False,
+        is_org_admin=False,
+        is_org_billing_manager=billing_role == "org",
+        is_team_admin=False,
+        is_team_billing_manager=billing_role == "team",
+        seat_status="ACTIVE",
+    )
+    db_calls = [
+        mocker.patch(f"backend.api.features.store.db.{name}")
+        for name in (
+            "get_store_submissions",
+            "create_store_submission",
+            "edit_store_submission",
+            "delete_store_submission",
+        )
+    ]
+
+    response = client.request(method, path, json=body)
+
+    assert response.status_code == 403, response.text
+    for db_call in db_calls:
+        db_call.assert_not_called()
