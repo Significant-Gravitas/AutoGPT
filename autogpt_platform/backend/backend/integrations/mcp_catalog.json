@@ -704,7 +704,7 @@
     "mcp_server": {
       "server_url": "https://mcp.klaviyo.com/mcp",
       "documentation_url": "https://developers.klaviyo.com/en/docs/klaviyo_mcp_server",
-      "setup_instructions": "Sign in with your Klaviyo account and approve access. Your existing Klaviyo user permissions apply to every tool call.",
+      "setup_instructions": "Sign in with your Klaviyo account and approve access. Klaviyo only lets users with the Owner, Admin or Manager role use its hosted server, so ask an account admin if you have another role. Your existing Klaviyo user permissions apply to every tool call.",
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
