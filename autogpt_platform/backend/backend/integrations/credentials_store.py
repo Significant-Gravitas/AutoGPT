@@ -383,13 +383,13 @@ class IntegrationCredentialsStore:
         async with await self.locked_user_integrations(user_id):
             # Check system/managed IDs without triggering provisioning
             if is_system_credential(credentials.id):
-                raise ValueError(
+                raise InvalidInputError(
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
                 )
             persisted = await self._get_persisted_user_creds_unlocked(user_id)
             if any(c.id == credentials.id for c in persisted):
-                raise ValueError(
+                raise InvalidInputError(
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
                 )

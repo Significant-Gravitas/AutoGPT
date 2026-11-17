@@ -14,7 +14,7 @@ import sys
 
 # O_PATH walks a directory with search permission only, as path lookup does.
 _DIR_ACCESS = os.O_PATH if sys.platform == "linux" else os.O_RDONLY
-_DIR_FLAGS = _DIR_ACCESS | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+_DIR_FLAGS = _DIR_ACCESS | getattr(os, "O_DIRECTORY", 0) | os.O_NOFOLLOW | os.O_CLOEXEC
 _UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
 
 
