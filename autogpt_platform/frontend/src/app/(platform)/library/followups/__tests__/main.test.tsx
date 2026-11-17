@@ -524,14 +524,15 @@ describe("FollowupsPage", () => {
     );
 
     render(<FollowupsPage />);
+    // The polite live region is there before the reads settle, so the text
+    // that later lands in it is announced.
+    const region = screen.getByTestId("schedules-unavailable-status");
+    expect(region.getAttribute("role")).toBe("status");
 
     expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
-    // Announced politely, from a live region mounted before the reads settled.
     expect(
-      screen
-        .getByText(/Scheduled items are temporarily unavailable/)
-        .closest('[role="status"]'),
-    ).not.toBeNull();
+      within(region).getByText(/Scheduled items are temporarily unavailable/),
+    ).toBeDefined();
     expect(screen.queryByText("Something went wrong")).toBeNull();
     expect(screen.queryByTestId("followups-empty")).toBeNull();
 
@@ -548,6 +549,31 @@ describe("FollowupsPage", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("schedules-unavailable")).toBeNull(),
     );
+  });
+
+  test("a real failure outranks the outage notice when nothing loaded", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
+        HttpResponse.json(
+          {
+            detail:
+              "Schedules are temporarily unavailable. Try again in a moment.",
+          },
+          { status: 503 },
+        ),
+      ),
+      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+        HttpResponse.json(
+          { detail: "The jobstore query failed" },
+          { status: 500 },
+        ),
+      ),
+    );
+
+    render(<FollowupsPage />);
+
+    expect(await screen.findByText("Something went wrong")).toBeDefined();
+    expect(screen.queryByTestId("schedules-unavailable")).toBeNull();
   });
 
   test("an outage of one list keeps the other's schedules with the partial warning", async () => {

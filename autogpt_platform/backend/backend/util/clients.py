@@ -18,6 +18,11 @@ settings = Settings()
 
 T = TypeVar("T")
 
+# A deploy leaves no scheduler for about 1-2.5 min, and at worst about 10: the
+# 300s shutdown grace plus the 300s startup probe. An outage longer than that
+# is not a deploy, and someone should hear about it.
+SCHEDULER_SUSTAINED_OUTAGE_SECONDS = 600.0
+
 if TYPE_CHECKING:
     from anthropic import AsyncAnthropic
     from openai import AsyncOpenAI
@@ -76,39 +81,66 @@ async def read_schedules(read: Awaitable[T]) -> T:
     scheduler is out.
 
     The scheduler restarts on every deploy. A read it refuses, drops or leaves
-    unanswered raises ``SchedulerUnavailableError`` (a 503) within
-    ``schedule_list_timeout_seconds``, well inside the 30s frontend proxy and
-    the 300s RPC timeout. A scheduler that answers with an error is not an
-    outage, so that error passes through unchanged.
+    unanswered past ``schedule_list_timeout_seconds`` raises
+    ``SchedulerUnavailableError`` (a 503), well inside the 30s frontend proxy
+    and the 300s RPC timeout. A scheduler that answers with an error, its own
+    timeout included, is not out, so that error passes through unchanged.
     """
-    global _scheduler_out_since
+    deadline = asyncio.timeout(settings.config.schedule_list_timeout_seconds)
     try:
-        schedules = await asyncio.wait_for(
-            read, timeout=settings.config.schedule_list_timeout_seconds
-        )
-    except (TimeoutError, httpx.TransportError) as e:
-        if _scheduler_out_since is None:
-            _scheduler_out_since = monotonic()
-        raise SchedulerUnavailableError(
-            f"The scheduler did not answer: {type(e).__name__} {e}".rstrip()
-        ) from e
-    _scheduler_out_since = None
+        async with deadline:
+            schedules = await read
+    except httpx.TransportError as e:
+        raise _scheduler_unavailable(e) from e
+    except TimeoutError as e:
+        if deadline.expired():
+            raise _scheduler_unavailable(e) from e
+        _scheduler_outage.answered()
+        raise
+    except Exception:
+        _scheduler_outage.answered()
+        raise
+    _scheduler_outage.answered()
     return schedules
 
 
-# A deploy leaves no scheduler for about 1-2.5 min, and at worst about 10: the
-# 300s shutdown grace plus the 300s startup probe. An outage longer than that
-# is not a deploy, and someone should hear about it.
-SCHEDULER_SUSTAINED_OUTAGE_SECONDS = 600.0
-# When this process's schedule reads began failing; None while they succeed.
-_scheduler_out_since: float | None = None
+def _scheduler_unavailable(cause: Exception) -> SchedulerUnavailableError:
+    return SchedulerUnavailableError(
+        f"The scheduler did not answer: {type(cause).__name__} {cause}".rstrip(),
+        outage_seconds=_scheduler_outage.failed(),
+    )
 
 
-def scheduler_outage_seconds() -> float:
-    """How long this process's schedule reads have been failing, or 0."""
-    if _scheduler_out_since is None:
-        return 0.0
-    return monotonic() - _scheduler_out_since
+class _SchedulerOutage:
+    """This process's current run of failed schedule reads.
+
+    Reads are rare, so failures more than ``SCHEDULER_SUSTAINED_OUTAGE_SECONDS``
+    apart are separate outages, such as two deploys' gaps, as are failures
+    with an answer between them.
+    """
+
+    def __init__(self) -> None:
+        self.started: float | None = None
+        self.last_failure: float | None = None
+
+    def failed(self) -> float:
+        """Count a failed read; return how long the current outage has lasted."""
+        now = monotonic()
+        started = self.started
+        if (
+            started is None
+            or self.last_failure is None
+            or now - self.last_failure > SCHEDULER_SUSTAINED_OUTAGE_SECONDS
+        ):
+            started = now
+        self.started, self.last_failure = started, now
+        return now - started
+
+    def answered(self) -> None:
+        self.started = self.last_failure = None
+
+
+_scheduler_outage = _SchedulerOutage()
 
 
 @thread_cached

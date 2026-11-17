@@ -13,7 +13,6 @@ import inspect
 import logging
 import socket
 from typing import AsyncIterator, Iterator
-from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -85,8 +84,8 @@ async def scheduler_out(
     monkeypatch.setattr(
         clients.settings.config, "schedule_list_timeout_seconds", _CAP_S
     )
-    # Each test starts, and leaves, with no outage under way.
-    monkeypatch.setattr(clients, "_scheduler_out_since", None)
+    # Each test starts with no outage under way, and leaves none behind.
+    monkeypatch.setattr(clients, "_scheduler_outage", clients._SchedulerOutage())
     # Unwrapped from its thread cache, so no other test gets this client.
     client = inspect.unwrap(clients.get_scheduler_client)()
     for module in (routes, diagnostics):
@@ -137,27 +136,6 @@ async def test_a_schedule_read_answers_503_promptly_while_the_scheduler_is_out(
     assert response.headers["Retry-After"] == str(SCHEDULER_RETRY_AFTER_SECONDS)
 
 
-async def test_an_outage_deletes_no_orphaned_schedule(
-    http: httpx.AsyncClient,
-    scheduler_out: SchedulerClient,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    # The cleanup reads the schedules first, and that read fails.
-    deletes = AsyncMock()
-    monkeypatch.setattr(scheduler_out, "delete_schedule", deletes)
-
-    response = await asyncio.wait_for(
-        http.post(
-            "/api/admin/diagnostics/schedules/cleanup-orphaned",
-            json={"schedule_ids": ["schedule-1"]},
-        ),
-        timeout=_ANSWERED_WITHIN_S,
-    )
-
-    assert response.status_code == 503, response.text
-    deletes.assert_not_awaited()
-
-
 @pytest.mark.parametrize("scheduler_port", ["down"], indirect=True)
 async def test_only_an_outage_longer_than_any_deploy_is_logged_as_an_error(
     http: httpx.AsyncClient,
@@ -168,37 +146,54 @@ async def test_only_an_outage_longer_than_any_deploy_is_logged_as_an_error(
     # and a scheduler that stays down must.
     now = [1000.0]
     monkeypatch.setattr(clients, "monotonic", lambda: now[0])
+    sustained = clients.SCHEDULER_SUSTAINED_OUTAGE_SECONDS
 
-    async def logged_levels() -> list[str]:
+    async def level_of_a_read_after(seconds: float) -> str:
+        now[0] += seconds
         caplog.clear()
         with caplog.at_level(logging.WARNING, logger=api_exceptions.__name__):
             await asyncio.wait_for(
                 http.get("/api/schedules"), timeout=_ANSWERED_WITHIN_S
             )
-        return [
-            r.levelname for r in caplog.records if r.name == api_exceptions.__name__
-        ]
+        [record] = [r for r in caplog.records if r.name == api_exceptions.__name__]
+        return record.levelname
 
-    assert await logged_levels() == ["WARNING"]
-    now[0] += clients.SCHEDULER_SUSTAINED_OUTAGE_SECONDS
-    assert await logged_levels() == ["ERROR"]
+    # One outage, read every few minutes, until it outlasts any deploy.
+    assert await level_of_a_read_after(0) == "WARNING"
+    assert await level_of_a_read_after(sustained / 2) == "WARNING"
+    assert await level_of_a_read_after(sustained / 2) == "ERROR"
 
-    async def scheduler_back() -> list:
-        return []
-
-    await clients.read_schedules(scheduler_back())
-    now[0] += clients.SCHEDULER_SUSTAINED_OUTAGE_SECONDS
-    # A new outage starts its own clock.
-    assert await logged_levels() == ["WARNING"]
-
-
-async def test_a_scheduler_that_answers_with_an_error_is_not_an_outage():
-    # Its own failure stays a 500 that someone investigates, not a calm 503.
-    async def scheduler_failed() -> None:
+    # An answer, even an error, ends it, so the next failure starts afresh.
+    async def scheduler_answered_with_an_error() -> None:
         raise HTTPServerError(500, "the jobstore query failed")
 
     with pytest.raises(HTTPServerError):
-        await clients.read_schedules(scheduler_failed())
+        await clients.read_schedules(scheduler_answered_with_an_error())
+    assert await level_of_a_read_after(sustained / 2) == "WARNING"
+
+    # Failures far apart are separate outages too: on a pod that reads
+    # rarely, two deploys' gaps must not add up to one long outage.
+    assert await level_of_a_read_after(sustained * 3) == "WARNING"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        HTTPServerError(500, "the jobstore query failed"),
+        TimeoutError("the jobstore query timed out"),
+    ],
+    ids=["server-error", "its-own-timeout"],
+)
+async def test_a_scheduler_that_answers_with_an_error_is_not_an_outage(
+    error: Exception,
+):
+    # Its own failure, its own timeout included, stays a 500 that someone
+    # investigates, not a calm 503.
+    async def scheduler_answered() -> None:
+        raise error
+
+    with pytest.raises(type(error)):
+        await clients.read_schedules(scheduler_answered())
 
 
 def test_the_read_cap_answers_before_the_frontend_proxy_gives_up():

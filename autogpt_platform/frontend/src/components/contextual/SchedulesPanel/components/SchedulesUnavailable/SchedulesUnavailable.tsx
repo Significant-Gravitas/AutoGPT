@@ -23,7 +23,7 @@ export function SchedulesUnavailable({
       }
       data-testid={unavailable ? "schedules-unavailable" : undefined}
     >
-      <div role="status">
+      <div role="status" data-testid="schedules-unavailable-status">
         {unavailable && (
           <Text variant="body" tone="secondary">
             Scheduled items are temporarily unavailable. They&apos;ll be back in
