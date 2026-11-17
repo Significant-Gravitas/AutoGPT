@@ -304,7 +304,11 @@ def connection(endpoint: str):
         or parsed.password
     ):
         raise RuntimeError("Private browser requires a local CDP endpoint")
-    return connect(endpoint, logger=_logger, max_size=1_000_000, open_timeout=5)
+    # websockets takes a proxy from the environment by default; the browser's
+    # DevTools port is on loopback, where no proxy can reach it.
+    return connect(
+        endpoint, logger=_logger, max_size=1_000_000, open_timeout=5, proxy=None
+    )
 
 
 async def prepare_browser(endpoint: str, plan: CheckoutPlan) -> BrowserBinding:
