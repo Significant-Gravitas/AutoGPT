@@ -3,9 +3,9 @@ mounted apps' routes included."""
 
 import json
 import re
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import Request
@@ -217,11 +217,18 @@ def _spy(name: str, parsed: list[str]):
     return parse
 
 
+@contextmanager
 def _signed_in():
-    return patch(
-        "autogpt_libs.auth.jwt_utils.parse_jwt_token_async",
-        AsyncMock(return_value={"sub": "user-1", "role": "authenticated"}),
-    )
+    payload = {"sub": "user-1", "sid": "session-1", "role": "authenticated"}
+    sessions = Mock(is_auth_session_active=AsyncMock(return_value=True))
+    with (
+        patch(
+            "autogpt_libs.auth.jwt_utils.parse_jwt_token_async",
+            AsyncMock(return_value=payload),
+        ),
+        patch("backend.api.session_auth.auth_session_db", return_value=sessions),
+    ):
+        yield
 
 
 def _default_limit() -> int:
