@@ -16,6 +16,15 @@ export class QueueFollowUpNotActiveError extends Error {
   }
 }
 
+export class QueueFollowUpFullError extends Error {
+  constructor() {
+    super(
+      "This conversation has too many messages waiting; wait for earlier ones to be processed",
+    );
+    this.name = "QueueFollowUpFullError";
+  }
+}
+
 /**
  * POST a follow-up message to the dedicated pending-message endpoint when
  * the client believes a turn is already in flight.
@@ -52,6 +61,19 @@ export async function queueFollowUpMessage(
 
   if (res.status === 409) {
     throw new QueueFollowUpNotActiveError();
+  }
+
+  if (res.status === 503) {
+    throw new Error(
+      "This conversation is temporarily unavailable; try again shortly",
+    );
+  }
+
+  if (
+    res.status === 429 &&
+    res.headers.get("X-Error-Code") === "pending_buffer_full"
+  ) {
+    throw new QueueFollowUpFullError();
   }
 
   throw new Error(`Expected 200 from /messages/pending; got ${res.status}`);

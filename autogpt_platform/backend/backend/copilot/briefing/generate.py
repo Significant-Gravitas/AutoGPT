@@ -21,7 +21,7 @@ from backend.data.db_accessors import (
     user_db,
 )
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
-from backend.data.user import is_user_banned
+from backend.data.user import is_user_refused
 from backend.util.clients import get_database_manager_async_client
 from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.posthog_events import PostHogEvent
@@ -257,8 +257,8 @@ async def _compose_fresh_briefing(
 
 
 async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
-    if await is_user_banned(user_id):
-        return {"status": "skipped", "reason": "banned"}
+    if await is_user_refused(user_id):
+        return {"status": "skipped", "reason": "banned_or_closed"}
     if await is_user_paywalled(user_id):
         return {"status": "skipped", "reason": "paywalled"}
 

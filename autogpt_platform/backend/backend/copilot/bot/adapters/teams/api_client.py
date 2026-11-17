@@ -182,29 +182,36 @@ class TeamsClient:
         return self._token
 
     async def _mint_access_token(self) -> tuple[str, float]:
-        """Client-credentials grant against the bot's own tenant authority.
+        return await mint_app_token(self._http, config.CONNECTOR_SCOPE)
 
-        Single-tenant registrations (the only kind Microsoft issues now) must
-        use ``login.microsoftonline.com/{tenant}``; the tenant-less
-        ``botframework.com`` authority is the multi-tenant form and 401s here.
-        """
-        url = f"https://login.microsoftonline.com/{config.get_tenant_id()}/oauth2/v2.0/token"
-        response = await self._http.post(
-            url,
-            data={
-                "grant_type": "client_credentials",
-                "client_id": config.get_app_id(),
-                "client_secret": config.get_app_password(),
-                "scope": config.CONNECTOR_SCOPE,
-            },
+
+async def mint_app_token(http: httpx.AsyncClient, scope: str) -> tuple[str, float]:
+    """Client-credentials grant for ``scope`` against the bot's own tenant
+    authority; returns the token and its lifetime in seconds.
+
+    Single-tenant registrations (the only kind Microsoft issues now) must
+    use ``login.microsoftonline.com/{tenant}``; the tenant-less
+    ``botframework.com`` authority is the multi-tenant form and 401s here.
+    """
+    url = (
+        f"https://login.microsoftonline.com/{config.get_tenant_id()}/oauth2/v2.0/token"
+    )
+    response = await http.post(
+        url,
+        data={
+            "grant_type": "client_credentials",
+            "client_id": config.get_app_id(),
+            "client_secret": config.get_app_password(),
+            "scope": scope,
+        },
+    )
+    if response.status_code >= 400:
+        raise TeamsApiError(
+            f"could not mint a token for {scope} ({response.status_code}): "
+            f"{response.text[:300]}"
         )
-        if response.status_code >= 400:
-            raise TeamsApiError(
-                f"could not mint Connector token ({response.status_code}): "
-                f"{response.text[:300]}"
-            )
-        body = response.json()
-        token = body.get("access_token")
-        if not token:
-            raise TeamsApiError("token response carried no access_token")
-        return token, float(body.get("expires_in", 3600))
+    body = response.json()
+    token = body.get("access_token")
+    if not token:
+        raise TeamsApiError("token response carried no access_token")
+    return token, float(body.get("expires_in", 3600))

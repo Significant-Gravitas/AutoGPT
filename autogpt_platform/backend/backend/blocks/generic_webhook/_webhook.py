@@ -2,7 +2,7 @@ import hmac
 import logging
 
 from fastapi import HTTPException, Request
-from pydantic import SecretStr
+from pydantic import SecretStr, TypeAdapter, ValidationError
 from strenum import StrEnum
 
 from backend.api.features.library.model import preset_trigger_configs
@@ -10,6 +10,8 @@ from backend.data.integrations import WebhookWithRelations
 from backend.sdk import Credentials, ManualWebhookManagerBase, Webhook
 
 logger = logging.getLogger(__name__)
+
+_OPTIONAL_SECRET: TypeAdapter[SecretStr | None] = TypeAdapter(SecretStr | None)
 
 
 class GenericWebhookType(StrEnum):
@@ -58,13 +60,23 @@ class GenericWebhooksManager(ManualWebhookManagerBase):
 
         found: list[str] = []
         for src in sources:
-            value = src.get(cls.SECRET_TOKEN_INPUT)
             # Stored values may arrive as plain strings or as SecretStr
             # depending on serialization path; normalize.
-            if isinstance(value, SecretStr):
-                value = value.get_secret_value()
-            if isinstance(value, str) and value.strip():
-                found.append(value)
+            try:
+                secret = _OPTIONAL_SECRET.validate_python(
+                    src.get(cls.SECRET_TOKEN_INPUT)
+                )
+            except ValidationError as exc:
+                # A token that is set but is not text is refused, never read as unset.
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "A secret token is configured on this webhook but could "
+                        "not be read, so the delivery cannot be verified."
+                    ),
+                ) from exc
+            if secret and secret.get_secret_value().strip():
+                found.append(secret.get_secret_value())
 
         if not found:
             return None

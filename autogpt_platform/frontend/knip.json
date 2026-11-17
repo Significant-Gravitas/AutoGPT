@@ -3,6 +3,7 @@
   "entry": [
     "sentry.{edge,server}.config.ts",
     "scripts/migrate-supabase-auth.ts",
+    "scripts/native-auth-server.ts",
     "scripts/seed-preview-accounts.ts",
     "scripts/perf/record.ts",
     "public/devtools/render-counter.js",

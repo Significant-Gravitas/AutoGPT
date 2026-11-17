@@ -100,8 +100,8 @@ async def test_command_persistence_failure_completes_the_turn_with_stream_error(
         ),
         patch.object(stream_registry, "publish_chunk", published),
         patch(
-            "backend.copilot.executor.processor.is_user_banned",
-            AsyncMock(return_value=False),
+            "backend.copilot.executor.processor.account_refusal",
+            AsyncMock(return_value=None),
         ),
     ):
         expectation = (

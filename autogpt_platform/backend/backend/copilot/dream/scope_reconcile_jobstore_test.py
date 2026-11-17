@@ -55,12 +55,15 @@ from .scheduling import SKILL_LEARNING_JOB_PREFIX, dream_system_job
 _EXECUTION = sm.Jobstores.EXECUTION.value
 TIMEOUT = 5
 _NIGHTLY = f"dream_nightly_batch_{ACCOUNT.scope_key}"
-_COMMUNITY = f"community_rebuild_{ACCOUNT.scope_key}"
+_LEARNING = learning_job_id(ACCOUNT)
 
 
 @pytest.fixture
 def env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
-    return install_registry_env(monkeypatch)
+    env = install_registry_env(monkeypatch)
+    # Skill learning on, so the account has two crons: nightly, then learning.
+    env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = True
+    return env
 
 
 @contextmanager
@@ -110,7 +113,7 @@ async def _set(event: threading.Event) -> None:
 @pytest.mark.asyncio
 async def test_a_delete_after_a_restores_read_is_not_undone(env, monkeypatch, tmp_path):
     """The review's probe: a restore re-timing the account's crons parks
-    after its read, just before writing the nightly cron; the delete RPC
+    after its read, just before writing the learning cron; the delete RPC
     forgets the cron and removes it; the restore then writes it back,
     tagged as the reconcile's. The next pass takes it back, and later
     passes leave it deleted."""
@@ -122,7 +125,10 @@ async def test_a_delete_after_a_restores_read_is_not_undone(env, monkeypatch, tm
         add = service._add_memory_job
 
         def parked_add(*args):
-            if args[2].job_id_prefix == "dream_nightly_batch" and not reached.is_set():
+            if (
+                args[2].job_id_prefix == SKILL_LEARNING_JOB_PREFIX
+                and not reached.is_set()
+            ):
                 reached.set()
                 assert release.wait(5)
             return add(*args)
@@ -130,15 +136,15 @@ async def test_a_delete_after_a_restores_read_is_not_undone(env, monkeypatch, tm
         monkeypatch.setattr(service, "_add_memory_job", parked_add)
         restore = asyncio.create_task(_pass(service))
         await asyncio.wait_for(_set(reached), TIMEOUT)
-        assert await asyncio.to_thread(service.delete_nightly_batch_schedule, USER)
-        assert env.db.rows[ACCOUNT.scope_key].nightly_job_id is None
+        assert await asyncio.to_thread(service.delete_skill_learning_schedule, USER)
+        assert env.db.rows[ACCOUNT.scope_key].learning_job_id is None
         release.set()
         await asyncio.wait_for(restore, 5)
         for _ in range(3):
             await _pass(service)
 
-        assert _job(service, _NIGHTLY) is None
-        assert str(_job(service, _COMMUNITY).trigger.timezone) == PARIS
+        assert _job(service, _LEARNING) is None
+        assert str(_job(service, _NIGHTLY).trigger.timezone) == PARIS
 
 
 @pytest.mark.asyncio
@@ -266,12 +272,12 @@ class _Turns:
 async def test_no_interleaving_of_a_restore_and_a_delete_leaves_a_cron_unrecorded(
     env, monkeypatch, tmp_path, seed: int, ending: str
 ):
-    """A restore re-timing the account's crons races the nightly cron's
+    """A restore re-timing the account's crons races the learning cron's
     delete, their registry reads and writes and jobstore writes taken one at
     a time in a seeded order. The restore runs to its end, its second add
-    fails, or it is cancelled there. Once both are done, and two more
-    passes, the scheduler holds exactly the crons the row records: after the
-    delete, never the nightly one."""
+    (the learning cron's) fails, or it is cancelled there. Once both are
+    done, and two more passes, the scheduler holds exactly the crons the row
+    records: after the delete, never the learning one."""
     await registry.ensure_scope_scheduled(ACCOUNT)
     monkeypatch.setattr(sm, "_event_loop", asyncio.get_running_loop())
     turns = _Turns(random.Random(seed), ["restore", "delete"])
@@ -311,7 +317,7 @@ async def test_no_interleaving_of_a_restore_and_a_delete_leaves_a_cron_unrecorde
         def deleting() -> bool:
             _FLOW.set("delete")
             try:
-                return service.delete_nightly_batch_schedule(USER)
+                return service.delete_skill_learning_schedule(USER)
             finally:
                 turns.finished("delete")
 
@@ -324,10 +330,10 @@ async def test_no_interleaving_of_a_restore_and_a_delete_leaves_a_cron_unrecorde
             await _pass(service)
 
         row = env.db.rows[ACCOUNT.scope_key]
-        assert row.nightly_job_id is None, "the delete forgot it"
-        assert _job(service, _NIGHTLY) is None
-        assert _job(service, _COMMUNITY) is not None
-        assert str(_job(service, _COMMUNITY).trigger.timezone) == PARIS
+        assert row.learning_job_id is None, "the delete forgot it"
+        assert _job(service, _LEARNING) is None
+        assert _job(service, _NIGHTLY) is not None
+        assert str(_job(service, _NIGHTLY).trigger.timezone) == PARIS
 
 
 def _postgres_url() -> str | None:
@@ -341,7 +347,7 @@ async def test_a_write_held_by_a_locked_row_fails_its_scope_and_the_pass_goes_on
     env, monkeypatch
 ):
     """The review's blocked write on PostgreSQL: another transaction holds
-    the first scope's community cron row while every scope needs repair.
+    the first scope's nightly cron row while every scope needs repair.
     That scope's write gives up after the write timeout and fails it; the
     same pass re-times the next scope and removes a paused one's crons, and
     leaves no write waiting on the row. The next cycle repairs the first."""
@@ -369,7 +375,7 @@ async def test_a_write_held_by_a_locked_row_fails_its_scope_and_the_pass_goes_on
             try:
                 locker.execute(
                     text(f"SELECT id FROM {name} WHERE id = :id FOR UPDATE"),
-                    {"id": f"community_rebuild_{locked.scope_key}"},
+                    {"id": f"dream_nightly_batch_{locked.scope_key}"},
                 ).all()
                 started = time.monotonic()
 
@@ -418,13 +424,13 @@ async def test_a_restore_cut_short_after_a_stale_add_leaves_no_cron_behind(
 ):
     """The round-4 review's partial restore, with the production delete and
     jobstore: the restore re-timing the account's crons parks before its
-    community add, the delete RPC forgets that cron and removes it, and the
-    add then puts it back. The nightly add after it fails, is cancelled, or
+    nightly add, the delete RPC forgets that cron and removes it, and the
+    add then puts it back. The learning add after it fails, is cancelled, or
     waits on a row another transaction holds (on PostgreSQL) until the write
-    timeout. The community cron came back tagged as the reconcile's, so the
-    next pass takes it back, the nightly's repair failing, cut short or held
+    timeout. The nightly cron came back tagged as the reconcile's, so the
+    next pass takes it back, the learning's repair failing, cut short or held
     again there (the round-5 review's production delete race), and three
-    more after the nightly recovers leave it gone."""
+    more after the learning recovers leave it gone."""
     if ending == "pg_timeout" and _postgres_url() is None:
         pytest.skip("needs the PostgreSQL test DB")
     await registry.ensure_scope_scheduled(ACCOUNT)
@@ -444,28 +450,28 @@ async def test_a_restore_cut_short_after_a_stale_add_leaves_no_cron_behind(
             reached, release = threading.Event(), threading.Event()
             add = service._add_memory_job
 
-            def parked_community(*args):
-                if args[2].job_id_prefix == "community_rebuild":
+            def parked_nightly(*args):
+                if args[2].job_id_prefix == "dream_nightly_batch":
                     reached.set()
                     assert release.wait(TIMEOUT)
                 elif ending == "error":
-                    raise ConnectionError("the nightly add failed")
+                    raise ConnectionError("the learning add failed")
                 elif ending == "cancel":
                     raise asyncio.CancelledError("the pass's ceiling")
                 return add(*args)
 
-            monkeypatch.setattr(service, "_add_memory_job", parked_community)
+            monkeypatch.setattr(service, "_add_memory_job", parked_nightly)
             hold = locker.begin() if locker is not None else None
             try:
                 if locker is not None:
                     locker.execute(
                         text(f"SELECT id FROM {name} WHERE id = :id FOR UPDATE"),
-                        {"id": _NIGHTLY},
+                        {"id": _LEARNING},
                     ).all()
                 restore = asyncio.create_task(_pass(service))
                 await asyncio.wait_for(_set(reached), TIMEOUT)
                 assert await asyncio.to_thread(
-                    service.delete_community_rebuild_schedule, USER
+                    service.delete_nightly_batch_schedule, USER
                 )
                 release.set()
                 if ending == "cancel":
@@ -474,16 +480,16 @@ async def test_a_restore_cut_short_after_a_stale_add_leaves_no_cron_behind(
                 else:
                     report = await asyncio.wait_for(restore, 10)
                     assert report.failed == [ACCOUNT.scope_key]
-                assert _job(service, _COMMUNITY) is not None, "the stale add landed"
+                assert _job(service, _NIGHTLY) is not None, "the stale add landed"
 
                 if ending == "cancel":
                     with pytest.raises(asyncio.CancelledError):
                         await asyncio.wait_for(_pass(service), 10)
                 else:
                     report = await asyncio.wait_for(_pass(service), 10)
-                    assert report.dropped == [_COMMUNITY]
+                    assert report.dropped == [_NIGHTLY]
                     assert report.failed == [ACCOUNT.scope_key]
-                assert _job(service, _COMMUNITY) is None, "gone, the repair failing"
+                assert _job(service, _NIGHTLY) is None, "gone, the repair failing"
             finally:
                 release.set()
                 if hold is not None:
@@ -493,9 +499,9 @@ async def test_a_restore_cut_short_after_a_stale_add_leaves_no_cron_behind(
             for _ in range(3):
                 await _pass(service)
 
-            assert env.db.rows[ACCOUNT.scope_key].community_job_id is None
-            assert _job(service, _COMMUNITY) is None
-            assert str(_job(service, _NIGHTLY).trigger.timezone) == PARIS
+            assert env.db.rows[ACCOUNT.scope_key].nightly_job_id is None
+            assert _job(service, _NIGHTLY) is None
+            assert str(_job(service, _LEARNING).trigger.timezone) == PARIS
             if ending == "pg_timeout":
                 with store.engine.begin() as connection:
                     connection.execute(text(f"DROP TABLE IF EXISTS {name}"))
@@ -510,16 +516,16 @@ async def test_a_tagged_stray_goes_while_its_siblings_repair_keeps_failing(
     env, monkeypatch, tmp_path, failure: str
 ):
     """The round-5 review's sibling failure: the ACTIVE account scope holds a
-    tagged community cron its row no longer records and a nightly cron in
+    tagged nightly cron its row no longer records and a learning cron in
     the wrong timezone, whose repair fails on every pass (its add raises, or
     another transaction holds its row on PostgreSQL until the write
     timeout). The first pass takes the stray back all the same, and the
-    nightly is repaired once its write goes through."""
+    learning cron is repaired once its write goes through."""
     if failure == "pg_lock" and _postgres_url() is None:
         pytest.skip("needs the PostgreSQL test DB")
     await registry.ensure_scope_scheduled(ACCOUNT)
     monkeypatch.setattr(sm, "_event_loop", asyncio.get_running_loop())
-    community, nightly = sm.DREAM_SYSTEM_JOBS[:2]
+    nightly, learning = sm.DREAM_SYSTEM_JOBS[:2]
     name = f"memcore_sibling_{uuid.uuid4().hex[:8]}"
     if failure == "pg_lock":
         monkeypatch.setattr(sm, "MEMORY_CRON_WRITE_TIMEOUT_SECONDS", 0.2)
@@ -532,27 +538,23 @@ async def test_a_tagged_stray_goes_while_its_siblings_repair_keeps_failing(
     try:
         with _scheduler(store) as service:
             service._add_memory_job(
-                *sm._MEMORY_CRONS[community.job_id_prefix],
-                community,
-                ACCOUNT,
-                TOKYO,
-                True,
+                *sm._MEMORY_CRONS[nightly.job_id_prefix], nightly, ACCOUNT, TOKYO, True
             )
             service._add_memory_job(
-                *sm._MEMORY_CRONS[nightly.job_id_prefix], nightly, ACCOUNT, TOKYO
+                *sm._MEMORY_CRONS[learning.job_id_prefix], learning, ACCOUNT, TOKYO
             )
-            await env.db.forget_scope_job(USER, ACCOUNT.scope_key, _COMMUNITY)
+            await env.db.forget_scope_job(USER, ACCOUNT.scope_key, _NIGHTLY)
             add = service._add_memory_job
 
             def failing(*args):
-                raise ConnectionError("the nightly's repair is unavailable")
+                raise ConnectionError("the learning cron's repair is unavailable")
 
             hold = locker.begin() if locker is not None else None
             try:
                 if locker is not None:
                     locker.execute(
                         text(f"SELECT id FROM {name} WHERE id = :id FOR UPDATE"),
-                        {"id": _NIGHTLY},
+                        {"id": _LEARNING},
                     ).all()
                 else:
                     monkeypatch.setattr(service, "_add_memory_job", failing)
@@ -561,17 +563,17 @@ async def test_a_tagged_stray_goes_while_its_siblings_repair_keeps_failing(
                 if hold is not None:
                     hold.rollback()
 
-            assert reports[0].dropped == [_COMMUNITY]
+            assert reports[0].dropped == [_NIGHTLY]
             assert [report.failed for report in reports] == [[ACCOUNT.scope_key]] * 3
-            assert _job(service, _COMMUNITY) is None
-            assert str(_job(service, _NIGHTLY).trigger.timezone) == TOKYO
+            assert _job(service, _NIGHTLY) is None
+            assert str(_job(service, _LEARNING).trigger.timezone) == TOKYO
             monkeypatch.setattr(service, "_add_memory_job", add)
 
             report = await _pass(service)
 
-            assert report.restored == [_NIGHTLY] and report.failed == []
-            assert str(_job(service, _NIGHTLY).trigger.timezone) == PARIS
-            assert _job(service, _COMMUNITY) is None
+            assert report.restored == [_LEARNING] and report.failed == []
+            assert str(_job(service, _LEARNING).trigger.timezone) == PARIS
+            assert _job(service, _NIGHTLY) is None
             if failure == "pg_lock":
                 with store.engine.begin() as connection:
                     connection.execute(text(f"DROP TABLE IF EXISTS {name}"))
@@ -640,8 +642,7 @@ async def test_a_take_back_racing_a_new_registration_is_repaired_next_pass(
 
         report = await asyncio.wait_for(scope_reconcile.reconcile(crons), TIMEOUT)
 
-        assert report.restored == [_COMMUNITY, learning]
-        assert str(_job(service, _COMMUNITY).trigger.timezone) == TOKYO
+        assert report.restored == [learning]
         restored = _job(service, learning)
         assert str(restored.trigger.timezone) == TOKYO
         assert env.db.rows[USER].learning_job_id == learning

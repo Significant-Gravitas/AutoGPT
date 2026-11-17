@@ -6,6 +6,7 @@ import pytest
 
 from backend.util import workspace_storage_local
 from backend.util.workspace_storage import LocalWorkspaceStorage
+from backend.util.workspace_storage_base import STREAM_CHUNK_BYTES
 
 
 @pytest.mark.asyncio
@@ -101,3 +102,24 @@ async def test_failed_replace_preserves_original_and_removes_temporary_file(
     assert list((tmp_path / "ws" / "file").iterdir()) == [
         storage._parse_storage_path(original_path)
     ]
+
+
+@pytest.mark.asyncio
+async def test_stream_yields_the_file_in_bounded_chunks(tmp_path):
+    storage = LocalWorkspaceStorage(str(tmp_path))
+    content = b"x" * (STREAM_CHUNK_BYTES * 2 + 1)
+    path = await storage.store("workspace", "file", "big.bin", content)
+
+    chunks = [chunk async for chunk in storage.retrieve_stream(path)]
+
+    assert [len(chunk) for chunk in chunks] == [STREAM_CHUNK_BYTES] * 2 + [1]
+    assert b"".join(chunks) == content
+
+
+@pytest.mark.asyncio
+async def test_stream_of_a_missing_file_raises_on_the_first_chunk(tmp_path):
+    storage = LocalWorkspaceStorage(str(tmp_path))
+    chunks = storage.retrieve_stream("local://workspace/file/gone.bin")
+
+    with pytest.raises(FileNotFoundError):
+        await anext(chunks)

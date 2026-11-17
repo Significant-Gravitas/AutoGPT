@@ -2,6 +2,12 @@ import { useDeleteV2DeleteSession } from "@/app/api/__generated__/endpoints/chat
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
+import {
+  SESSION_GROUP_PAGES_QUERY_KEY,
+  SESSION_GROUPS_QUERY_KEY,
+  type SessionGroupsResult,
+  removeSessionFromGroups,
+} from "./sessionGroups";
 import { useCopilotUIStore } from "./store";
 import {
   SESSION_DELETE_MUTATION_KEY,
@@ -16,7 +22,8 @@ import {
  * the open one (with its `expertId`, so the expert's latest-thread adoption
  * cannot select it again), and fires the delete mutation. `useSessionList`
  * hides the chat while the mutation is pending. On success it is dropped from
- * the cached list; on error the chat shows again and a toast is shown.
+ * the cached lists, the sidebar's groups included; on error the chat shows
+ * again and a toast is shown.
  *
  * Consumed by the app sidebar's recent-chats list so it can render its own
  * `DeleteChatDialog` without duplicating the mutation wiring.
@@ -37,6 +44,14 @@ export function useSessionDeletion() {
         onSuccess: (_data, variables) => {
           queryClient.setQueryData<SessionListInfiniteData>(
             SESSION_LIST_QUERY_KEY,
+            (data) => removeSessionFromList(data, variables.sessionId),
+          );
+          queryClient.setQueriesData<SessionGroupsResult>(
+            { queryKey: SESSION_GROUPS_QUERY_KEY },
+            (data) => removeSessionFromGroups(data, variables.sessionId),
+          );
+          queryClient.setQueriesData<SessionListInfiniteData>(
+            { queryKey: SESSION_GROUP_PAGES_QUERY_KEY },
             (data) => removeSessionFromList(data, variables.sessionId),
           );
           // Use the mutation's own `variables` — not the closed-over store

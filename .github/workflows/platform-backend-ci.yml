@@ -232,7 +232,7 @@ jobs:
     name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }})
     permissions:
       contents: read
-    # Each Python leg preserves the complete suite while its four disjoint path
+    # Each Python leg preserves the complete suite while its five disjoint path
     # groups run on separate standard runners. The cap is a hang guard, not a
     # performance budget: on merge_group a cancelled job reads as a failed
     # check and ejects the PR from the queue, so keep it well above p99.
@@ -241,7 +241,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
-        test-shard: [data, copilot, util-executor, remainder]
+        test-shard: [data, copilot, copilot-sdk, util-executor, remainder]
     runs-on: ubuntu-latest
 
     services:
@@ -270,9 +270,12 @@ jobs:
           - 3310:3310
         env:
           CLAMAV_NO_FRESHCLAMD: false
-          CLAMD_CONF_StreamMaxLength: 50M
-          CLAMD_CONF_MaxFileSize: 100M
-          CLAMD_CONF_MaxScanSize: 100M
+          CLAMD_CONF_StreamMaxLength: 256M
+          CLAMD_CONF_MaxFileSize: 256M
+          CLAMD_CONF_MaxScanSize: 1024M
+          CLAMD_CONF_PCREMaxFileSize: 256M
+          CLAMD_CONF_AlertExceedsMax: "yes"
+          CLAMD_CONF_MaxScanTime: 300000
           CLAMD_CONF_MaxThreads: 4
           CLAMD_CONF_ReadTimeout: 300
         options: >-
@@ -354,8 +357,8 @@ jobs:
             copilot|remainder)
               database_name="ci_${MATRIX_TEST_SHARD}"
               ;;
-            util-executor)
-              database_name="ci_util_executor"
+            util-executor|copilot-sdk)
+              database_name="ci_${MATRIX_TEST_SHARD//-/_}"
               ;;
             *)
               echo "Unknown backend test shard: $MATRIX_TEST_SHARD" >&2
