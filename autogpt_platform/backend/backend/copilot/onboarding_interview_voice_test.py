@@ -28,8 +28,8 @@ def test_the_call_learns_the_shared_goals_and_holds_the_scope_line() -> None:
         "1. What they do: their role and what the business or project is.",
         "2. Who they work with or for: team size and customers.",
         "3. Where their week goes: the recurring work that eats their time.",
-        "4. What they want handed off first.",
-        "5. The tools that work runs on",
+        "4. The tools that work runs on",
+        "5. The first thing to hand off, which you suggest.",
     ):
         assert goal in ONBOARDING_INTERVIEW_GOALS
     assert "treat it as a task for their team" in ONBOARDING_INTERVIEW_GOALS
@@ -48,9 +48,8 @@ def test_the_call_talks_like_a_call() -> None:
 
 def test_the_call_ends_on_an_agreed_first_task_and_the_end_tool() -> None:
     assert (
-        "As soon as you know what they do and one concrete thing their team "
-        "could start on now (and the tool it runs on, if it needs one), stop "
-        "asking. Say in one sentence what their team will start on and check "
+        "When you name the first task, say in one sentence what their team "
+        "will start on (and the tool it runs on, if it needs one) and check "
         "that's right."
     ) in VOICE_INTERVIEW_PROMPT
     # A live voice model keeps talking after a tool call, so the call comes
@@ -85,9 +84,10 @@ def test_a_call_that_runs_long_ends_on_what_otto_has() -> None:
     from backend.copilot.onboarding_interview import get_onboarding_interview_supplement
 
     assert (
-        "Say in one sentence what their team will start on and check that's "
-        "right. If about three minutes have passed, do that with what you have. "
-        "Then wait for them to answer out loud"
+        "say in one sentence what their team will start on (and the tool it "
+        "runs on, if it needs one) and check that's right. If about three "
+        "minutes have passed, do that with what you have. Then wait for them to "
+        "answer out loud"
     ) in VOICE_INTERVIEW_PROMPT
     typed = get_onboarding_interview_supplement(ONBOARDING_INTERVIEW_KIND)
     assert "three minutes" not in typed
@@ -195,6 +195,24 @@ def test_otto_stays_in_the_calls_language_unless_the_person_really_switches() ->
         "in the call's language."
     ) in VOICE_INTERVIEW_PROMPT
     assert "Speak the language the user speaks" not in VOICE_INTERVIEW_PROMPT
+
+
+def test_otto_suggests_the_first_task_instead_of_asking_for_one() -> None:
+    for rule in (
+        "Before you bring up a first task, know all three of what they do, "
+        "where their week goes, and who they work with or for; ask about any "
+        "you're missing first. That takes two or three exchanges, not one.",
+        "Then don't ask what they want to automate: suggest one concrete first "
+        "task from what they told you and ask if that's the right place to start.",
+        "If they don't know or ask you to suggest, offer two or three concrete "
+        "options from what they said, one sentence each, and ask which is closest.",
+        "If they still can't pick, pick the one that saves them the most time "
+        "and check it.",
+        "If you can't suggest anything concrete yet, ask one more question about "
+        "their week.",
+    ):
+        assert rule in ONBOARDING_INTERVIEW_GOALS
+    assert ONBOARDING_INTERVIEW_GOALS in VOICE_INTERVIEW_PROMPT
 
 
 def _imports(module: object) -> set[str]:

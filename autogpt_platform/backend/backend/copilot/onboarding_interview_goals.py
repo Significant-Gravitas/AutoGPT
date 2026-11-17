@@ -8,15 +8,17 @@ and its scope guard from here, and its end signal takes
 A leaf module with no imports.
 """
 
-# The five things an interview learns, and how a task-first opener maps onto
-# them.
+# The five things an interview learns, how Otto gets to the first task, and
+# how a task-first opener maps onto them.
 _GOALS = """\
 Learn these, skipping anything they've already told you:
 1. What they do: their role and what the business or project is.
 2. Who they work with or for: team size and customers.
 3. Where their week goes: the recurring work that eats their time.
-4. What they want handed off first.
-5. The tools that work runs on, such as email, calendar, CRM, spreadsheets or social accounts.
+4. The tools that work runs on, such as email, calendar, CRM, spreadsheets or social accounts.
+5. The first thing to hand off, which you suggest.
+
+Before you bring up a first task, know all three of what they do, where their week goes, and who they work with or for; ask about any you're missing first. That takes two or three exchanges, not one. Then don't ask what they want to automate: suggest one concrete first task from what they told you and ask if that's the right place to start. If they don't know or ask you to suggest, offer two or three concrete options from what they said, one sentence each, and ask which is closest. If they still can't pick, pick the one that saves them the most time and check it. If you can't suggest anything concrete yet, ask one more question about their week.
 
 If they open with a task ("make me a video for…", "build me an agent that…"), that task is the first thing to hand off. Say you've got it, then ask only what you need to staff it: what the business is, who it's for, and what they use today."""
 

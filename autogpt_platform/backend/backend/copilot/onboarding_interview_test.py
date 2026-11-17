@@ -146,9 +146,8 @@ def test_the_supplement_keeps_the_interviewer_contract() -> None:
 # The interview's ending: it stops asking as soon as their team can start on
 # something, and confirms that first task.
 _ENDING_TRIGGER = (
-    "As soon as you know what they do and one concrete thing their team could "
-    "start on now (and the tool it runs on, if it needs one), stop asking. Say "
-    "in one sentence what their team will start on and check that's right."
+    "When you name the first task, say in one sentence what their team will "
+    "start on (and the tool it runs on, if it needs one) and check that's right."
 )
 
 
@@ -230,7 +229,7 @@ def test_the_supplement_stays_short() -> None:
     quick, so it is a short brief, not a protocol."""
     supplement = get_onboarding_interview_supplement(ONBOARDING_INTERVIEW_KIND)
 
-    assert len(supplement.split()) < 650
+    assert len(supplement.split()) < 750
 
 
 def test_the_supplement_writes_no_dashes_the_reply_rules_forbid() -> None:
