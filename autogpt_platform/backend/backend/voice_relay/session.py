@@ -622,9 +622,11 @@ class Session:
                 return
             self._presence_changed.clear()
             presence = asyncio.create_task(self._presence_changed.wait())
+            # Otto's track, once taken, has nothing more to wake this for.
+            waits = {ended, presence} if heard.done() else {heard, ended, presence}
             try:
                 await asyncio.wait(
-                    {heard, ended, presence},
+                    waits,
                     timeout=min(self.timing.end_flag_poll_s, deadline - now),
                     return_when=asyncio.FIRST_COMPLETED,
                 )

@@ -150,6 +150,31 @@ async def test_ready_waits_for_the_persons_microphone_in_the_room(redis):
     await call.ended()
 
 
+async def test_waiting_for_the_microphone_checks_the_end_flag_at_its_own_pace(redis):
+    """Otto's track is taken and the browser still asks for the microphone:
+    the wait reads the end flag once per poll, not as fast as it can."""
+    call = _starting(redis, media=FakeMedia(user=None))
+    await call.run()
+    await _waiting(call)
+    reads = 0
+    end_requested = call.session.store.end_requested
+
+    async def counted_read() -> bool:
+        nonlocal reads
+        reads += 1
+        return await end_requested()
+
+    call.session.store.end_requested = counted_read
+    waited_s = 0.3
+    await asyncio.sleep(waited_s)
+
+    assert reads <= waited_s / call.session.timing.end_flag_poll_s + 2
+    call.person_arrives()
+    await call.ws.wait_for("ready")
+    call.ws.send_json({"type": "hangup"})
+    await call.ended()
+
+
 @pytest.mark.parametrize(
     "ends_it,reason",
     [
