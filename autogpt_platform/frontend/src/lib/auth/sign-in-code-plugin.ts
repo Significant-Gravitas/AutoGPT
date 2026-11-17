@@ -1,6 +1,6 @@
 import type { GenericEndpointContext } from "@better-auth/core";
 import type { BetterAuthPlugin } from "better-auth";
-import { APIError, createAuthEndpoint } from "better-auth/api";
+import { createAuthEndpoint } from "better-auth/api";
 import * as z from "zod";
 import { limitAttemptsPerIP } from "./attempt-limits";
 import {
