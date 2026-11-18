@@ -36,7 +36,10 @@ can `list_machines()`.
 ```
 
 The shim responds with its own metadata; the platform synthesizes
-the union across all attached shims for the same session.
+the union across all attached shims for the same session. `machine_id`
+and `display_name` are HELLO's: the shim's own ID for the computer, and
+the label a person sees, the hostname unless they set another
+([CROSS_PLATFORM.md](CROSS_PLATFORM.md#machine-id)).
 
 ### `MACHINE_LIST_RESPONSE` (shim → platform)
 
@@ -46,8 +49,8 @@ the union across all attached shims for the same session.
   "id": "req-uuid",
   "ts": 1234567890.1,
   "payload": {
-    "machine_id": "this-shim-uuid",
-    "hostname": "alices-laptop",
+    "machine_id": "6f1c2a9e-4b7d-4e53-9a08-3c5d7e9f1b24",
+    "display_name": "alices-laptop",
     "platform": "darwin",
     "arch": "arm64",
     "capabilities": ["shell", "files", "computer_use"],
@@ -189,7 +192,7 @@ lack the requested capability with `CAPABILITY_NOT_GRANTED`.
   router, or wait and retry on this one.
 - `MACHINE_AMBIGUOUS` — multiple shims match a partial machine
   identifier (e.g. user passed `target_machine: "laptop"` and two
-  hostnames start with "laptop"). Router refuses; caller picks one
+  display names start with "laptop"). Router refuses; caller picks one
   unambiguously.
 
 ---

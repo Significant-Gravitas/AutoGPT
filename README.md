@@ -106,6 +106,25 @@ your shim instead of E2B. Audit log lives at the per-OS path documented
 in [AUDIT_LOG.md](docs/AUDIT_LOG.md); review it with
 `autogpt-shim audit tail` / `verify`.
 
+### Several computers
+
+One account can have a shim on each of several computers. The platform's
+folder dialog lists each connected computer by its `display_name` and its
+operating system. The display name is the computer's hostname unless you
+set another, with `display_name = "Work laptop"` in the config file or
+`AUTOGPT_SHIM_DISPLAY_NAME`; two computers with the same hostname look the
+same in that list until one of them gets a name of its own.
+
+Behind the name, the platform knows each computer by its `machine_id`: a
+UUID the shim derives for itself from the operating system's own
+identifier and a random value that the first `autogpt-shim start` makes
+and keeps in `~/.autogpt-local-executor/machine-id-seed`. Neither of the
+two is sent. The computer keeps its ID across restarts, upgrades and
+reinstalls of the shim for as long as that file is kept. Delete it and the
+platform sees a new computer, and each chat that was bound to the old one
+asks for its computer and folder again. See
+[CROSS_PLATFORM.md](docs/CROSS_PLATFORM.md#machine-id).
+
 ### Recording design preview (disabled)
 
 Recording protocol and macOS capture code exist for design/testing, but the

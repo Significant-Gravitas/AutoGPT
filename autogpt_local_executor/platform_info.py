@@ -20,13 +20,11 @@ import logging
 import os
 import platform as _platform
 import shutil
-import socket
 import stat
 import subprocess
 import sys
 import threading
 import time
-import uuid
 from collections.abc import Callable, Mapping, MutableMapping
 from functools import lru_cache
 from pathlib import Path
@@ -495,12 +493,23 @@ def _manager_value(value: str) -> str | None:
 session_display = SessionDisplay()
 
 
-# ── Machine ID ───────────────────────────────────────────────────────────────
+# ── The operating system's identifier for this installation ─────────────────
+
+# Where Linux keeps its machine ID (machine-id(5)), and D-Bus's older copy.
+_LINUX_MACHINE_ID_FILES: tuple[str, ...] = ("/etc/machine-id", "/var/lib/dbus/machine-id")
 
 
 @lru_cache(maxsize=1)
-def detect_machine_id() -> str:
-    """Best-effort stable identifier. Per CROSS_PLATFORM.md table."""
+def os_machine_identifier() -> str | None:
+    """The operating system's own identifier for this installation, as it
+    is read, or None when there is none to read: IOPlatformUUID on macOS,
+    /etc/machine-id on Linux and in a WSL2 distribution (its own, not its
+    Windows host's), MachineGuid on Windows. Per CROSS_PLATFORM.md's table.
+
+    It is one input of the shim's machine ID (machine_identity) and nothing
+    else: other software on the computer reads the same value, and
+    machine-id(5) asks applications not to send it over a network, so it is
+    never sent, logged, printed or stored. Read once for the process."""
     plat = detect_platform()
     try:
         if plat == "darwin":
@@ -516,50 +525,28 @@ def detect_machine_id() -> str:
                     # Line looks like: "IOPlatformUUID" = "ABCDEF12-..."
                     parts = line.split("=", 1)
                     if len(parts) == 2:
-                        val = parts[1].strip().strip('"').lower()
-                        return val
+                        return parts[1].strip().strip('"') or None
         elif plat in ("linux", "wsl2"):
-            for candidate in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+            for candidate in _LINUX_MACHINE_ID_FILES:
                 try:
                     with open(candidate, encoding="utf-8") as f:
                         val = f.read().strip()
-                    if val:
-                        # /etc/machine-id is a bare 32-char hex; format as UUID.
-                        return _format_as_uuid(val)
-                except OSError:
+                except (OSError, UnicodeDecodeError):
                     continue
+                if val:
+                    return val
         elif plat == "windows":
-            try:
-                import winreg  # type: ignore[import-not-found]
+            import winreg  # type: ignore[import-not-found]
 
-                with winreg.OpenKey(  # type: ignore[attr-defined]
-                    winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]
-                    r"SOFTWARE\Microsoft\Cryptography",
-                ) as key:
-                    val, _ = winreg.QueryValueEx(key, "MachineGuid")  # type: ignore[attr-defined]
-                    return str(val).lower()
-            except OSError:
-                pass
-    except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired):
+            with winreg.OpenKey(  # type: ignore[attr-defined]
+                winreg.HKEY_LOCAL_MACHINE,  # type: ignore[attr-defined]
+                r"SOFTWARE\Microsoft\Cryptography",
+            ) as key:
+                val, _ = winreg.QueryValueEx(key, "MachineGuid")  # type: ignore[attr-defined]
+                return str(val) or None
+    except (OSError, subprocess.SubprocessError):
         pass
-    # Last resort: hostname + persisted random UUID per home dir.
-    fallback_path = Path.home() / ".autogpt-local-executor-machine-id"
-    try:
-        if fallback_path.is_file():
-            return fallback_path.read_text(encoding="utf-8").strip()
-        val = f"{socket.gethostname()}-{uuid.uuid4()}"
-        fallback_path.write_text(val, encoding="utf-8")
-        return val
-    except OSError:
-        return f"{socket.gethostname()}-{uuid.uuid4()}"
-
-
-def _format_as_uuid(hex_str: str) -> str:
-    """Format a 32-char hex string as a UUID-with-dashes string."""
-    h = hex_str.replace("-", "").lower()
-    if len(h) == 32 and all(c in "0123456789abcdef" for c in h):
-        return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
-    return hex_str
+    return None
 
 
 # ── Default paths ────────────────────────────────────────────────────────────
@@ -733,7 +720,7 @@ __all__ = [
     "default_audit_log_path",
     "detect_arch",
     "detect_capabilities",
-    "detect_machine_id",
+    "os_machine_identifier",
     "detect_platform",
     "is_case_insensitive_fs",
     "linux_display_problem",

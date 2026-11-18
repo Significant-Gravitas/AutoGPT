@@ -38,7 +38,7 @@ import websockets
 from pydantic import BaseModel, ValidationError
 from websockets.asyncio.client import connect
 
-from . import handlers, platform_info
+from . import handlers, machine_identity, platform_info
 from .audit import (
     AuditKeyStorageError,
     AuditKeyUnavailableError,
@@ -203,6 +203,47 @@ def _audit_storage_failure(message: str, exc: OSError) -> DaemonPreflightError:
         permanent=permanent,
         transient=not permanent,
     )
+
+
+def resolve_machine_id(config: ShimConfig) -> str:
+    """The machine ID `config` runs under, set on it: the one the person
+    set, as given, else the shim's own for this computer
+    (machine_identity), which makes the value it is derived from at the
+    first start that needs one. A start calls this, and nothing else does:
+    a command that only reads never makes that value.
+
+    DaemonPreflightError when the value can't be read or kept. The shim
+    doesn't go on under an ID made for this start alone: the platform would
+    see a new computer at every start, and no chat would find its computer
+    again. Permanent when no restart can fix it (no permission, a read-only
+    disk, a file that isn't a value), transient otherwise (a full disk, a
+    share that is away). The folder is the one the audit key's lock is in,
+    which a first start needs as well, and the setting that moves that one
+    moves this."""
+    if config.machine_id is None:
+        try:
+            config.machine_id = machine_identity.own_machine_id()
+        except machine_identity.MachineIdError as exc:
+            # EEXIST: a file where the folder belongs, as Windows reports it.
+            permanent = (
+                exc.error is None
+                or exc.error.errno in _PERMANENT_STORAGE_ERRNOS
+                or exc.error.errno == errno.EEXIST
+            )
+            # A file that isn't a value says what to do with it itself.
+            way_out = (
+                ""
+                if exc.error is None
+                else ". Set AUTOGPT_SHIM_FALLBACK_DIR to a folder the shim can keep it in, "
+                "or set machine_id in the config file"
+            )
+            raise DaemonPreflightError(
+                f"{exc}; refusing to run under a machine ID that would change at every "
+                f"start{way_out}",
+                permanent=permanent,
+                transient=not permanent,
+            ) from exc
+    return config.machine_id
 
 
 def _allowed_root_failure(root: Path, exc: OSError) -> DaemonPreflightError:
@@ -462,6 +503,9 @@ class ShimDaemon:
         folder_checks: FolderChecks | None = None,
     ) -> None:
         self.config = config
+        # Before anything that carries it: the audit writer, the grants, the
+        # handlers. A chat's session comes with its machine's, in its config.
+        self.machine_id = resolve_machine_id(config)
         selected_session_id = (config.session_id or "").strip()
         config.session_id = selected_session_id or None
         self.token_store = token_store or KeychainTokenStore(config)
@@ -475,7 +519,7 @@ class ShimDaemon:
             self._machine_work_semaphore = MachineSlots(config.max_concurrent)
         self._computer_use_lock = computer_use_lock or asyncio.Lock()
         if self.audit is not None:
-            self.audit.set_machine_id(config.machine_id)
+            self.audit.set_machine_id(self.machine_id)
             if selected_session_id:
                 self.audit.set_session_id(selected_session_id)
         handler_audit = cast(AuditWriter, self.audit)
@@ -559,7 +603,7 @@ class ShimDaemon:
         audit_key = getattr(self.audit, "audit_key", None)
         if not isinstance(audit_key, bytes):
             audit_key = secrets.token_bytes(32)
-        self._root_grants = RootGrantSigner(audit_key, config.machine_id)
+        self._root_grants = RootGrantSigner(audit_key, self.machine_id)
 
     @staticmethod
     def _build_audit_writer(config: ShimConfig) -> AuditWriter:
@@ -736,7 +780,7 @@ class ShimDaemon:
         if self._shim_start_logged:
             return
         try:
-            await self.audit.shim_start(self.config.machine_id)
+            await self.audit.shim_start(self.machine_id)
             self._shim_start_logged = True
         except OSError as exc:
             raise _audit_storage_failure(
@@ -1379,7 +1423,7 @@ class ShimDaemon:
         self._recording_handler.set_local_llm_models(local_llm_models)
         payload = HelloPayload(
             shim_version=__import__("autogpt_local_executor").__version__,
-            machine_id=cfg.machine_id,
+            machine_id=self.machine_id,
             display_name=cfg.display_name,
             platform=Platform(platform_info.detect_platform()),
             arch=Arch(platform_info.detect_arch()),

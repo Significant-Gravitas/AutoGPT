@@ -238,14 +238,109 @@ not open yet on macOS (Files and Folders), a missing permission that exits
 | Headless fallback | Requires usable keyring | **`keyring` fails** if no D-Bus / no keyring daemon | Requires usable keyring | OAuth tokens have no file fallback. Configure a supported keyring before pairing. The legacy audit-key fallback does not store OAuth tokens. |
 | WSL2 | n/a | Use a supported Linux keyring; none is configured by default in many distros | n/a | Pairing requires working keyring storage. |
 
-### Machine ID source
+### Machine ID
+
+HELLO's `machine_id` is the shim's own ID for the computer: the platform
+knows the computer by it, and every audit record and folder grant carries
+it. The shim derives it (HMAC-SHA256, written as a UUID) from two things
+together, and sends, logs and prints neither:
+
+- **The operating system's identifier**, in the table below. Other software
+  on the computer reads the same value, and `machine-id(5)` asks
+  applications not to send it over a network, so it is only an input.
+- **A random value the shim makes itself** and keeps in its own folder:
+  `~/.autogpt-local-executor/machine-id-seed`
+  (`%USERPROFILE%\.autogpt-local-executor\machine-id-seed` on Windows; the
+  folder is `AUTOGPT_SHIM_FALLBACK_DIR` when that is set).
+
+With no identifier to read, the ID comes from the stored value alone. The
+hostname is never part of it.
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Source | `ioreg -rd1 -c IOPlatformExpertDevice` → `IOPlatformUUID` | `/etc/machine-id` (fallback `/var/lib/dbus/machine-id`) | Registry `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid` | All stable across reboots. |
-| Rotates on | Logic-board replacement or fresh macOS install | `systemd-machine-id-setup --commit` (rare) | OS reinstall | Document as "stable identifier; rotates on reinstall." |
-| WSL2 | n/a | Has its own `/etc/machine-id` — distinct from host Windows | n/a | A user's Windows host + WSL2 distro are two distinct shims, by design. |
-| Wire format | UUID string, lowercase, dashes | same | same | Normalize in shim. |
+| The operating system's identifier | `ioreg -rd1 -c IOPlatformExpertDevice` → `IOPlatformUUID` | `/etc/machine-id` (fallback `/var/lib/dbus/machine-id`) | Registry `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid` | An input of the ID only: never sent, logged, printed or stored by the shim. |
+| It changes on | Logic-board replacement or fresh macOS install | `systemd-machine-id-setup --commit` (rare) | OS reinstall | The machine ID changes with it. |
+| WSL2 | n/a | Has its own `/etc/machine-id`, distinct from the Windows host's, and its own home folder | n/a | A Windows host and a WSL2 distribution on it are two computers, by design. |
+| Form the derivation takes | 32 hex digits, lower case | same | same | The shim drops the space around the identifier, braces and dashes and lowers its case first, so one computer can't get two IDs from how its identifier is written. Anything that isn't 32 hex digits (an empty file, systemd's `uninitialized`) counts as no identifier. |
+| Wire format of the machine ID | UUID string, lowercase, dashes | same | same | |
+
+The derivation is fixed: a change would give every computer a new ID.
+`tests/test_machine_identity.py` pins it with known inputs and outputs.
+
+**What counts as one computer.** One account's shim on one installation of
+an operating system. Each account's shim keeps its own stored value, so two
+accounts on one computer have two IDs, and one person's several computers
+each have their own:
+
+- two computers whose operating systems hold the same identifier (made
+  from one image) differ by their stored values;
+- two computers that share a home folder (an NFS home, a roaming Windows
+  profile) share the stored value and differ by their identifiers;
+- two computers that share a home folder *and* hold the same identifier
+  get the same ID, and the second to connect takes the first one's place.
+  Give one of them a folder of its own with `AUTOGPT_SHIM_FALLBACK_DIR`
+  (every command of that computer's shim needs the same value), or a
+  `machine_id` of its own.
+
+**Where the stored value is kept, and why there.** The folder is the one
+every shim of an account uses whatever its config file and audit log: it
+holds the lock a new audit key is made under, the stored sign-in's locks,
+and the audit key itself where there is no keychain. So an account's shims
+share one ID however they are set up, which the platform's one connection
+for each computer goes by. Beside the audit log the value would follow
+`audit_log_path`, and a second config would look like a second computer.
+It isn't in the keychain: Windows' credential store can follow an account
+between a domain's computers, and a locked keychain would hold up the ID.
+
+**How it is made.** Once, by the first `autogpt-shim start` that needs an
+ID (so by the autostart service too). No other command reads the
+operating system's identifier or makes the value: `--help`, `status`,
+`doctor`, `auth`, `revoke`, `install`, `uninstall` and the `audit`
+commands leave the folder as it was. The value is written whole to a file
+of its own, readable by its owner only, and then given its name in a way
+that fails when the name is taken, so two starts at once end with one
+value and one ID, and a file under that name is never half a value. A file
+there that isn't a whole value stops `start` (exit 78) rather than be
+replaced. So does a folder the value can't be kept in (exit 78, or 75 when
+a restart can fix it, such as a full disk): the shim doesn't run under an
+ID made for one start, which the platform would see as a new computer each
+time. The message names the file and the two ways out: point
+`AUTOGPT_SHIM_FALLBACK_DIR` at a folder that can hold it (the folder a
+first start needs for the audit key's lock as well), or set a `machine_id`.
+No file locks are needed for it, so a home without them keeps the value
+like any other.
+
+**What keeps the ID, and what changes it.** The computer has the same ID
+at every start, and after the shim is upgraded or reinstalled, for as long
+as the stored value is kept and the operating system's identifier stays
+the same. Deleting `machine-id-seed`, or the folder it is in, gives the
+computer a new ID at the next start:
+
+- The platform shows a new computer. It lists the shims that are
+  connected, so the old one is simply no longer there.
+- Each chat bound to the old ID asks for its computer and folder again.
+  Nothing on the computer is lost: its files and its audit log stay.
+- Those chats couldn't be restored in any case once the audit key is gone
+  as well. A chat's folder comes back from a grant this shim signed with a
+  key made from its audit key, and the grant names the machine ID. Where
+  there is no keychain the audit key is a file in the same folder, so
+  deleting the folder takes both; no grant verifies under a new key,
+  whatever the ID. Where the key is in the keychain and only the stored
+  value is deleted, the key still verifies the grants' signatures, and
+  the grants are refused all the same, for naming another machine; the
+  platform doesn't find the chat's computer among the connected ones
+  either.
+
+A `machine_id` set in the config file, or with `AUTOGPT_SHIM_MACHINE_ID`,
+is sent as given, and nothing above runs.
+
+**Telling two computers apart.** The platform's folder dialog lists each
+connected computer by its `display_name` and its operating system. The
+display name is the hostname unless you set another, so two computers with
+the same hostname look the same there until one of them gets its own: put
+`display_name = "Work laptop"` in the config file, or set
+`AUTOGPT_SHIM_DISPLAY_NAME`, and start the shim again. `autogpt-shim
+start` prints the machine ID it runs under.
 
 ### Audit log location
 
@@ -507,7 +602,9 @@ working `/proc/sys/kernel/osrelease` containing `WSL2`.
    storage has no file fallback.
 6. **`machine_id` is per-distro, not per-host.** A user with Ubuntu WSL2 and
    Debian WSL2 has two separate shims to the platform — that's intentional;
-   they have separate filesystems.
+   they have separate filesystems, and each has its own `/etc/machine-id`
+   and its own home folder for the shim's stored value
+   ([Machine ID](#machine-id)).
 
 ### What the platform should NOT assume about WSL2
 

@@ -397,6 +397,11 @@ async def test_a_home_whose_lock_file_cannot_be_used_still_signs_in_and_refreshe
 
         monkeypatch.setattr(auth_module, "_lock_without_waiting", no_locks, raising=False)
     config = _config(tmp_path)
+    if unusable == "folder":
+        # Such a folder can't keep the value the machine ID is derived from
+        # either, and a start there stops unless the person set an ID
+        # (tests/test_machine_identity.py). This daemon runs under one.
+        config.machine_id = "set-by-hand"
     store = KeychainTokenStore(config)
 
     with caplog.at_level(logging.WARNING, logger="autogpt_local_executor.auth"):

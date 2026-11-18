@@ -197,6 +197,28 @@ normal network access. OS isolation and destination approval are future work.
 | Background tasks when user absent | Available while daemon is running | No separate background-work permission |
 | Access the internet via commands | ❌ (shell is off) | Shell commands may use the network after `--enable-shell` |
 
+### What identifies this computer to the platform
+
+Two fields of HELLO, sent on every connection
+([PROTOCOL.md](PROTOCOL.md#hello-shim--platform-on-connect)):
+
+- `machine_id`, the ID the platform knows the computer by. It is the
+  shim's own: derived from the operating system's identifier
+  (`IOPlatformUUID`, `/etc/machine-id`, `MachineGuid`) and a random value
+  the shim keeps in `~/.autogpt-local-executor/machine-id-seed`, readable
+  by its owner only. Neither of those leaves the computer or is written to
+  the audit log, a folder grant or the terminal, and the ID can't be
+  turned back into either. It holds no hostname.
+- `display_name`, the label shown beside the computer in the platform's
+  folder dialog. By default it is the hostname, which often carries the
+  person's name; set another with `display_name` in the config file or
+  `AUTOGPT_SHIM_DISPLAY_NAME`.
+
+HELLO also carries the operating system, the CPU architecture, the shim's
+version and the capabilities it offers. See
+[CROSS_PLATFORM.md](CROSS_PLATFORM.md#machine-id) for how the ID is made
+and what gives a computer a new one.
+
 ---
 
 ## Token Security

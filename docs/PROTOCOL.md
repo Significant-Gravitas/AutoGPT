@@ -115,7 +115,8 @@ on the platform side, the session SHOULD be torn down with code 4426).
   "payload": {
     "shim_version": "0.1.0",
     "protocol_version": "2.0",     // max wire version this shim supports
-    "machine_id": "hostname-uuid4",
+    "machine_id": "6f1c2a9e-4b7d-4e53-9a08-3c5d7e9f1b24",   // the shim's own ID for this computer
+    "display_name": "alices-laptop",   // the hostname, unless the person sets another
     "platform": "darwin",          // "darwin" | "linux" | "windows" | "wsl2"
     "arch": "arm64",               // "x86_64" | "arm64" (normalized; see below)
     "screen_resolution": [2560, 1440],   // main display's logical size; null without computer_use
@@ -140,6 +141,41 @@ on the platform side, the session SHOULD be torn down with code 4426).
   }
 }
 ```
+
+`machine_id` and `display_name` say which computer this is. Both leave the
+computer in every HELLO, on the control connection and on each chat's data
+connection.
+
+- **`machine_id`** is the ID the platform knows the computer by, for the
+  account the shim runs under: a UUID, in lower case. The platform keeps
+  each connected shim under it, binds a chat to it, and lets a second
+  connection under the same ID take the first one's place
+  ([Session ownership](#session-ownership)), so two computers on one
+  account must never share one. On the computer it is also in every audit
+  record and every folder grant.
+  - It isn't the operating system's identifier. With nothing configured the
+    shim derives it, with HMAC-SHA256, from that identifier
+    (`IOPlatformUUID`, `/etc/machine-id`, `MachineGuid`) and a random value
+    that `autogpt-shim start` makes the first time and keeps in the shim's
+    own folder. Neither of the two is sent, logged or printed. With no
+    identifier to read, it comes from the stored value alone. The hostname
+    is never part of it.
+  - The computer keeps its ID from one start to the next, and when the shim
+    is upgraded or reinstalled, for as long as the stored value is kept.
+    [CROSS_PLATFORM.md](CROSS_PLATFORM.md#machine-id) says where it is
+    kept, what changes the ID, and what a new one means for the chats bound
+    to the old one.
+  - One the person sets themselves (`machine_id` in the config file, or
+    `AUTOGPT_SHIM_MACHINE_ID`) is sent as given, 1 to 128 characters. The
+    platform's folder dialog takes letters, digits, `.`, `_`, `:` and `-`
+    in it, starting with a letter or a digit.
+- **`display_name`** is the computer's label, 1 to 128 characters: its
+  hostname unless the person sets another, and a hostname often carries the
+  person's name. The platform shows it, with the operating system, beside
+  each computer in the folder dialog; it is how the person tells two
+  computers apart, and the platform treats it as text to show and nothing
+  else. Set another with `display_name` in the config file or
+  `AUTOGPT_SHIM_DISPLAY_NAME`; `start` has no flag for it.
 
 `recording` message types are reserved design-preview protocol. The shim never
 advertises the `recording` capability, and startup fails closed if its preview
@@ -1279,7 +1315,7 @@ orphaning the prior shim's pending requests with no clean error.
   "version": "2.0",
   "payload": {
     "reason": "another_shim_connected",   // | "user_revoked" | "platform_shutdown"
-    "new_shim_machine_id": "macbook-air-7f3c"   // optional, set when reason is another_shim_connected
+    "new_shim_machine_id": "6f1c2a9e-4b7d-4e53-9a08-3c5d7e9f1b24"   // optional, set when reason is another_shim_connected
   }
 }
 ```

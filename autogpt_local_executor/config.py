@@ -119,8 +119,8 @@ def _default_config_path() -> Path:
 class ShimConfig(BaseSettings):
     """All configuration for the local executor shim.
 
-    Wire-visible fields (`allowed_root`, capability flags, `machine_id`) are
-    advertised in HELLO. Server-side overrides (`max_concurrent`,
+    Wire-visible fields (`allowed_root`, capability flags, `machine_id`,
+    `display_name`) are advertised in HELLO. Server-side overrides (`max_concurrent`,
     `command_timeout_seconds`, `max_file_size_bytes`) arrive in HELLO_ACK and
     the daemon updates the live config to honor them.
     """
@@ -198,15 +198,24 @@ class ShimConfig(BaseSettings):
     )
 
     # ── Identity ───────────────────────────────────────────────────────────
-    machine_id: str = Field(
-        default_factory=lambda: platform_info.detect_machine_id(),
-        description="Stable identifier for this machine.",
+    machine_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="The ID the platform knows this computer by, sent in HELLO and "
+        "written into every audit record and folder grant. Leave it unset: `start` "
+        "then derives the shim's own, from the operating system's identifier and a "
+        "random value it keeps in its own folder, neither of which is sent "
+        "(machine_identity). One set here is sent as given; two computers on one "
+        "account must never share one.",
     )
     display_name: str = Field(
         default_factory=socket.gethostname,
         min_length=1,
         max_length=128,
-        description="Human-readable machine label shown in remote folder pickers.",
+        description="The label for this computer, sent in HELLO and shown beside it "
+        "in the platform's folder dialog: how the person tells two computers apart. "
+        "By default the hostname.",
     )
 
     # ── File jail / audit ──────────────────────────────────────────────────

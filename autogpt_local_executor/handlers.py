@@ -3770,7 +3770,9 @@ class RecordingHandler:
             )
 
         session = RecordingSession(
-            machine_id=self.config.machine_id,
+            # The daemon sets it before it makes its handlers; `-` as in an
+            # audit record without one.
+            machine_id=self.config.machine_id or "-",
             mode=p.mode,
             interpretation_route=decision.route,
             channels=list(p.channels),

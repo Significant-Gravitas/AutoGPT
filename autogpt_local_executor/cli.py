@@ -320,17 +320,13 @@ def _cmd_auth(config) -> int:
 
 async def _cmd_start(config) -> int:
     from .auth import KeychainTokenStore
-    from .daemon import DaemonAuthenticationError, DaemonPreflightError, ShimDaemon
+    from .daemon import (
+        DaemonAuthenticationError,
+        DaemonPreflightError,
+        ShimDaemon,
+        resolve_machine_id,
+    )
 
-    print(f"Starting shim daemon (machine_id={config.machine_id})")
-    if config.session_id and config.session_id.strip():
-        print(f"Legacy direct session: {config.session_id.strip()}")
-        print(f"Allowed root: {config.allowed_root}")
-    else:
-        print("Mode: persistent machine control (folders are selected per chat)")
-    if config.enable_shell:
-        print("WARNING: shell is enabled and can access anything your user account can access.")
-    print("Press Ctrl+C to stop.\n")
     daemon = None
     # systemd and launchd stop the service with SIGTERM, whose default action
     # ends the process at once: no stop, no SHIM_STOP record, and a running
@@ -346,6 +342,18 @@ async def _cmd_start(config) -> int:
         except (NotImplementedError, RuntimeError, ValueError):
             pass
     try:
+        # The shim's own ID for this computer, unless the person set one: the
+        # first start makes the value it is derived from (machine_identity).
+        # Of all the commands, only this one does.
+        print(f"Starting shim daemon (machine_id={resolve_machine_id(config)})")
+        if config.session_id and config.session_id.strip():
+            print(f"Legacy direct session: {config.session_id.strip()}")
+            print(f"Allowed root: {config.allowed_root}")
+        else:
+            print("Mode: persistent machine control (folders are selected per chat)")
+        if config.enable_shell:
+            print("WARNING: shell is enabled and can access anything your user account can access.")
+        print("Press Ctrl+C to stop.\n")
         daemon = ShimDaemon(config=config, token_store=KeychainTokenStore(config))
         await daemon.run()
     except DaemonPreflightError as exc:
