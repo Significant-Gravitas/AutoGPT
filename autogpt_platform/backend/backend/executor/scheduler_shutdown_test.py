@@ -53,9 +53,7 @@ def test_a_job_due_as_the_scheduler_stops_runs_once_on_the_next_start(tmp_path):
     jobstore = f"sqlite:///{tmp_path / 'jobs.sqlite'}"
     due = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=1)
 
-    with _started_service(jobstore) as (service, stopper):
-        lock = _WatchedLock()
-        service.scheduler._jobstores_lock = lock
+    with _started_service(jobstore) as (service, lock, stopper):
         # Hourly, so no second run can fall due however slowly the test runs.
         service.scheduler.add_job(
             _record_run,
@@ -84,7 +82,7 @@ def test_a_job_due_as_the_scheduler_stops_runs_once_on_the_next_start(tmp_path):
     assert _runs == []
     assert _stored_jobs(jobstore)["hourly"].next_run_time == due
 
-    with _started_service(jobstore) as (service, _):
+    with _started_service(jobstore) as (service, _, _):
         service.scheduler.resume()
         _wait_for(lambda: "hourly" in _runs)
         service.cleanup()
@@ -101,9 +99,7 @@ def test_a_one_shot_handed_to_the_pool_as_the_stop_begins_runs_once(tmp_path):
     jobstore = f"sqlite:///{tmp_path / 'jobs.sqlite'}"
     stop_asked_first: list[bool] = []
 
-    with _started_service(jobstore) as (service, stopper):
-        lock = _WatchedLock()
-        service.scheduler._jobstores_lock = lock
+    with _started_service(jobstore) as (service, lock, stopper):
         removing = threading.Event()
         remove_job = service.scheduler.remove_job
 
@@ -129,7 +125,7 @@ def test_a_one_shot_handed_to_the_pool_as_the_stop_begins_runs_once(tmp_path):
     assert not stopper.is_alive()
     assert stop_asked_first == [True]
 
-    with _started_service(jobstore) as (service, _):
+    with _started_service(jobstore) as (service, _, _):
         # Due after the one-shot, so the pass that runs it takes a row left
         # behind too, and every run it starts ends before the stop returns.
         service.scheduler.add_job(
@@ -191,22 +187,25 @@ class _WatchedLock:
 @contextmanager
 def _started_service(
     jobstore: str,
-) -> Iterator[tuple[Scheduler, threading.Thread]]:
+) -> Iterator[tuple[Scheduler, _WatchedLock, threading.Thread]]:
     """``Scheduler.run_service`` on *jobstore*, its APScheduler paused until
-    the test resumes it, with a thread a test may start to stop it as SIGTERM
-    does. On the way out that thread is waited for, or the service is stopped
-    here if the test didn't."""
+    the test resumes it and its jobstore lock watched from before its thread
+    starts, with a thread a test may start to stop it as SIGTERM does. On the
+    way out that thread is waited for, or the service is stopped here if the
+    test didn't."""
     real_start = BackgroundScheduler.start
+    lock = _WatchedLock()
+
+    def start_paused(self: BackgroundScheduler, *_, **__) -> None:
+        self._jobstores_lock = lock
+        real_start(self, paused=True)
+
     service = Scheduler(register_system_tasks=False)
     with (
         patch.object(Scheduler, "_jobstore_database", return_value=(None, jobstore)),
         patch.object(Scheduler, "_start_schedule_index_backfill"),
         patch.object(Scheduler, "_load_blocks_once_serving"),
-        patch.object(
-            BackgroundScheduler,
-            "start",
-            lambda self, *_, **__: real_start(self, paused=True),
-        ),
+        patch.object(BackgroundScheduler, "start", start_paused),
         patch.object(scheduler_module, "load_dotenv"),
         # Blocks forever serving RPC; the start-up before it is what's needed.
         patch("backend.util.service.AppService.run_service"),
@@ -214,7 +213,7 @@ def _started_service(
         service.run_service()
     stopper = threading.Thread(target=service.cleanup, name="Stopper")
     try:
-        yield service, stopper
+        yield service, lock, stopper
     finally:
         if stopper.ident is not None:
             stopper.join(_WAIT_S)

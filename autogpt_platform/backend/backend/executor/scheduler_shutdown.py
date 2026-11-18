@@ -19,12 +19,18 @@ class StopSafeBackgroundScheduler(BackgroundScheduler):
     either finishes before the stop, its one-shots removed, or touches no job.
     The next scheduler runs each job left due once (``coalesce``, and no
     misfire grace).
+
+    Overrides APScheduler's private ``_process_jobs`` and takes its
+    ``_jobstores_lock``, as of APScheduler 3.11; ``scheduler_shutdown_test``
+    fails if an upgrade changes either.
     """
 
     _stopping = False
 
     def start(self, *args, **kwargs) -> None:
-        self._stopping = False
+        # A start while running raises, and must leave a stop's mark alone.
+        if not self.running:
+            self._stopping = False
         super().start(*args, **kwargs)
 
     def shutdown(self, wait: bool = True) -> None:
