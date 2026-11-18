@@ -6,8 +6,10 @@ platform's Gemini key, on the same lite model the voice relay reads a call's
 with. Each read is kept per interview and per count of the person's turns,
 an empty one too, and the model is asked at most ``MAX_READS_PER_TURN`` times
 for one count however many reads arrive at once: a counter per count of
-turns is taken before each model call. The interview's turns are capped, so
-one interview can ask the model at most that many times per turn. Each
+turns is taken before each model call. So the model is asked at most that
+many times per turn of the person's, and the person's interview turn budget
+(``rate_limit.enforce_interview_turn_budget``) bounds their turns across
+every interview they hold, one started over included. Each
 call's tokens go to the platform cost log, on the platform's account.
 """
 

@@ -28,8 +28,10 @@ REDIS_TIMEOUT_SECONDS = 0.25
 # An onboarding interview's turns, counted apart from personalization
 # attempts: its kickoff, every reply and the hand-off would spend a long
 # interview's share of those in one sitting. Sized from the reply cap: the
-# whole interview and a few resends in an hour, twice the cap in a day. Each
-# person has one interview, and the cap still ends it.
+# whole interview and a few resends in an hour, twice the cap in a day. The
+# counters are the person's, not an interview's, so they bound the turns of
+# every interview the person holds, one started over included; the cap still
+# ends each one.
 INTERVIEW_HOURLY_TURNS = INTERVIEW_TURN_CAP + 4
 INTERVIEW_DAILY_TURNS = 2 * INTERVIEW_TURN_CAP
 
