@@ -147,18 +147,27 @@ describe("useCronSchedulerDialog", () => {
   test.each([
     {
       status: 409,
-      detail: "Check your schedules before trying again.",
-      shown: "Check your schedules before trying again.",
+      detail: "Conflict",
+      shown:
+        "A schedule from an earlier try may already exist. Check your schedules before trying again.",
+      linksToSchedules: true,
     },
     {
       status: 503,
       detail: "Service Unavailable",
       shown:
-        "We couldn't confirm the schedule was saved. Try again; it won't be created twice.",
+        "We couldn't confirm the schedule was saved, so it may already exist. Check your schedules before trying again.",
+      linksToSchedules: true,
+    },
+    {
+      status: 400,
+      detail: "Cron expression '0 0 31 2 *' never fires",
+      shown: "Cron expression '0 0 31 2 *' never fires",
+      linksToSchedules: false,
     },
   ])(
     "a $status answer's toast says $shown",
-    async ({ status, detail, shown }) => {
+    async ({ status, detail, shown, linksToSchedules }) => {
       server.use(
         http.post("/api/proxy/api/graphs/:graphId/schedules", () =>
           HttpResponse.json({ detail }, { status }),
@@ -172,6 +181,9 @@ describe("useCronSchedulerDialog", () => {
 
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({ variant: "destructive", description: shown }),
+      );
+      expect(toastMock.mock.lastCall?.[0].action !== undefined).toBe(
+        linksToSchedules,
       );
     },
   );

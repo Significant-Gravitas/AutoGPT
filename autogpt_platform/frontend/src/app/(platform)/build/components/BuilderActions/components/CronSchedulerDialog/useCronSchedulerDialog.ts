@@ -4,8 +4,8 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import { scheduleCreateErrorToast } from "@/services/schedules/schedule-create-error";
 import {
-  describeScheduleCreateError,
   forgetScheduleCreateKey,
   withScheduleCreateKey,
 } from "@/services/schedules/schedule-create-key";
@@ -60,7 +60,7 @@ export function useCronSchedulerDialog({
           toast({
             variant: "destructive",
             title: "Failed to create schedule",
-            description: describeScheduleCreateError(error),
+            ...scheduleCreateErrorToast(error),
           });
         },
       },

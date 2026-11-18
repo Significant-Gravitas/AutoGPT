@@ -90,6 +90,14 @@ function sessionStorageValues() {
   );
 }
 
+// Until the last create's success is handled, which drops its key, so the
+// test leaves nothing in flight.
+async function waitForSuccess(keys: unknown[]) {
+  await waitFor(() =>
+    expect(sessionStorageValues()).not.toContain(keys.at(-1)),
+  );
+}
+
 describe("ScheduleAgentModal retried creates (#16901)", () => {
   test("a create whose answer was lost is sent again with its key, which survives a reload, and a new create after success gets a new one", async () => {
     const user = userEvent.setup();
@@ -103,8 +111,9 @@ describe("ScheduleAgentModal retried creates (#16901)", () => {
     renderModal();
     await clickSchedule(user, keys);
     await clickSchedule(user, keys);
-    await waitFor(() => expect(sessionStorageValues()).not.toContain(keys[0]));
+    await waitForSuccess(keys);
     await clickSchedule(user, keys);
+    await waitForSuccess(keys);
 
     const [key] = keys;
     expect(key).toMatch(UUID_V4);
@@ -122,6 +131,7 @@ describe("ScheduleAgentModal retried creates (#16901)", () => {
 
       await clickSchedule(user, keys);
       await clickSchedule(user, keys);
+      await waitForSuccess(keys);
 
       expect(keys[0]).toMatch(UUID_V4);
       expect(keys[1]).toMatch(UUID_V4);
@@ -139,11 +149,12 @@ describe("ScheduleAgentModal retried creates (#16901)", () => {
     renderModal();
 
     await clickSchedule(user, keys);
+    await waitForSuccess(keys);
 
     expect(keys[0]).toMatch(UUID_V4);
   });
 
-  test("a create that got no answer at all says trying again is safe, and keeps its key", async () => {
+  test("a create that got no answer says it may exist, links to the schedules, and keeps its key for the retry", async () => {
     const user = userEvent.setup();
     const keys = answerCreates([NO_ANSWER]);
     renderModal();
@@ -152,10 +163,16 @@ describe("ScheduleAgentModal retried creates (#16901)", () => {
 
     expect(
       await screen.findByText(
-        "We couldn't confirm the schedule was saved. Try again; it won't be created twice.",
+        "We couldn't confirm the schedule was saved, so it may already exist. Check your schedules before trying again.",
       ),
     ).toBeDefined();
+    expect(
+      (
+        await screen.findByRole("link", { name: "View schedules" })
+      ).getAttribute("href"),
+    ).toBe("/library/followups");
     await clickSchedule(user, keys);
+    await waitForSuccess(keys);
     expect(keys[1]).toBe(keys[0]);
   });
 });

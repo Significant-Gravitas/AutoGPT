@@ -3,8 +3,8 @@ import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecu
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import { scheduleCreateErrorToast } from "@/services/schedules/schedule-create-error";
 import {
-  describeScheduleCreateError,
   forgetScheduleCreateKey,
   withScheduleCreateKey,
 } from "@/services/schedules/schedule-create-key";
@@ -51,8 +51,8 @@ export function useScheduleAgentModal(
         forgetScheduleCreateKey(create, error);
         toast({
           title: "❌ Failed to create schedule",
-          description: describeScheduleCreateError(error),
           variant: "destructive",
+          ...scheduleCreateErrorToast(error),
         });
       },
     },

@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from "uuid";
 //
 // The key is kept in sessionStorage under a hash of the create, so a retry
 // after a reload still sends it, and a changed create gets a key of its own.
+// Where the browser blocks storage it lives in memory, so only until a reload.
 
 type StorageKey = `schedule-create:${string}`;
 
@@ -42,16 +43,6 @@ export function forgetScheduleCreateKey(
   if (error !== undefined && !isFinalRefusal(error)) return;
   const slot = slotFor(create);
   if (storage.get(slot) === create.data.schedule_id) storage.clean(slot);
-}
-
-// What a failed create's toast says. With no answer, or a server error, the
-// create may have been made, and trying again is safe; the server's reason
-// otherwise says what to change.
-export function describeScheduleCreateError(error: unknown) {
-  if (!(error instanceof ApiError) || error.status >= 500) {
-    return "We couldn't confirm the schedule was saved. Try again; it won't be created twice.";
-  }
-  return error.message || "An unexpected error occurred.";
 }
 
 function isFinalRefusal(error: unknown) {

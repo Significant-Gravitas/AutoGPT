@@ -290,14 +290,16 @@ def test_a_key_that_is_not_a_uuid_is_refused(scheduler: Scheduler):
 def test_a_stored_trigger_fires_alike_its_rebuild_and_unlike_a_changed_one():
     """A retry is matched against the trigger the jobstore unpickles."""
 
-    def build(cron: str = "0 9 * * 1-5", timezone: str = "Europe/Paris"):
+    def build(cron: str = "0-30/5 9 * * 1-5", timezone: str = "Europe/Paris"):
         return _build_trigger(cron=cron, run_at=None, user_timezone=timezone)
 
     stored = pickle.loads(pickle.dumps(build()))
 
     assert _fires_alike(stored, build())
     assert not _fires_alike(stored, build(timezone="UTC"))
-    assert not _fires_alike(stored, build(cron="5 9 * * 1-5"))
+    assert not _fires_alike(stored, build(cron="0-30/5 10 * * 1-5"))
+    # APScheduler's own field equality ignores a range's step.
+    assert not _fires_alike(stored, build(cron="0-30/10 9 * * 1-5"))
 
 
 @pytest.fixture
