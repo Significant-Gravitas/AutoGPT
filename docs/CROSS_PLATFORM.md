@@ -46,8 +46,8 @@ One row per dimension. `n/a` means "doesn't apply on this OS." `same` means
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
 | Path separator | `/` | `/` | `\` (also accepts `/`) | Shim normalizes incoming wire paths with `pathlib.PurePath`. |
-| Drive letters / UNC | n/a | n/a | `C:\`, `\\server\share` | Path jail must compare on the same drive; cross-drive paths reject. |
-| Reserved filenames | none | none | `CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9` (case-insensitive, with or without extension) | Reject in FILE_WRITE; reject reads if the name is `\\?\`-escaped to a real reserved device. |
+| Drive letters / UNC | n/a | n/a | `C:\`, `\\server\share` | A path on another drive, relative to another drive's folder (`D:x`), on another share or host (`\\server\share\x`, `//server/share/x`), or in a device namespace (`\\.\`, `\\?\`) is refused by its name, before anything looks at it: resolving one would have Windows connect to the host and sign in with the person's account, or open the device. A root that is itself on a share or a mapped drive takes the paths under it. See [Path Jail Strategy](#path-jail-strategy). |
+| Reserved filenames | none | none | `CON`, `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, `COM1`–`COM9`, `LPT1`–`LPT9`, and `COM`/`LPT` with a superscript `¹`, `²` or `³` (case-insensitive, with or without extension, and with spaces before the extension) | Reject in FILE_WRITE; reject reads if the name is `\\?\`-escaped to a real reserved device. |
 | Invalid path chars | `:` (legacy HFS quirk; modern APFS allows) | none | `< > : " \| ? *` and control chars 0–31 | Reject on FILE_WRITE before opening. |
 | Max path length | 1024 (PATH_MAX) | 4096 (PATH_MAX) | 260 (MAX_PATH) unless `\\?\` prefix → 32767 | Shim transparently uses `\\?\` on Windows for paths > 240 chars. |
 | Alternate data streams | n/a | n/a | `file.txt:hidden` (NTFS ADS) | Path jail strips/rejects any path containing `:` after the drive component. |
@@ -338,7 +338,21 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
     if has_invalid_chars(p):          # Windows: < > " | ? * and ctrl chars
         return False
 
-    # 3. Resolve symlinks, junctions, firmlinks, reparse points.
+    # 3. Resolve the root, the folder the person chose, and refuse by its
+    #    name a path that is plainly outside it, BEFORE anything looks at the
+    #    path. Resolving `\\host\share\x` has Windows connect to the host and
+    #    sign in with the person's account, `\\.\pipe\x` opens a device, and
+    #    on macOS `/net/<host>/x` has autofs contact the host. A relative
+    #    path is taken from the root, and `.` and `..` are worked out on the
+    #    names. The names a path inside the root can start with are the root
+    #    as configured, the root as resolved, and the root by the home
+    #    folder's own name (what `~` expands to); case, the form of an
+    #    accented letter and, on Windows, the separator are set aside.
+    root_resolved = os.path.realpath(allowed_root, strict=True)
+    if plainly_outside(p, root_spellings(allowed_root, root_resolved)):
+        return False
+
+    # 4. Resolve symlinks, junctions, firmlinks, reparse points.
     #    Use os.path.realpath, NOT pathlib.Path.resolve() — realpath handles
     #    junctions correctly on Windows since Python 3.8; resolve() can hang
     #    on broken symlinks on some FS. A relative path is taken from the
@@ -349,15 +363,13 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
     except OSError:
         return False
 
-    root_resolved = os.path.realpath(allowed_root, strict=True)
-
-    # 4. Exact prefix with a path separator boundary.
+    # 5. Exact prefix with a path separator boundary.
     #    Append os.sep to prevent /foo matching /foobar.
     root_prefix = root_resolved.rstrip(os.sep) + os.sep
     if resolved == root_resolved or resolved.startswith(root_prefix):
         return True
 
-    # 5. Same directory, different spelling. A case-insensitive filesystem
+    # 6. Same directory, different spelling. A case-insensitive filesystem
     #    accepts any case, and macOS realpath keeps the spelling it was given.
     #    Never fold case to compare: `WS` beside a root `Ws` is a different
     #    directory wherever a directory on the way is case-sensitive (case-
@@ -379,13 +391,31 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
 
 Key invariants:
 
+- **Look at nothing the name rules out.** A path that is outside the root by
+  its name is refused before `realpath`, `stat` or `open` is called on it:
+  another drive, share, host or device namespace on Windows, and on every
+  OS an absolute path that isn't under the root or one that climbs above
+  it through `..`. Step 3 only ever lets a path through to be resolved; it
+  never lets one in. It compares names more loosely than the filesystem
+  may (any case), so what passes is still decided by steps 4 to 6.
+- **The root's names are the ones the shim gave out.** The platform sends
+  paths under the root the shim reported, already normalized, and a
+  command's output names the resolved root. A path that reaches the root
+  through some other link outside it (`/var/folders/...` for a root chosen
+  as `/private/var/folders/...`, say) is refused: name it by the root.
+- **A link inside the root is still followed.** Its name is inside, so it
+  is resolved, which is how the jail learns where it points. One that
+  points at a network path (`\\host\share`, `/net/<host>`) has the system
+  contact that host before the request is refused. Only someone who can
+  already write in the shared folder can put such a link there.
 - **Always realpath both sides.** Never compare a not-yet-resolved path against
   a resolved root.
 - **Always check with a separator boundary.** `/foo` must not match `/foobar`.
-- **Never fold case.** Case sensitivity varies per volume and, on NTFS, per
-  directory, so neither a hardcoded "macOS = insensitive" nor a probe of one
-  directory is safe. Compare the exact spelling, then filesystem identity.
-  The check never writes anything.
+- **Never fold case to let a path in.** Case sensitivity varies per volume
+  and, on NTFS, per directory, so neither a hardcoded "macOS = insensitive"
+  nor a probe of one directory is safe. Compare the exact spelling, then
+  filesystem identity. (Step 3 sets case aside only to choose what is
+  looked at.) The check never writes anything.
 - **Validate complete destinations before creation.** FILE_WRITE may create
   a new file under an existing in-root parent; `create_parents: true` also
   allows missing in-root parents. FILE_MOVE may target a new in-root name.
@@ -417,14 +447,19 @@ operation can act on the root itself.
 
 | Attack | Caught at step |
 |---|---|
-| `../../../etc/passwd` | 1 (normalize) → 3 (realpath) → 4 (prefix mismatch) → 5 (root is no ancestor) |
-| `/workspace/symlink-to-etc` | 3 (realpath resolves outside) → 4 → 5 |
-| `/WORKSPACE/foo` on case-insensitive FS | 4 (spelling differs) → 5 (the root is an ancestor) → allowed (correct) |
-| `/WS/foo` beside root `/Ws` in a case-sensitive directory | 4 → 5 (`/WS` is another directory) |
-| `/workspace2/foo` (root is `/workspace`) | 4 (boundary check) → 5 |
+| `../../../etc/passwd` | 1 (normalize) → 3 (outside by its name; nothing is looked at) |
+| `/etc/passwd`, `/workspace/../etc/passwd` | 3 (outside by its name) |
+| `\\host\share\x`, `//host/share/x` (Windows) | 3 (another share: no connection is made) |
+| `\\.\pipe\x`, `\\.\C:\workspace\x` (Windows) | 3 (a device namespace) |
+| `D:\x`, `D:x` (root on `C:`) | 3 (another drive) |
+| `/net/<host>/x` (macOS autofs) | 3 (outside by its name: the host isn't contacted) |
+| `/workspace/symlink-to-etc` | 4 (realpath resolves outside) → 5 → 6 |
+| `/WORKSPACE/foo` on case-insensitive FS | 3 (passes: case is set aside) → 5 (spelling differs) → 6 (the root is an ancestor) → allowed (correct) |
+| `/WS/foo` beside root `/Ws` in a case-sensitive directory | 3 (passes) → 5 → 6 (`/WS` is another directory) |
+| `/workspace2/foo` (root is `/workspace`) | 3 (the name only starts like the root's) |
 | `C:\workspace\file.txt:hidden` | 2 (ADS check) |
 | `C:\workspace\CON` | 2 (reserved name) |
-| `\\?\C:\workspace\..\..\etc` | 1 → 3 → 4 → 5 |
+| `\\?\C:\workspace\..\..\etc` | 2 (`?` is no character of a path) |
 
 ---
 

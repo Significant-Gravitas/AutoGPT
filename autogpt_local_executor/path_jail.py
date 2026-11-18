@@ -5,33 +5,45 @@ handler must call before touching the filesystem.
 The full algorithm is in docs/CROSS_PLATFORM.md "Path Jail Strategy".
 This module is a faithful implementation of it; if you change behavior
 here, update the doc first.
+
+A path is first placed by its name alone, and one that is plainly outside
+the root is refused before anything looks at it (_plainly_outside): looking
+at a path on another host contacts that host. A path whose name is inside is
+then resolved, links included, and the resolved path decides.
 """
 
 from __future__ import annotations
 
 import contextlib
 import errno
+import ntpath
 import os
 import re
 import stat
 import sys
-from collections.abc import Iterator
+import unicodedata
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path, PurePath
+from types import ModuleType
 from typing import BinaryIO
 
 from .fsops import file_acl, temporary_sibling
 from .platform_info import detect_platform
 
 # Windows reserved device names (case-insensitive, with or without extension).
-# Per docs/CROSS_PLATFORM.md → "Reserved filenames" row.
+# Per docs/CROSS_PLATFORM.md → "Reserved filenames" row. The digits include
+# the superscript ones, which Windows takes for 1, 2 and 3.
 _WINDOWS_RESERVED = {
     "con",
     "prn",
     "aux",
     "nul",
-    *(f"com{i}" for i in range(1, 10)),
-    *(f"lpt{i}" for i in range(1, 10)),
+    "conin$",
+    "conout$",
+    *(f"com{digit}" for digit in "123456789\u00b9\u00b2\u00b3"),
+    *(f"lpt{digit}" for digit in "123456789\u00b9\u00b2\u00b3"),
 }
 
 # Invalid Windows path chars (per the same table).
@@ -64,11 +76,14 @@ def _is_reserved_name(p: PurePath) -> bool:
         # Only Windows treats these as reserved.
         return False
     # Check every part — reserved names are reserved at every depth.
-    for part in p.parts:
-        stem = part.split(".", 1)[0].lower() if "." in part else part.lower()
-        if stem in _WINDOWS_RESERVED:
-            return True
-    return False
+    return any(_is_windows_device_name(part) for part in p.parts)
+
+
+def _is_windows_device_name(name: str) -> bool:
+    """Whether Windows opens a device for a file of this name, in whatever
+    folder: `NUL`, and `nul.txt` and `NUL .txt` too, since it drops what
+    follows the first dot and the spaces before it."""
+    return name.partition(".")[0].rstrip(" ").lower() in _WINDOWS_RESERVED
 
 
 def _has_alternate_data_stream(raw: str) -> bool:
@@ -113,8 +128,9 @@ def is_inside_jail(
 
     Faithful implementation of the algorithm in CROSS_PLATFORM.md "Path
     Jail Strategy". Returns False on any check failure (reserved name,
-    ADS, invalid chars, path-max exceeded, realpath OSError, or outside
-    the jail). For diagnosable errors, use `assert_inside_jail()`.
+    ADS, invalid chars, path-max exceeded, a name outside the root,
+    realpath OSError, or outside the jail). For diagnosable errors, use
+    `assert_inside_jail()`.
     """
     try:
         assert_inside_jail(requested_path, allowed_root)
@@ -132,11 +148,17 @@ def assert_inside_jail(
     Returns the resolved Path on success — callers should use this Path
     rather than the original, so they always operate on the canonicalized
     form.
+
+    Only the root is looked at before the path's name is known to be
+    inside it (step 3): a path on another drive, share, host or device
+    namespace, elsewhere on the disk or above the root through `..` is
+    refused without a `realpath`, `stat` or `open` of it.
     """
     raw = str(requested_path)
 
     # 1. Lexical normalize. expanduser handles `~`; we keep the result as a
-    #    PurePath for the reserved-name / ADS / invalid-char checks.
+    #    PurePath for the reserved-name / ADS / invalid-char checks. Nothing
+    #    in this step or the next two looks at the requested path on disk.
     try:
         lex = Path(raw).expanduser()
     except (RuntimeError, OSError) as exc:
@@ -166,17 +188,8 @@ def assert_inside_jail(
             f"Path contains characters illegal on this OS: {raw!r}",
         )
 
-    # 2. Resolve symlinks, junctions, firmlinks, reparse points.
-    #    Use os.path.realpath (Python 3.8+ handles Windows junctions) —
-    #    pathlib's resolve() can hang on broken symlinks on some FS.
-    try:
-        resolved = os.path.realpath(from_root(lex, allowed_root), strict=False)
-    except (OSError, ValueError) as exc:
-        raise PathJailError(
-            "PATH_INVALID_CHARS",
-            f"Cannot resolve path {raw!r}: {exc}",
-        ) from exc
-
+    # 2. Resolve the root: the folder the person chose, and the one place
+    #    that is looked at before the requested path is known to be in it.
     try:
         root_resolved = os.path.realpath(str(allowed_root), strict=True)
     except (OSError, ValueError) as exc:
@@ -187,12 +200,38 @@ def assert_inside_jail(
             f"allowed_root {str(allowed_root)!r} does not exist: {exc}",
         ) from exc
 
-    # 3. Exact prefix with a path separator boundary, so /workspace doesn't
+    # 3. Refuse by its name a path that is plainly outside the root, before
+    #    anything looks at it. Resolving a path asks the system about each
+    #    folder on the way: for `\\host\share\x` Windows connects to the
+    #    host and signs in with the person's account, `\\.\pipe\x` opens
+    #    a device, and on macOS `/net/<host>/x` has autofs contact the host,
+    #    all before the path could be refused.
+    if _plainly_outside(str(lex), _root_spellings(allowed_root, root_resolved)):
+        raise PathJailError(
+            "PATH_OUTSIDE_ALLOWED_ROOT",
+            f"Path {raw!r} is outside allowed_root {root_resolved!r}",
+        )
+
+    # 4. Resolve symlinks, junctions, firmlinks, reparse points. Its name
+    #    is inside the root, so this reads the root and what is in it, and
+    #    whatever a link in there points at: resolving is how the jail
+    #    learns where one points, and the resolved path decides (5, 6).
+    #    Use os.path.realpath (Python 3.8+ handles Windows junctions) —
+    #    pathlib's resolve() can hang on broken symlinks on some FS.
+    try:
+        resolved = os.path.realpath(from_root(lex, allowed_root), strict=False)
+    except (OSError, ValueError) as exc:
+        raise PathJailError(
+            "PATH_INVALID_CHARS",
+            f"Cannot resolve path {raw!r}: {exc}",
+        ) from exc
+
+    # 5. Exact prefix with a path separator boundary, so /workspace doesn't
     #    match /workspaceother.
     if _has_prefix(resolved, root_resolved):
         return Path(resolved)
 
-    # 4. A case-insensitive filesystem can spell the root differently (macOS
+    # 6. A case-insensitive filesystem can spell the root differently (macOS
     #    realpath keeps the spelling it was given), so ask the filesystem
     #    instead of folding case: the path is inside only if the root is one
     #    of its existing ancestors. Folding strings would let a case-variant
@@ -213,6 +252,126 @@ def from_root(requested_path: str | os.PathLike[str], allowed_root: str | os.Pat
     joins a relative path to allowed_root itself), not from whatever
     directory the shim was started in."""
     return os.path.join(os.fspath(allowed_root), Path(os.fspath(requested_path)).expanduser())
+
+
+def _root_spellings(allowed_root: str | os.PathLike[str], root_resolved: str) -> tuple[str, ...]:
+    """The names a path inside the root can start with.
+
+    The platform's own tools send a path under the root the shim reported
+    to it, with `.` and `..` already worked out on the names, and refuse
+    any other themselves: the root as configured in a legacy session, and
+    the resolved one the folder browser gave otherwise. A path copied from
+    a command's output is under the resolved root, where the command ran.
+    So both are taken, and they differ wherever a link is on the way: `/tmp`
+    on macOS, a home folder that is a link, a mapped drive (`Z:\\ws` and
+    the share it stands for), a Windows name typed in its 8.3 form.
+
+    The third is the root by the home folder's own name, when the home
+    folder is a link and the root is in it: `~` expands to that name.
+
+    A path that reaches the root through some other link outside it is not
+    taken: it has to be written by one of these names.
+
+    The configured root comes first: it is the one a request's path is
+    joined to (from_root).
+    """
+    spellings = [os.path.abspath(os.fspath(allowed_root)), root_resolved]
+    home = os.path.expanduser("~")
+    if os.path.isabs(home):
+        home_resolved = _resolved_folder(home)
+        if home_resolved != home and _has_prefix(root_resolved, home_resolved):
+            spellings.append(home + root_resolved[len(home_resolved) :])
+    return tuple(spellings)
+
+
+@lru_cache(maxsize=8)
+def _resolved_folder(folder: str) -> str:
+    """`folder` with its links followed, or as it is when it can't be read.
+    Kept: the home folder doesn't move while the shim runs."""
+    try:
+        return os.path.realpath(folder)
+    except (OSError, ValueError):
+        return folder
+
+
+def _plainly_outside(
+    requested: str, root_spellings: Iterable[str], *, pathmod: ModuleType = os.path
+) -> bool:
+    """Whether `requested`, a request's path with `~` expanded, is outside
+    every spelling of the root by its name alone. Nothing is looked at.
+
+    A relative path is taken from the first spelling, the configured root,
+    as the path that goes on to be resolved is (from_root), and `.` and
+    `..` are worked out on the names, as the platform works them out
+    before it sends a path.
+    Names are compared without regard to case or to how an accented letter
+    is written, since a filesystem may take either for the same folder (on
+    Windows and macOS it does), and with either separator on Windows. That
+    lets through a path the resolved check then refuses; it never lets one
+    in. What is outside by its name:
+
+    - a path that is not under the root: elsewhere on the disk, above the
+      root through `..`, or a name that only starts like the root's;
+    - on Windows, another drive, a path relative to another drive's folder
+      (`D:x`), another share or host (`\\\\host\\share\\x`,
+      `//host/share/x`), and the device namespaces (`\\\\.\\`,
+      `\\\\?\\`), the root's own drive in them included.
+
+    `pathmod` is os.path, or ntpath or posixpath to place another system's
+    paths.
+    """
+    windows = pathmod is ntpath
+    spellings = tuple(root_spellings)
+    candidate = _named(pathmod.join(spellings[0], requested), windows)
+    if candidate is None:
+        return True
+    for spelling in spellings:
+        root = _named(spelling, windows)
+        if root is not None and candidate[0] == root[0] and candidate[1][: len(root[1])] == root[1]:
+            return False
+    return True
+
+
+def _named(path: str, windows: bool) -> tuple[str, tuple[str, ...]] | None:
+    """An absolute path as its anchor (a drive or a share on Windows, and
+    nothing elsewhere) and the names after it, with `.` and `..` worked out
+    on the names and each name in the form names are compared in. None for
+    what is no plain absolute path: on Windows a device path, a path
+    relative to a drive's folder, and one with no drive."""
+    if windows:
+        path = path.replace("/", "\\")
+        if path.startswith("\\\\"):
+            host, _, rest = path[2:].partition("\\")
+            share, _, rest = rest.partition("\\")
+            # A host of `.` or `?` is a device namespace, and a third
+            # separator leaves no host.
+            if host in ("", ".", "?") or not share:
+                return None
+            anchor = f"\\\\{host}\\{share}"
+        elif len(path) >= 3 and path[0].isalpha() and path[1:3] == ":\\":
+            anchor, rest = path[:2], path[3:]
+        else:
+            return None
+        separator = "\\"
+    else:
+        if not path.startswith("/"):
+            return None
+        anchor, rest, separator = "", path, "/"
+    names: list[str] = []
+    for name in rest.split(separator):
+        if name in ("", "."):
+            continue
+        if name == "..":
+            # The top's own `..` is the top.
+            if names:
+                names.pop()
+            continue
+        names.append(_compared(name))
+    return _compared(anchor), tuple(names)
+
+
+def _compared(name: str) -> str:
+    return unicodedata.normalize("NFC", name).casefold()
 
 
 def _has_prefix(path: str, root: str) -> bool:

@@ -86,6 +86,9 @@ class RootGrantSigner:
             )
             if not hmac.compare_digest(signature, expected):
                 raise RootGrantError("Root grant signature is invalid")
+            # Signed with this shim's key, so the path below is one this
+            # shim wrote into a grant: nothing the platform makes up gets as
+            # far as being looked at (canonical_directory).
             claims = json.loads(_b64decode(encoded))
             session_id = claims["session_id"]
             machine_id = claims["machine_id"]

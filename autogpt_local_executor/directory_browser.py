@@ -91,6 +91,10 @@ class DirectoryBrowser:
     The platform never supplies a host path. Initial listing returns a virtual
     set of safe roots; every subsequent navigation and selection must use a
     reference minted on this process and control connection.
+
+    So the path jail's refusal of a path by its name has nothing to apply to
+    here: every path looked at is one this browser listed itself, under a
+    root it found.
     """
 
     def __init__(

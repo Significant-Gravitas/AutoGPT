@@ -478,6 +478,16 @@ from `allowed_root`, as the platform's own tools take it, never from the
 directory the shim happens to run in; `~` is the user's home. Either way it
 must resolve inside `allowed_root`.
 
+A path that is outside `allowed_root` by its name alone is refused with
+`PATH_OUTSIDE_ALLOWED_ROOT` before the shim looks at it on disk: an
+absolute path that isn't under the root, one that climbs above it through
+`..`, and on Windows a path on another drive, share or host or in a device
+namespace (`\\.\`, `\\?\`). So name a path by the root the shim reported
+(HELLO's `allowed_root`, or the folder the chat was given) or by the root
+as it resolves, which is where a command's output puts it; on Windows in
+any letter case and with either separator. A path whose name is inside
+the root is then resolved, links included, and has to resolve inside it.
+
 #### `FILE_READ` (platform → shim)
 ```json
 {
