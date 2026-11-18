@@ -211,6 +211,32 @@ def test_the_log_reads_any_shape_of_error_without_failing(error: object) -> None
     assert logged and all(set(entry) == {"type", "loc", "msg"} for entry in logged)
 
 
+@pytest.mark.parametrize("error_type", ["missing", "string_type", "value_error"])
+def test_a_hand_built_errors_own_message_is_not_logged(error_type: str) -> None:
+    """A built-in error's log message comes from pydantic's template, never
+    from the error's own ``msg``, which a hand-built one can fill with the
+    input; one whose template needs a context it lacks is left out."""
+    error = {"type": error_type, "loc": ("body", "name"), "msg": f"bad {_SENTINEL}"}
+
+    [logged] = loggable_validation_errors(RequestValidationError([error]))
+
+    assert not _logs_part_of(logged["msg"]), logged["msg"]
+    assert logged["msg"]
+
+
+def test_a_message_with_nothing_to_mask_logs_as_pydantic_wrote_it() -> None:
+    class Limited(pydantic.BaseModel):
+        name: str
+        count: int = pydantic.Field(gt=5)
+
+    with pytest.raises(pydantic.ValidationError) as caught:
+        Limited.model_validate({"count": 3})
+
+    assert [entry["msg"] for entry in loggable_validation_errors(caught.value)] == [
+        error["msg"] for error in caught.value.errors()
+    ]
+
+
 def test_an_attribute_read_logs_no_part_of_what_it_raised() -> None:
     """With ``from_attributes``, an attribute that raises puts its exception's
     text in pydantic's own message."""

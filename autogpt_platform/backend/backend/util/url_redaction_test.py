@@ -391,6 +391,31 @@ def test_an_argument_logged_as_its_repr_is_masked_as_shown() -> None:
     assert token not in record.getMessage()
 
 
+def test_an_argument_whose_repr_fails_is_masked_as_its_str() -> None:
+    """``%s`` shows ``str``, which still has to be checked when ``repr``
+    raises."""
+    token = "str-only-token-Zq81mN2p"
+
+    class Shown:
+        def __str__(self) -> str:
+            return f"Shown(token={token})"
+
+        def __repr__(self) -> str:
+            raise RuntimeError("no repr")
+
+    record = logging.LogRecord(
+        "x", logging.ERROR, __file__, 1, "Lookup %s failed", (Shown(),), None
+    )
+
+    def filtered() -> None:
+        keep_request_credentials((token,))
+        RequestURLRedactionFilter().filter(record)
+
+    contextvars.copy_context().run(filtered)
+
+    assert token not in record.getMessage()
+
+
 def test_a_typed_argument_keeps_its_format_when_masked() -> None:
     """A number that matches a credential is masked where the rendered line
     shows it, so ``%d`` still formats it."""

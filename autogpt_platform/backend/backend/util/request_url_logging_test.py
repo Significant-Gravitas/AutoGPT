@@ -10,6 +10,7 @@ import asyncio
 import io
 import logging
 import re
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
@@ -226,6 +227,45 @@ async def test_serve_cancels_a_server_whose_startup_never_finishes(
             task.cancel()
 
 
+async def test_serve_fails_when_a_requests_cleanup_outlasts_its_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A request still cleaning up after the wait is cancelled again, so it
+    can't outlive the test, and the test fails."""
+    monkeypatch.setattr(sys.modules[__name__], "_CLEANUP_SECONDS", 0.2)
+    started, ended = asyncio.Event(), asyncio.Event()
+
+    async def app(scope: dict, receive: object, send: object) -> None:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            try:
+                await asyncio.sleep(30)  # cleanup far longer than the wait
+            finally:
+                ended.set()
+
+    with pytest.raises(AssertionError, match="still cleaning up"):
+        async with (
+            serve_app(app, log_config=None, timeout_graceful_shutdown=0.2) as host,
+            httpx.AsyncClient(base_url=f"http://{host}") as client,
+        ):
+            request = asyncio.create_task(client.get("/hang"))
+            starting = asyncio.create_task(started.wait())
+            try:
+                done, _ = await asyncio.wait(
+                    {request, starting}, return_when=asyncio.FIRST_COMPLETED
+                )
+                if request in done:
+                    request.result()  # it failed before the app ran
+            finally:
+                for task in (request, starting):
+                    task.cancel()
+                await asyncio.wait({request, starting})
+
+    assert ended.is_set()
+
+
 async def test_serve_ends_a_request_still_running_at_shutdown() -> None:
     started, cleaned = asyncio.Event(), asyncio.Event()
 
@@ -331,16 +371,29 @@ async def serve_app(app: ASGIApp, **options: object) -> AsyncIterator[str]:
             await asyncio.wait({serving})
             await _join(server.server_state.tasks)
             raise
-        await _join(server.server_state.tasks)
+        late = await _join(server.server_state.tasks)
+        assert not late, f"{late} request(s) still cleaning up after shutdown"
         if not serving.cancelled():
             serving.result()
 
 
-async def _join(tasks: set[asyncio.Task]) -> None:
+# How long a request uvicorn cancelled at its shutdown deadline gets to clean up.
+_CLEANUP_SECONDS = 5
+
+
+async def _join(tasks: set[asyncio.Task]) -> int:
     """Wait for the requests uvicorn cancelled at its shutdown deadline, which
-    it doesn't wait for, so their cleanup ends with the test."""
-    if pending := [task for task in tasks if not task.done()]:
-        await asyncio.wait(pending, timeout=5)
+    it doesn't wait for, so their cleanup ends with the test. One still
+    cleaning up after ``_CLEANUP_SECONDS`` is cancelled again and drained;
+    returns how many were."""
+    if not (pending := [task for task in tasks if not task.done()]):
+        return 0
+    _, late = await asyncio.wait(pending, timeout=_CLEANUP_SECONDS)
+    for task in late:
+        task.cancel()
+    if late:
+        await asyncio.wait(late, timeout=_CLEANUP_SECONDS)
+    return len(late)
 
 
 @asynccontextmanager

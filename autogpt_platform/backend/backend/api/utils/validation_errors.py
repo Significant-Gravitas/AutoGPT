@@ -169,10 +169,10 @@ def _message_without_input(error: Mapping[str, Any]) -> str:
         key: value if key in _SCHEMA_CONTEXT else REDACTED
         for key, value in context.items()
     }
-    if shown == context:
-        return error.get("msg", "")
     try:
-        return PydanticKnownError(cast(ErrorType, error_type), shown).message()
+        # Rendered even when nothing is masked: a hand-built error's own
+        # message can quote the input.
+        return PydanticKnownError(cast(ErrorType, error_type), shown or None).message()
     except Exception:
         # A context pydantic-core can't render, which a later version could
         # bring; the type and location still say what failed.
