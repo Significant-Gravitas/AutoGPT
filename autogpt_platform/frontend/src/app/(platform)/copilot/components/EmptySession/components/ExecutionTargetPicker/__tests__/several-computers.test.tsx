@@ -3,6 +3,7 @@ import {
   getGetExperimentalListLocalExecutorsMockHandler200,
   getPostExperimentalListLocalExecutorDirectoriesMockHandler200,
 } from "@/app/api/__generated__/endpoints/copilot/copilot.msw";
+import type { DirectoryListRequest } from "@/app/api/__generated__/models/directoryListRequest";
 import type { ExecutorMachine } from "@/app/api/__generated__/models/executorMachine";
 import { server } from "@/mocks/mock-server";
 import { Key, storage } from "@/services/storage/local-storage";
@@ -113,6 +114,20 @@ function chosenComputer() {
   return screen.getByRole("combobox").textContent;
 }
 
+// The region screen readers hear from. It is in the dialog whatever the
+// dialog shows, since one that arrives already filled isn't read out.
+function readOutRegion() {
+  const region = document.querySelector('.sr-only[aria-live="polite"]');
+  if (!region) throw new Error("The dialog has no region to read out from");
+  return region;
+}
+
+// Once on screen beside the control, once in the region that reads it out.
+async function seesTheNotice(text: string) {
+  expect(await screen.findAllByText(text)).toHaveLength(2);
+  expect(readOutRegion().textContent).toBe(text);
+}
+
 describe("the folder dialog with more than one computer", () => {
   beforeEach(() => {
     // The dialog asks for the list again every 3 s. Here that check runs only
@@ -124,11 +139,9 @@ describe("the folder dialog with more than one computer", () => {
     answerTheComputerList();
     server.use(
       getPostExperimentalListLocalExecutorDirectoriesMockHandler200(
-        ({ params }) => ({
-          connection_id:
-            params.machineId === LAPTOP.machine_id
-              ? LAPTOP.connection_id
-              : WORKSTATION.connection_id,
+        async ({ request }) => ({
+          connection_id: ((await request.json()) as DirectoryListRequest)
+            .expected_connection_id,
           browse_id: "browse-1",
           current: null,
           parent_ref: null,
@@ -183,7 +196,7 @@ describe("the folder dialog with more than one computer", () => {
     connected = [WORKSTATION, LAPTOP];
     await checkAgain(user);
 
-    expect(await screen.findByText(LAPTOP_CONNECTED)).toBeDefined();
+    await seesTheNotice(LAPTOP_CONNECTED);
     expect(screen.queryByText("Connect a Computer")).toBeNull();
     expect(chosenComputer()).toBe("Workstation · Windows");
     expect(useCopilotUIStore.getState().newChatExecutionTarget).toMatchObject({
@@ -201,7 +214,7 @@ describe("the folder dialog with more than one computer", () => {
     await openTheSetupSteps(user);
     connected = [WORKSTATION, LAPTOP];
     await checkAgain(user);
-    await screen.findByText(LAPTOP_CONNECTED);
+    await seesTheNotice(LAPTOP_CONNECTED);
 
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole("combobox")),
@@ -214,11 +227,13 @@ describe("the folder dialog with more than one computer", () => {
     render(<ExecutionTargetPicker />);
     await openTheFolderDialog(user);
     await openTheSetupSteps(user);
+    // Focus goes into the steps and out again before the computer connects.
+    screen.getByRole("link", { name: /^Install pipx/ }).focus();
     const cancel = screen.getByRole("button", { name: "Cancel" });
     cancel.focus();
     connected = [WORKSTATION, LAPTOP];
     await act(() => vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS));
-    await screen.findByText(LAPTOP_CONNECTED);
+    await seesTheNotice(LAPTOP_CONNECTED);
 
     expect(screen.queryByText("Connect a Computer")).toBeNull();
     expect(document.activeElement).toBe(cancel);
@@ -240,11 +255,9 @@ describe("the folder dialog with more than one computer", () => {
     ];
     await checkAgain(user);
 
-    expect(
-      await screen.findByText(
-        "Workstation · Windows · 36d78179 connected. Choose it under Computer.",
-      ),
-    ).toBeDefined();
+    await seesTheNotice(
+      "Workstation · Windows · ID 36d78179 connected. Choose it under Computer.",
+    );
   });
 
   test("names each computer when two connect at once", async () => {
@@ -256,11 +269,9 @@ describe("the folder dialog with more than one computer", () => {
     connected = [WORKSTATION, LAPTOP, STUDIO];
     await checkAgain(user);
 
-    expect(
-      await screen.findByText(
-        "Laptop · macOS and Studio · macOS connected. Choose one under Computer.",
-      ),
-    ).toBeDefined();
+    await seesTheNotice(
+      "Laptop · macOS and Studio · macOS connected. Choose one under Computer.",
+    );
   });
 
   test("takes the notice away only when that computer disconnects", async () => {
@@ -271,16 +282,16 @@ describe("the folder dialog with more than one computer", () => {
     await openTheSetupSteps(user);
     connected = [WORKSTATION, LAPTOP];
     await checkAgain(user);
-    await screen.findByText(LAPTOP_CONNECTED);
+    await seesTheNotice(LAPTOP_CONNECTED);
 
     // Opening the steps again leaves it: only the list takes it away.
     await openTheSetupSteps(user);
-    expect(screen.getByText(LAPTOP_CONNECTED)).toBeDefined();
+    await seesTheNotice(LAPTOP_CONNECTED);
     connected = [WORKSTATION];
     await checkAgain(user);
 
     await waitFor(() =>
-      expect(screen.queryByText(LAPTOP_CONNECTED)).toBeNull(),
+      expect(screen.queryAllByText(LAPTOP_CONNECTED)).toHaveLength(0),
     );
   });
 
@@ -303,13 +314,31 @@ describe("the folder dialog with more than one computer", () => {
     render(<ExecutionTargetPicker />);
     await openTheFolderDialog(user);
     await openTheSetupSteps(user);
+    const regionBeforeTheFailure = readOutRegion();
     await untilACheckHasFailed(user);
     connected = [WORKSTATION, LAPTOP];
     answerTheComputerList();
     await retry(user);
 
-    expect(await screen.findByText(LAPTOP_CONNECTED)).toBeDefined();
+    await seesTheNotice(LAPTOP_CONNECTED);
+    expect(readOutRegion()).toBe(regionBeforeTheFailure);
     expect(screen.queryByText("Connect a Computer")).toBeNull();
+  });
+
+  test("still says so when the chosen computer reconnected in the same check", async () => {
+    const user = userEvent.setup();
+
+    render(<ExecutionTargetPicker />);
+    await openTheFolderDialog(user);
+    await openTheSetupSteps(user);
+    connected = [{ ...WORKSTATION, connection_id: "connection-1b" }, LAPTOP];
+    await checkAgain(user);
+
+    await seesTheNotice(LAPTOP_CONNECTED);
+    expect(useCopilotUIStore.getState().newChatExecutionTarget).toMatchObject({
+      machineID: WORKSTATION.machine_id,
+      connectionID: "connection-1b",
+    });
   });
 
   test("puts the steps away when the dialog closes", async () => {
@@ -369,7 +398,7 @@ describe("the folder dialog with more than one computer", () => {
     await openTheFolderDialog(user);
 
     await waitFor(() =>
-      expect(chosenComputer()).toBe("Workstation · Windows · 1c49dced"),
+      expect(chosenComputer()).toBe("Workstation · Windows · ID 1c49dced"),
     );
     expect(
       screen.getByText(/^Some of your computers have the same name\./),
@@ -397,8 +426,8 @@ describe("the Computer menu's labels", () => {
     const twin = { ...WORKSTATION, machine_id: LAPTOP.machine_id };
 
     expect(labels([WORKSTATION, twin, LAPTOP])).toEqual([
-      "Workstation · Windows · 1c49dced",
-      "Workstation · Windows · 36d78179",
+      "Workstation · Windows · ID 1c49dced",
+      "Workstation · Windows · ID 36d78179",
       "Laptop · macOS",
     ]);
   });
@@ -408,8 +437,8 @@ describe("the Computer menu's labels", () => {
     const second = { ...WORKSTATION, machine_id: "office-pc-36d78179" };
 
     expect(labels([first, second])).toEqual([
-      "Workstation · Windows · office-pc-1",
-      "Workstation · Windows · office-pc-3",
+      "Workstation · Windows · ID office-pc-1",
+      "Workstation · Windows · ID office-pc-3",
     ]);
   });
 
@@ -418,8 +447,23 @@ describe("the Computer menu's labels", () => {
     const long = { ...WORKSTATION, machine_id: "office-pc-2" };
 
     expect(labels([short, long])).toEqual([
-      "Workstation · Windows · office-pc",
-      "Workstation · Windows · office-pc-",
+      "Workstation · Windows · ID office-pc",
+      "Workstation · Windows · ID office-pc-",
+    ]);
+  });
+
+  test("names that differ only in their spaces count as the same name", () => {
+    const spaced = {
+      ...WORKSTATION,
+      display_name: " Office  PC ",
+      machine_id: LAPTOP.machine_id,
+    };
+
+    expect(
+      labels([{ ...WORKSTATION, display_name: "Office PC" }, spaced]),
+    ).toEqual([
+      "Office PC · Windows · ID 1c49dced",
+      "Office PC · Windows · ID 36d78179",
     ]);
   });
 });

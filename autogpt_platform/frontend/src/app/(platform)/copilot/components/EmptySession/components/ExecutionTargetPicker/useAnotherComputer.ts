@@ -2,20 +2,25 @@
 
 import type { ExecutorMachine } from "@/app/api/__generated__/models/executorMachine";
 import { useState } from "react";
-import { computerMenu } from "./helpers";
+import { computerMenu } from "./components/LocalFolderPicker/helpers";
 
 interface Args {
   isOpen: boolean;
   machines: ExecutorMachine[];
+  selectedMachineID: string | null;
 }
 
 const NAMES = new Intl.ListFormat("en", { type: "conjunction" });
 
-// Kept by the folder dialog, which stays mounted while a failed check puts an
-// error in place of the computer list. So the open steps, and a computer that
-// connected meanwhile, are still there when the list comes back. The dialog
-// itself starts afresh when the chosen computer changes or reconnects.
-export function useAnotherComputer({ isOpen, machines }: Args) {
+// Kept above the folder dialog. The dialog starts afresh whenever the chosen
+// computer changes or reconnects, and a failed check puts an error in place
+// of its computer list. The open steps, and a computer that connected
+// meanwhile, outlast both.
+export function useAnotherComputer({
+  isOpen,
+  machines,
+  selectedMachineID,
+}: Args) {
   const [isSetupOpen, setSetupOpen] = useState(false);
   const [knownMachineIDs, setKnownMachineIDs] = useState(() =>
     machines.map((machine) => machine.machine_id),
@@ -36,13 +41,18 @@ export function useAnotherComputer({ isOpen, machines }: Args) {
       setSetupOpen(false);
     }
   }
-  if (!isOpen && (isSetupOpen || newcomerIDs.length > 0)) {
+  const hasNoMenu = !isOpen || machines.length === 0;
+  if (hasNoMenu && (isSetupOpen || newcomerIDs.length > 0)) {
     setSetupOpen(false);
     setNewcomerIDs([]);
   }
 
   const newcomers = computerMenu(machines)
-    .options.filter((option) => newcomerIDs.includes(option.value))
+    .options.filter(
+      (option) =>
+        newcomerIDs.includes(option.value) &&
+        option.value !== selectedMachineID,
+    )
     .map((option) => option.label);
 
   function toggleSetup() {

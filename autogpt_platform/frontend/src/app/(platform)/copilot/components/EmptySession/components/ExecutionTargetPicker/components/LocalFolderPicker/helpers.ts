@@ -20,16 +20,19 @@ export function computerMenu(machines: ExecutorMachine[]) {
     const length = tellingIDLength(sharing.map((item) => item.machine_id));
     return {
       value: machine.machine_id,
-      label: `${name} · ${machine.machine_id.slice(0, length)}`,
+      label: `${name} · ID ${machine.machine_id.slice(0, length)}`,
     };
   });
   return { options, hasSharedNames: new Set(names).size !== names.length };
 }
 
+// As the page shows it: a run of spaces looks like one, so names that differ
+// only in their spaces look the same.
 function computerName(machine: ExecutorMachine) {
   const platform =
     PLATFORM_LABELS[machine.platform.toLowerCase()] ?? machine.platform;
-  return `${machine.display_name} · ${platform}`;
+  const name = machine.display_name.trim().replace(/\s+/g, " ");
+  return `${name} · ${platform}`;
 }
 
 // How much of their IDs tells these computers apart: eight characters when

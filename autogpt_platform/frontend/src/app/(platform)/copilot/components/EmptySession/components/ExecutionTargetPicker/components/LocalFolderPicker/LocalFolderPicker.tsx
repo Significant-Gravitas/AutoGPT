@@ -17,13 +17,14 @@ import {
 import { useEffect, useState } from "react";
 import { LocalExecutorSetup } from "../LocalExecutorSetup/LocalExecutorSetup";
 import { ComputerSelect } from "./components/ComputerSelect";
-import { useAnotherComputer } from "./useAnotherComputer";
+import type { useAnotherComputer } from "../../useAnotherComputer";
 import { useLocalFolderPicker } from "./useLocalFolderPicker";
 
 interface Props {
   isOpen: boolean;
   machines: ExecutorMachine[];
   selectedMachineID: string | null;
+  anotherComputer: ReturnType<typeof useAnotherComputer>;
   isLoadingMachines: boolean;
   isMachinesError: boolean;
   isRefreshingMachines: boolean;
@@ -42,6 +43,7 @@ export function LocalFolderPicker({
   isOpen,
   machines,
   selectedMachineID,
+  anotherComputer,
   isLoadingMachines,
   isMachinesError,
   isRefreshingMachines,
@@ -54,7 +56,6 @@ export function LocalFolderPicker({
   const machine =
     machines.find((item) => item.machine_id === selectedMachineID) ?? null;
   const browser = useLocalFolderPicker({ isOpen, machine, onStale });
-  const anotherComputer = useAnotherComputer({ isOpen, machines });
   const canSelectDirectory =
     !!machine &&
     !!browser.directory?.current &&
@@ -104,7 +105,7 @@ export function LocalFolderPicker({
       <Dialog.Content>
         <div className="flex min-h-[24rem] flex-col gap-4">
           <span role="status" aria-live="polite" className="sr-only">
-            {machineAnnouncement}
+            {anotherComputer.connectedNotice || machineAnnouncement}
           </span>
           {isLoadingMachines ? (
             <div role="status" aria-live="polite" className="space-y-3">

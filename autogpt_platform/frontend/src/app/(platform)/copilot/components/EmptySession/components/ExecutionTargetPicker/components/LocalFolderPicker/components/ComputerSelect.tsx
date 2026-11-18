@@ -75,7 +75,11 @@ export function ComputerSelect({
         >
           Connect Another Computer
         </Button>
-        <Text role="status" variant="small" tone="success-strong">
+        <Text
+          variant="small"
+          tone="success-strong"
+          className="min-w-0 break-words"
+        >
           {connectedNotice}
         </Text>
       </div>
