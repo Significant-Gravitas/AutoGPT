@@ -12,12 +12,16 @@ import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createOmittedRunChecker } from "./checkOmittedRuns";
 import {
   NotificationState,
+  activeRunsTheListOmits,
+  calculateTotalCount,
   categorizeExecutions,
   handleExecutionUpdate,
   keepActiveRunsTheListOmits,
   relabelNotifications,
+  removeExecutionFromAllCategories,
 } from "./helpers";
 import { useLiveUpdateLog } from "./useLiveUpdateLog";
 
@@ -62,9 +66,13 @@ export function useAgentActivityDropdown() {
     [agentInfoMap, liveUpdates],
   );
 
-  // Rebuild from each fetched list (keyed on dataUpdatedAt), then replay the
-  // live updates that arrived after that list's fetch started.
+  // Rebuild from each fetched list (keyed on dataUpdatedAt), then replay what
+  // came after that list's fetch started.
   const processedListRef = useRef<number | null>(null);
+  const [omittedRuns] = useState(createOmittedRunChecker);
+  // Only a reconnect loses live updates, so only the list read after one
+  // reads left-out runs by ID.
+  const listAfterReconnectRef = useRef(false);
   useEffect(() => {
     if (
       !executions ||
@@ -74,7 +82,7 @@ export function useAgentActivityDropdown() {
     )
       return;
     const fromList = categorizeExecutions(executions, agentInfoMap);
-    const newer = liveUpdates.updatesNewerThan(dataUpdatedAt);
+    const newer = liveUpdates.updatesNewerThan(dataUpdatedAt, executions);
     setNotifications((shown) =>
       newer.reduce(
         (state, execution) =>
@@ -83,15 +91,39 @@ export function useAgentActivityDropdown() {
       ),
     );
     processedListRef.current = dataUpdatedAt;
-  }, [executions, executionsSuccess, dataUpdatedAt, agentInfoMap, liveUpdates]);
+    if (!listAfterReconnectRef.current) return;
+    listAfterReconnectRef.current = false;
+    void omittedRuns.check({
+      runs: activeRunsTheListOmits(notifications, executions),
+      log: liveUpdates,
+      onRead: (run) =>
+        setNotifications((state) =>
+          handleExecutionUpdate(state, run, agentInfoMap),
+        ),
+      onGone: (runID) =>
+        setNotifications((state) =>
+          calculateTotalCount(removeExecutionFromAllCategories(state, runID)),
+        ),
+    });
+  }, [
+    executions,
+    executionsSuccess,
+    dataUpdatedAt,
+    agentInfoMap,
+    liveUpdates,
+    notifications,
+    omittedRuns,
+  ]);
 
   // Subscribe to execution events for all graphs
   useExecutionEvents({
     graphIds: graphIds.length > 0 ? graphIds : undefined,
     enabled: graphIds.length > 0,
     onExecutionUpdate: handleExecutionEvent,
-    onReconnect: () =>
-      refetchAfterReconnect(queryClient, getGetV1ListAllExecutionsQueryKey()),
+    onReconnect: () => {
+      listAfterReconnectRef.current = true;
+      refetchAfterReconnect(queryClient, getGetV1ListAllExecutionsQueryKey());
+    },
   });
 
   return {

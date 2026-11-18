@@ -1,6 +1,7 @@
 import { FakeWebSocket } from "@/lib/autogpt-server-api/__tests__/websocket-fake";
+import BackendAPI from "@/lib/autogpt-server-api/client";
 import { act, waitFor } from "@testing-library/react";
-import { expect, vi } from "vitest";
+import { expect, onTestFinished, vi } from "vitest";
 
 /**
  * How long to wait for a view to change after a reconnect: the app spreads
@@ -19,6 +20,8 @@ export function installLiveSocket() {
   FakeWebSocket.instances = [];
   vi.stubGlobal("WebSocket", FakeWebSocket);
   let accepted = 0;
+  const notices = countReconnectNotices();
+  let noticesAtDrop = 0;
 
   return {
     /** Accepts the app's next connection and keeps answering its pings. */
@@ -39,7 +42,19 @@ export function installLiveSocket() {
     },
     /** What the server does when it loses its event stream. */
     async drop(socket: FakeWebSocket) {
+      noticesAtDrop = notices.count();
       await act(async () => socket.serverClose(1011));
+    },
+    /**
+     * Waits until the app has told its views it reconnected after the last
+     * drop, so every reconnect handler has run.
+     */
+    async caughtUp() {
+      await waitFor(
+        () => expect(notices.count()).toBeGreaterThan(noticesAtDrop),
+        AFTER_RECONNECT,
+      );
+      await act(async () => {});
     },
     /** Delivers a run update over the socket, as the server publishes one. */
     async publish(socket: FakeWebSocket, execution: Record<string, unknown>) {
@@ -55,4 +70,25 @@ export function installLiveSocket() {
       );
     },
   };
+}
+
+// Each BackendAPI the app registers a reconnect handler on gets one more,
+// first, which counts the reconnect notices.
+function countReconnectNotices() {
+  let notices = 0;
+  const counted = new WeakSet<BackendAPI>();
+  const register = BackendAPI.prototype.onWebSocketReconnect;
+  const spy = vi
+    .spyOn(BackendAPI.prototype, "onWebSocketReconnect")
+    .mockImplementation(function (this: BackendAPI, handler: () => void) {
+      if (!counted.has(this)) {
+        counted.add(this);
+        register.call(this, () => {
+          notices += 1;
+        });
+      }
+      return register.call(this, handler);
+    });
+  onTestFinished(() => spy.mockRestore());
+  return { count: () => notices };
 }

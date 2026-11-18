@@ -175,20 +175,27 @@ export function categorizeExecutions(
 const RUN_LIST_LIMIT = 250;
 
 /**
- * A full run list can leave out an older run that is still going, so keep
- * the active runs already shown that it omits. A shorter list covers every
- * run, so a run it omits is gone.
+ * The active runs already shown that a full run list leaves out: it holds
+ * the newest runs only, so an older one may still be going. A shorter list
+ * covers every run, so a run it omits is gone.
  */
+export function activeRunsTheListOmits(
+  shown: NotificationState,
+  listed: GeneratedGraphExecutionMeta[],
+): AgentExecutionWithInfo[] {
+  if (listed.length < RUN_LIST_LIMIT) return [];
+  const listedIDs = new Set(listed.map((execution) => execution.id));
+  return shown.activeExecutions.filter(
+    (execution) => !listedIDs.has(execution.id),
+  );
+}
+
 export function keepActiveRunsTheListOmits(
   shown: NotificationState,
   fromList: NotificationState,
   listed: GeneratedGraphExecutionMeta[],
 ): NotificationState {
-  if (listed.length < RUN_LIST_LIMIT) return fromList;
-  const listedIDs = new Set(listed.map((execution) => execution.id));
-  const omitted = shown.activeExecutions.filter(
-    (execution) => !listedIDs.has(execution.id),
-  );
+  const omitted = activeRunsTheListOmits(shown, listed);
   if (omitted.length === 0) return fromList;
   return calculateTotalCount({
     ...fromList,
@@ -287,7 +294,7 @@ export function calculateTotalCount(
 
 export function handleExecutionUpdate(
   currentState: NotificationState,
-  execution: GraphExecution,
+  execution: GraphExecution | GeneratedGraphExecutionMeta,
   agentInfoMap: Map<
     string,
     { name: string; description: string; library_agent_id?: string }
