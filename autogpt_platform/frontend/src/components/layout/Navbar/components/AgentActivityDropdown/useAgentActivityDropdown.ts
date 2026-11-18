@@ -90,7 +90,6 @@ export function useAgentActivityDropdown() {
     processedListRef.current = dataUpdatedAt;
     void checkOmittedRuns({
       runs: activeRunsTheListOmits(notifications, executions),
-      queryClient,
       log: liveUpdates,
       checking: checkingRef.current,
       onRead: (run) =>
@@ -109,7 +108,6 @@ export function useAgentActivityDropdown() {
     agentInfoMap,
     liveUpdates,
     notifications,
-    queryClient,
   ]);
 
   // Subscribe to execution events for all graphs

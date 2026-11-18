@@ -1,15 +1,13 @@
-import { getGetV1GetExecutionDetailsQueryOptions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { getV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { okData } from "@/app/api/helpers";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
-import type { QueryClient } from "@tanstack/react-query";
 
 // Each full list reads at most this many of the runs it leaves out.
 const MAX_CHECKS_PER_LIST = 10;
 
 interface Args {
   runs: GraphExecutionMeta[];
-  queryClient: QueryClient;
   log: {
     mark(): number;
     updatedSince(runID: string, mark: number): boolean;
@@ -24,10 +22,13 @@ interface Args {
  * older run shown as going has ended. One that ended while live updates were
  * lost would show as going for good, so read each such run by ID. A live
  * update that arrives during the read is newer than it and stands.
+ *
+ * Each read is a request of its own: through the query cache it could join
+ * one already on its way (the run's view polls the same query), whose answer
+ * may predate a live update this read must not overrule.
  */
 export async function checkOmittedRuns({
   runs,
-  queryClient,
   log,
   checking,
   onRead,
@@ -41,11 +42,9 @@ export async function checkOmittedRuns({
       checking.add(run.id);
       const mark = log.mark();
       try {
-        const response = await queryClient.fetchQuery({
-          ...getGetV1GetExecutionDetailsQueryOptions(run.graph_id, run.id),
-          staleTime: 0,
-        });
-        const read = okData(response);
+        const read = okData(
+          await getV1GetExecutionDetails(run.graph_id, run.id),
+        );
         if (read && !log.updatedSince(run.id, mark)) onRead(read);
       } catch (error) {
         const gone = error instanceof ApiError && error.status === 404;

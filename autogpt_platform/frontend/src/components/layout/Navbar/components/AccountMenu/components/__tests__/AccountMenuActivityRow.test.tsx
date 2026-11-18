@@ -1,3 +1,4 @@
+import { getGetV1GetExecutionDetailsQueryOptions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import {
   getGetV1GetExecutionDetailsMockHandler,
   getGetV1GetExecutionDetailsResponseMock,
@@ -11,6 +12,7 @@ import {
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
+import type { FakeWebSocket } from "@/lib/autogpt-server-api/__tests__/websocket-fake";
 import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { server } from "@/mocks/mock-server";
 import {
@@ -115,8 +117,14 @@ function providersFor(queryClient: QueryClient) {
   };
 }
 
-async function openActivity() {
-  render(<AccountMenuActivityRow />);
+async function openActivity(queryClient?: QueryClient) {
+  if (queryClient) {
+    renderWithoutProviders(<AccountMenuActivityRow />, {
+      wrapper: providersFor(queryClient),
+    });
+  } else {
+    render(<AccountMenuActivityRow />);
+  }
   await userEvent.click(
     await screen.findByTestId("account-menu-activity-trigger"),
   );
@@ -255,6 +263,10 @@ test("opening the menu again shows a run that finished while it was closed", asy
   expect(await findRunLine(list, /^Completed /)).toBeDefined();
 });
 
+const OLD_RUN_STARTED = new Date(
+  Date.now() - 2 * 24 * 3_600_000,
+).toISOString();
+
 /**
  * GET /executions answers with the newest 250 runs only. After the
  * reconnect, the list leaves out an older run Activity shows as going, and
@@ -262,6 +274,17 @@ test("opening the menu again shows a run that finished while it was closed", asy
  */
 async function showOldRunThenReconnect(
   readOldRun: () => Promise<AgentExecutionStatus>,
+  {
+    queryClient,
+    beforeReconnect,
+  }: {
+    queryClient?: QueryClient;
+    beforeReconnect?: (shown: {
+      list: HTMLElement;
+      live: ReturnType<typeof installLiveSocket>;
+      first: FakeWebSocket;
+    }) => Promise<void>;
+  } = {},
 ) {
   const newer = Array.from({ length: 250 }, (_, i) =>
     run(`run-${i}`, AgentExecutionStatus.COMPLETED, "graph-busy"),
@@ -293,16 +316,17 @@ async function showOldRunThenReconnect(
   );
   const live = installLiveSocket();
 
-  const list = await openActivity();
+  const list = await openActivity(queryClient);
   const first = await live.acceptNext();
   await live.publish(first, {
     ...run("run-old", AgentExecutionStatus.RUNNING, "graph-old"),
-    started_at: new Date(Date.now() - 2 * 24 * 3_600_000).toISOString(),
+    started_at: OLD_RUN_STARTED,
   });
   expect(
     (await findRunOf(list, "Old workflow")).getByText(/running$/),
   ).toBeDefined();
 
+  await beforeReconnect?.({ list, live, first });
   await live.drop(first);
   const second = await live.acceptNext();
   // The refetched list has landed once the new run shows.
@@ -347,7 +371,7 @@ test("a live update that lands while a left-out run is read by ID stands", async
 
   await live.publish(second, {
     ...run("run-old", AgentExecutionStatus.TERMINATED, "graph-old"),
-    started_at: new Date(Date.now() - 2 * 24 * 3_600_000).toISOString(),
+    started_at: OLD_RUN_STARTED,
   });
   const oldRun = await findRunOf(list, "Old workflow");
   expect(await oldRun.findByText(/^Stopped /)).toBeDefined();
@@ -357,6 +381,55 @@ test("a live update that lands while a left-out run is read by ID stands", async
   expect(
     (await findRunOf(list, "Old workflow")).getByText(/^Stopped /),
   ).toBeDefined();
+});
+
+test("a left-out run's read by ID doesn't take an answer that was already on its way", async () => {
+  // The run's own view polls the same query. Its read goes out before the
+  // run stops for review and comes back after Activity's check has started.
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  let reads = 0;
+  let releasePoll = () => {};
+  const pollHeld = new Promise<void>((resolve) => {
+    releasePoll = resolve;
+  });
+  releaseHeldList = releasePoll;
+  const { list } = await showOldRunThenReconnect(
+    async () => {
+      reads += 1;
+      if (reads > 1) return AgentExecutionStatus.REVIEW;
+      await pollHeld;
+      return AgentExecutionStatus.RUNNING;
+    },
+    {
+      queryClient,
+      async beforeReconnect({ list, live, first }) {
+        void queryClient
+          .fetchQuery(
+            getGetV1GetExecutionDetailsQueryOptions("graph-old", "run-old"),
+          )
+          .catch(() => undefined);
+        await vi.waitFor(() => expect(reads).toBe(1));
+        await live.publish(first, {
+          ...run("run-old", AgentExecutionStatus.REVIEW, "graph-old"),
+          started_at: OLD_RUN_STARTED,
+          ended_at: null,
+        });
+        expect(
+          await (
+            await findRunOf(list, "Old workflow")
+          ).findByText(/^Awaiting approval /),
+        ).toBeDefined();
+      },
+    },
+  );
+  releasePoll();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+  const oldRun = await findRunOf(list, "Old workflow");
+  expect(oldRun.getByText(/^Awaiting approval /)).toBeDefined();
+  expect(oldRun.queryByText(/running$/)).toBeNull();
 });
 
 test("a retried refetch isn't overruled by an update from before its first attempt failed", async () => {
