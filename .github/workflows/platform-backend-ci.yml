@@ -335,7 +335,7 @@ jobs:
           CHECK_RUN_ID: ${{ job.check_run_id }}
           # Seven minutes under the job's timeout-minutes, so a shard that
           # creeps towards it is split before a merge queue run is cancelled.
-          WARN_AFTER_MINUTES: 28
+          WARN_AFTER_MINUTES: 10
         run: |
           # From the job's own start, as its timeout counts: the service
           # containers come up before this step, sometimes minutes before.
