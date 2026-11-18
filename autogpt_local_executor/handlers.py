@@ -230,6 +230,22 @@ def _jail_error_to_message(msg_id: str, exc: PathJailError) -> ErrorMessage:
     return make_error(msg_id, exc.code, exc.message)
 
 
+def _cwd_problem(cwd: Path) -> str | None:
+    """What keeps a command from starting in `cwd`: `cwd_not_found` when
+    nothing is there, `cwd_not_a_directory` when what is there is no folder
+    (a file, or a path that goes through one). None when it is a folder, or
+    can't be told: then the start failed for some other reason."""
+    try:
+        mode = os.stat(cwd).st_mode
+    except FileNotFoundError:
+        return "cwd_not_found"
+    except NotADirectoryError:
+        return "cwd_not_a_directory"
+    except OSError:
+        return None
+    return None if stat.S_ISDIR(mode) else "cwd_not_a_directory"
+
+
 def _refused_by_the_system(doing: str, asked: str, exc: OSError) -> str:
     """The text of a reply for work the system refused: what was being done,
     the path as the platform asked for it, and the system's reason.
@@ -896,6 +912,7 @@ class CommandHandler:
                         msg.id,
                         ErrorCode.SHELL_NOT_AVAILABLE,
                         f"Shell {payload.shell.value!r} is not available on this OS.",
+                        details={"requested_shell": payload.shell.value},
                     )
                 shell_exe, shell_args = resolved
                 if plat == "windows" and shell_exe.lower().endswith("cmd.exe"):
@@ -929,33 +946,15 @@ class CommandHandler:
                 )
             )
             raise
-        except FileNotFoundError as exc:
+        except Exception as exc:
+            failure = await self._start_failure(msg.id, payload, cwd, exc)
             await self._audit(
                 msg.id,
                 payload,
                 cwd=str(cwd),
-                result=_err_result(_elapsed_ms(start), ErrorCode.SHELL_NOT_AVAILABLE.value),
+                result=_err_result(_elapsed_ms(start), failure.payload.code),
             )
-            return make_error(
-                msg.id,
-                ErrorCode.SHELL_NOT_AVAILABLE,
-                f"Executable not found: {exc}",
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.exception("Failed to spawn subprocess")
-            await self._audit(
-                msg.id,
-                payload,
-                cwd=str(cwd),
-                result=_err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
-            )
-            # Not the failure's own text, which can name a resolved path.
-            # It is in the log, above.
-            return make_error(
-                msg.id,
-                ErrorCode.INTERNAL_ERROR,
-                f"The command could not be started ({type(exc).__name__})",
-            )
+            return failure
 
         try:
             stdout_b, stderr_b, timed_out, output_truncated = await self._collect_process_output(
@@ -1234,6 +1233,57 @@ class CommandHandler:
                 await _terminate_process_group(proc.pid)
         except Exception:  # pragma: no cover - best-effort
             logger.exception("Error terminating subprocess tree")
+
+    async def _start_failure(
+        self, request_id: str, payload: Any, cwd: Path, exc: Exception
+    ) -> ErrorMessage:
+        """The reply for a command that couldn't be started.
+
+        The jail lets a command name a `cwd` that isn't there yet, and a
+        start in one fails. Which failure it is depends on the system:
+        POSIX gives FileNotFoundError, or NotADirectoryError for a file,
+        with the folder as its file name; Windows gives error 267 ("the
+        directory name is invalid") for both, as a NotADirectoryError that
+        names nothing. A missing program is a FileNotFoundError too, and
+        every one of those used to be answered SHELL_NOT_AVAILABLE, so the
+        model was told the shell wasn't installed when the folder was
+        missing. So the folder itself is looked at: PATH_NOT_FOUND when it
+        is what's wrong, named as the request named it.
+
+        No reply holds the failure's own text, which names the resolved
+        folder or where the shim found the shell. That goes to the log."""
+        asked = payload.cwd or str(self.config.allowed_root)
+        problem = await _read_in_a_thread(_cwd_problem, cwd) if isinstance(exc, OSError) else None
+        if problem is not None:
+            logger.info("A command's cwd %s (asked for as %r): %s (%s)", cwd, asked, problem, exc)
+            wrong = "does not exist" if problem == "cwd_not_found" else "is not a folder"
+            return make_error(
+                request_id,
+                ErrorCode.PATH_NOT_FOUND,
+                f"The command's cwd {asked!r} {wrong}",
+                details={"path": asked, "reason": problem},
+            )
+        if isinstance(exc, FileNotFoundError):
+            logger.info("A command's program was not found: %s", exc)
+            if payload.argv is not None:
+                program = payload.argv[0] if payload.argv else ""
+                return make_error(
+                    request_id,
+                    ErrorCode.SHELL_NOT_AVAILABLE,
+                    f"Executable not found: {program!r}",
+                )
+            return make_error(
+                request_id,
+                ErrorCode.SHELL_NOT_AVAILABLE,
+                f"Shell {payload.shell.value!r} could not be started: its program was not found",
+                details={"requested_shell": payload.shell.value},
+            )
+        logger.error("Failed to spawn subprocess", exc_info=exc)
+        return make_error(
+            request_id,
+            ErrorCode.INTERNAL_ERROR,
+            f"The command could not be started ({type(exc).__name__})",
+        )
 
     async def _audit(
         self,

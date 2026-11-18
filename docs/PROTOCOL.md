@@ -1206,7 +1206,11 @@ Error codes:
 - `PATH_OUTSIDE_ALLOWED_ROOT` — file op tried to escape allowed_root
 - `PATH_RESERVED_NAME` — Windows reserved name (CON/PRN/NUL/COM*/LPT*)
 - `PATH_INVALID_CHARS` — path contains chars illegal on this OS
-- `PATH_NOT_FOUND` — FILE_STAT/READ/DELETE on a path that doesn't exist (and `missing_ok: false`)
+- `PATH_NOT_FOUND` — FILE_STAT/READ/DELETE on a path that doesn't exist (and `missing_ok: false`);
+  also an `EXECUTE_COMMAND` whose `cwd` isn't a folder the command can start in. The
+  jail lets a `cwd` name a folder that isn't made yet, so this is found when the
+  command starts. `details.path` is the `cwd` as the request named it, and
+  `details.reason` is `cwd_not_found` or `cwd_not_a_directory` (a file is there)
 - `PATH_NOT_EMPTY` — FILE_DELETE on a non-empty dir with `recursive: false`
 - `PATH_EXISTS` — FILE_MOVE with `overwrite: false` and dst exists
 - `COMMAND_TIMEOUT` — a `COMPUTER_TOOL_CALL` ran out of `timeout_seconds`
@@ -1222,6 +1226,7 @@ Error codes:
   such as -15 or -9), or -1 when there is none to read, so callers branch on
   the `timed_out` flag, not the code.
 - `SHELL_NOT_AVAILABLE` — `shell` selector requested a shell not installed on this OS
+  (`details.requested_shell`), or an `argv` command's program wasn't found
 - `UNSUPPORTED_ARCH` — HELLO `arch` value not recognized
 - `CAPABILITY_NOT_GRANTED` — requested capability not in granted_capabilities
 - `AUTH_FAILED` — token invalid or expired
