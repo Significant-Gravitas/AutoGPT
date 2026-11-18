@@ -311,6 +311,7 @@ class TestJoinGrace:
                     await asyncio.wait_for(pending.task, timeout=_HANG_SECONDS)
             finally:
                 pending.task.cancel()
+                await asyncio.gather(pending.task, return_exceptions=True)
 
         assert out is None
         assert waited >= 0.05

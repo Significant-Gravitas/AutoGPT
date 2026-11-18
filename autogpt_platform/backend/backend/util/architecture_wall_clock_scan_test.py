@@ -1,14 +1,18 @@
 """Reads the elapsed wall-clock bounds a test module's asserts check, for the
 rule in ``architecture_wall_clock_bounds_test.py``.
 
-An assert bounds elapsed wall-clock time from above when it compares, by
-``<``, ``<=``, ``==`` or their mirrors and outside any ``not``:
+An assert bounds elapsed wall-clock time from above when it requires, by
+``<``, ``<=``, ``==`` or their mirrors (through ``and``, ``not`` and
+``is True``/``is False``):
 
 - a wall clock read minus something (``clock() - started``), written out or
   through a variable, scaled by a constant (``* 1000`` for milliseconds) or
   kept by ``round``, ``abs``, ``int`` or ``float``; or
-- a clock read with a deadline (``clock() < deadline`` where ``deadline =
-  clock() + 1``).
+- a fresh clock read below a deadline set from an earlier one
+  (``clock() < deadline`` where ``deadline = clock() + 1``, or
+  ``clock() < started + 1``).
+
+A name assigned more than once counts only when its assignments agree.
 
 A wall clock is ``time.monotonic``, ``time.perf_counter`` or ``time.time``
 (or their ``_ns`` forms), or an event loop's ``time()``. Bounds are worked out
@@ -45,8 +49,9 @@ _ARITHMETIC = {
     ast.Mult: operator.mul,
     ast.Div: operator.truediv,
 }
-_REASON = re.compile(r"wall-clock:\s*\S")
+_REASON = re.compile(r"#\s*wall-clock:\s*\S")
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 # The value of a name bound by anything but one assignment (a parameter, a
 # loop variable): it resolves to nothing.
 _UNKNOWN = ast.Constant(value=None)
@@ -132,11 +137,11 @@ class _Scope:
 
 
 def _own_nodes(node: ast.AST) -> Iterator[ast.AST]:
-    """Every node inside *node* outside the functions and classes nested in
-    it: a class body's names are not visible to the code around it."""
+    """Every node inside *node* outside the functions, classes and
+    comprehensions nested in it, whose names the code around them can't see."""
     for child in ast.iter_child_nodes(node):
         yield child
-        if not isinstance(child, (*_SCOPES, ast.ClassDef)):
+        if not isinstance(child, (*_SCOPES, ast.ClassDef, *_COMPREHENSIONS)):
             yield from _own_nodes(child)
 
 
@@ -163,24 +168,44 @@ def _asserts(node: ast.AST, scope: _Scope) -> Iterator[tuple[ast.Assert, _Scope]
 def _upper_bound_pairs(
     node: ast.expr, negated: bool
 ) -> Iterator[tuple[ast.expr, ast.expr]]:
-    """Each ``small <= big`` the assert requires, whichever way it is written;
-    under a ``not`` a ``<`` requires the opposite."""
+    """Each ``small <= big`` the assert requires, whichever way it is written:
+    every part of an ``and`` (of an ``or`` under a ``not``), and a comparison
+    flipped by ``not`` or ``is False``."""
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
         yield from _upper_bound_pairs(node.operand, not negated)
+    elif isinstance(node, ast.BoolOp):
+        if isinstance(node.op, ast.Or if negated else ast.And):
+            for value in node.values:
+                yield from _upper_bound_pairs(value, negated)
+    elif isinstance(node, ast.Compare):
+        yield from _compare_pairs(node, negated)
+
+
+def _compare_pairs(
+    node: ast.Compare, negated: bool
+) -> Iterator[tuple[ast.expr, ast.expr]]:
+    truth = node.comparators[0]
+    if (
+        len(node.ops) == 1
+        and isinstance(node.ops[0], (ast.Is, ast.IsNot, ast.Eq, ast.NotEq))
+        and isinstance(truth, ast.Constant)
+        and isinstance(truth.value, bool)
+    ):
+        # `(x < 1) is False` requires the opposite of `x < 1`.
+        flip = (not truth.value) != isinstance(node.ops[0], (ast.IsNot, ast.NotEq))
+        yield from _upper_bound_pairs(node.left, negated != flip)
         return
-    if isinstance(node, ast.Compare):
-        operands = [node.left, *node.comparators]
-        for left, op, right in zip(operands, node.ops, operands[1:]):
-            if isinstance(op, (ast.Lt, ast.LtE)):
-                yield (right, left) if negated else (left, right)
-            elif isinstance(op, (ast.Gt, ast.GtE)):
-                yield (left, right) if negated else (right, left)
-            elif isinstance(op, ast.Eq) and not negated:
-                yield left, right
-                yield right, left
-    for child in ast.iter_child_nodes(node):
-        if isinstance(child, ast.expr):
-            yield from _upper_bound_pairs(child, negated)
+    if negated and len(node.ops) > 1:
+        return  # `not (a < b < c)` requires neither link on its own
+    operands = [node.left, *node.comparators]
+    for left, op, right in zip(operands, node.ops, operands[1:]):
+        if isinstance(op, (ast.Lt, ast.LtE)):
+            yield (right, left) if negated else (left, right)
+        elif isinstance(op, (ast.Gt, ast.GtE)):
+            yield (left, right) if negated else (right, left)
+        elif isinstance(op, ast.Eq) and not negated:
+            yield left, right
+            yield right, left
 
 
 def _bound(small: ast.expr, big: ast.expr, scope: _Scope) -> float | None:
@@ -197,7 +222,7 @@ def _bound(small: ast.expr, big: ast.expr, scope: _Scope) -> float | None:
             # `clock() - 1 < started` is `clock() - started < 1`.
             seconds = _seconds(small.right, scope)
         return None if seconds is None else seconds * scale
-    scale = _clock_scale(small, scope)
+    scale = _clock_call_scale(small, scope)
     offset = None if scale is None else _deadline_offset(big, scope)
     return None if scale is None or offset is None else offset * scale
 
@@ -218,9 +243,14 @@ def _elapsed_scale(node: ast.expr, scope: _Scope, names: bool = True) -> float |
         return _scaled_elapsed_scale(node, scope, names)
     if names and isinstance(node, ast.Name):
         values, _, owner = scope.lookup(node.id)
-        scales = [_elapsed_scale(value, owner, names=False) for value in values]
-        return next((scale for scale in scales if scale is not None), None)
+        return _agreed(_elapsed_scale(value, owner, names=False) for value in values)
     return None
+
+
+def _agreed(found: Iterator[float | None]) -> float | None:
+    """The one value every assignment of a name gives, else nothing."""
+    values = set(found)
+    return values.pop() if len(values) == 1 else None
 
 
 def _scaled_elapsed_scale(node: ast.BinOp, scope: _Scope, names: bool) -> float | None:
@@ -242,8 +272,7 @@ def _clock_scale(node: ast.expr, scope: _Scope) -> float | None:
     name it was assigned to."""
     if isinstance(node, ast.Name):
         values, _, owner = scope.lookup(node.id)
-        reads = [_clock_call_scale(value, owner) for value in values]
-        return reads[0] if reads and None not in reads else None
+        return _agreed(_clock_call_scale(value, owner) for value in values)
     return _clock_call_scale(node, scope)
 
 
@@ -256,18 +285,21 @@ def _clock_call_scale(node: ast.expr, scope: _Scope) -> float | None:
     if node.args or node.keywords:
         return None
     if isinstance(func, ast.Attribute) and func.attr == "time":
-        if _is_event_loop(func.value):
+        if _is_event_loop(func.value, scope):
             return 1.0
     module, _, name = (_dotted_origin(func, scope) or "").rpartition(".")
     return _WALL_CLOCKS.get(name) if module == "time" else None
 
 
-def _is_event_loop(node: ast.expr) -> bool:
+def _is_event_loop(node: ast.expr, scope: _Scope) -> bool:
     if isinstance(node, ast.Call):
         func = node.func
         if isinstance(func, ast.Attribute):
             return func.attr in _LOOP_GETTERS
-        return isinstance(func, ast.Name) and func.id in _LOOP_GETTERS
+        if not isinstance(func, ast.Name):
+            return False
+        origin = scope.lookup(func.id)[1] or func.id
+        return origin.rpartition(".")[2] in _LOOP_GETTERS
     if isinstance(node, ast.Attribute):
         return node.attr.lower().endswith("loop")
     return isinstance(node, ast.Name) and node.id.lower().endswith("loop")
@@ -284,23 +316,24 @@ def _dotted_origin(node: ast.expr, scope: _Scope) -> str | None:
 
 
 def _deadline_offset(node: ast.expr, scope: _Scope) -> float | None:
-    """The ``bound`` of ``clock() + bound``, or of a name assigned it, in the
-    clock's units."""
+    """The ``bound`` of a deadline set from an earlier clock read, in the
+    clock's units: a name assigned ``clock() + bound``, or ``started +
+    bound`` for a name holding a read."""
     if isinstance(node, ast.Name):
         values, _, owner = scope.lookup(node.id)
-        offsets = [_clock_plus(value, owner) for value in values]
-        known = [offset for offset in offsets if offset is not None]
-        return min(known) if known and len(known) == len(offsets) else None
-    return _clock_plus(node, scope)
+        return _agreed(_earlier_read_plus(value, owner, True) for value in values)
+    return _earlier_read_plus(node, scope, False)
 
 
-def _clock_plus(node: ast.expr, scope: _Scope) -> float | None:
+def _earlier_read_plus(node: ast.expr, scope: _Scope, assigned: bool) -> float | None:
+    """``read + bound``, where the read happened before the assert's own: a
+    name holding one, or, in a deadline's assignment, a clock call."""
     if not isinstance(node, ast.BinOp) or not isinstance(node.op, ast.Add):
         return None
-    if _clock_scale(node.left, scope) is not None:
-        return _seconds(node.right, scope)
-    if _clock_scale(node.right, scope) is not None:
-        return _seconds(node.left, scope)
+    for read, bound in ((node.left, node.right), (node.right, node.left)):
+        earlier = isinstance(read, ast.Name) and _clock_scale(read, scope)
+        if earlier or (assigned and _clock_call_scale(read, scope) is not None):
+            return _seconds(bound, scope)
     return None
 
 
@@ -332,10 +365,10 @@ def _seconds(node: ast.expr, scope: _Scope, depth: int = 0) -> float | None:
         if origin is not None:
             return _imported_seconds(origin, depth + 1)
         return _seconds(values[0], owner, depth + 1) if len(values) == 1 else None
-    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-        origin = scope.lookup(node.value.id)[1]
+    if isinstance(node, ast.Attribute):
+        origin = _dotted_origin(node, scope)
         if origin is not None:
-            return _imported_seconds(f"{origin}.{node.attr}", depth + 1)
+            return _imported_seconds(origin, depth + 1)
     return None
 
 

@@ -21,10 +21,10 @@ from .pass_run import DreamPassRun
 from .schemas import DreamOperations
 
 _DEADLINE = 0.2
-# Twenty-five times the deadline the tests set, as a CI runner can stall a
-# test for seconds, and half the store's own 10 s default, so a store that
+# Far longer than the deadline the tests set, as a CI runner can stall a test
+# for seconds, and still short of the store's own default, so a store that
 # ignored the set deadline still fails.
-_BOUND = 5.0
+_BOUND = 0.8 * store.RECORD_WRITE_TIMEOUT_SECONDS
 
 
 class _Hanging(httpx.AsyncBaseTransport):

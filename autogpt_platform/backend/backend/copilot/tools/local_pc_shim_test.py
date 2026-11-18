@@ -460,9 +460,9 @@ class TestShimConnectionManager:
             with pytest.raises(TimeoutError, match="did not connect within"):
                 await manager.wait_for("missing", timeout=0.03)
 
-        # The relay is given what is left of the caller's 30 ms, not a budget
-        # of its own.
-        assert relay.budgets and max(relay.budgets) <= 0.03
+        # The relay is given what is left of the caller's 30 ms: less than all
+        # of it, as the clock has moved since the call began.
+        assert relay.budgets and max(relay.budgets) < 0.03
 
     @pytest.mark.asyncio
     async def test_cached_presence_lookup_cannot_miss_direct_registration(self):

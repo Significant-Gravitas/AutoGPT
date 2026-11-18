@@ -37,9 +37,9 @@ from .schemas import PhaseUsage
 
 _NOW = datetime.now(timezone.utc)
 # Only stops a store that missed its deadline: a passing run ends at the
-# 0.05 s one the test sets. Half the store's own 10 s default, so a store
-# that ignored the set deadline still fails.
-_BOUND = 5.0
+# 0.05 s one the test sets. Short of the store's own default, so a store that
+# ignored the set deadline still fails.
+_BOUND = 0.8 * store.RECORD_WRITE_TIMEOUT_SECONDS
 _SCOPE = MemoryScope.for_user("u1")
 _BATCH_PASS = BatchPass(
     user_id="u1", expert_id=None, pass_id="p1", job_id="j1", phase_models={}

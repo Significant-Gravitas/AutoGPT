@@ -58,10 +58,19 @@ def test_tests_bound_wall_clock_time_only_generously():
     )
 
 
-def test_the_scan_sees_the_suites_wall_clock_bounds():
-    # The bounds the suite keeps, generous and annotated ones included; a
-    # scan that finds none proves nothing.
-    assert len(_wall_clock_bounds()) >= 20
+def test_the_scan_reads_test_modules_and_only_those(tmp_path: pathlib.Path):
+    # A scan that finds nothing proves nothing; this one must find these two.
+    source = "import time\nstarted = time.monotonic()\n"
+    source += "assert time.monotonic() - started < 1\n"
+    package = tmp_path / "pkg"
+    package.mkdir()
+    for name in ("checks_test.py", "test_checks.py", "checks.py"):
+        (package / name).write_text(source)
+    found = _scan(((package, "pkg"),), tmp_path)
+    assert [(rel, bound) for rel, _, bound, _ in found] == [
+        ("pkg/checks_test.py", 1.0),
+        ("pkg/test_checks.py", 1.0),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -87,6 +96,38 @@ def test_the_scan_sees_the_suites_wall_clock_bounds():
         ("assert not (time.monotonic() - started > 1)", [1.0]),
         ("assert not time.monotonic() - started == 1", []),
         ("assert (time.monotonic() - started < 1) is True", [1.0]),
+        ("assert (time.monotonic() - started < 1) is False", []),
+        ("assert not (0 <= time.monotonic() - started <= 1)", []),
+        ("assert ok or time.monotonic() - started < 1", []),
+        ("assert not (ok or time.monotonic() - started > 1)", [1.0]),
+        ("observed = time.monotonic()\nassert observed < time.monotonic() + 1", []),
+        ("assert time.monotonic() < time.monotonic() + 1", []),
+        (
+            "elapsed = time.monotonic() - started\n"
+            "elapsed = time.thread_time() - started\n"
+            "assert elapsed < 1",
+            [],
+        ),
+        (
+            "finished = time.monotonic_ns()\nfinished = time.monotonic()\n"
+            "assert finished - started < 30",
+            [],
+        ),
+        (
+            "deadline = time.monotonic() + 1\ndeadline = time.monotonic() + 30\n"
+            "assert time.monotonic() < deadline",
+            [],
+        ),
+        (
+            "LIMIT = 1\npresets = [LIMIT for LIMIT in (10, 20)]\n"
+            "assert time.monotonic() - started < LIMIT",
+            [1.0],
+        ),
+        (
+            "from asyncio import get_running_loop as current\n"
+            "assert current().time() - started < 1",
+            [1.0],
+        ),
         ("elapsed = time.perf_counter() - started\nassert elapsed < 1", [1.0]),
         ("now = time.monotonic()\nassert now - started < 1", [1.0]),
         ("deadline = time.monotonic() + 1\nassert time.monotonic() < deadline", [1.0]),
@@ -103,6 +144,8 @@ def test_the_scan_sees_the_suites_wall_clock_bounds():
         ("assert time.monotonic() - started < 1.0  # wall-clock: why", []),
         ("# wall-clock: why\n# more\nassert time.monotonic() - started < 1", []),
         ("assert time.monotonic() - started < 1.0  # wall-clock:", [1.0]),
+        ("assert time.monotonic() - started < 1  # TODO: a wall-clock: why", [1.0]),
+        ("assert time.monotonic() - started < 1  # noqa  # wall-clock: why", []),
         ('assert time.monotonic() - started < 1, "# wall-clock: no"', [1.0]),
         ("assert time.monotonic() - started < 5", []),
         ("assert time.monotonic() - started > 0.09", []),
@@ -172,6 +215,11 @@ def test_the_scan_sees_the_suites_wall_clock_bounds():
             "assert time.monotonic() - started < limits.MISSING",
             [],
         ),
+        (
+            "import backend.fake.limits\n"
+            "assert time.monotonic() - started < backend.fake.limits.BOUND",
+            [1.0],
+        ),
     ],
 )
 def test_the_scan_reads_each_form(
@@ -217,10 +265,17 @@ def _too_tight(bound: float, reason: bool) -> bool:
 
 @functools.cache
 def _wall_clock_bounds() -> list[tuple[str, int, float, bool]]:
-    """Each assert of the test modules that bounds a wall-clock elapsed time
-    from above by a known number of seconds, and whether it says why."""
+    return _scan(_SCAN_ROOTS, _PLATFORM_ROOT)
+
+
+def _scan(
+    roots: tuple[tuple[pathlib.Path, str], ...], base: pathlib.Path
+) -> list[tuple[str, int, float, bool]]:
+    """Each assert of the test modules under *roots* that bounds a
+    wall-clock elapsed time from above by a known number of seconds, and
+    whether it says why."""
     found: list[tuple[str, int, float, bool]] = []
-    for root, package in _SCAN_ROOTS:
+    for root, package in roots:
         assert root.is_dir(), f"{root} moved; point _SCAN_ROOTS at it"
         for path in sorted(root.rglob("*.py")):
             if "__pycache__" in path.parts or not _is_test_module(path):
@@ -229,7 +284,7 @@ def _wall_clock_bounds() -> list[tuple[str, int, float, bool]]:
             if "time" not in source:
                 continue
             module_package = ".".join([package, *path.relative_to(root).parts[:-1]])
-            rel = path.relative_to(_PLATFORM_ROOT).as_posix()
+            rel = path.relative_to(base).as_posix()
             found += [
                 (rel, line, bound, reason)
                 for line, bound, reason in scan.wall_clock_bounds(
