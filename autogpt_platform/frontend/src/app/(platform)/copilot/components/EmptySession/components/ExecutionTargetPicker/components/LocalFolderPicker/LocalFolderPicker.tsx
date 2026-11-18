@@ -16,7 +16,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { useEffect, useState } from "react";
 import { LocalExecutorSetup } from "../LocalExecutorSetup/LocalExecutorSetup";
-import { ComputerSelect } from "./components/ComputerSelect/ComputerSelect";
+import { ComputerSelect } from "./components/ComputerSelect";
+import { useAnotherComputer } from "./useAnotherComputer";
 import { useLocalFolderPicker } from "./useLocalFolderPicker";
 
 interface Props {
@@ -53,6 +54,7 @@ export function LocalFolderPicker({
   const machine =
     machines.find((item) => item.machine_id === selectedMachineID) ?? null;
   const browser = useLocalFolderPicker({ isOpen, machine, onStale });
+  const anotherComputer = useAnotherComputer({ isOpen, machines });
   const canSelectDirectory =
     !!machine &&
     !!browser.directory?.current &&
@@ -143,8 +145,11 @@ export function LocalFolderPicker({
                 machines={machines}
                 selectedMachineID={machine?.machine_id ?? null}
                 isRefreshingMachines={isRefreshingMachines}
+                isSetupOpen={anotherComputer.isSetupOpen}
+                connectedNotice={anotherComputer.connectedNotice}
                 onSelectMachine={onSelectMachine}
                 onRefreshMachines={onRefreshMachines}
+                onToggleSetup={anotherComputer.toggleSetup}
               />
 
               <FolderPath

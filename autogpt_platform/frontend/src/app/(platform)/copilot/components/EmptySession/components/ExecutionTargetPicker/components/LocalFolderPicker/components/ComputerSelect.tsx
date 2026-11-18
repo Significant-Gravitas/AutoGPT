@@ -4,9 +4,8 @@ import type { ExecutorMachine } from "@/app/api/__generated__/models/executorMac
 import { Button } from "@/components/atoms/Button/Button";
 import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
-import { LocalExecutorSetup } from "../../../LocalExecutorSetup/LocalExecutorSetup";
-import { computerOptions, hasComputersWithOneName } from "../../helpers";
-import { useComputerSelect } from "./useComputerSelect";
+import { LocalExecutorSetup } from "../../LocalExecutorSetup/LocalExecutorSetup";
+import { computerOptions, hasComputersWithOneName } from "../helpers";
 
 const SETUP_PANEL_ID = "local-executor-another-computer";
 
@@ -14,20 +13,23 @@ interface Props {
   machines: ExecutorMachine[];
   selectedMachineID: string | null;
   isRefreshingMachines: boolean;
+  isSetupOpen: boolean;
+  connectedNotice: string;
   onSelectMachine: (machineID: string) => void;
   onRefreshMachines: () => void;
+  onToggleSetup: () => void;
 }
 
 export function ComputerSelect({
   machines,
   selectedMachineID,
   isRefreshingMachines,
+  isSetupOpen,
+  connectedNotice,
   onSelectMachine,
   onRefreshMachines,
+  onToggleSetup,
 }: Props) {
-  const { isSetupOpen, toggleSetup, connectedNotice } =
-    useComputerSelect(machines);
-
   return (
     <div className="flex flex-col gap-2">
       <Select
@@ -52,7 +54,7 @@ export function ComputerSelect({
           size="inline"
           aria-expanded={isSetupOpen}
           aria-controls={SETUP_PANEL_ID}
-          onClick={toggleSetup}
+          onClick={onToggleSetup}
         >
           Connect Another Computer
         </Button>
