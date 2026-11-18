@@ -484,6 +484,144 @@ async def test_stream_subscribes_each_channel_on_one_connection(
 
 
 @pytest.mark.asyncio
+async def test_stream_add_returns_once_redis_confirms_the_channel(
+    fake_redis: _FakeRedis,
+) -> None:
+    """The socket's answer to a subscribe means the channel is live: a view
+    re-reads its state then, and an event published before Redis applied the
+    SSUBSCRIBE would never arrive."""
+    stream = _ShardStream(on_lost=AsyncMock())
+    try:
+        await stream.add("{u/g}/exec/a", AsyncMock())
+        pubsub = fake_redis.pubsubs[0]
+        # The SSUBSCRIBE is written; Redis's confirmation comes later.
+        pubsub.ssubscribe.side_effect = None
+        adding = asyncio.create_task(stream.add("{u/g}/exec/b", AsyncMock()))
+        await _until(lambda: pubsub.ssubscribe.await_count == 2)
+        # Another channel's confirmation doesn't count.
+        pubsub.inbox.put_nowait(
+            {"type": "ssubscribe", "channel": "{u/g}/exec/c", "data": 2}
+        )
+        await asyncio.sleep(0.05)
+        assert not adding.done()
+
+        pubsub.inbox.put_nowait(
+            {"type": "ssubscribe", "channel": "{u/g}/exec/b", "data": 2}
+        )
+        await asyncio.wait_for(adding, timeout=5)
+    finally:
+        await stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_stream_refuses_a_second_subscribe_of_a_channel_being_confirmed(
+    fake_redis: _FakeRedis,
+) -> None:
+    """ws_api handles a socket's messages one at a time, so this can't happen
+    today; a caller that ever did it must fail at once, not wait 15 s."""
+    first, second = AsyncMock(), AsyncMock()
+    stream = _ShardStream(on_lost=AsyncMock())
+    try:
+        await stream.add("{u/g}/exec/a", AsyncMock())
+        pubsub = fake_redis.pubsubs[0]
+        pubsub.ssubscribe.side_effect = None
+        adding = asyncio.create_task(stream.add("{u/g}/exec/b", first))
+        await _until(lambda: pubsub.ssubscribe.await_count == 2)
+
+        with pytest.raises(RuntimeError):
+            await stream.add("{u/g}/exec/b", second)
+
+        pubsub.inbox.put_nowait({"type": "ssubscribe", "channel": "{u/g}/exec/b"})
+        await asyncio.wait_for(adding, timeout=5)
+        assert stream.handlers["{u/g}/exec/b"] is first
+    finally:
+        await stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_stream_delivers_a_message_right_behind_the_confirmation(
+    fake_redis: _FakeRedis,
+) -> None:
+    """The pump reads a buffered message right after the confirmation without
+    pausing, so the channel's handler must be in place before it."""
+    on_b = AsyncMock()
+    stream = _ShardStream(on_lost=AsyncMock())
+    try:
+        await stream.add("{u/g}/exec/a", AsyncMock())
+        pubsub = fake_redis.pubsubs[0]
+
+        async def confirm_then_publish(channel: str) -> None:
+            pubsub.inbox.put_nowait({"type": "ssubscribe", "channel": channel})
+            pubsub.inbox.put_nowait(
+                {"type": "smessage", "channel": channel, "data": "first"}
+            )
+
+        pubsub.ssubscribe.side_effect = confirm_then_publish
+        await asyncio.wait_for(stream.add("{u/g}/exec/b", on_b), timeout=5)
+
+        await _until(lambda: on_b.await_count == 1)
+        on_b.assert_awaited_once_with("first")
+    finally:
+        await stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_stream_add_fails_at_once_once_the_stream_has_ended(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Nothing reads a confirmation after the pump ends, and the socket is
+    already closing; a subscribe then must not wait out the timeout."""
+    on_lost = AsyncMock()
+    stream = _ShardStream(on_lost=on_lost)
+    try:
+        await stream.add("{u/g}/exec/a", AsyncMock())
+        fake_redis.pubsubs[0].inbox.put_nowait(RedisConnectionError("shard gone"))
+        await _until(lambda: on_lost.await_count == 1)
+
+        with pytest.raises(EventStreamLostError):
+            await asyncio.wait_for(stream.add("{u/g}/exec/b", AsyncMock()), 5)
+        assert "{u/g}/exec/b" not in stream.handlers
+    finally:
+        await stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_stream_add_fails_when_the_stream_is_lost_before_redis_confirms(
+    fake_redis: _FakeRedis,
+) -> None:
+    stream = _ShardStream(on_lost=AsyncMock())
+    try:
+        await stream.add("{u/g}/exec/a", AsyncMock())
+        pubsub = fake_redis.pubsubs[0]
+        pubsub.ssubscribe.side_effect = None
+        adding = asyncio.create_task(stream.add("{u/g}/exec/b", AsyncMock()))
+        await asyncio.sleep(0.05)
+        pubsub.inbox.put_nowait(RedisConnectionError("shard gone"))
+
+        with pytest.raises(EventStreamLostError):
+            await asyncio.wait_for(adding, timeout=5)
+    finally:
+        await stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_stream_add_times_out_when_redis_never_confirms(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.1)
+    stream = _ShardStream(on_lost=AsyncMock())
+    try:
+        await stream.add("{u/g}/exec/a", AsyncMock())
+        fake_redis.pubsubs[0].ssubscribe.side_effect = None
+
+        with pytest.raises(TimeoutError):
+            await stream.add("{u/g}/exec/b", AsyncMock())
+        assert "{u/g}/exec/b" not in stream.handlers
+    finally:
+        await stream.stop()
+
+
+@pytest.mark.asyncio
 async def test_stream_rejects_wildcard_channel_before_redis(
     fake_redis: _FakeRedis,
 ) -> None:
