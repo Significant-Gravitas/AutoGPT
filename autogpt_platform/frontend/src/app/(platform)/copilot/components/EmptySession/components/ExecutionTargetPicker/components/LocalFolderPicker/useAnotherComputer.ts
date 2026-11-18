@@ -2,6 +2,7 @@
 
 import type { ExecutorMachine } from "@/app/api/__generated__/models/executorMachine";
 import { useState } from "react";
+import { computerOptions } from "./helpers";
 
 interface Args {
   isOpen: boolean;
@@ -37,8 +38,8 @@ export function useAnotherComputer({ isOpen, machines }: Args) {
     setNewcomerID(null);
   }
 
-  const newcomer = machines.find(
-    (machine) => machine.machine_id === newcomerID,
+  const newcomer = computerOptions(machines).find(
+    (option) => option.value === newcomerID,
   );
 
   function toggleSetup() {
@@ -49,7 +50,7 @@ export function useAnotherComputer({ isOpen, machines }: Args) {
     isSetupOpen,
     toggleSetup,
     connectedNotice: newcomer
-      ? `${newcomer.display_name} connected. Choose it under Computer.`
+      ? `${newcomer.label} connected. Choose it under Computer.`
       : "",
   };
 }

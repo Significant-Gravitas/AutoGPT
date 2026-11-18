@@ -6,16 +6,15 @@ import {
 import type { ExecutorMachine } from "@/app/api/__generated__/models/executorMachine";
 import { server } from "@/mocks/mock-server";
 import { Key, storage } from "@/services/storage/local-storage";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ExecutionTargetPicker } from "../ExecutionTargetPicker";
 
 const EXECUTORS_URL = "http://localhost:3000/api/proxy/api/copilot/executors";
-// The list is asked for again every 3 s, so a wait for its next answer can
-// take that long by itself.
-const NEXT_CHECK = { timeout: 10_000 };
+const CHECK_INTERVAL_MS = 3_000;
+const LAPTOP_CONNECTED = "Laptop · macOS connected. Choose it under Computer.";
 
 const WORKSTATION: ExecutorMachine = {
   machine_id: "1c49dced-6256-4f28-03af-f8f1ecf3eded",
@@ -88,20 +87,18 @@ async function openTheSetupSteps(user: User) {
   await screen.findByText("Connect a Computer");
 }
 
-// The list's own 3 s check may get there first and take the button away.
-async function clickIfStillThere(user: User, name: string) {
-  const button = screen.queryByRole("button", { name });
-  if (button) await user.click(button);
+async function checkAgain(user: User) {
+  await user.click(screen.getByRole("button", { name: "Check Again" }));
 }
 
 async function untilACheckHasFailed(user: User) {
   failTheComputerList();
-  await clickIfStillThere(user, "Check Again");
-  await screen.findByText(
-    "Could Not Check Your Computers",
-    undefined,
-    NEXT_CHECK,
-  );
+  await checkAgain(user);
+  await screen.findByText("Could Not Check Your Computers");
+}
+
+async function retry(user: User) {
+  await user.click(screen.getByRole("button", { name: "Retry" }));
 }
 
 function chosenComputer() {
@@ -110,6 +107,9 @@ function chosenComputer() {
 
 describe("the folder dialog with more than one computer", () => {
   beforeEach(() => {
+    // The dialog asks for the list again every 3 s. Here that check runs only
+    // when a test runs it, so no test depends on when it would have fired.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     resetTargetStore();
     storage.set(Key.COPILOT_LOCAL_PC_WARNING_ACKED, "user-1");
     connected = [WORKSTATION];
@@ -134,6 +134,7 @@ describe("the folder dialog with more than one computer", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     storage.clean(Key.COPILOT_LOCAL_PC_WARNING_ACKED);
     resetTargetStore();
   });
@@ -162,6 +163,7 @@ describe("the folder dialog with more than one computer", () => {
     await user.click(connectAnother);
 
     expect(screen.queryByText("Connect a Computer")).toBeNull();
+    expect(document.activeElement).toBe(connectAnother);
   });
 
   test("says when another computer connects, and leaves the chosen one alone", async () => {
@@ -171,15 +173,9 @@ describe("the folder dialog with more than one computer", () => {
     await openTheFolderDialog(user);
     await openTheSetupSteps(user);
     connected = [WORKSTATION, LAPTOP];
-    await clickIfStillThere(user, "Check Again");
+    await checkAgain(user);
 
-    expect(
-      await screen.findByText(
-        "Laptop connected. Choose it under Computer.",
-        undefined,
-        NEXT_CHECK,
-      ),
-    ).toBeDefined();
+    expect(await screen.findByText(LAPTOP_CONNECTED)).toBeDefined();
     expect(screen.queryByText("Connect a Computer")).toBeNull();
     expect(chosenComputer()).toBe("Workstation · Windows");
     expect(useCopilotUIStore.getState().newChatExecutionTarget).toMatchObject({
@@ -189,23 +185,78 @@ describe("the folder dialog with more than one computer", () => {
     });
   });
 
-  test("takes the notice away when that computer disconnects again", async () => {
+  test("moves focus to the Computer menu when the steps close under it", async () => {
     const user = userEvent.setup();
 
     render(<ExecutionTargetPicker />);
     await openTheFolderDialog(user);
     await openTheSetupSteps(user);
     connected = [WORKSTATION, LAPTOP];
-    await clickIfStillThere(user, "Check Again");
-    await screen.findByText(/^Laptop connected\./, undefined, NEXT_CHECK);
+    await checkAgain(user);
+    await screen.findByText(LAPTOP_CONNECTED);
 
-    connected = [WORKSTATION];
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("combobox")),
+    );
+  });
+
+  test("leaves focus alone when a computer connects while it is elsewhere", async () => {
+    const user = userEvent.setup();
+
+    render(<ExecutionTargetPicker />);
+    await openTheFolderDialog(user);
     await openTheSetupSteps(user);
-    await clickIfStillThere(user, "Check Again");
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    cancel.focus();
+    connected = [WORKSTATION, LAPTOP];
+    await act(() => vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS));
+    await screen.findByText(LAPTOP_CONNECTED);
 
-    await waitFor(
-      () => expect(screen.queryByText(/^Laptop connected\./)).toBeNull(),
-      NEXT_CHECK,
+    expect(screen.queryByText("Connect a Computer")).toBeNull();
+    expect(document.activeElement).toBe(cancel);
+  });
+
+  test("names a computer that connects the way the menu does", async () => {
+    const user = userEvent.setup();
+
+    render(<ExecutionTargetPicker />);
+    await openTheFolderDialog(user);
+    await openTheSetupSteps(user);
+    connected = [
+      WORKSTATION,
+      {
+        ...WORKSTATION,
+        machine_id: LAPTOP.machine_id,
+        connection_id: LAPTOP.connection_id,
+      },
+    ];
+    await checkAgain(user);
+
+    expect(
+      await screen.findByText(
+        "Workstation · Windows · 36d78179 connected. Choose it under Computer.",
+      ),
+    ).toBeDefined();
+  });
+
+  test("takes the notice away only when that computer disconnects", async () => {
+    const user = userEvent.setup();
+
+    render(<ExecutionTargetPicker />);
+    await openTheFolderDialog(user);
+    await openTheSetupSteps(user);
+    connected = [WORKSTATION, LAPTOP];
+    await checkAgain(user);
+    await screen.findByText(LAPTOP_CONNECTED);
+
+    // Opening the steps again leaves it: only the list takes it away.
+    await openTheSetupSteps(user);
+    expect(screen.getByText(LAPTOP_CONNECTED)).toBeDefined();
+    connected = [WORKSTATION];
+    await checkAgain(user);
+
+    await waitFor(() =>
+      expect(screen.queryByText(LAPTOP_CONNECTED)).toBeNull(),
     );
   });
 
@@ -217,11 +268,9 @@ describe("the folder dialog with more than one computer", () => {
     await openTheSetupSteps(user);
     await untilACheckHasFailed(user);
     answerTheComputerList();
-    await clickIfStillThere(user, "Retry");
+    await retry(user);
 
-    expect(
-      await screen.findByText("Connect a Computer", undefined, NEXT_CHECK),
-    ).toBeDefined();
+    expect(await screen.findByText("Connect a Computer")).toBeDefined();
   });
 
   test("says so when another computer connected while a check was failing", async () => {
@@ -233,15 +282,9 @@ describe("the folder dialog with more than one computer", () => {
     await untilACheckHasFailed(user);
     connected = [WORKSTATION, LAPTOP];
     answerTheComputerList();
-    await clickIfStillThere(user, "Retry");
+    await retry(user);
 
-    expect(
-      await screen.findByText(
-        "Laptop connected. Choose it under Computer.",
-        undefined,
-        NEXT_CHECK,
-      ),
-    ).toBeDefined();
+    expect(await screen.findByText(LAPTOP_CONNECTED)).toBeDefined();
     expect(screen.queryByText("Connect a Computer")).toBeNull();
   });
 

@@ -4,9 +4,11 @@ import type { ExecutorMachine } from "@/app/api/__generated__/models/executorMac
 import { Button } from "@/components/atoms/Button/Button";
 import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
+import { useEffect, useRef } from "react";
 import { LocalExecutorSetup } from "../../LocalExecutorSetup/LocalExecutorSetup";
 import { computerOptions, hasComputersWithOneName } from "../helpers";
 
+const MENU_ID = "local-executor-machine";
 const SETUP_PANEL_ID = "local-executor-another-computer";
 
 interface Props {
@@ -30,10 +32,23 @@ export function ComputerSelect({
   onRefreshMachines,
   onToggleSetup,
 }: Props) {
+  const hasFocusInSetup = useRef(false);
+
+  // The steps close by themselves when another computer connects. Focus that
+  // was in them (on "Check Again", say) would be dropped with them.
+  useEffect(
+    function focusTheMenuWhenTheStepsCloseUnderFocus() {
+      if (isSetupOpen || !hasFocusInSetup.current) return;
+      hasFocusInSetup.current = false;
+      document.getElementById(MENU_ID)?.focus();
+    },
+    [isSetupOpen],
+  );
+
   return (
     <div className="flex flex-col gap-2">
       <Select
-        id="local-executor-machine"
+        id={MENU_ID}
         label="Computer"
         value={selectedMachineID ?? ""}
         onValueChange={onSelectMachine}
@@ -62,7 +77,18 @@ export function ComputerSelect({
           {connectedNotice}
         </Text>
       </div>
-      <div id={SETUP_PANEL_ID} hidden={!isSetupOpen}>
+      <div
+        id={SETUP_PANEL_ID}
+        hidden={!isSetupOpen}
+        onFocus={() => {
+          hasFocusInSetup.current = true;
+        }}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            hasFocusInSetup.current = false;
+          }
+        }}
+      >
         {isSetupOpen ? (
           <LocalExecutorSetup
             isRefreshing={isRefreshingMachines}
