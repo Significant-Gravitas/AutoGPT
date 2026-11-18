@@ -2875,8 +2875,8 @@ ScheduleInfo = Annotated[
     Field(discriminator="kind"),
 ]
 
-# A schedule create whose key holds a different schedule (HTTP 409). The
-# client drops the key on it, so the next attempt creates a new schedule.
+# A schedule create whose key holds a different schedule (HTTP 409): that
+# key can never create one, so only a new key can.
 _SCHEDULE_KEY_TAKEN = (
     "This conflicts with a schedule an earlier attempt made. Check your "
     "schedules before trying again."

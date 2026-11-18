@@ -44,6 +44,8 @@ export function withScheduleCreateKey({
 
 // Called with the create's answer. Success or a final refusal drops the key;
 // anything else (a 503, a timeout, a lost connection) keeps it for the retry.
+// Other 4xx answers keep it too: nothing was made, and the same create may
+// still go through unchanged, e.g. once a slot is freed at the limit.
 // A late answer leaves alone a key a newer attempt has taken since.
 export function forgetScheduleCreateKey({
   userId,
