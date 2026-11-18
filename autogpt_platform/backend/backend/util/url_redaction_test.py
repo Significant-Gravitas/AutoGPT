@@ -357,6 +357,39 @@ def test_a_request_value_in_a_url_does_not_hide_its_credentials() -> None:
         assert "123:AA-b_c" not in each.getMessage()
 
 
+def test_overlapping_credentials_past_the_cap_leave_no_tail() -> None:
+    """Past the cap, a text is masked whole rather than credential by
+    credential, which could leave the tail of one another covered."""
+    first, second = "ABCDEFGHIJKLMNOP", "KLMNOPQRSTUVWXYZ"
+    text = f"xx{first}QRSTUVWXYZ" * 1100
+
+    assert "QRSTUVWXYZ" not in mask_known(text, (first, second))
+
+
+def test_an_argument_logged_as_its_repr_is_masked_as_shown() -> None:
+    """``%r`` shows what ``str`` may hide."""
+    token = "repr-only-token-Zq81mN2p"
+
+    class Hidden:
+        def __str__(self) -> str:
+            return "hidden"
+
+        def __repr__(self) -> str:
+            return f"Hidden(token={token!r})"
+
+    record = logging.LogRecord(
+        "x", logging.ERROR, __file__, 1, "Lookup %r failed", (Hidden(),), None
+    )
+
+    def filtered() -> None:
+        keep_request_credentials((token,))
+        RequestURLRedactionFilter().filter(record)
+
+    contextvars.copy_context().run(filtered)
+
+    assert token not in record.getMessage()
+
+
 def test_a_typed_argument_keeps_its_format_when_masked() -> None:
     """A number that matches a credential is masked where the rendered line
     shows it, so ``%d`` still formats it."""

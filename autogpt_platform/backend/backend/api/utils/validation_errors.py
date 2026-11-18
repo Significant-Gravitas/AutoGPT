@@ -27,8 +27,11 @@ _REQUEST_PARTS = frozenset({"body", "query", "path", "header", "cookie"})
 # discriminator and its tags), and the numbers pydantic counts from the input
 # (a length, an offset), which can't carry its text. Every other value in an
 # error's context comes from the refused input, such as a parser's account of
-# it or a validator's message, and is masked. An error pydantic doesn't define
-# has a message that can say anything, so a log leaves it out.
+# it, an exception's text or a validator's message, and is masked. An error
+# pydantic doesn't define has a message that can say anything, so a log leaves
+# it out. That trusts the schema's side to come from the schema:
+# architecture_validation_errors_test.py keeps code from raising a built-in
+# error with a context of its own.
 _SCHEMA_CONTEXT = frozenset(
     {
         "attribute",
@@ -61,6 +64,7 @@ _SCHEMA_CONTEXT = frozenset(
 )
 _BUILT_IN_TYPES = frozenset(get_args(ErrorType))
 CUSTOM_MESSAGE_NOT_LOGGED = "Not logged: a custom error's message can quote the input"
+_UNREADABLE = "Not logged: the errors are of a shape the log can't read"
 
 
 def bounded_validation_errors(
@@ -84,12 +88,21 @@ def loggable_validation_errors(
     message, which can say anything, is left out. Field names, indices and the
     reasons are kept."""
     names = _declared_names(len(sys.modules))
-    return _bounded(
-        exc.errors(),
-        lambda part: part if isinstance(part, int) or part in names else "*",
-        _message_without_input,
-        _loggable_location,
-    )
+    try:
+        return _bounded(
+            exc.errors(),
+            lambda part: (
+                part
+                if isinstance(part, int) or (isinstance(part, str) and part in names)
+                else "*"
+            ),
+            _message_without_input,
+            _loggable_location,
+        )
+    except Exception:
+        # A hand-built error of a shape pydantic never makes; the log line
+        # must not fail the response it accompanies.
+        return [{"type": "unreadable", "loc": [], "msg": _UNREADABLE}]
 
 
 def describe_validation_error(exc: pydantic.ValidationError) -> str:
@@ -136,6 +149,8 @@ def _bounded(
 def _loggable_location(error: Mapping[str, Any]) -> Sequence[Any]:
     """A location, with the key a model refused as extra as ``*``."""
     location = error.get("loc", ())
+    if not isinstance(location, (tuple, list)):
+        return ()
     if error.get("type") == "extra_forbidden":
         return (*location[:-1], "*")
     return location
@@ -143,9 +158,11 @@ def _loggable_location(error: Mapping[str, Any]) -> Sequence[Any]:
 
 def _message_without_input(error: Mapping[str, Any]) -> str:
     error_type = error.get("type")
-    if error_type not in _BUILT_IN_TYPES:
+    if not isinstance(error_type, str) or error_type not in _BUILT_IN_TYPES:
         return CUSTOM_MESSAGE_NOT_LOGGED
     context = error.get("ctx") or {}
+    if not isinstance(context, Mapping):
+        return CUSTOM_MESSAGE_NOT_LOGGED
     shown = {
         key: value if key in _SCHEMA_CONTEXT else REDACTED
         for key, value in context.items()

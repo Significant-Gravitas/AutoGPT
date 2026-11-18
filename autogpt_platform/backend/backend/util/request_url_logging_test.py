@@ -227,11 +227,15 @@ async def test_serve_cancels_a_server_whose_startup_never_finishes(
 
 
 async def test_serve_ends_a_request_still_running_at_shutdown() -> None:
-    started = asyncio.Event()
+    started, cleaned = asyncio.Event(), asyncio.Event()
 
     async def app(scope: dict, receive: object, send: object) -> None:
         started.set()
-        await asyncio.Event().wait()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await asyncio.sleep(0.2)  # cleanup that itself takes a while
+            cleaned.set()
 
     async def run() -> None:
         async with (
@@ -239,18 +243,29 @@ async def test_serve_ends_a_request_still_running_at_shutdown() -> None:
             httpx.AsyncClient(base_url=f"http://{host}") as client,
         ):
             request = asyncio.create_task(client.get("/hang"))
-            await started.wait()
-            request.cancel()
-            await asyncio.wait({request})
+            starting = asyncio.create_task(started.wait())
+            try:
+                done, _ = await asyncio.wait(
+                    {request, starting}, return_when=asyncio.FIRST_COMPLETED
+                )
+                if request in done:
+                    request.result()  # it failed before the app ran
+            finally:
+                for task in (request, starting):
+                    task.cancel()
+                await asyncio.wait({request, starting})
 
     running = asyncio.create_task(run())
-    # Far longer than the shutdown deadline; only a shutdown that waits on the
-    # request for good reaches it.
-    done, _ = await asyncio.wait({running}, timeout=30)
-    if running not in done:
+    try:
+        # Far longer than the shutdown deadline; only a shutdown that waits on
+        # the request for good reaches it.
+        done, _ = await asyncio.wait({running}, timeout=30)
+        assert running in done
+        running.result()
+        assert cleaned.is_set()
+    finally:
         running.cancel()
-    assert running in done
-    running.result()
+        await asyncio.wait({running}, timeout=30)
 
 
 @asynccontextmanager
@@ -308,12 +323,24 @@ async def serve_app(app: ASGIApp, **options: object) -> AsyncIterator[str]:
         try:
             await asyncio.wait({serving})
         except asyncio.CancelledError:
-            # Cancelled while it shuts down: it isn't left running either.
-            serving.cancel()
+            # Cancelled while it shuts down: a server that has started finishes
+            # its bounded shutdown, closing its listener, and one still starting
+            # is cancelled, so neither is left running.
+            if not server.started:
+                serving.cancel()
             await asyncio.wait({serving})
+            await _join(server.server_state.tasks)
             raise
+        await _join(server.server_state.tasks)
         if not serving.cancelled():
             serving.result()
+
+
+async def _join(tasks: set[asyncio.Task]) -> None:
+    """Wait for the requests uvicorn cancelled at its shutdown deadline, which
+    it doesn't wait for, so their cleanup ends with the test."""
+    if pending := [task for task in tasks if not task.done()]:
+        await asyncio.wait(pending, timeout=5)
 
 
 @asynccontextmanager

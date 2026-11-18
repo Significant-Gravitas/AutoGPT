@@ -193,6 +193,64 @@ def test_a_parse_error_logs_no_part_of_the_refused_value(field: str) -> None:
     assert not any(_logs_part_of(entry["msg"]) for entry in logged), logged
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        {"type": "missing", "loc": ("body", ["a", "list"]), "msg": "x"},
+        {"type": "missing", "loc": ("body", {"a": 1}), "msg": "x"},
+        {"type": ["not", "hashable"], "loc": ("body",), "msg": "x"},
+        {"type": "union_tag_invalid", "loc": ("body",), "msg": "x", "ctx": ["a"]},
+        {"type": "missing", "loc": None, "msg": "x"},
+        "not a mapping",
+    ],
+)
+def test_the_log_reads_any_shape_of_error_without_failing(error: object) -> None:
+    """A hand-built error can take shapes pydantic never makes; the log line
+    must not turn the 422 it accompanies into a 500."""
+    logged = loggable_validation_errors(RequestValidationError([error]))
+    assert logged and all(set(entry) == {"type", "loc", "msg"} for entry in logged)
+
+
+def test_an_attribute_read_logs_no_part_of_what_it_raised() -> None:
+    """With ``from_attributes``, an attribute that raises puts its exception's
+    text in pydantic's own message."""
+
+    class Read(pydantic.BaseModel):
+        model_config = pydantic.ConfigDict(from_attributes=True)
+        name: str
+
+    class Source:
+        @property
+        def name(self) -> str:
+            raise ValueError(f"bad {_SENTINEL}")
+
+    with pytest.raises(pydantic.ValidationError) as caught:
+        Read.model_validate(Source())
+
+    [logged] = loggable_validation_errors(caught.value)
+    assert logged["type"] == "get_attribute_error"
+    assert not _logs_part_of(logged["msg"]), logged["msg"]
+
+
+def test_a_failing_iterator_logs_no_part_of_what_it_raised() -> None:
+    """An iterator that yields a valid item and then raises puts the
+    exception's text in pydantic's own message."""
+
+    class Listed(pydantic.BaseModel):
+        items: list[int]
+
+    def items() -> Iterator[int]:
+        yield 1
+        raise ValueError(f"bad {_SENTINEL}")
+
+    with pytest.raises(pydantic.ValidationError) as caught:
+        Listed.model_validate({"items": items()})
+
+    [logged] = loggable_validation_errors(caught.value)
+    assert logged["type"] == "iteration_error"
+    assert not _logs_part_of(logged["msg"]), logged["msg"]
+
+
 def test_only_the_reported_errors_locations_are_rewritten(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

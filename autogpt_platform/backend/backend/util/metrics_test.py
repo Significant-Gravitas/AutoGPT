@@ -426,6 +426,44 @@ def test_a_credential_in_an_unmatched_routes_path_is_masked_everywhere(
     assert scrubbed["transaction"] == f"/zzz/{REDACTED}"
 
 
+def test_a_matched_routes_transaction_keeps_its_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A request can send a route's own template as a credential; the route's
+    events keep their name, and the copy elsewhere is masked."""
+    template = "/api/v1/graphs/{graph_id}/execute"
+    monkeypatch.setattr(metrics, "request_credentials", lambda: (template,))
+    event = {
+        "type": "transaction",
+        "transaction": template,
+        "transaction_info": {"source": "route"},
+        "extra": {"sent": template},
+    }
+
+    scrubbed = metrics._before_send_transaction(event, {})
+
+    assert scrubbed["transaction"] == template
+    assert scrubbed["extra"]["sent"] == REDACTED
+
+
+def test_an_outgoing_requests_fragment_is_masked_whole() -> None:
+    """A fragment can be a bare token, which no query rule reads."""
+    token = "frag3ment-token-Zq81mN2p"
+    event = {
+        "spans": [
+            {"data": {"http.fragment": token, "http.query": "page=2"}},
+            {"data": {"http.fragment": ""}},
+        ]
+    }
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    assert scrubbed["spans"][0]["data"]["http.fragment"] == REDACTED
+    assert scrubbed["spans"][0]["data"]["http.query"] == f"page={REDACTED}"
+    assert scrubbed["spans"][1]["data"]["http.fragment"] == ""
+
+
 def test_an_unmatched_routes_transaction_is_masked_as_a_url() -> None:
     """Read as a whole URL, so its query is masked whatever comes before it."""
     secret = "S3cret-query-value-123"

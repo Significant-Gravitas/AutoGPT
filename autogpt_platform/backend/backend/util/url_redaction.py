@@ -87,8 +87,8 @@ _CREDENTIAL_NAME = re.compile(
 # A shorter value can't be a credential the platform issued or a provider's
 # key, and masking it everywhere it turns up would mangle the rest of an event.
 MIN_CREDENTIAL_LENGTH = 16
-# Past this many places in one text, mask_known replaces credentials one after
-# another rather than merging overlapping ones.
+# Past this many places of the request's credentials in one text, mask_known
+# masks the text whole.
 _MAX_MERGED_MATCHES = 1024
 # A credential shown by its prefix must be long enough that the rest can't be
 # guessed: a UUID keeps 90 random bits once its first 8 characters are shown.
@@ -111,9 +111,9 @@ def mask_known(text: str, credentials: Iterable[str]) -> str:
     """``text`` with every place any of ``credentials``, longest first, occurs
     masked. Each is found without overlapping itself, as ``str.replace`` finds
     it, and places where different ones overlap are masked as one, so none is
-    left partly shown by another's mask. Past ``_MAX_MERGED_MATCHES`` places
-    they are replaced one after another instead: only crafted text holds that
-    many, and the work stays linear in ``text`` either way."""
+    left partly shown by another's mask. A text where different ones occur in
+    more than ``_MAX_MERGED_MATCHES`` places is masked whole: only crafted text
+    holds that many, and the work stays linear in ``text`` either way."""
     present = [
         credential for credential in credentials if credential and credential in text
     ]
@@ -125,7 +125,9 @@ def mask_known(text: str, credentials: Iterable[str]) -> str:
                 stop = start + len(credential)
                 spans.append((start, stop))
                 start = text.find(credential, stop)
-    if len(present) < 2 or len(spans) > _MAX_MERGED_MATCHES:
+    if len(spans) > _MAX_MERGED_MATCHES:
+        return REDACTED
+    if len(present) < 2:
         for credential in present:
             text = text.replace(credential, REDACTED)
         return text
@@ -328,12 +330,12 @@ def _masked_text(text: str, credentials: tuple[str, ...]) -> str:
 
 
 def _masks(value: object, credentials: tuple[str, ...]) -> bool:
-    """Whether ``value``, as text, has anything to mask."""
+    """Whether ``value``, as ``%s`` or ``%r`` shows it, has anything to mask."""
     try:
-        text = str(value)
+        shown = (str(value), repr(value))
     except Exception:
         return False  # the handler hits, and reports, the same failure
-    return _masked_text(text, credentials) != text
+    return any(_masked_text(text, credentials) != text for text in shown)
 
 
 # At DEBUG, websockets logs every handshake header it reads as ``< name: value``
