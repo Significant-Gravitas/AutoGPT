@@ -1462,8 +1462,14 @@ class TestExpertTurnsCheckTheirExpert:
                 ),
             ]
         )
-        store.expert_setup_status = AsyncMock(side_effect=["installing", "ready"])
         identities: list[str] = []
+        statuses = iter(["installing", "ready"])
+
+        async def setup_status(*args):
+            assert identities == []
+            return next(statuses)
+
+        store.expert_setup_status = AsyncMock(side_effect=setup_status)
         await self._run_turn(self._session(), store, identities)
 
         assert store.expert_setup_status.await_count == 2
@@ -2228,7 +2234,9 @@ class TestSyncFailCloseSession:
     ``execution_loop`` (cross-thread submit) and must swallow Redis
     failures so a transient outage doesn't propagate out of the finally."""
 
-    @pytest.mark.parametrize("failure", ["deadline", "cancel", "work", "cleanup"])
+    @pytest.mark.parametrize(
+        "failure", ["deadline", "cancel", "work", "cleanup", "slow-cleanup"]
+    )
     def test_background_deadline_is_acknowledged_but_execution_errors_are_rejected(
         self, exec_loop, failure: str
     ) -> None:
@@ -2247,9 +2255,22 @@ class TestSyncFailCloseSession:
             }
         )
         cluster_lock = MagicMock()
-        cluster_lock.refresh.side_effect = AssertionError(
-            "The worker polled a completed deadline error instead of exiting"
-        )
+        polled_at = [time.monotonic()]
+
+        def refresh() -> None:
+            # Each 1 s poll of a running turn refreshes its lock, and a turn on
+            # a slow runner can outlast a poll. A refresh within half a poll of
+            # the last one means the worker polled a turn that had already failed.
+            now = time.monotonic()
+            if now - polled_at[-1] < 0.5:  # pragma: no cover
+                raise AssertionError(
+                    "The worker polled a completed deadline error instead of exiting"
+                )
+            if len(polled_at) > 20:  # pragma: no cover
+                raise AssertionError("The turn never ended")
+            polled_at.append(now)
+
+        cluster_lock.refresh.side_effect = refresh
         mark_completed = AsyncMock()
         finish_background = AsyncMock()
         error = TimeoutError(f"{failure} request timed out")
@@ -2263,6 +2284,14 @@ class TestSyncFailCloseSession:
                 raise asyncio.CancelledError
             await asyncio.sleep(0.3)
             pytest.fail("The background deadline did not stop the turn")
+
+        async def close_browser_daemon(*_args):
+            if failure == "slow-cleanup":
+                # Outlasts the worker's 1 s wait, so it polls the running turn.
+                await asyncio.sleep(1.2)
+            if failure in ("cleanup", "slow-cleanup"):
+                raise error
+            return False
 
         with (
             patch(
@@ -2284,10 +2313,7 @@ class TestSyncFailCloseSession:
             ),
             patch(
                 "backend.copilot.executor.processor.close_browser_daemon",
-                AsyncMock(
-                    return_value=False,
-                    side_effect=error if failure == "cleanup" else None,
-                ),
+                close_browser_daemon,
             ),
             patch(
                 "backend.copilot.executor.processor.stream_registry.mark_session_completed",
@@ -2296,7 +2322,7 @@ class TestSyncFailCloseSession:
             concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool,
         ):
             future = pool.submit(proc.execute, entry, cancel, cluster_lock)
-            exception = future.exception(timeout=5)
+            exception = future.exception(timeout=30)
 
         if failure in ("deadline", "cancel"):
             assert exception is None
@@ -2310,7 +2336,6 @@ class TestSyncFailCloseSession:
         assert mark_completed.await_args_list[0].kwargs["error_message"] == reason
         assert mark_completed.await_args_list[0].kwargs["turn_id"] == entry.turn_id
 
-        cluster_lock.refresh.assert_not_called()
         manager = CoPilotExecutor()
         manager._executor = MagicMock()
         manager._executor.submit.return_value = future

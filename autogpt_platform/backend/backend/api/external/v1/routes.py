@@ -11,7 +11,11 @@ import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
-from backend.api.external.middleware import require_auth, require_permission
+from backend.api.external.middleware import (
+    require_auth,
+    require_permission,
+    require_resource_permission,
+)
 from backend.api.external.rate_limit import EXECUTION_LIMIT, READ_LIMIT
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.capabilities.block_meta import is_graph_only_block
@@ -209,7 +213,9 @@ async def _run_direct_block(
 async def create_graph(
     graph: graph_db.Graph,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY)
+        require_resource_permission(
+            APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY
+        )
     ),
 ) -> graph_db.GraphModel:
     """
@@ -259,7 +265,7 @@ async def execute_graph(
     graph_version: int,
     node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.EXECUTE_GRAPH)
+        require_resource_permission(APIKeyPermission.EXECUTE_GRAPH)
     ),
 ) -> dict[str, Any]:
     # Strict route-level paywall: 503 on tier-lookup failure (rather
@@ -337,7 +343,7 @@ async def get_graph_execution_results(
     graph_id: str,
     graph_exec_id: str,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_GRAPH)
+        require_resource_permission(APIKeyPermission.READ_GRAPH)
     ),
 ) -> GraphExecutionResult:
     graph_exec = await execution_db.get_graph_execution(

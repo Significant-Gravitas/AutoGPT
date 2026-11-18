@@ -349,7 +349,7 @@ describe("the client IP", () => {
     blocks.ips = ["203.0.113.7"];
     blocks.domains = [];
     loggedIps.length = 0;
-    vi.stubEnv("TRUST_X_FORWARDED_FOR", "");
+    vi.stubEnv("TRUSTED_PROXIES", "");
     vi.stubEnv("VERCEL", "");
     vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
   });
@@ -359,7 +359,7 @@ describe("the client IP", () => {
     vi.unstubAllEnvs();
   });
 
-  it("isn't taken from X-Forwarded-For for blocks or the log off Vercel without TRUST_X_FORWARDED_FOR", async () => {
+  it("isn't taken from X-Forwarded-For for blocks or the log off Vercel without TRUSTED_PROXIES", async () => {
     const handler = await createAuthHandler();
 
     const signedUp = await signUp(handler, "a@example.com", "203.0.113.7");
@@ -371,7 +371,7 @@ describe("the client IP", () => {
 
   it.each([
     ["on Vercel", "VERCEL", "1"],
-    ["with TRUST_X_FORWARDED_FOR", "TRUST_X_FORWARDED_FOR", "true"],
+    ["with TRUSTED_PROXIES", "TRUSTED_PROXIES", "127.0.0.1"],
   ])("is taken from X-Forwarded-For for blocks %s", async (_, name, value) => {
     vi.stubEnv(name, value);
     const handler = await createAuthHandler();

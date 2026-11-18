@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from backend.copilot.capabilities.index import SearchHit
+from backend.copilot.capabilities.mcp_connections import connected_mcp_entries
 from backend.copilot.capabilities.models import CapabilityKindName
 from backend.copilot.capabilities.ranking import (
     ConnectionState,
@@ -23,7 +24,7 @@ from .models import (
     NoResultsResponse,
     ToolResponseBase,
 )
-from .session_registry import session_registry
+from .session_registry import layered_index, session_registry
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,7 @@ class FindCapabilityTool(BaseTool):
         kind: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
+        """Search the session's catalog, skills, and stored custom MCP endpoints."""
         query = (query or "").strip()
         session_id = session.session_id
         if not query:
@@ -126,6 +128,7 @@ class FindCapabilityTool(BaseTool):
             load_connection_state(user_id, session.expert_id),
             session_registry(user_id, session),
         )
+        index = layered_index(index, connected_mcp_entries(index, connections))
         result = index.search(
             query,
             context="graph" if context == "graph" else "direct",
@@ -188,13 +191,17 @@ def _no_result_suggestions(kind: str | None) -> list[str]:
     'mcp_server' hides them (SECRT-2820)."""
     if kind is not None:
         return [
-            f"Search again without kind: kind='{kind}' hides every other kind "
-            "of capability, including the user's connected blocks",
+            (
+                f"Search again without kind: kind='{kind}' hides every other kind "
+                "of capability, including the user's connected blocks"
+            ),
         ]
     return [
         "Try the service name alone, or a broader action ('email', 'sheet', 'http')",
-        "For a service with no result, web_search '<service> MCP server' and "
-        "call run_capability with the server URL as the id",
+        (
+            "For a service with no result, web_search '<service> MCP server' and "
+            "call run_capability with the server URL as the id"
+        ),
     ]
 
 

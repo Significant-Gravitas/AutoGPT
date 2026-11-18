@@ -10,29 +10,25 @@ import asyncio
 import io
 import logging
 import re
-import sys
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-import sentry_sdk
 import uvicorn
 from autogpt_libs.auth import dependencies as auth_dependencies
-from sentry_sdk.envelope import Envelope
-from sentry_sdk.integrations.asyncio import AsyncioIntegration
-from sentry_sdk.transport import Transport
 from starlette.datastructures import URL
 from starlette.requests import Request
+from starlette.types import ASGIApp
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedError
 
 from backend.api import rest_api, ws_api
 from backend.api.conn_manager import ConnectionManager
 from backend.api.features.integrations import router as integrations_router
-from backend.util import logging as service_logging
-from backend.util import metrics
+from backend.monitoring.instrumentation import METRICS_ENV_VAR
+from backend.util.logging_test_helpers import CapturingTransport
 from backend.util.process import AppProcess
 from backend.util.url_redaction import REDACTED
 
@@ -41,54 +37,6 @@ SHARE_TOKEN = "5ec2e7ab-0000-4000-8000-00000000c0de"
 WEBHOOK_ID = "0b5e55ed-0000-4000-8000-00000000beef"
 INVITATION_TOKEN = "invitation-SECRET456"
 CREDENTIALS = (SESSION_TOKEN, SHARE_TOKEN, WEBHOOK_ID, INVITATION_TOKEN)
-_FAKE_DSN = "https://key@o1.ingest.us.sentry.io/1"
-
-
-@pytest.fixture(params=[False, True], ids=["plain", "cloud"])
-def service_output(
-    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
-) -> io.StringIO:
-    """Everything a service process writes to stdout and stderr at production's
-    log level. ``cloud`` is the structured JSON Cloud Logging collects."""
-    monkeypatch.setenv("LOG_LEVEL", "INFO")
-    monkeypatch.setattr(
-        service_logging, "is_structured_logging_enabled", lambda: request.param
-    )
-    root = logging.getLogger()
-    monkeypatch.setattr(root, "handlers", [])
-    service_logging.configure_logging()
-    output = io.StringIO()
-    for handler in root.handlers:
-        assert isinstance(handler, logging.StreamHandler)
-        handler.setStream(output)
-    return output
-
-
-@pytest.fixture
-def sentry(monkeypatch: pytest.MonkeyPatch) -> Iterator["_CapturingTransport"]:
-    """What a live SDK client, built from the options ``sentry_init()`` passes,
-    would send to Sentry while the test runs."""
-    calls: list[dict] = []
-    with monkeypatch.context() as during_init:
-        during_init.setattr(metrics, "_sentry_init", lambda **kw: calls.append(kw))
-        during_init.setattr(metrics.settings.secrets, "sentry_dsn", _FAKE_DSN)
-        during_init.delitem(sys.modules, "pytest")
-        during_init.delenv("PYTEST_CURRENT_TEST", raising=False)
-        metrics.sentry_init()
-    [options] = calls
-    # The profiler starts a sampler thread, and the asyncio integration patches
-    # the session's shared event loop; neither sees request data.
-    options["profiles_sample_rate"] = 0.0
-    options["integrations"] = [
-        integration
-        for integration in options["integrations"]
-        if not isinstance(integration, AsyncioIntegration)
-    ]
-    transport = _CapturingTransport()
-    client = sentry_sdk.Client(**options, transport=transport)
-    monkeypatch.setattr(sentry_sdk.get_global_scope(), "client", client)
-    yield transport
-    client.close()
 
 
 async def test_websocket_server_logs_no_session_token(
@@ -115,7 +63,7 @@ async def test_rest_server_logs_no_credentials_from_request_urls(
         AsyncMock(side_effect=RuntimeError("database unavailable")),
     )
     async with (
-        _serve(rest_api.AgentServer(), monkeypatch) as host,
+        serve(rest_api.AgentServer(), monkeypatch) as host,
         httpx.AsyncClient(base_url=f"http://{host}") as client,
     ):
         # Fails validation, so the 422 handler logs the request path.
@@ -189,12 +137,12 @@ def test_every_record_shape_on_a_filtered_logger_is_masked(
 
 
 async def test_sentry_gets_no_credentials_from_request_urls(
-    sentry: "_CapturingTransport", monkeypatch: pytest.MonkeyPatch
+    sentry: CapturingTransport, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async with _serve_websocket_server(monkeypatch) as host:
         await _open_websockets(host)
     async with (
-        _serve(rest_api.AgentServer(), monkeypatch) as host,
+        serve(rest_api.AgentServer(), monkeypatch) as host,
         httpx.AsyncClient(base_url=f"http://{host}") as client,
     ):
         query = {"token": SESSION_TOKEN}
@@ -234,8 +182,79 @@ async def test_sentry_gets_no_credentials_from_request_urls(
     }
 
 
+async def test_serve_cancels_a_server_whose_startup_never_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """uvicorn reads ``should_exit`` only once it has started, so a server
+    stuck starting up is cancelled on the way out, not awaited forever."""
+    stalled, released, exited = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def startup(self: uvicorn.Server, sockets: object = None) -> None:
+        stalled.set()
+        try:
+            await released.wait()
+        finally:
+            exited.set()
+
+    monkeypatch.setattr(uvicorn.Server, "startup", startup)
+
+    async def enter() -> None:
+        async with serve(ws_api.WebsocketServer(), monkeypatch):
+            pass
+
+    entering = asyncio.create_task(enter())
+    stalling = asyncio.create_task(stalled.wait())
+    try:
+        # Each wait is far longer than what it waits for; only a hang ends it.
+        done, _ = await asyncio.wait(
+            {entering, stalling}, timeout=30, return_when=asyncio.FIRST_COMPLETED
+        )
+        if entering in done:
+            entering.result()  # whatever failed before uvicorn started up
+        assert stalling in done, "uvicorn never started up"
+        entering.cancel()
+        done, _ = await asyncio.wait({entering}, timeout=30)
+        assert entering in done and entering.cancelled()
+        assert exited.is_set()
+    finally:
+        # A startup the cleanup left waiting ends here, so no task outlives
+        # the test.
+        released.set()
+        stalling.cancel()
+        _, pending = await asyncio.wait({entering, stalling}, timeout=30)
+        for task in pending:
+            task.cancel()
+
+
+async def test_serve_ends_a_request_still_running_at_shutdown() -> None:
+    started = asyncio.Event()
+
+    async def app(scope: dict, receive: object, send: object) -> None:
+        started.set()
+        await asyncio.Event().wait()
+
+    async def run() -> None:
+        async with (
+            serve_app(app, log_config=None) as host,
+            httpx.AsyncClient(base_url=f"http://{host}") as client,
+        ):
+            request = asyncio.create_task(client.get("/hang"))
+            await started.wait()
+            request.cancel()
+            await asyncio.wait({request})
+
+    running = asyncio.create_task(run())
+    # Far longer than the shutdown deadline; only a shutdown that waits on the
+    # request for good reaches it.
+    done, _ = await asyncio.wait({running}, timeout=30)
+    if running not in done:
+        running.cancel()
+    assert running in done
+    running.result()
+
+
 @asynccontextmanager
-async def _serve(
+async def serve(
     process: AppProcess, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[str]:
     """Serve what ``process.run()`` hands uvicorn, on a free local port and
@@ -246,25 +265,55 @@ async def _serve(
     )
     # AgentServer.run() turns asyncio debug on for local runs; undo it after.
     monkeypatch.setenv("PYTHONASYNCIODEBUG", "")
+    # Nor a metrics listener of its own, which would outlive the test.
+    monkeypatch.setenv(METRICS_ENV_VAR, "false")
     process.run()
     [(app, kwargs)] = runs
+    async with serve_app(app, **kwargs) as host:
+        yield host
+
+
+@asynccontextmanager
+async def serve_app(app: ASGIApp, **options: object) -> AsyncIterator[str]:
+    """Serve ``app`` under uvicorn with ``options``, on a free local port and
+    with no lifespan. A request still running at shutdown is cancelled after a
+    few seconds, which uvicorn logs, rather than hold the test up."""
     server = uvicorn.Server(
         uvicorn.Config(
-            app, **{**kwargs, "host": "127.0.0.1", "port": 0, "lifespan": "off"}
+            app,
+            **{
+                "timeout_graceful_shutdown": 5,
+                **options,
+                "host": "127.0.0.1",
+                "port": 0,
+                "lifespan": "off",
+            },
         )
     )
     serving = asyncio.create_task(server.serve())
-    for _ in range(1000):
-        if server.started or serving.done():
-            break
-        await asyncio.sleep(0.01)
-    assert server.started, "uvicorn did not start"
-    port = server.servers[0].sockets[0].getsockname()[1]
     try:
+        for _ in range(1000):
+            if server.started or serving.done():
+                break
+            await asyncio.sleep(0.01)
+        assert server.started, "uvicorn did not start"
+        port = server.servers[0].sockets[0].getsockname()[1]
         yield f"127.0.0.1:{port}"
     finally:
-        server.should_exit = True
-        await serving
+        if server.started:
+            server.should_exit = True
+        else:
+            # uvicorn reads should_exit only once it has started.
+            serving.cancel()
+        try:
+            await asyncio.wait({serving})
+        except asyncio.CancelledError:
+            # Cancelled while it shuts down: it isn't left running either.
+            serving.cancel()
+            await asyncio.wait({serving})
+            raise
+        if not serving.cancelled():
+            serving.result()
 
 
 @asynccontextmanager
@@ -276,7 +325,7 @@ async def _serve_websocket_server(
         ConnectionManager, "_start_notification_subscription", AsyncMock()
     )
     monkeypatch.setattr(ws_api, "_connection_manager", None)
-    async with _serve(ws_api.WebsocketServer(), monkeypatch) as host:
+    async with serve(ws_api.WebsocketServer(), monkeypatch) as host:
         yield host
 
 
@@ -310,14 +359,3 @@ async def _raw_websocket_handshake(host: str, target: str) -> bytes:
     writer.close()
     await writer.wait_closed()
     return status_line
-
-
-class _CapturingTransport(Transport):
-    def __init__(self) -> None:
-        super().__init__()
-        self.events: list[dict] = []
-        self.payload = ""
-
-    def capture_envelope(self, envelope: Envelope) -> None:
-        self.payload += envelope.serialize().decode()
-        self.events += [item.payload.json or {} for item in envelope.items]

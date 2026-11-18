@@ -14,6 +14,8 @@ describe("WebSocket send deadlines", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    // The top of each jittered retry window: the full backoff step.
+    vi.spyOn(Math, "random").mockReturnValue(1 - Number.EPSILON);
     vi.stubGlobal("WebSocket", FakeWebSocket);
     FakeWebSocket.instances = [];
     vi.mocked(getWebSocketToken)

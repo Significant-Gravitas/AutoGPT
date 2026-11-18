@@ -196,7 +196,6 @@ async function submitSignup(page: Page, email: string) {
   await expect(page.getByText("Create your account")).toBeVisible();
   await page.getByLabel("Email").fill(email);
   await page.locator("#password").fill(PASSWORD);
-  await page.locator("#confirmPassword").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign up" }).click();
 }
 
