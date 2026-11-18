@@ -47,11 +47,24 @@ def rename_no_replace(src: str | os.PathLike[str], dst: str | os.PathLike[str]) 
     replaces. Where neither is available, the check and the rename are two
     steps.
     """
-    if sys.platform != "win32" and _native_no_replace_rename(src, dst):
+    if rename_no_replace_in_one_step(src, dst):
         return
-    if sys.platform != "win32" and os.path.lexists(dst):
+    if os.path.lexists(dst):
         raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), os.fspath(dst))
     os.rename(src, dst)
+
+
+def rename_no_replace_in_one_step(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> bool:
+    """`rename_no_replace` where the system does it in one step: Windows'
+    rename, and Linux's and macOS's with their no-replace flag. False, with
+    nothing done, where there is no such step (an old kernel, a filesystem
+    that doesn't take the flag), for a caller that can't have the two-step
+    way: another file could take the name between its look and its rename,
+    and be replaced."""
+    if sys.platform == "win32":
+        os.rename(src, dst)
+        return True
+    return _native_no_replace_rename(src, dst)
 
 
 @functools.cache

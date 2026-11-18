@@ -386,9 +386,17 @@ operating system's identifier or makes the value: `--help`, `status`,
 commands leave the folder as it was. The value is written whole to a file
 of its own, readable by its owner only, and then given its name in a way
 that fails when the name is taken, so two starts at once end with one
-value and one ID, and a file under that name is never half a value. A file
-there that isn't a whole value stops `start` (exit 78) rather than be
-replaced. So does a folder the value can't be kept in (exit 78, or 75 when
+value and one ID. That way is always one step: a hard link, else a rename
+that refuses to replace (Windows' own, Linux's and macOS's with their flag
+for it). On a filesystem with neither (FAT and exFAT, an SMB share without
+links, sshfs) the name is made new, which fails everywhere if it exists,
+and the value written under it; never a look for the name followed by a
+rename, between which another start's value could take the name and be
+replaced. A file under the name is therefore a whole value, or on those
+last filesystems one another start is writing that moment, which a start
+waits two seconds for. A file there that then isn't a whole value stops
+`start` (exit 78) rather than be replaced. So does a folder the value
+can't be kept in (exit 78, or 75 when
 a restart can fix it, such as a full disk): the shim doesn't run under an
 ID made for one start, which the platform would see as a new computer each
 time. The message names the file and the two ways out: point

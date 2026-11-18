@@ -61,6 +61,14 @@ def _read_afresh():
     _READ.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _a_short_wait_for_a_value_being_written(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A file that holds the start of a value is waited for, in case another
+    start is still writing it. The tests that put one there mean it to stay
+    that way, and the test of the wait sets its own."""
+    monkeypatch.setattr(machine_identity, "_BEING_WRITTEN_SECONDS", 0.05, raising=False)
+
+
 def _fallback_folder() -> Path:
     return Path(os.environ["AUTOGPT_SHIM_FALLBACK_DIR"])
 
@@ -568,6 +576,151 @@ def test_without_hard_links_the_value_is_still_put_in_place_once(monkeypatch) ->
     monkeypatch.setattr(machine_identity, "_place", another_start_got_there_first)
     assert machine_identity.stored_seed() == SEED_B
     assert path.read_bytes() == other
+
+
+def _neither_links_nor_a_one_step_rename(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A filesystem with no hard links, on a system whose rename has no way
+    to refuse to replace: exFAT or a FAT stick, an SMB share without links,
+    sshfs."""
+    from autogpt_local_executor import fsops
+
+    def no_links(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(machine_identity.os, "link", no_links)
+    monkeypatch.setattr(fsops, "_native_no_replace_rename", lambda _src, _dst: False)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows' own rename never replaces")
+def test_without_links_or_a_one_step_rename_another_starts_value_is_not_replaced(
+    monkeypatch,
+) -> None:
+    """There the value got its name by a look for the name and then a
+    rename, two steps. Another start's value that took the name between
+    them was replaced, after that start had read it: the two went on under
+    two machine IDs, and the first one's changed at its next start."""
+    from autogpt_local_executor import fsops
+
+    _neither_links_nor_a_one_step_rename(monkeypatch)
+    path = machine_identity.seed_path()
+    other = SEED_B.hex().encode("ascii") + b"\n"
+    arrived: list[bool] = []
+
+    def another_start_takes_the_name() -> None:
+        if not arrived:
+            arrived.append(True)
+            path.write_bytes(other)
+
+    # Wherever this start's placing of its own value looks or acts on the
+    # name, the other start's value has just got there.
+    lexists, open_ = fsops.os.path.lexists, machine_identity.os.open
+
+    def looked_just_before(name: object) -> bool:
+        found = lexists(name)
+        if Path(os.fspath(name)) == path:  # type: ignore[arg-type]
+            another_start_takes_the_name()
+        return found
+
+    def opened_just_after(name: object, flags: int, *rest: object) -> int:
+        if Path(os.fspath(name)) == path and flags & os.O_EXCL:  # type: ignore[arg-type]
+            another_start_takes_the_name()
+        return open_(name, flags, *rest)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(fsops.os.path, "lexists", looked_just_before)
+    monkeypatch.setattr(machine_identity.os, "open", opened_just_after)
+
+    seed = machine_identity.stored_seed()
+
+    assert arrived == [True]
+    assert path.read_bytes() == other
+    assert seed == SEED_B
+    assert [entry.name for entry in path.parent.iterdir()] == ["machine-id-seed"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows' own rename never replaces")
+def test_without_links_or_a_one_step_rename_two_starts_at_once_end_with_one_value(
+    monkeypatch,
+) -> None:
+    _neither_links_nor_a_one_step_rename(monkeypatch)
+    starts = 16
+    together = threading.Barrier(starts)
+    seeds: list[bytes] = []
+    failures: list[BaseException] = []
+
+    def start() -> None:
+        try:
+            together.wait(timeout=30)
+            seeds.append(machine_identity.stored_seed())
+        except BaseException as exc:
+            failures.append(exc)
+
+    threads = [threading.Thread(target=start) for _ in range(starts)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+
+    assert failures == []
+    assert len(seeds) == starts
+    assert len(set(seeds)) == 1
+    path = machine_identity.seed_path()
+    assert path.read_bytes() == seeds[0].hex().encode("ascii") + b"\n"
+    assert [entry.name for entry in path.parent.iterdir()] == ["machine-id-seed"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows' own rename never replaces")
+def test_without_links_or_a_one_step_rename_the_value_is_still_made_and_kept(monkeypatch) -> None:
+    _neither_links_nor_a_one_step_rename(monkeypatch)
+
+    first = machine_identity.stored_seed()
+
+    path = machine_identity.seed_path()
+    assert path.read_bytes() == first.hex().encode("ascii") + b"\n"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert machine_identity.stored_seed() == first
+    assert [entry.name for entry in path.parent.iterdir()] == ["machine-id-seed"]
+
+
+def test_a_value_another_start_is_still_writing_is_waited_for() -> None:
+    """Where the name is made first and the value written into it, another
+    start can find the name with less than a value under it. It waits for
+    the rest, a short while, and doesn't call the file broken."""
+    path = machine_identity.seed_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    value = SEED_A.hex().encode("ascii") + b"\n"
+    path.write_bytes(value[:20])
+    reading = threading.Event()
+    read = machine_identity._read
+
+    def read_and_say(name: Path, **how: Any) -> bytes | None:
+        reading.set()
+        return read(name, **how)
+
+    def the_other_start_finishes() -> None:
+        assert reading.wait(30)
+        path.write_bytes(value)
+
+    writer = threading.Thread(target=the_other_start_finishes)
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(machine_identity, "_read", read_and_say)
+        patched.setattr(machine_identity, "_BEING_WRITTEN_SECONDS", 60.0)
+        writer.start()
+        try:
+            assert machine_identity.stored_seed() == SEED_A
+        finally:
+            writer.join(30)
+
+
+def test_a_value_that_stays_cut_short_is_still_an_error(monkeypatch) -> None:
+    path = machine_identity.seed_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(SEED_A.hex().encode("ascii")[:20])
+    monkeypatch.setattr(machine_identity, "_BEING_WRITTEN_SECONDS", 0.2)
+
+    with pytest.raises(machine_identity.MachineIdError, match="doesn't hold the value"):
+        machine_identity.stored_seed()
+
+    assert path.read_bytes() == SEED_A.hex().encode("ascii")[:20]
 
 
 # ── What the daemon sends, records and prints ────────────────────────────────
