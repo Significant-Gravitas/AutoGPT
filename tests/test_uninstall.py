@@ -736,12 +736,19 @@ def test_the_command_to_stop_a_task_by_hand_deletes_it_only_once_it_is_ended(
 
 @pytest.mark.skipif(sys.platform != "win32", reason="cmd.exe is Windows'")
 def test_cmd_runs_the_second_step_only_after_a_first_that_succeeded() -> None:
-    """What the command above rests on, with the real cmd.exe."""
-    stopped = _real(["cmd", "/c", "exit /b 1 && echo deleted"])
-    went_on = _real(["cmd", "/c", "exit /b 0 && echo deleted"])
+    """What the command above rests on, with the real cmd.exe: a first step
+    that fails (a file that isn't there) and one that succeeds, each written
+    both ways."""
+    fails = "type autogpt-shim-no-such-file.txt 2>nul"
+    succeeds = "ver >nul"
 
-    assert "deleted" not in stopped.stdout
-    assert "deleted" in went_on.stdout
+    def ran_the_second(first: str, joined_with: str) -> bool:
+        return "deleted" in _real(["cmd", "/c", f"{first} {joined_with} echo deleted"]).stdout
+
+    assert not ran_the_second(fails, "&&")
+    assert ran_the_second(succeeds, "&&")
+    # And what the command did before: the second step whatever the first did.
+    assert ran_the_second(fails, "&")
 
 
 @pytest.mark.parametrize("installed", [True, False])
