@@ -595,6 +595,8 @@ def _cmd_uninstall(args) -> int:
         say(f"Removed the autostart entry: {path}")
     else:
         say(f"No autostart entry is installed at {path}.")
+    if done.former_entry_problem is not None:
+        say(f"Could not remove the earlier autostart entry {done.former_entry_problem}", error=True)
     for note in done.notes:
         say(f"Note: {note}")
     where = f" {service.stop_where}" if service.stop_where else ""
@@ -604,7 +606,12 @@ def _cmd_uninstall(args) -> int:
     elif service.problem is not None and service.found is None:
         say(f"If one is still running from an earlier install, stop it{where} with:")
         say(f"  {service.stop_command}")
-    return 1 if done.may_still_run or done.entry_problem is not None else 0
+    failed = (
+        done.may_still_run
+        or done.entry_problem is not None
+        or done.former_entry_problem is not None
+    )
+    return 1 if failed else 0
 
 
 def _print_autostart_status() -> None:

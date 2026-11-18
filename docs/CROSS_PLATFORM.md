@@ -230,10 +230,13 @@ still has it, and it would start a second shim for the same computer at
 every login beside the new one, where the platform lets one connection per
 computer stand. So on macOS `install` and `uninstall` also ask launchd for a
 service under the earlier label (`FORMER_LAUNCHD_LABEL` in `install.py`),
-unload it and remove its file, and say so; with none they say nothing. If it
-can't be unloaded, `install` says so before the new one is loaded, and
-`uninstall` exits 1 with the command that stops it. That code goes once no
-Mac has such a service.
+unload it and remove its file, and say so; with none they say nothing.
+`install` does it once the new entry is written, so a write that fails
+leaves the earlier service as it was. If the earlier service can't be
+unloaded, launchd can't be asked about it, or its file can't be removed,
+`install` says so before the new one is loaded, and `uninstall` exits 1,
+with the command that stops it. That code goes once no Mac has such a
+service.
 
 When the service can't be stopped, it says what failed, removes the file
 all the same, prints one command that stops the service without the file,

@@ -384,3 +384,93 @@ def test_cross_platform_md_says_what_happens_to_the_earlier_service() -> None:
 
     assert "earlier label" in text
     assert "`FORMER_LAUNCHD_LABEL`" in text
+
+
+# ── Review: what can go wrong around the earlier service ─────────────────────
+
+
+def test_install_leaves_the_earlier_service_alone_when_the_new_entry_cannot_be_written(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The earlier service was unloaded and its file removed before the new
+    entry was written. With the disk full at that write, the Mac was left
+    with no service at all for the next login."""
+    former = _former_plist(home)
+    launchd = _Launchd(f"gui/501/{FORMER}")
+
+    def disk_full(*_args: Any, **_kwargs: Any) -> Path:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(install_mod, "_write_atomic", disk_full)
+
+    with pytest.raises(OSError, match="No space left"):
+        install_mod.install_autostart(home=home, platform_name="darwin", run=launchd)
+
+    assert launchd.loaded == {f"gui/501/{FORMER}"}
+    assert not any(line.startswith("launchctl bootout") for line in launchd.ran)
+    assert former.is_file()
+
+
+def test_uninstall_fails_when_launchd_cannot_be_asked_about_the_earlier_service(
+    home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Only the earlier service is installed, and launchd doesn't answer.
+    Its file is removed, but nothing says its service has stopped: the
+    exit status was 0 all the same, since the entry under the new label
+    wasn't there."""
+    former = _former_plist(home)
+
+    def no_answer(argv: Sequence[str], timeout: float) -> Any:
+        return _result(None, failure=f"`{' '.join(argv)}` did not finish within {timeout:g} s")
+
+    assert _run_cli(monkeypatch, no_answer, "uninstall") == 1
+
+    out, err = capsys.readouterr()
+    assert not former.exists()
+    assert "may still be running" in err
+    assert f"launchctl bootout gui/$(id -u)/{FORMER}" in err
+
+
+def test_uninstall_fails_when_the_earlier_entry_cannot_be_removed(
+    home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Left there, it loads the earlier service again at the next login."""
+    former = _former_plist(home)
+    launchd = _Launchd(f"gui/501/{FORMER}")
+    unlink = Path.unlink
+
+    def not_this_one(path: Path, *args: Any, **kwargs: Any) -> None:
+        if path == former:
+            raise PermissionError(13, "Permission denied")
+        unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", not_this_one)
+
+    assert _run_cli(monkeypatch, launchd, "uninstall") == 1
+
+    out, err = capsys.readouterr()
+    assert launchd.loaded == set()
+    assert former.is_file()
+    assert f"Could not remove the earlier autostart entry {former}" in err
+    assert "Permission denied" in err
+
+
+def test_install_says_so_when_the_earlier_entry_cannot_be_removed(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    former = _former_plist(home)
+    unlink = Path.unlink
+
+    def not_this_one(path: Path, *args: Any, **kwargs: Any) -> None:
+        if path == former:
+            raise PermissionError(13, "Permission denied")
+        unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", not_this_one)
+
+    status = install_mod.install_autostart(home=home, platform_name="darwin", run=_Launchd())
+
+    notes = " ".join(status.notes)
+    assert status.target_path.is_file()
+    assert f"Could not remove the earlier autostart entry {former}" in notes
+    assert "two shims" in notes
