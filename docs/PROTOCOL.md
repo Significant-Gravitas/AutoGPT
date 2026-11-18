@@ -405,9 +405,12 @@ with `details.reason: "not_answering"`:
 - A listing or an attach given up on ends every browse under way, as a
   reconnect does: their references then get `DIRECTORY_REFERENCE_INVALID`,
   and the folder picker starts a new browse.
-- At most eight looks are left waiting at once, whatever their folders. Past
-  that, every request that looks at a folder gets `DIRECTORY_UNAVAILABLE`
-  until one of them returns.
+- At most eight looks run at once, whatever their folders, those still
+  inside their five seconds included, so no more than eight are ever left
+  waiting. With all eight given up on, every request that looks at a folder
+  gets `DIRECTORY_UNAVAILABLE` at once, until one of them returns. While one
+  of the eight is still inside its five seconds, a further request waits
+  for it, inside its own.
 
 A chat's data session makes its folder as it starts, as a legacy session
 does, within the same five seconds. Past them the chat's session ends

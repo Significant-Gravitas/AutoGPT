@@ -746,3 +746,78 @@ async def test_two_folders_whose_names_differ_only_in_case_are_two_folders(
     with pytest.raises(_timeout(), match="still hasn't answered an earlier request"):
         await checks.run(r"C:\Work\Foo", away, deadline=await _by(WITHIN))
     assert away.looks == 1
+
+
+async def test_looks_under_way_count_toward_the_most_left_running(away: _Away) -> None:
+    """The limit was checked against the looks already given up on. With one
+    short of it given up on, two requests about two other folders both
+    passed the check and both started a thread; when neither folder
+    answered, one more thread was left running than the limit allows."""
+    checks = _checks(max_stuck=2)
+    with pytest.raises(_timeout()):
+        await checks.run("/share/one", away, deadline=await _by(BOUND))
+    assert checks.stuck() == 1
+
+    answers = await asyncio.wait_for(
+        asyncio.gather(
+            checks.run("/share/two", away, deadline=await _by(BOUND)),
+            checks.run("/share/three", away, deadline=await _by(BOUND)),
+            return_exceptions=True,
+        ),
+        timeout=WITHIN,
+    )
+
+    assert [type(answer) for answer in answers] == [_timeout(), _timeout()]
+    # One of the two had the last thread; the other never started one.
+    assert away.looks == 2
+    assert checks.stuck() == 2
+
+
+async def test_a_burst_of_looks_at_folders_that_answer_all_get_their_answers() -> None:
+    """More requests at once than threads may run. The later ones wait for
+    one to finish, within their own time, and then look for themselves:
+    none is refused because others are under way."""
+    import functools
+    import time
+
+    checks = _checks(max_stuck=2)
+    lock = threading.Lock()
+    under_way = 0
+    most = 0
+
+    def look(folder: int) -> int:
+        nonlocal under_way, most
+        with lock:
+            under_way += 1
+            most = max(most, under_way)
+        time.sleep(0.05)
+        with lock:
+            under_way -= 1
+        return folder
+
+    deadline = await _by(WITHIN)
+    answers = await asyncio.gather(
+        *(
+            checks.run(f"/home/me/{folder}", functools.partial(look, folder), deadline=deadline)
+            for folder in range(6)
+        )
+    )
+
+    assert answers == list(range(6))
+    assert most <= 2
+
+
+async def test_with_every_thread_held_by_a_folder_given_up_on_a_look_is_refused_at_once(
+    away: _Away,
+) -> None:
+    checks = _checks(max_stuck=2)
+    for folder in ("/share/one", "/share/two"):
+        with pytest.raises(_timeout()):
+            await checks.run(folder, away, deadline=await _by(BOUND))
+    started = asyncio.get_running_loop().time()
+
+    with pytest.raises(_timeout(), match="Too many folders"):
+        await checks.run("/home/me", lambda: "there", deadline=await _by(WITHIN))
+
+    assert asyncio.get_running_loop().time() - started < WITHIN / 2
+    assert away.looks == 2
