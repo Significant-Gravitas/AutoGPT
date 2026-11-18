@@ -6,7 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { isCompletedWithErrors } from "@/lib/run-health";
 import { formatTimeAgo } from "@/lib/utils/time";
 import Link, { useLinkStatus } from "next/link";
-import { useNow } from "@/hooks/useNow";
+import { useNowSecond } from "@/hooks/useNowSecond";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
 import {
@@ -51,7 +51,7 @@ export function ActivityItem({ execution }: Props) {
     execution.status === AgentExecutionStatus.RUNNING ||
     execution.status === AgentExecutionStatus.QUEUED;
   // Tick every second so live elapsed advances without waiting for stats (#9690).
-  const nowMs = useNow(1000, isActiveStatus);
+  const nowMs = useNowSecond(isActiveStatus);
 
   function getStatusIcon() {
     switch (execution.status) {

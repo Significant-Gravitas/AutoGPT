@@ -1,6 +1,6 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import { render, screen } from "@/tests/integrations/test-utils";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@/tests/integrations/test-utils";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AgentExecutionWithInfo } from "../../helpers";
 import { ActivityItem } from "../ActivityItem";
@@ -58,6 +58,28 @@ describe("ActivityItem", () => {
 
     expect(screen.getByRole("link")).toBeDefined();
     expect(screen.getByText("Weather Agent")).toBeDefined();
+  });
+
+  it("counts a running execution's duration up each second", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-21T12:00:10Z"));
+    try {
+      render(
+        <ActivityItem
+          execution={makeExecution({
+            status: AgentExecutionStatus.RUNNING,
+            ended_at: null,
+          })}
+        />,
+      );
+      expect(screen.getByText(/, 10s running$/)).toBeDefined();
+      act(() => {
+        vi.advanceTimersByTime(6_000);
+      });
+      expect(screen.getByText(/, 16s running$/)).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says a completed run with a failed step completed with errors", () => {

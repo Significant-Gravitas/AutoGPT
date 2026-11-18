@@ -22,7 +22,11 @@ export function getExecutionDuration(
   // While RUNNING/QUEUED, prefer live elapsed from started_at→now.
   // When finished, prefer ended_at (stats.duration is applied at call sites
   // that have it — Activity dropdown metas may only carry timestamps).
-  const end = execution.ended_at ? new Date(execution.ended_at) : now;
+  const isLive =
+    execution.status === AgentExecutionStatus.RUNNING ||
+    execution.status === AgentExecutionStatus.QUEUED;
+  const end =
+    !isLive && execution.ended_at ? new Date(execution.ended_at) : now;
 
   // Check if dates are valid
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {

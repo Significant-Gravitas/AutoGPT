@@ -11,7 +11,7 @@ import {
   isCompletedWithErrors,
 } from "@/lib/run-health";
 import { useMemo } from "react";
-import { useNow } from "@/hooks/useNow";
+import { useNowSecond } from "@/hooks/useNowSecond";
 import type { SitrepItemData, SitrepPriority } from "../../types";
 import {
   isActive,
@@ -33,11 +33,16 @@ export function useSitrepItems(
   });
 
   const hasActiveExecution = useMemo(
-    () => (executions ?? []).some((e) => isActive(e.status)),
+    () =>
+      (executions ?? []).some(
+        (e) =>
+          e.status === AgentExecutionStatus.RUNNING ||
+          e.status === AgentExecutionStatus.QUEUED,
+      ),
     [executions],
   );
   // Keep "Running for …" messages advancing while executions are in flight.
-  const nowMs = useNow(1000, hasActiveExecution);
+  const nowMs = useNowSecond(hasActiveExecution);
 
   return useMemo(() => {
     if (agents.length === 0) return [];
