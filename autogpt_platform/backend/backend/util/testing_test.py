@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.util import testing
 from backend.util.testing import Rendezvous, TcpProxy, is_tcp_port_reachable
 
 
@@ -94,7 +95,7 @@ async def test_leaving_a_proxy_stops_a_connection_it_was_still_setting_up(
                 raise
         return await real_open_connection(host, port, *args, **kwargs)
 
-    monkeypatch.setattr(asyncio, "open_connection", open_connection)
+    monkeypatch.setattr(testing, "open_connection", open_connection)
     async with TcpProxy(upstream) as proxy:
         reader, writer = await real_open_connection(*proxy.address)
         async with asyncio.timeout(5):
@@ -112,7 +113,7 @@ async def test_a_connection_accepted_after_the_proxy_closed_is_turned_away(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dial = AsyncMock(return_value=(MagicMock(), MagicMock()))
-    monkeypatch.setattr(asyncio, "open_connection", dial)
+    monkeypatch.setattr(testing, "open_connection", dial)
     async with TcpProxy(("127.0.0.1", 9)) as proxy:
         pass
     client = MagicMock()
@@ -133,7 +134,7 @@ async def test_an_upstream_that_answers_after_the_proxy_closed_is_hung_up_on(
         proxy._closed = True  # the test left the proxy while this dial ran
         return MagicMock(), upstream_writer
 
-    monkeypatch.setattr(asyncio, "open_connection", dial)
+    monkeypatch.setattr(testing, "open_connection", dial)
     await proxy._accept(MagicMock(), client)
 
     client.close.assert_called_once()
