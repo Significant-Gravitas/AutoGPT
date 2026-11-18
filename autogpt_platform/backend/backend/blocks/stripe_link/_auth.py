@@ -8,6 +8,8 @@ acquisition flow is handled by ``StripeLinkDeviceAuthHandler`` in
 """
 
 import logging
+import re
+from collections.abc import Sequence
 from typing import Any, Literal
 
 import httpx
@@ -34,6 +36,8 @@ logger = logging.getLogger(__name__)
 
 # Upstream error text reaches a block `error` output, which is persisted.
 MAX_ERROR_DETAIL_CHARS = 500
+# What a Link error code looks like; anything else is dropped.
+_ERROR_CODE = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 
 StripeLinkCredentials = OAuth2Credentials
 
@@ -56,19 +60,26 @@ StripeLinkCredentialsInput = CredentialsMetaInput[
 ]
 
 
-def StripeLinkCredentialsField() -> StripeLinkCredentialsInput:
+PAYMENTS_CREDENTIALS_DESCRIPTION = (
+    "Connect your Stripe Link account to enable the agent to request "
+    "secure, one-time-use payment credentials from your Link wallet. "
+    "You'll approve each spend request via the Link app."
+)
+
+
+def StripeLinkCredentialsField(
+    description: str = PAYMENTS_CREDENTIALS_DESCRIPTION,
+) -> StripeLinkCredentialsInput:
     """
     Creates a Stripe Link credentials input on a block.
 
-    All Link blocks require the same `payment_methods.agentic` scope.
+    All Link blocks require the same `payment_methods.agentic` scope; only the
+    explanation shown next to the picker differs between payment and read-only
+    blocks.
     """
     return CredentialsField(
         required_scopes=set(LINK_DEFAULT_SCOPES),
-        description=(
-            "Connect your Stripe Link account to enable the agent to request "
-            "secure, one-time-use payment credentials from your Link wallet. "
-            "You'll approve each spend request via the Link app."
-        ),
+        description=description,
     )
 
 
@@ -94,16 +105,32 @@ TEST_CREDENTIALS_INPUT = {
 }
 
 
+class LinkAPIError(RuntimeError):
+    """Link answered with a non-2xx status.
+
+    Keeps the status and Link's machine-readable error code next to the
+    message, so callers branch on those rather than parsing message text.
+    """
+
+    def __init__(self, message: str, *, status_code: int, code: str = ""):
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+
+
 async def link_api_request(
     credentials: StripeLinkCredentials,
     method: str,
     path: str,
     body: dict[str, Any] | None = None,
+    params: Sequence[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     """
     Make an authenticated request to the Link API.
 
-    Uses the access_token from OAuth2Credentials as a Bearer token.
+    Uses the access_token from OAuth2Credentials as a Bearer token. `params`
+    are pairs rather than a dict so a key can repeat, as Link's `sources[]`
+    filter does.
 
     Refresh is deliberately not handled here: `IntegrationCredentialsManager`
     already refreshes on acquire (`_refresh_locked`), under a per-credential
@@ -121,6 +148,7 @@ async def link_api_request(
             url=f"{LINK_API_BASE_URL}{path}",
             headers=headers,
             json=body,
+            params=tuple(params) if params is not None else None,
         )
         # `is_success`, not `not is_error`: the latter is 4xx/5xx only, so a
         # 3xx would fall straight through to `.json()` — and redirects are not
@@ -131,21 +159,17 @@ async def link_api_request(
             # that rather than a bare "400 Bad Request" with the explanation
             # discarded. That is how the SPT merchant-field constraint stayed
             # hidden during development.
-            try:
-                detail = response.json().get("error", {}).get("message")
-            # ValueError: not JSON. AttributeError/TypeError: JSON, but not
-            # the object shape we index into. Anything else is our bug, and
-            # masking it as "API text" would hide it.
-            except (ValueError, AttributeError, TypeError):
-                detail = None
+            detail, code = _link_error(response)
 
             if detail:
                 # Bounded: this string becomes a persisted block output, and a
                 # multi-KB message from Link or an intercepting gateway has no
                 # business there.
-                raise RuntimeError(
+                raise LinkAPIError(
                     f"Link API error ({response.status_code}): "
-                    f"{str(detail)[:MAX_ERROR_DETAIL_CHARS]}"
+                    f"{str(detail)[:MAX_ERROR_DETAIL_CHARS]}",
+                    status_code=response.status_code,
+                    code=code,
                 )
 
             # No usable message. Only the status leaves here: an upstream body
@@ -154,6 +178,31 @@ async def link_api_request(
             logger.error(
                 "Link API %s %s failed: %s", method, path, response.status_code
             )
-            raise RuntimeError(f"Link API error ({response.status_code})")
+            raise LinkAPIError(
+                f"Link API error ({response.status_code})",
+                status_code=response.status_code,
+                code=code,
+            )
 
         return response.json()
+
+
+def _link_error(response: httpx.Response) -> tuple[Any, str]:
+    """Link's `error.message` and error code, when the body has that shape.
+
+    The code is read from `error.code`, or from a top-level `code` as on the
+    financial-insights endpoints. It can reach an output, so only one shaped
+    like an error code is kept.
+    """
+    try:
+        payload = response.json()
+    except ValueError:
+        return None, ""
+    if not isinstance(payload, dict):
+        return None, ""
+    error = payload.get("error")
+    error = error if isinstance(error, dict) else {}
+    code = error.get("code") or payload.get("code")
+    if not isinstance(code, str) or not _ERROR_CODE.fullmatch(code):
+        code = ""
+    return error.get("message"), code
