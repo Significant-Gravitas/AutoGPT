@@ -160,6 +160,13 @@ export function useVoiceCall(args: Args) {
   const [phase, setPhase] = useState<CallPhase>(
     args.isOffered ? "checking" : "idle",
   );
+  // A call offered only once the flag answers shows its check from the first
+  // frame, not the choice for one paint before the check starts.
+  const [wasOffered, setWasOffered] = useState(args.isOffered);
+  if (args.isOffered && !wasOffered) {
+    setWasOffered(true);
+    if (phase === "idle") setPhase("checking");
+  }
   const [captions, setCaptions] = useState<CaptionLine[]>([]);
   const [endsAt, setEndsAt] = useState<number | null>(null);
   const [now, setNow] = useState(0);
