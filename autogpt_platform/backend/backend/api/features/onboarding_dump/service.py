@@ -290,6 +290,32 @@ async def give_up_unrun_take(user_id: str, recording_id: str, error_code: str) -
     return False
 
 
+async def give_up_retired_take(
+    user_id: str, recording_id: str, error_code: str
+) -> bool:
+    """Mark *recording_id*'s take failed with *error_code* in any status
+    short of a finished one, the pipeline's own included: for a take a
+    start-over retired, which the new interview's take replaces however far
+    the pipeline got. Its jobs write nothing once it is failed
+    (``db.owns_dump``) or off the row. True when the take was given up."""
+    for expected in (
+        BrainDumpStatus.extracting,
+        BrainDumpStatus.transcribed,
+        BrainDumpStatus.transcribing,
+        BrainDumpStatus.recording_uploaded,
+    ):
+        if await db.claim_transition(
+            user_id,
+            recording_id,
+            expected=expected,
+            new=BrainDumpStatus.failed,
+            errorCode=error_code,
+            errorReason=None,
+        ):
+            return True
+    return False
+
+
 async def reopen_unjudged_take(user_id: str, recording_id: str) -> bool:
     """Put a take whose row was claimed and left ``transcribed`` with no
     answer back where a finalize claims it again, so its words are judged
@@ -506,18 +532,22 @@ async def _run_background_jobs(
     after the trial, so the step does not wait on either.
     """
     try:
-        claimed = await db.update_dump(
-            user_id, recording_id, status=BrainDumpStatus.extracting
+        claimed = await db.claim_transition(
+            user_id,
+            recording_id,
+            expected=BrainDumpStatus.transcribed,
+            new=BrainDumpStatus.extracting,
         )
     except Exception as e:  # background task, nowhere to raise
         logger.error("Brain dump completion failed for user %s: %s", user_id, e)
         await db.mark_failed(user_id, recording_id, "understanding_failed")
         return
     if not claimed:
-        # A newer take owns the row. Its row writes would all no-op, but the
-        # business understanding is shared user context with no recording
-        # id on it: carrying on would fold an abandoned take's transcript
-        # into the context the live take is about to write.
+        # A newer take owns the row, or this take was given up while its
+        # jobs were queued (``give_up_unrun_take``). Its row writes would all
+        # no-op, but the business understanding is shared user context with
+        # no recording id on it: carrying on would fold an abandoned take's
+        # transcript into the context the live take is about to write.
         logger.info("Brain dump take for user %s superseded; stopping", user_id)
         return
     wizard_context = await wizard_answers(user_id)

@@ -26,11 +26,21 @@ async def owns_dump(user_id: str, recording_id: str) -> bool:
     Row writes carry their own ``recordingId`` guard, but the business
     understanding is shared user context with no take on it. A background
     job for a superseded take has to be told to stop before it writes
-    there, and this is what tells it.
+    there, and this is what tells it. A take given up for a newer one
+    (``superseded``) is not, though it is still on the row.
     """
     dump = await get_dump(user_id)
-    return dump is not None and dump.recordingId == recording_id
+    return (
+        dump is not None
+        and dump.recordingId == recording_id
+        and not (
+            dump.status == BrainDumpStatus.failed and dump.errorCode == SUPERSEDED_TAKE
+        )
+    )
 
+
+# The failure code of a take a newer take replaced.
+SUPERSEDED_TAKE = "superseded"
 
 # A take still being processed. A new typed or skipped take cannot displace
 # one: unlike part 0 of a voice upload, they carry no earlier server-side

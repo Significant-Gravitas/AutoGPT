@@ -75,7 +75,16 @@ class DumpStore:
         return self.row
 
     async def owns_dump(self, user_id: str, recording_id: str) -> bool:
-        return self.row is not None and self.row.recordingId == recording_id
+        """Mirrors the real read: a take given up for a newer one owns
+        nothing, though it is still on the row."""
+        return (
+            self.row is not None
+            and self.row.recordingId == recording_id
+            and not (
+                self.row.status == BrainDumpStatus.failed
+                and self.row.errorCode == db.SUPERSEDED_TAKE
+            )
+        )
 
     async def start_dump(
         self,
