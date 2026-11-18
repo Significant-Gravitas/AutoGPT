@@ -757,14 +757,16 @@ async def test_a_park_that_cannot_read_its_card_back_keeps_its_call(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
     """The park stored its call and opened its card, then couldn't read the
-    card back. The call is kept: it pairs only with a card of its own
-    generation, so keeping it is safe, and dropping it would leave the card
-    with nothing to run."""
+    card back. The call is kept, and told its card is open: it pairs only
+    with a card of its own generation, so keeping it is safe, and dropping it
+    (or telling it it's already waiting) would leave the card with nothing to
+    run, or the chat told the wrong thing."""
     scene = await new_scene(test_user_id, post_tool, parked=False)
 
     with patch.object(held, "review_db", lambda: _Unreadable()):
-        await scene.park()
+        decision = await scene.park()
 
+    assert decision.headline is not None
     assert await _held_under(scene) == ["call-0"]
     await scene.approve()
     [delivered] = await resolved(test_user_id, scene.session)

@@ -25,7 +25,7 @@ from pydantic import BaseModel
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.context import set_execution_context
-from backend.copilot.gate import check_action, held
+from backend.copilot.gate import Decision, check_action, held
 from backend.copilot.gate import review as review_store
 from backend.copilot.model import (
     ChatSession,
@@ -482,7 +482,7 @@ class Scene:
 
         return answer
 
-    async def park(self, tool_call_id: str = "call-0") -> None:
+    async def park(self, tool_call_id: str = "call-0") -> Decision:
         async def in_a_turn():
             self.enter_turn()
             return await check_action(
@@ -491,6 +491,7 @@ class Scene:
 
         decision = await asyncio.create_task(in_a_turn())
         assert decision.review_id == self.review_id
+        return decision
 
     async def approve(self) -> None:
         await self.user([ReviewStatus.APPROVED])()
