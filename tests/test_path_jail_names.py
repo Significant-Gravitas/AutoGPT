@@ -676,3 +676,50 @@ def test_a_root_on_a_share_takes_its_own_paths_and_no_other_shares(root: Path) -
             with pytest.raises(PathJailError) as refused:
                 assert_inside_jail(elsewhere, on_share)
         assert refused.value.code == "PATH_OUTSIDE_ALLOWED_ROOT", (elsewhere, looks.seen)
+
+
+# ── A root that is itself written with dots ──────────────────────────────────
+
+
+def test_a_root_configured_with_dots_takes_the_paths_written_under_it(tmp_path: Path) -> None:
+    """`--allowed-root /work/staging/../shared` is kept as it was given, and
+    HELLO reports it that way, so the platform's paths begin with it. The
+    name check took each `..` of a path in its place but compared with the
+    root's names worked out, so every such path was outside by its name."""
+    (tmp_path / "staging").mkdir()
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    (shared / "notes.txt").write_text("here", encoding="utf-8")
+    root = os.path.join(str(tmp_path), "staging", "..", "shared")
+
+    assert assert_inside_jail(os.path.join(root, "notes.txt"), root) == (
+        Path(os.path.realpath(shared)) / "notes.txt"
+    )
+    assert assert_inside_jail("notes.txt", root) == Path(os.path.realpath(shared)) / "notes.txt"
+    # By the root's other spellings too, as before.
+    assert assert_inside_jail(str(shared / "notes.txt"), root)
+    # And what leaves it is still outside by its name. Resolving the root
+    # itself passes through `staging`, as it is written; nothing else may be
+    # looked at.
+    (tmp_path / "staging" / "x").write_text("not shared", encoding="utf-8")
+    for outside in (
+        os.path.join(root, "..", "staging", "x"),
+        os.path.join(str(tmp_path), "staging", "x"),
+        os.path.join(str(tmp_path), "staging", "..", "shared2", "x"),
+    ):
+        with _Looks(root, tmp_path / "staging", os.path.expanduser("~")) as looks:
+            with pytest.raises(PathJailError) as refused:
+                assert_inside_jail(outside, root)
+        assert refused.value.code == "PATH_OUTSIDE_ALLOWED_ROOT", (outside, looks.seen)
+        assert not any("staging/x" in look or "staging\\x" in look for look in looks.seen)
+
+
+def test_a_root_written_with_dots_is_a_spelling_of_its_own() -> None:
+    spellings = ["/work/staging/../shared", "/work/shared"]
+
+    assert _outside("/work/staging/../shared/notes.txt", spellings, posixpath) is False
+    assert _outside("notes.txt", spellings, posixpath) is False
+    assert _outside("/work/shared/notes.txt", spellings, posixpath) is False
+    assert _outside("/work/staging/../shared/../staging/x", spellings, posixpath) is True
+    assert _outside("/work/staging/x", spellings, posixpath) is True
+    assert _outside("/work/staging/../other/x", spellings, posixpath) is True

@@ -311,9 +311,16 @@ def _root_spellings(allowed_root: str | os.PathLike[str], root_resolved: str) ->
     root was configured in it.
 
     The configured root comes first: it is the one a request's path is
-    joined to (from_root).
+    joined to (from_root). A root configured with `.` or `..` in it
+    (`/work/staging/../shared`) is kept as it was given and reported that
+    way in HELLO, so the platform's paths begin with it as written: that
+    spelling is one of the root's, ahead of the same root with its dots
+    worked out.
     """
-    spellings = [os.path.abspath(os.fspath(allowed_root)), root_resolved]
+    configured = os.fspath(allowed_root)
+    spellings = [os.path.abspath(configured), root_resolved]
+    if os.path.isabs(configured) and configured != spellings[0]:
+        spellings.insert(0, configured)
     home = os.path.expanduser("~")
     if os.path.isabs(home):
         home_resolved = _resolved_folder(home)
@@ -370,7 +377,9 @@ def _plainly_outside(
     if candidate is None:
         return True
     for spelling in spellings:
-        root = _named(spelling, windows)
+        # As it is written too: a path under a root configured with `..`
+        # in it begins with those same names.
+        root = _named(spelling, windows, keep_dots=True)
         if root is not None and candidate[0] == root[0] and _stays_under(candidate[1], root[1]):
             return False
     return True
