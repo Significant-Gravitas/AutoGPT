@@ -30,37 +30,49 @@ const PENDING_COLORS =
 
 const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   INCOMPLETE: (
-    <IconWrapper className="border-error-surface bg-error-surface text-error-foreground">
+    <IconWrapper
+      className="border-error-surface bg-error-surface text-error-foreground"
+      label="Task incomplete"
+    >
       <Icon icon={AlertCircleIcon} size={16} />
     </IconWrapper>
   ),
   QUEUED: (
-    <IconWrapper className={PENDING_COLORS}>
+    <IconWrapper className={PENDING_COLORS} label="Task queued">
       <Icon icon={Clock01Icon} size={16} />
     </IconWrapper>
   ),
   RUNNING: (
-    <IconWrapper className={PENDING_COLORS}>
+    <IconWrapper className={PENDING_COLORS} label="Task running">
       <Icon icon={PauseCircleIcon} size={16} />
     </IconWrapper>
   ),
   REVIEW: (
-    <IconWrapper className={PENDING_COLORS}>
+    <IconWrapper className={PENDING_COLORS} label="Task awaiting review">
       <Icon icon={PauseCircleIcon} size={16} />
     </IconWrapper>
   ),
   COMPLETED: (
-    <IconWrapper className="border-success-surface bg-success-surface text-success-foreground">
+    <IconWrapper
+      className="border-success-surface bg-success-surface text-success-foreground"
+      label="Task completed"
+    >
       <Icon icon={CheckmarkCircle02Icon} size={16} />
     </IconWrapper>
   ),
   TERMINATED: (
-    <IconWrapper className="border-surface-muted bg-surface-muted text-foreground-body">
+    <IconWrapper
+      className="border-surface-muted bg-surface-muted text-foreground-body"
+      label="Task stopped"
+    >
       <Icon icon={StopCircleIcon} size={16} />
     </IconWrapper>
   ),
   FAILED: (
-    <IconWrapper className="border-error-surface bg-error-surface text-error-foreground">
+    <IconWrapper
+      className="border-error-surface bg-error-surface text-error-foreground"
+      label="Task failed"
+    >
       <Icon icon={CancelCircleIcon} size={16} />
     </IconWrapper>
   ),
@@ -76,7 +88,10 @@ interface Props {
 }
 
 const completedWithErrorsIcon = (
-  <IconWrapper className="border-warning-surface bg-warning-surface text-warning-foreground">
+  <IconWrapper
+    className="border-warning-surface bg-warning-surface text-warning-foreground"
+    label="Task completed with errors"
+  >
     <Icon icon={Alert02Icon} size={16} />
   </IconWrapper>
 );
@@ -91,7 +106,10 @@ export function TaskListItem({
 }: Props) {
   const withErrors = isCompletedWithErrors(run);
   const icon = run.is_dry_run ? (
-    <IconWrapper className="border-warning-surface bg-warning-surface text-warning-foreground">
+    <IconWrapper
+      className="border-warning-surface bg-warning-surface text-warning-foreground"
+      label="Simulated task"
+    >
       <Icon icon={FlaskConicalIcon} size={16} />
     </IconWrapper>
   ) : withErrors ? (

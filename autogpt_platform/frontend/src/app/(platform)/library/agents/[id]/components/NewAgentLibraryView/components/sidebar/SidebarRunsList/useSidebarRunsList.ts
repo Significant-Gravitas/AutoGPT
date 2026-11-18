@@ -149,6 +149,14 @@ export function useSidebarRunsList({
     }
   }
 
+  // Invalidate and refetch the query to ensure we have the latest data
+  // This is simpler and more reliable than manually updating the cache
+  // The queryKey is stable and includes the graphId, so this only invalidates
+  // queries for this specific graph's executions
+  function refetchRuns() {
+    queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
+  }
+
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
     graphId: graphId || undefined,
@@ -156,13 +164,8 @@ export function useSidebarRunsList({
     // Refetching the infinite query reloads every loaded page in turn, so a
     // burst of events is folded into one refetch now and one at the end.
     throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
-    onExecutionUpdate: (_execution) => {
-      // Invalidate and refetch the query to ensure we have the latest data
-      // This is simpler and more reliable than manually updating the cache
-      // The queryKey is stable and includes the graphId, so this only invalidates
-      // queries for this specific graph's executions
-      queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
-    },
+    onExecutionUpdate: refetchRuns,
+    onReconnect: refetchRuns,
   });
 
   // Notify parent about counts and loading state

@@ -26,6 +26,12 @@ interface UseExecutionEventsOptions {
    */
   throttleMs?: number;
   onExecutionUpdate?: ExecutionEventHandler;
+  /**
+   * Called after the socket reconnects, once the server has these
+   * subscriptions again. Updates published while it was down never arrive,
+   * so refetch here. Not called for the first connection.
+   */
+  onReconnect?: () => void;
 }
 
 /**
@@ -38,6 +44,7 @@ interface UseExecutionEventsOptions {
  * @param options.enabled - Whether the subscription is enabled (default: true)
  * @param options.throttleMs - Deliver at most one update per this many ms
  * @param options.onExecutionUpdate - Callback invoked when an execution is updated
+ * @param options.onReconnect - Callback invoked after a reconnect, to refetch
  */
 export function useExecutionEvents({
   graphId,
@@ -45,13 +52,16 @@ export function useExecutionEvents({
   enabled = true,
   throttleMs,
   onExecutionUpdate,
+  onReconnect,
 }: UseExecutionEventsOptions) {
   const api = useBackendAPI();
   const onExecutionUpdateRef = useRef(onExecutionUpdate);
+  const onReconnectRef = useRef(onReconnect);
 
   useEffect(() => {
     onExecutionUpdateRef.current = onExecutionUpdate;
-  }, [onExecutionUpdate]);
+    onReconnectRef.current = onReconnect;
+  }, [onExecutionUpdate, onReconnect]);
 
   // Keyed on the IDs' content, so an equal array built on every render of
   // the caller does not tear the subscription down and send it again.
@@ -100,6 +110,12 @@ export function useExecutionEvents({
       subscribedIds.clear();
     });
 
+    // Keyed to the reconnect, not to this effect: a new ID list subscribes
+    // again without asking for a refetch.
+    const reconnectHandler = api.onWebSocketReconnect(() => {
+      onReconnectRef.current?.();
+    });
+
     const messageHandler = api.onWebSocketMessage(
       "graph_execution_event",
       handleExecutionEvent,
@@ -110,6 +126,7 @@ export function useExecutionEvents({
     return () => {
       connectHandler();
       disconnectHandler();
+      reconnectHandler();
       messageHandler();
       throttle.flush();
       // Note: Backend automatically cleans up subscriptions on websocket disconnect

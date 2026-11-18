@@ -69,7 +69,7 @@ export function useLibraryFleetSummary(
 
   const graphIDs = useMemo(() => agents.map((a) => a.graph_id), [agents]);
 
-  const handleExecutionUpdate = useCallback(() => {
+  const refetchExecutions = useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: getGetV1ListAllExecutionsQueryKey(),
     });
@@ -79,7 +79,8 @@ export function useLibraryFleetSummary(
     graphIds: graphIDs.length > 0 ? graphIDs : undefined,
     enabled: graphIDs.length > 0,
     throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
-    onExecutionUpdate: handleExecutionUpdate,
+    onExecutionUpdate: refetchExecutions,
+    onReconnect: refetchExecutions,
   });
 
   return useMemo(() => {

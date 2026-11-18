@@ -11,10 +11,12 @@ import {
   handleExecutionUpdate,
   relabelNotifications,
 } from "./helpers";
+import { useLiveUpdateLog } from "./useLiveUpdateLog";
 
 export function useAgentActivityDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const { agentInfoMap } = useLibraryAgents();
+  const liveUpdates = useLiveUpdateLog();
 
   const [notifications, setNotifications] = useState<NotificationState>({
     activeExecutions: [],
@@ -27,8 +29,12 @@ export function useAgentActivityDropdown() {
     data: executions,
     isSuccess: executionsSuccess,
     error: executionsError,
+    dataUpdatedAt,
+    refetch: refetchExecutions,
   } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    // The list mounts with the account menu, and a copy cached before the
+    // menu opened can miss every run since.
+    query: { select: okData, refetchOnMount: "always" },
   });
 
   // Get all graph IDs from agentInfoMap
@@ -40,38 +46,45 @@ export function useAgentActivityDropdown() {
   // Handle real-time execution updates
   const handleExecutionEvent = useCallback(
     (execution: GraphExecution) => {
+      liveUpdates.recordUpdate(execution);
       setNotifications((currentState) =>
         handleExecutionUpdate(currentState, execution, agentInfoMap),
       );
     },
-    [agentInfoMap],
+    [agentInfoMap, liveUpdates],
   );
 
-  // Process initial execution state when data loads
+  // Rebuild from every fetched list, including one the same length as the
+  // last, then replay the live updates it may predate.
   // Use a ref to track if we've already processed to avoid infinite loops
-  const processedExecutionsRef = useRef<string | null>(null);
+  const processedListRef = useRef<number | null>(null);
   useEffect(() => {
-    const executionKey = executions
-      ? `${executions.length}-${executionsSuccess}`
-      : null;
-
     if (
-      executions &&
-      executionsSuccess &&
-      agentInfoMap.size > 0 &&
-      processedExecutionsRef.current !== executionKey
-    ) {
-      const notifications = categorizeExecutions(executions, agentInfoMap);
-      setNotifications(notifications);
-      processedExecutionsRef.current = executionKey;
-    }
-  }, [executions, executionsSuccess, agentInfoMap]);
+      !executions ||
+      !executionsSuccess ||
+      agentInfoMap.size === 0 ||
+      processedListRef.current === dataUpdatedAt
+    )
+      return;
+    const fromList = categorizeExecutions(executions, agentInfoMap);
+    setNotifications(
+      liveUpdates
+        .updatesNewerThan(dataUpdatedAt)
+        .reduce(
+          (state, execution) =>
+            handleExecutionUpdate(state, execution, agentInfoMap),
+          fromList,
+        ),
+    );
+    processedListRef.current = dataUpdatedAt;
+  }, [executions, executionsSuccess, dataUpdatedAt, agentInfoMap, liveUpdates]);
 
   // Subscribe to execution events for all graphs
   useExecutionEvents({
     graphIds: graphIds.length > 0 ? graphIds : undefined,
     enabled: graphIds.length > 0,
     onExecutionUpdate: handleExecutionEvent,
+    onReconnect: () => void refetchExecutions(),
   });
 
   return {

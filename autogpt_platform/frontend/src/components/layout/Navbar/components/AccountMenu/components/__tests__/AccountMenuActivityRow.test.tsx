@@ -8,10 +8,15 @@ import {
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
+import { TooltipProvider } from "@/components/atoms/Tooltip/BaseTooltip";
+import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { server } from "@/mocks/mock-server";
 import { installLiveSocket } from "@/tests/integrations/live-socket";
 import { render, screen, within } from "@/tests/integrations/test-utils";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render as renderWithoutProviders } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { AccountMenuActivityRow } from "../AccountMenuActivityRow";
 
@@ -169,4 +174,47 @@ test("a refetch that started after a live update shows what it read", async () =
 
   expect(await findRunLine(list, /running$/)).toBeDefined();
   expect(within(list).queryByText(/^Stopped /)).toBeNull();
+});
+
+test("opening the menu again shows a run that finished while it was closed", async () => {
+  let status: AgentExecutionStatus = AgentExecutionStatus.RUNNING;
+  serveActivity(async () => [run("run-1", status)]);
+  installLiveSocket();
+  // The app keeps a fetched list fresh for a minute
+  // (lib/react-query/queryClient.ts).
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+  });
+  function Providers({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <BackendAPIProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+        </BackendAPIProvider>
+      </QueryClientProvider>
+    );
+  }
+  // The row mounts only while the account menu is open.
+  function AccountMenu({ open }: { open: boolean }) {
+    return open ? <AccountMenuActivityRow /> : null;
+  }
+
+  const { rerender } = renderWithoutProviders(<AccountMenu open />, {
+    wrapper: Providers,
+  });
+  await userEvent.click(
+    await screen.findByTestId("account-menu-activity-trigger"),
+  );
+  let list = await screen.findByTestId("agent-activity-dropdown");
+  expect(await findRunLine(list, /running$/)).toBeDefined();
+
+  rerender(<AccountMenu open={false} />);
+  status = AgentExecutionStatus.COMPLETED;
+  rerender(<AccountMenu open />);
+  await userEvent.click(
+    await screen.findByTestId("account-menu-activity-trigger"),
+  );
+  list = await screen.findByTestId("agent-activity-dropdown");
+
+  expect(await findRunLine(list, /^Completed /)).toBeDefined();
 });
