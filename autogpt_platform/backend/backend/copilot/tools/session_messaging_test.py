@@ -628,7 +628,7 @@ class TestMessageSessionGuards:
         replies = []
         for found in (target, foreign):
             with patch(
-                f"{_MSG}.get_chat_session_metadata", new=AsyncMock(return_value=found)
+                f"{_DB}.get_chat_session_metadata", new=AsyncMock(return_value=found)
             ):
                 with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
                     replies.append(
