@@ -743,8 +743,11 @@ async def sweeping() -> AsyncIterator[None]:
 async def settle(sweeper: asyncio.Task | None, wait_s: float) -> None:
     """Start no hand-off, give the sweep's current one and every hand-off a
     status read started *wait_s* to finish, their pipeline jobs included, and
-    cancel the rest. A hand-off cancelled gives up its claim, and its call
-    stays pending for the next replica's read or sweep."""
+    cancel the rest. A hand-off cancelled before its answer is recorded gives
+    up its claim, and its call stays pending for the next replica's read or
+    sweep. One cancelled after that, during its pipeline jobs, has its answer
+    recorded and owes nothing more: its take stays on the dump row as the
+    jobs left it, which neither the reads nor the sweep run again."""
     running = [
         task
         for task in (sweeper, *_running.values())
