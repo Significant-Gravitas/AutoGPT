@@ -29970,7 +29970,13 @@
             "title": "Agents"
           },
           "week": { "$ref": "#/components/schemas/HomeWeekSummary" },
-          "recent_work": { "$ref": "#/components/schemas/HomeRecentWork" }
+          "recent_work": { "$ref": "#/components/schemas/HomeRecentWork" },
+          "schedules_unavailable": {
+            "type": "boolean",
+            "title": "Schedules Unavailable",
+            "description": "The scheduler didn't answer, so upcoming_tasks is unknown rather than empty",
+            "default": false
+          }
         },
         "type": "object",
         "required": [
@@ -30921,6 +30927,12 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Next Scheduled Run",
             "description": "ISO 8601 timestamp of the next scheduled run, if any"
+          },
+          "schedule_info_unavailable": {
+            "type": "boolean",
+            "title": "Schedule Info Unavailable",
+            "description": "The scheduler didn't answer, so is_scheduled and next_scheduled_run are unknown rather than false",
+            "default": false
           },
           "settings": { "$ref": "#/components/schemas/GraphSettings" },
           "organization_id": {

@@ -12,6 +12,9 @@ export interface ExpectedResponse {
   status: number;
   url: string | RegExp;
   method?: string;
+  /** A header the response must carry, to exempt only responses the journey
+   * fakes itself and not a real failure on the same URL. */
+  header?: { name: string; value: string };
 }
 
 interface KnownNoise {
@@ -96,6 +99,9 @@ function isExpected(response: Response, expected: ExpectedResponse[]) {
     (entry) =>
       entry.status === response.status() &&
       (!entry.method || entry.method.toUpperCase() === method) &&
+      (!entry.header ||
+        response.headers()[entry.header.name.toLowerCase()] ===
+          entry.header.value) &&
       (typeof entry.url === "string"
         ? response.url().includes(entry.url)
         : entry.url.test(response.url())),
