@@ -2,9 +2,11 @@ from unittest.mock import patch
 
 import pytest
 
+from backend.copilot.context import turn_sandbox
 from backend.copilot.sdk.env import config as chat_config
 
 from .bash_exec import BashExecTool
+from .local_pc_shim import LocalPCShim
 
 
 @pytest.mark.parametrize(
@@ -46,3 +48,22 @@ def test_only_offered_with_a_supported_sandbox(
         ),
     ):
         assert BashExecTool().is_available is available
+
+
+def test_a_local_pc_chat_offers_bash_without_a_server_sandbox(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A Local PC runs commands on the user's computer. With neither E2B nor
+    bubblewrap on the server, bash was hidden from Local PC chats too, though
+    the companion can run them; the chat hides it when the companion offers
+    no shell."""
+    monkeypatch.setattr(chat_config, "use_e2b_sandbox", False)
+    monkeypatch.setattr(chat_config, "e2b_api_key", None)
+    shim = LocalPCShim.__new__(LocalPCShim)
+    with (
+        patch("backend.copilot.tools.sandbox._BWRAP_AVAILABLE", None),
+        patch("backend.copilot.tools.sandbox.platform.system", return_value="Darwin"),
+    ):
+        assert BashExecTool().is_available is False
+        with turn_sandbox(shim):
+            assert BashExecTool().is_available is True

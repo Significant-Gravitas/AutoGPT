@@ -17,8 +17,8 @@ export default function PlatformLinkPage() {
 
       {page.status === "not-authenticated" && page.token && (
         <NotAuthenticatedView
-          token={page.token}
           loginRedirect={page.loginRedirect}
+          signupRedirect={page.signupRedirect}
         />
       )}
 

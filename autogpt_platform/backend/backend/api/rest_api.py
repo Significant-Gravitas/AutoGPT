@@ -54,6 +54,7 @@ import backend.api.features.home.routes as home_routes
 import backend.api.features.library.db
 import backend.api.features.library.model
 import backend.api.features.library.routes
+import backend.api.features.local_executor.routes as local_executor_routes
 import backend.api.features.mailerlite.routes as mailerlite_routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.memory.routes as memory_routes
@@ -102,7 +103,9 @@ from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi, start_metrics_server
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.process import freeze_startup_heap
+from backend.util.request_credentials import remember_request_credentials
 from backend.util.service import UnhealthyServiceError
+from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
@@ -323,6 +326,8 @@ app.add_middleware(AnalyticsContextMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
 app.add_middleware(BoundedGZipMiddleware)
+# Keeps each request's credentials for the error reports raised handling it.
+remember_request_credentials(app)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)
@@ -635,10 +640,14 @@ app.include_router(
     prefix="/api/platform-linking",
 )
 
+app.include_router(
+    local_executor_routes.router,
+    tags=["experimental", "local-executor"],
+)
+
 # Mount inbound routes for webhook-driven chat adapters (Slack Events API, …).
 # No-op when no webhook platform is configured; errors surface at startup.
 register_webhook_adapters(app, _webhook_bot_backend)
-
 app.mount("/external-api", external_api)
 # No route of this app may start with /api/v<n>; rest_api_test.py checks it.
 app.mount("/api/v2", v2_app)
@@ -704,8 +713,10 @@ class AgentServer(backend.util.service.AppProcess):
             http="httptools",
             # Only use uvloop on Unix-like systems (not supported on Windows)
             loop="uvloop" if platform.system() != "Windows" else "auto",
-            # Disable WebSockets since this service doesn't have any WebSocket endpoints
-            ws="none",
+            ws="websockets-sansio",
+            forwarded_allow_ips=uvicorn_forwarded_allow_ips(
+                settings.config.trusted_proxies
+            ),
         )
 
     @staticmethod

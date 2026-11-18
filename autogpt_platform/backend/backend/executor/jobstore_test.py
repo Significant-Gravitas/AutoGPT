@@ -448,7 +448,9 @@ def _scheduler_wired_to(store):
     EXECUTION jobstore, with every other dependency stubbed out."""
     spare = MagicMock(get_parked_job_ids=MagicMock(return_value=[]))
     with (
-        patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=MagicMock()),
+        patch(
+            f"{_SCHEDULER_PATH}.StopSafeBackgroundScheduler", return_value=MagicMock()
+        ),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
         patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),

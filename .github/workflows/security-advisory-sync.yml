@@ -85,7 +85,7 @@ jobs:
           echo "$result"
           echo "unlinked=$(jq -r 'if (.unlinked | length) == 0 then "none" else (.unlinked | join(", ")) end' <<<"$result")" >> "$GITHUB_OUTPUT"
       # Minted after the files are generated, and handed only to the PR step.
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
         with:
           app-id: ${{ vars.BATCH_BOT_APP_ID }}
@@ -93,7 +93,7 @@ jobs:
           permission-contents: write # push the credits branch
           permission-pull-requests: write # open or update the credits PR
       - name: Update the public credits PR
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        uses: peter-evans/create-pull-request@15733dbdfeedb4f7fdb73d13c6f5ac83b710fab8 # v8.1.2
         with:
           token: ${{ steps.app-token.outputs.token }}
           path: content

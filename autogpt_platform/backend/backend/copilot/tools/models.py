@@ -1208,6 +1208,7 @@ class BashExecResponse(ToolResponseBase):
     stderr: str
     exit_code: int
     timed_out: bool = False
+    output_truncated: bool = False
 
 
 class DesktopStreamToolResponse(ToolResponseBase):
