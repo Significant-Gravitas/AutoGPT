@@ -110,7 +110,10 @@ _SOURCE_KINDS = {
 }
 
 # What a card calls a read no argument names, where the tool's name is not copy.
-_READ_LABELS = {"find_library_agent": "the library search"}
+_READ_LABELS = {
+    "find_library_agent": "the library search",
+    "desktop_browser": "the desktop browser",
+}
 
 # The SDK engine caps a registry tool's text again after ``BaseTool.execute``
 # returns; it installs that cap here so the judge reads the same text.

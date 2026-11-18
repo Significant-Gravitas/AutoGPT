@@ -13,6 +13,8 @@ from typing import Any
 
 from backend.copilot import desktop_browser as driver
 from backend.copilot.context import get_current_sandbox, is_local_pc_executor
+from backend.copilot.gate.policy import Effect
+from backend.copilot.gate.subject import Subject
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
 from backend.util.sandbox_login import LoginChainChanged
@@ -34,6 +36,11 @@ _ACTION_PROPERTIES: dict[str, Any] = {
     "full_page": {"type": "boolean", "description": "look"},
     "time_ms": {"type": "integer", "description": "wait: only a delay the page states"},
     "timeout_ms": {"type": "integer", "description": "wait for text"},
+    "answer": {
+        "type": "string",
+        "enum": ["accept", "dismiss"],
+        "description": "dialog the page put up",
+    },
 }
 
 
@@ -44,6 +51,7 @@ class DesktopBrowserTool(BaseTool):
     # ``look`` writes a screenshot to the workspace, which another call in the
     # same message may list or read.
     writes_files = True
+    has_gate_subject = True
 
     @property
     def name(self) -> str:
@@ -57,7 +65,9 @@ class DesktopBrowserTool(BaseTool):
             "Each call returns url, title and a snapshot whose @eN refs work only "
             "with the ref_scope it returns; no refs after a navigation in the "
             "same call. Receipt unknown means it may have run: check before "
-            "repeating. look saves a screenshot to the workspace."
+            "repeating; not_started page_changed means take a new snapshot. "
+            "look saves a screenshot to the workspace. A confirm or prompt the "
+            "page puts up blocks it until a dialog action answers it."
         )
 
     @property
@@ -86,6 +96,27 @@ class DesktopBrowserTool(BaseTool):
     @property
     def requires_auth(self) -> bool:
         return True
+
+    async def gate_subject(
+        self, user_id: str, session: ChatSession, args: dict[str, Any]
+    ) -> Subject | None:
+        """A call that only reads the page, or goes to one, runs like the
+        other browser reads; anything that types, clicks or answers asks."""
+        actions = args.get("actions")
+        if (
+            isinstance(actions, list)
+            and actions
+            and all(
+                isinstance(a, dict) and a.get("action") in driver.READ_ACTIONS
+                for a in actions
+            )
+        ):
+            return Subject(
+                key="desktop_browser:read",
+                name="the desktop browser",
+                effect=Effect.READ,
+            )
+        return None
 
     @property
     def is_available(self) -> bool:
@@ -123,10 +154,11 @@ class DesktopBrowserTool(BaseTool):
             async with driver.call_lock(sandbox.sandbox_id, driver.LOCK_HOLD_SECONDS):
                 # Checked under the lock: the snapshot it is checked against
                 # is still the newest when the call runs.
-                parsed = driver.parse_call(
-                    actions, ref_scope, await driver.live_scope(sandbox.sandbox_id)
+                live = await driver.live_scope(sandbox.sandbox_id)
+                parsed = driver.parse_call(actions, ref_scope, live)
+                return await self._run(
+                    user_id, session, sandbox, parsed, (live or {}).get("doc")
                 )
-                return await self._run(user_id, session, sandbox, parsed)
         except driver.CallRefused as refused:
             return ErrorResponse(
                 message=f"Nothing ran: {refused}",
@@ -152,12 +184,25 @@ class DesktopBrowserTool(BaseTool):
         session: ChatSession,
         sandbox: Any,
         actions: list[driver.Action],
+        doc: str | None,
     ) -> ToolResponseBase:
-        session_name = await driver.ensure_browser(sandbox)
         look_path = f"/tmp/otto-look-{secrets.token_hex(6)}.png"
-        groups = [driver.commands_for(a, look_path) for a in actions]
-        receipts = await self._act(sandbox, session_name, actions, groups)
-        observation = await self._observe(sandbox, session_name)
+        # Each ref action first checks the page is the one its snapshot read.
+        groups = [
+            driver.guarded(a, driver.commands_for(a, look_path), doc) for a in actions
+        ]
+        # Refused here, before the browser is touched.
+        driver.batch_payload([c for group in groups for c in group])
+        session_name = await driver.ensure_browser(sandbox)
+        if actions[0].name != "dialog":
+            dialog = await driver.open_dialog(sandbox, session_name)
+            if dialog is not None:
+                return self._blocked(session, actions, dialog)
+        receipts, acted = await self._act(sandbox, session_name, actions, groups)
+        stamp = driver.new_doc_stamp()
+        observation, observed = await self._observe(
+            sandbox, session_name, actions, stamp
+        )
         if observation is None:
             # A snapshot-only call ran no command of its own: it did what it
             # was asked only if the snapshot came back.
@@ -166,11 +211,14 @@ class DesktopBrowserTool(BaseTool):
                     receipt.status, receipt.reason = "unknown", "no_snapshot"
         # Every older ref_scope is void now, whether or not this one came back.
         token = await driver.issue_scope(
-            sandbox.sandbox_id, observation.refs if observation else []
+            sandbox.sandbox_id,
+            observation.refs if observation else [],
+            stamp if observation else None,
         )
         file_id = await self._save_look(
             user_id, session, sandbox, actions, receipts, look_path
         )
+        notes = driver.page_notes(acted, observed)
         ran = sum(r.status == "completed" for r in receipts)
         stopped = next((r for r in receipts if r.status != "completed"), None)
         message = f"Ran {ran} of {len(receipts)} actions."
@@ -179,7 +227,12 @@ class DesktopBrowserTool(BaseTool):
                 f" Stopped at {stopped.action}: {stopped.status} ({stopped.reason})."
             )
         if observation is None:
-            message += " The page could not be read after the call; take a snapshot."
+            message += (
+                " The page could not be read after the call; see page_notes, then "
+                "take a snapshot."
+            )
+        if notes:
+            message += " The page reported something in page_notes."
         receipt_dicts = [r.as_dict() for r in receipts]
         # What the page said: its snapshot, title and URL, and what actions
         # read from it or failed with. The content screen judges these.
@@ -193,14 +246,36 @@ class DesktopBrowserTool(BaseTool):
             from_page += [observation.snapshot, observation.title, observation.url]
         return DesktopBrowserResponse(
             message=message,
-            receipts=receipt_dicts,
+            ref_scope=token if observation else None,
             url=observation.url if observation else "",
             title=observation.title if observation else "",
-            ref_scope=token if observation else None,
+            receipts=receipt_dicts,
+            page_notes=notes,
             snapshot=observation.snapshot if observation else "",
             screenshot_file_id=file_id,
             session_id=session.session_id,
-        ).from_outside(*from_page)
+        ).from_outside(*from_page, *notes)
+
+    def _blocked(
+        self, session: ChatSession, actions: list[driver.Action], dialog: str
+    ) -> DesktopBrowserResponse:
+        """A call that cannot run while the page waits on a dialog: nothing in
+        it started, and the old scope still stands."""
+        return DesktopBrowserResponse(
+            message=(
+                "Nothing ran: a dialog is open on the page (see page_notes). "
+                "Answer it with a dialog action, or ask the user to answer it on "
+                "the desktop."
+            ),
+            receipts=[
+                driver.Receipt(
+                    action=a.name, status="not_started", reason="dialog_open"
+                ).as_dict()
+                for a in actions
+            ],
+            page_notes=[dialog],
+            session_id=session.session_id,
+        ).from_outside(dialog)
 
     async def _act(
         self,
@@ -208,10 +283,10 @@ class DesktopBrowserTool(BaseTool):
         session_name: str,
         actions: list[driver.Action],
         groups: list[list[list[str]]],
-    ) -> list[driver.Receipt]:
-        """Receipts for the call's batch. A batch that failed without telling
-        what ran (a transport error, the time limit) leaves every action
-        ``unknown``: any of them may have run."""
+    ) -> tuple[list[driver.Receipt], list[dict]]:
+        """Receipts for the call's batch, and its entries. A batch that failed
+        without telling what ran (a transport error, the time limit) leaves
+        every action ``unknown``: any of them may have run."""
         try:
             entries = await driver.run_batch(
                 sandbox,
@@ -229,23 +304,37 @@ class DesktopBrowserTool(BaseTool):
             return [
                 driver.Receipt(action=a.name, status="unknown", reason="no_result")
                 for a in actions
-            ]
-        return driver.receipts_for(actions, groups, entries)
+            ], []
+        return driver.receipts_for(actions, groups, entries), entries
 
     async def _observe(
-        self, sandbox: Any, session_name: str
-    ) -> driver.Observation | None:
+        self,
+        sandbox: Any,
+        session_name: str,
+        actions: list[driver.Action],
+        stamp: str,
+    ) -> tuple[driver.Observation | None, list[dict]]:
+        """The page after the call, and the closing read's entries (a
+        dialog's warning, or why it could not be read)."""
+        dialog = await driver.open_dialog(sandbox, session_name)
+        if dialog is not None:
+            # Script in the page would wait on the dialog: no snapshot now.
+            return None, [{"success": False, "error": dialog}]
+        commands = driver.observe_commands(actions, stamp)
+        settled = commands[0][:2] == ["wait", "--load"]
         try:
-            return driver.observation_from(
-                await driver.run_batch(
-                    sandbox, session_name, driver.OBSERVE, bail=False, timeout=30
-                )
+            entries = await driver.run_batch(
+                sandbox, session_name, commands, bail=False, timeout=45
             )
         except LoginChainChanged:
             raise
         except Exception:
             logger.warning("[desktop_browser] could not read the page", exc_info=True)
-            return None
+            return None, []
+        return (
+            driver.observation_from(entries, settled),
+            entries[(1 if settled else 0) :],
+        )
 
     async def _save_look(
         self,
@@ -266,7 +355,22 @@ class DesktopBrowserTool(BaseTool):
             None,
         )
         if look is None:
+            if any(a.name == "look" for a in actions):
+                await driver.remove_file(sandbox, look_path)
             return None
+        try:
+            return await self._store_look(user_id, session, sandbox, look, look_path)
+        finally:
+            await driver.remove_file(sandbox, look_path)
+
+    async def _store_look(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        sandbox: Any,
+        look: driver.Receipt,
+        look_path: str,
+    ) -> str | None:
         try:
             data = await driver.read_screenshot(sandbox, look_path)
         except Exception:

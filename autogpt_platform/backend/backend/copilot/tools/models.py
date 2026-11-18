@@ -1327,10 +1327,14 @@ class DesktopBrowserResponse(ToolResponseBase):
     page is and its snapshot, whose refs are valid only with ``ref_scope``."""
 
     type: ResponseType = ResponseType.DESKTOP_BROWSER
-    receipts: list[dict[str, Any]]
+    # First, so a long response cut short still carries what the next call
+    # needs.
+    ref_scope: str | None = None
     url: str = ""
     title: str = ""
-    ref_scope: str | None = None
+    receipts: list[dict[str, Any]]
+    # What the page put in the way: a dialog, or why it could not be read.
+    page_notes: list[str] = Field(default_factory=list)
     snapshot: str = ""
     screenshot_file_id: str | None = None
 

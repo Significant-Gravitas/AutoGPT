@@ -158,11 +158,10 @@ class TestTranslation:
             Action(name="wait", params={"time_ms": 20_000}),
             Action(name="wait", params={"text": "x", "timeout_ms": 60_000}),
         ]
-        assert call_seconds(actions) == (10_000 + 20_000 + 15_000 + 60_000) // 1000 + 1
-        assert (
-            call_seconds([Action(name="state", params={})] * 20)
-            == driver.MAX_CALL_SECONDS
-        )
+        # Each wait's own time plus 2 s, and 5 s for the batch itself.
+        assert call_seconds(actions) == (20_000 + 2_000 + 60_000 + 2_000) // 1000 + 5
+        # Plain interactions are cheap: twenty of them fit.
+        assert call_seconds([Action(name="state", params={})] * 20) == 105
 
 
 class TestReceipts:
@@ -313,3 +312,315 @@ async def test_a_box_held_too_long_is_reported_busy(monkeypatch):
         async with driver.call_lock("sb-1", 60):
             pass
     assert redis.data == {"copilot:desktop-browser:lock:sb-1": "someone"}
+
+
+# ---------------------------------------------------------------- review fixes
+
+
+class TestBudget:
+    def test_a_call_that_cannot_finish_in_time_is_refused(self):
+        with pytest.raises(CallRefused, match="split it"):
+            parse_call([{"action": "wait", "time_ms": 30_000}] * 7, None, None)
+
+    def test_a_navigation_is_budgeted_past_agent_browsers_load_wait(self):
+        goto = Action(name="goto", params={"url": "https://example.com"})
+        assert call_seconds([goto]) == driver.NAVIGATION_MS // 1000 + 5
+        assert driver.NAVIGATION_MS >= 30_000
+
+    def test_a_long_type_is_budgeted_per_chunk(self):
+        typed = Action(name="type", params={"ref": "@e1", "text": "x" * 1_500})
+        assert (
+            call_seconds([typed]) == (3 * driver.DEFAULT_TIMEOUT_MS + 1_000) // 1000 + 5
+        )
+
+
+class TestTypeAndDialog:
+    def test_type_goes_in_chunks_none_of_them_a_flag(self):
+        assert driver.type_chunks("a" * 1_200) == ["a" * 500, "a" * 500, "a" * 200]
+        tail = "a" * 500 + "--clear"
+        assert driver.type_chunks(tail) == [tail]
+        typed = commands_for(
+            Action(name="type", params={"ref": "@e1", "text": "b" * 501}), "/x"
+        )
+        assert typed == [["type", "@e1", "b" * 500], ["type", "@e1", "b"]]
+
+    @pytest.mark.parametrize("text", ["--clear", "--delay"])
+    def test_type_refuses_text_agent_browser_reads_as_a_flag(self, text):
+        with pytest.raises(CallRefused, match="use fill"):
+            parse_call([{"action": "type", "ref": "e1", "text": text}], "tok", _LIVE)
+
+    def test_type_is_capped_and_fill_is_not(self):
+        long = "x" * (driver.MAX_TYPE_TEXT + 1)
+        with pytest.raises(CallRefused):
+            parse_call([{"action": "type", "ref": "e1", "text": long}], "tok", _LIVE)
+        parse_call([{"action": "fill", "ref": "e1", "text": long}], "tok", _LIVE)
+
+    def test_dialog_answers(self):
+        accept = parse_call(
+            [{"action": "dialog", "answer": "accept", "text": "yes"}], None, None
+        )
+        assert commands_for(accept[0], "/x") == [["dialog", "accept", "yes"]]
+        dismiss = parse_call([{"action": "dialog", "answer": "dismiss"}], None, None)
+        assert commands_for(dismiss[0], "/x") == [["dialog", "dismiss"]]
+        with pytest.raises(CallRefused, match="only for accept"):
+            parse_call(
+                [{"action": "dialog", "answer": "dismiss", "text": "x"}], None, None
+            )
+
+
+class TestThePageCheck:
+    """Each ref action checks the page is the document its snapshot stamped."""
+
+    _CLICK = Action(name="click", params={"ref": "@e1"})
+
+    def test_only_ref_actions_are_checked_and_only_once_a_stamp_exists(self):
+        commands = commands_for(self._CLICK, "/x")
+        checked = driver.guarded(self._CLICK, commands, "stamp")
+        assert driver.is_guard(checked[0]) and checked[1:] == commands
+        assert '"stamp"' in checked[0][2]
+        assert driver.guarded(self._CLICK, commands, None) == commands
+        goto = Action(name="goto", params={"url": "https://example.com"})
+        assert driver.guarded(goto, [["open", "https://example.com"]], "stamp") == [
+            ["open", "https://example.com"]
+        ]
+
+    def test_a_changed_page_stops_the_call_before_the_ref_action(self):
+        """A click that navigated left the next ref on a new document."""
+        second = Action(name="click", params={"ref": "@e2"})
+        groups = [
+            driver.guarded(self._CLICK, commands_for(self._CLICK, "/x"), "stamp"),
+            driver.guarded(second, commands_for(second, "/x"), "stamp"),
+        ]
+        entries = [_ok(), _ok(), _fail("Timeout 1000ms exceeded waiting for function")]
+        first, then = receipts_for([self._CLICK, second], groups, entries)
+        assert first.status == "completed"
+        assert (then.status, then.reason) == ("not_started", "page_changed")
+
+    def test_a_miss_after_a_passed_check_did_not_start(self):
+        groups = [driver.guarded(self._CLICK, commands_for(self._CLICK, "/x"), "stamp")]
+        (receipt,) = receipts_for(
+            [self._CLICK], groups, [_ok(), _fail("Unknown ref: @e1")]
+        )
+        assert (receipt.status, receipt.reason) == ("not_started", "stale_ref")
+
+    def test_the_closing_read_settles_after_a_click_and_stamps_last(self):
+        commands = driver.observe_commands([self._CLICK], "stamp")
+        assert commands[0][:3] == ["wait", "--load", "networkidle"]
+        assert commands[1:4] == OBSERVE
+        assert commands[-1][0] == "eval" and '"stamp"' in commands[-1][1]
+        reads = driver.observe_commands([Action(name="state", params={})], "stamp")
+        assert reads[:3] == OBSERVE
+
+    def test_a_settle_that_timed_out_does_not_spoil_the_read(self):
+        entries = [
+            _fail("Timeout waiting for networkidle"),
+            _ok({"url": "https://a.example/"}),
+            _ok({"title": "A"}),
+            _ok({"snapshot": "- button [ref=e1]", "refs": {"e1": {}}}),
+            _ok(),
+        ]
+        observed = observation_from(entries, settled=True)
+        assert observed is not None and observed.refs == ["e1"]
+
+
+class TestReceiptAnchors:
+    """agent-browser 0.37.1's own strings, the receipts depend on them."""
+
+    @pytest.mark.parametrize(
+        "error, reason",
+        [
+            ("Unknown ref: @e9", "stale_ref"),
+            ("Element not found: @e9", "not_found"),
+            ("Element not found in the selected frame: iframe#f", "not_found"),
+            ("No element found: getByRole('button')", "not_found"),
+            ("No element found by css 'x'", "not_found"),
+        ],
+    )
+    def test_a_locator_miss_did_not_start(self, error, reason):
+        click = Action(name="click", params={"ref": "@e9"})
+        (receipt,) = receipts_for([click], [commands_for(click, "/x")], [_fail(error)])
+        assert (receipt.status, receipt.reason) == ("not_started", reason)
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            "Session with given id not found",
+            "Frame was detached: node not found",
+            "Element is not visible",
+        ],
+    )
+    def test_anything_else_may_have_run(self, error):
+        click = Action(name="click", params={"ref": "@e9"})
+        (receipt,) = receipts_for([click], [commands_for(click, "/x")], [_fail(error)])
+        assert receipt.status == "unknown"
+
+
+class TestPageNotes:
+    def test_dialog_warnings_and_why_the_read_failed_not_action_errors(self):
+        acted = [_fail("Unknown ref: @e1"), _ok({"warning": "confirm: Leave?"})]
+        observed = [_fail("A JavaScript confirm dialog is blocking the page")]
+        assert driver.page_notes(acted, observed) == [
+            "confirm: Leave?",
+            "A JavaScript confirm dialog is blocking the page",
+        ]
+
+
+class TestBatchSize:
+    def test_text_travels_unescaped_and_an_oversized_batch_is_refused(self):
+        japanese = "日本語" * 3_000
+        payload = driver.batch_payload([["fill", "@e1", japanese]])
+        assert japanese in payload
+        with pytest.raises(CallRefused, match="too long"):
+            driver.batch_payload([["fill", "@e1", "x" * driver.MAX_BATCH_BYTES]])
+
+
+# ---------------------------------------------------------------- the box
+
+
+class _Box:
+    """Records what runs in the box; *answers* maps a command fragment to its
+    stdout, or to an exception to raise."""
+
+    def __init__(self, answers: dict[str, object]):
+        self.sandbox_id = "sb-1"
+        self.answers = answers
+        self.ran: list[tuple[str, dict]] = []
+
+    async def run(self, sandbox, command, **kwargs):
+        self.ran.append((command, kwargs))
+        for fragment, answer in self.answers.items():
+            if fragment in command:
+                if isinstance(answer, BaseException):
+                    raise answer
+                return type("R", (), {"stdout": answer})()
+        return type("R", (), {"stdout": ""})()
+
+
+class _Failed(Exception):
+    def __init__(self, stdout: str):
+        super().__init__("exit 1")
+        self.stdout = stdout
+
+
+@pytest.fixture
+def box(monkeypatch):
+    def make(answers):
+        fake = _Box(answers)
+        monkeypatch.setattr(driver, "run_internal", fake.run)
+        return fake
+
+    return make
+
+
+class TestTheBox:
+    @pytest.mark.asyncio
+    async def test_a_running_chrome_reuses_the_recorded_session(self, box):
+        fake = box({"cat /tmp/otto-browser.session": "otto-0123456789ab"})
+        assert await driver.ensure_browser(fake) == "otto-0123456789ab"
+        commands = [c for c, _ in fake.ran]
+        assert not any("google-chrome" in c for c in commands)
+        assert not any("rm -f /tmp/otto-browser.session" in c for c in commands)
+
+    @pytest.mark.asyncio
+    async def test_a_closed_chrome_is_started_with_a_fresh_session_and_tab(self, box):
+        fake = box(
+            {
+                "json/version >/dev/null\n": _Failed(""),
+                "curl -sf --max-time 2 http://127.0.0.1:9222/json/version >/dev/null": None,
+                "cat /tmp/otto-browser.session": "otto-0123456789ab",
+            }
+        )
+        # The first probe fails, Chrome is started, and the wait loop passes.
+        calls = {"n": 0}
+        original = fake.run
+
+        async def run(sandbox, command, **kwargs):
+            if command.startswith("curl -sf"):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    fake.ran.append((command, kwargs))
+                    raise _Failed("")
+            return await original(sandbox, command, **kwargs)
+
+        driver.run_internal = run  # type: ignore[assignment]
+        assert await driver.ensure_browser(fake) == "otto-0123456789ab"
+        commands = [c for c, _ in fake.ran]
+        assert any(c.startswith("google-chrome") for c in commands)
+        assert any(c.startswith("rm -f /tmp/otto-browser.session") for c in commands)
+        tab = next(kw for c, kw in fake.ran if "tab new" in c)
+        assert tab["envs"] == driver._AB_ENVS
+
+    @pytest.mark.asyncio
+    async def test_chrome_that_never_listens_is_unavailable(self, box):
+        fake = box({"curl -sf": _Failed(""), "for i in": _Failed("")})
+        with pytest.raises(driver.BrowserUnavailable, match="did not start"):
+            await driver.ensure_browser(fake)
+
+    @pytest.mark.asyncio
+    async def test_a_failed_install_says_what_npm_said(self, box):
+        fake = box(
+            {
+                "agent-browser --version": _Failed(""),
+                "npm install": _Failed("npm ERR! network request failed\n"),
+            }
+        )
+        with pytest.raises(driver.BrowserUnavailable, match="network request failed"):
+            await driver.ensure_browser(fake)
+
+    @pytest.mark.asyncio
+    async def test_a_session_that_cannot_be_recorded_is_unavailable(self, box):
+        fake = box({"cat /tmp/otto-browser.session": "garbage"})
+        with pytest.raises(driver.BrowserUnavailable, match="session"):
+            await driver._session(fake, fresh=False)
+
+    @pytest.mark.asyncio
+    async def test_the_batch_dies_with_its_deadline_in_the_box(self, box):
+        fake = box({"batch": json.dumps([_ok()])})
+        await driver.run_batch(
+            fake, "otto-0123456789ab", [["get", "url"]], bail=True, timeout=40
+        )
+        command, kwargs = fake.ran[-1]
+        assert "timeout -k 2 40 agent-browser" in command
+        assert kwargs["timeout"] == 45
+        assert kwargs["envs"]["OTTO_BATCH"] == '[["get", "url"]]'
+        assert {k: kwargs["envs"][k] for k in driver._AB_ENVS} == driver._AB_ENVS
+
+    @pytest.mark.asyncio
+    async def test_a_failed_batch_still_gives_its_entries(self, box):
+        fake = box({"batch": _Failed(json.dumps([_ok(), _fail("Unknown ref: @e1")]))})
+        entries = await driver.run_batch(
+            fake, "otto-0123456789ab", [["a"], ["b"]], bail=True, timeout=10
+        )
+        assert [e["success"] for e in entries] == [True, False]
+
+    @pytest.mark.asyncio
+    async def test_a_lost_tab_is_bound_anew_and_the_batch_run_again(self, box):
+        answers = iter(
+            [json.dumps([_fail("tab gone", code="tab_gone")]), json.dumps([_ok()])]
+        )
+        fake = box({})
+
+        async def run(sandbox, command, **kwargs):
+            fake.ran.append((command, kwargs))
+            if "batch" in command:
+                return type("R", (), {"stdout": next(answers)})()
+            return type("R", (), {"stdout": ""})()
+
+        driver.run_internal = run  # type: ignore[assignment]
+        entries = await driver.run_batch(
+            fake, "otto-0123456789ab", [["get", "url"]], bail=True, timeout=10
+        )
+        assert entries == [_ok()]
+        commands = [c for c, _ in fake.ran]
+        assert sum("batch" in c for c in commands) == 2
+        assert any("tab new" in c for c in commands)
+
+    @pytest.mark.asyncio
+    async def test_an_open_dialog_is_read_from_agent_browser_not_the_page(self, box):
+        status = {"hasDialog": True, "type": "confirm", "message": "Leave?"}
+        fake = box({"batch": json.dumps([_ok(status)])})
+        note = await driver.open_dialog(fake, "otto-0123456789ab")
+        assert note is not None and "confirm" in note and '"Leave?"' in note
+        assert '[["dialog", "status"]]' == fake.ran[-1][1]["envs"]["OTTO_BATCH"]
+        fake.answers["batch"] = json.dumps([_ok({"hasDialog": False})])
+        assert await driver.open_dialog(fake, "otto-0123456789ab") is None
