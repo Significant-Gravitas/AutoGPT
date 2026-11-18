@@ -17,6 +17,13 @@ from backend.util.architecture_test import (
 # validated value comes from the request.
 
 _VALIDATION_ERROR_HELPER = "api/utils/validation_errors.py"
+_BOUNDED_READERS = frozenset(
+    {
+        "bounded_validation_errors",
+        "loggable_validation_errors",
+        "describe_validation_error",
+    }
+)
 # pydantic's and FastAPI's own. Our `GraphValidationError` carries a body we
 # build, and is not one of these.
 _VALIDATION_ERROR_NAMES = frozenset({"ValidationError", "RequestValidationError"})
@@ -50,9 +57,9 @@ def test_api_reads_validation_errors_only_through_the_bounded_helper():
         "A validation error's detail is read only by "
         f"`backend/{_VALIDATION_ERROR_HELPER}`, which caps how many errors it "
         "reports and how long each string is. Pass the exception to "
-        "`bounded_validation_errors(exc)` instead of calling `.errors()` on it "
-        "or rendering it, or its traceback, into a log line:\n"
-        + "\n".join(sorted(offenders))
+        "`bounded_validation_errors(exc)`, or `loggable_validation_errors(exc)` "
+        "for a log line, instead of calling `.errors()` on it or rendering it, "
+        "or its traceback, into a log line:\n" + "\n".join(sorted(offenders))
     )
 
 
@@ -139,12 +146,11 @@ def _logs_a_traceback(call: ast.Call) -> bool:
 
 
 def _unbounded_uses(scope: ast.AST, name: str) -> list[ast.Name]:
-    """Loads of `name` other than `bounded_validation_errors(name)`/`raise … from name`."""
+    """Loads of `name` other than a bounded reader's argument/`raise … from name`."""
     bounded = {
         id(argument)
         for node in ast.walk(scope)
-        if isinstance(node, ast.Call)
-        and _decorator_name(node.func) == "bounded_validation_errors"
+        if isinstance(node, ast.Call) and _decorator_name(node.func) in _BOUNDED_READERS
         for argument in node.args
     } | {
         id(node.cause)

@@ -31,6 +31,7 @@ from backend.monitoring.instrumentation import (
     start_metrics_server,
     update_websocket_connections,
 )
+from backend.util.request_credentials import remember_request_credentials
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 
@@ -61,6 +62,8 @@ async def lifespan(app: FastAPI):
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
+# Keeps each connection's credentials for the error reports raised handling it.
+remember_request_credentials(app)
 _connection_manager = None
 
 # Add Prometheus instrumentation. The metrics are served by WebsocketServer.run

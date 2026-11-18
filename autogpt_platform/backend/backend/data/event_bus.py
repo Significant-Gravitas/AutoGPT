@@ -6,8 +6,9 @@ from asyncio import sleep
 from contextlib import aclosing
 from typing import Any, AsyncGenerator, Generic, Optional, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
+from backend.api.utils.validation_errors import describe_validation_error
 from backend.data import redis_client as redis
 from backend.data.sharded_pubsub import EventStreamLostError, ShardedSubscription
 from backend.util import json
@@ -49,6 +50,11 @@ class BaseRedisEventBus(Generic[M], ABC):
     def Message(self) -> type["_EventPayloadWrapper[M]"]:
         return _EventPayloadWrapper[self.Model]
 
+    def _loggable_key(self, channel_key: str) -> str:
+        """``channel_key`` as the logs show it: a bus whose keys name a
+        credential masks it."""
+        return channel_key
+
     def _serialize_message(self, item: M, channel_key: str) -> tuple[str, str]:
         MAX_MESSAGE_SIZE = config.max_message_size_limit
 
@@ -63,14 +69,16 @@ class BaseRedisEventBus(Generic[M], ABC):
                 self.Message(payload=item), ensure_ascii=True, separators=(",", ":")
             )
             logger.warning(
-                f"Unicode serialization failed, falling back to ASCII for channel {channel_key}"
+                "Unicode serialization failed, falling back to ASCII for channel "
+                f"{self._loggable_key(channel_key)}"
             )
 
         # Check message size and truncate if necessary
         message_size = len(message.encode("utf-8"))
         if message_size > MAX_MESSAGE_SIZE:
             logger.warning(
-                f"Message size {message_size} bytes exceeds limit {MAX_MESSAGE_SIZE} bytes for channel {channel_key}. "
+                f"Message size {message_size} bytes exceeds limit {MAX_MESSAGE_SIZE} "
+                f"bytes for channel {self._loggable_key(channel_key)}. "
                 "Truncating payload to prevent Redis connection issues."
             )
             error_payload = {
@@ -86,18 +94,35 @@ class BaseRedisEventBus(Generic[M], ABC):
             )
 
         channel_name = f"{self.event_bus_name}/{channel_key}"
-        logger.debug(f"[{channel_name}] Publishing an event to Redis {message}")
+        # Not the event itself, which can hold user data and credentials.
+        logger.debug(
+            "[%s/%s] Publishing an event to Redis (%d chars)",
+            self.event_bus_name,
+            self._loggable_key(channel_key),
+            len(message),
+        )
         return message, channel_name
 
     def _deserialize_message(self, msg: Any, channel_key: str) -> M | None:
         # Accept sharded (smessage) and classic (message/pmessage) deliveries.
         if msg["type"] not in ("smessage", "message", "pmessage"):
             return None
+        channel = self._loggable_key(channel_key)
         try:
-            logger.debug(f"[{channel_key}] Consuming an event from Redis {msg['data']}")
+            logger.debug(
+                "[%s] Consuming an event from Redis (%d chars)",
+                channel,
+                len(msg["data"]),
+            )
             return self.Message.model_validate_json(msg["data"]).payload
         except Exception as e:
-            logger.error(f"Failed to parse event result from Redis {msg} {e}")
+            # Neither the event nor pydantic's message, which quotes it.
+            reason = (
+                describe_validation_error(e)
+                if isinstance(e, ValidationError)
+                else type(e).__name__
+            )
+            logger.error(f"Failed to parse an event from Redis [{channel}]: {reason}")
 
     def _build_channel_name(self, channel_key: str) -> str:
         return f"{self.event_bus_name}/{channel_key}"
@@ -121,7 +146,10 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
             cluster = redis.get_redis()
             cluster.execute_command("SPUBLISH", full_channel_name, message)
         except Exception:
-            logger.exception(f"Failed to publish event to Redis channel {channel_key}")
+            logger.exception(
+                "Failed to publish event to Redis channel "
+                f"{self._loggable_key(channel_key)}"
+            )
 
 
 class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
@@ -144,7 +172,10 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
             # redis-py 6.x async cluster has no spublish(); execute_command handles MOVED.
             await cluster.execute_command("SPUBLISH", full_channel_name, message)
         except Exception:
-            logger.exception(f"Failed to publish event to Redis channel {channel_key}")
+            logger.exception(
+                "Failed to publish event to Redis channel "
+                f"{self._loggable_key(channel_key)}"
+            )
 
     async def listen_events(self, channel_key: str) -> AsyncGenerator[M, None]:
         """Yield the channel's events from one subscription.

@@ -5,6 +5,7 @@ from pydantic import JsonValue
 
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.settings import Config
+from backend.util.url_redaction import mask_credential
 
 from . import get_webhook_manager, supports_webhooks
 
@@ -63,8 +64,11 @@ async def setup_webhook_for_block(
             "for which we do not have a WebhooksManager"
         )
 
+    # The inputs' names only: a trigger's inputs can hold a secret of the user's.
     logger.debug(
-        f"Setting up webhook for block #{trigger_block.id} with config {trigger_config}"
+        "Setting up webhook for block #%s with inputs %s",
+        trigger_block.id,
+        sorted(trigger_config),
     )
 
     # Check & parse the event filter input, if any
@@ -100,9 +104,7 @@ async def setup_webhook_for_block(
                 f"Cannot auto-setup {provider.value} webhook without resource: "
                 f"missing input for '{missing_key}'"
             )
-        logger.debug(
-            f"Constructed resource string {resource} from input {trigger_config}"
-        )
+        logger.debug("Constructed resource string %s", resource)
 
         creds_field_name = next(
             # presence of this field is enforced in Block.__init__
@@ -155,7 +157,14 @@ async def setup_webhook_for_block(
             organization_id=organization_id,
             team_id=team_id,
         )
-    logger.debug(f"Acquired webhook: {webhook}")
+    # Not the webhook itself: its ID is the credential in its ingress URL, and
+    # its secret signs deliveries.
+    logger.debug(
+        "Acquired webhook #%s (%s %s)",
+        mask_credential(webhook.id),
+        webhook.provider.value,
+        webhook.webhook_type,
+    )
     return webhook, None
 
 

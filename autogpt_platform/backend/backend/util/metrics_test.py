@@ -270,6 +270,31 @@ def test_before_send_filters_a_jwt_wherever_its_run_starts(
     assert (scrubbed["logentry"]["formatted"] == "[Filtered]") is filtered
 
 
+@pytest.mark.parametrize("name", metrics._SECRET_NAMES)
+def test_before_send_filters_a_secret_under_its_name_however_it_is_spelled(
+    name: str,
+) -> None:
+    for spelled in (name, name.upper(), name.title(), name.replace("_", "-")):
+        for assignment in (f"{spelled}=hunter22", f'"{spelled}": "hunter22"'):
+            message = f"Request failed with {assignment}"
+            scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
+            assert scrubbed is not None
+            assert scrubbed["logentry"]["formatted"] == "[Filtered]", assignment
+
+
+@pytest.mark.parametrize("unset", ["None", "null", "''", '""'])
+def test_before_send_keeps_a_repr_whose_secret_fields_are_unset(unset: str) -> None:
+    """A model's repr shows every field, the unset ones too."""
+    message = f"Preset(id='p-1', webhook_id={unset}, share_token={unset})"
+    scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
+    assert scrubbed is not None
+    assert scrubbed["logentry"]["formatted"] == message
+    held = f"Preset(id='p-1', webhook_id={unset}, secret='hunter22')"
+    scrubbed = _before_send(_log_event("backend.api.rest_api", held), {})
+    assert scrubbed is not None
+    assert scrubbed["logentry"]["formatted"] == "[Filtered]"
+
+
 def test_before_send_scans_a_run_of_jwt_starts_in_linear_time() -> None:
     message = "-eyJ" * 20_000
     started = time.perf_counter()
@@ -349,6 +374,25 @@ def test_before_send_spends_its_budget_on_the_newest_entries(put, read) -> None:
     first_kept = next(i for i, value in enumerate(values) if value != "[Filtered]")
     assert values[first_kept:] == chunks[first_kept:]
     assert set(values[:first_kept]) == {"[Filtered]"}
+
+
+def test_before_send_transaction_keeps_every_span_id_past_its_budget() -> None:
+    """A trace whose span IDs were filtered would fall apart in Sentry."""
+    description = "x" * metrics._SENTRY_MAX_VALUE_LENGTH
+    count = metrics._SENTRY_SCRUB_BUDGET // len(description) + 5
+    ids = [f"{index:016x}" for index in range(count)]
+    spans = [
+        {"span_id": span_id, "parent_span_id": "b" * 16, "description": description}
+        for span_id in ids
+    ]
+    event = {"type": "transaction", "spans": spans, "contexts": {"trace": {}}}
+
+    scrubbed = metrics._before_send_transaction(event, {})
+
+    assert [span["span_id"] for span in scrubbed["spans"]] == ids
+    assert {span["parent_span_id"] for span in scrubbed["spans"]} == {"b" * 16}
+    descriptions = {span["description"] for span in scrubbed["spans"]}
+    assert descriptions == {description, "[Filtered]"}
 
 
 def test_before_send_keeps_untyped_balance_message() -> None:

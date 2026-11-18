@@ -1,0 +1,65 @@
+"""The credentials a request carries, kept for the error reports raised while it
+is handled.
+
+Sentry's SDK masks the session cookie and ``Authorization`` in an event's
+request data, but not the copies a route makes of them, such as a header's
+value in a variable of its own, which the event carries with every frame's
+variables. So each service's app keeps the credentials in a request's URL and
+headers as it arrives, and the scrubber in ``backend.util.metrics`` masks each
+of them wherever it turns up in an event raised while handling it.
+"""
+
+from contextvars import ContextVar
+
+from starlette.applications import Starlette
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+from backend.util.url_redaction import credentials_in_headers, credentials_in_url
+
+# Each is searched for in every string of an event, so their number is capped.
+MAX_REQUEST_CREDENTIALS = 16
+
+_request_credentials: ContextVar[tuple[str, ...]] = ContextVar(
+    "request_credentials", default=()
+)
+
+
+def remember_request_credentials(app: Starlette) -> None:
+    """Keep each request's credentials while ``app`` handles it."""
+    app.add_middleware(RequestCredentialsMiddleware)
+
+
+def request_credentials() -> tuple[str, ...]:
+    """The credentials of the request being handled, longest first."""
+    return _request_credentials.get()
+
+
+def longest_first(credentials: set[str]) -> tuple[str, ...]:
+    """At most ``MAX_REQUEST_CREDENTIALS``, longest first, so that one holding
+    another is masked whole."""
+    return tuple(sorted(credentials, key=len, reverse=True)[:MAX_REQUEST_CREDENTIALS])
+
+
+class RequestCredentialsMiddleware:
+    """Keeps each HTTP request's and WebSocket connection's credentials while
+    the app it wraps handles it."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] in ("http", "websocket"):
+            # Never reset: an error is reported after the request's middleware
+            # has returned, and the value lives in the request's own task.
+            _request_credentials.set(_credentials_in_scope(scope))
+        await self.app(scope, receive, send)
+
+
+def _credentials_in_scope(scope: Scope) -> tuple[str, ...]:
+    headers = [
+        (name.decode("latin-1"), value.decode("latin-1"))
+        for name, value in scope.get("headers", ())
+    ]
+    query = scope.get("query_string", b"").decode("latin-1")
+    target = f"{scope.get('path', '')}?{query}"
+    return longest_first(credentials_in_headers(headers) | credentials_in_url(target))

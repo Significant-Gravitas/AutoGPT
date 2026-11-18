@@ -45,6 +45,7 @@ from backend.integrations.webhooks.github import GithubWebhooksManager
 from backend.integrations.webhooks.utils import setup_webhook_for_block
 from backend.util import metrics
 from backend.util.logging_test_helpers import CapturingTransport, serve
+from backend.util.request_credentials import RequestCredentialsMiddleware
 from backend.util.service import AppService
 from backend.util.url_redaction import REDACTED
 
@@ -63,10 +64,6 @@ TRIGGER_SECRET = "tr4Gv8Nk2Yw6Qs9Lp3Xd7Mh1"
 # traceback while its frame holds the header's value.
 _UNCOMPARABLE_SECRET = "sécret"
 _GEMINI_MODELS = "https://generativelanguage.googleapis.com/v1beta/models"
-
-pytestmark = pytest.mark.xfail(
-    reason="Request credentials still reach error reports and logs", strict=True
-)
 
 
 class Limits(BaseModel):
@@ -103,7 +100,13 @@ async def test_sentry_gets_no_credential_from_a_failing_routes_variables(
         )
     assert (shared.status_code, ingress.status_code) == (500, 403)
 
-    for credential in (SHARE_TOKEN, WEBHOOK_ID, TELEGRAM_SECRET_TOKEN, SESSION_COOKIE):
+    # A webhook's ID is shown by its first 8 characters, as the logs show it.
+    for credential in (
+        SHARE_TOKEN,
+        WEBHOOK_ID[8:],
+        TELEGRAM_SECRET_TOKEN,
+        SESSION_COOKIE,
+    ):
         assert not _leaks(credential, sentry.payload)
     # The frames are still sent, with only the credentials masked.
     variables = _frame_variables(sentry.events)
@@ -157,6 +160,19 @@ async def test_a_credential_header_copied_into_any_variable_is_masked(
     assert variables["body"].endswith(f"... ({len(long_body):,} long)")
     assert not _leaks(API_KEY, variables["body"])
     assert f"key: {REDACTED}" in variables["body"]
+
+
+def test_every_service_app_keeps_its_requests_credentials() -> None:
+    """One that doesn't sends the copies its routes make of them unmasked."""
+
+    class Service(AppService):
+        @classmethod
+        def get_port(cls) -> int:
+            return 0
+
+    for app in (rest_api.app, ws_api.app, Service().build_fastapi_app()):
+        middleware = {entry.cls for entry in app.user_middleware}
+        assert RequestCredentialsMiddleware in middleware, app
 
 
 # --- 2. Internal RPC and REST errors ------------------------------------------
@@ -377,6 +393,41 @@ async def test_setting_up_a_webhook_logs_no_secret_or_ingress_credential(
         assert line in logs
 
 
+@pytest.mark.parametrize("log_level", ["DEBUG"])
+def test_the_event_bus_logs_an_events_size_not_the_event(
+    service_output: io.StringIO, log_level: str
+) -> None:
+    bus = integrations_db.WebhookEventBus()
+    channel = f"{WEBHOOK_ID}/push"
+    event = integrations_db.WebhookEvent(
+        provider="github",
+        webhook_id=WEBHOOK_ID,
+        event_type="push",
+        payload={"token": API_KEY},
+    )
+
+    message, _ = bus._serialize_message(event, channel)
+    assert bus._deserialize_message({"type": "smessage", "data": message}, channel)
+    # One this release can't read, such as another release's.
+    unreadable = message.replace('"event_type":"push"', '"event_type":1')
+    assert not bus._deserialize_message(
+        {"type": "smessage", "data": unreadable}, channel
+    )
+
+    logs = service_output.getvalue()
+    assert not _leaks(API_KEY, logs)
+    assert not _leaks(WEBHOOK_ID[8:], logs)
+    for line in (
+        f"[webhooks/{WEBHOOK_ID[:8]}.../push] Publishing an event to Redis "
+        f"({len(message)} chars)",
+        f"[{WEBHOOK_ID[:8]}.../push] Consuming an event from Redis",
+        f"Failed to parse an event from Redis [{WEBHOOK_ID[:8]}.../push]: "
+        "1 validation error for ",
+        "'loc': ['payload', 'event_type']",
+    ):
+        assert line in logs
+
+
 # --- 4. WebSocket handshake headers -------------------------------------------
 
 
@@ -483,7 +534,7 @@ async def test_a_credential_used_as_a_key_is_masked(
     [crumb] = [
         crumb["data"]
         for crumb in error["breadcrumbs"]["values"]
-        if crumb.get("category") == "httpx"
+        if crumb.get("type") == "http"
     ]
     assert crumb["http.query"] == f"{REDACTED}={REDACTED}"
 

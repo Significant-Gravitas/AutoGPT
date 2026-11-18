@@ -55,6 +55,7 @@ from backend.util.models import Pagination
 from backend.util.product_analytics import track_listing_added_to_library
 from backend.util.settings import Config
 from backend.util.text_limits import MAX_INSTRUCTIONS_LENGTH, MAX_LONG_NAME_LENGTH
+from backend.util.url_redaction import mask_credential
 
 from . import model as library_model
 from ._add_to_library import (
@@ -1346,10 +1347,12 @@ async def _cleanup_webhooks_for_graph(graph_id: str, user_id: str) -> None:
             await integrations_db.unlink_webhook_from_graph(
                 webhook_id=webhook.id, graph_id=graph_id, user_id=user_id
             )
-            logger.info(f"Unlinked webhook {webhook.id} from graph {graph_id}")
+            logger.info(
+                f"Unlinked webhook {mask_credential(webhook.id)} from graph {graph_id}"
+            )
         except Exception:
             logger.exception(
-                f"Failed to unlink webhook {webhook.id} from graph {graph_id}"
+                f"Failed to unlink webhook {mask_credential(webhook.id)} from graph {graph_id}"
             )
 
 
@@ -2408,7 +2411,7 @@ async def create_preset(
     if webhook_id:
         webhook = await integrations_db.get_webhook(webhook_id)
         if webhook.user_id != user_id:
-            raise NotFoundError(f"Webhook #{webhook_id} not found")
+            raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
 
     if expert_id:
         organization_id, team_id = await _resolve_private_expert_tenancy_or_not_found(
@@ -2420,7 +2423,7 @@ async def create_preset(
             webhook.organization_id,
             webhook.team_id,
         ) != (organization_id, team_id):
-            raise NotFoundError(f"Webhook #{webhook_id} not found")
+            raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
     else:
         organization_id, team_id = await resolve_member_tenancy(
             user_id, graph.organization_id, graph.team_id
@@ -2744,7 +2747,7 @@ async def set_preset_webhook(
     if webhook_id:
         webhook = await integrations_db.get_webhook(webhook_id)
         if webhook.user_id != user_id:
-            raise NotFoundError(f"Webhook #{webhook_id} not found")
+            raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
         if current.expertId:
             organization_id, team_id = (
                 await _resolve_private_expert_tenancy_or_not_found(
@@ -2757,7 +2760,7 @@ async def set_preset_webhook(
                 organization_id,
                 team_id,
             ):
-                raise NotFoundError(f"Webhook #{webhook_id} not found")
+                raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
             update_data["organizationId"] = organization_id
             update_data["teamId"] = team_id
 
