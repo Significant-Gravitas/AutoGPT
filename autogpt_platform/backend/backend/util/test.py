@@ -4,6 +4,7 @@ import logging
 import time
 import uuid
 from typing import Sequence, cast
+from unittest.mock import patch
 
 from autogpt_libs.auth import get_user_id
 
@@ -120,11 +121,8 @@ async def execute_block_test(block: Block):
     async def no_review(input_data: BlockInput, **_kwargs) -> tuple[bool, BlockInput]:
         return False, input_data
 
-    setattr(block, "is_block_exec_need_review", no_review)
-    try:
+    with patch.object(block, "is_block_exec_need_review", no_review):
         await _run_block_test(block)
-    finally:
-        delattr(block, "is_block_exec_need_review")
 
 
 async def _run_block_test(block: Block):

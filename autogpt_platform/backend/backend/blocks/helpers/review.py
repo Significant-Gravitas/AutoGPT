@@ -67,6 +67,11 @@ class HITLReviewHelper:
                 [node_exec_id], user_id
             )
         except Exception as e:
+            logger.warning(
+                f"Could not read the review saved for step {node_exec_id}; "
+                "it does not run",
+                exc_info=True,
+            )
             raise RuntimeError(
                 f"Could not read the review saved for step {node_exec_id}, "
                 "so it did not run"

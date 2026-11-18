@@ -9,12 +9,16 @@ import pytest
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
 from backend.blocks.google.docs import GoogleDocsShareBlock
-from backend.blocks.helpers.review import HITLReviewHelper
+from backend.blocks.helpers.review import SAFE_MODE_OFF_MESSAGE, HITLReviewHelper
 from backend.blocks.medium import PublishToMediumBlock
 from backend.copilot.gate import Ruling
 from backend.data.execution import ExecutionContext, ExecutionStatus
 from backend.data.human_review import ReviewResult, ReviewStatus
-from backend.util.exceptions import BlockExecutionError
+from backend.util.exceptions import (
+    BlockExecutionError,
+    BlockInputError,
+    BlockUnknownError,
+)
 from backend.util.test import execute_block_test
 
 
@@ -371,6 +375,11 @@ async def test_a_steps_own_review_decides_it_whatever_the_safe_mode(
             assert decision.review_result.data == (
                 _EDITED if outcome == "runs_approved" else _INPUT
             )
+        if stored is None:
+            assert decision.message == (
+                _APPROVE_FUTURE.message if ask else SAFE_MODE_OFF_MESSAGE
+            )
+    assert stubs["check_approval"].await_count == int(ask and stored is None)
     stubs["get_or_create_human_review"].assert_not_awaited()
     marked = stubs["update_review_processed_status"]
     if outcome in ("runs_approved", "stops") and not processed:
@@ -434,6 +443,70 @@ def test_an_approval_never_replaces_the_runs_credentials():
 
 def _login(login_id: str, provider: str = "discord") -> dict:
     return {"id": login_id, "provider": provider, "type": "api_key", "title": "x"}
+
+
+_POST = {"title": "Launch", "content": "Body", "publish_status": "bogus"}
+
+
+async def test_a_step_nobody_reviewed_runs_on_its_own_input_untouched():
+    """With the safe mode off and no review, the gate hands the run's own input
+    back as it is, never coerced again: a value coercion can't convert stays
+    for the block's own input check, not an error from the gate."""
+    own = {**_POST, "credentials": _login("this-runs-login", "medium")}
+    _, patches = _pause()
+    for p in patches:
+        p.start()
+    try:
+        paused, data = await PublishToMediumBlock().is_block_exec_need_review(
+            own,
+            user_id="u1",
+            node_id="n-1",
+            node_exec_id="ne-1",
+            graph_exec_id="ge-1",
+            graph_id="g-1",
+            graph_version=1,
+            execution_context=ExecutionContext(
+                user_id="u1", graph_exec_id="ge-1", sensitive_action_safe_mode=False
+            ),
+        )
+    finally:
+        for p in patches:
+            p.stop()
+
+    assert not paused
+    assert data == own
+
+
+def test_an_approved_value_that_cannot_be_converted_is_an_input_error():
+    own = {**_POST, "publish_status": "draft"}
+    own["credentials"] = _login("this-runs-login", "medium")
+
+    with pytest.raises(BlockInputError, match="publish_status"):
+        PublishToMediumBlock()._approved_input(own, dict(_POST))
+
+
+async def test_a_step_whose_saved_review_cannot_be_read_does_not_run():
+    """Run as the executor runs it, the step fails with an error that says
+    its saved review could not be read, and its own run never starts."""
+    block = SendDiscordMessageBlock()
+    run = AsyncMock()
+    setattr(block, "run", run)
+    with _stored_reviews({}, ConnectionError("down")):
+        with pytest.raises(BlockUnknownError, match="review saved for step ne-1"):
+            async for _ in block.execute(
+                dict(_INPUT),
+                user_id="u1",
+                node_id="n-1",
+                node_exec_id="ne-1",
+                graph_exec_id="ge-1",
+                graph_id="g-1",
+                graph_version=1,
+                execution_context=ExecutionContext(
+                    user_id="u1", graph_exec_id="ge-1", sensitive_action_safe_mode=False
+                ),
+            ):
+                pass
+    run.assert_not_called()
 
 
 def test_a_field_the_reviewer_removed_stays_removed():

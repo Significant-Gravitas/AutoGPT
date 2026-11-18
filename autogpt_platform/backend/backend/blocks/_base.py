@@ -44,7 +44,7 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Config
 from backend.util.text import split_camelcase
-from backend.util.type import coerce_inputs_to_schema
+from backend.util.type import ConversionError, coerce_inputs_to_schema
 
 from ._preview import ChangePreview
 
@@ -973,6 +973,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 block_name=self.name,
                 block_id=self.id,
             )
+        if reviewed_data == input_data:
+            # Safe mode off, an "approve future", or an approval with nothing
+            # changed: the run's own input, already coerced, runs as it is.
+            return False, input_data
         return False, self._approved_input(input_data, reviewed_data)
 
     def _approved_input(
@@ -1004,7 +1008,14 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             if isinstance(own, dict) and "_credentials_id" in own:
                 pinned["_credentials_id"] = own["_credentials_id"]
             approved[field] = pinned
-        coerce_inputs_to_schema(approved, self.input_schema)
+        try:
+            coerce_inputs_to_schema(approved, self.input_schema)
+        except ConversionError as e:
+            raise BlockInputError(
+                message=f"The approved input is invalid: {e}",
+                block_name=self.name,
+                block_id=self.id,
+            ) from e
         return approved
 
     async def _execute(
