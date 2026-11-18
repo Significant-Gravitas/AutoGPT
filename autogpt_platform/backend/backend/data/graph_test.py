@@ -3031,9 +3031,13 @@ async def _validate_sub_graph_run(user_id: str) -> None:
 
 
 def _parent_run_of_graph_owned_by(owner_id: str | None):
-    """Patch the parent-run lookup to find a run of a graph *owner_id* owns, or,
-    with None, no run of the user's."""
-    parent_run = MagicMock(AgentGraph=MagicMock(userId=owner_id)) if owner_id else None
+    """Patch the parent-run lookup to find a run of a graph *owner_id* owns, from
+    before organizations, or, with None, no run of the user's."""
+    parent_run = (
+        MagicMock(AgentGraph=MagicMock(userId=owner_id), organizationId=None)
+        if owner_id
+        else None
+    )
     client = MagicMock()
     client.find_first = AsyncMock(return_value=parent_run)
     return patch("backend.data.graph.AgentGraphExecution.prisma", return_value=client)

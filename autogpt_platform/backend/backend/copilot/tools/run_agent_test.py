@@ -1728,6 +1728,7 @@ async def test_run_preset_executes_with_merged_inputs():
     preset.inputs = {"a": 1, "b": 2}
     preset.credentials = {}
     preset.expert_id = None
+    preset.organization_id = "personal-org"
 
     graph = MagicMock()
     graph.id = "g1"

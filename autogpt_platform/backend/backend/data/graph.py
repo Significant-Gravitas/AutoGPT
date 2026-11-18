@@ -2513,7 +2513,8 @@ async def validate_graph_execution_permissions(
        SECRT-1125 and the INVARIANT comment in the body below.
 
     A sub-agent named by a graph someone else owns must also be one that
-    owner could use: see `_validate_sub_graph_of_other_owner()`.
+    owner could use: see `_validate_sub_graph_of_other_owner()`. A sub-agent of
+    the user's own must be in the organization its parent run belongs to.
 
     Args:
         graph_id: The ID of the graph to check
@@ -2533,7 +2534,7 @@ async def validate_graph_execution_permissions(
         NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
     is_sub_graph = is_sub_graph or parent_graph_exec_id is not None
-    graph, library_agent, any_live_library_entry, parent_graph_owner_id = (
+    graph, library_agent, any_live_library_entry, parent_run_scope = (
         await asyncio.gather(
             AgentGraph.prisma().find_unique(
                 where={"graphVersionId": {"id": graph_id, "version": graph_version}}
@@ -2553,9 +2554,10 @@ async def validate_graph_execution_permissions(
                     "isDeleted": False,
                 }
             ),
-            _graph_owner_of_run(user_id, parent_graph_exec_id),
+            _parent_run_scope(user_id, parent_graph_exec_id),
         )
     )
+    parent_graph_owner_id, parent_run_org_id = parent_run_scope
 
     # Step 1: Check if user owns this graph
     user_owns_graph = graph and graph.userId == user_id
@@ -2594,6 +2596,18 @@ async def validate_graph_execution_permissions(
             user_id, parent_graph_owner_id, graph, graph_id, graph_version
         )
 
+    # The sub-graph runs and bills in its parent run's org: `get_graph()`'s rule.
+    if (
+        graph is not None
+        and graph.userId == user_id
+        and parent_run_org_id is not None
+        and graph.organizationId not in (parent_run_org_id, None)
+    ):
+        raise GraphNotAccessibleError(
+            f"Workflow #{graph_id} is in another of your organizations, so a "
+            "workflow running in this one can't run it"
+        )
+
     # Step 4: Check execution-specific permissions (raises generic NotAuthorizedError)
     # Additional authorization checks beyond the above:
     # 1. Check if user has execution credits (future)
@@ -2606,18 +2620,20 @@ async def validate_graph_execution_permissions(
     # When adding new checks, raise NotAuthorizedError for non-library issues.
 
 
-async def _graph_owner_of_run(user_id: str, graph_exec_id: str | None) -> str | None:
-    """The owner of the graph that the user's run *graph_exec_id* runs, or None
-    when there is no run."""
+async def _parent_run_scope(
+    user_id: str, graph_exec_id: str | None
+) -> tuple[str | None, str | None]:
+    """The owner of the graph that the user's run *graph_exec_id* runs, and the
+    organization the run belongs to; (None, None) when there is no run."""
     if graph_exec_id is None:
-        return None
+        return None, None
     graph_exec = await AgentGraphExecution.prisma().find_first(
         where={"id": graph_exec_id, "userId": user_id},
         include={"AgentGraph": True},
     )
     if graph_exec is None or graph_exec.AgentGraph is None:
         raise GraphNotAccessibleError(f"Workflow run #{graph_exec_id} not found")
-    return graph_exec.AgentGraph.userId
+    return graph_exec.AgentGraph.userId, graph_exec.organizationId
 
 
 async def _validate_sub_graph_of_other_owner(
