@@ -3,6 +3,11 @@
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { GraphExecution, GraphID } from "@/lib/autogpt-server-api/types";
 import * as Sentry from "@sentry/nextjs";
+import {
+  hashKey,
+  type QueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 
 type ExecutionEventHandler = (execution: GraphExecution) => void;
@@ -134,6 +139,27 @@ export function useExecutionEvents({
       subscribedIds.clear();
     };
   }, [api, idsKey, enabled, throttleMs]);
+}
+
+// Per client, the queries asked to refetch in the current task.
+const refetchingNow = new WeakMap<QueryClient, Set<string>>();
+
+/**
+ * Refetches `queryKey` from an `onReconnect`. Every view runs its handler in
+ * the same task, so for a query several views share only the first refetches;
+ * another call would cancel that request and start its own.
+ */
+export function refetchAfterReconnect(
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+) {
+  const hashes = refetchingNow.get(queryClient) ?? new Set<string>();
+  refetchingNow.set(queryClient, hashes);
+  const hash = hashKey(queryKey);
+  if (hashes.has(hash)) return;
+  hashes.add(hash);
+  queueMicrotask(() => hashes.delete(hash));
+  void queryClient.invalidateQueries({ queryKey });
 }
 
 function createThrottle<T>(fn: (value: T) => void, waitMs?: number) {

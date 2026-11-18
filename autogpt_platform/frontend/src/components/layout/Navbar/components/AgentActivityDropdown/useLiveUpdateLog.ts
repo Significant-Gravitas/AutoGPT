@@ -1,6 +1,6 @@
 import { getGetV1ListAllExecutionsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
-import { useQueryClient } from "@tanstack/react-query";
+import { hashKey, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 const MAX_TRACKED_LISTS = 10;
@@ -18,9 +18,9 @@ export function useLiveUpdateLog() {
   const [log] = useState(createLiveUpdateLog);
 
   useEffect(() => {
-    const [listKey] = getGetV1ListAllExecutionsQueryKey();
+    const listHash = hashKey(getGetV1ListAllExecutionsQueryKey());
     return queryClient.getQueryCache().subscribe((event) => {
-      if (event.type !== "updated" || event.query.queryKey[0] !== listKey)
+      if (event.type !== "updated" || event.query.queryHash !== listHash)
         return;
       if (event.action.type === "fetch") log.recordFetchStart();
       if (event.action.type === "success") {

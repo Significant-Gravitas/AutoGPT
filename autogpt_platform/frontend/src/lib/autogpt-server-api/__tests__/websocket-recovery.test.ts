@@ -140,7 +140,12 @@ describe("WebSocket recovery and logout", () => {
     expect(socket.send).toHaveBeenCalledWith(
       expect.stringContaining('"heartbeat"'),
     );
-    await vi.advanceTimersByTimeAsync(10_000);
+    // A second check while the first is out neither pings again nor pushes
+    // its deadline back.
+    await vi.advanceTimersByTimeAsync(5000);
+    window.dispatchEvent(new Event("focus"));
+    expect(socket.send).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(5000);
     expect(socket.close).toHaveBeenCalled();
     socket.serverClose(1006);
     await vi.advanceTimersByTimeAsync(500);
@@ -166,6 +171,43 @@ describe("WebSocket recovery and logout", () => {
     expect(FakeWebSocket.instances).toHaveLength(3);
     await vi.advanceTimersByTimeAsync(1);
     expect(FakeWebSocket.instances).toHaveLength(4);
+  });
+
+  it("checks an open connection when the window regains focus", async () => {
+    void api.connectWebSocket();
+    const socket = await socketAt();
+    socket.open();
+    socket.pong();
+    socket.send.mockClear();
+
+    window.dispatchEvent(new Event("focus"));
+
+    expect(socket.send).toHaveBeenCalledTimes(1);
+    expect(socket.send).toHaveBeenCalledWith(
+      expect.stringContaining('"heartbeat"'),
+    );
+  });
+
+  it("gives the resubscriptions 30 s to be answered, then replaces the socket", async () => {
+    const reconnected = vi.fn();
+    api.onWebSocketReconnect(reconnected);
+    void api.connectWebSocket();
+    const first = await socketAt();
+    first.open();
+    first.pong();
+    first.serverClose(1011);
+    await vi.advanceTimersByTimeAsync(500);
+    const second = await socketAt(1);
+    second.open();
+    second.pong();
+
+    // Longer than a heartbeat's 10 s: opening a shard's event stream can
+    // take the server up to 15 s.
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(second.close).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(second.close).toHaveBeenCalledTimes(1);
+    expect(reconnected).not.toHaveBeenCalled();
   });
 
   it("stays disconnected when the page comes back after a disconnect", async () => {
@@ -205,7 +247,48 @@ describe("WebSocket recovery and logout", () => {
     ).toEqual(["heartbeat", "subscribe_graph_executions", "heartbeat"]);
     expect(reconnected).not.toHaveBeenCalled();
     second.pong();
+    await vi.advanceTimersByTimeAsync(0);
     expect(reconnected).toHaveBeenCalledTimes(1);
+  });
+
+  it("spreads the refetches after a reconnect over up to 2 s", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const reconnected = vi.fn();
+    api.onWebSocketReconnect(reconnected);
+    void api.connectWebSocket();
+    const first = await socketAt();
+    first.open();
+    first.pong();
+    first.serverClose(1011);
+    await vi.advanceTimersByTimeAsync(750);
+    const second = await socketAt(1);
+    second.open();
+    second.pong();
+    second.pong();
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(reconnected).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(reconnected).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not count the first connection after a disconnect as a reconnect", async () => {
+    const reconnected = vi.fn();
+    api.onWebSocketReconnect(reconnected);
+    void api.connectWebSocket();
+    const first = await socketAt();
+    first.open();
+    first.pong();
+    // Signed out, then in again.
+    api.disconnectWebSocket();
+    void api.connectWebSocket();
+    const second = await socketAt(1);
+    second.open();
+    second.pong();
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(second.send).toHaveBeenCalledTimes(1);
+    expect(reconnected).not.toHaveBeenCalled();
   });
 
   it("ignores callbacks from a socket replaced after disconnect", async () => {

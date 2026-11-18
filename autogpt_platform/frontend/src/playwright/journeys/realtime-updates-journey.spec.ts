@@ -7,11 +7,12 @@ import {
 import { expect, test } from "./fixtures";
 
 const COUNTDOWN_TIMER_BLOCK_ID = "d67a9c52-5e4e-11e2-bcfd-0800200c9a71";
-// Long enough that the run is still going when its updates stop arriving.
-const RUN_SECONDS = 10;
+// Longer than the test's own timeout, so the run never ends by itself: it
+// ends only when the journey stops it, after its updates stop arriving.
+const RUN_SECONDS = 120;
 
 test.describe("realtime updates journey", () => {
-  test("a run that finishes while the server's event stream is lost shows as finished once the page reconnects, without a reload", async ({
+  test("a run that ends while the server's event stream is lost shows as ended once the page reconnects, without a reload", async ({
     page,
     journeyUser: _user,
   }) => {
@@ -27,48 +28,79 @@ test.describe("realtime updates journey", () => {
       })
       .toBeTruthy();
     const runID = String(getActiveItemId(page));
-    const pageInstance = await markPageInstance(page);
-    const runItem = page.getByTestId(`library-run-item-${runID}`);
-    await expect(
-      runItem.getByRole("img", { name: /^Task (queued|running)$/ }),
-      "the runs list should show the run in flight",
-    ).toBeVisible({ timeout: 30_000 });
-    const activity = await openActivity(page);
-    await expect(activityItem(activity, agent.name)).toContainText(
-      /queued|running/,
-    );
 
-    // The server loses its event stream, so the run's updates stop reaching
-    // the page, and the run finishes meanwhile.
-    live.loseEventStream();
-    await expect
-      .poll(() => runStatus(page, agent.graphID, runID), {
-        message: "the run should finish while its updates are lost",
-        timeout: 45_000,
-      })
-      .toBe("COMPLETED");
-    // Then the server closes the socket, as it does whenever it loses the
-    // stream (#16865), and the page reconnects by itself.
-    const connections = live.opened();
-    await live.closeLikeTheServer();
-    await expect
-      .poll(() => live.opened(), {
-        message: "the page should open a new connection",
-        timeout: 30_000,
-      })
-      .toBeGreaterThan(connections);
+    try {
+      const pageInstance = await markPageInstance(page);
+      const runItem = page.getByTestId(`library-run-item-${runID}`);
+      await expect(
+        runItem.getByRole("img", { name: /^Task (queued|running)$/ }),
+        "the runs list should show the run in flight",
+      ).toBeVisible({ timeout: 30_000 });
+      const activity = await openActivity(page);
+      await expect(activityItem(activity, agent.name)).toContainText(
+        /queued|running/,
+      );
 
-    await expect(
-      runItem.getByRole("img", { name: "Task completed" }),
-      "the runs list should show the run finished",
-    ).toBeVisible();
-    await expect(
-      activityItem(activity, agent.name),
-      "the Activity list should show the run finished",
-    ).toContainText(/Completed/);
-    expect(await markPageInstance(page), "the page never reloaded").toBe(
-      pageInstance,
-    );
+      // The server loses its event stream, so the run's updates stop
+      // reaching the page. Only then does the run end.
+      live.loseEventStream();
+      await stopRun(page, agent.graphID, runID);
+      expect(await runStatus(page, agent.graphID, runID)).toBe("TERMINATED");
+      await expect
+        .poll(() => live.droppedStatuses(runID), {
+          message: "the page should have missed the update that ended the run",
+        })
+        .toContain("TERMINATED");
+      // So both views still show it in flight: nothing else updates them.
+      await expect(
+        runItem.getByRole("img", { name: /^Task (queued|running)$/ }),
+        "the runs list should not know the run ended yet",
+      ).toBeVisible();
+      await expect(activityItem(activity, agent.name)).toContainText(
+        /queued|running/,
+      );
+
+      // Then the server closes the socket, as it does whenever it loses the
+      // stream (#16865), and the page reconnects by itself.
+      const reads = countListReads(page, agent.graphID);
+      const connections = live.opened();
+      await live.closeLikeTheServer();
+      await expect
+        .poll(() => live.opened(), {
+          message: "the page should open a new connection",
+          timeout: 30_000,
+        })
+        .toBeGreaterThan(connections);
+      await expect
+        .poll(() => reads.runs, {
+          message: "the runs list should be read again after the reconnect",
+        })
+        .toBeGreaterThan(0);
+      await expect
+        .poll(() => reads.activity, {
+          message: "the Activity list should be read again after the reconnect",
+        })
+        .toBeGreaterThan(0);
+
+      await expect(
+        runItem.getByRole("img", { name: "Task stopped" }),
+        "the runs list should show the run ended",
+      ).toBeVisible();
+      await expect(
+        activityItem(activity, agent.name),
+        "the Activity list should show the run ended",
+      ).toContainText(/Stopped/);
+      expect(
+        live.forwardedStatuses(runID),
+        "no update for the run came over the new connection",
+      ).toEqual([]);
+      expect(await markPageInstance(page), "the page never reloaded").toBe(
+        pageInstance,
+      );
+    } finally {
+      // A step that failed before the stop must not leave the run going.
+      await stopRun(page, agent.graphID, runID).catch(() => undefined);
+    }
   });
 });
 
@@ -79,6 +111,8 @@ test.describe("realtime updates journey", () => {
  */
 async function routeLiveConnection(page: Page) {
   const open: { client: WebSocketRoute; server: WebSocketRoute }[] = [];
+  const dropped: { runID: string; status: string }[] = [];
+  const forwarded: { runID: string; status: string }[] = [];
   let opened = 0;
   let streamLost = false;
 
@@ -87,15 +121,24 @@ async function routeLiveConnection(page: Page) {
     opened += 1;
     open.push({ client, server });
     server.onMessage((message) => {
-      if (streamLost && isRunUpdate(message)) return;
-      client.send(message);
+      const update = runUpdate(message);
+      if (!streamLost || !update) {
+        client.send(message);
+        if (update?.status) forwarded.push(withStatus(update));
+      } else if (update.status) {
+        dropped.push(withStatus(update));
+      }
     });
   });
 
   return {
     opened: () => opened,
+    droppedStatuses: (runID: string) => statusesOf(dropped, runID),
+    /** Forwarded from the next time the stream is lost on. */
+    forwardedStatuses: (runID: string) => statusesOf(forwarded, runID),
     loseEventStream() {
       streamLost = true;
+      forwarded.length = 0;
     },
     async closeLikeTheServer() {
       streamLost = false;
@@ -111,15 +154,47 @@ async function routeLiveConnection(page: Page) {
   };
 }
 
-function isRunUpdate(message: string | Buffer) {
-  if (typeof message !== "string") return false;
+function withStatus(update: { runID: string; status?: string }) {
+  return { runID: update.runID, status: String(update.status) };
+}
+
+function statusesOf(updates: { runID: string; status: string }[], id: string) {
+  return updates
+    .filter((update) => update.runID === id)
+    .map((update) => update.status);
+}
+
+/** Counts the page's reads of the runs list and the Activity list from now on. */
+function countListReads(page: Page, graphID: string) {
+  const reads = { runs: 0, activity: 0 };
+  page.on("request", (request) => {
+    if (request.method() !== "GET") return;
+    const { pathname } = new URL(request.url());
+    if (pathname === `/api/proxy/api/graphs/${graphID}/executions`) {
+      reads.runs += 1;
+    }
+    if (pathname === "/api/proxy/api/executions") reads.activity += 1;
+  });
+  return reads;
+}
+
+/** A run's update from the server, or null for anything else. */
+function runUpdate(message: string | Buffer) {
+  if (typeof message !== "string") return null;
   try {
-    const { method } = JSON.parse(message) as { method?: string };
-    return (
-      method === "graph_execution_event" || method === "node_execution_event"
-    );
+    const { method, data } = JSON.parse(message) as {
+      method?: string;
+      data?: { id?: string; graph_exec_id?: string; status?: string };
+    };
+    if (method === "graph_execution_event") {
+      return { runID: String(data?.id), status: data?.status };
+    }
+    if (method === "node_execution_event") {
+      return { runID: String(data?.graph_exec_id), status: undefined };
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -151,7 +226,7 @@ async function createCountdownAgent(page: Page) {
       source: "upload",
       graph: {
         name,
-        description: "Waits a few seconds, for the realtime updates journey",
+        description: "Counts down until stopped, for the realtime journey",
         is_active: true,
         nodes: [
           {
@@ -178,6 +253,14 @@ async function createCountdownAgent(page: Page) {
   ).toBe(true);
   const { id } = (await libraryAgent.json()) as { id: string };
   return { name, graphID: graph.id, libraryAgentID: id };
+}
+
+/** Returns once the run has ended; the server waits for that. */
+async function stopRun(page: Page, graphID: string, runID: string) {
+  const response = await page.request.post(
+    `/api/proxy/api/graphs/${graphID}/executions/${runID}/stop`,
+  );
+  expect(response.ok(), `stopping the run: ${response.status()}`).toBe(true);
 }
 
 async function runStatus(page: Page, graphID: string, runID: string) {

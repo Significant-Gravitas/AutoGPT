@@ -11,6 +11,7 @@ import type { UserExecutionCostSummary } from "@/app/api/__generated__/models/us
 import { okData } from "@/app/api/helpers";
 import {
   EXECUTION_REFETCH_THROTTLE_MS,
+  refetchAfterReconnect,
   useExecutionEvents,
 } from "@/hooks/useExecutionEvents";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
@@ -80,7 +81,8 @@ export function useLibraryFleetSummary(
     enabled: graphIDs.length > 0,
     throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
     onExecutionUpdate: refetchExecutions,
-    onReconnect: refetchExecutions,
+    onReconnect: () =>
+      refetchAfterReconnect(queryClient, getGetV1ListAllExecutionsQueryKey()),
   });
 
   return useMemo(() => {

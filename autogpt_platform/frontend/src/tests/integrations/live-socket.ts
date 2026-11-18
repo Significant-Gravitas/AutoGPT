@@ -3,6 +3,12 @@ import { act, waitFor } from "@testing-library/react";
 import { expect, vi } from "vitest";
 
 /**
+ * How long to wait for a view to change after a reconnect: the app spreads
+ * its refetches over up to 2 s, and the request comes on top.
+ */
+export const AFTER_RECONNECT = { timeout: 6000 };
+
+/**
  * Stands in for the backend's run-updates WebSocket. The app's real
  * BackendAPI connects through it and the fake answers every heartbeat as
  * the server does, so a page test can drop the connection and let the app

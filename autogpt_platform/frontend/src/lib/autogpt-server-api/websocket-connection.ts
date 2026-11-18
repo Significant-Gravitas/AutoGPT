@@ -24,6 +24,13 @@ const MAX_RETRY_DELAY_MS = 30_000;
 const HEALTHY_AFTER_MS = 10_000;
 const HEARTBEAT_INTERVAL_MS = 100_000;
 const HEARTBEAT_TIMEOUT_MS = 10_000;
+// The server answers after every resubscription, and opening a shard's event
+// stream for the first one there can take it up to 15 s (OPEN_TIMEOUT_S in
+// backend/data/sharded_pubsub.py).
+const RESUBSCRIBED_TIMEOUT_MS = 30_000;
+// After a mass disconnect (a deploy) every tab reconnects in the same retry
+// window, so each waits a random part of this before its views refetch.
+const RECONNECT_REFETCH_SPREAD_MS = 2000;
 const PING = JSON.stringify({
   method: "heartbeat",
   data: "ping",
@@ -41,6 +48,7 @@ export class BackendWebSocket {
   private retryDelay = FIRST_RETRY_DELAY_MS;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private healthyTimer: ReturnType<typeof setTimeout> | undefined;
+  private reconnectedTimer: ReturnType<typeof setTimeout> | undefined;
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   private heartbeatTimeout: ReturnType<typeof setTimeout> | undefined;
   private pongsOwed = 0;
@@ -89,7 +97,9 @@ export class BackendWebSocket {
     this.socket = null;
     this.authenticatedSocket = null;
     this.cancelRetry();
+    // Signing out ends the session: the next connection is a first one.
     this.retryDelay = FIRST_RETRY_DELAY_MS;
+    this.hasConnected = false;
     this.stopHealthChecks();
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   }
@@ -191,7 +201,10 @@ export class BackendWebSocket {
       this.pongsUntilResubscribed > 0 &&
       --this.pongsUntilResubscribed === 0
     ) {
-      this.handlers.onReconnect();
+      this.reconnectedTimer = setTimeout(
+        () => this.handlers.onReconnect(),
+        Math.random() * RECONNECT_REFETCH_SPREAD_MS,
+      );
     }
   }
 
@@ -212,9 +225,8 @@ export class BackendWebSocket {
     if (!reconnected || !this.current(socket, generation)) return;
     // The server answers a socket's messages in order, so the pong to this
     // ping means it has handled every subscription onConnect sent again.
-    this.pongsOwed += 1;
+    this.ping(socket, generation, RESUBSCRIBED_TIMEOUT_MS);
     this.pongsUntilResubscribed = this.pongsOwed;
-    socket.send(PING);
   }
 
   private closed(socket: WebSocket, generation: number, event: CloseEvent) {
@@ -256,7 +268,11 @@ export class BackendWebSocket {
     this.retryTimer = undefined;
   }
 
-  private ping(socket: WebSocket, generation: number) {
+  private ping(
+    socket: WebSocket,
+    generation: number,
+    timeoutMs = HEARTBEAT_TIMEOUT_MS,
+  ) {
     if (
       !this.current(socket, generation) ||
       socket.readyState !== WebSocket.OPEN
@@ -268,7 +284,7 @@ export class BackendWebSocket {
       if (!hasDisconnectIntent())
         console.warn("[BackendAPI] WebSocket heartbeat timed out");
       socket.close();
-    }, HEARTBEAT_TIMEOUT_MS);
+    }, timeoutMs);
     this.pongsOwed += 1;
     socket.send(PING);
   }
@@ -277,6 +293,7 @@ export class BackendWebSocket {
     clearInterval(this.heartbeatTimer);
     clearTimeout(this.heartbeatTimeout);
     clearTimeout(this.healthyTimer);
+    clearTimeout(this.reconnectedTimer);
     this.pongsOwed = 0;
     this.pongsUntilResubscribed = 0;
   }
@@ -285,6 +302,7 @@ export class BackendWebSocket {
     if (this.watchingPage || !environment.isClientSide()) return;
     this.watchingPage = true;
     window.addEventListener("online", this.checkNow);
+    window.addEventListener("focus", this.checkNow);
     document.addEventListener("visibilitychange", this.checkWhenVisible);
   }
 
@@ -292,6 +310,7 @@ export class BackendWebSocket {
     if (!this.watchingPage) return;
     this.watchingPage = false;
     window.removeEventListener("online", this.checkNow);
+    window.removeEventListener("focus", this.checkNow);
     document.removeEventListener("visibilitychange", this.checkWhenVisible);
   }
 
@@ -299,13 +318,14 @@ export class BackendWebSocket {
     if (document.visibilityState === "visible") this.checkNow();
   };
 
-  // Back online or back in view: a socket that seems open may be dead
+  // Back online, in view or in focus: a socket that seems open may be dead
   // (a laptop that slept), so make it answer within the heartbeat timeout,
   // and a pending retry runs now instead of waiting out the backoff.
   private checkNow = () => {
     if (this.stopped || hasDisconnectIntent()) return;
     if (this.connected && this.socket) {
-      this.ping(this.socket, this.generation);
+      // One check at a time: another ping would push its deadline back.
+      if (this.pongsOwed === 0) this.ping(this.socket, this.generation);
     } else if (this.retryTimer !== undefined) {
       this.cancelRetry();
       void this.open(this.generation);

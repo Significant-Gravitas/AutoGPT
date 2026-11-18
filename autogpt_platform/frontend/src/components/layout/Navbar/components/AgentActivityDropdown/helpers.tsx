@@ -171,6 +171,31 @@ export function categorizeExecutions(
   };
 }
 
+// GET /executions answers with the newest 250 runs (graph_executions/routes.py).
+const RUN_LIST_LIMIT = 250;
+
+/**
+ * A full run list can leave out an older run that is still going, so keep
+ * the active runs already shown that it omits. A shorter list covers every
+ * run, so a run it omits is gone.
+ */
+export function keepActiveRunsTheListOmits(
+  shown: NotificationState,
+  fromList: NotificationState,
+  listed: GeneratedGraphExecutionMeta[],
+): NotificationState {
+  if (listed.length < RUN_LIST_LIMIT) return fromList;
+  const listedIDs = new Set(listed.map((execution) => execution.id));
+  const omitted = shown.activeExecutions.filter(
+    (execution) => !listedIDs.has(execution.id),
+  );
+  if (omitted.length === 0) return fromList;
+  return calculateTotalCount({
+    ...fromList,
+    activeExecutions: [...fromList.activeExecutions, ...omitted],
+  });
+}
+
 export function relabelNotifications(
   state: NotificationState,
   agentInfoMap: Map<

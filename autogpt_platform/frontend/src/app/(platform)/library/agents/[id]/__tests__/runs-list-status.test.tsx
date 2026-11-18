@@ -12,8 +12,12 @@ import { getGetV2ListPresetsMockHandler } from "@/app/api/__generated__/endpoint
 import { getGetV1ListExecutionSchedulesForAGraphMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { server } from "@/mocks/mock-server";
-import { installLiveSocket } from "@/tests/integrations/live-socket";
+import {
+  AFTER_RECONNECT,
+  installLiveSocket,
+} from "@/tests/integrations/live-socket";
 import { render, screen } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, expect, test, vi } from "vitest";
 import AgentLibraryPage from "../page";
@@ -53,7 +57,12 @@ afterEach(() => {
 
 const GRAPH_ID = "graph-1";
 
-function serveAgentPage(runStatus: () => AgentExecutionStatus) {
+interface Served {
+  status: () => AgentExecutionStatus;
+  dryRun?: boolean;
+}
+
+function serveAgentPage({ status: runStatus, dryRun = false }: Served) {
   function run() {
     const status = runStatus();
     return {
@@ -63,7 +72,7 @@ function serveAgentPage(runStatus: () => AgentExecutionStatus) {
       status,
       started_at: new Date(Date.now() - 60_000),
       ended_at: status === AgentExecutionStatus.RUNNING ? null : new Date(),
-      is_dry_run: false,
+      is_dry_run: dryRun,
       stats: null,
     };
   }
@@ -113,7 +122,7 @@ function serveAgentPage(runStatus: () => AgentExecutionStatus) {
 
 test("a run that finished while the live connection was down shows as finished in the runs list once it reconnects", async () => {
   let status: AgentExecutionStatus = AgentExecutionStatus.RUNNING;
-  serveAgentPage(() => status);
+  serveAgentPage({ status: () => status });
   const live = installLiveSocket();
 
   render(
@@ -131,7 +140,47 @@ test("a run that finished while the live connection was down shows as finished i
   await live.acceptNext();
 
   expect(
-    await screen.findByRole("img", { name: "Task completed" }),
+    await screen.findByRole("img", { name: "Task completed" }, AFTER_RECONNECT),
   ).toBeDefined();
   expect(screen.queryByRole("img", { name: "Task running" })).toBeNull();
+});
+
+test("a run that finished during a disconnect on another tab shows as finished back on Tasks", async () => {
+  let status: AgentExecutionStatus = AgentExecutionStatus.RUNNING;
+  serveAgentPage({ status: () => status });
+  const live = installLiveSocket();
+
+  render(
+    <NuqsTestingAdapter hasMemory searchParams="activeTab=scheduled">
+      <AgentLibraryPage />
+    </NuqsTestingAdapter>,
+  );
+  const first = await live.acceptNext();
+  expect(
+    await screen.findByRole("tab", { name: /^Scheduled/, selected: true }),
+  ).toBeDefined();
+
+  status = AgentExecutionStatus.COMPLETED;
+  await live.drop(first);
+  await live.acceptNext();
+  await userEvent.click(screen.getByRole("tab", { name: /^Tasks/ }));
+
+  expect(
+    await screen.findByRole("img", { name: "Task completed" }, AFTER_RECONNECT),
+  ).toBeDefined();
+});
+
+test("a simulated run's icon names its status", async () => {
+  serveAgentPage({ status: () => AgentExecutionStatus.RUNNING, dryRun: true });
+  installLiveSocket();
+
+  render(
+    <NuqsTestingAdapter hasMemory searchParams="activeTab=runs">
+      <AgentLibraryPage />
+    </NuqsTestingAdapter>,
+  );
+
+  expect(
+    await screen.findByRole("img", { name: "Simulated task running" }),
+  ).toBeDefined();
 });

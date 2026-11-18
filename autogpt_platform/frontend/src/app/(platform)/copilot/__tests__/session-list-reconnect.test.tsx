@@ -6,7 +6,10 @@ import {
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { server } from "@/mocks/mock-server";
-import { installLiveSocket } from "@/tests/integrations/live-socket";
+import {
+  AFTER_RECONNECT,
+  installLiveSocket,
+} from "@/tests/integrations/live-socket";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { useEffect } from "react";
 import { afterEach, expect, test, vi } from "vitest";
@@ -51,5 +54,7 @@ test("a chat that finished while the live connection was down updates in the sid
   await live.drop(first);
   await live.acceptNext();
 
-  expect(await screen.findByText("Plan my week")).toBeDefined();
+  expect(
+    await screen.findByText("Plan my week", undefined, AFTER_RECONNECT),
+  ).toBeDefined();
 });
