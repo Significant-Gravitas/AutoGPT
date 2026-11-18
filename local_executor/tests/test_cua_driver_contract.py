@@ -4,9 +4,13 @@ on every OS."""
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
+import os
 import re
 import sys
+import time
+from pathlib import Path
 
 import pytest
 
@@ -189,3 +193,46 @@ async def test_batches_reach_only_catalog_tools(bridge: CuaDriverBridge) -> None
     script_tools = {name.strip() for name in match.group(1).split(",")}
     assert script_tools and script_tools <= OFFERED
     assert not script_tools & catalog.CLIPBOARD_TOOLS
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="the Linux driver's launch routing"
+)
+async def test_a_launcher_that_wont_start_is_opened_unless_a_space_follows_it(
+    bridge: CuaDriverBridge, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What the shim's Linux launch by name relies on (catalog.linux_launch).
+    The driver runs a launch_path split at whitespace and, when its program
+    doesn't start, hands the string to xdg-open if it names an existing
+    path, looking it up as it is. So the shim sends a program alone with a
+    space after it: the driver runs the same program, and a launcher that
+    is there and yet doesn't start (here, a script whose interpreter is
+    gone) is not opened. A driver that trimmed the string before its lookup
+    would open it again: this fails then."""
+    opened = tmp_path / "opened.txt"
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    # xdg-open's stand-in for the driver: it only says what it was given.
+    xdg_open = tools / "xdg-open"
+    xdg_open.write_text(f'#!/bin/sh\necho "$1" >> "{opened}"\n', encoding="utf-8")
+    xdg_open.chmod(0o755)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(tools), os.environ.get("PATH", "")]))
+    launcher = tmp_path / "launcher"
+    launcher.write_text(f"#!{tmp_path / 'an-interpreter-that-is-gone'}\n", encoding="utf-8")
+    launcher.chmod(0o755)
+
+    as_the_shim_sends_it = await bridge.call_tool(
+        "launch_app", {"launch_path": f"{launcher} "}, timeout=60
+    )
+    opened_meanwhile = opened.exists()
+    # The driver's own routing, which the space is there for.
+    bare = await bridge.call_tool("launch_app", {"launch_path": str(launcher)}, timeout=60)
+    # The driver gives xdg-open a moment to fail, then answers without it.
+    give_up = time.monotonic() + 60
+    while not opened.exists() and time.monotonic() < give_up:
+        await asyncio.sleep(0.05)
+
+    assert as_the_shim_sends_it.get("isError") is True
+    assert opened_meanwhile is False
+    assert not bare.get("isError")
+    assert opened.read_text(encoding="utf-8").splitlines() == [str(launcher)]

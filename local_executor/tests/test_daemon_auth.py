@@ -828,7 +828,10 @@ async def test_a_refresh_keeps_a_sign_in_change_made_during_its_exchange(
     """A refresh stored its new pair over whatever the keychain held once the
     exchange came back: a sign-in `autogpt-shim auth` stored meanwhile was
     replaced by the older sign-in's refreshed pair, and a computer
-    `autogpt-shim revoke` had just signed out was signed back in."""
+    `autogpt-shim revoke` had just signed out was signed back in. Another
+    process now waits for the refresh's turn (tests/test_stored_sign_in.py),
+    so the change is made here from inside it: the look at the keychain
+    before the write is what is left where the lock file can't be used."""
     _keychain_failing_writes(monkeypatch)
     config = _refresh_config(tmp_path)
 
@@ -837,7 +840,7 @@ async def test_a_refresh_keeps_a_sign_in_change_made_during_its_exchange(
         if meanwhile == "auth":
             await other.store_tokens("access-auth", "refresh-auth")
         else:
-            other.clear_tokens()
+            await other.clear_tokens()
 
     sent = _rotating_token_endpoint(monkeypatch, before_answering=another_process)
     store = KeychainTokenStore(config)
@@ -862,7 +865,9 @@ async def test_a_kept_pair_does_not_replace_a_sign_in_stored_after_the_retry_rea
 ) -> None:
     """A retry storing a kept pair compared the keychain's refresh token with
     the one its exchange used up, then wrote: a sign-in stored after that
-    read was replaced by the kept pair."""
+    read was replaced by the kept pair. The sign-in is stored here from
+    inside the retry's turn, as one can still land where the lock file
+    can't be used."""
     import keyring.errors
 
     from autogpt_local_executor.daemon import KeychainUnavailableError

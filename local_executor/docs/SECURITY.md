@@ -187,7 +187,7 @@ normal network access. OS isolation and destination approval are future work.
 | Access files outside allowed_root | ❌ | Expand allowed_root (explicit) |
 | Take screenshots | ❌ | Local `enable_computer_use` configuration plus platform capability grant |
 | Inject mouse/keyboard | ❌ | Local `enable_computer_use` configuration plus platform capability grant |
-| Launch programs with arguments | ❌ | Part of computer use (same configuration and grant). Like `--enable-shell`, this is user-account-level access: a launched program, or a terminal driven by keyboard input, runs whatever it is given. A launch with a command line, a program's path, extra arguments, links or an inspector port waits for the person's approval in the chat, unless the chat runs Unsupervised or the person set a standing rule on an earlier approval card ("from now on"), which approves later launches of that kind whatever their arguments. The computer-use handler audits each launch it takes with its arguments, best effort (a launch goes ahead if its record can't be written). |
+| Launch programs with arguments | ❌ | Part of computer use (same configuration and grant). Like `--enable-shell`, this is user-account-level access: a launched program, or a terminal driven by keyboard input, runs whatever it is given. A launch with a command line, a program's path, extra arguments, links or an inspector port waits for the person's approval in the chat, unless the chat runs Unsupervised or the person set a standing rule on an earlier approval card ("from now on"), which approves later launches of that kind whatever their arguments. A launch by an app's name alone needs no approval and starts only an installed app: on Linux, where cua-driver would run a name as a command line or open a file of that name, the shim sends it the matched app's own launch command instead, and no name ([CUA_DRIVER.md](CUA_DRIVER.md#residual-risk)). The computer-use handler audits each launch it takes with its arguments kept whole, as a command's record keeps its command line, so an `audit export` holds them too ([AUDIT_LOG.md](AUDIT_LOG.md#reading-and-exporting)); best effort (a launch goes ahead if its record can't be written). |
 | Access serial/USB/GPIO | ❌ | Operation dispatch is not implemented |
 | Run elevated operations | Uses executor user's privileges | No privilege-dropping or elevation sandbox |
 | Background tasks when user absent | Available while daemon is running | No separate background-work permission |
@@ -206,6 +206,15 @@ normal network access. OS isolation and destination approval are future work.
   explicit authentication instead of forwarding another deployment's tokens.
   Legacy unscoped tokens are never forwarded, migrated, or deleted automatically;
   see [OAuth migration guidance](OAUTH_FLOW.md#deployment-bound-credentials).
+- The record is changed one step at a time, across processes: a refresh, a
+  sign-in and a sign-out each take the record's lock file,
+  `.oauth_v1_<digest>.lock` in `AUTOGPT_SHIM_FALLBACK_DIR`, created `0600`
+  on POSIX and holding no token. Two shim processes for one deployment therefore
+  never send the same refresh token, which the platform would take for
+  reuse and answer by revoking the sign-in, and a sign-in or sign-out never
+  lands inside a refresh. Where that file can't be made or locked, the shim
+  says so once and goes on without it; see
+  [OAUTH_FLOW.md](OAUTH_FLOW.md#one-change-at-a-time-across-processes).
 - Authenticated WebSocket redirects are rejected, including same-origin path
   changes. OAuth HTTP requests do not follow redirects.
 - `autogpt-shim revoke` posts both access and refresh tokens to

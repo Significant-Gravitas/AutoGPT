@@ -47,7 +47,13 @@ from .audit import (
     SessionAuditWriter,
     get_or_create_audit_key,
 )
-from .auth import CredentialScope, CredentialScopeError, KeychainTokenStore
+from .auth import (
+    CredentialScope,
+    CredentialScopeError,
+    ExchangeTimeoutError,
+    KeychainTokenStore,
+    SignInBusyError,
+)
 from .computer_use import DriverUnavailable
 from .computer_use.driver import COMPUTER_USE_INSTALL
 from .computer_use.mcp_client import McpError
@@ -230,8 +236,9 @@ _PERMANENT_STORAGE_ERRNOS = frozenset(
 
 
 class TokenRefreshUnavailableError(RuntimeError):
-    """The token endpoint couldn't be reached, or answered with a server error,
-    408 (it stopped waiting for the request) or 429.
+    """The token endpoint couldn't be reached, didn't answer in the time an
+    exchange gets, or answered with a server error, 408 (it stopped waiting
+    for the request) or 429.
 
     That says nothing about the credentials, so the reconnect loop retries;
     only a refresh token the platform refuses ends the session for good.
@@ -239,7 +246,8 @@ class TokenRefreshUnavailableError(RuntimeError):
 
 
 class KeychainUnavailableError(RuntimeError):
-    """The OS keychain couldn't be read just now (still locked at login, say).
+    """The OS keychain couldn't be read just now (still locked at login, say),
+    or another process kept the stored sign-in's turn past this one's wait.
 
     Unlike a rejected credential, this can clear on its own, so the reconnect
     loop retries it rather than stopping.
@@ -971,20 +979,26 @@ class ShimDaemon:
 
     async def _refresh_access_token(self, rejected_token: str | None) -> str | None:
         async with self._token_refresh_lock:
-            # Another machine/session socket may already have rotated the
-            # refresh family while this connection was receiving its 401.
-            current_token = await self._read_access_token()
-            if (
-                rejected_token is not None
-                and current_token is not None
-                and current_token != rejected_token
-            ):
-                return current_token
             try:
-                from .auth import OAuthFlow
+                # The lock above is this process's. The stored sign-in's turn
+                # is every process's for the record, so the look below and
+                # the refresh after it are one step for them all.
+                async with self._stored_sign_in_turn():
+                    # Another machine/session socket, or another process, may
+                    # already have rotated the refresh family while this
+                    # connection was receiving its 401: its pair is used, and
+                    # no exchange is sent.
+                    current_token = await self._read_access_token()
+                    if (
+                        rejected_token is not None
+                        and current_token is not None
+                        and current_token != rejected_token
+                    ):
+                        return current_token
+                    from .auth import OAuthFlow
 
-                flow = OAuthFlow(self.config, self.token_store)
-                await flow.refresh_token()
+                    flow = OAuthFlow(self.config, self.token_store)
+                    await flow.refresh_token()
                 if self.audit is not None:
                     try:
                         await self.audit.token_refreshed()
@@ -992,11 +1006,15 @@ class ShimDaemon:
                         logger.debug("TOKEN_REFRESHED audit emit failed", exc_info=True)
                 return await self._read_access_token()
             except (DaemonAuthenticationError, KeychainUnavailableError, KeychainNotUpError):
-                # The re-read's own errors: a keychain gone since the refresh
+                # A read's own errors: a keychain gone since the refresh
                 # stored the new pair is waited for, not a sign-in to redo.
                 raise
             except CredentialScopeError as exc:
                 raise DaemonAuthenticationError(str(exc)) from None
+            except SignInBusyError as exc:
+                # Another process kept the stored sign-in's turn past this
+                # one's wait. Nothing was exchanged: it can clear on its own.
+                raise KeychainUnavailableError(f"{exc} Retrying.") from None
             except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
                 raise self._keychain_not_up(exc) from None
             except keyring.errors.KeyringError as exc:
@@ -1009,6 +1027,11 @@ class ShimDaemon:
             except httpx.TransportError as exc:
                 raise TokenRefreshUnavailableError(
                     f"The token endpoint could not be reached ({type(exc).__name__}); retrying."
+                ) from None
+            except ExchangeTimeoutError:
+                # Like a read that timed out: the answer never came.
+                raise TokenRefreshUnavailableError(
+                    "The token endpoint did not answer in time; retrying."
                 ) from None
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
@@ -1035,6 +1058,13 @@ class ShimDaemon:
                     "then run `autogpt-shim auth` again."
                 )
                 return None
+
+    def _stored_sign_in_turn(self) -> contextlib.AbstractAsyncContextManager[None]:
+        """The stored sign-in's turn across processes
+        (KeychainTokenStore.turn); a store of another kind has none."""
+        if isinstance(self.token_store, KeychainTokenStore):
+            return self.token_store.turn()
+        return contextlib.nullcontext()
 
     def _holding_unsaved_tokens(self) -> bool:
         """Whether a refresh exchange went through but its new pair isn't

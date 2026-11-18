@@ -1006,9 +1006,12 @@ against the installed apps; and a `launch_app` `name`, `bundle_id` or
 `aumid` that isn't an app's name or id (a path, a URL scheme, a leading
 `-`, a control character, on Linux a name whose first word is a program,
 a program's own name included, or, unless `urls` or `launch_path`
-is given, one that isn't an installed app's name or desktop-file id in
-`list_apps`, and on Windows a `bundle_id` that isn't an AUMID or a `name` no
-installed app in `list_apps` would match).
+is given, one that matches no installed app in `list_apps`, or more than
+one, or whose app's launch command the shim can't send with its program as
+an absolute path, and on Windows a `bundle_id` that isn't an AUMID or a
+`name` no installed app in `list_apps` would match). On Linux a launch by
+`name` reaches cua-driver as the matched app's own launch command, so its
+result names that command ([CUA_DRIVER.md](CUA_DRIVER.md#residual-risk)).
 
 #### `COMPUTER_TOOL_RESULT` (shim → platform)
 ```json

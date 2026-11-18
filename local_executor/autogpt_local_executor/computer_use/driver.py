@@ -49,6 +49,11 @@ LIST_TIMEOUT_SECONDS = 30.0
 # A driver that keeps stopping is given up on until the window has passed.
 MAX_STARTS_PER_WINDOW = 3
 START_WINDOW_SECONDS = 300.0
+# How long a Linux driver's start waits for the look at the person's home
+# folder (CuaDriverBridge._working_folder) before it goes on in the shim's
+# own folder: a home on a mount that isn't answering holds the look for as
+# long as it stalls.
+HOME_FOLDER_SECONDS = 2.0
 
 # The cua settings (CUA*) the driver may inherit from the shim's environment:
 # the ones cua's own SDK hands a driver it embeds (cua-driver-sdk's
@@ -140,8 +145,8 @@ def find_driver_binary(explicit: str | os.PathLike[str] | None = None) -> Path |
     of `./cua-driver`, and the OS looks a bare name up on PATH, which would
     run another install, or none, rather than the file checked here. So is
     one found on PATH, where shutil.which keeps a relative entry (`bin`):
-    a Linux driver starts in an empty folder of its own, where
-    `bin/cua-driver` names nothing."""
+    `bin/cua-driver` names the driver only from the shim's own folder, and
+    a Linux driver starts in the person's home folder (home_folder)."""
     if explicit:
         try:
             path = Path(explicit).expanduser().absolute()
@@ -174,6 +179,32 @@ def _runnable_driver(explicit: str | os.PathLike[str] | None) -> Path | None:
     if binary is not None:
         ensure_executable(binary)
     return binary
+
+
+def _account_home() -> str | None:
+    """This account's home folder in the user database, or None when the
+    database has no entry for the account, or the OS has no such database."""
+    try:
+        import pwd
+
+        return pwd.getpwuid(os.getuid()).pw_dir
+    except (ImportError, KeyError):
+        return None
+
+
+def home_folder() -> Path | None:
+    """The person's home folder, for a Linux driver to start in: `HOME`, as a
+    shell's `~` is, or without one the account's own in the user database.
+    None when it can't be used: neither names one, or what is named isn't
+    an absolute path to a folder this process can enter. It looks at the
+    disk, where a home on a mount that isn't answering holds it."""
+    home = os.environ.get("HOME") or _account_home()
+    if not home:
+        return None
+    path = Path(home)
+    if not path.is_absolute() or not os.path.isdir(path) or not os.access(path, os.X_OK):
+        return None
+    return path
 
 
 def driver_runtime(platform: str | None = None) -> Runtime:
@@ -268,13 +299,14 @@ class CuaDriverBridge:
         self._starts: list[float] = []
         self._last_failure: str | None = None
         self._policy_dir: Path | None = None
-        # The empty folders Linux drivers started in (_new_working_folder).
-        self._working_folders: list[Path] = []
         self._closed = False
         # The display variables the running driver started with.
         self._display: tuple[str | None, ...] | None = None
         # The look for the driver's binary under way, or the last (find_binary).
         self._looking: asyncio.Future[Path | None] | None = None
+        # The look at the person's home folder under way, or the last
+        # (_working_folder).
+        self._home_looking: asyncio.Future[Path | None] | None = None
         # Whether a session's preflight has found the macOS grants computer
         # use needs: HELLO offers computer use on macOS only once one has.
         self.permissions_granted = False
@@ -409,14 +441,6 @@ class CuaDriverBridge:
             if self._policy_dir is not None:
                 shutil.rmtree(self._policy_dir, ignore_errors=True)
                 self._policy_dir = None
-            for folder in self._working_folders:
-                # Removed only while empty: whatever is in one isn't the
-                # shim's to delete. Writable again first, which Windows wants
-                # of a folder it removes.
-                with contextlib.suppress(OSError):
-                    os.chmod(folder, stat.S_IRWXU)
-                    os.rmdir(folder)
-            self._working_folders.clear()
 
     # ── Starting ─────────────────────────────────────────────────────
 
@@ -495,20 +519,22 @@ class CuaDriverBridge:
                     details={"dependency": DRIVER_NAME},
                 )
             runtime = driver_runtime(self._platform)
+            working_folder = await self._working_folder()
             try:
                 policy = self._write_policy()
-                working_folder = self._new_working_folder()
             except OSError as exc:
                 # A full or unwritable temporary directory: without its policy
                 # the driver can't run, and HELLO goes on without computer use.
                 self._last_failure = str(exc)
                 raise DriverUnavailable(
-                    f"could not make cua-driver's policy file or working folder: {exc}",
+                    f"could not write the cua-driver policy file: {exc}",
                     code=ErrorCode.INTERNAL_ERROR,
                 ) from exc
             self._display = platform_info.session_display_values()
             env = driver_environment(policy)
             if working_folder is not None:
+                # As a shell has it after `cd`: a program that goes by PWD
+                # would otherwise take the shim's folder for its own.
                 env["PWD"] = str(working_folder)
             client = self._client_factory(
                 driver_argv(binary, runtime, self._platform),
@@ -605,29 +631,45 @@ class CuaDriverBridge:
                 "Run `autogpt-shim doctor` on this machine.",
             )
 
-    def _new_working_folder(self) -> Path | None:
-        """A new empty folder for a Linux driver to start in, which nothing
-        can be written to; None elsewhere, where the driver starts in the
-        shim's own folder.
+    async def _working_folder(self) -> Path | None:
+        """The folder the driver starts in, or None for the shim's own.
 
-        On Linux cua-driver hands a launch_app `name` that matches no
-        installed app to xdg-open when a file or folder of that name is in
-        its working folder, which was the shim's: the person's home under
-        systemd. The shim lets a name through only when an installed app has
-        it, but the driver looks again, and an app removed between the two
-        left a file of that name open to xdg-open, past the path jail and the
-        approval `urls` needs. In this folder no name finds anything. The
-        apps the driver starts start here too, and a relative path in an
-        approved argument names nothing here. Each start gets its own, as
-        each gets its own policy folder, and they are kept until close(): an
-        app the driver started may still be in one."""
+        On Linux it is the person's home folder (home_folder), however the
+        shim was started. The apps cua-driver starts there inherit its
+        folder: a terminal opens in it, and a save dialog starts in it. The
+        shim's own folder is the home folder under the systemd service, but
+        for a shim started from a terminal it is whatever folder that
+        terminal was in. On macOS and Windows the driver keeps the shim's.
+
+        A home folder that can't be used doesn't fail the start: the driver
+        starts in the shim's own folder then. So it does when the look at
+        the home folder isn't back within HOME_FOLDER_SECONDS (a mount that
+        isn't answering). The look runs in a worker thread, one at a time,
+        as the look for the driver does (find_binary): a start that went on
+        without it leaves it to finish, and the next start waits for that
+        look rather than hold another thread in one of its own. A home
+        folder that goes between the look and the start fails that start;
+        the next one looks again."""
         if not self._platform.startswith("linux"):
             return None
-        folder = Path(tempfile.mkdtemp(prefix="autogpt-cua-driver-cwd-"))
-        self._working_folders.append(folder)
-        # Read-only, so it stays empty: an app the driver starts can't save
-        # a file there, for a later name to open.
-        os.chmod(folder, stat.S_IRUSR | stat.S_IXUSR)
+        looking = self._home_looking
+        if looking is None or looking.done():
+            looking = self._home_looking = asyncio.ensure_future(asyncio.to_thread(home_folder))
+            looking.add_done_callback(_retrieved)
+        done, _ = await asyncio.wait({looking}, timeout=HOME_FOLDER_SECONDS)
+        if not done:
+            logger.warning(
+                "Looking at the home folder took longer than %g s; cua-driver, and the apps "
+                "it starts, start in the local executor's own folder instead",
+                HOME_FOLDER_SECONDS,
+            )
+            return None
+        folder = looking.result()
+        if folder is None:
+            logger.info(
+                "No home folder to start in (HOME names no folder this account can enter); "
+                "cua-driver, and the apps it starts, start in the local executor's own folder"
+            )
         return folder
 
     def _write_policy(self) -> Path:
@@ -705,9 +747,9 @@ async def _display_followed(deadline: float) -> None:
 
 
 def _retrieved(task: asyncio.Future[Any]) -> None:
-    """Mark a start's failure seen, a look's (find_binary) or a stop's: the
-    callers that waited for it may all have given up, and the next starts
-    again."""
+    """Mark a start's failure seen, a look's (find_binary, _working_folder)
+    or a stop's: the callers that waited for it may all have given up, and
+    the next starts again."""
     if not task.cancelled():
         task.exception()
 
@@ -724,4 +766,5 @@ __all__ = [
     "driver_environment",
     "driver_runtime",
     "find_driver_binary",
+    "home_folder",
 ]

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import socket
 import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -81,7 +83,7 @@ async def test_keychain_tokens_are_isolated_by_deployment_and_destinations(
     assert await other.get_access_token() is None
     assert await other.get_refresh_token() is None
     await other.store_tokens("other-access", "other-refresh")
-    other.clear_tokens()
+    await other.clear_tokens()
 
     assert await original.get_access_token() == "original-access"
     assert await original.get_refresh_token() == "original-refresh"
@@ -603,13 +605,17 @@ class _TokenStore:
     def __init__(self) -> None:
         self.cleared = False
 
+    @contextlib.asynccontextmanager
+    async def turn(self) -> AsyncIterator[None]:
+        yield
+
     async def get_access_token(self) -> str:
         return "access-token"
 
     async def get_refresh_token(self) -> str:
         return "refresh-token"
 
-    def clear_tokens(self) -> None:
+    async def clear_tokens(self) -> None:
         self.cleared = True
 
 

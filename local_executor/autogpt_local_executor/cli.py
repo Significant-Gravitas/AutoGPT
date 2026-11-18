@@ -275,13 +275,24 @@ def _build_config(args):
 
 
 def _cmd_auth(config) -> int:
-    from .auth import CredentialScopeError, KeychainTokenStore, OAuthDenied, OAuthFlow
+    from .auth import (
+        CredentialScopeError,
+        KeychainTokenStore,
+        OAuthDenied,
+        OAuthFlow,
+        SignInBusyError,
+    )
 
     try:
         flow = OAuthFlow(config=config, token_store=KeychainTokenStore(config))
         flow.run()
     except CredentialScopeError as exc:
         print(f"Authentication failed: {exc}")
+        return 1
+    except SignInBusyError as exc:
+        # The sign-in went through, but another process kept the stored
+        # sign-in's turn, so it wasn't stored.
+        print(f"The sign-in could not be stored. {exc}")
         return 1
     except OAuthDenied as exc:
         from .doctor import _printable
@@ -386,7 +397,7 @@ def _cmd_status(config, args) -> None:
 
 
 async def _cmd_revoke(config) -> int:
-    from .auth import CredentialScopeError, KeychainTokenStore, OAuthFlow
+    from .auth import CredentialScopeError, KeychainTokenStore, OAuthFlow, SignInBusyError
 
     store = KeychainTokenStore(config)
     flow = OAuthFlow(config=config, token_store=store)
@@ -395,7 +406,7 @@ async def _cmd_revoke(config) -> int:
     except Exception as exc:
         detail = (
             str(exc)
-            if isinstance(exc, CredentialScopeError)
+            if isinstance(exc, CredentialScopeError | SignInBusyError)
             else "Check the deployment configuration, network connection, and OS keychain."
         )
         print(
