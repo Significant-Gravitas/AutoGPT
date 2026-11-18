@@ -4,13 +4,14 @@ import logging
 import time
 import uuid
 from typing import Sequence, cast
+from unittest.mock import patch
 
 from autogpt_libs.auth import get_user_id
 
 from backend.api.rest_api import AgentServer
 from backend.blocks._base import Block, BlockSchema
 from backend.data import db, redis_client
-from backend.data.block import initialize_blocks
+from backend.data.block import BlockInput, initialize_blocks
 from backend.data.db_manager import DatabaseManager
 from backend.data.execution import (
     ExecutionContext,
@@ -110,6 +111,21 @@ async def wait_execution(
 
 
 async def execute_block_test(block: Block):
+    """Run the block's own test inputs and check its outputs.
+
+    The test's step has a fresh id that was never reviewed, and block tests
+    run without the database the review gate reads a stored answer from, so
+    the gate is skipped for this block instance, and for the test only.
+    """
+
+    async def no_review(input_data: BlockInput, **_kwargs) -> tuple[bool, BlockInput]:
+        return False, input_data
+
+    with patch.object(block, "is_block_exec_need_review", no_review):
+        await _run_block_test(block)
+
+
+async def _run_block_test(block: Block):
     prefix = f"[Test-{block.name}]"
 
     if not block.test_input or not block.test_output:

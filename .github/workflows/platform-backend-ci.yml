@@ -399,7 +399,7 @@ jobs:
         with:
           repository: Significant-Gravitas/skills-catalog
           # Update the roster-content assertions alongside this catalog snapshot.
-          ref: 7ed3b73314d5186120e8d4006febfd7e1c92cf08
+          ref: a5dc0724d9d3b51448d59eb89bf64568cb83178a
           path: skills-catalog
           persist-credentials: false
 

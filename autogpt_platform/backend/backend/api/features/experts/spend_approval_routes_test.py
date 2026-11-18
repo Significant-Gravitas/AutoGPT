@@ -116,6 +116,9 @@ async def test_preset_api_run_is_parked(mocker, parked) -> None:
         webhook_id=None,
     )
     mocker.patch.object(presets_routes.db, "get_preset", AsyncMock(return_value=preset))
+    authorize = mocker.patch.object(
+        presets_routes, "require_role_where_resource_lives", AsyncMock()
+    )
 
     result = await presets_routes.execute_preset(
         preset_id="preset-1",
@@ -126,6 +129,13 @@ async def test_preset_api_run_is_parked(mocker, parked) -> None:
     )
 
     assert result.status.value == "REVIEW"
+    authorize.assert_awaited_once_with(
+        "owner",
+        "org",
+        "team",
+        presets_routes.autogpt_auth_lib.OrgAction.EXECUTE_RESOURCES,
+        presets_routes.autogpt_auth_lib.TeamAction.EXECUTE_AGENTS,
+    )
     _assert_parked(park, queue, create)
 
 

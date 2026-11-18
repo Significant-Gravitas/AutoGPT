@@ -146,7 +146,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GPT6_ASTRA = "gpt-6-astra"
     GPT6_SOL = "gpt-6-sol"
     GPT6_1_SOL = "gpt-6.1-sol"
+    GPT6_2_SOL = "gpt-6.2-sol"
     GPT6_1_TERRA = "gpt-6.1-terra"
+    GPT6_2_ASTRA = "gpt-6.2-astra"
     GPT6_LUNA = "gpt-6-luna"
     # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
