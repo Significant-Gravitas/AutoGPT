@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import functools
 import hashlib
+import json
 import logging
 import os
 import tempfile
@@ -24,9 +25,10 @@ from apscheduler.events import (
     EVENT_JOB_MISSED,
 )
 from apscheduler.job import Job as JobObj
-from apscheduler.jobstores.base import JobLookupError
+from apscheduler.jobstores.base import ConflictingIdError, JobLookupError
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.base import BaseTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -142,6 +144,7 @@ from backend.util.clients import (
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.cron import check_cron_fires, validate_cron
 from backend.util.exceptions import (
+    ConflictError,
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
     ExpertRunPausedError,
@@ -150,6 +153,7 @@ from backend.util.exceptions import (
     GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
+    ScheduleLimitError,
     UserBannedError,
     UserPaywalledError,
 )
@@ -2871,6 +2875,34 @@ ScheduleInfo = Annotated[
     Field(discriminator="kind"),
 ]
 
+# A schedule create whose key holds a different schedule (HTTP 409): that
+# key can never create one, so only a new key can.
+_SCHEDULE_KEY_TAKEN = (
+    "This conflicts with a schedule an earlier attempt made. Check your "
+    "schedules before trying again."
+)
+
+
+def _as_json(args: dict[str, Any]) -> str:
+    """*args* as JSON text with sorted keys, for comparing two creates: in
+    Python ``True == 1``, so a request sending ``1`` where the schedule holds
+    ``true`` would match it."""
+    return json.dumps(args, sort_keys=True)
+
+
+def _fires_alike(stored: BaseTrigger, built: BaseTrigger) -> bool:
+    """Whether two cron triggers from ``_build_trigger``, which sets no start,
+    end or jitter, fire at the same times. Triggers have no equality of their
+    own, and a field's ignores a range's step (``0-30/5`` equals ``0-30/10``),
+    so each field's text is compared, with the timezone."""
+    return (
+        isinstance(stored, CronTrigger)
+        and isinstance(built, CronTrigger)
+        and [str(field) for field in stored.fields]
+        == [str(field) for field in built.fields]
+        and str(stored.timezone) == str(built.timezone)
+    )
+
 
 def _resolve_timezone(user_timezone: str | None, user_id: str) -> str:
     if user_timezone:
@@ -3535,13 +3567,16 @@ class Scheduler(AppService):
         trigger,
         name: str | None,
         replaces: list[str] | None = None,
+        replace_existing: bool = True,
     ) -> JobObj:
         """Register *job_args* with APScheduler.
 
         Centralizes the ``add_job`` call shape so all scheduled jobs use the
-        same persistence flags (jobstore, ``replace_existing``, JSON-mode
-        kwargs serialization that round-trips datetimes correctly, and
-        ``id=schedule_id`` so the row is addressable by our generated UUID).
+        same persistence flags (jobstore, JSON-mode kwargs serialization that
+        round-trips datetimes correctly, and ``id=schedule_id`` so the row is
+        addressable by our generated UUID). A job already under that id is
+        replaced, unless *replace_existing* is False: then
+        ``ConflictingIdError`` is raised and the job is left as it was.
         """
         assert job_args.schedule_id is not None
         self._check_schedule_capacity(job_args, replaces=replaces)
@@ -3551,7 +3586,7 @@ class Scheduler(AppService):
             name=name,
             trigger=trigger,
             jobstore=Jobstores.EXECUTION.value,
-            replace_existing=True,
+            replace_existing=replace_existing,
             id=job_args.schedule_id,
         )
         # Index AFTER add_job: a pre-add row would race the read path's
@@ -3583,7 +3618,7 @@ class Scheduler(AppService):
         limit = config.max_schedules_per_user
         held = self._schedule_count(job_args.user_id, replaces=replaces)
         if held >= limit:
-            raise ValueError(
+            raise ScheduleLimitError(
                 f"You already have {held} schedules, the most one account "
                 f"can have ({limit}). Delete one to add another."
             )
@@ -3630,13 +3665,48 @@ class Scheduler(AppService):
         organization_id: Optional[str] = None,
         team_id: Optional[str] = None,
         expert_id: Optional[str] = None,
+        schedule_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
+        """Create a recurring agent schedule.
+
+        *schedule_id* is the caller's key for this create, sent again with a
+        retry, and becomes the schedule's id: a create sent again after its
+        answer was lost gets the schedule it made, not a second one. Nothing
+        is ever replaced; any other create under that id is refused with a
+        ``ConflictError``.
+        """
+        if schedule_id is not None:
+            # A UUID, so it can't take the id of a system job sharing the
+            # jobstore (``ValueError`` otherwise).
+            schedule_id = str(uuid.UUID(schedule_id))
         name = normalize_schedule_name(name)
 
         if expert_id is not None:
             organization_id, team_id = run_async(
                 experts_db().resolve_private_expert_tenancy(user_id, expert_id)
             )
+
+        user_timezone = _resolve_timezone(user_timezone, user_id)
+        trigger = _build_trigger(cron=cron, run_at=None, user_timezone=user_timezone)
+        job_args = GraphExecutionJobArgs(
+            schedule_id=schedule_id or str(uuid.uuid4()),
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            agent_name=name,
+            cron=cron,
+            input_data=input_data,
+            input_credentials=input_credentials,
+            organization_id=organization_id or "",
+            team_id=team_id,
+            expert_id=expert_id,
+        )
+        # Ahead of validation, the account's limit and the created record: a
+        # create sent again adds nothing, so it is neither refused nor counted.
+        if schedule_id is not None:
+            replayed = self._replayed_graph_schedule(job_args, trigger)
+            if replayed is not None:
+                return replayed
 
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
@@ -3650,26 +3720,27 @@ class Scheduler(AppService):
             )
         )
 
-        user_timezone = _resolve_timezone(user_timezone, user_id)
-        job_args = GraphExecutionJobArgs(
-            schedule_id=str(uuid.uuid4()),
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph_version,
-            agent_name=name,
-            cron=cron,
-            input_data=input_data,
-            input_credentials=input_credentials,
-            organization_id=organization_id or "",
-            team_id=team_id,
-            expert_id=expert_id,
-        )
-        job = self._persist_schedule(
-            dispatch_func=execute_graph,
-            job_args=job_args,
-            trigger=_build_trigger(cron=cron, run_at=None, user_timezone=user_timezone),
-            name=name,
-        )
+        try:
+            job = self._persist_schedule(
+                dispatch_func=execute_graph,
+                job_args=job_args,
+                trigger=trigger,
+                name=name,
+                replace_existing=False,
+            )
+        except ConflictingIdError:
+            # Sent again while this copy validated, and that one got in first.
+            replayed = self._replayed_graph_schedule(job_args, trigger)
+            if replayed is None:  # And deleted again since.
+                raise ConflictError(_SCHEDULE_KEY_TAKEN) from None
+            return replayed
+        except ScheduleLimitError:
+            # The account's limit, perhaps filled by that other copy getting
+            # in between this one's lookup of its key and its count.
+            replayed = self._replayed_graph_schedule(job_args, trigger)
+            if replayed is None:
+                raise
+            return replayed
         logger.info(
             f"Added job {job.id} with cron schedule '{cron}' in timezone "
             f"{user_timezone}"
@@ -3678,6 +3749,37 @@ class Scheduler(AppService):
             job_args, job, title=name or "Scheduled agent run"
         )
         return GraphExecutionJobInfo.from_db(job_args, job)
+
+    def _replayed_graph_schedule(
+        self, job_args: GraphExecutionJobArgs, trigger: CronTrigger | DateTrigger
+    ) -> GraphExecutionJobInfo | None:
+        """The schedule an earlier attempt at this create made under its key,
+        or None when there is none yet.
+
+        A key names one create by one account. Anything else under it,
+        another account's schedule included, is a ``ConflictError``: never
+        answered with, and never replaced.
+        """
+        assert job_args.schedule_id is not None
+        job = self.scheduler.get_job(
+            job_args.schedule_id, jobstore=Jobstores.EXECUTION.value
+        )
+        if job is None:
+            return None
+        info = _job_to_info(job)
+        if not (
+            isinstance(info, GraphExecutionJobInfo)
+            and _as_json(
+                info.model_dump(
+                    mode="json", include=set(GraphExecutionJobArgs.model_fields)
+                )
+            )
+            == _as_json(job_args.model_dump(mode="json"))
+            and _fires_alike(job.trigger, trigger)
+        ):
+            raise ConflictError(_SCHEDULE_KEY_TAKEN)
+        logger.info(f"Create of schedule {job.id} was sent again; answered with it")
+        return info
 
     @expose
     def add_copilot_turn_schedule(

@@ -785,6 +785,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ),
     )
 
+    schedule_list_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        description=(
+            "How long a schedule list someone is waiting on (schedule pages, admin "
+            "diagnostics) waits for the scheduler before answering 503."
+        ),
+    )
+
     # Prefer the cluster env var so the new image can co-exist with old-image
     # pods still reading the unsuffixed RABBITMQ_HOST during a rollout.
     rabbitmq_host: str = Field(

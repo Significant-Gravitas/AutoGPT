@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
+from pydantic_core import to_jsonable_python
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.blocks._preview import ChangePreview
@@ -45,6 +46,8 @@ _MAX_ARG_CHARS = 26_000
 CARD_ARGUMENT_CHARS = _MAX_ARG_CHARS
 
 GATE_NODE_PREFIX = f"{COPILOT_NODE_PREFIX}gate-"
+# Where a held call's card carries the generation of the park that opened it.
+HELD_GENERATION = "held_generation"
 
 ReasonKind = Literal["mode", "subject", "supervisor", "rule", "spend", "content"]
 
@@ -127,7 +130,11 @@ def review_id_for(
     otherwise share one row, and across users the second caller would upsert
     onto the first's row and then be unable to read it back, wedging the gate.
     """
-    canonical = json.dumps(args, sort_keys=True, default=str)
+    # As a held call keeps them: its arguments come back from Redis as JSON
+    # (a datetime as ISO text, a set as a list), and its replay must name the
+    # same approval. For plain JSON arguments this must stay exactly
+    # json.dumps(args, sort_keys=True), or every open card's id would change.
+    canonical = json.dumps(to_jsonable_python(args, fallback=str), sort_keys=True)
     digest = hashlib.sha256(
         "\x00".join((session_id, user_id, tool_name, canonical)).encode()
     ).hexdigest()[:16]
@@ -233,23 +240,46 @@ async def find_review(
         review.status == ReviewStatus.APPROVED
         and datetime.now(UTC) - approved_at > APPROVAL_TTL
     ):
-        await consume(review_id, user_id)
+        await discard(review, user_id)
         return None
     return review
 
 
-async def consume(review_id: str, user_id: str) -> bool:
-    """Burn a used approval. The delete IS the mutex.
+async def consume(review: PendingHumanReviewModel, user_id: str) -> bool:
+    """Spend the card as it was read. The delete IS the mutex.
 
     Parallel dispatch is deliberate (every MCP tool is ``readOnlyHint=True``),
     so two identical calls can both read APPROVED; only the one whose delete
-    removes a row may proceed.
+    removes the row may proceed. The delete matches the row's status and
+    creation time as read: once a card is spent, the same call proposed again
+    opens a fresh one under the same id, and a reader still holding the old
+    approval must not take the new card in its place. Raises when the delete
+    fails, so no caller runs on an approval it may not have taken.
     """
+    deleted = await review_db().delete_review_as_read(
+        review.node_exec_id, user_id, review.status, review.created_at
+    )
+    return deleted == 1
+
+
+async def discard(review: PendingHumanReviewModel, user_id: str) -> None:
+    """:func:`consume` a card nothing runs on, such as a rejection or a lapsed
+    approval. A failed delete leaves the card for the next look."""
     try:
-        return await review_db().delete_review_by_node_exec_id(review_id, user_id) == 1
+        await consume(review, user_id)
     except Exception:
-        logger.warning(f"Gate could not consume review {review_id}", exc_info=True)
-        return False
+        logger.warning(
+            f"Gate could not remove review {review.node_exec_id}", exc_info=True
+        )
+
+
+async def close(review_id: str, user_id: str) -> None:
+    """Remove a card whatever its state. Only for cards nothing runs on whose
+    id is never reused: a workflow step's card, once its step has an answer."""
+    try:
+        await review_db().delete_review_by_node_exec_id(review_id, user_id)
+    except Exception:
+        logger.warning(f"Gate could not close review {review_id}", exc_info=True)
 
 
 async def open_review(
@@ -264,9 +294,10 @@ async def open_review(
     reason_kind: ReasonKind = "mode",
     tool_call_id: str = "",
     decided_by: DecidedBy | None = None,
+    generation: str | None = None,
 ) -> Headline | None:
     """Park the call for approval; the card's headline, or None if nothing was
-    recorded."""
+    recorded. ``generation`` is stamped on a new card, as its held call has it."""
     try:
         references = await resolve_references(tool_name, args, user_id, session)
         payload = review_payload(
@@ -290,6 +321,8 @@ async def open_review(
         )
         return None
     headline = Headline.model_validate(payload["headline"])
+    if generation is not None:
+        payload[HELD_GENERATION] = generation
     if not await open_review_row(review_id, user_id, session, payload, headline.text):
         return None
     return headline

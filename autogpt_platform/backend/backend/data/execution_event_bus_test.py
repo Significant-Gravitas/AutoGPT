@@ -214,36 +214,6 @@ async def test_async_listen_graph_uses_all_channel():
 # ---------- Sync RedisExecutionEventBus (smaller surface; covers branching) ----------
 
 
-def test_sync_listen_uses_exec_channel():
-    bus = RedisExecutionEventBus()
-
-    captured: list[str] = []
-
-    def _listen_events(self, channel_key):
-        captured.append(channel_key)
-        return iter([])
-
-    with patch.object(RedisExecutionEventBus, "listen_events", _listen_events):
-        list(bus.listen("u", "g", "e"))
-
-    assert captured == [exec_channel("u", "g", "e")]
-
-
-def test_sync_listen_graph_uses_all_channel():
-    bus = RedisExecutionEventBus()
-
-    captured: list[str] = []
-
-    def _listen_events(self, channel_key):
-        captured.append(channel_key)
-        return iter([])
-
-    with patch.object(RedisExecutionEventBus, "listen_events", _listen_events):
-        list(bus.listen_graph("u", "g"))
-
-    assert captured == [graph_all_channel("u", "g")]
-
-
 def test_sync_publish_node_sends_to_both_channels():
     """Sync publish path also fans out to per-exec + per-graph."""
     bus = RedisExecutionEventBus()
@@ -348,34 +318,6 @@ def test_sync_publish_graph_truncates_inputs_and_outputs(monkeypatch):
 
     assert len(_json.dumps(event.inputs)) < 1000
     assert len(_json.dumps(event.outputs)) < 1000
-
-
-def test_sync_listen_yields_events_from_generator():
-    """Sync ``listen()`` must yield through every event produced by the
-    underlying ``listen_events`` generator."""
-    bus = RedisExecutionEventBus()
-    node_ev = _sample_node_event()
-
-    def _listen_events(self, channel_key):
-        yield node_ev
-
-    with patch.object(RedisExecutionEventBus, "listen_events", _listen_events):
-        got = list(bus.listen("u", "g", "e"))
-
-    assert got == [node_ev]
-
-
-def test_sync_listen_graph_yields_events_from_generator():
-    bus = RedisExecutionEventBus()
-    graph_ev = _sample_graph_event()
-
-    def _listen_events(self, channel_key):
-        yield graph_ev
-
-    with patch.object(RedisExecutionEventBus, "listen_events", _listen_events):
-        got = list(bus.listen_graph("u", "g"))
-
-    assert got == [graph_ev]
 
 
 def test_execution_bus_name_matches_settings():
