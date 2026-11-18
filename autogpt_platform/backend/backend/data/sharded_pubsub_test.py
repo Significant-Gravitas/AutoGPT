@@ -235,11 +235,14 @@ async def test_a_moved_reply_points_the_next_subscription_at_the_new_owner():
             await ShardedSubscription.open(channel)
         assert cluster.nodes_manager.slots_cache[slot][0].port == owner.port
 
-        async with await ShardedSubscription.open(channel) as subscription:
+        async with (
+            await ShardedSubscription.open(channel) as subscription,
+            aclosing(subscription.messages()) as messages,
+        ):
             publisher = await redis_client.get_redis_async()
             async with asyncio.timeout(8):
                 await publisher.execute_command("SPUBLISH", channel, "after-moved")
-                async for message in subscription.messages():
+                async for message in messages:
                     if message["type"] == "smessage":
                         assert message["data"] == "after-moved"
                         break
