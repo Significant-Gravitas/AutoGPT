@@ -8,7 +8,7 @@ the scheduler's jobstore lock.
 
 import threading
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -268,9 +268,16 @@ def _stop(service: Scheduler, stopper: threading.Thread) -> None:
             pytest.fail("the scheduler's stop never finished")
     elif service._scheduler is not None and service._scheduler.running:
         service.cleanup()
-    # Already closed by a stop; this is for a start that failed part-way.
-    for store in service._persistent_jobstores.values():
-        store.shutdown()
+    # Each is tried even if one before it fails, and a failure still raises.
+    with ExitStack() as closing:
+        closing.callback(_close_event_loop)
+        # Already closed by a stop; these are for a start that failed part-way.
+        for store in service._persistent_jobstores.values():
+            closing.callback(store.shutdown)
+
+
+def _close_event_loop() -> None:
+    """Stop and close the event loop ``run_service`` started."""
     loop, thread = scheduler_module._event_loop, scheduler_module._event_loop_thread
     if loop is None or loop.is_closed():
         return

@@ -21,8 +21,9 @@ class StopSafeBackgroundScheduler(BackgroundScheduler):
     misfire grace).
 
     Overrides APScheduler's private ``_process_jobs`` and takes its
-    ``_jobstores_lock``, as of APScheduler 3.11; ``scheduler_shutdown_test``
-    fails if an upgrade changes either.
+    ``_jobstores_lock``, as of APScheduler 3.11. ``scheduler_shutdown_test``
+    fails if an upgrade renames either; one that changes how they work needs
+    this class rechecked.
     """
 
     _stopping = False
