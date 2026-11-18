@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import functools
 import hashlib
+import json
 import logging
 import os
 import tempfile
@@ -2880,6 +2881,13 @@ _SCHEDULE_KEY_TAKEN = (
 )
 
 
+def _as_json(args: dict[str, Any]) -> str:
+    """*args* as JSON text with sorted keys, for comparing two creates: in
+    Python ``True == 1``, so a request sending ``1`` where the schedule holds
+    ``true`` would match it."""
+    return json.dumps(args, sort_keys=True)
+
+
 def _resolve_timezone(user_timezone: str | None, user_id: str) -> str:
     if user_timezone:
         return user_timezone
@@ -3706,6 +3714,13 @@ class Scheduler(AppService):
             if replayed is None:  # And deleted again since.
                 raise ConflictError(_SCHEDULE_KEY_TAKEN) from None
             return replayed
+        except ValueError:
+            # The account's limit, perhaps filled by that other copy getting
+            # in between this one's lookup of its key and its count.
+            replayed = self._replayed_graph_schedule(job_args, trigger)
+            if replayed is None:
+                raise
+            return replayed
         logger.info(
             f"Added job {job.id} with cron schedule '{cron}' in timezone "
             f"{user_timezone}"
@@ -3734,10 +3749,12 @@ class Scheduler(AppService):
         info = _job_to_info(job)
         if not (
             isinstance(info, GraphExecutionJobInfo)
-            and info.model_dump(
-                mode="json", include=set(GraphExecutionJobArgs.model_fields)
+            and _as_json(
+                info.model_dump(
+                    mode="json", include=set(GraphExecutionJobArgs.model_fields)
+                )
             )
-            == job_args.model_dump(mode="json")
+            == _as_json(job_args.model_dump(mode="json"))
             # Triggers don't compare by value; a cron trigger's repr names
             # each of its fields, its dates, jitter and timezone.
             and repr(job.trigger) == repr(trigger)

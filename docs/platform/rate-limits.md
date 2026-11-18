@@ -103,7 +103,7 @@ Sub-workflows, the workflows a run starts as one of its steps, count toward the 
 
 ### Schedules
 
-You can have up to 200 schedules, paused ones included. A new one past that is refused with a message saying you have reached the most one account can have; delete one to add another. In the app, trying again after creating a schedule got no answer returns the schedule the first try made, so that schedule isn't counted twice.
+You can have up to 200 schedules, paused ones included. A new one past that is refused with a message saying you have reached the most one account can have; delete one to add another. When you schedule a workflow from its schedule dialog in the library or the builder and try again, unchanged, after the first try got no answer, you get the schedule the first try made, so it isn't counted twice.
 
 - **Counted per:** account.
 - **Self-hosting:** `MAX_SCHEDULES_PER_USER` (default `200`).

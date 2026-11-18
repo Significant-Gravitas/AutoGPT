@@ -10,6 +10,7 @@ its real jobstore, with the limit lowered.
 """
 
 import asyncio
+import json
 import threading
 import uuid
 from collections.abc import Iterator
@@ -230,6 +231,66 @@ def test_two_copies_of_a_create_that_both_miss_the_replay_make_one_schedule(
     recorded.assert_called_once()
 
 
+def test_a_copy_that_takes_the_last_slot_mid_check_answers_the_other(
+    scheduler: Scheduler, recorded: MagicMock
+):
+    """This copy finds its key free, then the other copy gets in before this
+    one counts the account's schedules, and takes the last of its two. This
+    copy is answered with that schedule, not refused at the limit."""
+    held = _add(scheduler, str(uuid.uuid4()))
+    key = str(uuid.uuid4())
+    count = scheduler._schedule_count
+    other_copy_sent = False
+
+    def count_once_the_other_copy_is_in(*args: Any, **kwargs: Any) -> int:
+        nonlocal other_copy_sent
+        if not other_copy_sent:
+            other_copy_sent = True
+            _add(scheduler, key)
+        return count(*args, **kwargs)
+
+    with patch.object(scheduler, "_schedule_count", count_once_the_other_copy_is_in):
+        answered = _add(scheduler, key)
+
+    assert answered.id == key
+    assert _job_ids(scheduler) == sorted([held.id, key])
+    assert recorded.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "stored, sent",
+    [
+        pytest.param({"flag": True}, {"flag": 1}, id="true-vs-1"),
+        pytest.param(
+            {"rows": [{"on": False}]}, {"rows": [{"on": 0}]}, id="nested-false-vs-0"
+        ),
+    ],
+)
+def test_inputs_that_differ_only_in_json_type_are_another_create(
+    scheduler: Scheduler, stored: dict[str, Any], sent: dict[str, Any]
+):
+    """Python has ``True == 1``; the inputs ``true`` and ``1`` still differ."""
+    key = str(uuid.uuid4())
+    _add(scheduler, key, input_data=stored)
+
+    with pytest.raises(ConflictError):
+        _add(scheduler, key, input_data=sent)
+
+    [job] = scheduler.scheduler.get_jobs(Jobstores.EXECUTION.value)
+    assert json.dumps(job.kwargs["input_data"]) == json.dumps(stored)
+
+
+def test_a_retry_with_its_inputs_in_another_order_is_the_same_create(
+    scheduler: Scheduler,
+):
+    key = str(uuid.uuid4())
+    first = _add(scheduler, key, input_data={"a": 1, "b": {"c": 2, "d": 3}})
+
+    retried = _add(scheduler, key, input_data={"b": {"d": 3, "c": 2}, "a": 1})
+
+    assert retried.id == first.id == key
+
+
 @pytest.fixture
 def validated(mocker) -> AsyncMock:
     """Graph validation, which reads the database through a service these
@@ -250,7 +311,8 @@ def scheduler(
     monkeypatch: pytest.MonkeyPatch, validated: AsyncMock, recorded: MagicMock
 ) -> Iterator[Scheduler]:
     """The scheduler ``run_service`` builds, on its own throwaway jobstore,
-    with an account allowed two schedules."""
+    with an account allowed two schedules. Paused: these tests store jobs and
+    never run them, even when a slow run passes their 09:00 UTC."""
     monkeypatch.setattr(scheduler_module.config, "max_schedules_per_user", 2)
     for name in ("_event_loop", "_event_loop_thread", "_scheduler_instance"):
         monkeypatch.setattr(scheduler_module, name, getattr(scheduler_module, name))
@@ -261,6 +323,7 @@ def scheduler(
         patch("backend.util.service.AppService.cleanup"),
     ):
         service.run_service()
+        service.scheduler.pause()
         try:
             yield service
         finally:

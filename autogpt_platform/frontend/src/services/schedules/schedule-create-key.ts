@@ -34,12 +34,14 @@ export function withScheduleCreateKey(create: ScheduleCreate): ScheduleCreate {
 
 // Called with the create's answer. Success or a final refusal drops the key;
 // anything else (a 503, a timeout, a lost connection) keeps it for the retry.
+// A late answer leaves alone a key a newer attempt has taken since.
 export function forgetScheduleCreateKey(
   create: ScheduleCreate,
   error?: unknown,
 ) {
   if (error !== undefined && !isFinalRefusal(error)) return;
-  storage.clean(slotFor(create));
+  const slot = slotFor(create);
+  if (storage.get(slot) === create.data.schedule_id) storage.clean(slot);
 }
 
 function isFinalRefusal(error: unknown) {
