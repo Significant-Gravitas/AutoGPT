@@ -18,6 +18,7 @@ import base64
 import binascii
 import contextlib
 import contextvars
+import functools
 import hashlib
 import json
 import logging
@@ -68,6 +69,7 @@ from .computer_use.catalog import (
     without_session,
 )
 from .computer_use.concealed import ClipboardState, clipboard_state, marker_in
+from .computer_use.driver import _in_a_thread_of_its_own
 from .computer_use.mcp_client import INVALID_PARAMS, McpError
 from .config import ShimConfig
 from .directory_browser import _is_reparse_point
@@ -2006,7 +2008,7 @@ def _seen(future: asyncio.Future[Any]) -> None:
 
 class _ProgramLookups:
     """A machine's lookups on PATH for a Linux launch by name, made in a
-    worker thread one at a time: the program the name's first word would run
+    thread of their own one at a time: the program the name's first word would run
     (_program_on_path), then the one the matched app's launch command runs
     (_linux_launch).
 
@@ -2016,8 +2018,9 @@ class _ProgramLookups:
     thread. The next caller waits for that lookup too, no later than its
     deadline, rather than start one that would stall as well: one looking
     the same thing up takes its answer, and one looking another up starts
-    its own once it has ended. So a stall holds one worker thread, however
-    many launches come in."""
+    its own once it has ended. So a stall holds one thread, however many
+    launches come in, and not one of the event loop's own, which the shim's
+    stop waits for."""
 
     def __init__(self) -> None:
         # What the lookup under way, or the last, looks up, and how.
@@ -2042,7 +2045,12 @@ class _ProgramLookups:
                 raise TimeoutError
             lookup = self._lookup
             if lookup is None or lookup.done():
-                lookup = self._lookup = asyncio.ensure_future(asyncio.to_thread(look_up, what))
+                # In a daemon thread of its own, not one of the event loop's
+                # workers: a lookup a stalled mount holds would otherwise keep
+                # the shim from stopping (asyncio.run waits for its workers).
+                lookup = self._lookup = _in_a_thread_of_its_own(
+                    functools.partial(look_up, what), "path-lookup"
+                )
                 lookup.add_done_callback(_seen)
                 self._looked_up = (look_up, what)
             ours = self._looked_up == (look_up, what)

@@ -56,6 +56,10 @@ START_WINDOW_SECONDS = 300.0
 # own folder: a home on a mount that isn't answering holds the look for as
 # long as it stalls.
 HOME_FOLDER_SECONDS = 2.0
+# How long a start waits for the look for the driver's binary (find_binary),
+# holding the bridge's lock: as long as HELLO waits for it
+# (handlers.DRIVER_LOOKUP_SECONDS).
+RESTART_LOOKUP_SECONDS = 5.0
 
 # The cua settings (CUA*) the driver may inherit from the shim's environment:
 # the ones cua's own SDK hands a driver it embeds (cua-driver-sdk's
@@ -336,20 +340,26 @@ class CuaDriverBridge:
     async def find_binary(self) -> Path | None:
         """The driver this bridge runs, made executable, or None when it
         isn't installed: find_driver_binary and ensure_executable, in a
-        worker thread. They stat files in the folders on sys.path, for the
-        wheel's driver, and on PATH, and a stalled mount (NFS, FUSE) holds a
-        stat for as long as it stalls; on the event loop that held every
-        session's work and keepalive.
+        thread of their own. They stat files in the folders on sys.path, for
+        the wheel's driver, and on PATH, and a stalled mount (NFS, FUSE)
+        holds a stat for as long as it stalls; on the event loop that held
+        every session's work and keepalive.
 
         One look at a time: a caller that gives up on a stalled look (a
-        HELLO whose connection closed, a chat's start undone) leaves it to
-        finish, and the next one waits for that look rather than start
-        another, which would stall too, until the threads every session's
-        file work shares were all held."""
+        HELLO whose connection closed, a chat's start undone, a start past
+        RESTART_LOOKUP_SECONDS) leaves it to finish, and the next one waits
+        for that look rather than start another, which would stall too. So
+        a stall holds one thread, however many callers come.
+
+        That thread is a daemon thread, not one of the event loop's workers
+        (_in_a_thread_of_its_own): a look still held when the shim is told
+        to stop doesn't keep it from stopping. Every caller bounds its own
+        wait."""
         looking = self._looking
         if looking is None or looking.done():
-            looking = self._looking = asyncio.ensure_future(
-                asyncio.to_thread(_runnable_driver, self._explicit_binary)
+            explicit = self._explicit_binary
+            looking = self._looking = _in_a_thread_of_its_own(
+                lambda: _runnable_driver(explicit), "driver-lookup"
             )
             looking.add_done_callback(_retrieved)
         return await asyncio.shield(looking)
@@ -512,7 +522,25 @@ class CuaDriverBridge:
                 self._last_failure = self._client.stderr_tail(5) or self._last_failure
                 await self._stop_client()
             self._check_restart_budget()
-            binary = await self.find_binary()
+            # A fresh look at each start, so a driver that was upgraded or
+            # moved is found, by the usual order (the configured path, the
+            # wheel's, PATH). It is the bridge's one look, waited for no
+            # longer than RESTART_LOOKUP_SECONDS: this start holds the lock,
+            # and with no limit a folder on PATH or sys.path on a mount that
+            # stopped answering held it for good, and every call, stop and
+            # close() behind it. Past the limit the start fails, the look
+            # goes on in its thread, and the next start waits for that same
+            # look. Nothing here counts against the restart budget: no
+            # driver was started.
+            try:
+                async with asyncio.timeout(RESTART_LOOKUP_SECONDS):
+                    binary = await self.find_binary()
+            except TimeoutError:
+                raise DriverUnavailable(
+                    f"Looking for cua-driver took longer than {RESTART_LOOKUP_SECONDS:g} s: "
+                    "a folder on PATH, or one Python imports from, may be on a disk that "
+                    "isn't answering. Nothing was started; try again once it answers.",
+                ) from None
             if binary is None:
                 raise DriverUnavailable(
                     "cua-driver is not installed. Reinstall the local executor with its "
