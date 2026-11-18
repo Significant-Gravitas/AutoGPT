@@ -37,7 +37,10 @@ export function useAnotherComputer({
       .filter((machineID) => !knownMachineIDs.includes(machineID));
     // A first computer isn't another one: the dialog announces that itself.
     if (isOpen && joined.length > 0 && knownMachineIDs.length > 0) {
-      setNewcomerIDs(joined);
+      const earlier = newcomerIDs.filter(
+        (machineID) => !joined.includes(machineID),
+      );
+      setNewcomerIDs([...earlier, ...joined]);
       setSetupOpen(false);
     }
   }
@@ -46,13 +49,15 @@ export function useAnotherComputer({
     setSetupOpen(false);
     setNewcomerIDs([]);
   }
+  // Once chosen, a computer is no longer news, whatever is chosen after it.
+  if (selectedMachineID && newcomerIDs.includes(selectedMachineID)) {
+    setNewcomerIDs(
+      newcomerIDs.filter((machineID) => machineID !== selectedMachineID),
+    );
+  }
 
   const newcomers = computerMenu(machines)
-    .options.filter(
-      (option) =>
-        newcomerIDs.includes(option.value) &&
-        option.value !== selectedMachineID,
-    )
+    .options.filter((option) => newcomerIDs.includes(option.value))
     .map((option) => option.label);
 
   function toggleSetup() {

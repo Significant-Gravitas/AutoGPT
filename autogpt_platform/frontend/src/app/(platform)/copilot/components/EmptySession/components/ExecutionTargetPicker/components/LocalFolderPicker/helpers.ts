@@ -26,12 +26,16 @@ export function computerMenu(machines: ExecutorMachine[]) {
   return { options, hasSharedNames: new Set(names).size !== names.length };
 }
 
-// As the page shows it: a run of spaces looks like one, so names that differ
-// only in their spaces look the same.
+// As the page shows it: a run of spaces looks like one, and a letter is the
+// same letter however it is encoded, so names that differ only in those look
+// the same.
 function computerName(machine: ExecutorMachine) {
   const platform =
     PLATFORM_LABELS[machine.platform.toLowerCase()] ?? machine.platform;
-  const name = machine.display_name.trim().replace(/\s+/g, " ");
+  const name = machine.display_name
+    .normalize("NFC")
+    .trim()
+    .replace(/\s+/g, " ");
   return `${name} · ${platform}`;
 }
 

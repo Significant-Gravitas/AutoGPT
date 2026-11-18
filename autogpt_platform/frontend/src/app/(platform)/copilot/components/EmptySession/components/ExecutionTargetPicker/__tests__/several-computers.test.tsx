@@ -114,6 +114,13 @@ function chosenComputer() {
   return screen.getByRole("combobox").textContent;
 }
 
+async function choose(user: User, name: string) {
+  await user.click(screen.getByRole("combobox"));
+  await user.click(await screen.findByRole("option", { name }));
+  await waitFor(() => expect(chosenComputer()).toBe(name));
+  await screen.findByText("This folder has no subfolders.");
+}
+
 // The region screen readers hear from. It is in the dialog whatever the
 // dialog shows, since one that arrives already filled isn't read out.
 function readOutRegion() {
@@ -258,6 +265,15 @@ describe("the folder dialog with more than one computer", () => {
     await seesTheNotice(
       "Workstation · Windows · ID 36d78179 connected. Choose it under Computer.",
     );
+    await user.click(screen.getByRole("combobox"));
+    expect(
+      (await screen.findAllByRole("option")).map(
+        (option) => option.textContent,
+      ),
+    ).toEqual([
+      "Workstation · Windows · ID 1c49dced",
+      "Workstation · Windows · ID 36d78179",
+    ]);
   });
 
   test("names each computer when two connect at once", async () => {
@@ -272,6 +288,41 @@ describe("the folder dialog with more than one computer", () => {
     await seesTheNotice(
       "Laptop · macOS and Studio · macOS connected. Choose one under Computer.",
     );
+  });
+
+  test("keeps naming a computer that joined earlier when another joins", async () => {
+    const user = userEvent.setup();
+
+    render(<ExecutionTargetPicker />);
+    await openTheFolderDialog(user);
+    await openTheSetupSteps(user);
+    connected = [WORKSTATION, LAPTOP];
+    await checkAgain(user);
+    await seesTheNotice(LAPTOP_CONNECTED);
+    await openTheSetupSteps(user);
+    connected = [WORKSTATION, LAPTOP, STUDIO];
+    await checkAgain(user);
+
+    await seesTheNotice(
+      "Laptop · macOS and Studio · macOS connected. Choose one under Computer.",
+    );
+  });
+
+  test("stops naming a computer once it has been chosen", async () => {
+    const user = userEvent.setup();
+
+    render(<ExecutionTargetPicker />);
+    await openTheFolderDialog(user);
+    await openTheSetupSteps(user);
+    connected = [WORKSTATION, LAPTOP];
+    await checkAgain(user);
+    await seesTheNotice(LAPTOP_CONNECTED);
+
+    await choose(user, "Laptop · macOS");
+    expect(screen.queryAllByText(LAPTOP_CONNECTED)).toHaveLength(0);
+    await choose(user, "Workstation · Windows");
+
+    expect(screen.queryAllByText(LAPTOP_CONNECTED)).toHaveLength(0);
   });
 
   test("takes the notice away only when that computer disconnects", async () => {
@@ -449,6 +500,20 @@ describe("the Computer menu's labels", () => {
     expect(labels([short, long])).toEqual([
       "Workstation · Windows · ID office-pc",
       "Workstation · Windows · ID office-pc-",
+    ]);
+  });
+
+  test("a name counts as the same name however its letters are encoded", () => {
+    const composed = { ...WORKSTATION, display_name: "Caf\u00e9" };
+    const decomposed = {
+      ...WORKSTATION,
+      display_name: "Cafe\u0301",
+      machine_id: LAPTOP.machine_id,
+    };
+
+    expect(labels([composed, decomposed])).toEqual([
+      "Caf\u00e9 · Windows · ID 1c49dced",
+      "Caf\u00e9 · Windows · ID 36d78179",
     ]);
   });
 
