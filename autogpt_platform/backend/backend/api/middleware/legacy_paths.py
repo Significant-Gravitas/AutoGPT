@@ -23,24 +23,23 @@ class LegacyAPIPathMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
-            scope = self._rewrite(scope)
+            self._rewrite(scope)
         await self.app(scope, receive, send)
 
-    def _rewrite(self, scope: Scope) -> Scope:
+    def _rewrite(self, scope: Scope) -> None:
+        # In place: Sentry names a request after the route the router records in
+        # the scope Sentry holds, and names a copy's request by its raw URL.
         path: str = scope["path"]
         if not path.startswith("/api/"):
-            return scope
+            return
         segment = path[len("/api/") :].split("/", 1)[0]
         if segment not in self.segments:
-            return scope
+            return
         record_legacy_api_path_hit(segment)
-        rewritten = {**scope, "path": INTERNAL_API_PREFIX + path[len("/api") :]}
+        scope["path"] = INTERNAL_API_PREFIX + path[len("/api") :]
         raw_path: bytes | None = scope.get("raw_path")
         if raw_path is not None and raw_path.startswith(b"/api/"):
-            rewritten["raw_path"] = (
-                INTERNAL_API_PREFIX.encode() + raw_path[len(b"/api") :]
-            )
-        return rewritten
+            scope["raw_path"] = INTERNAL_API_PREFIX.encode() + raw_path[len(b"/api") :]
 
 
 def internal_api_segments(app: FastAPI) -> frozenset[str]:
