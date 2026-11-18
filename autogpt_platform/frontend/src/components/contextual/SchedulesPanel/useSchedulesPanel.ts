@@ -6,10 +6,17 @@ import {
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { okData } from "@/app/api/helpers";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 export type ScheduleItem =
   | { kind: "copilot_turn"; item: CopilotTurnJobInfo }
   | { kind: "graph"; item: GraphExecutionJobInfo };
+
+// The scheduler restarts on every deploy and answers 503 while it is out: the
+// schedules are unknown for a moment, neither missing nor broken.
+function isSchedulerUnavailable(error: unknown) {
+  return error instanceof ApiError && error.status === 503;
+}
 
 function nextRunMs(item: { next_run_time?: string | null }): number {
   if (!item.next_run_time) return Number.POSITIVE_INFINITY;
@@ -55,9 +62,18 @@ export function useSchedulesPanel() {
   const paused = pausedQuery.data ?? [];
   const isLoading =
     copilotQuery.isLoading || graphQuery.isLoading || pausedQuery.isLoading;
-  const fetchError =
-    copilotQuery.error ?? graphQuery.error ?? pausedQuery.error;
   const hasContent = schedules.length > 0 || paused.length > 0;
+  const schedulerErrors = [copilotQuery.error, graphQuery.error];
+  const outage = schedulerErrors.find(isSchedulerUnavailable) ?? null;
+  const fetchError =
+    schedulerErrors.find((error) => error && !isSchedulerUnavailable(error)) ??
+    pausedQuery.error;
+  const settled = !isLoading;
+
+  function retryUnavailable() {
+    copilotQuery.refetch();
+    graphQuery.refetch();
+  }
 
   return {
     // Backwards-compat alias — ``followups`` was the only-copilot
@@ -67,10 +83,15 @@ export function useSchedulesPanel() {
     schedules,
     paused,
     isLoading,
+    // Nothing to show, and only because the scheduler is out: a calm
+    // notice, never an error or an empty list.
+    unavailable: settled && !hasContent && !fetchError && outage !== null,
+    retryUnavailable,
+    retrying: copilotQuery.isFetching || graphQuery.isFetching,
     // The sources are independent — only hard-fail once all have settled
-    // and there is nothing to show; a partial failure keeps the loaded
-    // lists visible and surfaces a non-blocking warning instead.
-    error: !isLoading && !hasContent ? fetchError : null,
-    partialError: !isLoading && hasContent ? fetchError : null,
+    // and there is nothing to show; a partial failure, an outage included,
+    // keeps the loaded lists visible and surfaces a non-blocking warning.
+    error: settled && !hasContent ? fetchError : null,
+    partialError: settled && hasContent ? (fetchError ?? outage) : null,
   };
 }

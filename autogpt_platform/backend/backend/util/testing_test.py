@@ -1,12 +1,13 @@
 import asyncio
 import socket
 from collections.abc import Iterator
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.util.testing import (
     Rendezvous,
+    TcpProxy,
     is_tcp_port_reachable,
     unreachable_tcp_endpoints,
 )
@@ -104,3 +105,70 @@ async def test_rendezvous_fails_callers_awaited_one_after_another() -> None:
 
     with pytest.raises(TimeoutError):
         await meeting.returning("a")()
+
+
+async def test_leaving_a_proxy_stops_a_connection_it_was_still_setting_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A connection still waiting on its upstream when the test leaves the
+    proxy must not outlive it, or it starts pipes and sockets nobody closes."""
+    real_open_connection = asyncio.open_connection
+    upstream = ("127.0.0.1", 9)
+    connecting = asyncio.Event()
+    dial_cancelled = asyncio.Event()
+
+    async def open_connection(host: str, port: int, *args, **kwargs):
+        if (host, port) == upstream:
+            connecting.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                dial_cancelled.set()
+                raise
+        return await real_open_connection(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(asyncio, "open_connection", open_connection)
+    async with TcpProxy(upstream) as proxy:
+        reader, writer = await real_open_connection(*proxy.address)
+        async with asyncio.timeout(5):
+            await connecting.wait()
+    try:
+        # The handler was stopped, not left dialling, and its client closed.
+        assert dial_cancelled.is_set()
+        async with asyncio.timeout(5):
+            assert await reader.read() == b""
+    finally:
+        writer.close()
+
+
+async def test_a_connection_accepted_after_the_proxy_closed_is_turned_away(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dial = AsyncMock(return_value=(MagicMock(), MagicMock()))
+    monkeypatch.setattr(asyncio, "open_connection", dial)
+    async with TcpProxy(("127.0.0.1", 9)) as proxy:
+        pass
+    client = MagicMock()
+
+    await proxy._accept(MagicMock(), client)
+
+    client.close.assert_called_once()
+    dial.assert_not_awaited()
+
+
+async def test_an_upstream_that_answers_after_the_proxy_closed_is_hung_up_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proxy = TcpProxy(("127.0.0.1", 9))
+    client, upstream_writer = MagicMock(), MagicMock()
+
+    async def dial(*_args: object, **_kwargs: object) -> tuple:
+        proxy._closed = True  # the test left the proxy while this dial ran
+        return MagicMock(), upstream_writer
+
+    monkeypatch.setattr(asyncio, "open_connection", dial)
+    await proxy._accept(MagicMock(), client)
+
+    client.close.assert_called_once()
+    upstream_writer.close.assert_called_once()
+    assert not [task for task in proxy._tasks if task is not asyncio.current_task()]
