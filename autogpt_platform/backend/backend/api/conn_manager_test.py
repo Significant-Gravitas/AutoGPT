@@ -42,9 +42,6 @@ class _FakePubSub:
     async def connect(self) -> None:
         self.connection = MagicMock()
 
-    async def on_connect(self, connection: Any) -> None:
-        """redis-py resubscribes here on a reconnect."""
-
     async def _confirm(self, channel: str) -> None:
         self.inbox.put_nowait({"type": "ssubscribe", "channel": channel, "data": 1})
 
@@ -645,9 +642,9 @@ async def test_opening_a_stream_gives_up_when_redis_does_not_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The shard may have failed over, so giving up must refresh the slot map
-    for the client's reconnect; a bound of the socket's own that fires first
-    (both are 15 s in production) would cancel the open before it does."""
-    monkeypatch.setattr("backend.data.sharded_pubsub.OPEN_TIMEOUT_S", 0.05)
+    for the client's reconnect: a bound of the socket's own around the open
+    would cancel it first. Shorter here, so that order is certain."""
+    monkeypatch.setattr("backend.data.sharded_pubsub.OPEN_TIMEOUT_S", 0.2)
     monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.05)
 
     async def never_connects(channel: str) -> MagicMock:

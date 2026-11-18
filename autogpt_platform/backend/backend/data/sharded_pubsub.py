@@ -70,10 +70,12 @@ class ShardedSubscription:
         self._name = name
         # A failed SSUBSCRIBE or SUNSUBSCRIBE write drops the connection, and
         # redis-py's next read or command would reconnect and resubscribe
-        # without a word. Refuse that reconnect instead, so it ends the stream.
+        # without a word. This runs in place of the reconnect's handshake
+        # (AUTH, HELLO, CLIENT SETINFO), right after the TCP connect, so the
+        # reconnect ends the stream, and a shard that accepts the connection
+        # but never answers can't hold it: that handshake has no read timeout.
         if pubsub.connection is not None:
-            pubsub.connection.deregister_connect_callback(pubsub.on_connect)
-            pubsub.connection.register_connect_callback(self._refuse_reconnect)
+            pubsub.connection.redis_connect_func = self._refuse_reconnect
 
     async def _refuse_reconnect(self, connection: AbstractConnection) -> None:
         # Left connected, it would read nothing: it isn't subscribed any more.

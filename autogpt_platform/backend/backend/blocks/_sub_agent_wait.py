@@ -44,6 +44,10 @@ CATCH_UP_RETRY_S = 5.0
 # Failed catch-ups after the child's end was seen live before the wait ends on
 # that end anyway: outputs missed in a gap may then be missing.
 CATCH_UP_TRIES_AFTER_END = 3
+# Outputs held in memory while a catch-up is owed. Past this, a chatty child
+# in a long outage would hold every payload; the catch-up's read returns the
+# rest, in order, and only a wait that gives up on the database loses them.
+MAX_HELD_OUTPUTS = 100
 
 Output = tuple[str, Any]
 
@@ -112,7 +116,12 @@ class SubAgentWait:
         """The next event; ``None`` for a gap, a quiet spell or a retry."""
         wait = QUIET_RECHECK_S
         if self._retry_at is not None:
-            wait = max(self._retry_at - asyncio.get_running_loop().time(), 0.0)
+            wait = self._retry_at - asyncio.get_running_loop().time()
+            if wait <= 0:
+                # Due: retry before reading on. A queued event wouldn't wait
+                # for the timeout below, so the retry would trail them all.
+                self._retry_at = None
+                return None
         try:
             async with asyncio.timeout(wait):
                 event = await self._queue.get()
@@ -217,7 +226,9 @@ class SubAgentWait:
     def _hold(self, event: NodeExecutionEvent) -> None:
         from backend.blocks import get_output_block_ids
 
-        if event.block_id in get_output_block_ids():
+        if len(self._held) < MAX_HELD_OUTPUTS and (
+            event.block_id in get_output_block_ids()
+        ):
             self._held.append(event)
 
     def _release_held(self) -> list[Output]:
