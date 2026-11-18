@@ -631,6 +631,66 @@ def _merge_env(base: dict[str, str], extra: dict[str, str]) -> dict[str, str]:
 
 # ── EXECUTE_COMMAND ──────────────────────────────────────────────────────────
 
+# What every cmd.exe command starts with: UTF-8 as the code page the programs
+# it runs write in.
+_CMD_EXE_UTF8 = "chcp 65001 >NUL & "
+# The most a new process's output stream buffers, as asyncio's own calls set it.
+_STREAM_LIMIT = 2**16
+
+
+def _cmd_exe_command_line(cmd_exe: str, command: str) -> str:
+    r"""The Windows command line that has cmd.exe run `command` as written.
+
+    cmd.exe reads its command line itself, and takes a backslash for no
+    escape. As one argv item the command went through subprocess's quoting
+    for programs that read theirs the way the C runtime does, which writes
+    every `"` as `\"`: `dir "C:\Program Files"` ran as `dir \"C:\Program
+    Files\"`. So the line is made here, the command in it unchanged, and
+    started as it is (_start_with_command_line).
+
+    /s: cmd.exe takes off the quote after /c and the last quote on the
+    line, and runs what is between them as it is, whatever quotes that
+    holds. Without it, a line with just those two quotes around the name of
+    a program is run with them kept (`cmd /?`).
+
+    /d: cmd.exe doesn't run the person's AutoRun commands (the registry's
+    `Command Processor\AutoRun`) first. They run in the command's own
+    cmd.exe, so they can change its folder and its environment, which the
+    shim sets for it, and write into its output. No other shell here reads
+    the person's startup file either: PowerShell gets -NoProfile, and
+    `bash -c` reads none. A command that needs the AutoRun script can call
+    it.
+    """
+    return f'{subprocess.list2cmdline([cmd_exe])} /d /s /c "{_CMD_EXE_UTF8}{command}"'
+
+
+async def _start_with_command_line(
+    command_line: str,
+    *,
+    executable: str,
+    stdin: int | None = None,
+    stdout: int | None = None,
+    stderr: int | None = None,
+    **popen: Any,
+) -> asyncio.subprocess.Process:
+    """Start `executable` on Windows with `command_line` as its whole
+    command line, as written.
+
+    asyncio's public calls can't. create_subprocess_exec takes separate
+    arguments, which subprocess joins and quotes (list2cmdline), and
+    create_subprocess_shell makes `cmd.exe /c "<string>"` itself, with no
+    other switch. subprocess.Popen does pass a string on to CreateProcess
+    unchanged, so this is create_subprocess_exec's own body with the string
+    in place of the arguments: the event loop's transport for a new process,
+    which both public calls go through (the same from Python 3.4 to 3.15),
+    and the Process they return over it."""
+    loop = asyncio.get_running_loop()
+    protocol = asyncio.subprocess.SubprocessStreamProtocol(limit=_STREAM_LIMIT, loop=loop)
+    transport = await loop._make_subprocess_transport(  # type: ignore[attr-defined]
+        protocol, command_line, False, stdin, stdout, stderr, 0, executable=executable, **popen
+    )
+    return asyncio.subprocess.Process(transport, protocol, loop)
+
 
 class _CommandConcurrency:
     def __init__(self, limit: int) -> None:
@@ -821,17 +881,28 @@ class CommandHandler:
                         f"Shell {payload.shell.value!r} is not available on this OS.",
                     )
                 shell_exe, shell_args = resolved
-                # On Windows, ensure UTF-8 codepage for the subprocess.
-                full_command = payload.command or ""
                 if plat == "windows" and shell_exe.lower().endswith("cmd.exe"):
-                    full_command = f"chcp 65001 >NUL & {full_command}"
-                proc = await self._spawn_argv(
-                    [shell_exe, *shell_args, full_command],
-                    cwd=str(cwd),
-                    env=env,
-                    creation_flags=creation_flags,
-                    new_session=new_session,
-                )
+                    # cmd.exe gets one command line, the command in it as
+                    # written, and not an argv for subprocess to quote.
+                    proc = await self._spawn_cmd_exe(
+                        shell_exe,
+                        payload.command or "",
+                        cwd=str(cwd),
+                        env=env,
+                        creation_flags=creation_flags,
+                        new_session=new_session,
+                    )
+                else:
+                    # The other shells read their command line as the C
+                    # runtime does, so the command reaches them whole as
+                    # one argument.
+                    proc = await self._spawn_argv(
+                        [shell_exe, *shell_args, payload.command or ""],
+                        cwd=str(cwd),
+                        env=env,
+                        creation_flags=creation_flags,
+                        new_session=new_session,
+                    )
         except _CancelledOnceStarted as cancelled:
             # Cancelled as its command started: stopped and recorded as one
             # cancelled while it runs is (below).
@@ -1026,11 +1097,47 @@ class CommandHandler:
         creation_flags: int,
         new_session: bool,
     ) -> asyncio.subprocess.Process:
+        return await CommandHandler._spawn(
+            lambda **start: asyncio.create_subprocess_exec(*argv, **start),
+            cwd=cwd,
+            env=env,
+            creation_flags=creation_flags,
+            new_session=new_session,
+        )
+
+    @staticmethod
+    async def _spawn_cmd_exe(
+        cmd_exe: str,
+        command: str,
+        *,
+        cwd: str,
+        env: dict[str, str],
+        creation_flags: int,
+        new_session: bool,
+    ) -> asyncio.subprocess.Process:
+        """Start cmd.exe on `command`, as any command is started."""
+        command_line = _cmd_exe_command_line(cmd_exe, command)
+        return await CommandHandler._spawn(
+            lambda **start: _start_with_command_line(command_line, executable=cmd_exe, **start),
+            cwd=cwd,
+            env=env,
+            creation_flags=creation_flags,
+            new_session=new_session,
+        )
+
+    @staticmethod
+    async def _spawn(
+        start: Callable[..., Awaitable[asyncio.subprocess.Process]],
+        *,
+        cwd: str,
+        env: dict[str, str],
+        creation_flags: int,
+        new_session: bool,
+    ) -> asyncio.subprocess.Process:
         # On Windows the command starts suspended, and runs once it is in a
         # job of its own, which a stop ends whole (windows_jobs).
         in_job = sys.platform == "win32"
-        starting = asyncio.create_subprocess_exec(
-            *argv,
+        starting = start(
             cwd=cwd,
             env=env,
             stdout=asyncio.subprocess.PIPE,

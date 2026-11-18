@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+import warnings
 import zipfile
 from pathlib import Path
 
@@ -143,3 +144,22 @@ def test_nothing_names_a_host_the_project_does_not_run() -> None:
         "tests/test_packaging.py",
     } <= reached
     assert not named, "These name a domain the project does not run:\n" + "\n".join(named)
+
+
+def test_every_source_file_compiles_without_a_warning() -> None:
+    """A backslash that starts no escape (a Windows path, or `\\"`, in a
+    docstring that isn't raw) is a warning now and an error in a later
+    Python, and meanwhile the text isn't what was written: `\\"` reads as
+    a bare quote. The lint rules in use don't look for it."""
+    warned = []
+    for folder in ("autogpt_local_executor", "scripts", "tests"):
+        for path in sorted((ROOT / folder).rglob("*.py")):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                compile(path.read_bytes(), str(path), "exec")
+            warned += [
+                f"{path.relative_to(ROOT).as_posix()}:{warning.lineno}: {warning.message}"
+                for warning in caught
+            ]
+
+    assert not warned, "\n".join(warned)

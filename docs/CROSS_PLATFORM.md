@@ -88,7 +88,7 @@ paths only; navigation and selection use short-lived opaque references.
 | `shell: "auto"` runs | `bash` if on `PATH`, else `sh` | `bash` if on `PATH`, else `sh` | `cmd.exe` | Shim's default for `EXECUTE_COMMAND`. It ignores the user's login shell, so on macOS `auto` runs `bash`, not the default `zsh`. |
 | Explicit `shell` values | `bash`, `sh`, `zsh`, `pwsh` | `bash`, `sh`, `zsh`, `pwsh` | `cmd`, `powershell`, `pwsh`, `bash` (Git Bash / WSL) | Each needs its binary on `PATH`; otherwise `SHELL_NOT_AVAILABLE`. See PROTOCOL.md. |
 | POSIX `bash -c "..."` shape | Works | Works | Not available unless Git Bash / WSL installed | Platform must not assume bash on Windows — use `argv` array or `shell: "auto"`. |
-| Argument quoting | `shlex.quote` | `shlex.quote` | `subprocess.list2cmdline` | Shim uses the right quoter per OS when given `argv` form. |
+| Argument quoting | none: `argv` is executed as given | none: `argv` is executed as given | `subprocess.list2cmdline` joins `argv` into the one command line a Windows program gets | The shim adds no quoting to `command`: a shell gets it as sent. `cmd.exe` gets it on a command line the shim builds, `cmd.exe /d /s /c "..."`, since cmd.exe doesn't undo `list2cmdline`'s quoting. See [PROTOCOL.md](PROTOCOL.md#what-each-shell-is-handed). |
 
 ### Process control & signals
 
@@ -115,7 +115,7 @@ paths only; navigation and selection use short-lived opaque references.
 |---|---|---|---|---|
 | Default text encoding | UTF-8 | UTF-8 | UTF-8 on disk; CP1252/locale on console | Shim always reads/writes files as bytes internally. |
 | Line ending on disk | `\n` | `\n` | `\r\n` (when an app writes "text" mode) | Shim does NOT auto-translate. See [PROTOCOL.md FILE_READ semantics](PROTOCOL.md). |
-| Console / subprocess encoding | UTF-8 | UTF-8 (depends on `LC_*`) | OEM code page (e.g., CP437) or UTF-8 if `PYTHONIOENCODING=utf-8` | Shim sets `PYTHONIOENCODING=utf-8` and `chcp 65001` on Windows before subprocess. |
+| Console / subprocess encoding | UTF-8 | UTF-8 (depends on `LC_*`) | OEM code page (e.g., CP437) or UTF-8 if `PYTHONIOENCODING=utf-8` | Shim sets `PYTHONIOENCODING=utf-8` for every command, and runs `chcp 65001` first in a `cmd.exe` command. |
 
 ### Computer use
 

@@ -373,7 +373,8 @@ process can access.
 
 **`command` vs `argv`**: exactly one must be set.
 - `command` (string): passed to a shell selected by `shell`. Subject to shell
-  parsing — the platform is responsible for quoting.
+  parsing — the platform is responsible for quoting. The shell gets the
+  string exactly as sent (see [What each shell is handed](#what-each-shell-is-handed)).
 - `argv` (array of strings): executed directly via `subprocess` with no shell.
   Portable across OSes and immune to shell-quoting bugs. Use this whenever
   shell features (pipes, globs, redirection, env-var expansion) aren't needed.
@@ -393,6 +394,25 @@ process can access.
 Platform code that today calls `bash -c "..."` must switch to either:
 1. Wire `argv` form (preferred), or
 2. `shell: "auto"` and rely on the shim to do the right thing.
+
+##### What each shell is handed
+
+The shim adds no quoting of its own to `command` and takes none away, so
+the platform quotes for the shell it names, by that shell's rules:
+
+| Shell | Started as | What reaches it |
+|---|---|---|
+| `bash`, `sh`, `zsh` | `<shell> -c <command>` | `command`, as one argument. |
+| `pwsh`, `powershell` | `<shell> -NoLogo -NoProfile -Command <command>` | `command`, as one argument, which PowerShell runs as script text. The person's profile isn't loaded. |
+| `cmd` (and `auto` on Windows) | `cmd.exe /d /s /c "chcp 65001 >NUL & <command>"` | `command`, unchanged, on cmd.exe's own command line: cmd.exe takes off the outer pair of quotes (`/s`) and runs what is between them. So a quoted path with a space, `&&`, a pipe, `^` and `%VAR%` mean what they mean when typed at a prompt. `chcp 65001` makes UTF-8 the code page for what the command writes. `/d` skips the person's AutoRun commands, which would run first, in the command's own cmd.exe. |
+
+On Windows a program gets one command line, not a list of arguments. For
+`argv`, and for the `-c` and `-Command` shells above, the shim makes that
+line by the Microsoft C runtime's quoting rules (Python's `list2cmdline`),
+which those shells and most programs undo, so each argument arrives whole.
+cmd.exe and batch files read their command line by other rules: an `argv`
+that names `cmd.exe` or a `.bat` file with an argument holding a `"` is not
+read back as sent. Send such a command as `command`.
 
 **`env` field**: the wire payload uses `env` (a `dict[str, str]`).
 The Python adapter on the platform side (the `LocalPCShim.commands.run`
