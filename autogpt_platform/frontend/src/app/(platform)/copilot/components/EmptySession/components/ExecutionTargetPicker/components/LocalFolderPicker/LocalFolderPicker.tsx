@@ -4,7 +4,6 @@ import type { DirectoryEntry } from "@/app/api/__generated__/models/directoryEnt
 import type { ExecutorMachine } from "@/app/api/__generated__/models/executorMachine";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Select } from "@/components/atoms/Select/Select";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -17,6 +16,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { useEffect, useState } from "react";
 import { LocalExecutorSetup } from "../LocalExecutorSetup/LocalExecutorSetup";
+import { ComputerSelect } from "./components/ComputerSelect/ComputerSelect";
 import { useLocalFolderPicker } from "./useLocalFolderPicker";
 
 interface Props {
@@ -139,16 +139,12 @@ export function LocalFolderPicker({
             />
           ) : (
             <>
-              <Select
-                id="local-executor-machine"
-                label="Computer"
-                value={machine?.machine_id ?? ""}
-                onValueChange={onSelectMachine}
-                options={machines.map((item) => ({
-                  value: item.machine_id,
-                  label: `${item.display_name} · ${platformLabel(item.platform)}`,
-                }))}
-                wrapperClassName="!mb-0"
+              <ComputerSelect
+                machines={machines}
+                selectedMachineID={machine?.machine_id ?? null}
+                isRefreshingMachines={isRefreshingMachines}
+                onSelectMachine={onSelectMachine}
+                onRefreshMachines={onRefreshMachines}
               />
 
               <FolderPath
@@ -367,14 +363,4 @@ function FolderPath({
       ) : null}
     </div>
   );
-}
-
-function platformLabel(platform: string) {
-  const labels: Record<string, string> = {
-    darwin: "macOS",
-    linux: "Linux",
-    windows: "Windows",
-    wsl2: "Windows (WSL2)",
-  };
-  return labels[platform.toLowerCase()] ?? platform;
 }
