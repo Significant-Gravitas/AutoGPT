@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GET } from "../route";
 
 describe("Microsoft callback recovery", () => {
@@ -53,5 +53,75 @@ describe("Microsoft callback recovery", () => {
     expect(html).toContain("AADSTS65004");
     expect(html).not.toContain("<img");
     expect(html).not.toContain("onerror");
+  });
+});
+
+describe("Sign-in started by the mobile app", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function callback(query: string) {
+    return GET(
+      new Request(
+        `https://app.example/auth/integrations/oauth_callback?${query}`,
+      ),
+    );
+  }
+
+  it("sends the code and state back to the app", async () => {
+    const response = await callback("code=abc&state=native.xyz");
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "autogpt-app://integrations/oauth?code=abc&state=native.xyz",
+    );
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+  });
+
+  it("sends the provider's error back to the app", async () => {
+    const response = await callback(
+      "state=native.xyz&error=access_denied&error_description=User%20said%20no",
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "autogpt-app://integrations/oauth?state=native.xyz&error=access_denied&error_description=User+said+no",
+    );
+  });
+
+  it("says the code is missing when the provider sends neither", async () => {
+    const response = await callback("state=native.xyz");
+
+    expect(response.headers.get("location")).toBe(
+      "autogpt-app://integrations/oauth?state=native.xyz&error=missing_code",
+    );
+  });
+
+  it("uses the configured return URL", async () => {
+    vi.stubEnv("NATIVE_OAUTH_RETURN_URL", "autogpt-dev://integrations/oauth");
+
+    const response = await callback("code=abc&state=native.xyz");
+
+    expect(response.headers.get("location")).toBe(
+      "autogpt-dev://integrations/oauth?code=abc&state=native.xyz",
+    );
+  });
+
+  it("never sends the code to a web address from the setting", async () => {
+    vi.stubEnv("NATIVE_OAUTH_RETURN_URL", "https://evil.example/steal");
+
+    const response = await callback("code=abc&state=native.xyz");
+
+    expect(response.headers.get("location")).toBe(
+      "autogpt-app://integrations/oauth?code=abc&state=native.xyz",
+    );
+  });
+
+  it("keeps the popup page for a web sign-in", async () => {
+    const response = await callback("code=abc&state=xyz");
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("oauth_popup_result");
   });
 });

@@ -18,24 +18,24 @@ Open [`connections/mock.html`](connections/mock.html) in a browser for the full 
 
 ## Proposal
 
-### Server (small, blocks everything else)
+### Server (built)
 
-1. `GET /integrations/{p}/login?client=native` (and `POST /mcp/oauth/login` with `client: "native"`) mints a state token with a fixed prefix, e.g. `n_…`.
-2. The web `oauth_callback` and `mcp_callback` routes: if `state` has the prefix, answer `302 autogpt-app://integrations/oauth?code&state[&iss]` instead of `postMessage` + `window.close()`. Target scheme comes from an allowlist setting (`native_oauth_return_urls`), like `external_oauth_callback_origins`.
+1. `GET /integrations/{p}/login?client=native` (and `POST /mcp/oauth/login` with `client: "native"`) mints a state token that starts with `native.` (`NATIVE_STATE_PREFIX` in `credentials_store.py`; `token_urlsafe` never emits `.`).
+2. The web `oauth_callback` and `mcp_callback` routes: if `state` has the prefix, answer `302 autogpt-app://integrations/oauth?code&state[&iss]`, or `?state&error[&error_description]` on failure, instead of `postMessage` + `window.close()`. Shared helper: `frontend/src/app/(platform)/auth/integrations/native-return.ts`. The target comes from the web server's `NATIVE_OAUTH_RETURN_URL`; an `http(s)` or unparseable value falls back to the default, so the code never goes to a web address.
 3. No change to the code swap, PKCE or storage. No new redirect URI to register with Google, GitHub and the rest.
 
 Why the prefix: the callback page has no user and can't look up a state, so the "send to app" flag must ride in the state itself. A leaked code is useless without that user's JWT and the server-held PKCE verifier.
 
 ### App
 
-**Phase 1 — card in chat (screens 1–5)**
+**Phase 1 — card in chat (screens 1–5, built)**
 - `groupParts` gets a `setup` block for any part whose output has `type: "setup_requirements"` (connect_integration, run_block, run_agent, schedule_agent, run_mcp_tool, …). Card lists `setup_info.user_readiness.missing_credentials`; reuse the `OnboardingCard` pattern (`helpers.ts` parser + hook).
 - Row action by type: `oauth2` → "Sign in"; `api_key` / `user_password` / `host_scoped` → "Add key" sheet; `credential_gap` → "Reconnect" / "Grant access"; `expert_grant` → "Allow" (grant only, no sign-in).
 - OAuth: `expo-web-browser` `openAuthSessionAsync(login_url, "autogpt-app://integrations/oauth")` → parse code/state → `POST /integrations/{p}/callback`.
 - After connect: expert chat → `POST /experts/{id}/credentials`; then `PUT credential-selection`; then send the same follow-up line the web sends, only if connected in this app run (history reload stays silent).
 - New `src/lib/api/integrations.ts` (hand-written, like the rest of the app).
 
-**Phase 2 — Connections in the chat panel (screens 6–7)**
+**Phase 2 — Connections in the chat panel (screens 6–7, built)**
 - Expert chat: "Connections" tab in `ExpertPanel` beside Activity and Library. `GET /experts/{id}/credentials`, "also needs" from `GET /experts/setup`, Remove → `DELETE /experts/{id}/credentials/{cid}`.
 - Otto chat: "Your connections" section in `FilesPanel` from `GET /integrations/credentials`.
 - "Add connection" sheet: already-connected accounts ("Allow") + providers from `GET /integrations/providers`.
@@ -52,7 +52,7 @@ Why the prefix: the callback page has no user and can't look up a state, so the 
 3. **iOS prompt.** iOS shows "“AutoGPT” Wants to Use “agpt.co” to Sign In" before every sign-in. `preferEphemeralSession` removes it but then the user types their Google password every time. Keep the prompt.
 4. **Android loses the app.** Low memory can kill the app while Custom Tabs is open; the result then arrives as a cold-start deep link. Add an `integrations/oauth` route that finishes the swap, and save the pending flow (provider, chat, state) before opening the browser.
 5. **Scheme hijack (Android).** Another app could claim `autogpt-app://`. The code alone is useless (needs JWT + PKCE verifier), so low risk. App Links (verified https) would close it but need `assetlinks.json` / `apple-app-site-association` on the web host.
-6. **Expo Go and local dev.** Expo Go returns to `exp://`, not `autogpt-app://`, so the allowlist needs a dev entry or we test in a dev build. On a physical phone the provider sends you to `localhost:3000`, which is the phone; only the simulator or a preview environment works end to end.
+6. **Expo Go and local dev.** On iOS the system sign-in session catches `autogpt-app://` itself, so Expo Go works. On Android the scheme must be registered, so test there in a development build. On a physical phone the provider sends you to `localhost:3000`, which is the phone; only the simulator or a preview environment works end to end.
 7. **Resume is client-driven.** If the user has the same chat open on web and phone, both could send the follow-up. Keep the web's "only if connected in this app run" rule; a server-side resume would be cleaner but is a separate change.
 8. **Paywall.** `login` and `credentials` endpoints run `enforce_payment_paywall`. The app has no paywall UI, so show "Finish this on the web" on 402.
 9. **Secrets on a phone.** Secure entry, no autocorrect or suggestions, never through chat; clear fields on close. iOS may offer to save to Passwords; fine.

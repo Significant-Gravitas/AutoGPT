@@ -201,6 +201,10 @@ async def login(
         str | None,
         Query(title="ID of existing credential to upgrade scopes for"),
     ] = None,
+    client: Annotated[
+        Literal["native"] | None,
+        Query(title="Set to native when the mobile app starts the sign-in"),
+    ] = None,
 ) -> LoginResponse:
     if provider == ProviderName.CODEX:
         await enforce_codex_access_http(user_id)
@@ -217,7 +221,11 @@ async def login(
 
     # Generate and store a secure random state token along with the scopes
     state_token, code_challenge = await creds_manager.store.store_state_token(
-        user_id, provider, requested_scopes, credential_id=credential_id
+        user_id,
+        provider,
+        requested_scopes,
+        credential_id=credential_id,
+        native=client == "native",
     )
     login_url = handler.get_login_url(
         requested_scopes, state_token, code_challenge=code_challenge
