@@ -48,6 +48,23 @@
     }
   },
   {
+    "name": "mcp_aimlapi",
+    "display_name": "AI/ML API",
+    "description": "Find and compare AI models, run chat, embeddings, image, video and audio generation, and call Agent Tools such as web search and page extraction.",
+    "mcp_server": {
+      "server_url": "https://mcp.aimlapi.com/mcp",
+      "documentation_url": "https://docs.aimlapi.com/quickstart/mcp",
+      "setup_instructions": "Sign in with your AI/ML API account, or use an API key from https://aimlapi.com/app/keys (the same key the AI/ML API models use). Generation, chat, embeddings, tool searches and Agent Tool runs are billed to your AI/ML API balance; model lookups and account checks are free.",
+      "connection_mode": "hosted",
+      "icon_id": "aiml_api",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "provider": "aiml_api"
+    }
+  },
+  {
     "name": "mcp_airtable",
     "display_name": "Airtable",
     "description": "Search bases and manage records and schemas within your Airtable permissions.",
@@ -156,6 +173,22 @@
         "bearer"
       ],
       "icon_id": "antimetal"
+    }
+  },
+  {
+    "name": "mcp_anysearch",
+    "display_name": "AnySearch",
+    "description": "Search the web and specialist verticals such as finance, academic papers and code, run up to five searches in parallel, and extract page content as Markdown.",
+    "mcp_server": {
+      "server_url": "https://api.anysearch.com/mcp",
+      "documentation_url": "https://www.anysearch.com/docs/mcp-install",
+      "setup_instructions": "Create an API key at https://www.anysearch.com/console/api-keys and paste it as the access token. It is the same key the AnySearch blocks use. Each successful search or page extraction uses one call from the key's quota.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "bearer"
+      ],
+      "icon_id": "anysearch",
+      "provider": "anysearch"
     }
   },
   {
@@ -455,6 +488,21 @@
     }
   },
   {
+    "name": "mcp_companyenrich",
+    "display_name": "CompanyEnrich",
+    "description": "Enrich company profiles, search companies and people, find lookalikes, and look up people by email.",
+    "mcp_server": {
+      "server_url": "https://mcp.companyenrich.com/mcp",
+      "documentation_url": "https://docs.companyenrich.com/docs/mcp-server",
+      "setup_instructions": "Create an API key at app.companyenrich.com/access-keys and paste it as the access token. Every lookup except checking your account spends CompanyEnrich credits, and searches are charged per result.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "bearer"
+      ],
+      "icon_id": "companyenrich"
+    }
+  },
+  {
     "name": "mcp_composio",
     "display_name": "Composio",
     "description": "Connect approved external apps through Composio Connect and discover their tools.",
@@ -731,6 +779,21 @@
     }
   },
   {
+    "name": "mcp_klaviyo",
+    "display_name": "Klaviyo",
+    "description": "Manage Klaviyo profiles, lists, segments, campaigns, flows, and metrics, and pull marketing performance reports.",
+    "mcp_server": {
+      "server_url": "https://mcp.klaviyo.com/mcp",
+      "documentation_url": "https://developers.klaviyo.com/en/docs/klaviyo_mcp_server",
+      "setup_instructions": "Sign in with your Klaviyo account and approve access. Klaviyo only lets users with the Owner, Admin or Manager role use its hosted server, so ask an account admin if you have another role. Your existing Klaviyo user permissions apply to every tool call.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "klaviyo"
+    }
+  },
+  {
     "name": "mcp_langfuse",
     "display_name": "Langfuse",
     "description": "Work with project traces, prompts, datasets, evaluations, and dashboards.",
@@ -905,6 +968,7 @@
       "oauth_scopes": [
         "key:read"
       ],
+      "provider": "parallel",
       "icon_id": "parallel"
     }
   },
@@ -1051,6 +1115,21 @@
         "settings.privacy.url:write"
       ],
       "icon_id": "subtext"
+    }
+  },
+  {
+    "name": "mcp_supabase",
+    "display_name": "Supabase",
+    "description": "Manage Supabase projects: query databases, apply migrations, deploy edge functions and search the docs.",
+    "mcp_server": {
+      "server_url": "https://mcp.supabase.com/mcp",
+      "documentation_url": "https://supabase.com/docs/guides/getting-started/mcp",
+      "setup_instructions": "Sign in with your Supabase account and choose an organization. Tools can read and change every project and database in it.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "supabase"
     }
   },
   {

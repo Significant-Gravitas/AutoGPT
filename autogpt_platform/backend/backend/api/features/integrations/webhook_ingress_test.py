@@ -40,6 +40,7 @@ from backend.api.middleware.body_limit import RequestBodyTooLarge
 from backend.data.integrations import WebhookWithRelations
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
+from backend.util.url_redaction import mask_credential
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -694,14 +695,18 @@ class TestProviderPathConfusion:
         )
         assert resp.status_code == 404, resp.text
         # Response is indistinguishable from a genuinely nonexistent webhook.
-        assert resp.json()["detail"] == f"Webhook #{WEBHOOK_ID} not found"
+        assert (
+            resp.json()["detail"] == f"Webhook #{mask_credential(WEBHOOK_ID)} not found"
+        )
 
     def test_generic_secret_not_bypassable_via_slant3d_path(self):
         resp = self._run_cross_provider(
             self._secret_protected_generic(), "slant3d", ProviderName.SLANT3D
         )
         assert resp.status_code == 404, resp.text
-        assert resp.json()["detail"] == f"Webhook #{WEBHOOK_ID} not found"
+        assert (
+            resp.json()["detail"] == f"Webhook #{mask_credential(WEBHOOK_ID)} not found"
+        )
 
     def test_matching_provider_path_still_processes(self):
         # Control: the same webhook on its own path with the correct secret is
@@ -1157,7 +1162,11 @@ def test_a_provider_without_webhooks_is_answered_like_an_unknown_webhook(provide
     """Even if a row names that provider: no manager exists to verify it."""
     with patch(
         "backend.api.features.integrations.router.get_webhook",
-        AsyncMock(side_effect=NotFoundError(f"Webhook #{WEBHOOK_ID} not found")),
+        AsyncMock(
+            side_effect=NotFoundError(
+                f"Webhook #{mask_credential(WEBHOOK_ID)} not found"
+            )
+        ),
     ):
         unknown_webhook = _post("github")
     with ExitStack() as stack:

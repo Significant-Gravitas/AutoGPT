@@ -109,14 +109,10 @@ function refusedFor(wait: string) {
   return `Too many attempts. Please try again in ${wait}.`;
 }
 
-async function createAuth({
-  trustForwardedFor = true,
-  trustedProxies = "",
-} = {}) {
+async function createAuth({ trustedProxies = "127.0.0.1" } = {}) {
   vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "false");
   vi.stubEnv("BETTER_AUTH_URL", baseURL);
   vi.stubEnv("BETTER_AUTH_SECRET", "test-secret-that-is-at-least-32-chars");
-  vi.stubEnv("TRUST_X_FORWARDED_FOR", String(trustForwardedFor));
   vi.stubEnv("TRUSTED_PROXIES", trustedProxies);
   vi.doUnmock("../auth");
   vi.resetModules();
@@ -310,7 +306,7 @@ describe("sign-in through the login page", () => {
   });
 
   it("limits only the address when the client IP can't be trusted", async () => {
-    const { login } = await createAuth({ trustForwardedFor: false });
+    const { login } = await createAuth({ trustedProxies: "" });
     fromIP("198.51.100.7");
 
     const acrossAccounts = [];
@@ -380,7 +376,6 @@ describe("sign-in through the login page", () => {
 describe("sign-in behind a proxy that appends to X-Forwarded-For", () => {
   it("counts two visitors behind a listed proxy separately", async () => {
     const { login } = await createAuth({
-      trustForwardedFor: false,
       trustedProxies: "10.0.0.1, 192.168.0.0/16",
     });
 

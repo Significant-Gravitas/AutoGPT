@@ -33,6 +33,11 @@ CHUNK_FLUSH_AT = 3800
 # link-to-chat button, and over-cap inbound files are skipped with a note.
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 
+# The only hosts an inbound file is downloaded from, and so the only hosts the
+# bot token is sent to: Slack's own file host, matched exactly. The app
+# installs through slack.com, so GovSlack's hosts are not listed.
+FILE_HOSTS = frozenset({"files.slack.com"})
+
 # Slack threads have no name (they're implicit off a parent message), so this
 # is unused — create_thread encodes channel|ts and rename_thread is a no-op.
 # Present only to satisfy the adapter contract.

@@ -25,6 +25,7 @@ import {
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
+import { useRunsReadAfterReconnect } from "./useRunsReadAfterReconnect";
 
 function parseTab(
   value: string | null,
@@ -149,6 +150,16 @@ export function useSidebarRunsList({
     }
   }
 
+  // The key includes the graph ID, so this refetches only this graph's runs.
+  function refetchRuns() {
+    queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
+  }
+
+  useRunsReadAfterReconnect({
+    queryKey: runsQuery.queryKey,
+    onTasks: tabValue === "runs",
+  });
+
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
     graphId: graphId || undefined,
@@ -156,13 +167,7 @@ export function useSidebarRunsList({
     // Refetching the infinite query reloads every loaded page in turn, so a
     // burst of events is folded into one refetch now and one at the end.
     throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
-    onExecutionUpdate: (_execution) => {
-      // Invalidate and refetch the query to ensure we have the latest data
-      // This is simpler and more reliable than manually updating the cache
-      // The queryKey is stable and includes the graphId, so this only invalidates
-      // queries for this specific graph's executions
-      queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
-    },
+    onExecutionUpdate: refetchRuns,
   });
 
   // Notify parent about counts and loading state
