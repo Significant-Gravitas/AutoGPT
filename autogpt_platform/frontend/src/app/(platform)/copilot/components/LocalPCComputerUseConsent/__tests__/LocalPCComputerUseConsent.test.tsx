@@ -149,25 +149,29 @@ describe("LocalPCComputerUseConsent", () => {
   test("a close while the decision is being saved does not send it again", async () => {
     const received = vi.fn();
     let finishSaving = () => {};
+    const saved = new Promise<void>((resolve) => {
+      finishSaving = resolve;
+    });
     server.use(
       http.get(EXECUTOR_URL, () => HttpResponse.json(executorStatus())),
       http.post(CONSENT_URL, async ({ request }) => {
         received(await request.json());
-        await new Promise<void>((resolve) => {
-          finishSaving = resolve;
-        });
+        await saved;
         return HttpResponse.json({ computer_use_consent: "approved" });
       }),
     );
 
     render(<LocalPCComputerUseConsent sessionID="test-session-id" />);
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Allow for this session" }),
-    );
-    await waitFor(() => expect(received).toHaveBeenCalledOnce());
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    fireEvent.keyDown(document, { key: "Escape" });
-    finishSaving();
+    try {
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Allow for this session" }),
+      );
+      await waitFor(() => expect(received).toHaveBeenCalledOnce());
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      fireEvent.keyDown(document, { key: "Escape" });
+    } finally {
+      finishSaving();
+    }
 
     await waitFor(() =>
       expect(
