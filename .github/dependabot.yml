@@ -25,6 +25,8 @@ updates:
           - "keyring"
           - "httpx*"
           - "websockets"
+    cooldown:
+      default-days: 7
 
   # autogpt_libs (Poetry project)
   - package-ecosystem: "pip"
