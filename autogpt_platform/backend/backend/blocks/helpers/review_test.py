@@ -8,7 +8,9 @@ import pytest
 
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
+from backend.blocks.google.docs import GoogleDocsShareBlock
 from backend.blocks.helpers.review import HITLReviewHelper
+from backend.blocks.medium import PublishToMediumBlock
 from backend.copilot.gate import Ruling
 from backend.data.execution import ExecutionContext, ExecutionStatus
 from backend.data.human_review import ReviewResult, ReviewStatus
@@ -385,7 +387,7 @@ async def test_an_answer_that_cannot_be_read_fails_the_step(ask: bool):
     for p in patches:
         p.start()
     try:
-        with pytest.raises(ConnectionError):
+        with pytest.raises(RuntimeError, match="review saved for step ne-1"):
             await HITLReviewHelper.handle_review_decision(
                 input_data=_INPUT,
                 user_id="u1",
@@ -415,6 +417,7 @@ def test_an_approval_never_replaces_the_runs_credentials():
         },
     }
     reviewed = {
+        **_INPUT,
         "message_content": "edited",
         "credentials": {
             "id": "another-login",
@@ -427,6 +430,61 @@ def test_an_approval_never_replaces_the_runs_credentials():
     approved = SendDiscordMessageBlock()._approved_input(own, reviewed)
 
     assert approved == {**own, "message_content": "edited"}
+
+
+def _login(login_id: str, provider: str = "discord") -> dict:
+    return {"id": login_id, "provider": provider, "type": "api_key", "title": "x"}
+
+
+def test_a_field_the_reviewer_removed_stays_removed():
+    """Clearing a field on the review card drops it from the payload: the
+    approved step runs without it, not with the run's original value."""
+    own = {**_INPUT, "server_name": "Ops", "credentials": _login("this-runs-login")}
+
+    approved = SendDiscordMessageBlock()._approved_input(own, dict(_INPUT))
+
+    assert approved == {**_INPUT, "credentials": own["credentials"]}
+
+
+def test_a_reviewer_never_sets_a_secret_or_a_login():
+    """A secret and a login are the run's own: an edited one, or one the
+    reviewer added, never reaches the approved step."""
+    content = {"title": "Launch", "content": "Body", "publish_status": "draft"}
+    own = {**content, "author_id": "this-runs-author"}
+    own["credentials"] = _login("this-runs-login", "medium")
+    reviewed = {**content, "title": "Edited", "author_id": "another-author"}
+    reviewed["credentials"] = _login("another-login", "medium")
+    no_secret = {k: v for k, v in own.items() if k != "author_id"}
+
+    edited = PublishToMediumBlock()._approved_input(own, reviewed)
+    added = PublishToMediumBlock()._approved_input(no_secret, reviewed)
+
+    assert edited == {**own, "title": "Edited"}
+    assert added == {**no_secret, "title": "Edited"}
+
+
+def test_a_reviewer_picks_another_file_but_never_another_account():
+    """The reviewer may pick another document; the account behind the picker
+    stays the run's own, and one the reviewer added is dropped."""
+    picked = {"id": "doc-1", "name": "Plan", "_credentials_id": "this-runs-google"}
+    reviewed = {
+        "document": {"id": "doc-2", "name": "Other", "_credentials_id": "another"}
+    }
+    without_account = {"id": "doc-1", "name": "Plan"}
+
+    edited = GoogleDocsShareBlock()._approved_input({"document": picked}, reviewed)
+    added = GoogleDocsShareBlock()._approved_input(
+        {"document": without_account}, reviewed
+    )
+
+    assert edited == {
+        "document": {
+            "id": "doc-2",
+            "name": "Other",
+            "_credentials_id": "this-runs-google",
+        }
+    }
+    assert added == {"document": {"id": "doc-2", "name": "Other"}}
 
 
 async def test_a_block_test_in_progress_does_not_hide_another_steps_rejection():
@@ -474,3 +532,4 @@ async def test_a_block_test_in_progress_does_not_hide_another_steps_rejection():
             p.stop()
         release.set()
         await asyncio.wait_for(block_test, timeout=30)
+    assert "is_block_exec_need_review" not in vars(tested), "the stub outlived its test"

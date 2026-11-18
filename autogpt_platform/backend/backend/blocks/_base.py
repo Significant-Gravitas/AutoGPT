@@ -978,13 +978,14 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def _approved_input(
         self, input_data: BlockInput, reviewed_data: dict[str, Any]
     ) -> BlockInput:
-        """This run's input with the reviewer's edits applied.
+        """The input as the reviewer approved it.
 
-        The stored payload was recorded before this run resolved its
-        credentials (a chat's resume injects them afterwards), so it only
-        overrides the fields a reviewer can edit. Credential and secret fields,
-        and the account behind a file picker, stay this run's own. The result
-        is coerced like the input was.
+        The reviewer's payload decides every field they could edit, and a
+        field they removed stays removed. Fields a reviewer can't edit,
+        credentials and secrets, plus the account behind a file picker, come
+        from this run's own input: the payload was stored before the run
+        resolved them (a chat's resume injects its credentials afterwards).
+        The result is coerced like the input was.
         """
         properties = self.input_schema.jsonschema().get("properties", {})
         kept = {
@@ -992,21 +993,19 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             for name, prop in properties.items()
             if "credentials_provider" in prop or prop.get("secret")
         }
-        merged = {
-            **input_data,
-            **{k: v for k, v in reviewed_data.items() if k not in kept},
-        }
+        approved = {k: v for k, v in reviewed_data.items() if k not in kept}
+        approved |= {k: v for k, v in input_data.items() if k in kept}
         for auto in self.input_schema.get_auto_credentials_fields().values():
             field = auto["field_name"]
-            edited, own = merged.get(field), input_data.get(field)
-            if not isinstance(edited, dict) or edited is own:
+            edited, own = approved.get(field), input_data.get(field)
+            if not isinstance(edited, dict):
                 continue
             pinned = {k: v for k, v in edited.items() if k != "_credentials_id"}
             if isinstance(own, dict) and "_credentials_id" in own:
                 pinned["_credentials_id"] = own["_credentials_id"]
-            merged[field] = pinned
-        coerce_inputs_to_schema(merged, self.input_schema)
-        return merged
+            approved[field] = pinned
+        coerce_inputs_to_schema(approved, self.input_schema)
+        return approved
 
     async def _execute(
         self,

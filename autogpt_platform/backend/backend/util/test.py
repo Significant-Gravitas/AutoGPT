@@ -110,6 +110,24 @@ async def wait_execution(
 
 
 async def execute_block_test(block: Block):
+    """Run the block's own test inputs and check its outputs.
+
+    The test's step has a fresh id that was never reviewed, and block tests
+    run without the database the review gate reads a stored answer from, so
+    the gate is skipped for this block instance, and for the test only.
+    """
+
+    async def no_review(input_data: BlockInput, **_kwargs) -> tuple[bool, BlockInput]:
+        return False, input_data
+
+    setattr(block, "is_block_exec_need_review", no_review)
+    try:
+        await _run_block_test(block)
+    finally:
+        delattr(block, "is_block_exec_need_review")
+
+
+async def _run_block_test(block: Block):
     prefix = f"[Test-{block.name}]"
 
     if not block.test_input or not block.test_output:
@@ -123,14 +141,6 @@ async def execute_block_test(block: Block):
     output_index = 0
     log.info(f"{prefix} Executing {len(block.test_input)} tests...")
     prefix = " " * 4 + prefix
-
-    # The test's step has a fresh id that was never reviewed, and block tests
-    # run without the database the review gate reads a stored answer from.
-    # Only this instance skips the gate, so the block runs unreviewed.
-    async def no_review(input_data: BlockInput, **_kwargs) -> tuple[bool, BlockInput]:
-        return False, input_data
-
-    setattr(block, "is_block_exec_need_review", no_review)
 
     for mock_name, mock_obj in (block.test_mock or {}).items():
         log.info(f"{prefix} mocking {mock_name}...")

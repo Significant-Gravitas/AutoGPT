@@ -29,10 +29,10 @@ class ReviewDecision(BaseModel):
     message: str
     review_result: ReviewResult
 
-    @staticmethod
-    def from_result(review_result: ReviewResult) -> "ReviewDecision":
+    @classmethod
+    def from_result(cls, review_result: ReviewResult) -> "ReviewDecision":
         should_proceed = review_result.status == ReviewStatus.APPROVED
-        return ReviewDecision(
+        return cls(
             should_proceed=should_proceed,
             message=review_result.message
             or (
@@ -59,12 +59,18 @@ class HITLReviewHelper:
         """The review stored on this step, answered or still waiting, or None
         if it was never asked.
 
-        A read error propagates: a review that can't be read is never taken
-        for none, which would run a step its reviewer may have rejected.
+        A read error fails the step: a review that can't be read is never
+        taken for none, which would run a step its reviewer may have rejected.
         """
-        reviews = await review_db().get_reviews_by_node_exec_ids(
-            [node_exec_id], user_id
-        )
+        try:
+            reviews = await review_db().get_reviews_by_node_exec_ids(
+                [node_exec_id], user_id
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"Could not read the review saved for step {node_exec_id}, "
+                "so it did not run"
+            ) from e
         review = reviews.get(node_exec_id)
         if review is None:
             return None
