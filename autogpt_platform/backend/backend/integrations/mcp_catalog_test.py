@@ -170,13 +170,14 @@ def test_aimlapi_effect_map_names_exactly_the_published_tools():
     assert effects.irreversible == []
 
 
-# Every tool the server listed on 2026-11-18, with a valid key and with none.
-# Its docs name the four lookups, which change nothing. score is undocumented
-# and sends ratings of the results back to AnySearch, so it asks first.
-ANYSEARCH_LOOKUP_TOOLS = ["batch_search", "extract", "get_sub_domains", "search"]
+# Every tool the server listed on 2026-11-18 to a caller with a valid key. The
+# three searches each spend a call of the key's quota, and score (the one tool
+# its docs leave out) sends ratings of the results back to AnySearch, so all
+# four ask first. get_sub_domains is a free lookup.
+ANYSEARCH_ASKING_TOOLS = ["batch_search", "extract", "score", "search"]
 
 
-def test_anysearch_takes_a_key_or_none_and_only_its_feedback_tool_asks():
+def test_anysearch_takes_an_api_key_and_only_its_free_lookup_runs_unasked():
     url = "https://api.anysearch.com/mcp"
     entry = get_mcp_catalog_entry_for_url(url)
 
@@ -187,17 +188,17 @@ def test_anysearch_takes_a_key_or_none_and_only_its_feedback_tool_asks():
     assert entry.mcp_server.provider == "anysearch"
     assert entry.mcp_server.connection_mode == "hosted"
     assert entry.mcp_server.allow_custom_url is False
-    assert entry.mcp_server.auth_methods == ["bearer", "none"]
+    assert entry.mcp_server.auth_methods == ["bearer"]
     assert (
         entry.mcp_server.documentation_url
         == "https://www.anysearch.com/docs/mcp-install"
     )
     effects = get_mcp_effect_maps()["mcp_anysearch"]
-    assert sorted(effects.read) == ANYSEARCH_LOOKUP_TOOLS
-    assert effects.external == ["score"]
+    assert effects.read == ["get_sub_domains"]
+    assert sorted(effects.external) == ANYSEARCH_ASKING_TOOLS
     assert effects.irreversible == []
-    assert mcp_tool_effect(url, "search") == "read"
-    assert mcp_tool_effect(url, "score") == "external"
+    assert mcp_tool_effect(url, "get_sub_domains") == "read"
+    assert mcp_tool_effect(url, "search") == "external"
     assert mcp_tool_effect(url, "unlisted_tool") is None
 
 
