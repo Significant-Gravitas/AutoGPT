@@ -1,0 +1,143 @@
+import { afterEach, expect, test, vi } from "vitest";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
+import { server } from "@/mocks/mock-server";
+import {
+  AFTER_RECONNECT,
+  installLiveSocket,
+} from "@/tests/integrations/live-socket";
+import {
+  getGetV2ListLibraryAgentsMockHandler,
+  getGetV2ListLibraryAgentsResponseMock,
+} from "@/app/api/__generated__/endpoints/library/library.msw";
+import {
+  getGetV2ListLibraryFoldersMockHandler,
+  getGetV2ListLibraryFoldersResponseMock,
+} from "@/app/api/__generated__/endpoints/folders/folders.msw";
+import {
+  getGetV1ListAllExecutionsMockHandler,
+  getGetV1ListAllExecutionsResponseMock,
+} from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { AccountMenuActivityRow } from "@/components/layout/Navbar/components/AccountMenu/components/AccountMenuActivityRow";
+import LibraryPage from "../page";
+
+vi.mock("@/lib/auth/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
+  getWebSocketToken: async () => ({ token: "test-token" }),
+}));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+const agent = {
+  ...getGetV2ListLibraryAgentsResponseMock().agents[0],
+  id: "agent-1",
+  graph_id: "graph-1",
+  name: "Workflow 1",
+};
+
+function serveLibrary(runStatus: () => AgentExecutionStatus) {
+  server.use(
+    getGetV2ListLibraryAgentsMockHandler({
+      ...getGetV2ListLibraryAgentsResponseMock(),
+      agents: [agent],
+      pagination: {
+        total_items: 1,
+        total_pages: 1,
+        current_page: 1,
+        page_size: 20,
+      },
+    }),
+    getGetV2ListLibraryFoldersMockHandler(
+      getGetV2ListLibraryFoldersResponseMock({
+        folders: [],
+        pagination: {
+          total_items: 0,
+          total_pages: 1,
+          current_page: 1,
+          page_size: 20,
+        },
+      }),
+    ),
+    getGetV1ListAllExecutionsMockHandler(() => {
+      const status = runStatus();
+      return [
+        {
+          ...getGetV1ListAllExecutionsResponseMock()[0],
+          id: "run-1",
+          graph_id: agent.graph_id,
+          status,
+          started_at: new Date(Date.now() - 60_000),
+          ended_at: status === AgentExecutionStatus.RUNNING ? null : new Date(),
+        },
+      ];
+    }),
+  );
+}
+
+function tile(label: string) {
+  const button = screen.getByText(label).closest("button");
+  expect(button).not.toBeNull();
+  return within(button as HTMLElement);
+}
+
+test("a run that finished while the live connection was down counts as finished once it reconnects", async () => {
+  let status: AgentExecutionStatus = AgentExecutionStatus.RUNNING;
+  serveLibrary(() => status);
+  const live = installLiveSocket();
+
+  render(<LibraryPage />);
+  const first = await live.acceptNext();
+  await waitFor(() => expect(tile("Running now").getByText("1")).toBeDefined());
+
+  status = AgentExecutionStatus.COMPLETED;
+  await live.drop(first);
+  await live.acceptNext();
+
+  await waitFor(
+    () => expect(tile("Recently completed").getByText("1")).toBeDefined(),
+    AFTER_RECONNECT,
+  );
+  expect(tile("Running now").getByText("0")).toBeDefined();
+});
+
+test("the Library summary and the Activity list share one request for the runs after a reconnect", async () => {
+  let status: AgentExecutionStatus = AgentExecutionStatus.RUNNING;
+  serveLibrary(() => status);
+  const live = installLiveSocket();
+
+  render(
+    <>
+      <LibraryPage />
+      <AccountMenuActivityRow />
+    </>,
+  );
+  const first = await live.acceptNext();
+  await waitFor(() => expect(tile("Running now").getByText("1")).toBeDefined());
+
+  let requests = 0;
+  function count({ request }: { request: Request }) {
+    if (new URL(request.url).pathname.endsWith("/api/executions")) {
+      requests += 1;
+    }
+  }
+  server.events.on("request:start", count);
+  try {
+    status = AgentExecutionStatus.COMPLETED;
+    await live.drop(first);
+    await live.acceptNext();
+    await waitFor(
+      () => expect(tile("Recently completed").getByText("1")).toBeDefined(),
+      AFTER_RECONNECT,
+    );
+    expect(requests).toBe(1);
+  } finally {
+    server.events.removeListener("request:start", count);
+  }
+});

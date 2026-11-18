@@ -22,6 +22,8 @@ import {
   EXECUTION_REFETCH_THROTTLE_MS,
   useExecutionEvents,
 } from "@/hooks/useExecutionEvents";
+import { useStableCallback } from "@/hooks/useStableCallback";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
@@ -70,6 +72,7 @@ export function useSidebarRunsList({
 
   const tabValue = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
   const queryClient = useQueryClient();
+  const api = useBackendAPI();
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(
     graphId,
@@ -149,6 +152,12 @@ export function useSidebarRunsList({
     }
   }
 
+  // The key includes the graph ID, so this refetches only this graph's runs.
+  function refetchRuns() {
+    queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
+  }
+  const refetchRunsAfterReconnect = useStableCallback(refetchRuns);
+
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
     graphId: graphId || undefined,
@@ -156,14 +165,16 @@ export function useSidebarRunsList({
     // Refetching the infinite query reloads every loaded page in turn, so a
     // burst of events is folded into one refetch now and one at the end.
     throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
-    onExecutionUpdate: (_execution) => {
-      // Invalidate and refetch the query to ensure we have the latest data
-      // This is simpler and more reliable than manually updating the cache
-      // The queryKey is stable and includes the graphId, so this only invalidates
-      // queries for this specific graph's executions
-      queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
-    },
+    onExecutionUpdate: refetchRuns,
   });
+
+  // Updates published while the socket was down never arrive. The
+  // subscription above covers only the Tasks tab, so re-read the runs after
+  // a reconnect whichever tab is open.
+  useEffect(
+    () => api.onWebSocketReconnect(refetchRunsAfterReconnect),
+    [api, refetchRunsAfterReconnect],
+  );
 
   // Notify parent about counts and loading state
   useEffect(() => {
