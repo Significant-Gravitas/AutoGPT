@@ -448,10 +448,10 @@ def test_before_send_reads_an_event_whose_request_is_not_a_mapping() -> None:
 
 def test_before_send_scans_a_run_of_jwt_starts_in_linear_time() -> None:
     message = "-eyJ" * 20_000
-    started = time.perf_counter()
+    started = time.thread_time()
     scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
     # A pattern entered at every eyJ takes about 10 s on this input.
-    assert time.perf_counter() - started < 1.0
+    assert time.thread_time() - started < 1.0
     assert scrubbed is not None
     assert scrubbed["logentry"]["formatted"] == message
 
