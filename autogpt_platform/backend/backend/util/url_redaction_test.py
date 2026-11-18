@@ -7,6 +7,7 @@ masking end to end.
 """
 
 import contextvars
+import io
 import logging
 import random
 import re
@@ -17,12 +18,14 @@ import pytest
 from starlette.routing import BaseRoute, Mount, Route, WebSocketRoute
 
 from backend.api import rest_api
+from backend.util import url_redaction
 from backend.util.url_redaction import (
     REDACTED,
     CredentialHeaderFilter,
     RequestURLRedactionFilter,
     credentials_in_headers,
     credentials_in_url,
+    is_credential_header,
     keep_request_credentials,
     mask_credential,
     mask_known,
@@ -357,6 +360,130 @@ def test_a_request_value_in_a_url_does_not_hide_its_credentials() -> None:
         assert "123:AA-b_c" not in each.getMessage()
 
 
+def test_one_credential_repeated_past_the_cap_is_masked_where_it_occurs() -> None:
+    """The cap counts the places where different credentials occur; one
+    credential, however often it repeats, is replaced where it occurs."""
+    credential = "ABCDEFGHIJKLMNOP"
+
+    masked = mask_known(f"keep {credential} " * 2000, (credential,))
+
+    assert masked == f"keep {REDACTED} " * 2000
+
+
+def test_overlapping_credentials_past_the_cap_leave_no_tail() -> None:
+    """Past the cap, a text is masked whole rather than credential by
+    credential, which could leave the tail of one another covered."""
+    first, second = "ABCDEFGHIJKLMNOP", "KLMNOPQRSTUVWXYZ"
+    text = f"xx{first}QRSTUVWXYZ" * 1100
+
+    assert "QRSTUVWXYZ" not in mask_known(text, (first, second))
+
+
+def test_an_argument_logged_as_its_repr_is_masked_as_shown() -> None:
+    """``%r`` shows what ``str`` may hide."""
+    token = "repr-only-token-Zq81mN2p"
+
+    class Hidden:
+        def __str__(self) -> str:
+            return "hidden"
+
+        def __repr__(self) -> str:
+            return f"Hidden(token={token!r})"
+
+    record = logging.LogRecord(
+        "x", logging.ERROR, __file__, 1, "Lookup %r failed", (Hidden(),), None
+    )
+
+    def filtered() -> None:
+        keep_request_credentials((token,))
+        RequestURLRedactionFilter().filter(record)
+
+    contextvars.copy_context().run(filtered)
+
+    assert token not in record.getMessage()
+
+
+def test_an_argument_whose_repr_fails_is_masked_as_its_str() -> None:
+    """``%s`` shows ``str``, which still has to be checked when ``repr``
+    raises."""
+    token = "str-only-token-Zq81mN2p"
+
+    class Shown:
+        def __str__(self) -> str:
+            return f"Shown(token={token})"
+
+        def __repr__(self) -> str:
+            raise RuntimeError("no repr")
+
+    record = logging.LogRecord(
+        "x", logging.ERROR, __file__, 1, "Lookup %s failed", (Shown(),), None
+    )
+
+    def filtered() -> None:
+        keep_request_credentials((token,))
+        RequestURLRedactionFilter().filter(record)
+
+    contextvars.copy_context().run(filtered)
+
+    assert token not in record.getMessage()
+
+
+_UNSHOWN = "unshown-secret-Zq81mN2p"
+
+
+class _Unshowable:
+    """A value neither ``str`` nor ``repr`` can show, whose failure quotes a
+    secret that no request sent."""
+
+    def __str__(self) -> str:
+        raise RuntimeError(f"cannot show {_UNSHOWN}")
+
+    def __repr__(self) -> str:
+        raise RuntimeError(f"cannot show {_UNSHOWN}")
+
+
+@pytest.mark.parametrize(
+    "msg, args",
+    [
+        ("Lookup %s failed", (_Unshowable(),)),
+        (f"GET https://api.example.test/v1?token={_UNSHOWN} %d", ("not a number",)),
+    ],
+    ids=["an argument that can't be shown", "a malformed record quoting a URL"],
+)
+def test_a_record_that_cant_be_formatted_is_not_logged(
+    msg: str, args: tuple, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A handler reports a record it can't format with its arguments and the
+    failure's text, either of which can hold what the filter couldn't check,
+    so the record reaches it as a notice that keeps the format, masked."""
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.addFilter(RequestURLRedactionFilter())
+    record = logging.LogRecord("x", logging.ERROR, __file__, 1, msg, args, None)
+
+    handler.handle(record)
+    handler.close()
+
+    assert _UNSHOWN not in stream.getvalue() + capsys.readouterr().err
+    assert "Not logged" in stream.getvalue()
+
+
+def test_an_argument_shown_alike_by_str_and_repr_is_scanned_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scanned: list[str] = []
+    scan = url_redaction._masked_text
+
+    def counted(text: str, credentials: tuple[str, ...]) -> str:
+        scanned.append(text)
+        return scan(text, credentials)
+
+    monkeypatch.setattr(url_redaction, "_masked_text", counted)
+
+    assert not url_redaction._masks(12345, ("a-credential-long-enough",))
+    assert scanned == ["12345"]
+
+
 def test_a_typed_argument_keeps_its_format_when_masked() -> None:
     """A number that matches a credential is masked where the rendered line
     shows it, so ``%d`` still formats it."""
@@ -435,6 +562,67 @@ def test_credential_header_filter(name: str, masked: bool) -> None:
         assert record.getMessage() == f"{direction} {name}: " + (
             REDACTED if masked else "v-1"
         )
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "auth",
+        "auth_token",
+        "token2",
+        "x-auth-key",
+        "api_key",
+        "apiKey",
+        "apikey",
+        "X-API-Key",
+        "Authorization",
+        "access_token",
+        "accessToken",
+        "client_secret",
+        "clientSecret",
+        "password",
+        "__Secure-better-auth.session_token",
+        "sessionid",
+        "csrftoken",
+        "X-CSRF-Token",
+        "X-Hub-Signature-256",
+        "X-Amz-Credential",
+        "sig",
+        "code",
+        "state",
+        "jwt",
+        "set-cookie",
+        "Sec-WebSocket-Protocol",
+        "x-airtable-content-mac",
+        # Glued names, as cookies and normalised headers often are.
+        "PHPSESSID",
+        "JSESSIONID",
+        "SECRETKEY",
+        "clientsecret",
+        "privatekey",
+        "accesskey",
+        "passcode",
+        "apitoken",
+        "idtoken",
+        "authkey",
+        "oauth_verifier",
+        "oauthState",
+        "api_key2",
+        # A bare anti-forgery cookie or parameter.
+        "_csrf",
+        # Header names as Sentry shows an ASGI scope's bytes.
+        "b'cookie'",
+        "b'authorization'",
+        "b'x-api-key'",
+    ],
+)
+def test_a_name_holding_a_credential_word_is_read_as_a_credential(name: str) -> None:
+    """Names that must stay masked, whatever the matching becomes: glued ones
+    and byte-form header names included."""
+    value = "a-value-long-enough-to-count"
+
+    assert is_credential_header(name)
+    assert value in credentials_in_url(f"/x?{name}={value}")
 
 
 def test_every_route_with_a_credential_in_its_path_is_masked_and_no_other() -> None:
