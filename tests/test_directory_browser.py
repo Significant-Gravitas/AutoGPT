@@ -336,3 +336,147 @@ def test_the_real_system_drive_lists_users_and_not_windows(
 
     assert "users" in listed
     assert not listed & {name.casefold() for name in WINDOWS_SYSTEM_FOLDERS}
+
+
+# ── Removable drives, and a home folder that is a link ───────────────────────
+
+
+def _link_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks unavailable on this platform/account")
+
+
+@pytest.mark.parametrize("platform_name", ["linux", "wsl2"])
+def test_removable_drives_are_looked_for_under_the_login_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform_name: str
+) -> None:
+    """udisks mounts a person's disks in a folder named for their login.
+    They were looked for under the home folder's name, which differs for a
+    home like `/home/kris@corp` or an overridden HOME: no disk showed."""
+    home = tmp_path / "kris@corp"
+    home.mkdir()
+    disk = tmp_path / "USB-DISK"
+    disk.mkdir()
+    looked_in: list[Path] = []
+
+    def children_of(parent: Path) -> list[Path]:
+        looked_in.append(parent)
+        return [disk] if parent == Path("/run/media/kris") else []
+
+    monkeypatch.setattr("autogpt_local_executor.directory_browser._login_name", lambda: "kris")
+    browser = DirectoryBrowser(platform_name=platform_name, home=home)
+    monkeypatch.setattr(browser, "_children_of", children_of)
+
+    roots = browser.list_directories(None, None)
+
+    assert str(disk.resolve()) in {entry.path for entry in roots.entries}
+    # Both places distributions use, for the login name, and for the home
+    # folder's name as before.
+    assert {Path("/media/kris"), Path("/run/media/kris")} <= set(looked_in)
+    assert {Path("/media/kris@corp"), Path("/run/media/kris@corp")} <= set(looked_in)
+
+
+def test_a_login_name_that_is_the_home_folders_name_is_looked_under_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "kris"
+    home.mkdir()
+    looked_in: list[Path] = []
+    monkeypatch.setattr("autogpt_local_executor.directory_browser._login_name", lambda: "kris")
+    browser = DirectoryBrowser(platform_name="linux", home=home)
+    monkeypatch.setattr(browser, "_children_of", lambda parent: looked_in.append(parent) or [])
+
+    browser.list_directories(None, None)
+
+    assert looked_in == [Path("/media/kris"), Path("/run/media/kris")]
+
+
+def test_with_no_login_name_to_read_the_home_folders_name_still_serves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "kris"
+    home.mkdir()
+    looked_in: list[Path] = []
+    monkeypatch.setattr("autogpt_local_executor.directory_browser._login_name", lambda: None)
+    browser = DirectoryBrowser(platform_name="linux", home=home)
+    monkeypatch.setattr(browser, "_children_of", lambda parent: looked_in.append(parent) or [])
+
+    browser.list_directories(None, None)
+
+    assert looked_in == [Path("/media/kris"), Path("/run/media/kris")]
+
+
+def test_the_login_name_is_the_accounts_own() -> None:
+    from autogpt_local_executor.directory_browser import _login_name
+
+    if sys.platform == "win32":
+        # No user database of that kind; nothing here looks for Linux mounts.
+        assert _login_name() is None
+        return
+    import pwd
+
+    assert _login_name() == pwd.getpwuid(os.getuid()).pw_name
+
+
+@pytest.mark.parametrize("platform_name", ["darwin", "linux", "wsl2", "windows"])
+def test_a_home_folder_that_is_a_link_is_a_root_by_its_real_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform_name: str
+) -> None:
+    """`/home/u -> /data/u`: the browser refuses links, and refused the home
+    folder with them, so it was missing from the roots."""
+    real = tmp_path / "data" / "u"
+    (real / "projects").mkdir(parents=True)
+    link = tmp_path / "home-u"
+    _link_or_skip(link, real)
+    monkeypatch.setattr("autogpt_local_executor.directory_browser._windows_drive_roots", lambda: [])
+    browser = DirectoryBrowser(platform_name=platform_name, home=link)
+    monkeypatch.setattr(browser, "_children_of", lambda _parent: [])
+
+    roots = browser.list_directories(None, None)
+
+    [home] = roots.entries
+    assert home.path == str(real.resolve())
+    assert home.name == "u"
+    listing = browser.list_directories(roots.browse_id, home.directory_ref)
+    assert [entry.name for entry in listing.entries] == ["projects"]
+    assert browser.resolve(roots.browse_id, home.directory_ref) == real.resolve()
+
+
+def test_a_link_among_a_folders_children_is_still_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the home folder's own link is followed. One inside a folder
+    isn't listed, in the linked home either, and one among the places
+    drives are mounted isn't a root."""
+    real = tmp_path / "data" / "u"
+    (real / "projects").mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    _link_or_skip(real / "shortcut", elsewhere)
+    link = tmp_path / "home-u"
+    _link_or_skip(link, real)
+    media = tmp_path / "media"
+    (media / "USB-DISK").mkdir(parents=True)
+    _link_or_skip(media / "linked-disk", elsewhere)
+    browser = DirectoryBrowser(platform_name="linux", home=link)
+    monkeypatch.setattr(browser, "_linux_user_mounts", lambda: DirectoryBrowser._children_of(media))
+
+    roots = browser.list_directories(None, None)
+
+    assert sorted(entry.name for entry in roots.entries) == ["USB-DISK", "u"]
+    [home] = [entry for entry in roots.entries if entry.name == "u"]
+    listing = browser.list_directories(roots.browse_id, home.directory_ref)
+    assert [entry.name for entry in listing.entries] == ["projects"]
+
+
+def test_a_home_folder_that_is_not_there_is_no_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    link = tmp_path / "home-u"
+    _link_or_skip(link, tmp_path / "gone")
+    browser = DirectoryBrowser(platform_name="linux", home=link)
+    monkeypatch.setattr(browser, "_children_of", lambda _parent: [])
+
+    assert browser.list_directories(None, None).entries == ()

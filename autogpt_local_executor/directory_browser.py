@@ -395,7 +395,10 @@ class DirectoryBrowser:
             ) from exc
 
     def _discover_roots(self) -> tuple[Path, ...]:
-        raw_roots = [self.home]
+        # The home folder by its real place. Where it is itself a link
+        # (`/home/u -> /data/u`), the refusal of links below, which is for
+        # the links a folder holds, dropped it from the roots altogether.
+        raw_roots = [Path(os.path.realpath(self.home))]
         if self.platform_name == "darwin":
             raw_roots.extend(self._children_of(Path("/Volumes")))
         elif self.platform_name == "windows":
@@ -422,10 +425,20 @@ class DirectoryBrowser:
         return tuple(roots)
 
     def _linux_user_mounts(self) -> list[Path]:
-        username = self.home.name
+        """The person's removable disks: what is mounted in the folder
+        udisks keeps for their account, `/media/<login name>` or
+        `/run/media/<login name>` as the distribution has it.
+
+        By the login name first. The home folder's name was used alone,
+        and the two differ for a home like `/home/kris@corp` and where HOME
+        is overridden: no disk showed then. It is still looked under, where
+        it is another name."""
+        names = dict.fromkeys(name for name in (_login_name(), self.home.name) if name)
         return [
-            *self._children_of(Path("/media") / username),
-            *self._children_of(Path("/run/media") / username),
+            child
+            for name in names
+            for parent in (Path("/media") / name, Path("/run/media") / name)
+            for child in self._children_of(parent)
         ]
 
     def _wsl_drive_roots(self) -> list[Path]:
@@ -479,6 +492,17 @@ class DirectoryBrowser:
     @staticmethod
     def _display_name(path: Path) -> str:
         return path.name or str(path)
+
+
+def _login_name() -> str | None:
+    """The account's login name, from the user database. None where it has
+    no entry for the account, or the OS has no such database."""
+    try:
+        import pwd
+
+        return pwd.getpwuid(os.getuid()).pw_name
+    except (ImportError, KeyError, AttributeError):
+        return None
 
 
 def _is_drive_top(path: PurePath) -> bool:

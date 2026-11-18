@@ -72,9 +72,13 @@ accepting a path from the platform.
 | Platform | Roots exposed |
 |---|---|
 | macOS | Canonical home plus accessible real local data volumes immediately under `/Volumes`; system/startup volumes are excluded. |
-| Linux | Canonical home plus accessible user mounts immediately under `/media/$USER` and `/run/media/$USER`; `/`, `/proc`, `/sys`, `/dev`, and general `/run` are never roots. |
+| Linux | Canonical home plus accessible user mounts immediately under `/media/<login name>` and `/run/media/<login name>`, where udisks mounts a person's removable disks; the login name is the account's own from the user database, and the home folder's name is looked under as well where it differs (a home like `/home/kris@corp`, an overridden `HOME`). `/`, `/proc`, `/sys`, `/dev`, and general `/run` are never roots. |
 | WSL2 | Linux home/user mounts plus accessible one-letter fixed-drive mounts immediately under `/mnt`. |
 | Windows | Canonical `%USERPROFILE%` plus accessible fixed and removable drive roots (`GetDriveTypeW` 3 and 2); remote, optical and RAM-disk drives are excluded by their type. Only lettered volumes are listed, so the EFI and recovery partitions, which have no letter, are not; one given a letter is a fixed drive like any other. Redirecting reparse roots are excluded. A reparse point counts as redirecting when its tag has the name-surrogate bit (symlinks, junctions); OneDrive's cloud placeholders don't, and stay browsable. |
+
+"Canonical home" is the home folder by its real place: one that is itself a
+link (`/home/u -> /data/u`) is resolved first and offered under that path.
+Every other link is refused, as below.
 
 Each request lists one immediate level with fixed host-side scan/response caps.
 Symlinks, junctions, inaccessible entries, files, and invalid wire names are
