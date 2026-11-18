@@ -459,6 +459,11 @@ class AppService(BaseAppService, ABC):
         app.add_exception_handler(
             exceptions.NotFoundError, cls._handle_internal_http_error(404)
         )
+        # Not the catch-all: its 500 logs an error, and the server then drops
+        # the connection, failing the caller's next call on it.
+        app.add_exception_handler(
+            exceptions.ConflictError, cls._handle_internal_http_error(409)
+        )
         app.add_exception_handler(DataError, cls._handle_internal_http_error(400))
         app.add_exception_handler(
             UniqueViolationError, cls._handle_internal_http_error(400)

@@ -113,6 +113,9 @@ async def create_graph_execution_schedule(
         organization_id=ctx.org_id,
         team_id=ctx.team_id,
         expert_id=expert_id,
+        schedule_id=(
+            str(schedule_params.schedule_id) if schedule_params.schedule_id else None
+        ),
     )
 
     # Convert the next_run_time back to user timezone for display
