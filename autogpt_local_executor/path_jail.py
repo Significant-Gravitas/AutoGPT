@@ -62,13 +62,32 @@ class PathJailError(Exception):
     """Raised when a path violates the jail.
 
     `code` is one of the ErrorCode enum values for direct mapping to the
-    wire ERROR.code field.
+    wire ERROR.code field. `message` goes to the platform with it, and names
+    only the path that was asked for and the root as the platform was told
+    it. `detail` stays on this computer, for its log: where the path
+    resolved to, the root's own real place, the system's error with its
+    file name. Sent on, those told the platform where a link in the shared
+    folder points outside it, and on Windows, by the letter case of what
+    came back, whether a path exists.
     """
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, *, detail: str | None = None) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
+        self.detail = detail
+
+
+def _outside(raw: str, allowed_root: str | os.PathLike[str], detail: str) -> PathJailError:
+    """The one refusal of a path outside the root, whichever check found it:
+    by its name alone (step 3) or once it was resolved (steps 5 and 6). A
+    message of its own for each said which, and so whether a link is on the
+    way."""
+    return PathJailError(
+        "PATH_OUTSIDE_ALLOWED_ROOT",
+        f"Path {raw!r} is outside allowed_root {os.fspath(allowed_root)!r}",
+        detail=detail,
+    )
 
 
 def _is_reserved_name(p: PurePath) -> bool:
@@ -197,7 +216,10 @@ def assert_inside_jail(
         # but still surface it via the jail interface so handlers don't crash.
         raise PathJailError(
             "PATH_OUTSIDE_ALLOWED_ROOT",
-            f"allowed_root {str(allowed_root)!r} does not exist: {exc}",
+            f"allowed_root {str(allowed_root)!r} does not exist or can't be reached",
+            # The system's error names the part it stopped at, with the
+            # links before it followed.
+            detail=f"allowed_root {str(allowed_root)!r} couldn't be resolved: {exc}",
         ) from exc
 
     # 3. Refuse by its name a path that is plainly outside the root, before
@@ -207,9 +229,12 @@ def assert_inside_jail(
     #    a device, and on macOS `/net/<host>/x` has autofs contact the host,
     #    all before the path could be refused.
     if _plainly_outside(str(lex), _root_spellings(allowed_root, root_resolved)):
-        raise PathJailError(
-            "PATH_OUTSIDE_ALLOWED_ROOT",
-            f"Path {raw!r} is outside allowed_root {root_resolved!r}",
+        raise _outside(
+            raw,
+            allowed_root,
+            # Worked out on the names alone, as the check was.
+            f"{raw!r} comes to {os.path.normpath(from_root(lex, allowed_root))!r} by its "
+            f"name, outside the root, which is {root_resolved!r}",
         )
 
     # 4. Resolve symlinks, junctions, firmlinks, reparse points. Its name
@@ -223,7 +248,8 @@ def assert_inside_jail(
     except (OSError, ValueError) as exc:
         raise PathJailError(
             "PATH_INVALID_CHARS",
-            f"Cannot resolve path {raw!r}: {exc}",
+            f"Cannot resolve path {raw!r}: {_reason(exc)}",
+            detail=f"{raw!r} couldn't be resolved: {exc}",
         ) from exc
 
     # 5. Exact prefix with a path separator boundary, so /workspace doesn't
@@ -240,10 +266,19 @@ def assert_inside_jail(
     if _root_is_an_ancestor(resolved, root_resolved):
         return Path(resolved)
 
-    raise PathJailError(
-        "PATH_OUTSIDE_ALLOWED_ROOT",
-        f"Path {raw!r} (resolved to {resolved!r}) is outside allowed_root {root_resolved!r}",
+    raise _outside(
+        raw,
+        allowed_root,
+        f"{raw!r} resolves to {resolved!r}, outside the root, which is {root_resolved!r}",
     )
+
+
+def _reason(exc: BaseException) -> str:
+    """Why the system refused, in its own words, without the file name its
+    error ends with: that is the path it was given, a resolved one."""
+    if isinstance(exc, OSError):
+        return exc.strerror or type(exc).__name__
+    return str(exc)
 
 
 def from_root(requested_path: str | os.PathLike[str], allowed_root: str | os.PathLike[str]) -> str:
@@ -425,6 +460,7 @@ def assert_entry_inside_jail(
         raise PathJailError(
             exc.code,
             f"Path {raw!r} names an entry outside allowed_root {str(allowed_root)!r}",
+            detail=exc.detail,
         ) from exc
     return directory / lex.name
 

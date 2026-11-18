@@ -223,7 +223,23 @@ class _BoundedCombinedOutput:
 
 
 def _jail_error_to_message(msg_id: str, exc: PathJailError) -> ErrorMessage:
+    """The reply for a path the jail refused. Where the path resolved to
+    stays here, in the log (PathJailError.detail)."""
+    if exc.detail:
+        logger.info("Refused a path (%s): %s", exc.code, exc.detail)
     return make_error(msg_id, exc.code, exc.message)
+
+
+def _refused_by_the_system(doing: str, asked: str, exc: OSError) -> str:
+    """The text of a reply for work the system refused: what was being done,
+    the path as the platform asked for it, and the system's reason.
+
+    Not str(exc): that ends with the file name the system was given, which
+    is the resolved path, and tells the platform where a link in the shared
+    folder leads, or where the folder itself really is. The error as the
+    system gave it goes to the log."""
+    logger.info("%s %r: %s", doing, asked, exc)
+    return f"{doing} {asked!r}: {exc.strerror or type(exc).__name__}"
 
 
 def _ok_result(duration_ms: int, *, exit_code: int | None = None) -> dict:
@@ -933,7 +949,13 @@ class CommandHandler:
                 cwd=str(cwd),
                 result=_err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
             )
-            return make_error(msg.id, ErrorCode.INTERNAL_ERROR, str(exc))
+            # Not the failure's own text, which can name a resolved path.
+            # It is in the log, above.
+            return make_error(
+                msg.id,
+                ErrorCode.INTERNAL_ERROR,
+                f"The command could not be started ({type(exc).__name__})",
+            )
 
         try:
             stdout_b, stderr_b, timed_out, output_truncated = await self._collect_process_output(
@@ -1316,7 +1338,9 @@ class FileHandler:
                 {**details_base, "size_bytes_returned": 0},
                 _err_result(_elapsed_ms(start), code.value),
             )
-            return make_error(msg.id, code, f"Could not read file: {exc}")
+            return make_error(
+                msg.id, code, _refused_by_the_system("Could not read file", payload.path, exc)
+            )
 
         if chunk is None:
             requested_size = (
@@ -1429,7 +1453,9 @@ class FileHandler:
                 {**details_base, "size_bytes_written": 0},
                 _err_result(_elapsed_ms(start), code.value),
             )
-            return make_error(msg.id, code, f"Could not write file: {exc}")
+            return make_error(
+                msg.id, code, _refused_by_the_system("Could not write file", payload.path, exc)
+            )
         await self._emit(
             "FILE_WRITE",
             msg.id,
@@ -1480,7 +1506,11 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
             )
-            return make_error(msg.id, ErrorCode.INTERNAL_ERROR, str(exc))
+            return make_error(
+                msg.id,
+                ErrorCode.INTERNAL_ERROR,
+                _refused_by_the_system("Could not stat", payload.path, exc),
+            )
 
         is_file = stat.S_ISREG(st.st_mode)
         is_dir = stat.S_ISDIR(st.st_mode)
@@ -1560,7 +1590,7 @@ class FileHandler:
                 {**details_base, "entries_returned": 0},
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_FOUND.value),
             )
-            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{base} does not exist")
+            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{payload.path!r} does not exist")
         if not await _read_in_a_thread(base.is_dir):
             await self._emit(
                 "FILE_LIST",
@@ -1568,7 +1598,9 @@ class FileHandler:
                 {**details_base, "entries_returned": 0},
                 _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
             )
-            return make_error(msg.id, ErrorCode.INTERNAL_ERROR, f"{base} is not a directory")
+            return make_error(
+                msg.id, ErrorCode.INTERNAL_ERROR, f"{payload.path!r} is not a directory"
+            )
 
         # max_entries has no bound on the wire; cap it so a huge value can't
         # walk a whole tree only to have the reply refused as too large. Zero
@@ -1698,7 +1730,9 @@ class FileHandler:
                 {**details_base, "entries_returned": 0},
                 _err_result(_elapsed_ms(start), code.value),
             )
-            return make_error(msg.id, code, f"Could not list {base}: {exc}")
+            return make_error(
+                msg.id, code, _refused_by_the_system("Could not list", payload.path, exc)
+            )
         await self._emit(
             "FILE_LIST",
             msg.id,
@@ -1744,7 +1778,7 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_FOUND.value),
             )
-            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{path} does not exist")
+            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{payload.path!r} does not exist")
 
         try:
             if await _read_in_a_thread(_is_own_directory, path):
@@ -1761,7 +1795,11 @@ class FileHandler:
                             details,
                             _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_EMPTY.value),
                         )
-                        return make_error(msg.id, ErrorCode.PATH_NOT_EMPTY, str(exc))
+                        return make_error(
+                            msg.id,
+                            ErrorCode.PATH_NOT_EMPTY,
+                            _refused_by_the_system("Could not remove folder", payload.path, exc),
+                        )
             else:
                 await _run_to_completion(os.unlink, str(path))
         except OSError as exc:
@@ -1771,7 +1809,11 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
             )
-            return make_error(msg.id, ErrorCode.INTERNAL_ERROR, str(exc))
+            return make_error(
+                msg.id,
+                ErrorCode.INTERNAL_ERROR,
+                _refused_by_the_system("Could not delete", payload.path, exc),
+            )
 
         await self._emit("FILE_DELETE", msg.id, details, _ok_result(_elapsed_ms(start)))
         return make_ack(msg.id)
@@ -1809,7 +1851,7 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_FOUND.value),
             )
-            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{src} does not exist")
+            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{payload.src!r} does not exist")
         if not payload.overwrite and await _read_in_a_thread(os.path.lexists, dst):
             await self._emit(
                 "FILE_MOVE",
@@ -1817,7 +1859,7 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_EXISTS.value),
             )
-            return make_error(msg.id, ErrorCode.PATH_EXISTS, f"{dst} already exists")
+            return make_error(msg.id, ErrorCode.PATH_EXISTS, f"{payload.dst!r} already exists")
 
         try:
             # Without overwrite, a destination created after the check above
@@ -1831,7 +1873,7 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_EXISTS.value),
             )
-            return make_error(msg.id, ErrorCode.PATH_EXISTS, f"{dst} already exists")
+            return make_error(msg.id, ErrorCode.PATH_EXISTS, f"{payload.dst!r} already exists")
         except OSError as exc:
             await self._emit(
                 "FILE_MOVE",
@@ -1839,7 +1881,11 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
             )
-            return make_error(msg.id, ErrorCode.INTERNAL_ERROR, str(exc))
+            return make_error(
+                msg.id,
+                ErrorCode.INTERNAL_ERROR,
+                _refused_by_the_system(f"Could not move {payload.src!r} to", payload.dst, exc),
+            )
 
         await self._emit("FILE_MOVE", msg.id, details, _ok_result(_elapsed_ms(start)))
         return make_ack(msg.id)

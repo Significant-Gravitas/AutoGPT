@@ -1187,11 +1187,20 @@ a copy made while it was read (`changed`).
   "version": "2.0",
   "payload": {
     "code": "PATH_OUTSIDE_ALLOWED_ROOT",
-    "message": "Path /etc/passwd is outside allowed root /Users/alice/autogpt-workspace",
+    "message": "Path '/etc/passwd' is outside allowed_root '/Users/alice/autogpt-workspace'",
     "fatal": false
   }
 }
 ```
+
+`message` is for a person or the model to read, and the platform acts on
+`code` alone. A message about a path names it as the request did, and the
+shared folder as the shim reported it in HELLO. It never holds what the path
+resolved to, the system's own file name for it, or where the shared folder
+really is when it was named through a link: those would tell the platform
+where a link in the folder points outside it, and stay in the shim's log on
+the computer. A path refused as outside the folder gets the same message
+whether its name alone or a link on the way put it there.
 
 Error codes:
 - `PATH_OUTSIDE_ALLOWED_ROOT` — file op tried to escape allowed_root

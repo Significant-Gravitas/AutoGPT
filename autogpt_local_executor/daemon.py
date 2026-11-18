@@ -465,6 +465,20 @@ class MachineSlots:
 _BROWSE_ROOTS = "<the folder picker's roots>"
 
 
+def _unexpected_failure(exc: Exception) -> str:
+    """What the platform is told of a failure no handler expected: its kind,
+    and for the system's own errors the system's reason. Not its text, which
+    for an OSError ends with the file name the system was given: a resolved
+    path, and with it where a link in the shared folder leads. The whole
+    failure is in the log."""
+    reason = exc.strerror if isinstance(exc, OSError) and exc.strerror else None
+    kind = type(exc).__name__ + (f": {reason}" if reason else "")
+    return (
+        f"The request failed in the local executor ({kind}). Its log on that computer "
+        "has the details."
+    )
+
+
 def _folder_not_answering(request_id: str, exc: FolderCheckTimeout) -> ErrorMessage:
     """DIRECTORY_UNAVAILABLE for a folder that didn't answer in time: one on
     a share that is away, say. It may be back later, so the platform keeps
@@ -1880,7 +1894,7 @@ class ShimDaemon:
                 response = make_error(
                     msg.id if hasattr(msg, "id") else new_id(),
                     ErrorCode.INTERNAL_ERROR,
-                    str(exc),
+                    _unexpected_failure(exc),
                 )
         finally:
             # Belt-and-braces: if either counter is still owed (e.g. we got
