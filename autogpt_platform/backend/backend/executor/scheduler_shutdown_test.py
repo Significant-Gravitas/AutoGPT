@@ -1,8 +1,8 @@
 """Stopping the scheduler keeps a job that falls due as it stops, and runs it once.
 
-Each test starts the real ``Scheduler.run_service`` APScheduler (its pool and
-job defaults, two starts sharing one SQLite jobstore), stops it through
-``Scheduler.cleanup`` as SIGTERM does, and forces its race in order through
+The race tests start the real ``Scheduler.run_service`` APScheduler (its pool
+and job defaults, two starts sharing one SQLite jobstore), stop it through
+``Scheduler.cleanup`` as SIGTERM does, and force their race in order through
 the scheduler's jobstore lock.
 """
 
@@ -15,6 +15,10 @@ from unittest.mock import patch
 import pytest
 from apscheduler.events import EVENT_SCHEDULER_SHUTDOWN
 from apscheduler.job import Job
+from apscheduler.schedulers import (
+    SchedulerAlreadyRunningError,
+    SchedulerNotRunningError,
+)
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -22,6 +26,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from backend.executor import scheduler as scheduler_module
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.executor.scheduler import Jobstores, Scheduler
+from backend.executor.scheduler_shutdown import StopSafeBackgroundScheduler
 
 _EXECUTION = Jobstores.EXECUTION.value
 # Only a broken run waits this long.
@@ -54,7 +59,7 @@ def test_a_job_due_as_the_scheduler_stops_runs_once_on_the_next_start(tmp_path):
     due = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=1)
 
     with _started_service(jobstore) as (service, lock, stopper):
-        # Hourly, so no second run can fall due however slowly the test runs.
+        # Hourly: a second run falls due only if the test stalls for an hour.
         service.scheduler.add_job(
             _record_run,
             IntervalTrigger(hours=1, timezone=timezone.utc),
@@ -78,7 +83,6 @@ def test_a_job_due_as_the_scheduler_stops_runs_once_on_the_next_start(tmp_path):
         finally:
             lock.let_go()
 
-    assert not stopper.is_alive()
     assert _runs == []
     assert _stored_jobs(jobstore)["hourly"].next_run_time == due
 
@@ -122,12 +126,13 @@ def test_a_one_shot_handed_to_the_pool_as_the_stop_begins_runs_once(tmp_path):
         assert removing.wait(_WAIT_S)
         stopper.start()
 
-    assert not stopper.is_alive()
     assert stop_asked_first == [True]
+    assert _runs == ["one-shot"]
+    assert "one-shot" not in _stored_jobs(jobstore)
 
     with _started_service(jobstore) as (service, _, _):
-        # Due after the one-shot, so the pass that runs it takes a row left
-        # behind too, and every run it starts ends before the stop returns.
+        # Due after the one-shot, so the pass that runs it would take a row
+        # left behind too, and every run it starts ends before the stop returns.
         service.scheduler.add_job(
             _record_run,
             DateTrigger(datetime.now(timezone.utc), timezone=timezone.utc),
@@ -140,6 +145,25 @@ def test_a_one_shot_handed_to_the_pool_as_the_stop_begins_runs_once(tmp_path):
         service.cleanup()
 
     assert sorted(_runs) == ["later", "one-shot"]
+
+
+def test_only_a_start_that_goes_ahead_clears_a_stop():
+    """A stop asked of a scheduler that wasn't running doesn't keep its first
+    start from running jobs, and a start refused mid-stop keeps the stop."""
+    scheduler = StopSafeBackgroundScheduler(timezone=timezone.utc)
+    with pytest.raises(SchedulerNotRunningError):
+        scheduler.shutdown()
+    scheduler.add_job(_record_run, args=["first"], id="first")
+    scheduler.start()
+    try:
+        _wait_for(lambda: "first" in _runs)
+        # As between a stop's mark and APScheduler flipping its state.
+        scheduler._stopping = True
+        with pytest.raises(SchedulerAlreadyRunningError):
+            scheduler.start()
+        assert scheduler._stopping
+    finally:
+        scheduler.shutdown()
 
 
 class _WatchedLock:
@@ -191,37 +215,53 @@ def _started_service(
     """``Scheduler.run_service`` on *jobstore*, its APScheduler paused until
     the test resumes it and its jobstore lock watched from before its thread
     starts, with a thread a test may start to stop it as SIGTERM does. On the
-    way out that thread is waited for, or the service is stopped here if the
-    test didn't."""
+    way out the service is stopped, whether or not its start finished."""
     real_start = BackgroundScheduler.start
     lock = _WatchedLock()
 
     def start_paused(self: BackgroundScheduler, *_, **__) -> None:
+        # The override takes this lock: an APScheduler without it fails here.
+        assert self._jobstores_lock is not None
         self._jobstores_lock = lock
         real_start(self, paused=True)
 
     service = Scheduler(register_system_tasks=False)
-    with (
-        patch.object(Scheduler, "_jobstore_database", return_value=(None, jobstore)),
-        patch.object(Scheduler, "_start_schedule_index_backfill"),
-        patch.object(Scheduler, "_load_blocks_once_serving"),
-        patch.object(BackgroundScheduler, "start", start_paused),
-        patch.object(scheduler_module, "load_dotenv"),
-        # Blocks forever serving RPC; the start-up before it is what's needed.
-        patch("backend.util.service.AppService.run_service"),
-    ):
-        service.run_service()
-    stopper = threading.Thread(target=service.cleanup, name="Stopper")
+    stopper = threading.Thread(target=service.cleanup, name="Stopper", daemon=True)
     try:
+        with (
+            patch.object(
+                Scheduler, "_jobstore_database", return_value=(None, jobstore)
+            ),
+            patch.object(Scheduler, "_start_schedule_index_backfill"),
+            patch.object(Scheduler, "_load_blocks_once_serving"),
+            patch.object(BackgroundScheduler, "start", start_paused),
+            patch.object(scheduler_module, "load_dotenv"),
+            # Blocks forever serving RPC; the start-up before it is what's needed.
+            patch("backend.util.service.AppService.run_service"),
+        ):
+            service.run_service()
         yield service, lock, stopper
     finally:
-        if stopper.ident is not None:
-            stopper.join(_WAIT_S)
-        elif service.scheduler.running:
-            service.cleanup()
-        loop = scheduler_module._event_loop
-        if not stopper.is_alive() and loop is not None and not loop.is_running():
-            loop.close()
+        _stop(service, stopper)
+
+
+def _stop(service: Scheduler, stopper: threading.Thread) -> None:
+    """Stop *service* if its test didn't, then the event loop its start began."""
+    if stopper.ident is not None:
+        # Twice the longest wait inside the stop, each of which is bounded.
+        stopper.join(2 * _WAIT_S)
+        if stopper.is_alive():
+            pytest.fail("the scheduler's stop never finished")
+    elif service._scheduler is not None and service._scheduler.running:
+        service.cleanup()
+    loop, thread = scheduler_module._event_loop, scheduler_module._event_loop_thread
+    if loop is None or loop.is_closed():
+        return
+    if thread is not None and thread.is_alive():
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(_WAIT_S)
+    if not loop.is_running():
+        loop.close()
 
 
 def _wait_for(condition: Callable[[], bool]) -> None:

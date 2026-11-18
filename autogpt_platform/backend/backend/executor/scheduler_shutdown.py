@@ -39,6 +39,8 @@ class StopSafeBackgroundScheduler(BackgroundScheduler):
         super().shutdown(wait)
 
     def _process_jobs(self) -> float | None:
+        # Held through the pass's own event dispatch too, so a listener must
+        # not take the executors lock: ``shutdown`` takes that one first.
         with self._jobstores_lock:
             if self._stopping:
                 return None
