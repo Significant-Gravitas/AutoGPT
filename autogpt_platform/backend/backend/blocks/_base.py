@@ -50,6 +50,10 @@ from ._preview import ChangePreview
 
 logger = logging.getLogger(__name__)
 
+# The account behind a file picker: GoogleDriveFile's ``credentials_id`` field
+# and its ``_credentials_id`` alias, either of which it accepts.
+_PICKER_ACCOUNT_KEYS = frozenset({"_credentials_id", "credentials_id"})
+
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
     from backend.data.model import ContributorDetails
@@ -1004,9 +1008,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             edited, own = approved.get(field), input_data.get(field)
             if not isinstance(edited, dict):
                 continue
-            pinned = {k: v for k, v in edited.items() if k != "_credentials_id"}
-            if isinstance(own, dict) and "_credentials_id" in own:
-                pinned["_credentials_id"] = own["_credentials_id"]
+            pinned = {k: v for k, v in edited.items() if k not in _PICKER_ACCOUNT_KEYS}
+            if isinstance(own, dict):
+                pinned |= {k: v for k, v in own.items() if k in _PICKER_ACCOUNT_KEYS}
             approved[field] = pinned
         try:
             coerce_inputs_to_schema(approved, self.input_schema)

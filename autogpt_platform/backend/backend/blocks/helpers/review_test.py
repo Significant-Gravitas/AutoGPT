@@ -536,28 +536,66 @@ def test_a_reviewer_never_sets_a_secret_or_a_login():
     assert added == {**no_secret, "title": "Edited"}
 
 
-def test_a_reviewer_picks_another_file_but_never_another_account():
+@pytest.mark.parametrize("reviewer_key", ["_credentials_id", "credentials_id"])
+@pytest.mark.parametrize("own_key", ["_credentials_id", "credentials_id", None])
+def test_a_reviewer_picks_another_file_but_never_another_account(
+    reviewer_key: str, own_key: str | None
+):
     """The reviewer may pick another document; the account behind the picker
-    stays the run's own, and one the reviewer added is dropped."""
-    picked = {"id": "doc-1", "name": "Plan", "_credentials_id": "this-runs-google"}
-    reviewed = {
-        "document": {"id": "doc-2", "name": "Other", "_credentials_id": "another"}
-    }
-    without_account = {"id": "doc-1", "name": "Plan"}
+    is the run's own, under either spelling the picker model accepts. One the
+    reviewer sends is dropped, and with no account of the run's, none."""
+    own = {"id": "doc-1", "name": "Plan"}
+    if own_key:
+        own[own_key] = "this-runs-google"
+    reviewed = {"id": "doc-2", "name": "Other", reviewer_key: "another-google"}
 
-    edited = GoogleDocsShareBlock()._approved_input({"document": picked}, reviewed)
-    added = GoogleDocsShareBlock()._approved_input(
-        {"document": without_account}, reviewed
+    approved = GoogleDocsShareBlock()._approved_input(
+        {"document": own}, {"document": reviewed}
     )
 
-    assert edited == {
-        "document": {
-            "id": "doc-2",
-            "name": "Other",
-            "_credentials_id": "this-runs-google",
-        }
+    account = {own_key: "this-runs-google"} if own_key else {}
+    assert approved == {"document": {"id": "doc-2", "name": "Other", **account}}
+
+
+async def test_a_step_without_its_own_picker_account_never_runs_on_the_reviewers():
+    """The run's picker carries no account and the approved payload names one:
+    the step fails for missing credentials instead of running on that one."""
+    block = GoogleDocsShareBlock()
+    run = AsyncMock()
+    setattr(block, "run", run)
+    own = {"document": {"id": "doc-1", "name": "Plan"}, "email": "a@example.com"}
+    reviewed = {
+        "document": {"id": "doc-1", "name": "Plan", "credentials_id": "another"},
+        "email": "a@example.com",
     }
-    assert added == {"document": {"id": "doc-2", "name": "Other"}}
+    approved = SimpleNamespace(
+        payload=reviewed,
+        status=ReviewStatus.APPROVED,
+        review_message="",
+        processed=True,
+    )
+    _, patches = _pause({"ne-1": approved})
+    for p in patches:
+        p.start()
+    try:
+        with pytest.raises(BlockExecutionError, match="Missing credentials"):
+            async for _ in block.execute(
+                own,
+                user_id="u1",
+                node_id="n-1",
+                node_exec_id="ne-1",
+                graph_exec_id="ge-1",
+                graph_id="g-1",
+                graph_version=1,
+                execution_context=ExecutionContext(
+                    user_id="u1", graph_exec_id="ge-1", sensitive_action_safe_mode=True
+                ),
+            ):
+                pass
+    finally:
+        for p in patches:
+            p.stop()
+    run.assert_not_called()
 
 
 async def test_a_block_test_in_progress_does_not_hide_another_steps_rejection():
