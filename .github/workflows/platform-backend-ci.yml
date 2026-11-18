@@ -34,6 +34,11 @@ on:
       - "autogpt_platform/autogpt_libs/**"
       - "autogpt_platform/frontend/public/integrations/**"
   workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+      OPENAI_API_KEY:
+        required: false
   schedule:
     - cron: "23 7 * * *"
   # On-demand run of the full backend test + coverage suite for any branch.

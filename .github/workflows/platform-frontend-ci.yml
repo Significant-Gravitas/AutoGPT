@@ -22,6 +22,9 @@ on:
       - "autogpt_platform/docker-compose.yml"
       - "autogpt_platform/docker-compose.platform.yml"
   workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
   schedule:
     - cron: "23 7 * * *"
   workflow_dispatch:

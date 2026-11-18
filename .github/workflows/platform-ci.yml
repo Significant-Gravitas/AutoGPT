@@ -51,8 +51,10 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: ./.github/workflows/platform-backend-ci.yml
-    secrets: inherit
+    uses: $/.github/workflows/platform-backend-ci.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
   frontend:
     needs: changes
@@ -60,8 +62,9 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: ./.github/workflows/platform-frontend-ci.yml
-    secrets: inherit
+    uses: $/.github/workflows/platform-frontend-ci.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   fullstack:
     needs: changes
@@ -69,10 +72,12 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: ./.github/workflows/platform-fullstack-ci.yml
+    uses: $/.github/workflows/platform-fullstack-ci.yml
     with:
       e2e_suite: smoke
-    secrets: inherit
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
   journeys:
     needs: changes
@@ -80,10 +85,12 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: ./.github/workflows/platform-fullstack-ci.yml
+    uses: $/.github/workflows/platform-fullstack-ci.yml
     with:
       e2e_suite: journeys
-    secrets: inherit
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
   required:
     name: Validate affected platform CI
