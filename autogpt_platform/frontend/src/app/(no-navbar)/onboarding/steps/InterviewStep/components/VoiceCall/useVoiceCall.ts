@@ -70,6 +70,7 @@ import {
   isRelaySocketUrl,
   type MicrophoneRefusal,
   microphoneRefusalOf,
+  startOverMicrophoneCopy,
   parseRelayMessage,
   REATTACH_RETRY_MS,
   REATTACH_WINDOW_MS,
@@ -306,8 +307,12 @@ export function useVoiceCall(args: Args) {
     );
     // The call begins on the click: the relay opens it while the browser
     // asks for the microphone, and sends the model nothing until the
-    // microphone is in the call's room.
-    const begun = beginCall(attempt, sdk, newCallMarks(clicked));
+    // microphone is in the call's room. A start-over sets the interview
+    // aside as it starts, so it waits for the microphone.
+    const isStartOver = startOverRef.current !== null;
+    const begun = isStartOver
+      ? null
+      : beginCall(attempt, sdk, newCallMarks(clicked));
     let microphone: MediaStream;
     try {
       microphone = await openMicrophone();
@@ -317,12 +322,16 @@ export function useVoiceCall(args: Args) {
       if (attempt !== conn.attempt) return;
       // A refused prompt ends the call it started, or is about to.
       conn.attempt += 1;
-      void begun.then((call) => call && endUnheardCall(call));
+      void begun?.then((call) => call && endUnheardCall(call));
+      if (isStartOver) {
+        refuseStartOverMicrophone(error);
+        return;
+      }
       refuseMicrophone(error);
       return;
     }
     const granted = Date.now();
-    const call = await callForMicrophone(attempt, sdk, await begun, granted);
+    const call = await callForMicrophone(attempt, sdk, begun, granted);
     if (!call) {
       stopTracks(microphone);
       releasePlayer(player);
@@ -346,18 +355,19 @@ export function useVoiceCall(args: Args) {
   }
 
   // The call the microphone granted at *granted* joins: the one the click
-  // began, or, when the relay gave that up while the browser asked, a fresh
-  // one begun now and timed from the grant. Null when neither is this
-  // attempt's to join.
+  // began, or a fresh one begun now and timed from the grant, when the click
+  // began none (a start-over) or the relay gave the click's up while the
+  // browser asked. Null when neither is this attempt's to join.
   async function callForMicrophone(
     attempt: number,
     sdk: Promise<Awaited<ReturnType<typeof loadLiveKit>> | null>,
-    begun: OpenCall | null,
+    clickStart: Promise<OpenCall | null> | null,
     granted: number,
   ) {
     const conn = connRef.current;
-    if (attempt !== conn.attempt || !begun) return null;
-    if (!begun.isLapsed) {
+    const begun = clickStart ? await clickStart : null;
+    if (attempt !== conn.attempt || (clickStart && !begun)) return null;
+    if (begun && !begun.isLapsed) {
       if (conn.call !== begun || !begun.marks) return null;
       begun.marks.granted = granted;
       return begun;
@@ -504,6 +514,28 @@ export function useVoiceCall(args: Args) {
     argsRef.current.onMicrophoneRefused(refusal);
   }
 
+  // A start-over whose microphone was refused sent nothing: the interview
+  // is as it was.
+  function refuseStartOverMicrophone(error: unknown) {
+    const startOver = startOverRef.current;
+    startOverRef.current = null;
+    const refusal = microphoneRefusalOf(error);
+    if (refusal === "blocked") trackInterview("voice_interview_mic_denied");
+    if (startOver) refuseStartOver(startOver, startOverMicrophoneCopy(refusal));
+  }
+
+  // A refused start-over leaves the interview as it was: its ending shows
+  // again, with why, and never the choice and its Skip.
+  function refuseStartOver(startOver: StartOverFrom, message: string) {
+    if (startOver.from === "call" && startOver.id) {
+      showTakenBy(startOver.id);
+      setStartOverFailure(message);
+      return;
+    }
+    setPhase("idle");
+    argsRef.current.onStartOverRefused(message);
+  }
+
   function refuseStart(error: unknown, startOver: StartOverFrom | null) {
     const refusal = refusalOf(error);
     const heldBy = refusal.heldBy;
@@ -515,17 +547,11 @@ export function useVoiceCall(args: Args) {
       showTakenBy(heldBy.callId);
       return;
     }
-    // A refused start-over leaves the interview as it was: its ending shows
-    // again, with why, and never the choice and its Skip.
     if (startOver) {
-      const message = callStartFailureCopy(callStartFailureOf(refusal));
-      if (startOver.from === "call" && startOver.id) {
-        showTakenBy(startOver.id);
-        setStartOverFailure(message);
-        return;
-      }
-      setPhase("idle");
-      argsRef.current.onStartOverRefused(message);
+      refuseStartOver(
+        startOver,
+        callStartFailureCopy(callStartFailureOf(refusal)),
+      );
       return;
     }
     // Voice is off for this person, or their typed interview is over: the

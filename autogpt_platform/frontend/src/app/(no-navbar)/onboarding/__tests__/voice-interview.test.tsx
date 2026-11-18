@@ -3821,6 +3821,106 @@ describe("onboarding interview by voice: starting over", () => {
     ]);
   });
 
+  it("asks the server to start over by call only once the microphone is allowed", async () => {
+    returnsToTakenCall();
+    const prompt = fakes.holdMicrophone();
+    render(<OnboardingPage />);
+
+    await openStartOver();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Call again" }));
+    await waitFor(() => expect(fakes.getUserMedia).toHaveBeenCalled());
+    expect(mints).toBe(0);
+
+    act(() => prompt.allow());
+
+    await waitFor(() => expect(mints).toBe(1));
+    expect(JSON.parse(String(mintBodies[0]))).toEqual({
+      start_over: true,
+      start_over_from: CALL_ID,
+      language: "en-US",
+    });
+  });
+
+  it.each([
+    [
+      "NotAllowedError",
+      "Your browser blocked the microphone, so the call didn't start. Allow the microphone in your browser's site settings and call again, or type instead.",
+    ],
+    [
+      "NotFoundError",
+      "We couldn't open your microphone, so the call didn't start. Check that it's connected and no other app is using it, then call again, or type instead.",
+    ],
+  ])(
+    "keeps the call's ending and sends no start-over when the microphone is refused with %s",
+    async (refusal, message) => {
+      returnsToTakenCall();
+      const prompt = fakes.holdMicrophone();
+      render(<OnboardingPage />);
+
+      await openStartOver();
+      await userEvent
+        .setup()
+        .click(screen.getByRole("button", { name: "Call again" }));
+      await waitFor(() => expect(fakes.getUserMedia).toHaveBeenCalled());
+
+      act(() => prompt.refuse(refusal));
+
+      expect((await screen.findByRole("alert")).textContent).toBe(message);
+      expect(
+        screen.getByRole("button", { name: "Meet your team" }),
+      ).toBeDefined();
+      expect(screen.getByRole("button", { name: "Start over" })).toBeDefined();
+      expect(screen.queryByPlaceholderText("Type your answer…")).toBeNull();
+      expect(mints).toBe(0);
+      expect(ends).toEqual([]);
+    },
+  );
+
+  it("returns to the typed ending and sends no start-over when the microphone is refused for a call asked for from it", async () => {
+    server.use(
+      http.get("/api/proxy/api/onboarding/brain-dump/interview", () =>
+        HttpResponse.json({
+          ...NO_INTERVIEW,
+          session_id: SESSION_ID,
+          stage: "handed_off",
+          is_over: true,
+        }),
+      ),
+      getStartOnboardingInterviewMockHandler200(() => ({
+        session_id: SESSION_ID,
+        turn_id: null,
+        stage: "handed_off",
+      })),
+    );
+    typedMessages = [KICKOFF_ROW, GREETING_ROW, TYPED_ANSWER_ROW];
+    const prompt = fakes.holdMicrophone();
+    render(<OnboardingPage />);
+
+    expect(
+      await screen.findByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    await openStartOver();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Call again" }));
+    await waitFor(() => expect(fakes.getUserMedia).toHaveBeenCalled());
+
+    act(() => prompt.refuse("NotFoundError"));
+
+    expect(
+      await screen.findByText(
+        "We couldn't open your microphone, so the call didn't start. Check that it's connected and no other app is using it, then call again, or type instead.",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Talk to Otto" })).toBeNull();
+    expect(mints).toBe(0);
+  });
+
   it("opens a fresh typed interview that asks the server to start over", async () => {
     returnsToTakenCall();
     const typedBodies: string[] = [];

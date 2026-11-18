@@ -578,6 +578,15 @@ export function microphoneRefusalOf(error: unknown): MicrophoneRefusal {
     : "unavailable";
 }
 
+// A start-over by call whose microphone was refused: it never started, and
+// the interview it would have set aside is as it was.
+export function startOverMicrophoneCopy(refusal: MicrophoneRefusal) {
+  if (refusal === "blocked") {
+    return "Your browser blocked the microphone, so the call didn't start. Allow the microphone in your browser's site settings and call again, or type instead.";
+  }
+  return "We couldn't open your microphone, so the call didn't start. Check that it's connected and no other app is using it, then call again, or type instead.";
+}
+
 // --- Captions ---------------------------------------------------------------
 
 export interface CaptionLine {
