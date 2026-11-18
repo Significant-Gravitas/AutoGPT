@@ -23,7 +23,7 @@ from backend.util.url_redaction import (
     RequestURLRedactionFilter,
     credentials_in_headers,
     credentials_in_url,
-    is_credential_name,
+    is_credential_header,
     keep_request_credentials,
     mask_credential,
     mask_known,
@@ -501,35 +501,33 @@ def test_credential_header_filter(name: str, masked: bool) -> None:
         "set-cookie",
         "Sec-WebSocket-Protocol",
         "x-airtable-content-mac",
+        # Glued names, as cookies and normalised headers often are.
+        "PHPSESSID",
+        "JSESSIONID",
+        "SECRETKEY",
+        "clientsecret",
+        "privatekey",
+        "accesskey",
+        "passcode",
+        "apitoken",
+        "idtoken",
+        "authkey",
+        "oauth_verifier",
+        "oauthState",
+        "api_key2",
+        # Header names as Sentry shows an ASGI scope's bytes.
+        "b'cookie'",
+        "b'authorization'",
+        "b'x-api-key'",
     ],
 )
-def test_a_credential_word_in_a_name_is_read_as_a_credential(name: str) -> None:
-    assert is_credential_name(name)
+def test_a_name_holding_a_credential_word_is_read_as_a_credential(name: str) -> None:
+    """Names that must stay masked, whatever the matching becomes: glued ones
+    and byte-form header names included, which a whole-word matcher missed."""
+    value = "a-value-long-enough-to-count"
 
-
-@pytest.mark.parametrize(
-    "name",
-    [
-        "author",
-        "design",
-        "encode",
-        "keyword",
-        "monkey",
-        "signal",
-        "signup",
-        "assignee",
-        "inside",
-        "statement",
-        "Sec-WebSocket-Version",
-        "content-type",
-        "User-Agent",
-    ],
-)
-def test_a_word_only_holding_a_credential_word_is_not(name: str) -> None:
-    """A credential word inside another word, such as `auth` in `author`, is
-    not one: its parameter's value is kept."""
-    assert not is_credential_name(name)
-    assert not credentials_in_url(f"/x?{name}=a-value-long-enough-to-count")
+    assert is_credential_header(name)
+    assert value in credentials_in_url(f"/x?{name}={value}")
 
 
 def test_every_route_with_a_credential_in_its_path_is_masked_and_no_other() -> None:

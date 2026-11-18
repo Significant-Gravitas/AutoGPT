@@ -1160,6 +1160,43 @@ def test_before_send_filters_emails_and_ips_from_extras_and_frame_vars() -> None
     assert body["extra"]["ip_allowlist_enabled"] is True
 
 
+def test_an_asgi_scopes_credential_headers_are_masked_by_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A frame's ASGI scope holds the headers as pairs of bytes, which Sentry
+    shows by their reprs; a header named as a credential is masked whatever
+    its value, which the request's own credentials needn't include."""
+    monkeypatch.setattr(metrics, "request_credentials", lambda: ())
+
+    def handle() -> None:
+        scope = {
+            "type": "http",
+            "headers": [
+                (b"cookie", b"__cf_bm=opaque-cookie-Zq81mN2p"),
+                (b"x-api-key", b"opaque-api-key-Zq81mN2p"),
+                (b"accept", b"*/*"),
+            ],
+        }
+        if scope:
+            raise RuntimeError("the handler failed")
+
+    try:
+        handle()
+    except RuntimeError:
+        event, hint = event_from_exception(
+            sys.exc_info(), client_options=DEFAULT_OPTIONS
+        )
+
+    scrubbed = _before_send(serialize(event), hint)
+
+    assert scrubbed is not None
+    frame_vars = scrubbed["exception"]["values"][0]["stacktrace"]["frames"][-1]["vars"]
+    headers = frame_vars["scope"]["headers"]
+    assert [name for name, _ in headers] == ["b'cookie'", "b'x-api-key'", "b'accept'"]
+    assert headers[0][1] == headers[1][1] == "[Filtered]"
+    assert headers[2][1] == "b'*/*'"
+
+
 def _event_with_ip_headers() -> dict:
     return {
         "level": "error",
