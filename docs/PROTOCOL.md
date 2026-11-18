@@ -277,6 +277,16 @@ Files, symlinks/junctions, inaccessible entries, and special roots are skipped.
 Responses carry only display name, canonical absolute path, and opaque
 reference—never content, size, timestamps, permissions, or recursive metadata.
 
+A folder is listed, and can be opened, when the person's account can read
+and search it. Choosing one for a chat (`ATTACH_SESSION`) takes write access
+as well, since every file operation in it would fail without. So a folder
+that only opens is in the listing like any other, on the way to a folder
+inside it that the account can write to; the listing has no field that
+tells the two apart, and choosing such a folder is refused with
+`DIRECTORY_UNAVAILABLE` and a message that says the account can't write to
+it. Access is asked of each system the way it answers truthfully
+([CROSS_PLATFORM.md](CROSS_PLATFORM.md#remote-directory-browser-roots)).
+
 #### `ATTACH_SESSION` / `SESSION_ATTACHED`
 
 The platform allocates a draft/chat session ID and returns the reference chosen
@@ -318,7 +328,8 @@ references fail closed.
 The shim strictly re-resolves the directory, fingerprints its canonical path
 and filesystem identity, audits the change, consumes the browse, and signs a
 grant with a key derived from the machine-only audit key. The global config is
-never changed.
+never changed. A folder the account can open but not write to is refused
+(`DIRECTORY_UNAVAILABLE`), and the browse stays usable for another choice.
 
 #### Activation, restoration, and detachment
 

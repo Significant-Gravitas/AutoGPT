@@ -178,4 +178,66 @@ def _macos_acl(target: int | str | os.PathLike[str]) -> bytes | None:
         free(acl)
 
 
-__all__ = ["file_acl", "rename_no_replace"]
+def can_open_folder(path: str | os.PathLike[str]) -> bool:
+    """Whether this account can list the folder at `path` and reach what is
+    in it.
+
+    On POSIX, access(2) for read and search. It takes ACLs into account,
+    and it asks without opening the folder: on macOS, opening one the
+    privacy settings guard (Desktop, Documents, Downloads) puts a prompt on
+    the person's screen, for a folder they only browsed past.
+
+    On Windows os.access looks at the read-only attribute and no further,
+    so it calls every folder usable, another account's profile among them.
+    There the folder is opened for listing, which its access list allows or
+    refuses."""
+    if sys.platform != "win32":
+        return os.access(path, os.R_OK | os.X_OK)
+    try:
+        with os.scandir(path):
+            return True
+    except OSError:
+        return False
+
+
+def can_write_folder(path: str | os.PathLike[str]) -> bool:
+    """Whether this account can make a file in the folder at `path`.
+
+    On POSIX, access(2) for write and search. On Windows, where os.access
+    calls every folder writable, the system is asked for a handle on the
+    folder with the right to add a file to it (FILE_ADD_FILE): the folder's
+    access list grants or refuses it, and a read-only volume refuses it.
+    Nothing is written to find out: no file is made and removed, which a
+    sync client or a file watcher would see."""
+    if sys.platform != "win32":
+        return os.access(path, os.W_OK | os.X_OK)
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    create_file.restype = wintypes.HANDLE
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = [wintypes.HANDLE]
+    file_add_file, open_existing = 0x0002, 3
+    share_all = 0x1 | 0x2 | 0x4  # read, write and delete
+    # What opening a folder, not a file, takes.
+    backup_semantics = 0x02000000
+    handle = create_file(
+        os.fspath(path), file_add_file, share_all, None, open_existing, backup_semantics, None
+    )
+    if handle is None or handle == ctypes.c_void_p(-1).value:
+        return False
+    close_handle(handle)
+    return True
+
+
+__all__ = ["can_open_folder", "can_write_folder", "file_acl", "rename_no_replace"]

@@ -81,6 +81,20 @@ Symlinks, junctions, inaccessible entries, files, and invalid wire names are
 skipped. The result includes directory display names and canonical absolute
 paths only; navigation and selection use short-lived opaque references.
 
+A folder is listed and can be opened when the account can read and search
+it, and chosen for a chat only when it can also write to it. So a folder
+the account can only read is still a way to one inside it that is its own:
+a removable ext4 or xfs disk, whose top folder is root's as udisks mounts
+it, is among the roots. How each system is asked:
+
+| | Can be opened | Can be chosen |
+|---|---|---|
+| macOS, Linux, WSL2 | `access(2)` for read and search. It takes ACLs into account, and it doesn't open the folder: on macOS, opening one the privacy settings guard (Desktop, Documents, Downloads) would put a prompt on the screen for a folder the person only browsed past. | `access(2)` for write and search as well. |
+| Windows | The folder is opened for listing. `os.access` looks at the read-only attribute alone and would call every folder usable, another account's profile under `C:\Users` among them. | The system is asked for a handle on the folder with the right to add a file to it (`FILE_ADD_FILE`), which its access list grants or refuses. No file is made to find out. |
+
+These looks are part of a listing, so they share its time limit
+([PROTOCOL.md](PROTOCOL.md#a-folder-that-doesnt-answer)).
+
 ### Shell selection
 
 | Dimension | macOS | Linux | Windows | Notes |

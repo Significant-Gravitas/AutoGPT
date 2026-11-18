@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import platform_info
+from . import fsops, platform_info
 
 MAX_DIRECTORY_ENTRIES = 200
 MAX_SCANNED_ENTRIES = 1000
@@ -195,6 +195,8 @@ class DirectoryBrowser:
         )
 
     def resolve(self, browse_id: str, directory_ref: str) -> Path:
+        """The folder a reference stands for, as one to share with a chat:
+        the person has to be able to write to it, not only open it."""
         self._evict_expired()
         session = self._get_session(browse_id)
         target = session.refs.get(directory_ref)
@@ -203,7 +205,7 @@ class DirectoryBrowser:
                 "DIRECTORY_REFERENCE_INVALID",
                 "The directory reference is invalid or expired",
             )
-        return self._canonical_accessible_directory(target.path)
+        return self._canonical_accessible_directory(target.path, to_share=True)
 
     def resolve_and_consume(self, browse_id: str, directory_ref: str) -> Path:
         """Resolve one selected reference and invalidate its whole browse session."""
@@ -342,7 +344,17 @@ class DirectoryBrowser:
             return False
         return _valid_wire_name(entry.name)
 
-    def _canonical_accessible_directory(self, path: Path) -> Path:
+    def _canonical_accessible_directory(self, path: Path, *, to_share: bool = False) -> Path:
+        """`path` as a folder the person can open: not a link, and one their
+        account can read and search (fsops.can_open_folder). That is what
+        listing it and opening it take.
+
+        With `to_share`, also one they can write to (fsops.can_write_folder):
+        what choosing it for a chat takes, since every file operation in it
+        would fail otherwise. Asked of every folder on the way too, as it
+        was, a writable folder under a read-only one couldn't be reached,
+        and a removable disk whose top folder is root's (ext4 and xfs, as
+        udisks mounts them) wasn't among the roots at all."""
         try:
             if path.is_symlink() or _is_reparse_point(path):
                 raise DirectoryBrowseError(
@@ -350,10 +362,16 @@ class DirectoryBrowser:
                     "Symbolic links and reparse points cannot be browsed",
                 )
             resolved = Path(os.path.realpath(path, strict=True))
-            if not resolved.is_dir() or not os.access(resolved, os.R_OK | os.W_OK | os.X_OK):
+            if not resolved.is_dir() or not fsops.can_open_folder(resolved):
                 raise DirectoryBrowseError(
                     "DIRECTORY_UNAVAILABLE",
                     "The selected directory is not accessible",
+                )
+            if to_share and not fsops.can_write_folder(resolved):
+                raise DirectoryBrowseError(
+                    "DIRECTORY_UNAVAILABLE",
+                    "This folder can be opened but not shared with a chat: this account "
+                    "can't write to it. Choose a folder it can write to.",
                 )
             return resolved
         except DirectoryBrowseError:

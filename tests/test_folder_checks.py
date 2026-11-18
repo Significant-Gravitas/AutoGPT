@@ -527,10 +527,10 @@ def _away_for_method(away: _Away, folder: Path) -> Callable[..., Any]:
     `folder` never returns: the share goes away as the folder is picked."""
     real = DirectoryBrowser._canonical_accessible_directory
 
-    def look(self: DirectoryBrowser, path: Path) -> Path:
+    def look(self: DirectoryBrowser, path: Path, **how: Any) -> Path:
         if Path(path) == folder and away.looks == 0:
             away()
-        return real(self, path)
+        return real(self, path, **how)
 
     return look
 
