@@ -1,7 +1,7 @@
 """A v1 key reads and starts runs only of workflows in the organization it names.
 
-Against Postgres, through the real External API app: real keys, organizations, a
-workflow and a run. Only the rate limiter's counter, the paywall and the
+Against Postgres, through the real External API app: real keys, organizations,
+workflows, runs and a marketplace submission. Only the rate limiter's counter, the paywall and the
 executor's queue are stubbed.
 """
 
@@ -12,11 +12,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from prisma.enums import AgentExecutionStatus, APIKeyPermission
+from prisma.enums import AgentExecutionStatus, APIKeyPermission, SubmissionStatus
 from prisma.models import (
     AgentGraphExecution,
+    LibraryAgent,
     Organization,
     OrgMember,
+    Profile,
+    StoreListing,
+    StoreListingVersion,
     Team,
     TeamMember,
     User,
@@ -32,16 +36,16 @@ from backend.data.auth import api_key
 
 
 class Setup(BaseModel):
-    """A user in two organizations, with a workflow and a run in ``home``, and a
-    teammate's workflow and run in ``elsewhere``, visible to all its members."""
+    """A user in two organizations. In ``home`` they keep a workflow, one they
+    submitted to the marketplace (so also in their library), and a run of each and
+    of an untagged workflow from before organizations; one run of their ``home``
+    workflow was recorded in ``elsewhere``. A teammate keeps a workflow and a run
+    in ``elsewhere``, visible to all its members."""
 
     user: str
     home: str
     elsewhere: str
-    graph_id: str
-    run_id: str
-    teammate_graph_id: str
-    teammate_run_id: str
+    runs: dict[str, tuple[str, str]]
     keys: dict[str, str]
 
 
@@ -60,26 +64,26 @@ async def setup() -> AsyncIterator[Setup]:
     await OrgMember.prisma().create(
         data={"orgId": elsewhere, "userId": teammate, "status": "ACTIVE"}
     )
-    graph, run = await _workflow_with_run(user, home)
-    teammate_graph, teammate_run = await _workflow_with_run(teammate, elsewhere)
+    runs = {
+        "workflow": await _workflow_with_run(user, home, home),
+        "untagged workflow": await _workflow_with_run(user, None, home),
+        "submitted workflow": await _workflow_with_run(user, home, home),
+        "run recorded elsewhere": await _workflow_with_run(user, home, elsewhere),
+        "teammate's workflow": await _workflow_with_run(teammate, elsewhere, elsewhere),
+    }
+    await _submit_to_marketplace(user, runs["submitted workflow"][0], home)
     keys = {
         "home": await _key(user, home),
         "elsewhere": await _key(user, elsewhere),
         "no organization": await _key(user, None),
     }
     try:
-        yield Setup(
-            user=user,
-            home=home,
-            elsewhere=elsewhere,
-            graph_id=graph.id,
-            run_id=run.id,
-            teammate_graph_id=teammate_graph.id,
-            teammate_run_id=teammate_run.id,
-            keys=keys,
-        )
+        yield Setup(user=user, home=home, elsewhere=elsewhere, runs=runs, keys=keys)
     finally:
-        await User.prisma().delete_many(where={"id": {"in": [user, teammate]}})
+        users = {"in": [user, teammate]}
+        await StoreListing.prisma().delete_many(where={"owningUserId": users})
+        await LibraryAgent.prisma().delete_many(where={"userId": users})
+        await User.prisma().delete_many(where={"id": users})
         await Organization.prisma().delete_many(where={"id": {"in": [home, elsewhere]}})
         if owned_connection:
             await db.disconnect()
@@ -108,29 +112,44 @@ async def client(v1_counter) -> AsyncIterator[AsyncClient]:
         yield client
 
 
-@pytest.mark.parametrize(
-    "key, status",
-    [("home", 200), ("elsewhere", 404), ("no organization", 200)],
-)
+KEYS_AND_STATUSES = [("home", 200), ("elsewhere", 404), ("no organization", 200)]
+
+
+@pytest.mark.parametrize("key, status", KEYS_AND_STATUSES)
+@pytest.mark.parametrize("workflow", ["workflow", "untagged workflow"])
 async def test_run_results_are_found_only_through_a_key_for_their_organization(
-    setup: Setup, client: AsyncClient, key: str, status: int
+    setup: Setup, client: AsyncClient, workflow: str, key: str, status: int
 ):
+    graph_id, run_id = setup.runs[workflow]
     response = await client.get(
-        f"/v1/graphs/{setup.graph_id}/executions/{setup.run_id}/results",
+        f"/v1/graphs/{graph_id}/executions/{run_id}/results",
         headers={"X-API-Key": setup.keys[key]},
     )
 
     assert response.status_code == status, response.text
     if status == 200:
-        assert response.json()["execution_id"] == setup.run_id
+        assert response.json()["execution_id"] == run_id
 
 
 async def test_run_results_are_not_found_under_another_workflow_id(
     setup: Setup, client: AsyncClient
 ):
+    _, run_id = setup.runs["workflow"]
     response = await client.get(
-        f"/v1/graphs/{uuid.uuid4()}/executions/{setup.run_id}/results",
+        f"/v1/graphs/{uuid.uuid4()}/executions/{run_id}/results",
         headers={"X-API-Key": setup.keys["home"]},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_a_run_is_not_read_in_its_organization_if_its_workflow_is_elsewhere(
+    setup: Setup, client: AsyncClient
+):
+    graph_id, run_id = setup.runs["run recorded elsewhere"]
+    response = await client.get(
+        f"/v1/graphs/{graph_id}/executions/{run_id}/results",
+        headers={"X-API-Key": setup.keys["elsewhere"]},
     )
 
     assert response.status_code == 404
@@ -139,24 +158,28 @@ async def test_run_results_are_not_found_under_another_workflow_id(
 async def test_a_key_does_not_read_a_teammates_run_in_its_organization(
     setup: Setup, client: AsyncClient
 ):
+    graph_id, run_id = setup.runs["teammate's workflow"]
     response = await client.get(
-        f"/v1/graphs/{setup.teammate_graph_id}/executions/"
-        f"{setup.teammate_run_id}/results",
+        f"/v1/graphs/{graph_id}/executions/{run_id}/results",
         headers={"X-API-Key": setup.keys["elsewhere"]},
     )
 
     assert response.status_code == 404
 
 
-@pytest.mark.parametrize(
-    "key, status",
-    [("home", 200), ("elsewhere", 404), ("no organization", 200)],
-)
+@pytest.mark.parametrize("key, status", KEYS_AND_STATUSES)
+@pytest.mark.parametrize("workflow", ["workflow", "submitted workflow"])
 async def test_a_workflow_is_run_only_through_a_key_for_its_organization(
-    setup: Setup, client: AsyncClient, queue: AsyncMock, key: str, status: int
+    setup: Setup,
+    client: AsyncClient,
+    queue: AsyncMock,
+    workflow: str,
+    key: str,
+    status: int,
 ):
+    graph_id, _ = setup.runs[workflow]
     response = await client.post(
-        f"/v1/graphs/{setup.graph_id}/execute/1",
+        f"/v1/graphs/{graph_id}/execute/1",
         headers={"X-API-Key": setup.keys[key]},
         json={"node_input": {}},
     )
@@ -166,23 +189,65 @@ async def test_a_workflow_is_run_only_through_a_key_for_its_organization(
 
 
 async def _workflow_with_run(
-    user_id: str, organization_id: str
-) -> tuple[graph_db.GraphModel, AgentGraphExecution]:
+    user_id: str, graph_org: str | None, run_org: str
+) -> tuple[str, str]:
     graph = await graph_db.create_graph(
         graph_db.Graph(name="Weekly report", description=""),
         user_id,
-        organization_id=organization_id,
+        organization_id=graph_org,
     )
     run = await AgentGraphExecution.prisma().create(
         data={
             "agentGraphId": graph.id,
             "agentGraphVersion": graph.version,
             "userId": user_id,
-            "organizationId": organization_id,
+            "organizationId": run_org,
             "executionStatus": AgentExecutionStatus.COMPLETED,
         }
     )
-    return graph, run
+    return graph.id, run.id
+
+
+async def _submit_to_marketplace(user_id: str, graph_id: str, org_id: str) -> None:
+    """A pending submission, and the library entry its creator keeps."""
+    await Profile.prisma().create(
+        data={
+            "userId": user_id,
+            "name": "Creator",
+            "username": f"creator-{uuid.uuid4().hex[:8]}",
+            "description": "",
+            "links": [],
+        }
+    )
+    listing = await StoreListing.prisma().create(
+        data={
+            "slug": f"weekly-report-{uuid.uuid4().hex[:8]}",
+            "agentGraphId": graph_id,
+            "owningUserId": user_id,
+        }
+    )
+    await StoreListingVersion.prisma().create(
+        data={
+            "storeListingId": listing.id,
+            "version": 1,
+            "agentGraphId": graph_id,
+            "agentGraphVersion": 1,
+            "name": "Weekly report",
+            "subHeading": "",
+            "description": "",
+            "imageUrls": [],
+            "categories": [],
+            "submissionStatus": SubmissionStatus.PENDING,
+        }
+    )
+    await LibraryAgent.prisma().create(
+        data={
+            "userId": user_id,
+            "agentGraphId": graph_id,
+            "agentGraphVersion": 1,
+            "organizationId": org_id,
+        }
+    )
 
 
 async def _org(name: str, owner: str, *, personal: bool = False) -> str:

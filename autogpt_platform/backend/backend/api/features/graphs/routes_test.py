@@ -100,14 +100,10 @@ def role_where_versions_live(mocker: pytest_mock.MockFixture) -> AsyncMock:
 @pytest.fixture(autouse=True)
 def workflow_visible_in_the_request_org(mocker: pytest_mock.MockFixture) -> None:
     """The run route looks the workflow up in the request's org before it runs
-    it; here every workflow is found, at the version asked for."""
-
-    async def visible(graph_id: str, version: int | None, **_) -> Mock:
-        return Mock(id=graph_id, version=version or 1)
-
+    it; here every workflow is found."""
     mocker.patch(
         "backend.api.features.graphs.routes.graph_db.get_graph",
-        new=AsyncMock(side_effect=visible),
+        new=AsyncMock(return_value=Mock()),
     )
 
 
