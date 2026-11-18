@@ -25,6 +25,7 @@ from backend.blocks.code_executor import (
     InstantiateCodeSandboxBlock,
 )
 from backend.blocks.codex import CodeGenerationBlock, CodexModel
+from backend.blocks.elevenlabs.speech_to_text import TranscribeSpeechBlock
 from backend.blocks.enrichlayer.linkedin import (
     GetLinkedinProfileBlock,
     GetLinkedinProfilePictureBlock,
@@ -866,6 +867,21 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     # margin matches TOKEN_COST — a 5K-char narration ≈ $0.83 → 125 cr
     # (was flat 5 cr, ~25× under-bill on long scripts).
     VideoNarrationBlock: [
+        BlockCost(
+            cost_amount=150,
+            cost_type=BlockCostType.COST_USD,
+            cost_filter={
+                "credentials": {
+                    "id": elevenlabs_credentials.id,
+                    "provider": elevenlabs_credentials.provider,
+                    "type": elevenlabs_credentials.type,
+                }
+            },
+        )
+    ],
+    # ElevenLabs Scribe: $0.20 per audio hour; the block emits provider_cost from
+    # the duration Scribe reports. 150 cr/$ → $0.30 an hour, at least 1 cr a run.
+    TranscribeSpeechBlock: [
         BlockCost(
             cost_amount=150,
             cost_type=BlockCostType.COST_USD,
