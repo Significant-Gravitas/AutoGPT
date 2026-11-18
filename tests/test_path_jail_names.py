@@ -212,6 +212,81 @@ def test_a_posix_path_that_is_plainly_outside_the_root_is_told_by_its_name(
     assert _outside(requested, POSIX_ROOT, posixpath) is True
 
 
+# ── A path that leaves the root and comes back ───────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "requested",
+    [
+        # Through a folder that mounts a host when it is looked at.
+        f"/net/{NOWHERE}/../../tmp/ws/a.txt",
+        f"/net/{NOWHERE}/share/../../../tmp/ws/a.txt",
+        "/etc/../tmp/ws/a.txt",
+        # Above the root and back down into it, by either spelling.
+        "/tmp/ws/../ws/a.txt",
+        "/tmp/ws/sub/../../ws/a.txt",
+        "/tmp/ws/../../private/tmp/ws/a.txt",
+        "../ws/a.txt",
+        "sub/../../ws/a.txt",
+        "/tmp/../tmp/ws/a.txt",
+    ],
+)
+def test_a_posix_path_that_leaves_the_root_on_its_way_is_outside_by_its_name(
+    requested: str,
+) -> None:
+    """`..` was worked out on the names before the path was placed, so a
+    path that went out and came back, as `/net/<host>/../../workspace/file`
+    does for a root `/workspace`, came out as one inside the root. Resolving
+    it then looked at each folder on the way, the one outside included:
+    for `/net/<host>` that is a connection to the host."""
+    assert _outside(requested, POSIX_ROOT, posixpath) is True
+
+
+@pytest.mark.parametrize(
+    "requested",
+    [
+        "/tmp/ws/sub/../a.txt",
+        "/tmp/ws/sub/deeper/../../a.txt",
+        "/tmp/ws/sub/..",
+        "/private/tmp/ws/sub/../a.txt",
+        "sub/../a.txt",
+        "sub/deeper/../../a.txt",
+        "./sub/./../a.txt",
+    ],
+)
+def test_a_posix_path_whose_dots_stay_inside_the_root_goes_on_to_be_resolved(
+    requested: str,
+) -> None:
+    assert _outside(requested, POSIX_ROOT, posixpath) is False
+
+
+@pytest.mark.parametrize(
+    ("spellings", "requested"),
+    [
+        (DRIVE_ROOT, r"C:\Windows\..\Users\me\proj\a.txt"),
+        (DRIVE_ROOT, r"C:\Users\me\proj\..\proj\a.txt"),
+        (DRIVE_ROOT, r"C:\Users\me\proj\sub\..\..\proj\a.txt"),
+        (DRIVE_ROOT, r"..\proj\a.txt"),
+        (DRIVE_ROOT, "c:/users/../Users/me/proj/a.txt"),
+        (SHARE_ROOT, r"\\srv\share\other\..\folder\a.txt"),
+        (SHARE_ROOT, r"\\srv\share\folder\..\folder\a.txt"),
+        (MAPPED_ROOT, r"Z:\ws\..\ws\a.txt"),
+    ],
+)
+def test_a_windows_path_that_leaves_the_root_on_its_way_is_outside_by_its_name(
+    spellings: list[str], requested: str
+) -> None:
+    assert _outside(requested, spellings, ntpath) is True
+
+
+def test_the_top_of_a_disk_as_the_root_has_nothing_above_it() -> None:
+    """`..` at the top is the top, on every OS."""
+    assert _outside("/../etc/hosts", ["/"], posixpath) is False
+    assert _outside("../../etc", ["/"], posixpath) is False
+    assert _outside(r"C:\..\Users", ["C:\\"], ntpath) is False
+    assert _outside(r"D:\..\Users", ["C:\\"], ntpath) is True
+
+
 def test_the_root_written_another_way_matches_one_letter_at_a_time() -> None:
     """Case and the form of an accented letter are set aside, and nothing
     else: a name that only starts like the root's is another folder."""
@@ -381,6 +456,43 @@ def test_a_path_outside_the_root_is_refused_without_a_look_at_it(root: Path) -> 
 @pytest.mark.parametrize("requested", REFUSED_ON_POSIX)
 def test_a_posix_path_elsewhere_is_refused_without_a_look_at_it(root: Path, requested: str) -> None:
     _assert_refused_unseen(requested, root, "PATH_OUTSIDE_ALLOWED_ROOT")
+
+
+def test_a_path_that_leaves_the_root_and_comes_back_is_refused_without_a_look_outside(
+    root: Path,
+) -> None:
+    """Above the root and back down into it by its name. The jail took it
+    for a path inside, which it resolves to, and resolved it: a look at
+    each folder it passes through."""
+    back = [
+        os.path.join(str(root), "..", root.name, "a.txt"),
+        os.path.join(str(root), "sub", "..", "..", root.name, "a.txt"),
+        os.path.join("..", root.name, "a.txt"),
+        os.path.join(str(root.parent), "outside", "..", root.name, "a.txt"),
+    ]
+    for requested in back:
+        _assert_refused_unseen(requested, root, "PATH_OUTSIDE_ALLOWED_ROOT")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX paths")
+def test_a_posix_path_through_another_host_and_back_is_refused_without_a_look_at_it(
+    root: Path,
+) -> None:
+    up = "/".join([".."] * 3)
+    for requested in (
+        f"/net/{NOWHERE}/share/{up}{root}/a.txt",
+        f"/Volumes/{NOWHERE}/../..{root}/a.txt",
+    ):
+        _assert_refused_unseen(requested, root, "PATH_OUTSIDE_ALLOWED_ROOT")
+
+
+def test_dots_that_stay_inside_the_root_are_still_resolved(root: Path) -> None:
+    inside = os.path.join(str(root), "sub", "..", "a.txt")
+
+    assert assert_inside_jail(inside, root) == Path(os.path.realpath(root)) / "a.txt"
+    assert assert_inside_jail(os.path.join("sub", "..", "a.txt"), root) == (
+        Path(os.path.realpath(root)) / "a.txt"
+    )
 
 
 def test_a_path_from_the_home_folder_is_refused_without_a_look_at_it(

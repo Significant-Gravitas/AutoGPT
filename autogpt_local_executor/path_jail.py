@@ -170,8 +170,9 @@ def assert_inside_jail(
 
     Only the root is looked at before the path's name is known to be
     inside it (step 3): a path on another drive, share, host or device
-    namespace, elsewhere on the disk or above the root through `..` is
-    refused without a `realpath`, `stat` or `open` of it.
+    namespace, elsewhere on the disk, or one that climbs above the root
+    through `..` at any point, is refused without a `realpath`, `stat` or
+    `open` of it.
     """
     raw = str(requested_path)
 
@@ -338,9 +339,14 @@ def _plainly_outside(
     every spelling of the root by its name alone. Nothing is looked at.
 
     A relative path is taken from the first spelling, the configured root,
-    as the path that goes on to be resolved is (from_root), and `.` and
-    `..` are worked out on the names, as the platform works them out
-    before it sends a path.
+    as the path that goes on to be resolved is (from_root). The path has to
+    begin with a spelling of the root as it is written, and stay under it
+    name by name: a `..` is followed in its place, not worked out first.
+    Resolving a path looks at each folder it passes through, so one that
+    leaves the root and comes back (`/net/host/../../workspace/file`, for a
+    root `/workspace`) would have the folder outside looked at on the way,
+    though it ends inside. The platform works `.` and `..` out before it
+    sends a path, so its own paths never do that.
     Names are compared without regard to case or to how an accented letter
     is written, since a filesystem may take either for the same folder (on
     Windows and macOS it does), and with either separator on Windows. That
@@ -348,7 +354,8 @@ def _plainly_outside(
     in. What is outside by its name:
 
     - a path that is not under the root: elsewhere on the disk, above the
-      root through `..`, or a name that only starts like the root's;
+      root through `..` at any point, even to come back into it, or a name
+      that only starts like the root's;
     - on Windows, another drive, a path relative to another drive's folder
       (`D:x`), another share or host (`\\\\host\\share\\x`,
       `//host/share/x`), and the device namespaces (`\\\\.\\`,
@@ -359,22 +366,42 @@ def _plainly_outside(
     """
     windows = pathmod is ntpath
     spellings = tuple(root_spellings)
-    candidate = _named(pathmod.join(spellings[0], requested), windows)
+    candidate = _named(pathmod.join(spellings[0], requested), windows, keep_dots=True)
     if candidate is None:
         return True
     for spelling in spellings:
         root = _named(spelling, windows)
-        if root is not None and candidate[0] == root[0] and candidate[1][: len(root[1])] == root[1]:
+        if root is not None and candidate[0] == root[0] and _stays_under(candidate[1], root[1]):
             return False
     return True
 
 
-def _named(path: str, windows: bool) -> tuple[str, tuple[str, ...]] | None:
+def _stays_under(names: tuple[str, ...], root: tuple[str, ...]) -> bool:
+    """Whether a path's names, with each `..` still in its place, begin
+    with the root's and never climb above it on the way. The top of a disk
+    or a share has nothing above it: its own `..` is the top."""
+    if names[: len(root)] != root:
+        return False
+    depth = 0
+    for name in names[len(root) :]:
+        if name != "..":
+            depth += 1
+        elif depth > 0:
+            depth -= 1
+        elif root:
+            return False
+    return True
+
+
+def _named(
+    path: str, windows: bool, *, keep_dots: bool = False
+) -> tuple[str, tuple[str, ...]] | None:
     """An absolute path as its anchor (a drive or a share on Windows, and
-    nothing elsewhere) and the names after it, with `.` and `..` worked out
-    on the names and each name in the form names are compared in. None for
-    what is no plain absolute path: on Windows a device path, a path
-    relative to a drive's folder, and one with no drive."""
+    nothing elsewhere) and the names after it, each in the form names are
+    compared in, with `.` dropped and `..` worked out on the names, or with
+    `keep_dots` left in its place. None for what is no plain absolute path:
+    on Windows a device path, a path relative to a drive's folder, and one
+    with no drive."""
     if windows:
         path = path.replace("/", "\\")
         if path.startswith("\\\\"):
@@ -398,7 +425,7 @@ def _named(path: str, windows: bool) -> tuple[str, tuple[str, ...]] | None:
     for name in rest.split(separator):
         if name in ("", "."):
             continue
-        if name == "..":
+        if name == ".." and not keep_dots:
             # The top's own `..` is the top.
             if names:
                 names.pop()

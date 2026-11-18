@@ -535,11 +535,14 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
     #    path. Resolving `\\host\share\x` has Windows connect to the host and
     #    sign in with the person's account, `\\.\pipe\x` opens a device, and
     #    on macOS `/net/<host>/x` has autofs contact the host. A relative
-    #    path is taken from the root, and `.` and `..` are worked out on the
-    #    names. The names a path inside the root can start with are the root
-    #    as configured, the root as resolved, and the root by the home
-    #    folder's own name (what `~` expands to); case, the form of an
-    #    accented letter and, on Windows, the separator are set aside.
+    #    path is taken from the root. The path has to begin with the root
+    #    as it is written and stay under it name by name, each `..` followed
+    #    in its place: one that leaves the root and comes back
+    #    (`/net/<host>/../../workspace/x`) would have the folder outside
+    #    looked at on the way. The names a path inside the root can start
+    #    with are the root as configured, the root as resolved, and the root
+    #    by the home folder's own name (what `~` expands to); case, the form
+    #    of an accented letter and, on Windows, the separator are set aside.
     root_resolved = os.path.realpath(allowed_root, strict=True)
     if plainly_outside(p, root_spellings(allowed_root, root_resolved)):
         return False
@@ -587,7 +590,9 @@ Key invariants:
   its name is refused before `realpath`, `stat` or `open` is called on it:
   another drive, share, host or device namespace on Windows, and on every
   OS an absolute path that isn't under the root or one that climbs above
-  it through `..`. Step 3 only ever lets a path through to be resolved; it
+  it through `..` at any point, even to come back down into it: resolving
+  looks at every folder a path passes through, so where it ends doesn't
+  decide what is looked at. Step 3 only ever lets a path through to be resolved; it
   never lets one in. It compares names more loosely than the filesystem
   may (any case), so what passes is still decided by steps 4 to 6.
 - **The root's names are the ones the shim gave out.** The platform sends
@@ -648,6 +653,8 @@ operation can act on the root itself.
 | `\\.\pipe\x`, `\\.\C:\workspace\x` (Windows) | 3 (a device namespace) |
 | `D:\x`, `D:x` (root on `C:`) | 3 (another drive) |
 | `/net/<host>/x` (macOS autofs) | 3 (outside by its name: the host isn't contacted) |
+| `/net/<host>/../../workspace/x`, `/workspace/../workspace/x` | 3 (it leaves the root on its way, though it ends inside: nothing outside is looked at) |
+| `/workspace/sub/../x` | 3 (passes: its `..` stays inside the root) → 4 → 5 → allowed |
 | `/workspace/symlink-to-etc` | 4 (realpath resolves outside) → 5 → 6 |
 | `/WORKSPACE/foo` on case-insensitive FS | 3 (passes: case is set aside) → 5 (spelling differs) → 6 (the root is an ancestor) → allowed (correct) |
 | `/WS/foo` beside root `/Ws` in a case-sensitive directory | 3 (passes) → 5 → 6 (`/WS` is another directory) |
