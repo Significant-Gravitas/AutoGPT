@@ -490,6 +490,16 @@ session_display = SessionDisplay()
 _LINUX_MACHINE_ID_FILES: tuple[str, ...] = ("/etc/machine-id", "/var/lib/dbus/machine-id")
 
 
+# How a read of the identifier fails where there is none to read, or none
+# for this account: the same at every start.
+_NOT_THERE_OR_NOT_OURS = (
+    FileNotFoundError,
+    NotADirectoryError,
+    IsADirectoryError,
+    PermissionError,
+)
+
+
 class MachineIdentifierUnreadable(Exception):
     """The operating system has an identifier, and this read of it failed
     or ran out of time. Not the same as having none: the next read may well
@@ -508,13 +518,14 @@ def os_machine_identifier() -> str | None:
     machine-id(5) asks applications not to send it over a network, so it is
     never sent, logged, printed or stored. Read once for the process.
 
-    MachineIdentifierUnreadable when macOS's couldn't be read. Every Mac has
-    one, and it is read by running `ioreg`, which can fail or not answer in
-    its five seconds (a login under load): one read failing, where None
-    would give the computer another machine ID for that start. On Linux and
-    Windows a read that fails keeps failing, start after start (no such
-    file or value, or one this account may not read), so there it is None:
-    the same answer each time, and the same ID."""
+    MachineIdentifierUnreadable when one is there and this read of it
+    failed, where None would give the computer another machine ID for this
+    start. Every Mac has one, and it is read by running `ioreg`, which can
+    fail or not answer in its five seconds (a login under load). On Linux
+    and Windows, a file or a registry value that isn't there, or that this
+    account may not read, stays that way from one start to the next: that
+    is None, the same answer each time and so the same ID. Any other
+    failure of the read (an I/O error, say) is one read failing."""
     plat = detect_platform()
     if plat == "darwin":
         try:
@@ -542,7 +553,7 @@ def os_machine_identifier() -> str | None:
                 try:
                     with open(candidate, encoding="utf-8") as f:
                         val = f.read().strip()
-                except (OSError, UnicodeDecodeError):
+                except (*_NOT_THERE_OR_NOT_OURS, UnicodeDecodeError):
                     continue
                 if val:
                     return val
@@ -555,8 +566,13 @@ def os_machine_identifier() -> str | None:
             ) as key:
                 val, _ = winreg.QueryValueEx(key, "MachineGuid")  # type: ignore[attr-defined]
                 return str(val) or None
-    except OSError:
+    except _NOT_THERE_OR_NOT_OURS:
         pass
+    except OSError as exc:
+        raise MachineIdentifierUnreadable(
+            f"the operating system's identifier couldn't be read ({type(exc).__name__}: "
+            f"{exc.strerror or exc})"
+        ) from exc
     return None
 
 

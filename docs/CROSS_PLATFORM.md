@@ -350,9 +350,10 @@ matter. macOS's is read by running `ioreg`, which can fail or not answer in
 its five seconds at a busy login. The ID derived without it would be
 another one, and for that start the platform would see a new computer, so
 the start stops with exit 75 and the next one reads it again. On Linux and
-Windows a read that fails keeps failing from one start to the next (no such
-file or value, or one the account may not read), so there it counts as no
-identifier, and the ID is the same each time.
+Windows, a file or a registry value that isn't there, or that the account
+may not read, stays that way from one start to the next, so it counts as no
+identifier, and the ID is the same each time. A read that fails any other
+way there (an I/O error) stops the start like the Mac's.
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
@@ -405,7 +406,9 @@ and the value written under it; never a look for the name followed by a
 rename, between which another start's value could take the name and be
 replaced. A file under the name is therefore a whole value, or on those
 last filesystems one another start is writing that moment, which a start
-waits two seconds for. A file there that then isn't a whole value stops
+waits two seconds for. Once a whole value is under the name it stays, even
+if syncing it to disk then fails, since another start may have read it by
+then. A file there that then isn't a whole value stops
 `start` (exit 78) rather than be replaced. So does a folder the value
 can't be kept in (exit 78, or 75 when
 a restart can fix it, such as a full disk): the shim doesn't run under an
