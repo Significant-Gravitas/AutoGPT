@@ -64,9 +64,10 @@ MAX_STREAMS_PER_SHARD = 300
 # Streams one user may open on a shard while it has room; beyond this share a
 # user may not take the shard's last quarter, so heavy users can't fill it.
 STREAMS_PER_USER_SHARE = 8
-# Opening a shard connection retries for minutes while Redis is down; give up
-# sooner so the handler answers and the router reads the socket again.
-_STREAM_OPEN_TIMEOUT_S = 15.0
+# SSUBSCRIBE on an open shard stream has no socket timeout; give up after
+# this so the handler answers and the router reads the socket again. Opening
+# the stream is bounded by ShardedSubscription.open itself.
+_SUBSCRIBE_TIMEOUT_S = 15.0
 
 WS_CLOSE_EVENT_STREAM_LOST = 1011
 WS_CLOSE_TRY_AGAIN_LATER = 1013
@@ -440,9 +441,7 @@ class _ShardStream:
     async def add(self, channel: str, handler: MessageHandler) -> None:
         _assert_no_wildcard(channel)
         try:
-            subscription = await asyncio.wait_for(
-                self._open_or_subscribe(channel), _STREAM_OPEN_TIMEOUT_S
-            )
+            subscription = await self._open_or_subscribe(channel)
         except BaseException:
             if not self.handlers:
                 await self._close_quietly()
@@ -452,12 +451,15 @@ class _ShardStream:
             self._task = asyncio.create_task(self._pump(subscription))
 
     async def _open_or_subscribe(self, channel: str) -> ShardedSubscription:
-        """``asyncio.wait_for`` bounds this whole call, not just opening the
-        connection — SSUBSCRIBE has no socket timeout of its own."""
         if self._subscription is None:
+            # open() bounds itself, then refreshes the slot map on a timeout;
+            # a bound of ours would cancel it first.
             self._subscription = await ShardedSubscription.open(channel)
         else:
-            await self._subscription.add(channel)
+            # SSUBSCRIBE has no socket timeout of its own.
+            await asyncio.wait_for(
+                self._subscription.add(channel), _SUBSCRIBE_TIMEOUT_S
+            )
         return self._subscription
 
     async def remove(self, channel: str) -> None:
