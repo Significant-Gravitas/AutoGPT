@@ -203,8 +203,8 @@ _OLDEST_FIRST_LISTS = frozenset({"values", "frames"})
 # fragment as sent, an API key in ``?key=`` included, and an ASGI scope among a
 # frame's variables holds the raw query of the request.
 # Recorded apart from its URL, a fragment can be a bare token.
-_FRAGMENT_KEYS = frozenset({"http.fragment"})
-_QUERY_KEYS = frozenset({SPANDATA.HTTP_QUERY, SPANDATA.HTTP_FRAGMENT, "query_string"})
+_FRAGMENT_KEYS = frozenset({SPANDATA.HTTP_FRAGMENT})
+_QUERY_KEYS = frozenset({SPANDATA.HTTP_QUERY, "query_string"})
 # The IDs and timestamps the SDK writes on an event, its spans and its trace
 # context, which hold a trace together: never searched or charged to the
 # budget, so an event past it keeps its shape. Only there, and only in their

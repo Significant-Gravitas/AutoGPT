@@ -335,14 +335,13 @@ def _masked_text(text: str, credentials: tuple[str, ...]) -> str:
 
 def _masks(value: object, credentials: tuple[str, ...]) -> bool:
     """Whether ``value``, as ``%s`` or ``%r`` shows it, has anything to mask."""
+    shown: list[str] = []
     for show in (str, repr):
         try:
-            text = show(value)
+            shown.append(show(value))
         except Exception:
-            continue  # the handler hits, and reports, the same failure
-        if _masked_text(text, credentials) != text:
-            return True
-    return False
+            pass  # the handler hits, and reports, the same failure
+    return any(_masked_text(text, credentials) != text for text in dict.fromkeys(shown))
 
 
 # At DEBUG, websockets logs every handshake header it reads as ``< name: value``

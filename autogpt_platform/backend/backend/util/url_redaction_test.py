@@ -17,6 +17,7 @@ import pytest
 from starlette.routing import BaseRoute, Mount, Route, WebSocketRoute
 
 from backend.api import rest_api
+from backend.util import url_redaction
 from backend.util.url_redaction import (
     REDACTED,
     CredentialHeaderFilter,
@@ -414,6 +415,22 @@ def test_an_argument_whose_repr_fails_is_masked_as_its_str() -> None:
     contextvars.copy_context().run(filtered)
 
     assert token not in record.getMessage()
+
+
+def test_an_argument_shown_alike_by_str_and_repr_is_scanned_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scanned: list[str] = []
+    scan = url_redaction._masked_text
+
+    def counted(text: str, credentials: tuple[str, ...]) -> str:
+        scanned.append(text)
+        return scan(text, credentials)
+
+    monkeypatch.setattr(url_redaction, "_masked_text", counted)
+
+    assert not url_redaction._masks(12345, ("a-credential-long-enough",))
+    assert scanned == ["12345"]
 
 
 def test_a_typed_argument_keeps_its_format_when_masked() -> None:

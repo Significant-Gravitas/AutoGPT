@@ -30,7 +30,7 @@ _REQUEST_PARTS = frozenset({"body", "query", "path", "header", "cookie"})
 # it, an exception's text or a validator's message, and is masked. An error
 # pydantic doesn't define has a message that can say anything, so a log leaves
 # it out. That trusts the schema's side to come from the schema:
-# architecture_validation_errors_test.py keeps code from raising a built-in
+# architecture_pydantic_errors_test.py keeps code from raising a built-in
 # error with a context of its own.
 _SCHEMA_CONTEXT = frozenset(
     {

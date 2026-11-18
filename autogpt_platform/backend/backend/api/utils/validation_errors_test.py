@@ -15,6 +15,10 @@ import pytest
 import starlette.routing
 from fastapi.exceptions import RequestValidationError
 from pydantic_core import PydanticCustomError
+
+# Private: pydantic-core lists its errors only here. If an upgrade moves it,
+# this module fails to collect, and the renderer's allowlist is then rechecked
+# against the new version's errors.
 from pydantic_core._pydantic_core import list_all_errors
 
 from backend.api.external.v2.errors import add_v2_exception_handlers
