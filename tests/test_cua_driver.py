@@ -2057,7 +2057,10 @@ def test_a_linux_launch_name_matches_the_first_app_in_the_drivers_order() -> Non
 @pytest.mark.parametrize(
     ("launch_path", "sent"),
     [
-        ("zebra-notes", ("/usr/bin/zebra-notes", ())),
+        # A program alone, with a space after it: the driver's split drops
+        # it, and the string is no longer the program's own path.
+        ("zebra-notes", ("/usr/bin/zebra-notes ", ())),
+        ("/opt/zebra/bin/zebra-notes", ("/opt/zebra/bin/zebra-notes ", ())),
         ("zebra-notes --new-window", ("/usr/bin/zebra-notes --new-window", ())),
         ("/opt/zebra/bin/zebra-notes --new", ("/opt/zebra/bin/zebra-notes --new", ())),
         # Split at whitespace, as the driver splits it.
@@ -2080,7 +2083,7 @@ def test_a_linux_launch_name_matches_the_first_app_in_the_drivers_order() -> Non
             "steam -silent steam://rungameid/620 -applaunch",
             ("/usr/games/steam -silent", ("steam://rungameid/620", "-applaunch")),
         ),
-        ("steam steam://rungameid/620", ("/usr/games/steam", ("steam://rungameid/620",))),
+        ("steam steam://rungameid/620", ("/usr/games/steam ", ("steam://rungameid/620",))),
         # No such program, or none the shim can name for certain.
         ("not-installed --flag", None),
         ("/opt/gone/bin/gone", None),
@@ -2098,8 +2101,9 @@ def test_an_apps_launch_command_is_sent_with_its_program_as_an_absolute_path(
 ) -> None:
     """The driver runs a launch_path split at whitespace, its first word the
     program, which it looks up on PATH. The shim looks it up first and sends
-    its absolute path, so that a program gone by the time the driver runs
-    it leaves the driver a string that matches no app and names no path."""
+    its absolute path, so that a program that doesn't start when the driver
+    runs it leaves the driver a string that matches no app and names no
+    path."""
     programs = {
         "zebra-notes": "/usr/bin/zebra-notes",
         "/opt/zebra/bin/zebra-notes": "/opt/zebra/bin/zebra-notes",
@@ -2123,21 +2127,41 @@ def test_an_apps_launch_command_is_sent_with_its_program_as_an_absolute_path(
 def test_a_launch_command_that_names_a_file_as_a_whole_is_not_sent() -> None:
     """When a launch_path's program doesn't start and no app matches it, the
     driver hands the whole string to xdg-open if it names an existing path.
-    A command with arguments that does is not sent."""
+    A string that does is not sent, whatever its shape."""
     programs = {"zebra-notes": "/usr/bin/zebra-notes"}
     looked_at: list[str] = []
+    there = {"/usr/bin/zebra-notes", "/usr/bin/zebra-notes --new"}
 
     def exists(path: str) -> bool:
         looked_at.append(path)
-        return True
+        return path in there
 
-    launch = catalog.linux_launch("zebra-notes --new", on_path=programs.get, exists=exists)
+    with_arguments = catalog.linux_launch("zebra-notes --new", on_path=programs.get, exists=exists)
     alone = catalog.linux_launch("zebra-notes", on_path=programs.get, exists=exists)
+    there.add("/usr/bin/zebra-notes ")
+    alone_named_by_a_file = catalog.linux_launch("zebra-notes", on_path=programs.get, exists=exists)
 
-    assert launch is None
-    assert looked_at == ["/usr/bin/zebra-notes --new"]
-    # A program on its own is the file itself.
-    assert alone is not None and alone.launch_path == "/usr/bin/zebra-notes"
+    assert with_arguments is None
+    # The program's own file is there; the string sent, with its space, isn't.
+    assert alone is not None and alone.launch_path == "/usr/bin/zebra-notes "
+    assert alone_named_by_a_file is None
+    assert looked_at == [
+        "/usr/bin/zebra-notes --new",
+        "/usr/bin/zebra-notes ",
+        "/usr/bin/zebra-notes ",
+    ]
+
+
+def test_the_command_on_record_is_the_one_the_driver_runs() -> None:
+    """The space after a program alone is for the driver's lookup; the
+    command on record is the words it runs, the links among them."""
+    alone = catalog.LinuxLaunch("/usr/bin/zebra-notes ")
+    with_a_link = catalog.LinuxLaunch("/usr/games/steam ", ("steam://rungameid/620", "-silent"))
+    with_arguments = catalog.LinuxLaunch("/usr/bin/libreoffice --calc")
+
+    assert alone.command == "/usr/bin/zebra-notes"
+    assert with_a_link.command == "/usr/games/steam steam://rungameid/620 -silent"
+    assert with_arguments.command == "/usr/bin/libreoffice --calc"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="launch commands are POSIX command lines")
@@ -2161,6 +2185,7 @@ def test_an_apps_program_is_looked_up_as_the_driver_would_run_it(
 
     assert sent("zebra-notes --new") == f"{program} --new"
     assert sent(f"{program} --new") == f"{program} --new"
+    assert sent("zebra-notes") == f"{program} "
     assert sent("not-executable") is None
     assert sent(str(folder / "not-executable")) is None
     assert sent(str(folder / "a-folder")) is None
@@ -2293,7 +2318,7 @@ async def test_arguments_the_person_approved_follow_the_apps_own(
     )
     assert zebra["launch_path"] == "/opt/zebra/bin/zebra-notes --new-window"
     assert zebra["additional_arguments"] == ["--profile", "work"]
-    assert portal["launch_path"] == "/usr/games/steam"
+    assert portal["launch_path"] == "/usr/games/steam "
     assert portal["additional_arguments"] == ["steam://rungameid/620", "--profile", "work"]
 
 
@@ -2636,6 +2661,34 @@ async def test_a_linux_launch_of_an_app_gone_by_the_time_the_driver_runs_it_open
         "launch_path": "/opt/zebra/bin/zebra-notes --new-window",
         "session": handler.session_label,
     }
+
+
+async def test_a_linux_launch_of_an_app_whose_launcher_wont_start_opens_no_file(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """A launcher that is there and yet doesn't start (a script whose
+    interpreter is gone, or one with no `#!` line, which the driver doesn't
+    run through a shell) left the driver a string that named an existing
+    file, the launcher's own, which it handed to xdg-open: the script opened
+    in an editor, unasked. A command that is a program alone goes to the
+    driver with a space after it, which its split drops and its lookup
+    keeps: the string names no file, so the driver fails the call."""
+    _linux_apps(monkeypatch, _MOUSEPAD)
+    _programs_found(monkeypatch)
+    monkeypatch.setenv("FAKE_CUA_LINUX_LAUNCH", "1")
+    # The launcher is on the disk, and doesn't start.
+    monkeypatch.setenv("FAKE_CUA_PROGRAMS", "[]")
+    monkeypatch.setenv("FAKE_CUA_PATHS", json.dumps(["/usr/bin/mousepad"]))
+    handler = make_handler(platform="linux")
+
+    response = await handler.handle(_call("launch_app", {"name": "Mousepad"}))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert response.payload.is_error is True
+    assert _records(fake_log, "xdg-open") == []
+    assert _records(fake_log, "spawn") == []
+    launched = _records(fake_log, "call")[-1]["arguments"]
+    assert launched == {"launch_path": "/usr/bin/mousepad ", "session": handler.session_label}
 
 
 async def test_a_launch_path_the_shim_fills_in_is_not_an_approved_one(

@@ -438,15 +438,16 @@ class InstalledApp(NamedTuple):
 class LinuxLaunch(NamedTuple):
     """What the shim sends cua-driver to start an installed app on Linux."""
 
-    # The app's launch command, its program an absolute path.
+    # The app's launch command, its program an absolute path, and after a
+    # program alone a space (linux_launch).
     launch_path: str
     # The command's words from the first that holds `://` on.
     additional_arguments: tuple[str, ...] = ()
 
     @property
     def command(self) -> str:
-        """The whole command line the driver runs."""
-        return " ".join([self.launch_path, *self.additional_arguments])
+        """The whole command line the driver runs, a space between its words."""
+        return " ".join([self.launch_path.rstrip(), *self.additional_arguments])
 
 
 # What cua-driver splits a command line at (Rust's split_whitespace, the
@@ -532,11 +533,14 @@ def linux_launch(
       not sent.
     - The words from the first that holds `://` on go as
       additional_arguments, which the driver runs but doesn't look at again.
-    - A command with arguments that, as one string, names an existing path
-      is not sent. A program alone is its own file's path: were the file
-      still there and yet not to be started (its execute permission taken
-      away meanwhile, say), the driver would hand that path to xdg-open. It
-      is the app's own launcher, never a path the model chose."""
+    - A program alone is sent with a space after it. The driver's split
+      drops the space, so it runs the same program, and it looks the string
+      up as it is, space and all. Without the space the string would be the
+      program's own path, which the driver hands to xdg-open when the file
+      is there and yet doesn't start: a script whose interpreter is gone,
+      or one with no `#!` line, which the driver doesn't run through a
+      shell. tests/test_cua_driver_contract.py holds the driver to this.
+    - A string that names an existing path all the same is not sent."""
     words = _driver_words(launch_path)
     if not words or "\0" in launch_path:
         return None
@@ -549,7 +553,9 @@ def linux_launch(
     arguments = words[1:]
     links = next((at for at, word in enumerate(arguments) if "://" in word), len(arguments))
     command = " ".join([found, *arguments[:links]])
-    if links and exists(command):
+    if not links:
+        command += " "
+    if exists(command):
         return None
     return LinuxLaunch(command, tuple(arguments[links:]))
 

@@ -2524,8 +2524,9 @@ class ComputerUseHandler:
         that name left by the time it looked (removed since the shim's own
         look, say) it handed the name to xdg-open, which opened a file of
         that name in the working folder. Sent the command, it has no name
-        to look up: if the program is gone when it runs it, the string
-        matches no installed app (checked here) and names no existing path
+        to look up: if the program doesn't start when it runs it (it is
+        gone, or is a script whose interpreter is), the string matches no
+        installed app (checked here) and names no existing path
         (linux_launch), so it fails the call and opens nothing.
 
         A name no app matches, and an app whose program can't be named that

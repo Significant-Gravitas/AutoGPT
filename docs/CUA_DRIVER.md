@@ -286,15 +286,18 @@ Known gaps:
     remote-debugging flag. The words of the command from the first that
     holds `://` on go as `additional_arguments`, ahead of any the person
     approved.
-  - If the program is gone by the time the driver runs it, the string the
-    driver was sent matches no installed app (the shim checks that none is
-    called by it), holds no `://` and names no existing path, so the driver
-    fails the call and opens nothing. One case is left: a command that is a
-    program alone is that file's path, so if the file is still there and
-    yet can't be started (its execute permission taken away in between,
-    say), the driver hands it to `xdg-open`, which opens the app's own
-    launcher file with whatever handles it. The model can't choose that
-    path.
+  - If the program doesn't start when the driver runs it (it is gone, or
+    is a script whose interpreter is), the string the driver was sent
+    matches no installed app (the shim checks that none is called by it),
+    holds no `://` and names no existing path, so the driver fails the call
+    and opens nothing. A command that is a program alone would be that
+    program's own path, which the driver hands to `xdg-open` when the file
+    is there and yet doesn't start (a script whose interpreter is gone, or
+    one with no `#!` line, which the driver doesn't run through a shell):
+    the launcher would open in an editor. So the shim sends such a command
+    with a space after it. The driver splits a command at whitespace, so it
+    runs the same program, and it looks the string up as it is, where it
+    names nothing; a contract test holds the pinned driver to that.
   - A name no app matches, or two do, is refused, and so is an app whose
     program the shim can't name by an absolute path for certain: no such
     program, a relative path, one found through a relative `PATH` entry, a
@@ -308,7 +311,7 @@ Known gaps:
   - The `launch_path` the shim fills in isn't one the call brought, so it
     needs no approval and is on record as neither argument nor approval:
     the audit record keeps the `name` the call asked for and adds
-    `resolved_launch_path`, the command the shim sends.
+    `resolved_launch_path`, the command the shim has the driver run.
 
   Two things follow from the driver getting a command where it used to get
   a name. Its result names the command, not the app. And it looks for the
@@ -383,7 +386,7 @@ Every `COMPUTER_TOOL_CALL` the computer-use handler takes writes a
 `COMPUTER_TOOL_CALL` record, best effort: a failed write doesn't stop the
 call, and a call refused before the handler (computer use off, or not
 granted to the session) has none. The record holds the tool, for a Linux
-launch by name the command the shim sends the driver in the name's place
+launch by name the command the shim has the driver run in the name's place
 (`resolved_launch_path`),
 the arguments with typed, set and scripted text (`text`, `value`, `script`,
 `prompt_text`, a single character pressed with `press_key`, and the character

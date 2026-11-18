@@ -43,6 +43,8 @@ JSON object per line, to FAKE_CUA_LOG:
                          (linux_launch below); what it starts and opens is logged
   FAKE_CUA_PROGRAMS      JSON list of the programs that routing can start: each a
                          command's first word, an absolute path or a name on PATH
+  FAKE_CUA_PATHS         JSON list of paths that routing finds existing, beside those on
+                         the disk: a launcher that is there and doesn't start, say
   FAKE_CUA_APPS_GONE_AT_LAUNCH  that routing finds no installed app, as when one is
                          removed after list_apps listed it
 """
@@ -229,7 +231,9 @@ def linux_launch(arguments: dict) -> dict:
             f"Launched {app['name']} (`{app['launch_path']}`, pid 4242) in background.",
             {"pid": 4242, "name": app["name"]},
         )
-    if "://" not in command and not os.path.exists(command):
+    # The string as it is, a space at its end included: no path, on Linux.
+    existing = json.loads(os.environ.get("FAKE_CUA_PATHS") or "[]")
+    if "://" not in command and command not in existing and not os.path.exists(command):
         return text_result(
             f"Failed to launch: '{command}' is not an executable on PATH and matches no "
             "installed .desktop application.",
