@@ -1299,10 +1299,67 @@ describe("onboarding interview: starting over", () => {
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
     expect(startBodies.map((body) => (body ? JSON.parse(body) : null))).toEqual(
-      [null, { start_over: true }],
+      [null, { start_over: true, start_over_from: SESSION_ID }],
     );
     expect(finishCalls).toBe(0);
   });
+
+  it.each([
+    [
+      429,
+      "You've sent a lot of messages in a short time. Your progress is saved; try again in 10 minutes.",
+    ],
+    [
+      503,
+      "Otto can't chat right now. Your progress is saved; try again in 10 minutes.",
+    ],
+  ])(
+    "keeps the ending, with why, when the server refuses a start-over (%i), and offers no Skip",
+    async (status, why) => {
+      returnsClosed();
+      const startBodies: string[] = [];
+      server.use(
+        http.post(
+          "/api/proxy/api/onboarding/brain-dump/interview",
+          async ({ request }) => {
+            const body = await request.text();
+            startBodies.push(body);
+            if (body.includes("start_over")) {
+              return HttpResponse.json(
+                { detail: { message: "later", retry_after_seconds: 600 } },
+                { status },
+              );
+            }
+            return HttpResponse.json({
+              session_id: SESSION_ID,
+              turn_id: null,
+              stage: "closed",
+            });
+          },
+        ),
+      );
+      const user = userEvent.setup();
+
+      render(<OnboardingPage />);
+
+      await user.click(
+        await screen.findByRole("button", { name: "Start over" }),
+      );
+      await user.click(screen.getByRole("button", { name: "Type instead" }));
+
+      expect((await screen.findByRole("alert")).textContent).toBe(why);
+      expect(
+        screen.getByRole("button", { name: "Meet your team" }),
+      ).toBeDefined();
+      expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+      expect(screen.queryByPlaceholderText("Type your answer…")).toBeNull();
+      expect(JSON.parse(startBodies[1])).toEqual({
+        start_over: true,
+        start_over_from: SESSION_ID,
+      });
+      expect(finishCalls).toBe(0);
+    },
+  );
 
   it("offers Start over under an arm's own ending too", async () => {
     returnsClosed();

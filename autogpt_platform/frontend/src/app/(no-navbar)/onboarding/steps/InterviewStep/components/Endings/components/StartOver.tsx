@@ -10,6 +10,8 @@ interface Props {
   // Something the person said is kept, which a new interview replaces.
   hasKept: boolean;
   isDisabled: boolean;
+  // Why the server refused the last start-over; the ending above stays.
+  failure?: string | null;
   onOpen: () => void;
   onCallAgain: () => void;
   onTypeInstead: () => void;
@@ -20,6 +22,7 @@ export function StartOver({
   canCall,
   hasKept,
   isDisabled,
+  failure = null,
   onOpen,
   onCallAgain,
   onTypeInstead,
@@ -31,16 +34,25 @@ export function StartOver({
     onOpen();
   }
 
+  const refused = failure ? (
+    <Text variant="small" tone="error" role="alert" align="center">
+      {failure}
+    </Text>
+  ) : null;
+
   if (!isOpen) {
     return (
-      <Button
-        variant="link"
-        size="small"
-        disabled={isDisabled}
-        onClick={handleOpen}
-      >
-        Start over
-      </Button>
+      <div className="flex flex-col items-center gap-2">
+        {refused}
+        <Button
+          variant="link"
+          size="small"
+          disabled={isDisabled}
+          onClick={handleOpen}
+        >
+          Start over
+        </Button>
+      </div>
     );
   }
 
@@ -50,6 +62,7 @@ export function StartOver({
       aria-label="Start over"
       className="flex flex-col items-center gap-2"
     >
+      {refused}
       {hasKept && (
         <Text variant="small" tone="muted" align="center">
           This replaces what you told Otto.

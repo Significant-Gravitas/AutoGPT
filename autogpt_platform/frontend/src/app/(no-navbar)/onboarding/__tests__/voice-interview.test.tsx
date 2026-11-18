@@ -3812,6 +3812,7 @@ describe("onboarding interview by voice: starting over", () => {
     await waitFor(() => expect(mints).toBe(1));
     expect(JSON.parse(String(mintBodies[0]))).toEqual({
       start_over: true,
+      start_over_from: CALL_ID,
       language: "en-US",
     });
     expect(tracked("ending_action").map((event) => event?.action)).toEqual([
@@ -3847,9 +3848,57 @@ describe("onboarding interview by voice: starting over", () => {
       await screen.findByPlaceholderText("Type your answer…"),
     ).toBeDefined();
     expect(typedBodies.map((body) => JSON.parse(body))).toEqual([
-      { start_over: true },
+      { start_over: true, start_over_from: CALL_ID },
     ]);
     expect(mints).toBe(0);
+  });
+
+  it("keeps the call's ending, with why, when a start-over by call is refused, and offers no Skip", async () => {
+    returnsToTakenCall();
+    refuseCallStartOnce({
+      status: 429,
+      body: { detail: { message: "later", retry_after_seconds: 1200 } },
+    });
+    render(<OnboardingPage />);
+
+    await openStartOver();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Call again" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "You've made a few calls already. You can call again in 20 minutes, or type instead.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Start over" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Talk to Otto" })).toBeNull();
+    expect(mints).toBe(1);
+  });
+
+  it("keeps the call's ending, with why, when a start-over by typing is refused", async () => {
+    returnsToTakenCall();
+    refuseTypedStartOnce({
+      status: 503,
+      body: { detail: { message: "later", retry_after_seconds: 30 } },
+    });
+    render(<OnboardingPage />);
+
+    await openStartOver();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Type instead" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Otto can't chat right now. Your progress is saved; try again in a minute.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(screen.queryByPlaceholderText("Type your answer…")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
   });
 
   it("starts a call over a typed interview that is over", async () => {
@@ -3882,12 +3931,54 @@ describe("onboarding interview by voice: starting over", () => {
     await waitFor(() => expect(mints).toBe(1));
     expect(JSON.parse(String(mintBodies[0]))).toEqual({
       start_over: true,
+      start_over_from: SESSION_ID,
       language: "en-US",
     });
     expect(tracked("ending_action")).toEqual([
       { mode: "text", ending: "team", action: "start_over" },
       { mode: "text", ending: "team", action: "call_again" },
     ]);
+  });
+
+  it("returns to the typed ending, with why, when a call asked for from it is refused", async () => {
+    server.use(
+      http.get("/api/proxy/api/onboarding/brain-dump/interview", () =>
+        HttpResponse.json({
+          ...NO_INTERVIEW,
+          session_id: SESSION_ID,
+          stage: "handed_off",
+          is_over: true,
+        }),
+      ),
+      getStartOnboardingInterviewMockHandler200(() => ({
+        session_id: SESSION_ID,
+        turn_id: null,
+        stage: "handed_off",
+      })),
+    );
+    typedMessages = [KICKOFF_ROW, GREETING_ROW, TYPED_ANSWER_ROW];
+    refuseCallStartOnce({
+      status: 429,
+      body: { detail: { message: "later", retry_after_seconds: 1200 } },
+    });
+    render(<OnboardingPage />);
+
+    expect(
+      await screen.findByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    await openStartOver();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Call again" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "You've made a few calls already. You can call again in 20 minutes, or type instead.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Talk to Otto" })).toBeNull();
   });
 
   it.each([

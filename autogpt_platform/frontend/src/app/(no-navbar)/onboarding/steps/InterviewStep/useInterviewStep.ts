@@ -52,6 +52,7 @@ import {
   STAGE_READ_INTERVAL_MS,
   STAGE_READ_WINDOW_MS,
   type StartFailure,
+  startFailureCopy,
   startFailureOf,
   turnRefusalOf,
   withoutKickoff,
@@ -95,8 +96,10 @@ export function useInterviewStep() {
   const startedRef = useRef(false);
   const startAttemptRef = useRef(0);
   const turnRanRef = useRef(false);
-  // The next typed start sets the person's closed interview aside.
-  const isStartOverRef = useRef(false);
+  // A fresh interview asked for from an ending, waiting on the server; and
+  // why one was refused, shown under the ending it left in place.
+  const [isStartingOver, setIsStartingOver] = useState(false);
+  const [startOverFailure, setStartOverFailure] = useState<string | null>(null);
 
   // With the voice flag on, the step opens on the person's latest call,
   // read before anything typed (useVoiceCall); with no call to pick up, the
@@ -117,6 +120,7 @@ export function useInterviewStep() {
     onCallStarted: () => forgetTyping(userID),
     onMicrophoneRefused: refuseMicrophone,
     onNoCall: openWithoutCall,
+    onStartOverRefused: refuseStartOverByCall,
     isEndingPickerOn,
   });
 
@@ -248,11 +252,9 @@ export function useInterviewStep() {
 
   async function openInterview() {
     const attempt = ++startAttemptRef.current;
-    const isStartOver = isStartOverRef.current;
-    isStartOverRef.current = false;
     try {
       const response = await startOnboardingInterview(
-        startBody(isEndingPickerOn, "text", isStartOver),
+        startBody(isEndingPickerOn, "text", null),
       );
       if (attempt !== startAttemptRef.current) return;
       if (response.status !== 200) {
@@ -321,13 +323,67 @@ export function useInterviewStep() {
     remember: boolean;
     isStartOver?: boolean;
   }) {
-    if (remember) rememberTyping(userID);
     if (isStartOver) {
-      isStartOverRef.current = true;
-      clearTypedInterview();
+      void startOverTyped();
+      return;
     }
+    if (remember) rememberTyping(userID);
     setSurface("type");
     if (startedRef.current) void start();
+  }
+
+  // A fresh typed interview in place of the one the ending on screen shows,
+  // the typed one's or a call's. What is on screen stays until the server
+  // opens the new one; a refusal leaves it there, with why.
+  async function startOverTyped() {
+    const fromCall = shown === "voice";
+    const setAside = fromCall ? voice.shownCallId() : sessionId;
+    const attempt = ++startAttemptRef.current;
+    setIsStartingOver(true);
+    setStartOverFailure(null);
+    try {
+      const response = await startOnboardingInterview(
+        startBody(isEndingPickerOn, "text", setAside),
+      );
+      if (attempt !== startAttemptRef.current) return;
+      if (response.status !== 200) {
+        refuseStartOver(startFailureCopy({ kind: "failed" }), fromCall);
+        return;
+      }
+      clearTypedInterview();
+      if (fromCall) voice.clearEnding();
+      rememberTyping(userID);
+      startedRef.current = true;
+      setStartFailure(null);
+      setSurface("type");
+      setStartedStage(response.data.stage ?? null);
+      setSessionId(response.data.session_id);
+    } catch (startError) {
+      if (attempt !== startAttemptRef.current) return;
+      const heldBy = refusalOf(startError).heldBy;
+      if (heldBy?.callId) {
+        showCallThatHolds(heldBy);
+        return;
+      }
+      refuseStartOver(startFailureCopy(startFailureOf(startError)), fromCall);
+    } finally {
+      setIsStartingOver(false);
+    }
+  }
+
+  function refuseStartOver(message: string, fromCall: boolean) {
+    if (fromCall) {
+      voice.refuseStartOverByTyping(message);
+      return;
+    }
+    setStartOverFailure(message);
+  }
+
+  // A call asked for from the typed interview's ending was refused: that
+  // ending shows again, as it was.
+  function refuseStartOverByCall(message: string) {
+    setSurface("type");
+    setStartOverFailure(message);
   }
 
   function clearTypedInterview() {
@@ -353,8 +409,9 @@ export function useInterviewStep() {
   function startOverByCall() {
     if (isLeavingRef.current) return;
     trackTypedEndingAction("call_again");
+    setStartOverFailure(null);
     setSurface("voice");
-    voice.startOverByCall();
+    voice.startOverByCall(sessionId);
   }
 
   function refuseMicrophone(refusal: MicrophoneRefusal) {
@@ -497,7 +554,7 @@ export function useInterviewStep() {
   // the same interview.
   function repickEnding() {
     void startOnboardingInterview(
-      startBody(isEndingPickerOn, "text", false),
+      startBody(isEndingPickerOn, "text", null),
     ).catch(() => undefined);
   }
 
@@ -542,6 +599,8 @@ export function useInterviewStep() {
         micRefusal === null &&
         microphone.state !== "denied",
       hasKept: hasAnswered(messages),
+      isStartingOver,
+      failure: startOverFailure,
       onOpen: () => trackTypedEndingAction("start_over"),
       onCallAgain: startOverByCall,
       onTypeInstead: startOverByTyping,

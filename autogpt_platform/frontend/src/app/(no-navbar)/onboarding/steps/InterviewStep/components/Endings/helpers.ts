@@ -78,15 +78,17 @@ export function endingPickBody(isPickerOn: boolean, mode: EndingMode) {
   return arm ? { ending_pick: arm } : undefined;
 }
 
-// What a start carries: a tester's pick, and whether the person asked to
-// start a closed interview over.
+// What a start carries: a tester's pick, and the closed interview the
+// person asked to start over from, as the ending they saw named it.
 export function startBody(
   isPickerOn: boolean,
   mode: EndingMode,
-  isStartOver: boolean,
+  startOverFrom: string | null,
 ) {
   const pick = endingPickBody(isPickerOn, mode);
-  return isStartOver ? { ...pick, start_over: true } : pick;
+  return startOverFrom
+    ? { ...pick, start_over: true, start_over_from: startOverFrom }
+    : pick;
 }
 
 // --- Corrections, in the person's voice -----------------------------------

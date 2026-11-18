@@ -117,9 +117,10 @@ export function VoiceCall({ call }: Props) {
               canCall
               hasKept
               isDisabled={call.isLeaving}
+              failure={call.startOverFailure}
               onOpen={call.openStartOver}
-              onCallAgain={call.startOverByCall}
-              onTypeInstead={() => void call.startOverByTyping()}
+              onCallAgain={() => call.startOverByCall()}
+              onTypeInstead={call.startOverByTyping}
             />
           }
           onConfirm={(corrections) => void call.meetTeam(corrections)}

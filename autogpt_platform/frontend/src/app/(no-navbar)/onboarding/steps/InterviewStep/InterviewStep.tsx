@@ -90,7 +90,11 @@ export function InterviewStep() {
                   <StartOver
                     canCall={interview.typedStartOver.canCall}
                     hasKept={interview.typedStartOver.hasKept}
-                    isDisabled={interview.isLeaving}
+                    isDisabled={
+                      interview.isLeaving ||
+                      interview.typedStartOver.isStartingOver
+                    }
+                    failure={interview.typedStartOver.failure}
                     onOpen={interview.typedStartOver.onOpen}
                     onCallAgain={interview.typedStartOver.onCallAgain}
                     onTypeInstead={interview.typedStartOver.onTypeInstead}

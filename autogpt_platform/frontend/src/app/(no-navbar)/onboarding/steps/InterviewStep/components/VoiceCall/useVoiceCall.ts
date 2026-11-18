@@ -59,6 +59,7 @@ import {
   type CallPhase,
   type CallStartFailure,
   type CaptionLine,
+  callStartFailureCopy,
   callStartFailureOf,
   ENDING_POLL_MS,
   ENDING_SLOW_POLL_MS,
@@ -113,6 +114,9 @@ interface Args {
     remember: boolean;
     isStartOver?: boolean;
   }) => void;
+  // A call asked to start the typed interview over was refused: the typed
+  // ending shows again, with why.
+  onStartOverRefused: (message: string) => void;
   onLeave: (path: "A" | "B") => Promise<void>;
   onSkip: () => Promise<void>;
   onCallStarted: () => void;
@@ -185,8 +189,11 @@ export function useVoiceCall(args: Args) {
   const [details, setDetails] = useState<InterviewDetails | null>(null);
   // What the person changed on the ending screen, kept for a retry.
   const correctionsRef = useRef<string | null>(null);
-  // The next call's start sets the person's closed interview aside.
-  const isStartOverRef = useRef(false);
+  // The next call's start sets the person's closed interview aside: the one
+  // the ending on screen named, a call's or the typed interview's.
+  const startOverRef = useRef<StartOverFrom | null>(null);
+  // A start-over refused by the server, shown under the ending it left.
+  const [startOverFailure, setStartOverFailure] = useState<string | null>(null);
   const [finishFailure, setFinishFailure] = useState<StartFailure | null>(null);
   const [held, setHeld] = useState<HeldCall | null>(null);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -290,6 +297,7 @@ export function useVoiceCall(args: Args) {
     const conn = connRef.current;
     const attempt = beginAttempt();
     setHeld(null);
+    setStartOverFailure(null);
     setPhase("starting");
     // The room's SDK downloads while the microphone is asked for.
     const sdk = loadLiveKit().then(
@@ -402,12 +410,16 @@ export function useVoiceCall(args: Args) {
   // with the refusal shown.
   async function mintCall(attempt: number) {
     const conn = connRef.current;
+    const startOver = startOverRef.current;
+    startOverRef.current = null;
     try {
-      const isStartOver = isStartOverRef.current;
-      isStartOverRef.current = false;
       const response = await startOnboardingVoiceCall(
         withLanguage(
-          startBody(argsRef.current.isEndingPickerOn, "voice", isStartOver),
+          startBody(
+            argsRef.current.isEndingPickerOn,
+            "voice",
+            startOver?.id ?? null,
+          ),
           browserLanguage(),
         ),
       );
@@ -423,7 +435,7 @@ export function useVoiceCall(args: Args) {
       }
       return { started: named, room };
     } catch (error) {
-      if (attempt === conn.attempt) refuseStart(error);
+      if (attempt === conn.attempt) refuseStart(error, startOver);
       return null;
     }
   }
@@ -492,7 +504,7 @@ export function useVoiceCall(args: Args) {
     argsRef.current.onMicrophoneRefused(refusal);
   }
 
-  function refuseStart(error: unknown) {
+  function refuseStart(error: unknown, startOver: StartOverFrom | null) {
     const refusal = refusalOf(error);
     const heldBy = refusal.heldBy;
     if (heldBy?.kind === "call_in_progress") {
@@ -501,6 +513,19 @@ export function useVoiceCall(args: Args) {
     }
     if (heldBy?.kind === "closed" && heldBy.callId) {
       showTakenBy(heldBy.callId);
+      return;
+    }
+    // A refused start-over leaves the interview as it was: its ending shows
+    // again, with why, and never the choice and its Skip.
+    if (startOver) {
+      const message = callStartFailureCopy(callStartFailureOf(refusal));
+      if (startOver.from === "call" && startOver.id) {
+        showTakenBy(startOver.id);
+        setStartOverFailure(message);
+        return;
+      }
+      setPhase("idle");
+      argsRef.current.onStartOverRefused(message);
       return;
     }
     // Voice is off for this person, or their typed interview is over: the
@@ -999,6 +1024,7 @@ export function useVoiceCall(args: Args) {
       reportLostCall(conn.lostCall.reason);
     }
     resetView();
+    setStartOverFailure(null);
     setPhase("idle");
     argsRef.current.onTypeInstead({ remember: true, isStartOver });
   }
@@ -1013,15 +1039,44 @@ export function useVoiceCall(args: Args) {
   }
 
   // A new call in place of the interview that is over: started on the
-  // click, which its audio needs, from this screen or the typed one.
-  function startOverByCall() {
-    isStartOverRef.current = true;
-    connRef.current.hasChecked = true;
+  // click, which its audio needs, from this screen, or from the typed
+  // interview's ending, which names its session.
+  function startOverByCall(typedSessionId?: string | null) {
+    const conn = connRef.current;
+    startOverRef.current =
+      typedSessionId === undefined
+        ? { from: "call", id: conn.shownCallId }
+        : { from: "typed", id: typedSessionId };
+    setStartOverFailure(null);
+    conn.hasChecked = true;
     callAgain();
   }
 
-  async function startOverByTyping() {
-    await typeInstead({ isStartOver: true });
+  // A fresh typed interview in place of the call's: the step asks the
+  // server first, and this ending stays until it agrees (clearEnding).
+  function startOverByTyping() {
+    trackEndingAction("type_instead");
+    setStartOverFailure(null);
+    argsRef.current.onTypeInstead({ remember: true, isStartOver: true });
+  }
+
+  // The typed interview took over from the call's ending.
+  function clearEnding() {
+    const conn = connRef.current;
+    conn.attempt += 1;
+    conn.poll += 1;
+    resetView();
+    setStartOverFailure(null);
+    setPhase("idle");
+  }
+
+  function refuseStartOverByTyping(message: string) {
+    setStartOverFailure(message);
+  }
+
+  // The call whose ending is on screen, which a start-over sets aside.
+  function shownCallId() {
+    return connRef.current.shownCallId;
   }
 
   async function skip() {
@@ -1458,6 +1513,10 @@ export function useVoiceCall(args: Args) {
     openStartOver,
     startOverByCall,
     startOverByTyping,
+    startOverFailure,
+    shownCallId,
+    clearEnding,
+    refuseStartOverByTyping,
     skip,
     meetTeam,
     retryFinish,
@@ -1467,6 +1526,11 @@ export function useVoiceCall(args: Args) {
 }
 
 export type VoiceCallState = ReturnType<typeof useVoiceCall>;
+
+interface StartOverFrom {
+  from: "call" | "typed";
+  id: string | null;
+}
 
 // The relay socket the server names for a live call, when it is one.
 function relayUrlOf(call: VoiceCallStatusResponse) {
