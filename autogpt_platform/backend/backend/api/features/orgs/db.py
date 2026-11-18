@@ -193,7 +193,8 @@ async def resolve_default_tenancy(user_id: str) -> tuple[str | None, str | None]
         return await get_user_default_team(user_id)
     except Exception:
         logger.warning(
-            f"Default org/team lookup failed for user {user_id}",
+            f"Default org/team lookup failed for user {user_id}; "
+            "the writer tries the personal org itself",
             exc_info=True,
         )
         return None, None

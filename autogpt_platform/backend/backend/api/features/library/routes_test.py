@@ -582,3 +582,55 @@ def test_a_billing_manager_role_is_refused_listing_and_running_from_the_library(
     assert response.status_code == 403
     listing.assert_not_awaited()
     preset.assert_not_awaited()
+
+
+def test_a_fork_lands_in_the_organization_and_team_it_is_made_in(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Forked from inside a team org, the copy is that team's, where it runs."""
+    app.dependency_overrides[enforce_payment_paywall] = lambda: None
+    app.dependency_overrides[get_request_context] = lambda: RequestContext(
+        user_id="test-user-id",
+        org_id="test-org",
+        team_id="test-team",
+        is_org_owner=False,
+        is_org_admin=False,
+        is_org_billing_manager=False,
+        is_team_admin=False,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )
+    fork = mocker.patch(
+        "backend.api.features.library.routes.agents.library_db.fork_library_agent",
+        new_callable=AsyncMock,
+        return_value=library_model.LibraryAgent(
+            id="la-copy",
+            graph_id="graph-copy",
+            graph_version=1,
+            name="Copy",
+            description="",
+            image_url=None,
+            creator_name="",
+            creator_image_url="",
+            input_schema={"type": "object", "properties": {}},
+            output_schema={"type": "object", "properties": {}},
+            credentials_input_schema={"type": "object", "properties": {}},
+            has_external_trigger=False,
+            has_human_in_the_loop=False,
+            has_sensitive_action=False,
+            status=library_model.LibraryAgentStatus.COMPLETED,
+            recommended_schedule_cron=None,
+            new_output=False,
+            can_access_graph=True,
+            is_latest_version=True,
+            is_favorite=False,
+            created_at=FIXED_NOW,
+            updated_at=FIXED_NOW,
+        ),
+    )
+
+    response = client.post("/agents/la-1/fork")
+
+    assert response.status_code == 200, response.text
+    kwargs = fork.await_args.kwargs
+    assert (kwargs["organization_id"], kwargs["team_id"]) == ("test-org", "test-team")

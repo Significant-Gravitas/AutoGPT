@@ -27,6 +27,17 @@ GRAPH_VERSION = 1
 EXEC_ID = "exec-2222"
 SESSION_ID = "session-3333"
 API_KEY_ID = "key-4444"
+PERSONAL_ORG_ID = "org-personal"
+
+
+@pytest.fixture(autouse=True)
+def _personal_org():
+    """A row written without an org takes the user's personal one."""
+    with patch(
+        "backend.data.tenancy.personal_org_tenancy",
+        new=AsyncMock(return_value=(PERSONAL_ORG_ID, "team-default")),
+    ):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -1969,8 +1980,8 @@ class TestPR14APIKeyTenancy:
 
     @pytest.mark.asyncio
     async def test_create_api_key_defaults_to_user_owned(self):
-        """Current behavior: create_api_key sets userId and nothing else
-        for org context. This must keep working."""
+        """A key made without an org is the user's own, in their personal
+        org."""
         key_row = _make_api_key_row()
         self.mock_prisma_actions.create = AsyncMock(return_value=key_row)
 
@@ -1986,7 +1997,8 @@ class TestPR14APIKeyTenancy:
             "data", self.mock_prisma_actions.create.call_args[1].get("data")
         )
         assert create_data["userId"] == USER_ID
-        assert "organizationId" not in create_data
+        assert create_data["organizationId"] == PERSONAL_ORG_ID
+        assert "ownerType" not in create_data
         assert info.user_id == USER_ID
 
     @pytest.mark.asyncio
