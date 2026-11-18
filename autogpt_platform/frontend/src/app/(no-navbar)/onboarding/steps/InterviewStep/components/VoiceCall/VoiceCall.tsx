@@ -148,7 +148,10 @@ export function VoiceCall({ call }: Props) {
             variant="destructive"
             size="large"
             leadingIcon={CallEnd01Icon}
-            disabled={call.phase !== "live" || call.isHangingUp}
+            disabled={
+              (call.phase !== "live" && call.phase !== "reconnecting") ||
+              call.isHangingUp
+            }
             onClick={call.hangUp}
           >
             Hang up

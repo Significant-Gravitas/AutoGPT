@@ -1755,6 +1755,33 @@ describe("onboarding interview by voice: the call", () => {
     ]);
   });
 
+  it("hangs up a call whose socket is re-attaching: the microphone stops, the re-attach says Hang up, and the end route ends it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(<OnboardingPage />);
+    const { socket, room } = await liveRoomCall();
+
+    act(() => socket.drop(1006));
+    expect(await screen.findByText("Reconnecting…")).toBeDefined();
+    await userEvent
+      .setup({ advanceTimers: vi.advanceTimersByTime })
+      .click(screen.getByRole("button", { name: "Hang up" }));
+
+    await waitFor(() => expect(room.unpublished).toHaveLength(1));
+    expect(
+      screen.getByRole("button", { name: "Hang up" }).hasAttribute("disabled"),
+    ).toBe(true);
+    const again = await relaySocketAfter(socket);
+    act(() => again.accept());
+    act(() => again.relay({ type: "resumed", gap_s: 0.8 }));
+    expect(again.messages()).toEqual([
+      { type: "resume", ticket: TICKET },
+      { type: "hangup" },
+    ]);
+
+    await passTime(HANGUP_FALLBACK_MS);
+    await waitFor(() => expect(ends).toEqual([CALL_ID]));
+  });
+
   it("ends the call through the REST API when the relay does not answer Hang up", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<OnboardingPage />);

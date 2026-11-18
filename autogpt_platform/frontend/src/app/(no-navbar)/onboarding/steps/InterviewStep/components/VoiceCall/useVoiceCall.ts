@@ -998,12 +998,20 @@ export function useVoiceCall(args: Args) {
     const conn = connRef.current;
     const call = conn.call;
     const socket = conn.socket;
-    if (!call || !conn.isReady || socket?.readyState !== WebSocket.OPEN) return;
+    if (!call || conn.isHangingUp) return;
+    const isOpen = conn.isReady && socket?.readyState === WebSocket.OPEN;
+    // A call whose socket is re-attaching is hung up too: the microphone
+    // stops now, the re-attach says Hang up again, and the end route ends
+    // the call if the socket never comes back.
+    const isReattaching = call.ticket !== null && conn.dropDeadline !== null;
+    if (!isOpen && !isReattaching) return;
     conn.isHangingUp = true;
     setIsHangingUp(true);
     conn.audio?.mute();
     conn.room?.mute();
-    socket.send(JSON.stringify({ type: "hangup" } satisfies ClientMessage));
+    if (isOpen) {
+      socket.send(JSON.stringify({ type: "hangup" } satisfies ClientMessage));
+    }
     later(
       conn,
       () => {
