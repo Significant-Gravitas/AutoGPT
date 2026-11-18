@@ -1,20 +1,31 @@
-import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV1ListAllExecutionsQueryKey,
+  useGetV1ListAllExecutions,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 
 import { okData } from "@/app/api/helpers";
-import { useExecutionEvents } from "@/hooks/useExecutionEvents";
+import {
+  refetchAfterReconnect,
+  useExecutionEvents,
+} from "@/hooks/useExecutionEvents";
 import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   NotificationState,
   categorizeExecutions,
   handleExecutionUpdate,
+  keepActiveRunsTheListOmits,
   relabelNotifications,
 } from "./helpers";
+import { useLiveUpdateLog } from "./useLiveUpdateLog";
 
 export function useAgentActivityDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const { agentInfoMap } = useLibraryAgents();
+  const queryClient = useQueryClient();
+  const liveUpdates = useLiveUpdateLog();
 
   const [notifications, setNotifications] = useState<NotificationState>({
     activeExecutions: [],
@@ -27,8 +38,11 @@ export function useAgentActivityDropdown() {
     data: executions,
     isSuccess: executionsSuccess,
     error: executionsError,
+    dataUpdatedAt,
   } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    // The list mounts with the account menu, and a copy cached before the
+    // menu opened can miss every run since.
+    query: { select: okData, refetchOnMount: "always" },
   });
 
   // Get all graph IDs from agentInfoMap
@@ -40,38 +54,44 @@ export function useAgentActivityDropdown() {
   // Handle real-time execution updates
   const handleExecutionEvent = useCallback(
     (execution: GraphExecution) => {
+      liveUpdates.recordUpdate(execution);
       setNotifications((currentState) =>
         handleExecutionUpdate(currentState, execution, agentInfoMap),
       );
     },
-    [agentInfoMap],
+    [agentInfoMap, liveUpdates],
   );
 
-  // Process initial execution state when data loads
-  // Use a ref to track if we've already processed to avoid infinite loops
-  const processedExecutionsRef = useRef<string | null>(null);
+  // Rebuild from each fetched list (keyed on dataUpdatedAt), then replay the
+  // live updates that arrived after that list's fetch started.
+  const processedListRef = useRef<number | null>(null);
   useEffect(() => {
-    const executionKey = executions
-      ? `${executions.length}-${executionsSuccess}`
-      : null;
-
     if (
-      executions &&
-      executionsSuccess &&
-      agentInfoMap.size > 0 &&
-      processedExecutionsRef.current !== executionKey
-    ) {
-      const notifications = categorizeExecutions(executions, agentInfoMap);
-      setNotifications(notifications);
-      processedExecutionsRef.current = executionKey;
-    }
-  }, [executions, executionsSuccess, agentInfoMap]);
+      !executions ||
+      !executionsSuccess ||
+      agentInfoMap.size === 0 ||
+      processedListRef.current === dataUpdatedAt
+    )
+      return;
+    const fromList = categorizeExecutions(executions, agentInfoMap);
+    const newer = liveUpdates.updatesNewerThan(dataUpdatedAt);
+    setNotifications((shown) =>
+      newer.reduce(
+        (state, execution) =>
+          handleExecutionUpdate(state, execution, agentInfoMap),
+        keepActiveRunsTheListOmits(shown, fromList, executions),
+      ),
+    );
+    processedListRef.current = dataUpdatedAt;
+  }, [executions, executionsSuccess, dataUpdatedAt, agentInfoMap, liveUpdates]);
 
   // Subscribe to execution events for all graphs
   useExecutionEvents({
     graphIds: graphIds.length > 0 ? graphIds : undefined,
     enabled: graphIds.length > 0,
     onExecutionUpdate: handleExecutionEvent,
+    onReconnect: () =>
+      refetchAfterReconnect(queryClient, getGetV1ListAllExecutionsQueryKey()),
   });
 
   return {

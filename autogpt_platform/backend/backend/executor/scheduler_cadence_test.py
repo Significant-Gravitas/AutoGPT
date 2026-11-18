@@ -11,12 +11,12 @@ from zoneinfo import ZoneInfo
 import pytest
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 from backend.executor.scheduler import (
     CopilotTurnJobArgs,
     Jobstores,
     Scheduler,
-    _build_trigger,
     execute_copilot_turn,
 )
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
@@ -43,19 +43,22 @@ def _add(
     *,
     routine_id: str | None = None,
     user_timezone: str | None = _CHICAGO,
+    cron: str = "* * * * *",
 ) -> None:
+    """Stored as the jobstore holds it, so a cron from before today's checks
+    is possible too."""
     args = CopilotTurnJobArgs(
         schedule_id="job-1",
         user_id="user-1",
         message="Check Discord for new messages.",
-        cron="* * * * *",
+        cron=cron,
         user_timezone=user_timezone,
         routine_id=routine_id,
     )
     scheduler.scheduler.add_job(
         execute_copilot_turn,
         kwargs=args.model_dump(mode="json"),
-        trigger=_build_trigger(cron=args.cron, run_at=None, user_timezone=_CHICAGO),
+        trigger=CronTrigger.from_crontab(cron, timezone=_CHICAGO),
         jobstore=_STORE,
         id="job-1",
     )
@@ -106,6 +109,38 @@ def test_a_routines_job_is_left_to_its_routine():
 
         with pytest.raises(NotFoundError):
             scheduler.update_copilot_turn_cron("job-1", "user-1", "0 9 * * *")
+
+
+def test_a_cadence_that_never_fires_is_refused_and_the_old_one_kept():
+    with _scheduler() as scheduler:
+        _add(scheduler)
+
+        with pytest.raises(ValueError, match="never fires"):
+            scheduler.update_copilot_turn_cron("job-1", "user-1", "0 0 30 2 *")
+
+        job = scheduler.scheduler.get_job("job-1", jobstore=_STORE)
+        assert job.kwargs["cron"] == "* * * * *"
+
+
+def test_resuming_a_stored_schedule_that_never_fires_is_refused():
+    with _scheduler() as scheduler:
+        _add(scheduler, cron="0 0 30 2 *")
+
+        with pytest.raises(ValueError, match="never fires"):
+            scheduler.resume_execution_schedule("job-1", "user-1")
+
+        job = scheduler.scheduler.get_job("job-1", jobstore=_STORE)
+        assert job.next_run_time is None
+
+
+def test_a_paused_schedule_that_fires_resumes():
+    with _scheduler() as scheduler:
+        _add(scheduler)
+        scheduler.scheduler.pause_job("job-1", jobstore=_STORE)
+
+        assert scheduler.resume_execution_schedule("job-1", "user-1") is True
+        job = scheduler.scheduler.get_job("job-1", jobstore=_STORE)
+        assert job.next_run_time is not None
 
 
 def test_nobody_else_can_change_it():

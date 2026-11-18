@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+// Documented in docs/platform/rate-limits.md: update it with any change here.
 // At most one email of a kind per address per window, however often whatever
 // sends it is repeated.
 const AUTH_EMAIL_COOLDOWN_SECONDS = 10 * 60;

@@ -23,7 +23,7 @@ interface Props {
 export function CompactionCard({ phase, stats, isSettled }: Props) {
   if (isSettled) {
     return (
-      <div className="flex items-center gap-2 py-2 text-caption text-muted-foreground">
+      <div className="flex items-center gap-2 py-2 text-caption text-foreground-tertiary">
         <Icon icon={ReloadIcon} size={14} />
         <span
           className="min-w-0 truncate"
@@ -62,7 +62,7 @@ function LiveCompaction({ phase, stats }: LiveProps) {
 
   return (
     <div className="flex flex-col gap-1.5 py-2">
-      <div className="flex items-center gap-2 text-caption text-muted-foreground">
+      <div className="flex items-center gap-2 text-caption text-foreground-tertiary">
         <Icon
           icon={ReloadIcon}
           size={14}
@@ -77,7 +77,7 @@ function LiveCompaction({ phase, stats }: LiveProps) {
           {label}
         </span>
         {showTime && (
-          <span className="font-mono text-muted-foreground tabular-nums">
+          <span className="font-mono text-foreground-tertiary tabular-nums">
             {formatElapsed(elapsedSeconds)}
           </span>
         )}
@@ -88,10 +88,10 @@ function LiveCompaction({ phase, stats }: LiveProps) {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent}
-        className="h-1 w-full overflow-hidden rounded-full bg-muted"
+        className="h-1 w-full overflow-hidden rounded-full bg-surface-hover"
       >
         <div
-          className="h-full rounded-full bg-foreground"
+          className="h-full rounded-full bg-foreground-base"
           style={{ width: `${width}%` }}
         />
       </div>

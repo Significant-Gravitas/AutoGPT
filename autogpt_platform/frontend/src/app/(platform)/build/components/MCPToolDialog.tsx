@@ -454,7 +454,7 @@ export function MCPToolDialog({
                   disabled={loading || oauthLoading}
                   className="flex flex-col gap-2"
                   labelVariant="body-medium-tight"
-                  selectClassName="h-10 rounded-md border border-input bg-background px-3 text-body leading-5"
+                  selectClassName="h-10 rounded-md border border-border-strong bg-canvas px-3 text-body leading-5"
                 />
 
                 <Label htmlFor="mcp-auth-token">

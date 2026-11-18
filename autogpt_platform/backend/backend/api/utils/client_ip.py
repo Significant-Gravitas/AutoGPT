@@ -7,6 +7,7 @@ CLIENT_IP_SCOPE = "client-ip"
 CLIENT_IP_TOKEN_HEADER = "X-Client-IP-Token"
 
 
+# Documented in docs/platform/client-ip.md: update it with any change here.
 async def client_ip(
     request: Request,
     token: Annotated[

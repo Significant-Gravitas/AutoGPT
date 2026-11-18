@@ -137,10 +137,7 @@ export const AgentInfo = ({
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-0">
-      <div
-        // oxlint-disable-next-line design-system/no-raw-colors -- indigo has no role; info or brand would change the frame's hue (deferred)
-        className="mb-8 rounded-2xl bg-gradient-to-r from-info/30 to-indigo-200 p-px"
-      >
+      <div className="mb-8 rounded-2xl bg-gradient-to-r from-info/30 to-indigo/30 p-px">
         <div className="flex flex-col rounded-large bg-surface-muted p-4">
           {/* Title */}
           <Text variant="h2" data-testid="agent-title" className="mb-3 w-full">

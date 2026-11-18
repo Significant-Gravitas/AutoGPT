@@ -59,7 +59,7 @@ export function RecipientChip({
           aria-label={`Sending to ${recipient.name} — change recipient`}
           className={cn(
             CHIP_CLASSNAME,
-            "group transition-colors hover:bg-background",
+            "group transition-colors hover:bg-canvas",
           )}
         >
           <RecipientAvatar option={recipient} />

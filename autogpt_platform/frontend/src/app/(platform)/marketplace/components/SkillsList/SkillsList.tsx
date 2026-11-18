@@ -80,7 +80,7 @@ export function SkillsList({ category }: Props) {
           <button
             type="button"
             onClick={() => refetch()}
-            className="font-medium text-accent underline-offset-2 transition-colors hover:underline"
+            className="font-medium text-brand underline-offset-2 transition-colors hover:underline"
           >
             Retry
           </button>
@@ -96,7 +96,7 @@ export function SkillsList({ category }: Props) {
             <button
               type="button"
               onClick={() => selectTopic(null)}
-              className="font-medium text-accent underline-offset-2 transition-colors hover:underline"
+              className="font-medium text-brand underline-offset-2 transition-colors hover:underline"
             >
               Show all
             </button>

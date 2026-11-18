@@ -31,8 +31,6 @@ function isExternalPickerOpen(): boolean {
   return document.body.hasAttribute("data-google-picker-open");
 }
 
-// TODO(tokens): black (#141414) is held only by the `foreground-base` role,
-// a text colour, not a scrim (SECRT-3154).
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -42,7 +40,7 @@ const DialogOverlay = React.forwardRef<
     data-dialog-overlay
     data-slot="dialog-overlay"
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-scrim/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
       className,
     )}
     {...props}

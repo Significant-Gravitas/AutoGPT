@@ -2,7 +2,7 @@ import logging
 import urllib.parse
 from typing import Annotated, Any, Optional, Sequence
 
-from fastapi import APIRouter, Body, HTTPException, Security, status
+from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
@@ -11,7 +11,11 @@ import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
-from backend.api.external.middleware import require_auth, require_permission
+from backend.api.external.middleware import (
+    require_auth,
+    require_permission,
+    require_resource_permission,
+)
 from backend.api.external.rate_limit import EXECUTION_LIMIT, READ_LIMIT
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.capabilities.block_meta import is_graph_only_block
@@ -37,6 +41,7 @@ from backend.executor.utils import (
 )
 from backend.integrations.webhooks.graph_lifecycle_hooks import before_graph_activate
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.models import MAX_PAGE
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
@@ -208,7 +213,9 @@ async def _run_direct_block(
 async def create_graph(
     graph: graph_db.Graph,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY)
+        require_resource_permission(
+            APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY
+        )
     ),
 ) -> graph_db.GraphModel:
     """
@@ -258,7 +265,7 @@ async def execute_graph(
     graph_version: int,
     node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.EXECUTE_GRAPH)
+        require_resource_permission(APIKeyPermission.EXECUTE_GRAPH)
     ),
 ) -> dict[str, Any]:
     # Strict route-level paywall: 503 on tier-lookup failure (rather
@@ -336,7 +343,7 @@ async def get_graph_execution_results(
     graph_id: str,
     graph_exec_id: str,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_GRAPH)
+        require_resource_permission(APIKeyPermission.READ_GRAPH)
     ),
 ) -> GraphExecutionResult:
     graph_exec = await execution_db.get_graph_execution(
@@ -399,7 +406,7 @@ async def get_store_agents(
     sorted_by: store_db.StoreAgentsSortOptions | None = None,
     search_query: str | None = None,
     category: str | None = None,
-    page: int = 1,
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
     page_size: int = 20,
 ) -> store_model.StoreAgentsResponse:
     """
@@ -422,6 +429,10 @@ async def get_store_agents(
 
     if page_size < 1:
         raise HTTPException(status_code=422, detail="Page size must be greater than 0")
+
+    # page_size stays uncapped in v1, but the query's offset and limit are 64-bit.
+    if page * page_size >= 2**63:
+        raise HTTPException(status_code=422, detail="Page size is too large")
 
     agents = await store_cache.get_cached_store_agents(
         featured=featured,
@@ -479,7 +490,7 @@ async def get_store_creators(
     featured: bool = False,
     search_query: str | None = None,
     sorted_by: store_db.StoreCreatorsSortOptions | None = None,
-    page: int = 1,
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
     page_size: int = 20,
 ) -> store_model.CreatorsResponse:
     """
@@ -490,7 +501,7 @@ async def get_store_creators(
         search_query: Search creators by profile description
         sorted_by: Sort by "agent_rating", "agent_runs", or "num_agents"
         page: Page number for pagination (default 1)
-        page_size: Number of creators per page (default 20)
+        page_size: Number of creators per page (default 20, maximum 100)
 
     Returns:
         CreatorsResponse: Paginated list of creators matching the filters
@@ -500,6 +511,10 @@ async def get_store_creators(
 
     if page_size < 1:
         raise HTTPException(status_code=422, detail="Page size must be greater than 0")
+
+    # The store query refuses more than 100 creators a page.
+    if page_size > 100:
+        raise HTTPException(status_code=422, detail="Page size must be at most 100")
 
     creators = await store_cache.get_cached_store_creators(
         featured=featured,

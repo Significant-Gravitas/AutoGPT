@@ -149,6 +149,11 @@ class GraphNotFoundError(NotFoundError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
 
+class GraphInUseError(Exception):
+    """The graph can't be permanently deleted because other users, or a store
+    listing, still reference it."""
+
+
 class NeedConfirmation(Exception):
     """The user must explicitly confirm that they want to proceed"""
 
@@ -364,6 +369,25 @@ class WebhookSetupUnavailableError(Exception):
     """Webhook setup infrastructure (e.g. the Redis setup lock) is
     temporarily unavailable. Retryable server-side condition — not a
     configuration problem, so don't map it to a 4xx."""
+
+
+class SchedulerUnavailableError(Exception):
+    """The scheduler refused the connection or didn't answer a read in time.
+
+    It restarts on every deploy, so this is transient (HTTP 503): nothing was
+    read or changed, and asking again shortly is safe. A retrying RPC client
+    passes it on at once: the read has already waited out its bound, and
+    retrying would multiply that wait. ``outage_seconds`` is how long this
+    process's schedule reads had been failing when it was raised."""
+
+    def __init__(self, message: str, outage_seconds: float = 0.0):
+        # args carries both, so the RPC layer can rebuild it from them.
+        super().__init__(message, outage_seconds)
+        self.message = message
+        self.outage_seconds = outage_seconds
+
+    def __str__(self):
+        return self.message
 
 
 class ExpertRunPausedError(ValueError):

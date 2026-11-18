@@ -40,8 +40,7 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
               status === "active"
                 ? "bg-success/30 text-success-foreground"
                 : status === "inactive"
-                  ? // oxlint-disable-next-line design-system/no-raw-colors -- yellow-800 #876A00 has no role; olive to orange-brown change deferred (see PR)
-                    "bg-warning-border text-yellow-800"
+                  ? "bg-warning-border text-yellow-foreground"
                   : "bg-error-surface text-error-foreground"
             }`}
           >

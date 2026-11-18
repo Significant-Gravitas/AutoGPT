@@ -500,7 +500,7 @@ function renderIconButtons() {
           aria-label="More actions"
         />
       </div>
-      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gradient-to-r from-violet-200 to-sky-200 p-4">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gradient-to-r from-brand/20 to-sky/30 p-4">
         <Button
           variant="floating"
           size="icon-xs"

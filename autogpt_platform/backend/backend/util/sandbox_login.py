@@ -16,6 +16,7 @@ from typing import Any
 from e2b import AsyncSandbox, FileType, NotFoundException
 
 from backend.data.redis_client import get_redis_async
+from backend.util.sandbox_output import read_sandbox_file, run_sandbox_command
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +68,8 @@ async def run_internal(
     if keep_home:
         home = "/root" if user == "root" else USER_HOME
         command = f"export HOME={shlex.quote(home)}; {command}"
-    return await sandbox.commands.run(
-        command, user=user, envs={**(envs or {}), "HOME": _NO_HOME}, **kwargs
+    return await run_sandbox_command(
+        sandbox, command, user=user, envs={**(envs or {}), "HOME": _NO_HOME}, **kwargs
     )
 
 
@@ -137,18 +138,11 @@ async def read_capped(sandbox: AsyncSandbox, path: str) -> bytes | None:
     """At most ``READ_CAP + 1`` bytes of ``path``, streamed so a huge file is never
     held whole; None when it does not exist. Any other failure raises."""
     try:
-        stream = await sandbox.files.read(
-            path, format="stream", request_timeout=_READ_TIMEOUT_SECONDS
+        return await read_sandbox_file(
+            sandbox, path, READ_CAP, request_timeout=_READ_TIMEOUT_SECONDS
         )
-        data = bytearray()
-        async with stream:
-            async for chunk in stream:
-                data += chunk
-                if len(data) > READ_CAP:
-                    break
     except NotFoundException:
         return None
-    return bytes(data[: READ_CAP + 1])
 
 
 def judged_text(raw: bytes) -> str:

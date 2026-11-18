@@ -122,12 +122,9 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                   Run Outputs
                 </Text>
               </SheetTitle>
-              <SheetDescription className="mt-1 text-muted-foreground">
+              <SheetDescription className="mt-1 text-foreground-tertiary">
                 <span className="inline-flex items-center gap-1.5">
-                  <span
-                    // oxlint-disable-next-line design-system/no-raw-colors -- mustard yellow has no role; the warning roles are amber, deferred until approved
-                    className="rounded-md bg-yellow-100 px-2 py-0.5 text-yellow-800"
-                  >
+                  <span className="rounded-md bg-yellow/30 px-2 py-0.5 text-yellow-foreground">
                     <Text
                       variant="small-medium-tight"
                       as="span"

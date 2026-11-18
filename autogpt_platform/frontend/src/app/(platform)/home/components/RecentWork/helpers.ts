@@ -43,8 +43,8 @@ const ACTOR_CHIPS: Record<HomeWorkActorKind, ActorChip> = {
   workflow: {
     label: "Workflow",
     className:
-      // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-arbitrary-values -- mustard yellow has no role (the warning roles are amber, deferred until approved), nor does its glow
-      "border-yellow-200 bg-yellow-50 text-yellow-700 shadow-[0_0_8px_-1px_rgba(247,205,51,0.9)]",
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the yellow glow has no shadow token
+      "border-warning-border bg-warning-surface text-yellow-foreground shadow-[0_0_8px_-1px_rgba(247,205,51,0.9)]",
   },
   autopilot: {
     label: "Otto",

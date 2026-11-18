@@ -1,4 +1,5 @@
 import ast
+import asyncio
 import inspect
 import logging
 import re
@@ -9,7 +10,15 @@ import pytest
 from starlette.routing import BaseRoute, Match, Mount, Route, WebSocketRoute
 
 from backend.api import rest_api
+from backend.api.external.fastapi_app import external_api
+from backend.api.external.v1.app import v1_app
 from backend.api.external.v2.app import v2_app
+from backend.api.session_auth import require_active_auth_session
+
+
+@pytest.mark.parametrize("application", [rest_api.app, external_api, v1_app, v2_app])
+def test_every_rest_application_enforces_session_authority(application) -> None:
+    assert application.state.jwt_payload_validator is require_active_auth_session
 
 
 @pytest.mark.parametrize("enabled", [True, False])
@@ -99,6 +108,9 @@ _DATA_MIGRATIONS = {
         "backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs"
     ),
     "org bootstrap": "backend.data.org_migration.run_migration",
+    "triggered-preset inputs": (
+        "backend.integrations.webhooks.utils.migrate_flat_triggered_preset_inputs"
+    ),
     "Otto transport": "backend.data.autopilot_migrate.migrate_autopilot_transport",
 }
 
@@ -139,3 +151,24 @@ async def test_a_failed_data_migration_is_logged_and_the_rest_still_run(
     assert [
         r.getMessage() for r in caplog.records if r.name == rest_api.logger.name
     ] == ["Start-up data migration 'org bootstrap' failed"]
+
+
+async def test_a_bounded_data_migration_that_times_out_is_a_warning(
+    mocker, caplog
+) -> None:
+    """A bounded migration resumes on the next boot, so its timeout is no alert."""
+    migrations = {
+        name: mocker.patch(target, new_callable=AsyncMock)
+        for name, target in _DATA_MIGRATIONS.items()
+    }
+    migrations["triggered-preset inputs"].side_effect = asyncio.TimeoutError
+
+    with caplog.at_level(logging.WARNING, logger=rest_api.logger.name):
+        await rest_api._run_data_migrations()
+
+    for migrate in migrations.values():
+        migrate.assert_awaited_once()
+    records = [r for r in caplog.records if r.name == rest_api.logger.name]
+    assert [(r.levelno, r.getMessage()) for r in records] == [
+        (logging.WARNING, "Start-up data migration 'triggered-preset inputs' timed out")
+    ]

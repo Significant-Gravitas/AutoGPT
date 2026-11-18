@@ -21,6 +21,7 @@ interface PathLimits {
 // Per IP, the rules Better Auth's own limiter applies to these routes over
 // HTTP. Per address, whether or not it has an account, so a refusal can't tell
 // anyone which addresses do.
+// Documented in docs/platform/rate-limits.md: update it with any change here.
 export const ATTEMPT_LIMITS = new Map<string, PathLimits>([
   [
     "/sign-in/email",

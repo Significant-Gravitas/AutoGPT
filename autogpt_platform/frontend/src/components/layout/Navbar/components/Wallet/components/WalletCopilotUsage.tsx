@@ -101,8 +101,7 @@ function TrialUsage() {
         aria-valuenow={percent}
         className={cn(
           "bg-surface-active [&>div]:rounded-full",
-          // oxlint-disable-next-line design-system/no-raw-colors -- orange/yellow hue kept; warning-foreground would be a hue change (deferred visual change)
-          percent >= 80 ? "[&>div]:bg-orange-500" : "[&>div]:bg-info",
+          percent >= 80 ? "[&>div]:bg-orange" : "[&>div]:bg-info",
         )}
       />
       <Text variant="small" tone="muted">
