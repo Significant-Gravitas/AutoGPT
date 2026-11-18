@@ -2891,17 +2891,16 @@ def _as_json(args: dict[str, Any]) -> str:
 
 
 def _fires_alike(stored: BaseTrigger, built: BaseTrigger) -> bool:
-    """Whether two cron triggers fire at the same times. Triggers have no
-    equality of their own, and a field's ignores a range's step (``0-30/5``
-    equals ``0-30/10``), so each field's text is compared."""
+    """Whether two cron triggers from ``_build_trigger``, which sets no start,
+    end or jitter, fire at the same times. Triggers have no equality of their
+    own, and a field's ignores a range's step (``0-30/5`` equals ``0-30/10``),
+    so each field's text is compared, with the timezone."""
     return (
         isinstance(stored, CronTrigger)
         and isinstance(built, CronTrigger)
         and [str(field) for field in stored.fields]
         == [str(field) for field in built.fields]
         and str(stored.timezone) == str(built.timezone)
-        and (stored.start_date, stored.end_date, stored.jitter)
-        == (built.start_date, built.end_date, built.jitter)
     )
 
 
