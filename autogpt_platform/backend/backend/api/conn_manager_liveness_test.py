@@ -11,6 +11,7 @@ import pytest
 
 import backend.data.redis_client as redis_client
 from backend.api.conn_manager import _ShardStream
+from backend.api.ws_outbox import WSOutbox
 from backend.util.testing import TcpProxy, is_tcp_port_reachable, redis_shard_proxies
 
 pytestmark = pytest.mark.skipif(
@@ -46,7 +47,10 @@ async def _open_stream(channel: str) -> tuple[_ShardStream, asyncio.Event]:
     async def handler(data: bytes | str | None) -> None:
         got.append(str(data))
 
-    stream = _ShardStream(on_lost)
+    async def on_overflow() -> None:
+        """A handler that only appends never falls behind."""
+
+    stream = _ShardStream(on_lost, WSOutbox(on_overflow))
     await stream.add(channel, handler)
     try:
         cluster = await redis_client.get_redis_async()

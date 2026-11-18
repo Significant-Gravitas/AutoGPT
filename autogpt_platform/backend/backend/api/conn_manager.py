@@ -1,13 +1,16 @@
 import asyncio
 import json
 import logging
+import sys
 from collections import Counter
+from functools import partial
 from typing import Awaitable, Callable, Dict, Optional, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
+from backend.api.ws_outbox import WSOutbox
 from backend.data import redis_client as redis
 from backend.data.db_accessors import execution_db
 from backend.data.event_bus import _assert_no_wildcard
@@ -93,6 +96,8 @@ class ConnectionManager:
         self._ws_notifications: dict[WebSocket, str] = {}
         # websocket → {shard: the one connection it subscribes over there}
         self._ws_streams: dict[WebSocket, dict[Shard, _ShardStream]] = {}
+        # websocket → its events on their way to the client, from every shard
+        self._outboxes: dict[WebSocket, WSOutbox] = {}
         # user_id → that user's sockets on this process
         self._user_sockets: dict[str, set[WebSocket]] = {}
         # shard → shard streams open to it from this process
@@ -159,6 +164,10 @@ class ConnectionManager:
         for shard, stream in self._ws_streams.pop(websocket, {}).items():
             await stream.stop()
             self._release_stream(user_id, shard)
+        # After the streams, which put events into it.
+        outbox = self._outboxes.pop(websocket, None)
+        if outbox is not None:
+            await outbox.stop()
         self._ws_notifications.pop(websocket, None)
         for channel_key in self._ws_subs.pop(websocket, {}):
             subscribers = self.subscriptions.get(channel_key)
@@ -257,7 +266,8 @@ class ConnectionManager:
             async def on_lost() -> None:
                 await self._close_for_lost_stream(websocket)
 
-            stream = streams[shard] = _ShardStream(on_lost)
+            outbox = self._outbox_for(user_id, websocket)
+            stream = streams[shard] = _ShardStream(on_lost, outbox)
             self._streams_per_shard[shard] += 1
             self._user_streams[(user_id, shard)] += 1
         try:
@@ -280,14 +290,33 @@ class ConnectionManager:
                 self._release_stream(user_id, shard)
             return
 
+    def _outbox_for(self, user_id: str, websocket: WebSocket) -> WSOutbox:
+        outbox = self._outboxes.get(websocket)
+        if outbox is None:
+
+            async def on_overflow() -> None:
+                await self._close_for_slow_client(websocket, user_id)
+
+            outbox = self._outboxes[websocket] = WSOutbox(on_overflow)
+        return outbox
+
     async def _close_for_lost_stream(self, websocket: WebSocket) -> None:
         """Close a socket whose events stopped arriving, so the client
         reconnects, resubscribes and refetches what it missed."""
         logger.warning("Closing WebSocket after its event stream was lost")
+        await self._close_to_resync(websocket, "Event stream interrupted")
+
+    async def _close_for_slow_client(self, websocket: WebSocket, user_id: str) -> None:
+        """Close a socket whose client fell too far behind: the events it
+        would get next are dropped, so it resyncs as after a lost stream."""
+        logger.warning(
+            f"Closing WebSocket for user #{user_id}: its client fell too far behind"
+        )
+        await self._close_to_resync(websocket, "Client fell behind")
+
+    async def _close_to_resync(self, websocket: WebSocket, reason: str) -> None:
         try:
-            await websocket.close(
-                code=WS_CLOSE_EVENT_STREAM_LOST, reason="Event stream interrupted"
-            )
+            await websocket.close(code=WS_CLOSE_EVENT_STREAM_LOST, reason=reason)
         except Exception as e:
             if not _is_ws_close_race(e, websocket):
                 logger.warning("Failed to close WebSocket", exc_info=True)
@@ -429,12 +458,15 @@ class ConnectionManager:
 
 
 class _ShardStream:
-    """One socket's SSUBSCRIBEs on one Redis shard, all over one connection."""
+    """One socket's SSUBSCRIBEs on one Redis shard, all over one connection.
+    Its events go through the socket's outbox, so a client that reads slowly
+    never holds up reading Redis."""
 
-    def __init__(self, on_lost: LostHandler) -> None:
+    def __init__(self, on_lost: LostHandler, outbox: WSOutbox) -> None:
         # full channel → handler
         self.handlers: dict[str, MessageHandler] = {}
         self._on_lost = on_lost
+        self._outbox = outbox
         self._subscription: ShardedSubscription | None = None
         self._task: asyncio.Task | None = None
         # SUNSUBSCRIBEs sent per channel whose confirmation is still on its way
@@ -611,10 +643,24 @@ class _ShardStream:
             handler = self.handlers.get(channel) if channel else None
             if handler is None:
                 continue
-            try:
-                await handler(message.get("data"))
-            except Exception:
-                logger.exception(f"Websocket message-handler failed for {channel}")
+            # Never awaited here: a send waiting on a slow client would hold
+            # up the next read, a subscribe's confirmation included.
+            data = message.get("data")
+            self._outbox.put(
+                partial(self._deliver, channel, handler, data), sys.getsizeof(data)
+            )
+
+    async def _deliver(
+        self, channel: str, handler: MessageHandler, data: Optional[bytes | str]
+    ) -> None:
+        # Unsubscribed, or subscribed again, while it waited: it belongs to a
+        # subscription the client has let go of.
+        if self.handlers.get(channel) is not handler:
+            return
+        try:
+            await handler(data)
+        except Exception:
+            logger.exception(f"Websocket message-handler failed for {channel}")
 
 
 def graph_exec_channel_key(user_id: str, *, graph_exec_id: str) -> str:
