@@ -19,6 +19,7 @@ from typing import Any, Self
 
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.client import PubSub as AsyncPubSub
+from redis.asyncio.connection import AbstractConnection
 from redis.asyncio.retry import Retry as AsyncRetry
 from redis.backoff import NoBackoff
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -67,6 +68,17 @@ class ShardedSubscription:
         self._client = client
         self._pubsub = pubsub
         self._name = name
+        # A failed SSUBSCRIBE or SUNSUBSCRIBE write drops the connection, and
+        # redis-py's next read or command would reconnect and resubscribe
+        # without a word. Refuse that reconnect instead, so it ends the stream.
+        if pubsub.connection is not None:
+            pubsub.connection.deregister_connect_callback(pubsub.on_connect)
+            pubsub.connection.register_connect_callback(self._refuse_reconnect)
+
+    async def _refuse_reconnect(self, connection: AbstractConnection) -> None:
+        # Left connected, it would read nothing: it isn't subscribed any more.
+        await connection.disconnect()
+        raise EventStreamLostError(f"{self._name}: the connection dropped")
 
     @classmethod
     async def open(cls, channel: str) -> Self:

@@ -42,6 +42,9 @@ class _FakePubSub:
     async def connect(self) -> None:
         self.connection = MagicMock()
 
+    async def on_connect(self, connection: Any) -> None:
+        """redis-py resubscribes here on a reconnect."""
+
     async def _confirm(self, channel: str) -> None:
         self.inbox.put_nowait({"type": "ssubscribe", "channel": channel, "data": 1})
 
@@ -641,7 +644,11 @@ async def test_a_quick_resubscribe_is_not_read_as_a_lost_stream(
 async def test_opening_a_stream_gives_up_when_redis_does_not_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("backend.api.conn_manager._STREAM_OPEN_TIMEOUT_S", 0.05)
+    """The shard may have failed over, so giving up must refresh the slot map
+    for the client's reconnect; a bound of the socket's own that fires first
+    (both are 15 s in production) would cancel the open before it does."""
+    monkeypatch.setattr("backend.data.sharded_pubsub.OPEN_TIMEOUT_S", 0.05)
+    monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.05)
 
     async def never_connects(channel: str) -> MagicMock:
         await asyncio.Event().wait()
@@ -655,10 +662,12 @@ async def test_opening_a_stream_gives_up_when_redis_does_not_answer(
                 "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
                 side_effect=never_connects,
             ),
-            pytest.raises(TimeoutError),
+            patch("backend.api.conn_manager.redis.refresh_slot_map") as refresh,
+            pytest.raises(EventStreamLostError),
         ):
             await stream.add("{u/g}/exec/a", AsyncMock())
     assert stream.handlers == {}
+    refresh.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -666,9 +675,9 @@ async def test_a_stalled_ssubscribe_does_not_hang_past_the_open_timeout(
     fake_redis: _FakeRedis,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The timeout around ``add`` must cover SSUBSCRIBE too, not just opening
-    the connection, or a stalled subscribe holds the stream slot forever."""
-    monkeypatch.setattr("backend.api.conn_manager._STREAM_OPEN_TIMEOUT_S", 0.05)
+    """Opening's timeout must cover SSUBSCRIBE too, not just opening the
+    connection, or a stalled subscribe holds the stream slot forever."""
+    monkeypatch.setattr("backend.data.sharded_pubsub.OPEN_TIMEOUT_S", 0.05)
     original_connect = fake_redis.connect
 
     async def connect_then_stall(channel: str) -> MagicMock:
@@ -688,11 +697,36 @@ async def test_a_stalled_ssubscribe_does_not_hang_past_the_open_timeout(
                 "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
                 side_effect=connect_then_stall,
             ),
-            pytest.raises(TimeoutError),
+            pytest.raises(EventStreamLostError),
         ):
             await stream.add("{u/g}/exec/a", AsyncMock())
     assert stream.handlers == {}
     fake_redis.clients[0].aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_ssubscribe_on_an_open_stream_gives_up(
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Adding a channel to an open stream has its own bound; the stream and
+    its other channels stay as they were."""
+    monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.05)
+    stream = _ShardStream(on_lost=AsyncMock())
+    try:
+        await stream.add("{u/g}/exec/a", AsyncMock())
+
+        async def never_subscribes(*_args: Any, **_kwargs: Any) -> None:
+            await asyncio.Event().wait()
+
+        fake_redis.pubsubs[0].ssubscribe.side_effect = never_subscribes
+        async with asyncio.timeout(5):
+            with pytest.raises(TimeoutError):
+                await stream.add("{u/g}/exec/b", AsyncMock())
+        assert list(stream.handlers) == ["{u/g}/exec/a"]
+        fake_redis.clients[0].aclose.assert_not_awaited()
+    finally:
+        await stream.stop()
 
 
 @pytest.mark.asyncio

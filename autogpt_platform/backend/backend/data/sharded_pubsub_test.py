@@ -30,6 +30,9 @@ class _FakePubSub:
     async def connect(self) -> None:
         self.connection = MagicMock()
 
+    async def on_connect(self, connection: Any) -> None:
+        """redis-py resubscribes here on a reconnect."""
+
     async def get_message(self, timeout: float | None = None) -> Any:
         await asyncio.sleep(timeout or 0)
         return None
@@ -242,6 +245,29 @@ async def test_a_moved_reply_points_the_next_subscription_at_the_new_owner():
                         break
     finally:
         cluster.nodes_manager.initialize()
+        await redis_client.disconnect_async()
+
+
+@pytest.mark.skipif(_shard_count() < 1, reason="needs a Redis cluster")
+async def test_a_dropped_connection_ends_the_stream_instead_of_resubscribing():
+    """A failed SSUBSCRIBE or SUNSUBSCRIBE write drops the connection. redis-py
+    would reconnect on the next read or command and resubscribe without a
+    word, losing whatever was published meanwhile; the stream must end."""
+    channel = f"{{reconnect-test-{uuid4()}}}/a"
+    try:
+        async with await ShardedSubscription.open(channel) as subscription:
+            connection = subscription._pubsub.connection
+            assert connection is not None
+            await connection.disconnect()  # as a failed write leaves it
+
+            with pytest.raises(EventStreamLostError):
+                await subscription.add(f"{{reconnect-test-{uuid4()}}}/b")
+            async with asyncio.timeout(8):
+                with pytest.raises(EventStreamLostError):
+                    async for _ in subscription.messages():
+                        pass
+            assert not connection.is_connected
+    finally:
         await redis_client.disconnect_async()
 
 
