@@ -113,6 +113,22 @@ class DirectoryBrowser:
         """Invalidate every reference, including on a control-WS reconnect."""
         self._sessions.clear()
 
+    def fresh(self) -> DirectoryBrowser:
+        """A browser like this one with no browse under way: what takes
+        this one's place when a look it started is given up on. That look
+        may still be in here, in its thread, so this one isn't entered
+        again."""
+        return DirectoryBrowser(platform_name=self.platform_name, home=self.home, now=self._now)
+
+    def path_for(self, browse_id: str | None, directory_ref: str | None) -> Path | None:
+        """The folder a reference stands for, as it was listed, with no
+        look at the disk; None for no reference, or one that isn't known."""
+        if browse_id is None or directory_ref is None:
+            return None
+        session = self._sessions.get(browse_id)
+        target = session.refs.get(directory_ref) if session is not None else None
+        return target.path if target is not None else None
+
     def list_directories(
         self,
         browse_id: str | None,

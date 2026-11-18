@@ -26,11 +26,11 @@ import secrets
 import threading
 import urllib.parse
 from collections import OrderedDict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Never, cast
+from typing import Any, Never, TypeVar, cast
 
 import httpx
 import keyring.errors
@@ -59,6 +59,7 @@ from .computer_use.driver import COMPUTER_USE_INSTALL
 from .computer_use.mcp_client import McpError
 from .config import ShimConfig
 from .directory_browser import DirectoryBrowseError, DirectoryBrowser, DirectoryListing
+from .folder_checks import FOLDER_CHECK_SECONDS, FolderChecks, FolderCheckTimeout
 from .handlers import (
     CommandHandler,
     ComputerUseHandler,
@@ -80,6 +81,7 @@ from .protocol import (
     DirectoryListResponsePayload,
     DirectoryReferencePayload,
     ErrorCode,
+    ErrorMessage,
     ExecuteCommandMessage,
     FileDeleteMessage,
     FileListMessage,
@@ -123,6 +125,8 @@ from .protocol import (
     VERSION as PROTOCOL_VERSION,
 )
 from .session_grants import RootBinding, RootGrantError, RootGrantSigner
+
+_T = TypeVar("_T")
 
 # How often the shim unprompted-emits a STATUS frame (backpressure / health).
 # Also emitted on the full → not-full capacity transition edge.
@@ -415,6 +419,23 @@ class MachineSlots:
                 waiter.set_result(None)
 
 
+# What the folder picker's first listing looks at: the home folder and the
+# volumes beside it.
+_BROWSE_ROOTS = "<the folder picker's roots>"
+
+
+def _folder_not_answering(request_id: str, exc: FolderCheckTimeout) -> ErrorMessage:
+    """DIRECTORY_UNAVAILABLE for a folder that didn't answer in time: one on
+    a share that is away, say. It may be back later, so the platform keeps
+    what it has for the chat."""
+    return make_error(
+        request_id,
+        ErrorCode.DIRECTORY_UNAVAILABLE,
+        str(exc),
+        details={"reason": "not_answering"},
+    )
+
+
 @dataclass
 class _ActiveChild:
     daemon: ShimDaemon
@@ -438,6 +459,7 @@ class ShimDaemon:
         token_refresh_lock: asyncio.Lock | None = None,
         machine_work_semaphore: MachineSlots | asyncio.Semaphore | None = None,
         computer_use_lock: asyncio.Lock | None = None,
+        folder_checks: FolderChecks | None = None,
     ) -> None:
         self.config = config
         selected_session_id = (config.session_id or "").strip()
@@ -515,6 +537,9 @@ class ShimDaemon:
         self._connection_id: str | None = None
         self._directory_browser = DirectoryBrowser() if self._control_mode else None
         self._browser_lock = asyncio.Lock()
+        # The machine's looks at folders that may not answer (a share that
+        # went away), which its chats share.
+        self._folder_checks = folder_checks or FolderChecks()
         self._session_locks: dict[str, _SessionLockState] = {}
         self._session_bindings: OrderedDict[str, RootBinding] = OrderedDict()
         self._child_sessions: OrderedDict[str, _ActiveChild] = OrderedDict()
@@ -589,16 +614,28 @@ class ShimDaemon:
             # permissions before opening the WebSocket.
             await self._preflight_or_raise()
             if not self._control_mode:
-                # A legacy session is jailed to allowed_root, which the shim
-                # creates on first run (CROSS_PLATFORM.md), as `doctor` does:
-                # in a worker thread, as a folder on a stalled mount would hold
-                # the event loop every session shares.
+                # A session is jailed to allowed_root, which the shim creates
+                # on first run (CROSS_PLATFORM.md), as `doctor` does: in a
+                # thread, as a folder on a stalled mount would hold the event
+                # loop every session shares, and for a bounded time, in a
+                # thread that doesn't keep the shim from stopping
+                # (folder_checks).
+                root = self.config.allowed_root
                 try:
-                    await asyncio.to_thread(
-                        self.config.allowed_root.mkdir, parents=True, exist_ok=True
+                    await self._folder_checks.run(
+                        root,
+                        lambda: root.mkdir(parents=True, exist_ok=True),
+                        deadline=asyncio.get_running_loop().time() + FOLDER_CHECK_SECONDS,
                     )
+                except FolderCheckTimeout as exc:
+                    # A share that is away can come back: a restart tries again.
+                    raise DaemonPreflightError(
+                        f"allowed_root {root} did not answer within "
+                        f"{FOLDER_CHECK_SECONDS:g} s: is it on a share that is away?",
+                        transient=True,
+                    ) from exc
                 except OSError as exc:
-                    raise _allowed_root_failure(self.config.allowed_root, exc) from exc
+                    raise _allowed_root_failure(root, exc) from exc
             if self._manage_audit_lifecycle:
                 await self._audit_shim_start()
         except BaseException:
@@ -2013,13 +2050,16 @@ class ShimDaemon:
         if unavailable is not None:
             return unavailable
         assert self._directory_browser is not None
+        deadline = self._folder_deadline()
         try:
             async with self._browser_lock:
-                listing = await asyncio.to_thread(
-                    self._directory_browser.list_directories,
+                listing = await self._browse(
                     msg.payload.browse_id,
                     msg.payload.directory_ref,
-                    msg.payload.cursor,
+                    lambda browser: browser.list_directories(
+                        msg.payload.browse_id, msg.payload.directory_ref, msg.payload.cursor
+                    ),
+                    deadline,
                 )
         except DirectoryBrowseError as exc:
             await self._audit_control_failure(
@@ -2029,6 +2069,14 @@ class ShimDaemon:
                 {"browse_id": msg.payload.browse_id},
             )
             return make_error(msg.id, exc.code, exc.message)
+        except FolderCheckTimeout as exc:
+            await self._audit_control_failure(
+                "DIRECTORY_LIST",
+                msg.id,
+                ErrorCode.DIRECTORY_UNAVAILABLE.value,
+                {"browse_id": msg.payload.browse_id},
+            )
+            return _folder_not_answering(msg.id, exc)
         await self._write_control_audit(
             "DIRECTORY_LIST",
             request_id=msg.id,
@@ -2065,22 +2113,27 @@ class ShimDaemon:
                 ErrorCode.SESSION_ALREADY_ACTIVE,
                 "Detach the active session before changing its allowed root.",
             )
+        # One deadline for both looks at the folder: the platform waits ten
+        # seconds for the answer.
+        deadline = self._folder_deadline()
         try:
             async with self._browser_lock:
-                root = await asyncio.to_thread(
-                    self._directory_browser.resolve_and_consume,
+                root = await self._browse(
                     msg.payload.browse_id,
                     msg.payload.directory_ref,
+                    lambda browser: browser.resolve_and_consume(
+                        msg.payload.browse_id, msg.payload.directory_ref
+                    ),
+                    deadline,
                 )
             previous = self._session_bindings.get(msg.payload.session_id)
             revision = previous.revision + 1 if previous is not None else 1
-            binding = await asyncio.to_thread(
-                self._root_grants.issue,
-                msg.payload.session_id,
+            binding = await self._folder_checks.run(
                 root,
-                revision,
+                lambda: self._root_grants.issue(msg.payload.session_id, root, revision),
+                deadline=deadline,
             )
-        except (DirectoryBrowseError, RootGrantError) as exc:
+        except (DirectoryBrowseError, RootGrantError, FolderCheckTimeout) as exc:
             code = getattr(exc, "code", ErrorCode.DIRECTORY_UNAVAILABLE)
             await self._audit_control_failure(
                 "ATTACH_SESSION",
@@ -2089,6 +2142,10 @@ class ShimDaemon:
                 {"session_id": msg.payload.session_id},
                 session_id=msg.payload.session_id,
             )
+            if isinstance(exc, FolderCheckTimeout):
+                # A grant the look issues after this is never sent: nothing
+                # is attached for a request that was answered.
+                return _folder_not_answering(msg.id, exc)
             return make_error(msg.id, code, str(exc))
         await self._write_control_audit(
             "SESSION_ALLOWED_ROOT_SET",
@@ -2136,11 +2193,12 @@ class ShimDaemon:
                 "The requested root revision is stale.",
                 details={"current_revision": binding.revision},
             )
+        attached = binding
         try:
-            binding = await asyncio.to_thread(
-                self._root_grants.verify,
-                binding.root_grant,
-                binding.session_id,
+            binding = await self._folder_checks.run(
+                attached.allowed_root,
+                lambda: self._root_grants.verify(attached.root_grant, attached.session_id),
+                deadline=self._folder_deadline(),
             )
         except RootGrantError as exc:
             await self._audit_control_failure(
@@ -2151,6 +2209,15 @@ class ShimDaemon:
                 session_id=msg.payload.session_id,
             )
             return make_error(msg.id, ErrorCode.ROOT_GRANT_INVALID, str(exc))
+        except FolderCheckTimeout as exc:
+            await self._audit_control_failure(
+                "ACTIVATE_SESSION",
+                msg.id,
+                ErrorCode.DIRECTORY_UNAVAILABLE.value,
+                {"session_id": msg.payload.session_id},
+                session_id=msg.payload.session_id,
+            )
+            return _folder_not_answering(msg.id, exc)
         previous_binding = self._session_bindings.get(binding.session_id)
         self._remember_binding(binding)
         active = self._child_sessions.get(binding.session_id)
@@ -2200,10 +2267,14 @@ class ShimDaemon:
         if unavailable is not None:
             return unavailable
         try:
-            binding = await asyncio.to_thread(
-                self._root_grants.verify,
-                msg.payload.root_grant,
-                msg.payload.session_id,
+            # The grant's folder, from its signed claims, before anything
+            # looks at it: a bad grant is refused here, and the look below is
+            # counted against the folder it is for.
+            folder = self._root_grants.folder(msg.payload.root_grant, msg.payload.session_id)
+            binding = await self._folder_checks.run(
+                folder,
+                lambda: self._root_grants.verify(msg.payload.root_grant, msg.payload.session_id),
+                deadline=self._folder_deadline(),
             )
         except RootGrantError as exc:
             await self._audit_control_failure(
@@ -2218,6 +2289,17 @@ class ShimDaemon:
                 ErrorCode.ROOT_GRANT_INVALID,
                 str(exc),
             )
+        except FolderCheckTimeout as exc:
+            # Whatever the look returns later is dropped: no chat is started
+            # for a request that was answered.
+            await self._audit_control_failure(
+                "RESTORE_SESSION",
+                msg.id,
+                ErrorCode.DIRECTORY_UNAVAILABLE.value,
+                {"session_id": msg.payload.session_id},
+                session_id=msg.payload.session_id,
+            )
+            return _folder_not_answering(msg.id, exc)
         current = self._session_bindings.get(binding.session_id)
         if current is not None and current.revision > binding.revision:
             return make_error(
@@ -2308,6 +2390,41 @@ class ShimDaemon:
         self._session_bindings.pop(msg.payload.session_id, None)
         return make_ack(msg.id)
 
+    @staticmethod
+    def _folder_deadline() -> float:
+        """When a control request stops waiting for its looks at a folder."""
+        return asyncio.get_running_loop().time() + FOLDER_CHECK_SECONDS
+
+    async def _browse(
+        self,
+        browse_id: str | None,
+        directory_ref: str | None,
+        call: Callable[[DirectoryBrowser], _T],
+        deadline: float,
+    ) -> _T:
+        """One call into the folder browser, which looks at the folder its
+        reference stands for (or the roots, with none), by `deadline`, else
+        FolderCheckTimeout. Under _browser_lock: the browser takes one call
+        at a time.
+
+        A look given up on may still be in the browser, in its thread, so
+        the browser is replaced: every browse under way is over, as after a
+        reconnect, and the next request starts one."""
+        browser = self._directory_browser
+        assert browser is not None
+        folder = browser.path_for(browse_id, directory_ref)
+
+        def replace() -> None:
+            if self._directory_browser is browser:
+                self._directory_browser = browser.fresh()
+
+        return await self._folder_checks.run(
+            _BROWSE_ROOTS if folder is None else folder,
+            lambda: call(browser),
+            deadline=deadline,
+            on_abandoned=replace,
+        )
+
     @asynccontextmanager
     async def _session_lock(self, session_id: str) -> AsyncIterator[None]:
         state = self._session_locks.get(session_id)
@@ -2357,6 +2474,7 @@ class ShimDaemon:
                 token_refresh_lock=self._token_refresh_lock,
                 machine_work_semaphore=self._machine_work_semaphore,
                 computer_use_lock=self._computer_use_lock,
+                folder_checks=self._folder_checks,
             )
             self._command_handler.share_with(child._command_handler)
             self._computer_handler.share_with(child._computer_handler)

@@ -301,6 +301,35 @@ not encrypted.
 and replies with the standard `ACK`. An active session's root is immutable;
 detach before attaching a different folder.
 
+##### A folder that doesn't answer
+
+Listing a folder, attaching it, and verifying its grant for an activation or
+a restore all look at the folder, and one on a network share that has gone
+away (a laptop that left its network) may never answer. The shim waits five
+seconds in all for a control request's looks at a folder, half of the ten
+the platform waits for the reply, and then answers `DIRECTORY_UNAVAILABLE`
+with `details.reason: "not_answering"`:
+
+- Nothing is changed. The chat keeps its binding and its grant, and the same
+  `RESTORE_SESSION` works once the folder is back. A look that returns after
+  its request was answered is dropped: no grant is issued and no chat is
+  started for it.
+- While a look at a folder is still waiting, further requests about that
+  folder get the same answer at once, with no look of their own. Requests
+  about other folders, and other chats, are served as usual, and none of
+  them waits behind the folder that is away.
+- A listing or an attach given up on ends every browse under way, as a
+  reconnect does: their references then get `DIRECTORY_REFERENCE_INVALID`,
+  and the folder picker starts a new browse.
+- At most eight looks are left waiting at once, whatever their folders. Past
+  that, every request that looks at a folder gets `DIRECTORY_UNAVAILABLE`
+  until one of them returns.
+
+A chat's data session makes its folder as it starts, as a legacy session
+does, within the same five seconds. Past them the chat's session ends
+before it connects, and a legacy `autogpt-shim start` exits 75, which its
+supervisor restarts.
+
 The control daemon also stops a non-recording child after ten minutes without
 a data request, while retaining its signed binding for `RESTORE_SESSION`. This
 prevents abandoned chats from consuming the eight-child safety cap; the
@@ -1151,7 +1180,9 @@ Error codes:
 - `DIRECTORY_REFERENCE_INVALID` — browse/reference pair is malformed,
   expired, consumed, or belongs to a prior control connection
 - `DIRECTORY_UNAVAILABLE` — selected directory disappeared, changed into a
-  link/junction, or is no longer accessible
+  link/junction, is no longer accessible, or didn't answer in time
+  (`details.reason: "not_answering"`, see
+  [A folder that doesn't answer](#a-folder-that-doesnt-answer))
 - `ROOT_GRANT_INVALID` — restore/activation grant is malformed, has an invalid
   HMAC or machine/session binding, or its directory fingerprint changed
 - `SESSION_NOT_ATTACHED` — activation was requested before folder attachment
