@@ -1,6 +1,6 @@
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
-import { recheckWhileSchedulesUnknown } from "@/services/schedules/scheduler-availability";
+import { useRecheckWhileSchedulesUnknown } from "@/services/schedules/useRecheckWhileSchedulesUnknown";
 import { useEffect, useMemo } from "react";
 import { buildAgentInfoMap } from "./store";
 
@@ -11,6 +11,7 @@ const PAGE_SIZE = 100;
 const MAX_PAGES = 20;
 
 export function useLibraryAgents() {
+  const recheckWhileSchedulesUnknown = useRecheckWhileSchedulesUnknown();
   const {
     data: agentsQueryData,
     isLoading: isRefreshing,

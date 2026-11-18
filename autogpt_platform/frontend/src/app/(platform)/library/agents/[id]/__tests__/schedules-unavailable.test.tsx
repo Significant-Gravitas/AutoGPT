@@ -9,17 +9,18 @@ import {
   getGetV2GetLibraryAgentResponseMock,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV2ListPresetsMockHandler } from "@/app/api/__generated__/endpoints/presets/presets.msw";
+import { getGetV1ListExecutionSchedulesForAGraphQueryKey } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { server } from "@/mocks/mock-server";
 import { installLiveSocket } from "@/tests/integrations/live-socket";
 import {
-  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from "@/tests/integrations/test-utils";
+import { QueryClient } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
@@ -198,11 +199,15 @@ test("a recheck still waiting on the scheduler keeps the tabs and the notice", a
     return schedulerOut();
   });
   installLiveSocket();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
 
   render(
     <NuqsTestingAdapter hasMemory searchParams="activeTab=scheduled">
       <AgentLibraryPage />
     </NuqsTestingAdapter>,
+    { queryClient },
   );
   expect(await screen.findAllByText(NOTICE)).not.toHaveLength(0);
 
@@ -215,15 +220,24 @@ test("a recheck still waiting on the scheduler keeps the tabs and the notice", a
   expect(screen.getAllByText(NOTICE)).not.toHaveLength(0);
 
   release();
-  // Let the held answer land before the test ends.
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  });
+  // The held recheck answers 503 too: still out, not loading.
+  await waitFor(() =>
+    expect(
+      queryClient.getQueryState(
+        getGetV1ListExecutionSchedulesForAGraphQueryKey(GRAPH_ID),
+      ),
+    ).toMatchObject({ status: "error", fetchStatus: "idle" }),
+  );
   expect(screen.getAllByText(NOTICE)).not.toHaveLength(0);
+  expect(screen.getByRole("tab", { name: /^Tasks/ })).toBeDefined();
 });
 
-test("a workflow with no tasks yet isn't shown as empty while its schedules are unknown", async () => {
-  serveAgentPage(() => schedulerOut(), { withRuns: false });
+test("a workflow with no tasks yet isn't shown as empty while its schedules are unknown, nor after they come back", async () => {
+  let schedulerUp = false;
+  serveAgentPage(
+    () => (schedulerUp ? HttpResponse.json([morningRun]) : schedulerOut()),
+    { withRuns: false },
+  );
   installLiveSocket();
 
   render(
@@ -239,6 +253,13 @@ test("a workflow with no tasks yet isn't shown as empty while its schedules are 
   await userEvent.click(scheduledTab);
   expect(await screen.findAllByText(NOTICE)).not.toHaveLength(0);
   expect(screen.queryByText("Nothing scheduled yet")).toBeNull();
+
+  // Its only item comes back: the page opens it rather than offering a first
+  // run, though the sidebar reports its counts a render later.
+  schedulerUp = true;
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByText("Next run")).toBeDefined();
+  expect(screen.queryByText("Ready to get started?")).toBeNull();
 });
 
 test("a schedule open on the page says it's unavailable rather than failing, and comes back", async () => {

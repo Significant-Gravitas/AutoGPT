@@ -28,7 +28,3 @@ export function recheckWhileSchedulerUnavailable(query: {
     ? SCHEDULER_RETRY_AFTER_MS
     : false;
 }
-
-export function recheckWhileSchedulesUnknown(agents: LibraryAgent[]) {
-  return hasUnknownSchedules(agents) ? SCHEDULER_RETRY_AFTER_MS : false;
-}

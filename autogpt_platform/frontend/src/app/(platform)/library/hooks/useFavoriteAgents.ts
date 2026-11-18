@@ -7,13 +7,14 @@ import {
   getPaginationNextPageNumber,
   unpaginate,
 } from "@/app/api/helpers";
-import { recheckWhileSchedulesUnknown } from "@/services/schedules/scheduler-availability";
+import { useRecheckWhileSchedulesUnknown } from "@/services/schedules/useRecheckWhileSchedulesUnknown";
 
 interface Props {
   searchTerm: string;
 }
 
 export function useFavoriteAgents({ searchTerm }: Props) {
+  const recheckWhileSchedulesUnknown = useRecheckWhileSchedulesUnknown();
   const {
     data: agentsQueryData,
     fetchNextPage,

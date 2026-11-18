@@ -303,7 +303,10 @@ export function useNewAgentLibraryView() {
     activeTemplate,
     isTemplateLoading,
     error: error || templateError,
-    hasAnyItems,
+    // The sidebar reports its counts after it renders; the page's own read
+    // already has the schedules, so a schedule-only workflow that comes back
+    // from an outage never drops to the first-run screen meanwhile.
+    hasAnyItems: hasAnyItems || (schedules?.length ?? 0) > 0,
     schedulesUnavailable,
     showSidebarLayout,
     activeItemId,

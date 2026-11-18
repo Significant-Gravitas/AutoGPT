@@ -209,18 +209,17 @@ export function useSidebarRunsList({
     }
   }, [runs, activeItem, tabValue, onSelectRun]);
 
-  // If there are no runs but there are schedules, and nothing is selected, auto-select the first schedule
+  // Nothing selected and schedules to show, either because there are no runs
+  // or because the Scheduled tab is open: select the first schedule.
   useEffect(() => {
-    if (!activeItem && runs.length === 0 && schedules.length > 0) {
+    if (
+      !activeItem &&
+      schedules.length > 0 &&
+      (runs.length === 0 || tabValue === "scheduled")
+    ) {
       onSelectRun(schedules[0].id, "scheduled");
     }
-  }, [activeItem, runs.length, schedules, onSelectRun]);
-
-  useEffect(() => {
-    if (schedules.length > 0 && tabValue === "scheduled" && !activeItem) {
-      onSelectRun(schedules[0].id, "scheduled");
-    }
-  }, [schedules, activeItem, tabValue, onSelectRun]);
+  }, [activeItem, runs.length, schedules, tabValue, onSelectRun]);
 
   useEffect(() => {
     if (templates.length > 0 && tabValue === "templates" && !activeItem) {

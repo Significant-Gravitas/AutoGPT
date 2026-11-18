@@ -10,7 +10,7 @@ import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/h
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
-import { QueryClient } from "@tanstack/react-query";
+import { focusManager, QueryClient } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import {
   act,
@@ -108,11 +108,13 @@ const SCHEDULES_UNAVAILABLE =
   "Schedules are temporarily unavailable — your schedules are safe and will run once it's back.";
 
 // What the backend answers while the scheduler restarts on a deploy. Returns
-// how many schedule reads it has answered.
+// how many schedule reads it has answered, and when it first answered one.
 function serveSchedulerOutage() {
   let reads = 0;
+  let firstAnsweredAt: number | undefined;
   function schedulerOut() {
     reads += 1;
+    firstAnsweredAt ??= Date.now();
     return HttpResponse.json(
       {
         message: "Failed to process GET /api/schedules",
@@ -129,7 +131,10 @@ function serveSchedulerOutage() {
     ),
     http.get("http://localhost:3000/api/proxy/api/schedules", schedulerOut),
   );
-  return () => reads;
+  return {
+    reads: () => reads,
+    firstAnsweredAt: () => firstAnsweredAt ?? Date.now(),
+  };
 }
 
 describe("FollowupsPage", () => {
@@ -573,17 +578,18 @@ describe("FollowupsPage", () => {
     onTestFinished(() => {
       vi.useRealTimers();
     });
-    const reads = serveSchedulerOutage();
+    const outage = serveSchedulerOutage();
 
     render(<FollowupsPage />);
     expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
 
-    // Nothing asks again before Retry-After.
-    const answered = reads();
+    // Nothing asks again before Retry-After: 14 s after the first 503, with a
+    // second to spare for a slow runner, both lists are still waiting.
+    const answered = outage.reads();
     await act(async () => {
-      vi.advanceTimersByTime(10_000);
+      vi.advanceTimersByTime(outage.firstAnsweredAt() + 14_000 - Date.now());
     });
-    expect(reads()).toBe(answered);
+    expect(outage.reads()).toBe(answered);
 
     server.use(
       getListCopilotFollowupSchedulesMockHandler([
@@ -592,12 +598,45 @@ describe("FollowupsPage", () => {
       defaultGraphSchedulesHandler(),
     );
     await act(async () => {
-      vi.advanceTimersByTime(6_000);
+      vi.advanceTimersByTime(2_000);
     });
 
     const list = await screen.findByTestId("followups-list");
     expect(within(list).getByText("Back after the restart")).toBeDefined();
     expect(screen.queryByTestId("schedules-unavailable")).toBeNull();
+  });
+
+  test("a 503 isn't retried at once nor refetched on focus, while another error is retried", async () => {
+    const outage = serveSchedulerOutage();
+    let failures = 0;
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/schedules", () => {
+        failures += 1;
+        return HttpResponse.json(
+          { detail: "The jobstore query failed" },
+          { status: 500 },
+        );
+      }),
+    );
+    // The app's own retries, without their delay.
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: 3, retryDelay: 0 } },
+    });
+
+    render(<FollowupsPage />, { queryClient });
+
+    expect(await screen.findByText("Something went wrong")).toBeDefined();
+    // The 500 was tried four times; the 503 once.
+    expect(failures).toBe(4);
+    expect(outage.reads()).toBe(1);
+
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    onTestFinished(() => focusManager.setFocused(undefined));
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(outage.reads()).toBe(1);
   });
 
   test("a real failure outranks the outage notice when nothing loaded", async () => {

@@ -1,6 +1,8 @@
 import { act, within } from "@testing-library/react";
+import { QueryClient } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { afterEach, expect, test, vi } from "vitest";
+import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import { getGetHomeDashboardMockHandler } from "@/app/api/__generated__/endpoints/home/home.msw";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
@@ -138,8 +140,11 @@ test("Home rechecks on its own once the scheduler's Retry-After has passed", asy
 test("a recheck that fails keeps Home's tiles instead of the page error", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   serveDashboard(() => duringOutage);
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
 
-  render(<HomeRecap />);
+  render(<HomeRecap />, { queryClient });
   const tile = await screen.findByRole("region", { name: "Now & next" });
   expect(await within(tile).findByText(NOTICE)).toBeDefined();
 
@@ -154,10 +159,14 @@ test("a recheck that fails keeps Home's tiles instead of the page error", async 
     vi.advanceTimersByTime(15_000);
   });
 
-  await waitFor(() => expect(failed).toBeGreaterThan(0));
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  });
+  // The failed refresh has been handled: the query holds the error and the
+  // last dashboard together.
+  await waitFor(() =>
+    expect(
+      queryClient.getQueryState(getGetHomeDashboardQueryKey()),
+    ).toMatchObject({ status: "error", fetchStatus: "idle" }),
+  );
+  expect(failed).toBeGreaterThan(0);
   expect(
     screen.queryByText("Your Home briefing could not be loaded"),
   ).toBeNull();

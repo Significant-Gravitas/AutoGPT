@@ -1,5 +1,6 @@
 import { act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   fireEvent,
@@ -124,10 +125,20 @@ function favoritesTab() {
     .find((tab) => tab.textContent?.match(/favorites/i));
 }
 
-async function settle() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  });
+function testClient() {
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
+
+// Every library read the page started has been answered and handled.
+async function libraryReadsSettled(queryClient: QueryClient) {
+  await waitFor(() =>
+    expect(
+      queryClient.isFetching({
+        predicate: (query) =>
+          String(query.queryKey[0]).startsWith("/api/library/agents"),
+      }),
+    ).toBe(0),
+  );
 }
 
 function tile(name: "Scheduled" | "Idle") {
@@ -193,8 +204,9 @@ describe("LibraryPage while the scheduler is out", () => {
       reads += 1;
       return agents;
     });
+    const queryClient = testClient();
 
-    render(<LibraryPage />);
+    render(<LibraryPage />, { queryClient });
     expect(await screen.findByText(NOTICE)).toBeDefined();
 
     agents = afterRecovery;
@@ -214,12 +226,12 @@ describe("LibraryPage while the scheduler is out", () => {
     );
 
     // Known again, so the rechecks stop.
-    await settle();
+    await libraryReadsSettled(queryClient);
     const recovered = reads;
     await act(async () => {
       vi.advanceTimersByTime(30_000);
     });
-    await settle();
+    await libraryReadsSettled(queryClient);
     expect(reads).toBe(recovered);
   });
 
@@ -249,6 +261,43 @@ describe("LibraryPage while the scheduler is out", () => {
     ).toBeDefined();
   });
 
+  test("an outage that outlasts a deploy rechecks once a minute", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let reads = 0;
+    serveLibrary(() => {
+      reads += 1;
+      return duringOutage;
+    });
+    const queryClient = testClient();
+
+    render(<LibraryPage />, { queryClient });
+    expect(await screen.findByText(NOTICE)).toBeDefined();
+    await libraryReadsSettled(queryClient);
+
+    // A deploy-length gap: every Retry-After, for 2.5 minutes.
+    for (let recheck = 1; recheck <= 10; recheck++) {
+      const before = reads;
+      await act(async () => {
+        vi.advanceTimersByTime(15_000);
+      });
+      await waitFor(() => expect(reads).toBeGreaterThan(before));
+      await libraryReadsSettled(queryClient);
+    }
+
+    // Past it, each list re-reads every loaded page only once a minute.
+    const slowed = reads;
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+    await libraryReadsSettled(queryClient);
+    expect(reads).toBe(slowed);
+    await act(async () => {
+      vi.advanceTimersByTime(31_000);
+    });
+    await waitFor(() => expect(reads).toBeGreaterThan(slowed));
+    expect(screen.getByText(NOTICE)).toBeDefined();
+  });
+
   test("a library whose schedules are known shows no notice and never rechecks", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let reads = 0;
@@ -256,8 +305,9 @@ describe("LibraryPage while the scheduler is out", () => {
       reads += 1;
       return afterRecovery;
     });
+    const queryClient = testClient();
 
-    render(<LibraryPage />);
+    render(<LibraryPage />, { queryClient });
     expect(
       within(await cardFor("Morning digest")).getByText("Scheduled"),
     ).toBeDefined();
@@ -265,13 +315,13 @@ describe("LibraryPage while the scheduler is out", () => {
       expect(within(tile("Scheduled")).getByText("1")).toBeDefined(),
     );
     // Let the page's first reads finish before counting.
-    await settle();
+    await libraryReadsSettled(queryClient);
     const settled = reads;
 
     await act(async () => {
       vi.advanceTimersByTime(60_000);
     });
-    await settle();
+    await libraryReadsSettled(queryClient);
 
     expect(reads).toBe(settled);
     expect(screen.queryByText(NOTICE)).toBeNull();

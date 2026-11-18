@@ -1,7 +1,10 @@
 "use client";
 
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
-import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV2ListFavoriteLibraryAgentsQueryKey,
+  getGetV2ListLibraryAgentsQueryKey,
+} from "@/app/api/__generated__/endpoints/library/library";
 import {
   useGetV2ListLibraryFolders,
   useGetV2GetFolder,
@@ -26,10 +29,8 @@ import type { AgentStatusFilter } from "../../types";
 import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { isAgentScheduled } from "../../hooks/executionHelpers";
-import {
-  hasUnknownSchedules,
-  recheckWhileSchedulesUnknown,
-} from "@/services/schedules/scheduler-availability";
+import { hasUnknownSchedules } from "@/services/schedules/scheduler-availability";
+import { useRecheckWhileSchedulesUnknown } from "@/services/schedules/useRecheckWhileSchedulesUnknown";
 
 const FILTER_EXHAUST_THRESHOLD = 3;
 
@@ -66,6 +67,7 @@ export function useLibraryAgentList({
     null,
   );
 
+  const recheckWhileSchedulesUnknown = useRecheckWhileSchedulesUnknown();
   const {
     data: agentsQueryData,
     fetchNextPage,
@@ -311,8 +313,10 @@ export function useLibraryAgentList({
 
   function retrySchedules() {
     void queryClient.invalidateQueries({
-      predicate: (query) =>
-        String(query.queryKey[0]).startsWith("/api/library/agents"),
+      queryKey: getGetV2ListLibraryAgentsQueryKey(),
+    });
+    void queryClient.invalidateQueries({
+      queryKey: getGetV2ListFavoriteLibraryAgentsQueryKey(),
     });
   }
 
