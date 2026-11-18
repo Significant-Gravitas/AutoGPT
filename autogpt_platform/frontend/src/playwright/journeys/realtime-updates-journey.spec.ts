@@ -8,7 +8,7 @@ import { expect, test } from "./fixtures";
 
 const COUNTDOWN_TIMER_BLOCK_ID = "d67a9c52-5e4e-11e2-bcfd-0800200c9a71";
 // Long enough that the run is still going when its updates stop arriving.
-const RUN_SECONDS = 8;
+const RUN_SECONDS = 10;
 
 test.describe("realtime updates journey", () => {
   test("a run that finishes while the server's event stream is lost shows as finished once the page reconnects, without a reload", async ({
@@ -99,11 +99,13 @@ async function routeLiveConnection(page: Page) {
     },
     async closeLikeTheServer() {
       streamLost = false;
+      // The page's side first, so it sees 1011 rather than a normal close
+      // forwarded from the server's side.
       for (const { client, server } of open.splice(0)) {
-        await server.close().catch(() => undefined);
         await client
           .close({ code: 1011, reason: "event stream lost" })
           .catch(() => undefined);
+        await server.close().catch(() => undefined);
       }
     },
   };

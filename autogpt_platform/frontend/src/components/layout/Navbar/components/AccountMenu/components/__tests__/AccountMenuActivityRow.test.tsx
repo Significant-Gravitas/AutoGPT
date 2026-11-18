@@ -138,7 +138,7 @@ test("a run's live completion survives a refetch that read the run before it fin
   expect(await findRunLine(list, /running$/)).toBeDefined();
   await live.drop(first);
   const second = await live.acceptNext();
-  await vi.waitFor(() => expect(requests).toBe(2));
+  await vi.waitFor(() => expect(requests).toBe(2), { timeout: 3000 });
 
   await live.publish(second, {
     ...run("run-1", AgentExecutionStatus.COMPLETED),

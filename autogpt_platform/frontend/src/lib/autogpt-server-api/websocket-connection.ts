@@ -89,6 +89,7 @@ export class BackendWebSocket {
     this.socket = null;
     this.authenticatedSocket = null;
     this.cancelRetry();
+    this.retryDelay = FIRST_RETRY_DELAY_MS;
     this.stopHealthChecks();
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   }

@@ -147,6 +147,27 @@ describe("WebSocket recovery and logout", () => {
     expect(FakeWebSocket.instances).toHaveLength(2);
   });
 
+  it("starts the backoff over for the next session after a disconnect", async () => {
+    void api.connectWebSocket();
+    const first = await socketAt();
+    first.open();
+    first.serverClose(1013);
+    await vi.advanceTimersByTimeAsync(500);
+    const second = await socketAt(1);
+    second.open();
+    second.serverClose(1013);
+    // Signed out, then in again.
+    api.disconnectWebSocket();
+    void api.connectWebSocket();
+    const third = await socketAt(2);
+    third.open();
+    third.serverClose(1013);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(FakeWebSocket.instances).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(FakeWebSocket.instances).toHaveLength(4);
+  });
+
   it("stays disconnected when the page comes back after a disconnect", async () => {
     void api.connectWebSocket();
     const socket = await socketAt();
