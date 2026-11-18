@@ -437,19 +437,28 @@ class _ShardStream:
         self._task: asyncio.Task | None = None
         # SUNSUBSCRIBEs sent per channel whose confirmation is still on its way
         self._unsubscribing: Counter[str] = Counter()
-        # SSUBSCRIBEs sent on the open stream, until Redis confirms them
+        # SSUBSCRIBEs sent on the open stream, until Redis confirms them. One
+        # per channel: ws_api handles a socket's messages one at a time, and
+        # add() refuses a second subscribe of a channel still in here.
         self._subscribing: dict[str, asyncio.Future[None]] = {}
+        # Once the pump ends, nothing reads Redis's confirmations any more.
+        self._pump_ended = False
         self._stopping = False
 
     async def add(self, channel: str, handler: MessageHandler) -> None:
         _assert_no_wildcard(channel)
+        if channel in self._subscribing:
+            raise RuntimeError(f"{channel} is already being subscribed")
+        # In place before the SSUBSCRIBE: the pump reads a message queued
+        # right behind Redis's confirmation without pausing for this.
+        self.handlers[channel] = handler
         try:
             subscription = await self._open_or_subscribe(channel)
         except BaseException:
+            self.handlers.pop(channel, None)
             if not self.handlers:
                 await self._close_quietly()
             raise
-        self.handlers[channel] = handler
         if self._task is None:
             self._task = asyncio.create_task(self._pump(subscription))
 
@@ -469,6 +478,9 @@ class _ShardStream:
         the first channel. The socket answers the subscribe after this, and a
         client re-reads its state then: an event Redis handled before the
         SSUBSCRIBE would never arrive. The pump reads the confirmation."""
+        if self._pump_ended:
+            # The socket is already closing for the lost stream.
+            raise EventStreamLostError(f"{channel}: the stream has ended")
         confirmed = asyncio.get_running_loop().create_future()
         self._subscribing[channel] = confirmed
         try:
@@ -526,6 +538,7 @@ class _ShardStream:
             logger.exception("Pubsub pump crashed")
         finally:
             # No confirmation can come once the stream is gone.
+            self._pump_ended = True
             for confirmed in self._subscribing.values():
                 if not confirmed.done():
                     confirmed.set_exception(
