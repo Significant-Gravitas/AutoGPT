@@ -290,3 +290,45 @@ def test_the_help_says_what_the_option_is_for(
     text = " ".join(capsys.readouterr().out.split())
     assert "--supervise" in text
     assert "Windows task" in text
+
+
+# ── An option written short ──────────────────────────────────────────────────
+
+
+def _spellings_argparse_takes_for_the_option() -> list[str]:
+    """Every way of writing `--supervise` that `start` accepts: argparse
+    takes any beginning of a long option that no other option shares."""
+    taken = []
+    for length in range(3, len(supervise.SUPERVISE_OPTION) + 1):
+        spelling = supervise.SUPERVISE_OPTION[:length]
+        try:
+            parsed = cli._build_parser().parse_args(["start", spelling])
+        except SystemExit:
+            continue
+        if parsed.supervise:
+            taken.append(spelling)
+    return taken
+
+
+def test_the_daemon_is_started_without_the_option_however_it_was_written() -> None:
+    """`start --supervis` turns the supervisor on too. Only the option
+    written out was left out of the daemon's command, so the daemon got
+    `--supervis`, became a supervisor itself, and started another: no
+    daemon ever ran."""
+    spellings = _spellings_argparse_takes_for_the_option()
+    assert supervise.SUPERVISE_OPTION in spellings
+    assert len(spellings) > 1, "argparse takes no shorter spelling: nothing to guard"
+
+    for spelling in spellings:
+        command = supervise.daemon_command(
+            ["--config", "c.toml", "start", spelling, "--enable-shell"]
+        )
+        assert command[3:] == ["--config", "c.toml", "start", "--enable-shell"], spelling
+        # And the daemon it starts isn't asked to supervise.
+        assert not cli._build_parser().parse_args(command[3:]).supervise
+
+
+def test_an_argument_that_is_no_beginning_of_the_option_is_kept() -> None:
+    kept = ["--config", "supervise.toml", "start", "--superb", "-s", "--", "--supervisor"]
+
+    assert supervise.daemon_command([*kept, "--su"])[3:] == kept

@@ -90,13 +90,27 @@ def supervise(
 def daemon_command(arguments: Sequence[str]) -> list[str]:
     """The command that runs the daemon itself for a supervisor started with
     `arguments` (its own, without the program): the same ones without the
-    option that asked for the supervisor, run by this interpreter."""
+    option that asked for the supervisor, run by this interpreter.
+
+    However the option was written. argparse takes any beginning of a long
+    option that no other option shares, `--supervis` say, and a daemon
+    handed that would take it the same way: it would be a supervisor too,
+    start another, and no daemon would ever run. On a command line that
+    turned the supervisor on, an argument that is a beginning of the
+    option is the option: argparse reads nothing that starts with `--` as
+    another option's value."""
     return [
         sys.executable,
         "-m",
         "autogpt_local_executor",
-        *(argument for argument in arguments if argument != SUPERVISE_OPTION),
+        *(argument for argument in arguments if not _is_the_option(argument)),
     ]
+
+
+def _is_the_option(argument: str) -> bool:
+    """Whether `argument` is SUPERVISE_OPTION, whole or cut short: `--s` and
+    longer. `--` alone ends the options, and is no option."""
+    return len(argument) > 2 and SUPERVISE_OPTION.startswith(argument)
 
 
 class _Child:
