@@ -12,6 +12,7 @@ import {
   RESPONSE_START_TIMEOUT_MS,
   CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS,
   ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS,
+  DESKTOP_OPEN_RESPONSE_START_TIMEOUT_MS,
   getResponseStartTimeoutMs,
   getSafePrivateMediaRange,
   isPrivateStoreMediaRequest,
@@ -1166,6 +1167,46 @@ describe("watchResponseStart", () => {
     ).toBe(RESPONSE_START_TIMEOUT_MS);
     expect(
       getResponseStartTimeoutMs(["api", "account", "deletion"], "GET"),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+  });
+
+  it("waits longer for a desktop open, which can outlast the standard budget", () => {
+    for (const path of [
+      ["api", "experts", "expert-1", "computer", "desktop"],
+      ["api", "chat", "sessions", "session-1", "desktop"],
+    ]) {
+      const timeout = getResponseStartTimeoutMs(path, "POST");
+      expect(timeout).toBe(DESKTOP_OPEN_RESPONSE_START_TIMEOUT_MS);
+      const watch = watchResponseStart(null, timeout);
+
+      vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS + 1);
+      expect(watch.signal.aborted).toBe(false);
+
+      vi.advanceTimersByTime(
+        DESKTOP_OPEN_RESPONSE_START_TIMEOUT_MS - RESPONSE_START_TIMEOUT_MS,
+      );
+      expect(watch.signal.aborted).toBe(true);
+    }
+  });
+
+  it("keeps the standard budget for desktop reads and other computer routes", () => {
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "experts", "expert-1", "computer", "desktop"],
+        "GET",
+      ),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "experts", "expert-1", "computer"],
+        "GET",
+      ),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "chat", "sessions", "session-1", "computer"],
+        "POST",
+      ),
     ).toBe(RESPONSE_START_TIMEOUT_MS);
   });
 
