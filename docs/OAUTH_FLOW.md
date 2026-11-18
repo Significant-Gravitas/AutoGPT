@@ -1,7 +1,9 @@
 # OAuth Flow — Shim Authentication
 
-> **Status**: Implemented in the shim. The platform's public-client support it
-> needs is on PR #13050 ([Public-client support](#public-client-support-a-platform-prerequisite)).
+> **Status**: Implemented in the shim and in the platform. The platform's
+> public-client support that it needs merged into `dev` with
+> [#13050](https://github.com/Significant-Gravitas/AutoGPT/pull/13050)
+> ([Public-client support](#public-client-support-a-platform-prerequisite)).
 
 The shim authenticates using AutoGPT's **existing OAuth 2.0 provider infrastructure** —
 the same system used by third-party app integrations. No new auth infrastructure needed.
@@ -63,8 +65,9 @@ and the next one is tried.
 
 Each platform deployment registers the app once via the existing
 `oauth-tool` CLI inside the backend container. The registration, the sign-in
-and the refresh all need the platform's public-client support, which isn't on
-`dev` yet (see [Public-client support](#public-client-support-a-platform-prerequisite)):
+and the refresh all need the platform's public-client support, which a
+deployment has from #13050 on (see
+[Public-client support](#public-client-support-a-platform-prerequisite)):
 
 ```bash
 poetry run oauth-tool generate-app \
@@ -89,16 +92,16 @@ that choose another ID configure it with `AUTOGPT_SHIM_OAUTH_CLIENT_ID`.
 
 ### Public-client support (a platform prerequisite)
 
-The shim's client has no secret, and the platform side that accepts such a
-client is written but not merged: it is on PR #13050
-(https://github.com/Significant-Gravitas/AutoGPT/pull/13050), not on `dev`.
-A deployment without it has no `OAuthApplication.isPublic`, its
+The shim's client has no secret. The platform side that accepts such a
+client merged into `dev` with #13050
+(https://github.com/Significant-Gravitas/AutoGPT/pull/13050).
+A deployment older than that has no `OAuthApplication.isPublic`, its
 `validate_client_credentials` always checks a client secret, and its
 `oauth-tool` has no `--public`: there the client above can't be registered,
-and the shim can neither sign in with it nor refresh. With that change:
+and the shim can neither sign in with it nor refresh. From #13050 on:
 
 `OAuthApplication.isPublic` (added in migration
-`20260604120000_add_oauth_application_is_public`) and the
+`20261102120000_add_oauth_application_is_public`) and the
 `validate_client_credentials(..., code_verifier=...)` short-circuit
 together implement the OAuth 2.1 best-practice for desktop / mobile /
 SPA clients (PKCE, no client_secret).

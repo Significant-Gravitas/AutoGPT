@@ -26,7 +26,7 @@ support matrix.
 
 ## Platform Binding Layer
 
-The platform-side code (WebSocket route, `LocalPCShim`, `ShimConnectionManager`, config hooks) lives in the AutoGPT monorepo:
+The platform-side code (WebSocket route, `LocalPCShim`, `ShimConnectionManager`, rollout flags) lives in the AutoGPT monorepo, where it merged with:
 👉 https://github.com/Significant-Gravitas/AutoGPT/pull/13050
 
 ## Install (alpha)
@@ -163,7 +163,7 @@ documentation, not a currently enabled product promise.
 | [PROTOCOL.md](docs/PROTOCOL.md) | WebSocket message protocol spec |
 | [OAUTH_FLOW.md](docs/OAUTH_FLOW.md) | Auth design (uses AutoGPT's existing OAuth provider) |
 | [SECURITY.md](docs/SECURITY.md) | Threat model and defense layers |
-| [PLATFORM_HOOKS.md](docs/PLATFORM_HOOKS.md) | Platform-side insertion points |
+| [PLATFORM_HOOKS.md](docs/PLATFORM_HOOKS.md) | The platform-side design sketch, and what the platform built |
 | [CROSS_PLATFORM.md](docs/CROSS_PLATFORM.md) | Per-OS support matrix and path-jail strategy |
 | [AUDIT_LOG.md](docs/AUDIT_LOG.md) | Audit log format, HMAC tamper-evidence, CLI |
 | [HARDWARE.md](docs/HARDWARE.md) | Hardware access wire spec (serial / USB / GPIO) |

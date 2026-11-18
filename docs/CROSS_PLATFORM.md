@@ -677,6 +677,6 @@ working `/proc/sys/kernel/osrelease` containing `WSL2`.
 - [PROTOCOL.md](PROTOCOL.md) — Wire-format enums for `platform`, `arch`,
   `shell`, file ops.
 - [SECURITY.md](SECURITY.md) — Per-OS path attack surface, keychain caveats.
-- [PLATFORM_HOOKS.md](PLATFORM_HOOKS.md) — Platform-side adapter changes
-  required to be cross-OS friendly.
+- [PLATFORM_HOOKS.md](PLATFORM_HOOKS.md) — The platform-side adapter's
+  cross-OS work list, and how each entry landed.
 - [OAUTH_FLOW.md](OAUTH_FLOW.md) — Localhost callback port + keychain backends.
