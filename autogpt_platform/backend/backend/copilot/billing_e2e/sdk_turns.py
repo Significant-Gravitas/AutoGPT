@@ -2,9 +2,9 @@
 
 The CLI really runs and really talks to the fake provider, directly or
 through the Codex gateway. Stubbed: persistence, locks, transcript storage,
-memory, the copilot's own tools and hooks, and per-user flag lookups. Model
-resolution, the CLI environment, retries, resume and every cost decision run
-as in production.
+memory, skill learning, the copilot's own tools and hooks, and per-user flag
+lookups. Model resolution, the CLI environment, retries, resume and every cost
+decision run as in production.
 """
 
 import base64
@@ -142,8 +142,10 @@ class SdkTurns:
             "build_skills_context": AsyncMock(return_value=""),
             "build_skills_update_notice": AsyncMock(return_value=None),
             "build_session_context": AsyncMock(return_value=""),
-            "inject_user_context": AsyncMock(return_value=None),
+            # A first turn reads the user's team from the database manager,
+            # which these tests don't run.
             "first_message_expert_context": AsyncMock(return_value=""),
+            "inject_user_context": AsyncMock(return_value=None),
             "_graphiti_enabled": MagicMock(return_value=False),
             "_fetch_graphiti_context": AsyncMock(return_value=(False, "")),
             "_enqueue_graphiti_turn": AsyncMock(),

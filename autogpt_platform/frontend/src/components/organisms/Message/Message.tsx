@@ -8,7 +8,6 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { MapAwarePre } from "@/components/contextual/MapEmbed/MapAwarePre";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
@@ -28,13 +27,16 @@ import type {
 } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { useReadEveryRender } from "@/hooks/useReadEveryRender";
-import type { LinkSafetyModalProps } from "streamdown";
+import { defaultSchema } from "hast-util-sanitize";
 import {
+  defaultRehypePlugins,
   defaultRemarkPlugins,
   parseMarkdownIntoBlocks,
   Streamdown,
 } from "streamdown";
 import { remarkAppLinks } from "./app-links";
+import { MessageLink } from "./components/MessageLink/MessageLink";
+import { rehypeLiteralTags } from "./literal-tags";
 import {
   createComponentsMerger,
   type StreamdownComponents,
@@ -44,16 +46,20 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
 };
 
+const MessageRoleContext = createContext<MessageProps["from"]>("assistant");
+
 export const Message = ({ className, from, ...props }: MessageProps) => (
-  <div
-    className={cn(
-      "group flex w-full max-w-[95%] flex-col gap-2",
-      // oxlint-disable-next-line design-system/no-unknown-classes -- is-user and is-assistant are markers the group-[.is-*] variants below match
-      from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
-      className,
-    )}
-    {...props}
-  />
+  <MessageRoleContext value={from}>
+    <div
+      className={cn(
+        "group flex w-full max-w-[95%] flex-col gap-2",
+        // oxlint-disable-next-line design-system/no-unknown-classes -- is-user and is-assistant are markers the group-[.is-*] variants below match
+        from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
+        className,
+      )}
+      {...props}
+    />
+  </MessageRoleContext>
 );
 
 export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
@@ -333,54 +339,6 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
-function isSameOriginLink(url: string): boolean {
-  try {
-    const parsed = new URL(url, window.location.origin);
-    return parsed.origin === window.location.origin;
-  } catch {
-    return false;
-  }
-}
-
-function ExternalLinkModal({
-  url,
-  isOpen,
-  onClose,
-  onConfirm,
-}: LinkSafetyModalProps) {
-  return (
-    <Dialog
-      title="Open external link"
-      styling={{ maxWidth: "30rem", minWidth: "auto" }}
-      controlled={{
-        isOpen,
-        set: async (open) => {
-          if (!open) onClose();
-        },
-      }}
-    >
-      <Dialog.Content>
-        <Text variant="body">
-          You&apos;re about to visit an external website:
-        </Text>
-        <div className="mt-2 rounded-md bg-surface-hover p-3">
-          <Text variant="small-mono" className="break-all">
-            {url}
-          </Text>
-        </div>
-        <Dialog.Footer>
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={onConfirm}>
-            Open link
-          </Button>
-        </Dialog.Footer>
-      </Dialog.Content>
-    </Dialog>
-  );
-}
-
 // Single-dollar math is off by default in @streamdown/math, so "$x^2$" reached the
 // reader raw; escapeLiteralDollars keeps prices and shell text out of its formulas.
 // KaTeX renders text real LaTeX would reject, such as Bengali in a formula, but
@@ -434,34 +392,50 @@ function MessageTable({ children, ...tableProps }: ComponentProps<"table">) {
   );
 }
 
-function renderExternalLinkModal(modalProps: LinkSafetyModalProps) {
-  return <ExternalLinkModal {...modalProps} />;
-}
-
 const STREAMDOWN_PLUGINS = { code, mermaid, math, cjk };
 
 // Streamdown memoises every block on the identity of this list, so it is built
 // once here.
 const REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkAppLinks];
 
-const LINK_SAFETY = {
-  enabled: true,
-  onLinkCheck: isSameOriginLink,
-  renderModal: renderExternalLinkModal,
-};
+// Server-only tags CommonMark reads as HTML (the rest carry an underscore, which
+// already keeps them text) are dropped by the sanitiser; the text inside them shows.
+const SERVER_ONLY_TAGS = ["routines", "thinking"];
 
-const TABLE_COMPONENT: StreamdownComponents = {
+// The user's bubble shows any tag they typed; Otto's keeps every element the
+// sanitiser keeps. Streamdown's own raw, sanitise and harden steps run after.
+const USER_REHYPE_PLUGINS: MessageResponseProps["rehypePlugins"] = [
+  [rehypeLiteralTags, { keep: SERVER_ONLY_TAGS }],
+  ...Object.values(defaultRehypePlugins),
+];
+const REPLY_REHYPE_PLUGINS: MessageResponseProps["rehypePlugins"] = [
+  [
+    rehypeLiteralTags,
+    { keep: [...(defaultSchema.tagNames ?? []), ...SERVER_ONLY_TAGS] },
+  ],
+  ...Object.values(defaultRehypePlugins),
+];
+
+// MessageLink asks before leaving the site itself; Streamdown's own check
+// would draw every link as a button without an href.
+const LINK_SAFETY = { enabled: false };
+
+const DEFAULT_COMPONENTS: StreamdownComponents = {
   table: MessageTable,
   pre: MapAwarePre,
+  a: MessageLink,
 };
 
-const mergeTableComponent = createComponentsMerger((components) => ({
-  ...TABLE_COMPONENT,
+// A caller may replace any default but the link, which keeps the dialog in
+// front of every link to another site.
+const mergeDefaultComponents = createComponentsMerger((components) => ({
+  ...DEFAULT_COMPONENTS,
   ...components,
+  a: MessageLink,
 }));
 
-function withTableComponent(components: StreamdownComponents | undefined) {
-  return components ? mergeTableComponent(components) : TABLE_COMPONENT;
+function withDefaultComponents(components: StreamdownComponents | undefined) {
+  return components ? mergeDefaultComponents(components) : DEFAULT_COMPONENTS;
 }
 
 // memo-boundary: one per text part of every transcript row, and also
@@ -476,8 +450,9 @@ export const MessageResponse = memo(function MessageResponse({
   // the result stable, and spots an entry the caller replaced in place, which
   // a result cached on `components` would miss.
   const mergedComponents = useReadEveryRender(() =>
-    withTableComponent(components),
+    withDefaultComponents(components),
   );
+  const from = useContext(MessageRoleContext);
   return (
     <Streamdown
       className={cn(
@@ -505,6 +480,9 @@ export const MessageResponse = memo(function MessageResponse({
       components={mergedComponents}
       plugins={STREAMDOWN_PLUGINS}
       remarkPlugins={REMARK_PLUGINS}
+      rehypePlugins={
+        from === "user" ? USER_REHYPE_PLUGINS : REPLY_REHYPE_PLUGINS
+      }
       linkSafety={LINK_SAFETY}
       parseMarkdownIntoBlocksFn={parseEscapedBlocks}
       {...props}

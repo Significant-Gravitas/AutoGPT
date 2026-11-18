@@ -36,6 +36,16 @@ def report_shards(partitioned: bool = False) -> list[str]:
     ]
 
 
+# The docker-backed e2e tests a shard turns on; elsewhere they skip unless asked.
+SHARD_E2E_FLAGS = {
+    "data": "E2E_REDIS_CLUSTER_RESTART",
+    "util-executor": "E2E_CLAMD_CONTAINER",
+}
+
+# SDK billing tests do not start the database manager.
+SHARDS_WITHOUT_DATABASE_MANAGER = {"sdk-billing"}
+
+
 def shard_args(shard: str) -> list[str]:
     if shard in SHARDS:
         paths = SHARDS[shard]
@@ -72,8 +82,11 @@ def main() -> int:
     pytest_args = args.pytest_args
     if pytest_args[:1] == ["--"]:
         pytest_args = pytest_args[1:]
-    if args.shard == "data":
-        os.environ["E2E_REDIS_CLUSTER_RESTART"] = "1"
+    for shard, flag in SHARD_E2E_FLAGS.items():
+        if args.layout == "weighted" or args.shard == shard:
+            os.environ[flag] = "1"
+    if args.layout == "paths" and args.shard in SHARDS_WITHOUT_DATABASE_MANAGER:
+        os.environ["PYRO_CLIENT_COMM_RETRY"] = "3"
     os.environ["BACKEND_TEST_SHARD"] = args.shard
     os.environ["BACKEND_TEST_LAYOUT"] = args.layout
     os.environ["BACKEND_TEST_PARTITION"] = str(args.partition)

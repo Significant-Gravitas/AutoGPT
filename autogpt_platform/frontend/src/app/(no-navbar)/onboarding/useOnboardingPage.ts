@@ -39,7 +39,9 @@ export function useOnboardingPage() {
   const progress = useWizardProgress({
     userID: user?.id ?? null,
     ready: isReady,
+    isUserSettled: !isUserLoading,
     steps,
+    hasPaywall: isPaymentEnabled,
   });
   const currentStep =
     isPaymentEnabled && !environment.isLocal()
@@ -143,6 +145,10 @@ export function useOnboardingPage() {
     handlePreparingComplete,
     isPaymentEnabled,
     isSelfHostConnectEnabled,
+    // The plan's team joins once nothing is left to pay for: the trial or
+    // plan is confirmed (which removes the paywall), or none is configured.
+    // Local development skips Stripe, so it hires straight away.
+    canHireTeam: !isPaymentEnabled || environment.isLocal(),
     steps,
     preparingStep,
     totalSteps,

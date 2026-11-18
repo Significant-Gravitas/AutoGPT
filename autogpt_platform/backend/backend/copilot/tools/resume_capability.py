@@ -34,6 +34,7 @@ from .capability_gates import gate_denied, gate_denied_error
 from .continue_run_block import ContinueRunBlockTool, refuse_disabled_block, run_claimed
 from .helpers import block_run_refusal
 from .models import ErrorResponse, ReviewRequiredResponse, ToolResponseBase
+from .review_card import review_card_location
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
 
@@ -199,7 +200,8 @@ async def _resume_mcp(
                 f"The arguments changed since the user approved "
                 f"'{payload.tool}' on {host}, so it needs approving again. "
                 f"Tell the user what changed; after they approve, call "
-                f"resume_capability(review_id='{new_id}')."
+                f"resume_capability(review_id='{new_id}'). "
+                f"{review_card_location(session.metadata)}"
             ),
             session_id=session.session_id,
             block_id=payload.server_url,

@@ -14,9 +14,6 @@ export interface ColorOption {
   selectedCardClassName: string;
   // Hover and focus treatment, so interaction never falls back to black.
   interactiveCardClassName: string;
-  // Fill and outline for a selected row inside a grouped list, whose grey
-  // dividers would otherwise be the only edge it has.
-  rowSelectedClassName: string;
   // Ramp fed to the dither shader: shades 400 → 300 → 100 → white.
   ditherColors: readonly [string, string, string, string];
 }
@@ -34,7 +31,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#fb7185] bg-[#fff1f2] ring-2 ring-[#fecdd3]",
     interactiveCardClassName:
       "hover:border-[#fda4af] focus-within:ring-[#fecdd3]",
-    rowSelectedClassName: "bg-[#fff1f2] ring-1 ring-inset ring-[#fda4af]",
     ditherColors: ["#fb7185", "#fda4af", "#ffe4e6", "#ffffff"],
   },
   {
@@ -49,7 +45,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#f26969] bg-error-surface ring-2 ring-[#fac5c5]",
     interactiveCardClassName:
       "hover:border-[#f69999] focus-within:ring-[#fac5c5]",
-    rowSelectedClassName: "bg-error-surface ring-1 ring-inset ring-[#f69999]",
     ditherColors: ["#f87171", "#fca5a5", "#fee2e2", "#ffffff"],
   },
   {
@@ -64,7 +59,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#fe9f33] bg-[#fff3e6] ring-2 ring-[#ffc88a]",
     interactiveCardClassName:
       "hover:border-[#feaf54] focus-within:ring-[#ffc88a]",
-    rowSelectedClassName: "bg-[#fff3e6] ring-1 ring-inset ring-[#feaf54]",
     ditherColors: ["#fb923c", "#fdba74", "#ffedd5", "#ffffff"],
   },
   {
@@ -79,7 +73,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#fbbf24] bg-warning-surface ring-2 ring-warning-border",
     interactiveCardClassName:
       "hover:border-[#fcd34d] focus-within:ring-warning-border",
-    rowSelectedClassName: "bg-warning-surface ring-1 ring-inset ring-[#fcd34d]",
     ditherColors: ["#fbbf24", "#fcd34d", "#fef3c7", "#ffffff"],
   },
   {
@@ -94,7 +87,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#f7cd33] bg-[#fef9e6] ring-2 ring-[#fae28a]",
     interactiveCardClassName:
       "hover:border-[#f8d554] focus-within:ring-[#fae28a]",
-    rowSelectedClassName: "bg-[#fef9e6] ring-1 ring-inset ring-[#f8d554]",
     ditherColors: ["#facc15", "#fde047", "#fef9c3", "#ffffff"],
   },
   {
@@ -109,7 +101,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#a3e635] bg-[#f7fee7] ring-2 ring-[#d9f99d]",
     interactiveCardClassName:
       "hover:border-[#bef264] focus-within:ring-[#d9f99d]",
-    rowSelectedClassName: "bg-[#f7fee7] ring-1 ring-inset ring-[#bef264]",
     ditherColors: ["#a3e635", "#bef264", "#ecfccb", "#ffffff"],
   },
   {
@@ -124,7 +115,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#45b56e] bg-success-surface ring-2 ring-[#94d5ac]",
     interactiveCardClassName:
       "hover:border-[#63c186] focus-within:ring-[#94d5ac]",
-    rowSelectedClassName: "bg-success-surface ring-1 ring-inset ring-[#63c186]",
     ditherColors: ["#4ade80", "#86efac", "#dcfce7", "#ffffff"],
   },
   {
@@ -139,7 +129,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#34d399] bg-[#ecfdf5] ring-2 ring-[#a7f3d0]",
     interactiveCardClassName:
       "hover:border-[#6ee7b7] focus-within:ring-[#a7f3d0]",
-    rowSelectedClassName: "bg-[#ecfdf5] ring-1 ring-inset ring-[#6ee7b7]",
     ditherColors: ["#34d399", "#6ee7b7", "#d1fae5", "#ffffff"],
   },
   {
@@ -154,7 +143,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#2dd4bf] bg-[#f0fdfa] ring-2 ring-[#99f6e4]",
     interactiveCardClassName:
       "hover:border-[#5eead4] focus-within:ring-[#99f6e4]",
-    rowSelectedClassName: "bg-[#f0fdfa] ring-1 ring-inset ring-[#5eead4]",
     ditherColors: ["#2dd4bf", "#5eead4", "#ccfbf1", "#ffffff"],
   },
   {
@@ -169,7 +157,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#22d3ee] bg-[#ecfeff] ring-2 ring-[#a5f3fc]",
     interactiveCardClassName:
       "hover:border-[#67e8f9] focus-within:ring-[#a5f3fc]",
-    rowSelectedClassName: "bg-[#ecfeff] ring-1 ring-inset ring-[#67e8f9]",
     ditherColors: ["#22d3ee", "#67e8f9", "#cffafe", "#ffffff"],
   },
   {
@@ -184,7 +171,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#38bdf8] bg-[#f0f9ff] ring-2 ring-[#bae6fd]",
     interactiveCardClassName:
       "hover:border-[#7dd3fc] focus-within:ring-[#bae6fd]",
-    rowSelectedClassName: "bg-[#f0f9ff] ring-1 ring-inset ring-[#7dd3fc]",
     ditherColors: ["#38bdf8", "#7dd3fc", "#e0f2fe", "#ffffff"],
   },
   {
@@ -199,7 +185,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#60a5fa] bg-info-surface ring-2 ring-[#bfdbfe]",
     interactiveCardClassName:
       "hover:border-[#93c5fd] focus-within:ring-[#bfdbfe]",
-    rowSelectedClassName: "bg-info-surface ring-1 ring-inset ring-[#93c5fd]",
     ditherColors: ["#60a5fa", "#93c5fd", "#dbeafe", "#ffffff"],
   },
   {
@@ -214,7 +199,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#818cf8] bg-[#eef2ff] ring-2 ring-[#c7d2fe]",
     interactiveCardClassName:
       "hover:border-[#a5b4fc] focus-within:ring-[#c7d2fe]",
-    rowSelectedClassName: "bg-[#eef2ff] ring-1 ring-inset ring-[#a5b4fc]",
     ditherColors: ["#818cf8", "#a5b4fc", "#e0e7ff", "#ffffff"],
   },
   {
@@ -229,7 +213,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#a78bfa] bg-accent-surface ring-2 ring-[#ddd6fe]",
     interactiveCardClassName:
       "hover:border-[#c4b5fd] focus-within:ring-[#ddd6fe]",
-    rowSelectedClassName: "bg-accent-surface ring-1 ring-inset ring-[#c4b5fd]",
     ditherColors: ["#a78bfa", "#c4b5fd", "#ede9fe", "#ffffff"],
   },
   {
@@ -244,7 +227,6 @@ export const COLOR_OPTIONS: ColorOption[] = [
       "border-[#e879f9] bg-[#fdf4ff] ring-2 ring-[#f5d0fe]",
     interactiveCardClassName:
       "hover:border-[#f0abfc] focus-within:ring-[#f5d0fe]",
-    rowSelectedClassName: "bg-[#fdf4ff] ring-1 ring-inset ring-[#f0abfc]",
     ditherColors: ["#e879f9", "#f0abfc", "#fae8ff", "#ffffff"],
   },
 ];
@@ -269,10 +251,6 @@ export function coverClassFor(id: string | null) {
   return findColorOption(id)?.coverClassName;
 }
 
-export function washFromClassFor(id: string | null) {
-  return findColorOption(id)?.washFromClassName;
-}
-
 export function textClassFor(id: string | null) {
   return findColorOption(id)?.textClassName;
 }
@@ -283,8 +261,4 @@ export function selectedCardClassFor(id: string | null) {
 
 export function interactiveCardClassFor(id: string | null) {
   return findColorOption(id)?.interactiveCardClassName;
-}
-
-export function rowSelectedClassFor(id: string | null) {
-  return findColorOption(id)?.rowSelectedClassName;
 }

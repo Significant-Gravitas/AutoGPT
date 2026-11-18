@@ -21,6 +21,7 @@ from backend.data import versioned_cache
 from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
+from backend.util import posthog_client
 from backend.util.logging import configure_logging
 from backend.util.platform_payment import settings as platform_payment_settings
 from backend.util.tracing import traces_sampler
@@ -142,6 +143,14 @@ def no_force_all_flags(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture(autouse=True)
+def no_sandbox_limits(monkeypatch: pytest.MonkeyPatch):
+    """The running-box limits list E2B and write Redis on every box start, so a
+    test that fakes a create would reach both; ``sandbox_limits_test`` sets them."""
+    monkeypatch.setenv("E2B_DEPLOYMENT_SANDBOX_LIMIT", "0")
+    monkeypatch.setenv("E2B_ACCOUNT_SANDBOX_LIMIT", "0")
+
+
+@pytest.fixture(autouse=True)
 def platform_payment_off(set_platform_payment):
     """Payment is off unless a test turns it on, whatever this machine's ``.env`` sets."""
     set_platform_payment(False)
@@ -193,6 +202,32 @@ def admin_user_id() -> str:
 def target_user_id() -> str:
     """Target user ID fixture."""
     return "5e53486c-cf57-477e-ba2a-cb02dc828e1c"
+
+
+@pytest.fixture(autouse=True)
+def fresh_chat_blocked_window():
+    """``chat_blocked`` drops a repeat sent within a minute; each test starts
+    with none sent, so one test's events never hide another's."""
+    if (
+        limit_tracking := sys.modules.get("backend.copilot.limit_tracking")
+    ) is not None:
+        limit_tracking.forget_recent_events()
+
+
+@pytest.fixture
+def chat_blocked_events(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+    """Every ``chat_blocked`` PostHog event the test sends, as
+    ``{"distinct_id": ..., **properties}``. Other events are dropped, as they
+    are with no PostHog key."""
+    events: list[dict] = []
+
+    def capture(distinct_id, event, properties=None, **_kwargs) -> bool:
+        if event == "chat_blocked":
+            events.append({"distinct_id": distinct_id, **(properties or {})})
+        return True
+
+    monkeypatch.setattr(posthog_client, "capture", capture)
+    return events
 
 
 class _SentryTransactionCapture(Transport):

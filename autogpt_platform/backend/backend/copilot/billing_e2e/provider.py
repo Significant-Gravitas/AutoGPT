@@ -43,7 +43,9 @@ class FakeProvider:
         self._requests_per_turn: dict[int, int] = {}
 
     async def __aenter__(self) -> "FakeProvider":
-        self._runner = web.AppRunner(self._app())
+        # The test has read everything it checks by the time this server
+        # stops, so it doesn't wait out aiohttp's 60 s for open requests.
+        self._runner = web.AppRunner(self._app(), shutdown_timeout=1.0)
         await self._runner.setup()
         await web.TCPSite(self._runner, "127.0.0.1", 0).start()
         host, port = self._runner.addresses[0][:2]

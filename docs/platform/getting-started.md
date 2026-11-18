@@ -173,8 +173,9 @@ To run the platform, follow these steps:
   This copies each `.env.default` to `.env` (for `autogpt_platform`, `backend`
   and `frontend`) and fills in the secrets that `.env.default` deliberately
   leaves blank — `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`,
-  `INTERNAL_API_KEY`, `BETTER_AUTH_SECRET`, and the passwords of the database,
-  RabbitMQ, Redis and FalkorDB — with values generated for your machine. Those
+  `INTERNAL_API_KEY`, `BAN_RECORD_HASH_KEY`, `BETTER_AUTH_SECRET`, and the
+  passwords of the database, RabbitMQ, Redis and FalkorDB — with values
+  generated for your machine. Those
   files are public, so shipping working values in them would mean every install
   in the world shared one publicly-readable key. It never overwrites an
   existing `.env` or a value you set yourself, and you can then edit the `.env`
@@ -193,6 +194,7 @@ To run the platform, follow these steps:
    docker compose up -d --build
   ```
   This command will start all the necessary backend services defined in the `docker-compose.yml` file in detached mode.
+  Building the frontend image needs more than 8 GiB of memory available to Docker: its build step alone peaks at about 7.5 GiB.
 
 ---
 
@@ -261,6 +263,18 @@ install, and the backend **does not start** without an `ENCRYPTION_KEY` or
 with the one `.env.default` used to contain. This applies to Docker Compose
 installs; the Docker Hub image generates its own secrets on first boot and
 keeps them in its data volume.
+
+The Web Push signing pair, `VAPID_PRIVATE_KEY` and `VAPID_PUBLIC_KEY`, shipped
+with a value from April to October 2026 and is now blank and generated the same
+way. The backend starts on the published pair but sends no push notifications
+with it. `make init-env` replaces a published pair with a generated one, since
+nothing stored depends on it; adds the pair to a `backend/.env` from before it
+existed; and clears a published `NEXT_PUBLIC_VAPID_PUBLIC_KEY` from
+`frontend/.env`, which the app would otherwise use instead of the backend's
+key. Then recreate the services so they read the new values
+(`docker compose up -d`, with `--build` if the frontend image was built from
+this checkout). Browsers subscribed under the old pair stop receiving pushes
+until notifications are turned off and on again in the app.
 
 A fresh install needs nothing beyond `make init-env` (or
 `installer/setup-autogpt.sh` / `setup-autogpt.bat`, which do the same). An

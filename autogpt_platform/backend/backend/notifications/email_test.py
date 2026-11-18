@@ -3,10 +3,17 @@
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from prisma.enums import NotificationType
 
 from backend.notifications import email as delivery
+from backend.notifications.notifications import (
+    NotificationManager,
+    NotificationManagerClient,
+)
 from backend.notifications.renderer import RenderedEmail, build_urls
+from backend.util.service import get_service_client
 
 
 @pytest.mark.asyncio
@@ -150,3 +157,74 @@ def test_auth_delivery_reports_missing_configuration():
 
     with pytest.raises(RuntimeError, match="Postmark is not configured"):
         sender.send_email_or_raise("user@example.org", "Verify email", "<p>Verify</p>")
+
+
+def test_one_off_delivery_forwards_reply_to_when_given(monkeypatch):
+    sender = delivery.EmailSender.__new__(delivery.EmailSender)
+    sender.postmark = MagicMock()
+    monkeypatch.setattr(
+        delivery.settings.config, "postmark_sender_email", "AutoGPT <auth@example.org>"
+    )
+
+    sender.send_email_or_raise(
+        "user@example.org",
+        "Your AutoGPT account is deleted",
+        "<p>Deleted</p>",
+        "Deleted",
+        reply_to="contact@example.org",
+    )
+
+    envelope = sender.postmark.emails.send.call_args.kwargs
+    assert envelope["ReplyTo"] == "contact@example.org"
+    assert envelope["From"] == "AutoGPT <auth@example.org>"
+    assert not envelope.get("Headers")
+
+
+@pytest.mark.asyncio
+async def test_manager_passes_reply_to_through_to_postmark():
+    sender = delivery.EmailSender.__new__(delivery.EmailSender)
+    sender.postmark = MagicMock()
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.email_sender = sender
+
+    await manager.send_email_or_raise(
+        "user@example.org",
+        "Your AutoGPT account is deleted",
+        "<p>Deleted</p>",
+        "Deleted",
+        reply_to="contact@example.org",
+    )
+
+    envelope = sender.postmark.emails.send.call_args.kwargs
+    assert envelope["To"] == "user@example.org"
+    assert envelope["TextBody"] == "Deleted"
+    assert envelope["ReplyTo"] == "contact@example.org"
+
+
+def test_reply_to_crosses_the_rpc_boundary_as_a_keyword():
+    """The deletion service calls the notification service over RPC with
+    reply_to as a keyword. The real client stub must send it by name, the
+    exposed endpoint must accept it, and a caller that leaves it out still
+    gets the default."""
+    manager = NotificationManager.__new__(NotificationManager)
+    manager.email_sender = MagicMock()
+    app = FastAPI()
+    app.post("/send_email_or_raise")(
+        manager._create_fastapi_endpoint(NotificationManager.send_email_or_raise)
+    )
+    client = get_service_client(NotificationManagerClient)
+    vars(client)["_sync_clients"][NotificationManager.__name__] = TestClient(app)
+
+    client.send_email_or_raise(
+        "user@example.org", "S", "<p>B</p>", reply_to="contact@example.org"
+    )
+    assert manager.email_sender.send_email_or_raise.call_args.args == (
+        "user@example.org",
+        "S",
+        "<p>B</p>",
+        None,
+        "contact@example.org",
+    )
+
+    client.send_email_or_raise("user@example.org", "S", "<p>B</p>")
+    assert manager.email_sender.send_email_or_raise.call_args.args[-1] is None

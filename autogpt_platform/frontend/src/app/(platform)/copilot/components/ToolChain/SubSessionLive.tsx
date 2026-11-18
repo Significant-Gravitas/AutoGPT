@@ -35,7 +35,6 @@ interface Props {
   subSessionId: string;
   active: boolean;
   background?: boolean;
-  backgroundExpiresAt?: string | null;
 }
 
 const POLL_MS = 3000;
@@ -62,12 +61,10 @@ export function SubSessionLive({
   subSessionId,
   active,
   background = false,
-  backgroundExpiresAt,
 }: Props) {
   const { session, isError, isPaused } = useLiveSubSession(
     subSessionId,
     active,
-    backgroundExpiresAt,
     background,
   );
   if (!active) return null;
@@ -103,30 +100,19 @@ export function SubSessionLive({
 function useLiveSubSession(
   subSessionId: string,
   active: boolean,
-  backgroundExpiresAt?: string | null,
   background = false,
 ) {
-  // The cap is keyed on the deadline it was armed for, so a new deadline
-  // starts uncapped without resetting state inside the effect.
-  const capKey = active ? (backgroundExpiresAt ?? "") : null;
-  const [cappedKey, setCappedKey] = useState<string | null>(null);
+  // Background work records its outcome durably, so its card follows it to
+  // the end; only a foreground delegation gives up after the cap.
+  const [isCapped, setIsCapped] = useState(false);
   useEffect(
     function stopPollingAfterCap() {
-      if (capKey === null) return;
-      const expiresAt = backgroundExpiresAt
-        ? Date.parse(backgroundExpiresAt)
-        : NaN;
-      const timer = setTimeout(
-        () => setCappedKey(capKey),
-        Number.isFinite(expiresAt)
-          ? Math.max(0, expiresAt - Date.now())
-          : POLL_CAP_MS,
-      );
+      if (!active || background) return;
+      const timer = setTimeout(() => setIsCapped(true), POLL_CAP_MS);
       return () => clearTimeout(timer);
     },
-    [capKey, backgroundExpiresAt],
+    [active, background],
   );
-  const isCapped = cappedKey !== null && cappedKey === capKey;
   const { data, isError } = useGetV2GetSession(subSessionId, undefined, {
     query: {
       enabled: active && !!subSessionId,
@@ -415,13 +401,11 @@ export function useSubSessionEffectiveStatus(
   subSessionId: string | null,
   status: string | null,
   background = false,
-  backgroundExpiresAt?: string | null,
 ) {
   const stale = ["running", "queued"].includes(status?.toLowerCase() ?? "");
   const { session, isError, isPaused } = useLiveSubSession(
     subSessionId ?? "",
     stale && !!subSessionId,
-    backgroundExpiresAt,
     background,
   );
   if (!stale) return status;

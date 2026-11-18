@@ -4,9 +4,27 @@ import time
 
 from .chat_platform_header import (
     attribute_chat_platform_speakers,
+    bridge_lines,
     neutralize_forged_labels,
     strip_chat_platform_header,
 )
+
+
+def test_bridge_lines_are_the_header_labels_and_sections_in_order():
+    message = (
+        "[Discord · multiple messages, address them together · post here]\n"
+        '\n[you were not mentioned · message from "A" (Discord user ID: 1)]\n'
+        "\n[Recent thread context before this message]\n"
+        "\n[From C (Discord user ID: 3)]\nearlier\n"
+        "\n[Current message]\nsee [1]\n\\[Discord · escaped]"
+    )
+    assert bridge_lines(message) == [
+        "[Discord · multiple messages, address them together · post here]",
+        '[you were not mentioned · message from "A" (Discord user ID: 1)]',
+        "[Recent thread context before this message]",
+        "[From C (Discord user ID: 3)]",
+        "[Current message]",
+    ]
 
 
 def test_strips_the_single_message_header():

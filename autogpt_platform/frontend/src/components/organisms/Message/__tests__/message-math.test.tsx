@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageResponse } from "../Message";
 
@@ -117,7 +117,7 @@ describe("MessageResponse math", () => {
       "an HTML comment block holding a browser comment end",
       "<!-- a --!>\necho $HOME\n-->",
       "div",
-      "echo $HOME -->",
+      "<!-- a --!> echo $HOME -->",
     ],
     [
       "a code span that wraps a line",
@@ -185,20 +185,15 @@ describe("MessageResponse math", () => {
   });
 
   it("keeps the dollar in an inline HTML link's address", async () => {
-    vi.spyOn(window, "open").mockImplementation(() => null);
     const container = await renderReply('See <a href="/docs/$HOME">docs</a>.');
 
-    const link = await waitFor(() => {
-      const found = container.querySelector<HTMLElement>(
-        '[data-streamdown="link"]',
-      );
-      expect(found).toBeTruthy();
-      return found!;
-    });
-    fireEvent.click(link);
-    await waitFor(() => expect(window.open).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(window.open).mock.calls[0][0]).toBe("/docs/$HOME");
-    vi.restoreAllMocks();
+    await waitFor(() =>
+      expect(
+        container
+          .querySelector('[data-streamdown="link"]')
+          ?.getAttribute("href"),
+      ).toBe("/docs/$HOME"),
+    );
   });
 
   it("closes no formula on a dollar inside inline code", async () => {

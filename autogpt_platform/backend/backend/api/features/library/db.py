@@ -608,6 +608,7 @@ async def create_library_agent(
         user_id: The user to whom the agent will be added.
         hitl_safe_mode: Whether HITL blocks require manual review (default True).
         sensitive_action_safe_mode: Whether sensitive action blocks require review.
+            Both seed a new entry only; an existing entry keeps its settings.
         create_library_agents_for_sub_graphs: If True, creates LibraryAgent records for sub-graphs as well.
 
     Returns:
@@ -709,12 +710,8 @@ async def create_library_agent(
                                 if organization_id
                                 else {}
                             ),
-                            "settings": SafeJson(
-                                GraphSettings(
-                                    human_in_the_loop_safe_mode=hitl_safe_mode,
-                                    sensitive_action_safe_mode=sensitive_action_safe_mode,
-                                ).model_dump()
-                            ),
+                            # Settings are the user's: restoring an entry keeps
+                            # them, as the marketplace re-add does.
                             **(
                                 {"Folder": {"connect": {"id": folder_id}}}
                                 if folder_id and graph_entry is graph
@@ -872,7 +869,17 @@ async def create_graph_in_library(
 
     Without ``organization_id`` the graph is untagged and the library entry
     goes to the user's default team.
+
+    A graph ID belonging to somebody else makes the new graph a copy of
+    theirs, such as one Otto saves from the JSON of their workflow: the
+    sub-graph nodes it inherited that name one of the user's own graphs are
+    blanked, and ones the user added are kept (see
+    `graph_db.clear_sub_graph_refs_owned_by`).
     """
+    if await graph_db.graph_owner_id(graph.id) not in (None, user_id):
+        await graph_db.clear_sub_graph_refs_owned_by(
+            graph, user_id, edited_from=graph.id
+        )
     graph.version = 1
     graph_model = graph_db.make_graph_model(graph, user_id)
     graph_model.reassign_ids(user_id=user_id, reassign_graph_id=True)
@@ -1010,12 +1017,25 @@ async def fork_graph_in_library(
     team_id: str | None = None,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
     """Save *graph* as a new graph in the user's library, forked from version
-    *forked_from_version* of the graph ID it carries."""
+    *forked_from_version* of the graph ID it carries, which belongs to
+    somebody else.
+
+    Sub-graph nodes it inherited that name one of the user's own graphs are
+    blanked; ones the user added are kept (see `create_graph_in_library`).
+    """
     logger.info(
         f"Saving graph {graph.id} v{forked_from_version} as a fork for user {user_id}"
     )
     graph.forked_from_id = graph.id
     graph.forked_from_version = forked_from_version
+    source = await graph_db.get_graph(
+        graph.id, forked_from_version, user_id, include_subgraphs=True
+    )
+    # The caller sends the sub-graphs; only those of the copied version have a source.
+    copied = {(sub.id, sub.version) for sub in source.sub_graphs} if source else set()
+    graph_db.record_copy_sources(
+        sub for sub in graph.sub_graphs if (sub.id, sub.version) in copied
+    )
     graph.name = graph_db.fork_name(graph.name)
     return await create_graph_in_library(
         graph, user_id, organization_id=organization_id, team_id=team_id
@@ -2882,19 +2902,67 @@ async def migrate_webhook_presets_to_new_version(
     }
     if in_organizations:
         migrate_where["AND"] = in_organizations
-    count = await prisma.models.AgentPreset.prisma().update_many(
-        where=migrate_where,
-        data={"agentGraphVersion": new_graph.version},
-    )
+
+    # reassign_ids() gives every node a new UUID when an agent is edited, so a
+    # preset's stored `_node_input_mask_{old_prefix}` key would no longer match
+    # the new version's trigger node at execution (the mask would be dropped and
+    # the trigger would silently stop firing). Re-key the mask to the new node's
+    # prefix, in the same transaction as the version bump: a preset pinned to the
+    # new version with the old key is no longer a retry candidate, so a partial
+    # write kills the trigger for good.
+    async with transaction() as tx:
+        count = await prisma.models.AgentPreset.prisma(tx).update_many(
+            where=migrate_where,
+            data={"agentGraphVersion": new_graph.version},
+        )
+        # Scoped to presets now pinned to this version so a preset that a
+        # concurrent activation already bumped past it isn't re-keyed to the
+        # wrong node.
+        prefixed = await prisma.models.AgentNodeExecutionInputOutput.prisma(
+            tx
+        ).find_many(
+            where={
+                "agentPresetId": {"in": ids_to_migrate},
+                "name": {"startswith": library_model.NODE_INPUT_MASK_PREFIX},
+                "AgentPreset": {"is": {"agentGraphVersion": new_graph.version}},
+            },
+        )
+        await prisma.models.AgentNodeExecutionInputOutput.prisma(tx).update_many(
+            where={"id": {"in": _trigger_mask_row_ids(prefixed)}},
+            data={"name": library_model.node_input_mask_key(new_trigger_node.id)},
+        )
+
     if count > 0:
         logger.info(
             f"Migrated {count} webhook preset(s) for graph #{new_graph.id} "
             f"to version {new_graph.version} (user #{user_id})"
         )
+
     return library_model.WebhookPresetMigrationResult(
         migrated_count=count,
         skipped_presets=skipped_presets,
     )
+
+
+def _trigger_mask_row_ids(
+    rows: list[prisma.models.AgentNodeExecutionInputOutput],
+) -> list[str]:
+    """Each preset's trigger-config row, picked as its readers pick it: a graph
+    input may use the mask prefix too."""
+    by_preset: dict[
+        str | None, dict[str, prisma.models.AgentNodeExecutionInputOutput]
+    ] = {}
+    for row in rows:
+        by_preset.setdefault(row.agentPresetId, {})[row.name] = row
+    return [
+        named[key].id
+        for named in by_preset.values()
+        if (
+            key := library_model.stored_trigger_mask_key(
+                {name: row.data for name, row in named.items()}
+            )
+        )
+    ]
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:

@@ -139,7 +139,8 @@ async def test_write_file_overwrite_conflict_then_retry_succeeds(
             filename="test.txt", content=b"hello", overwrite=True
         )
 
-    assert result == created_file
+    assert result.id == created_file.id
+    assert result.replaced_file_id == "old-id"
     mock_delete.assert_not_called()
     assert [
         c.kwargs["replacing_file_id"]
@@ -316,6 +317,49 @@ async def test_write_file_rejects_upload_when_usage_already_exceeds_downgraded_l
 
     mock_scan.assert_not_called()
     mock_storage.store.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "existing_id, still_live, expected",
+    [
+        ("old-id", False, "old-id"),
+        ("old-id", True, None),
+        (None, False, None),
+    ],
+    ids=["retired", "renamed-away-before-the-insert", "nothing-at-the-path"],
+)
+async def test_write_file_names_only_a_file_it_retired(
+    manager, mock_storage, mock_db, existing_id, still_live, expected
+):
+    created_file = _make_workspace_file(id="new-id")
+    existing = _make_workspace_file(id=existing_id) if existing_id else None
+    mock_db.get_workspace_file_by_path.return_value = existing
+    mock_db.create_workspace_file.return_value = created_file
+    mock_db.get_workspace_file.return_value = existing if still_live else None
+
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage",
+            return_value=mock_storage,
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=250 * 1024 * 1024,
+        ),
+        patch(
+            "backend.api.features.workspace.embeddings.delete_workspace_file_embedding",
+            new_callable=AsyncMock,
+        ),
+    ):
+        result = await manager.write_file(
+            filename="test.txt", content=b"hello", overwrite=True
+        )
+
+    assert result.replaced_file_id == expected
+    assert "replaced_file_id" not in result.model_dump()
 
 
 @pytest.mark.asyncio
@@ -538,3 +582,17 @@ async def test_write_file_keeps_deliverables_visible(
     assert file.is_internal is False
     assert mock_db.create_workspace_file.await_args.kwargs["is_internal"] is False
     schedule_embedding.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_list_files_passes_the_written_window_to_the_query(manager, mock_db):
+    """A window on when files were written reaches the query itself, ahead of
+    the limit, rather than trimming the rows the query returned."""
+    mock_db.list_workspace_files = AsyncMock(return_value=[])
+    since, until = _NOW.replace(minute=0), _NOW.replace(minute=5)
+
+    with patch("backend.util.workspace.workspace_db", return_value=mock_db):
+        await manager.list_files(created_after=since, created_before=until)
+
+    kwargs = mock_db.list_workspace_files.await_args.kwargs
+    assert (kwargs["created_after"], kwargs["created_before"]) == (since, until)

@@ -5,7 +5,7 @@ from pathlib import Path
 from validate_playwright_json import validate_report
 
 SHARD_COUNT = 4
-SMOKE_TEST_FLOOR = 28
+SMOKE_TEST_FLOOR = 29
 
 
 def identities(report):

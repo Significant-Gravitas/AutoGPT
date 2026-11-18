@@ -27,6 +27,8 @@ class BackendShardTests(unittest.TestCase):
             "backend/copilot/sdk/new_folder/sample_unit_test.py",
             "backend/copilot/sdk_sibling/sample_unit_test.py",
             "backend/copilot/graphiti_sibling/sample_unit_test.py",
+            "backend/copilot/tools/sample_unit_test.py",
+            "backend/copilot/sdk_like/sample_unit_test.py",
             "backend/util/sample_unit_test.py",
             "backend/executor/sample_unit_test.py",
             "backend/executor/billing_e2e/sample_unit_test.py",
@@ -101,6 +103,31 @@ class BackendShardTests(unittest.TestCase):
                 len(separate_jobs),
             )
 
+    def test_a_shard_leaves_out_the_folders_a_nested_shard_runs(self):
+        self.assertEqual(
+            shard_args("copilot"),
+            [
+                "-c",
+                "pyproject.toml",
+                "backend/copilot",
+                "--ignore=backend/copilot/dream",
+                "--ignore=backend/copilot/graphiti",
+                "--ignore=backend/copilot/sdk",
+                "--ignore=backend/copilot/billing_e2e",
+                "--ignore=backend/copilot/billing_e2e/thread_billing_test.py",
+            ],
+        )
+        self.assertEqual(
+            shard_args("sdk-billing"),
+            [
+                "-c",
+                "pyproject.toml",
+                "backend/copilot/sdk",
+                "backend/copilot/billing_e2e",
+                "--ignore=backend/copilot/billing_e2e/thread_billing_test.py",
+            ],
+        )
+
     def test_unknown_shard_is_rejected(self):
         with self.assertRaises(ValueError):
             shard_args("typo")
@@ -114,9 +141,20 @@ class BackendShardTests(unittest.TestCase):
         ]["test-shard"]
         self.assertCountEqual(matrix, [*SHARDS, "remainder"])
 
-    def test_main_propagates_pytest_status_and_scopes_restart_test_to_data(self):
-        for shard in (*SHARDS, "remainder"):
-            restart = "1" if shard == "data" else None
+    def test_main_propagates_pytest_status_and_scopes_docker_tests_to_their_shard(
+        self,
+    ):
+        flags = ("E2E_REDIS_CLUSTER_RESTART", "E2E_CLAMD_CONTAINER")
+        for shard, enabled in (
+            ("data", {"E2E_REDIS_CLUSTER_RESTART"}),
+            ("util-executor", {"E2E_CLAMD_CONTAINER"}),
+            ("copilot", set()),
+            ("memory-experts", set()),
+            ("sdk-billing", set()),
+            ("billing-threads", set()),
+            ("api", set()),
+            ("remainder", set()),
+        ):
             with (
                 self.subTest(shard=shard),
                 patch.object(
@@ -127,9 +165,16 @@ class BackendShardTests(unittest.TestCase):
                 patch.dict(os.environ),
                 patch.object(sys, "argv", ["backend_test_shard.py", shard, "--", "-q"]),
             ):
-                os.environ.pop("E2E_REDIS_CLUSTER_RESTART", None)
+                for flag in (*flags, "PYRO_CLIENT_COMM_RETRY"):
+                    os.environ.pop(flag, None)
                 self.assertEqual(backend_test_shard.main(), 3)
-                self.assertEqual(os.environ.get("E2E_REDIS_CLUSTER_RESTART"), restart)
+                self.assertEqual(
+                    {f for f in flags if os.environ.get(f) == "1"}, enabled
+                )
+                self.assertEqual(
+                    os.environ.get("PYRO_CLIENT_COMM_RETRY"),
+                    "3" if shard == "sdk-billing" else None,
+                )
                 run.assert_called_once_with(
                     [
                         "poetry",
@@ -142,6 +187,31 @@ class BackendShardTests(unittest.TestCase):
                     ],
                     check=False,
                 )
+
+    def test_weighted_layout_keeps_both_docker_suites_enabled(self):
+        with (
+            patch.object(
+                backend_test_shard.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess([], 0),
+            ),
+            patch.dict(os.environ),
+            patch.object(
+                sys,
+                "argv",
+                ["backend_test_shard.py", "--layout", "weighted", "sdk-billing"],
+            ),
+        ):
+            for flag in (
+                "E2E_REDIS_CLUSTER_RESTART",
+                "E2E_CLAMD_CONTAINER",
+                "PYRO_CLIENT_COMM_RETRY",
+            ):
+                os.environ.pop(flag, None)
+            self.assertEqual(backend_test_shard.main(), 0)
+            self.assertEqual(os.environ["E2E_REDIS_CLUSTER_RESTART"], "1")
+            self.assertEqual(os.environ["E2E_CLAMD_CONTAINER"], "1")
+            self.assertNotIn("PYRO_CLIENT_COMM_RETRY", os.environ)
 
     def test_every_shard_configures_isolated_services_and_unknown_shards_fail(self):
         workflow = yaml.safe_load(

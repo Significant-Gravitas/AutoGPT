@@ -11,7 +11,12 @@ import {
   shouldWatchRun,
 } from "./helpers";
 
-export function useLiveRunStatus(output: ExecutionStartedResponse | null) {
+type WatchedRun = Pick<
+  ExecutionStartedResponse,
+  "graph_id" | "execution_id" | "status"
+>;
+
+export function useLiveRunStatus(output: WatchedRun | null) {
   // Only the signed-in /copilot chat polls: the public share page can't call
   // the API, and the builder panel already shows the run in place.
   const chatSurface = useContext(CopilotChatActionsContext)?.chatSurface;

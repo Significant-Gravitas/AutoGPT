@@ -1,3 +1,4 @@
+import type { CancelTrialRequest } from "@/app/api/__generated__/models/cancelTrialRequest";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
@@ -9,7 +10,7 @@ import { TrialRejection } from "./TrialRejection";
 interface Props {
   trial: TrialStatusResponse;
   isCanceling: boolean;
-  onCancel: () => void;
+  onCancel: (request: CancelTrialRequest) => void;
   isResuming: boolean;
   onResume: () => void;
 }

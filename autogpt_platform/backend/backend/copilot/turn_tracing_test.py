@@ -1,15 +1,18 @@
-"""Tests for ``copilot.turn_tracing``: how a turn's end reaches PostHog."""
+"""Tests for ``copilot.turn_tracing``: how a turn's end is judged and how it
+reaches PostHog."""
 
+import asyncio
 from unittest.mock import MagicMock
 
 import pytest
 import pytest_mock
 
 from backend.copilot import ai_spans
+from backend.copilot.constants import EMPTY_COMPLETION_NOTICE, STREAM_INCOMPLETE_MARKER
 from backend.copilot.executor.utils import CoPilotExecutionEntry, ScheduledTurnOrigin
-from backend.copilot.response_model import StreamToolInputAvailable
+from backend.copilot.response_model import StreamTextDelta, StreamToolInputAvailable
 from backend.copilot.tree import TurnEnvelope
-from backend.copilot.turn_tracing import turn_origin, turn_transaction
+from backend.copilot.turn_tracing import TurnTrace, turn_origin, turn_transaction
 from backend.util.posthog_events import PostHogEvent
 
 CANCELLED = "Operation cancelled"
@@ -140,6 +143,69 @@ def test_a_turn_that_raised_still_ends_its_trace(capture: MagicMock):
     assert capture.call_args.args[2]["outcome"] == "failed"
 
 
+@pytest.mark.parametrize(
+    ("notice", "code"),
+    [
+        (STREAM_INCOMPLETE_MARKER, "stream_incomplete"),
+        (EMPTY_COMPLETION_NOTICE, "empty_completion"),
+    ],
+    ids=["the CLI ended without a result", "the model finished without a word"],
+)
+def test_a_turn_that_ends_on_a_notice_in_place_of_a_reply_failed(
+    capture: MagicMock, notice: str, code: str
+):
+    with turn_transaction(_entry()) as turn:
+        turn.engine_started("sdk")
+        turn.observe(StreamTextDelta(id="t", delta="Let me look into that."))
+        turn.observe(StreamTextDelta(id="n", delta=notice))
+        turn.set_outcome(None, CANCELLED)
+
+    properties = capture.call_args.args[2]
+    assert properties["outcome"] == "failed"
+    assert properties["$ai_is_error"] is True
+    assert properties["$ai_error"] == code
+
+
+def test_a_reply_after_a_notice_completes_the_turn(capture: MagicMock):
+    """The SDK engine carries a turn on with the user's queued messages after
+    its CLI ended without a result."""
+    with turn_transaction(_entry()) as turn:
+        turn.engine_started("sdk")
+        turn.observe(StreamTextDelta(id="n", delta=STREAM_INCOMPLETE_MARKER))
+        turn.observe(StreamTextDelta(id="t", delta="On to your next message."))
+        turn.set_outcome(None, CANCELLED)
+
+    assert capture.call_args.args[2]["outcome"] == "completed"
+
+
+def test_a_turn_stopped_after_a_notice_is_cancelled(capture: MagicMock):
+    with turn_transaction(_entry()) as turn:
+        turn.engine_started("sdk")
+        turn.observe(StreamTextDelta(id="n", delta=STREAM_INCOMPLETE_MARKER))
+        turn.set_outcome(CANCELLED, CANCELLED)
+
+    assert capture.call_args.args[2]["outcome"] == "cancelled"
+
+
+@pytest.mark.parametrize(
+    ("error", "outcome"),
+    [
+        (RuntimeError("admission failed"), "failed"),
+        (asyncio.CancelledError(), "cancelled"),
+    ],
+    ids=["an error", "a cancellation"],
+)
+def test_a_turn_that_raised_before_its_outcome_still_ends_with_one(
+    error: BaseException, outcome: str
+):
+    turns: list[TurnTrace] = []
+    with pytest.raises(type(error)), turn_transaction(_entry()) as turn:
+        turns.append(turn)
+        raise error
+
+    assert turns[0].outcome == outcome
+
+
 def test_a_turn_that_never_reached_its_engine_sends_nothing(capture: MagicMock):
     """A refused or misrouted turn made no model or tool calls."""
     with turn_transaction(_entry()) as turn:
@@ -169,7 +235,6 @@ def test_a_persons_turn_carries_no_load_test_property(capture: MagicMock):
 
 def test_marking_a_load_test_account_tags_its_turn():
     span = MagicMock()
-    from backend.copilot.turn_tracing import TurnTrace
 
     TurnTrace(span).load_test_account("scripted")
 

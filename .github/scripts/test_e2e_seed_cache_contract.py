@@ -385,7 +385,7 @@ class E2ECoverageContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("--min-tests ${{ matrix.min_tests }}", workflow)
         self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "1")
-        self.assertGreaterEqual(SMOKE_TEST_FLOOR, 28)
+        self.assertGreaterEqual(SMOKE_TEST_FLOOR, 29)
         self.assertEqual(_matrix_leg(workflow, "journeys")["min_tests"], "11")
         # Smoke stays strict: no test.fail() known failures.
         self.assertEqual(_matrix_leg(workflow, "smoke")["known_failures"], "false")

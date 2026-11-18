@@ -19,6 +19,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import {
+  findCancelConfirmation,
   setTrialUser,
   trialOffer,
   trialResponse,
@@ -42,9 +43,7 @@ describe("cancel confirmation", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Cancel trial" }),
     );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Cancel your trial?",
-    });
+    const dialog = await findCancelConfirmation();
     expect(dialog.textContent).toContain(
       "Your trial won't convert to a paid plan and your card won't be charged.",
     );
@@ -60,9 +59,7 @@ describe("cancel confirmation", () => {
     expect(cancel).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel trial" }));
-    const confirm = await screen.findByRole("dialog", {
-      name: "Cancel your trial?",
-    });
+    const confirm = await findCancelConfirmation();
     fireEvent.click(
       within(confirm).getByRole("button", { name: "Cancel trial" }),
     );
@@ -90,9 +87,7 @@ describe("cancel confirmation", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Cancel trial" }),
     );
-    const confirm = await screen.findByRole("dialog", {
-      name: "Cancel your trial?",
-    });
+    const confirm = await findCancelConfirmation();
     fireEvent.click(
       within(confirm).getByRole("button", { name: "Cancel trial" }),
     );

@@ -28,6 +28,10 @@ ENV NODE_ENV=production \
     BETTER_AUTH_SECRET=build-only-placeholder-not-used-at-runtime \
     DATABASE_URL="postgresql:///postgres?host=%2Frun%2Fpostgresql&user=autogpt_frontend"
 
+# `pnpm build` sets the build's heap cap itself (16 GiB, through cross-env in
+# package.json), so a NODE_OPTIONS cap here never took effect. A lower cap
+# doesn't get the build under 8 GiB either; see "Requirements" in
+# docs/platform/single-container.md.
 RUN pnpm run generate:api \
     && pnpm run copy:vad-assets \
     && NODE_OPTIONS="--max-old-space-size=8192" pnpm exec next build --turbopack \

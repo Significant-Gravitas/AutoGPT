@@ -57,7 +57,10 @@ let flagsRequests: FlagsRequest[] = [];
 let captured: string[] = [];
 let capturedEvents: CaptureResult[] = [];
 let clients: PostHog[] = [];
-let resetCaptureQueues: (() => void)[] = [];
+// Each page load's capture queue. One left holding events for a consent
+// answer retries them on an interval, and a tick after this file's window
+// is gone throws, failing the shard after every test passed.
+let captureQueueResets: (() => void)[] = [];
 
 interface RenderOptions {
   user?: User | null;
@@ -97,7 +100,7 @@ async function renderPostHog({
     import("@/services/analytics/attribution-payload"),
     import("@/services/analytics/posthog-capture"),
   ]);
-  resetCaptureQueues.push(resetPostHogCaptureQueueForTests);
+  captureQueueResets.push(resetPostHogCaptureQueueForTests);
   // What the auth store reports once the session is known.
   if (sessionKnown) setAnalyticsIdentitySignedIn(Boolean(user));
   const startSessionRecording = vi.spyOn(client, "startSessionRecording");
@@ -239,12 +242,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  resetCaptureQueues.forEach((reset) => reset());
-  resetCaptureQueues = [];
   // A client from an earlier test would otherwise keep writing (and
   // deleting) the next test's cookies when a late response arrives.
   clients.forEach((client) => client.set_config({ persistence: "memory" }));
   clients = [];
+  captureQueueResets.forEach((reset) => reset());
+  captureQueueResets = [];
   removeCookiebot();
   window.localStorage.clear();
   window.sessionStorage.clear();

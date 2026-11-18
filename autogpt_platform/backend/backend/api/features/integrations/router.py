@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, model_validator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
-from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.features.library.model import LibraryAgentPreset, split_trigger_inputs
 from backend.api.middleware.body_limit import MiB, request_body_limit
 from backend.copilot.rate_limit import enforce_payment_paywall, is_user_paywalled
 from backend.copilot.scheduled_chats.reconnect import (
@@ -46,10 +46,11 @@ from backend.data.model import (
     OAuth2Credentials,
     OAuthState,
     UserPasswordCredentials,
+    is_refused_sdk_default,
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
-from backend.data.user import is_user_banned
+from backend.data.user import is_user_refused
 from backend.executor.utils import add_graph_execution
 from backend.integrations.codex.access import (
     enforce_codex_access_http,
@@ -94,6 +95,7 @@ from backend.integrations.oauth.microsoft_identity import (
 )
 from backend.integrations.oauth.microsoft_recovery import MicrosoftAuthError
 from backend.integrations.oauth.microsoft_tokens import browser_sign_in_available
+from backend.integrations.oauth.refresh_failure import without_reconnect_required
 from backend.integrations.providers import ProviderName, provider_key
 from backend.integrations.service_identity import (
     service_for_catalog_entry,
@@ -138,6 +140,7 @@ logger = logging.getLogger(__name__)
 
 # Long enough to stop a loop, short enough that a user who cancels and retries
 # is not left waiting.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 _INITIATE_COOLDOWN_SECONDS = 3
 # The throttle protects an upstream client id; it must never be the reason a
 # request hangs.
@@ -191,7 +194,6 @@ async def login(
         ProviderName, Path(title="The provider to initiate an OAuth flow for")
     ],
     user_id: Annotated[str, Security(get_user_id)],
-    request: Request,
     scopes: Annotated[
         str, Query(title="Comma-separated list of authorization scopes")
     ] = "",
@@ -204,7 +206,7 @@ async def login(
         await enforce_codex_access_http(user_id)
         return await _start_codex_login(user_id, scopes, credential_id)
 
-    handler = _get_provider_oauth_handler(request, provider)
+    handler = _get_provider_oauth_handler(provider)
 
     requested_scopes = scopes.split(",") if scopes else []
 
@@ -309,6 +311,11 @@ class CredentialsMetaResponse(BaseModel):
         description="Manual authorization scheme for MCP credentials",
     )
     is_managed: bool = False
+    is_system: bool = Field(
+        default=False,
+        description="One of the platform's own keys, billed in credits, "
+        "rather than a credential the user connected",
+    )
     service: str = ""
     service_name: str | None = None
     service_icon: str | None = None
@@ -366,6 +373,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scope=cred.scope if isinstance(cred, UserPasswordCredentials) else None,
         mcp_auth_scheme=mcp_auth_scheme,
         is_managed=cred.is_managed,
+        is_system=is_system_credential(cred.id),
         service=identity.service,
         service_name=identity.name,
         service_icon=identity.icon,
@@ -419,7 +427,6 @@ async def callback(
     code: Annotated[str, Body(title="Authorization code acquired by user login")],
     state_token: Annotated[str, Body(title="Anti-CSRF nonce")],
     user_id: Annotated[str, Security(get_user_id)],
-    request: Request,
 ) -> CredentialsMetaResponse:
     logger.debug(f"Received OAuth callback for provider: {provider}")
 
@@ -442,7 +449,7 @@ async def callback(
             redact.append(valid_state.code_verifier)
 
         failure_class = "provider_unavailable"
-        handler = _get_provider_oauth_handler(request, provider)
+        handler = _get_provider_oauth_handler(provider)
         client_secret = getattr(handler, "client_secret", None)
         if isinstance(client_secret, str) and client_secret:
             redact.append(client_secret)
@@ -843,6 +850,7 @@ async def device_auth_poll(
             detail="Invalid or expired state token",
         )
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     interval = int(valid_state.state_metadata.get("interval") or 5)
     if await _throttle_upstream(
         user_id, provider, interval, scope="poll", flow=body.state_token
@@ -1000,7 +1008,9 @@ async def list_credentials(
     credentials = await creds_manager.store.get_all_creds(user_id)
 
     return [
-        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
+        to_meta_response(cred)
+        for cred in credentials
+        if not is_refused_sdk_default(cred.id)
     ]
 
 
@@ -1015,7 +1025,9 @@ async def list_credentials_by_provider(
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
 
     return [
-        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
+        to_meta_response(cred)
+        for cred in credentials
+        if not is_refused_sdk_default(cred.id)
     ]
 
 
@@ -1029,7 +1041,7 @@ async def get_credential(
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> CredentialsMetaResponse:
-    if is_sdk_default(cred_id):
+    if is_refused_sdk_default(cred_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
@@ -1232,7 +1244,6 @@ class AyrshareSSOResponse(BaseModel):
 
 @router.delete("/{provider}/credentials/{cred_id}")
 async def delete_credentials(
-    request: Request,
     provider: Annotated[
         ProviderName, Path(title="The provider to delete credentials for")
     ],
@@ -1242,14 +1253,14 @@ async def delete_credentials(
         bool, Query(title="Whether to proceed if any linked webhooks are still in use")
     ] = False,
 ) -> CredentialsDeletionResponse | CredentialsDeletionNeedsConfirmationResponse:
-    if is_sdk_default(cred_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
-        )
     if is_system_credential(cred_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="System-managed credentials cannot be deleted",
+        )
+    if is_sdk_default(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
     creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
@@ -1268,8 +1279,8 @@ async def delete_credentials(
         )
 
     try:
-        tokens_revoked = await delete_credentials_and_dependents(
-            request, user_id, creds, provider, force
+        tokens_revoked = await delete_and_revoke_credentials(
+            user_id, creds, provider, force=force
         )
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
@@ -1277,53 +1288,61 @@ async def delete_credentials(
     return CredentialsDeletionResponse(revoked=tokens_revoked)
 
 
-async def delete_credentials_and_dependents(
-    request: Request,
+async def delete_and_revoke_credentials(
     user_id: str,
     creds: Credentials,
     provider: ProviderName,
+    *,
     force: bool,
+    skip_failed_prunes: bool = False,
 ) -> bool | None:
-    """Delete a user's credentials with what hangs off them.
+    """Delete the user's credentials, then revoke their tokens at the provider.
 
-    Removes the webhooks registered with them first, then the credentials,
-    then revokes OAuth tokens at the provider. The External API's delete
-    calls this too, so neither surface can leave a live webhook or token
-    behind. Returns whether the provider revoked the tokens (None when there
-    were none to revoke).
+    Shared by the DELETE route, the External API's credential delete and
+    account deletion, so none of them can leave a live webhook or token
+    behind. The caller has already checked that the credentials exist, belong
+    to `user_id` and are neither SDK-default, system nor AutoGPT-managed.
+
+    Returns whether the provider revoked the tokens, or `None` when there is
+    nothing to revoke (e.g. an API key).
 
     Raises:
-        NeedConfirmation: a webhook is still in use and ``force`` is False;
-            nothing has been deleted.
+        NeedConfirmation: webhooks linked to the credentials are still in use
+            and `force` is `False`. Nothing is deleted in that case.
+
+    `skip_failed_prunes` is for account deletion only: see
+    `remove_all_webhooks_for_credentials`.
     """
-    await remove_all_webhooks_for_credentials(user_id, creds, force)
+    await remove_all_webhooks_for_credentials(
+        user_id, creds, force, skip_failed_prunes=skip_failed_prunes
+    )
 
-    tokens_revoked = None
     if provider == ProviderName.CODEX:
-        tokens_revoked = await revoke_codex_credentials(
-            creds_manager, user_id, creds.id
-        )
-    else:
-        await creds_manager.delete(user_id, creds.id)
+        return await revoke_codex_credentials(creds_manager, user_id, creds.id)
 
-    if isinstance(creds, OAuth2Credentials) and provider != ProviderName.CODEX:
-        if provider_matches(provider.value, ProviderName.MCP.value):
-            # MCP uses dynamic per-server OAuth — create handler from metadata
-            handler = create_mcp_oauth_handler(creds)
-        elif (
-            device_handler := DEVICE_HANDLERS_BY_NAME.get(provider_key(provider))
-        ) is not None:
-            # A device-code grant stores an OAuth2Credentials, so it reaches
-            # this branch too — but its handler lives in the other registry.
-            # Looking only in HANDLERS_BY_NAME raised "does not support OAuth"
-            # *after* the local delete had already run, leaving a live token
-            # at the provider with nothing left to revoke it with.
-            handler = device_handler()
-        else:
-            handler = _get_provider_oauth_handler(request, provider)
-        tokens_revoked = await handler.revoke_tokens(creds)
+    await creds_manager.delete(user_id, creds.id)
 
-    return tokens_revoked
+    if not isinstance(creds, OAuth2Credentials):
+        return None
+    return await _revocation_handler(creds, provider).revoke_tokens(creds)
+
+
+def _revocation_handler(
+    creds: OAuth2Credentials, provider: ProviderName
+) -> "BaseOAuthHandler | BaseDeviceAuthHandler":
+    if provider_matches(provider.value, ProviderName.MCP.value):
+        # MCP uses dynamic per-server OAuth — create handler from metadata
+        return create_mcp_oauth_handler(creds)
+    if (
+        device_handler := DEVICE_HANDLERS_BY_NAME.get(provider_key(provider))
+    ) is not None:
+        # A device-code grant stores an OAuth2Credentials, so it reaches
+        # this branch too — but its handler lives in the other registry.
+        # Looking only in HANDLERS_BY_NAME raised "does not support OAuth"
+        # *after* the local delete had already run, leaving a live token
+        # at the provider with nothing left to revoke it with.
+        return device_handler()
+    return _get_provider_oauth_handler(provider)
 
 
 # ------------------------- WEBHOOK STUFF -------------------------- #
@@ -1393,9 +1412,12 @@ async def webhook_ingress_generic(
             detail="Invalid webhook signature",
         )
 
-    # Acknowledged so the provider doesn't retry; nothing runs for a banned owner.
-    if await is_user_banned(user_id):
-        logger.info(f"Dropping webhook #{webhook_id} delivery: owner is banned")
+    # Acknowledged so the provider doesn't retry; nothing runs for a banned or
+    # closed owner.
+    if await is_user_refused(user_id):
+        logger.info(
+            f"Dropping webhook #{webhook_id} delivery: owner is banned or closed"
+        )
         return
 
     # Only after the signature: loading can refresh the owner's OAuth token.
@@ -1607,10 +1629,20 @@ async def _execute_webhook_preset_trigger(
         )
         await set_preset_webhook(preset.user_id, preset.id, None)
         return
-    if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
+    graph_inputs, mask = split_trigger_inputs(preset.inputs, trigger_node.id)
+    # dict(): `mask` may be the dict `preset.inputs` holds, and `payload` is
+    # written into it below.
+    trigger_inputs = dict(mask)
+
+    # The event filter lives in the trigger config, so check it against the
+    # unwrapped mask rather than the full preset inputs.
+    if not trigger_node.block.is_triggered_by_event_type(trigger_inputs, event_type):
         logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
         return
     logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
+
+    # Add webhook payload to trigger inputs
+    trigger_inputs["payload"] = payload
 
     try:
         # Expert resources survive personal-org conversion: active ownership
@@ -1631,9 +1663,10 @@ async def _execute_webhook_preset_trigger(
             user_id=webhook.user_id,
             graph_id=preset.graph_id,
             preset_id=preset.id,
+            inputs=graph_inputs,
             graph_version=preset.graph_version,
             graph_credentials_inputs=preset.credentials,
-            nodes_input_masks={trigger_node.id: {**preset.inputs, "payload": payload}},
+            nodes_input_masks={trigger_node.id: trigger_inputs},
             organization_id=org_id,
             team_id=ws_id,
             expert_id=preset.expert_id,
@@ -1874,10 +1907,10 @@ async def _upgrade_existing_credential(
     merged.id = existing.id
     merged.title = existing.title
     merged.scopes = list(set(existing.scopes) | set(new_credentials.scopes))
-    merged.metadata = {
-        **(existing.metadata or {}),
-        **(new_credentials.metadata or {}),
-    }
+    # A fresh grant supersedes a refresh the provider refused for good.
+    merged.metadata = without_reconnect_required(
+        {**(existing.metadata or {}), **(new_credentials.metadata or {})}
+    )
     # Preserve the existing refresh_token and username if the incremental
     # response doesn't carry them.  Providers like Google only return a
     # refresh_token on first authorization — dropping it here would orphan
@@ -1924,7 +1957,11 @@ def _refuse_another_microsoft_account(
 
 
 async def remove_all_webhooks_for_credentials(
-    user_id: str, credentials: Credentials, force: bool = False
+    user_id: str,
+    credentials: Credentials,
+    force: bool = False,
+    *,
+    skip_failed_prunes: bool = False,
 ) -> None:
     """
     Remove and deregister all webhooks that were registered using the given credentials.
@@ -1933,6 +1970,10 @@ async def remove_all_webhooks_for_credentials(
         user_id: The ID of the user who owns the credentials and webhooks.
         credentials: The credentials for which to remove the associated webhooks.
         force: Whether to proceed if any of the webhooks are still in use.
+        skip_failed_prunes: Log and skip a webhook the provider fails to
+            deregister instead of raising, so it can't keep the credentials
+            from being deleted. Only account deletion sets it; the Disconnect
+            route keeps raising.
 
     Raises:
         NeedConfirmation: If any of the webhooks are still in use and `force` is `False`
@@ -1953,9 +1994,19 @@ async def remove_all_webhooks_for_credentials(
 
         # Prune the webhook
         webhook_manager = get_webhook_manager(ProviderName(credentials.provider))
-        success = await webhook_manager.prune_webhook_if_dangling(
-            user_id, webhook.id, credentials
-        )
+        try:
+            success = await webhook_manager.prune_webhook_if_dangling(
+                user_id, webhook.id, credentials
+            )
+        except Exception as e:
+            if not skip_failed_prunes:
+                raise
+            # A hook the provider won't delete (repo gone, admin lost, token
+            # revoked) answers the same on every retry, so it must not keep
+            # the credentials alive. The error type only: its message can
+            # echo the request.
+            logger.warning(f"Webhook #{webhook.id} failed to prune: {type(e).__name__}")
+            continue
         if not success:
             logger.warning(f"Webhook #{webhook.id} failed to prune")
 
@@ -2054,9 +2105,7 @@ async def _cleanup_orphaned_webhook_for_graph(
         )
 
 
-def _get_provider_oauth_handler(
-    req: Request, provider_name: ProviderName
-) -> "BaseOAuthHandler":
+def _get_provider_oauth_handler(provider_name: ProviderName) -> "BaseOAuthHandler":
     # Ensure blocks are loaded so SDK providers are available
     try:
         from backend.blocks import load_all_blocks
@@ -2241,9 +2290,9 @@ async def list_system_providers() -> List[str]:
 
     These providers can be used without the user providing their own API keys.
     """
-    from backend.integrations.credentials_store import SYSTEM_PROVIDERS
+    from backend.integrations.credentials_store import system_providers
 
-    return list(SYSTEM_PROVIDERS)
+    return sorted(system_providers())
 
 
 @router.get("/providers/names", response_model=ProviderNamesResponse)

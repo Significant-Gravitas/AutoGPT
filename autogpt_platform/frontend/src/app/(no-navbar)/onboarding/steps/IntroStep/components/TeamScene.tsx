@@ -1,73 +1,25 @@
-import Image from "next/image";
-import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
-import { TEAM, TEAM_PARENTS, teamBranch } from "./teamSceneHelpers";
+import { useReducedMotion } from "framer-motion";
+import { TeamBranch } from "./TeamBranch";
+import { TeamNode } from "./TeamNode";
+import { TEAM, TEAM_PARENTS } from "./teamSceneHelpers";
 
 export function TeamScene() {
+  const animate = !useReducedMotion();
+
   return (
-    <div
-      role="group"
-      className="flex h-full items-center justify-center"
-      aria-label="Otto and your team of AI Experts"
-    >
-      <svg viewBox="0 0 600 420" className="h-auto w-full max-w-[600px]">
-        {TEAM_PARENTS.map((member) => (
-          <path
-            key={member.asset}
-            d={teamBranch(member)}
-            aria-hidden="true"
-            fill="none"
-            className="stroke-border-base"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
+    <div className="@container relative isolate mx-auto h-[396px] w-full max-w-[600px]">
+      <div
+        aria-hidden="true"
+        className="absolute top-1/2 left-1/2 -z-10 h-3/4 w-4/5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-surface blur-3xl"
+      />
+      {TEAM_PARENTS.map((parent) => (
+        <TeamBranch key={parent.asset} parent={parent} animate={animate} />
+      ))}
+      <ul role="list" aria-label="Your team" className="absolute inset-0">
         {TEAM.map((member) => (
-          <TeamNode key={member.asset} member={member} />
+          <TeamNode key={member.asset} member={member} animate={animate} />
         ))}
-      </svg>
+      </ul>
     </div>
-  );
-}
-
-interface Props {
-  member: (typeof TEAM)[number];
-}
-
-function TeamNode({ member }: Props) {
-  return (
-    <g>
-      <foreignObject
-        x={member.x - member.size / 2}
-        y={member.y - member.size / 2}
-        width={member.size}
-        height={member.size}
-      >
-        {member.asset === "otto" ? (
-          <AutopilotAvatar size={member.size} transparent />
-        ) : (
-          <Image
-            src={`/experts/transparent/${member.asset}.webp`}
-            alt={`${member.name}, AI Expert`}
-            width={member.size}
-            height={member.size}
-            sizes={`${member.size}px`}
-            className="h-full w-full object-contain"
-          />
-        )}
-      </foreignObject>
-      <foreignObject
-        x={member.x - 72}
-        y={member.y + member.size / 2 + 4}
-        width={144}
-        height={20}
-      >
-        <div className="text-center text-caption leading-4">
-          <span className="block font-medium text-foreground-base">
-            {member.name}
-          </span>
-        </div>
-      </foreignObject>
-    </g>
   );
 }

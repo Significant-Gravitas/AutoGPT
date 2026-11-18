@@ -36,6 +36,11 @@ coverage:
           - autogpt-agent
 
 flags:
+  native-server:
+    paths:
+      - autogpt_platform/backend/
+    carryforward: true
+    after_n_builds: 1
   platform-backend:
     paths:
       - autogpt_platform/backend/

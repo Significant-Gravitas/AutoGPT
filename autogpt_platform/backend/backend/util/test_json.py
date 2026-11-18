@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, cast
 
 import jsonschema
+import numpy as np
 import pytest
 import referencing.exceptions
 from prisma import Json
@@ -772,6 +773,22 @@ class TestSafeJson:
         assert nested_metadata == "NestedValueDelete"
 
 
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (np.float64(2.5), 2.5),
+        (np.float32(0.25), 0.25),
+        (np.int64(3), 3),
+        (np.bool_(True), True),
+    ],
+)
+def test_to_dict_turns_numpy_scalars_into_python_values(value, expected):
+    result = json_util.to_dict({"nested": [value]})
+
+    assert json_util.loads(json_util.dumps(result)) == {"nested": [expected]}
+    assert type(result["nested"][0]) is type(expected)
+
+
 class TestValidateWithJsonschema:
     """Test cases for validate_with_jsonschema."""
 
@@ -1274,3 +1291,17 @@ class TestSameJson:
         assert not json_util.same_json(
             {"at": when}, {"at": when + datetime.timedelta(seconds=1)}
         )
+
+    @pytest.mark.parametrize(
+        "numpy_value, same, different",
+        [
+            (np.float64(1.0), 1.0, 1),
+            (np.int64(1), 1, True),
+            (np.bool_(True), True, 1),
+        ],
+    )
+    def test_a_numpy_scalar_compares_as_its_python_value(
+        self, numpy_value: Any, same: Any, different: Any
+    ):
+        assert json_util.same_json({"v": numpy_value}, {"v": same})
+        assert not json_util.same_json({"v": numpy_value}, {"v": different})
