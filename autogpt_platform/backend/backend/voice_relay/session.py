@@ -1314,6 +1314,14 @@ class Session:
             self.error = f"vendor reconnect: {refused.summary()}"
             self.end("vendor_error")
             return
+        except BaseException:
+            # The call ended while the replacement was being opened: it is
+            # closed here, since nothing else holds it yet.
+            await live.close()
+            raise
+        if self.ended.is_set():
+            await live.close()
+            return
         self.live = live
         self.vendor_notice = False
         self.reconnecting = False

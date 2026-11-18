@@ -78,6 +78,7 @@ class FakeVendor:
         connect_delay_s: float = 0.0,
         stall_notes: bool = False,
         stall_opening: bool = False,
+        stall_reseed: bool = False,
         refuse: Exception | None = None,
         loses_a_cancellation: bool = False,
     ) -> None:
@@ -95,6 +96,9 @@ class FakeVendor:
         # Sending the first session its first note, the call's opening, never
         # finishes, while the session itself stays up.
         self.stall_opening = stall_opening
+        # Sending a replacement session its first note, the call so far,
+        # never finishes, while the session itself stays up.
+        self.stall_reseed = stall_reseed
         # Each connect is refused with this.
         self.refuse = refuse
         # The task reading a session's events loses its first cancellation
@@ -194,6 +198,8 @@ class FakeVendorSession:
         if self.vendor.stall_notes and len(self.notes) > 1:
             await asyncio.Event().wait()
         if self.vendor.stall_opening and self.number == 1 and len(self.notes) == 1:
+            await asyncio.Event().wait()
+        if self.vendor.stall_reseed and self.number > 1 and len(self.notes) == 1:
             await asyncio.Event().wait()
         if turn_complete:
             self._spawn(self._answer())

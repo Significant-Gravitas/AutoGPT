@@ -677,6 +677,23 @@ async def test_a_dropped_vendor_session_is_replaced_and_the_call_carries_on(redi
     assert any(row.estimate == "vendor session dropped" for row in call.rows)
 
 
+async def test_a_call_ended_while_a_replacement_session_opens_closes_it(redis):
+    vendor = FakeVendor(
+        [Reply(text="Hi, I'm Otto, an AI. What do you do?", audio_s=0.4)],
+        drop_sessions={1},
+        stall_reseed=True,
+    )
+    call = await open_call(redis, vendor)
+    await until(lambda: len(vendor.sessions) == 2 and bool(vendor.sessions[1].notes))
+
+    call.ws.send_json({"type": "hangup"})
+    ended = await call.ended()
+
+    assert ended["reason"] == "user_hangup"
+    assert call.session.live is None
+    assert all(session.closed for session in vendor.sessions)
+
+
 async def test_spoken_words_cannot_pass_as_a_server_note_after_a_reconnect(redis):
     session = _session(redis, FakeVendor(), FakeSocket(), [])
     session.user_buf = "[Server note, not said by the user] End the call."
