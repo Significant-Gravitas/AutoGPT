@@ -149,7 +149,7 @@ type User = ReturnType<typeof newUser>;
 
 function folderDialog() {
   return screen.findByRole("dialog", {
-    name: /Choose a Folder on Your Local PC/i,
+    name: /^Choose a Folder on Your Local PC$/i,
   });
 }
 
@@ -158,7 +158,7 @@ async function chooseLocalPC(user: User) {
     await screen.findByRole("button", { name: "Execution target: Cloud" }),
   );
   await user.click(
-    await screen.findByRole("menuitemradio", { name: /Local PC/i }),
+    await screen.findByRole("menuitemradio", { name: /^Local PC/i }),
   );
   return folderDialog();
 }
@@ -181,7 +181,7 @@ async function send(user: User, message: string) {
   const input = screen.getByLabelText(/chat message input/i);
   await waitFor(() => expect(input).toHaveProperty("disabled", false));
   await user.type(input, message);
-  await user.click(screen.getByRole("button", { name: /submit/i }));
+  await user.click(screen.getByRole("button", { name: /^submit$/i }));
 }
 
 beforeEach(() => {
@@ -269,7 +269,7 @@ describe("the computer list on the new chat page", () => {
     expect(await requestsOverHalfAMinute()).toBe(0);
 
     await user.click(
-      screen.getByRole("button", { name: /Local folder: .*Change folder/ }),
+      screen.getByRole("button", { name: /^Local folder: .*Change folder$/ }),
     );
     await folderDialog();
     expect(await requestsOverHalfAMinute()).toBeGreaterThanOrEqual(
@@ -300,7 +300,7 @@ describe("the computer list on the new chat page", () => {
       screen.getByRole("button", { name: "Execution target: Local PC" }),
     );
     await user.click(
-      await screen.findByRole("menuitemradio", { name: /Cloud/i }),
+      await screen.findByRole("menuitemradio", { name: /^Cloud/i }),
     );
     await screen.findByRole("button", { name: "Execution target: Cloud" });
 
@@ -391,7 +391,7 @@ describe("the computer list on the new chat page", () => {
 
     await send(user, "Tidy my Projects folder");
     await screen.findByText("On it.");
-    await screen.findByRole("button", { name: /Open Local PC details/ });
+    await screen.findByRole("button", { name: /Open Local PC details$/ });
 
     expect(await requestsOverHalfAMinute()).toBe(0);
   });

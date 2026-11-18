@@ -234,7 +234,7 @@ describe("LocalPCBadge and the Local PC rollout", () => {
 
     expect(statusRequests).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: /checking local pc/i }),
+      screen.getByRole("button", { name: /^checking local pc/i }),
     ).toBeDefined();
 
     await advance(5_000);
@@ -242,7 +242,7 @@ describe("LocalPCBadge and the Local PC rollout", () => {
 
     expect(statusRequests).toHaveBeenCalledTimes(1);
     expect(
-      screen.getByRole("button", { name: /local pc connected: macos/i }),
+      screen.getByRole("button", { name: /^local pc connected: macos/i }),
     ).toBeDefined();
 
     await advance(15_000);
