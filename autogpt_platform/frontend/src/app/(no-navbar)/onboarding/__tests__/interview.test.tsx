@@ -540,6 +540,27 @@ describe("onboarding interview", () => {
     expect(screen.queryByTestId("expert-thread-header")).toBeNull();
   });
 
+  it("keeps the typed transcript and the composer out of session replay", async () => {
+    serverInterview = {
+      messages: [KICKOFF_ROW],
+      stage: null,
+      activeTurn: "turn-greeting",
+    };
+    startsWith({
+      session_id: SESSION_ID,
+      turn_id: "turn-greeting",
+      stage: null,
+    });
+    server.use(...interviewHandlers());
+
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    const region = screen.getByRole("region", { name: "Interview with Otto" });
+    expect(region.classList.contains("ph-no-capture")).toBe(true);
+    expect(region.contains(screen.getByRole("textbox"))).toBe(true);
+  });
+
   it("gives the composer's place to Meet your team once the interview closes, keeping the goodbye", async () => {
     serverInterview.messages = [
       KICKOFF_ROW,

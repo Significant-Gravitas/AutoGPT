@@ -5,6 +5,8 @@ import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatM
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { HIDDEN_FROM_REPLAY } from "@/lib/replay-privacy";
+import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 import { finishFailureCopy, type StartFailure } from "../helpers";
 import { type EndingData, InterviewEnding } from "./Endings/InterviewEnding";
@@ -62,7 +64,10 @@ export function InterviewChat({
       <div
         role="region"
         aria-label="Interview with Otto"
-        className="flex h-[60vh] max-h-[40rem] min-h-[20rem] w-full flex-col overflow-hidden rounded-xl border border-border-base bg-surface"
+        className={cn(
+          "flex h-[60vh] max-h-[40rem] min-h-[20rem] w-full flex-col overflow-hidden rounded-xl border border-border-base bg-surface",
+          HIDDEN_FROM_REPLAY,
+        )}
       >
         <div className="flex min-h-0 flex-1 flex-col">
           <ChatMessagesContainer
