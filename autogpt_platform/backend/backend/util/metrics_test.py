@@ -437,6 +437,34 @@ def test_before_send_scrubs_a_payloads_field_named_like_a_trace_id() -> None:
     }
 
 
+def test_before_send_masks_a_quoted_urls_query_but_not_code_like_one() -> None:
+    message = r"pattern (?=[A-Z]) failed for https://h/v1/models?key=AIza-12345678"
+    event = {
+        "exception": {
+            "values": [
+                {
+                    "value": message,
+                    "stacktrace": {
+                        "frames": [
+                            {"context_line": '    re.compile(r"(?P<k>\\w+)=(?=x)")'}
+                        ]
+                    },
+                }
+            ]
+        }
+    }
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    exception = scrubbed["exception"]["values"][0]
+    assert exception["value"] == (
+        r"pattern (?=[A-Z]) failed for https://h/v1/models?key=[REDACTED]"
+    )
+    frame = exception["stacktrace"]["frames"][0]
+    assert frame["context_line"] == '    re.compile(r"(?P<k>\\w+)=(?=x)")'
+
+
 def test_before_send_keeps_untyped_balance_message() -> None:
     try:
         raise RuntimeError("Third-party API reported insufficient balance")

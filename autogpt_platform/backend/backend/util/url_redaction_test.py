@@ -171,6 +171,23 @@ def test_redact_url(url: str, expected: str) -> None:
             f"POST https://api.telegram.org/bot{REDACTED}/getMe",
         ),
         ("Did it work? Yes.", "Did it work? Yes."),
+        # Code that only looks like a query, as a traceback's source lines and
+        # an exception's message quote it, is left as it is.
+        (
+            'PATTERN = re.compile(r"(?=[A-Z])\\w+")',
+            'PATTERN = re.compile(r"(?=[A-Z])\\w+")',
+        ),
+        ("match (?P<key>[a-z]+)=(?P<value>.*)", "match (?P<key>[a-z]+)=(?P<value>.*)"),
+        (
+            "SELECT * FROM t WHERE id = ? AND kind=?",
+            "SELECT * FROM t WHERE id = ? AND kind=?",
+        ),
+        ("what?ok=1", "what?ok=1"),
+        # ...but a URL beside it is masked.
+        (
+            'bad pattern (?=x) for "https://h/v1/models?key=AIza-1"',
+            f'bad pattern (?=x) for "https://h/v1/models?key={REDACTED}',
+        ),
     ],
 )
 def test_redact_urls_in_text(text: str, expected: str) -> None:
@@ -243,7 +260,7 @@ def test_mask_credential_keeps_only_a_prefix_of_a_long_one() -> None:
 
 def test_a_records_traceback_is_masked_as_its_message_is() -> None:
     try:
-        raise RuntimeError("GET https://api.example.com/v1/models?key=AIza-1 failed")
+        raise RuntimeError(r"GET https://h/v1/models?key=AIza-1 failed (?=[A-Z])")
     except RuntimeError as error:
         record = logging.makeLogRecord(
             {
@@ -257,6 +274,9 @@ def test_a_records_traceback_is_masked_as_its_message_is() -> None:
     assert "AIza-1" not in rendered
     assert f"models?key={REDACTED} failed" in rendered
     assert "in test_a_records_traceback_is_masked_as_its_message_is" in rendered
+    # Code stays readable in the message, the traceback's source line and its
+    # exception line.
+    assert rendered.count("failed (?=[A-Z])") == 3
 
 
 def test_credential_header_filter_passes_any_record() -> None:

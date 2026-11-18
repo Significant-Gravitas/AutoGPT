@@ -34,10 +34,13 @@ _CREDENTIAL_PATH_SEGMENT = re.compile(
     r"|api\.telegram\.org/(?:file/)?bot)"
     r"(?!\{\w+\}(?:[/?\s\"']|$))([^/?\s]+))"
 )
-# A request target can't contain whitespace, so in a longer message its query
-# runs to the next whitespace. Nothing else ends it: a raw quote can sit in a
-# value, and uvicorn's WebSocket scope keeps even a raw # in the query.
-_QUERY_IN_TEXT = re.compile(r"\?(\S+)")
+# A query in a longer message starts at a "?" right after a path: from a "/",
+# or a URL's "//", in characters a path has. So code a traceback or an error
+# quotes, such as a regex's "(?=", isn't taken for one. A request target can't
+# contain whitespace, so the query runs to the next whitespace. Nothing else
+# ends it: a raw quote can sit in a value, and uvicorn's WebSocket scope keeps
+# even a raw # in the query.
+_QUERY_IN_TEXT = re.compile(r"(/[\w\-.~%!$&*+,;=:@/]*)\?(\S+)")
 _QUERY_VALUE = re.compile(r"=[^&]*")
 # The user and password in a URL's authority. They end at the authority's "@",
 # before any "/", "?" or "#", so an "@" in a path or query isn't taken for one.
@@ -83,7 +86,9 @@ def redact_urls_in_text(text: str) -> str:
     """Mask the credentials in every request URL inside a longer message."""
     if not _MENTIONS_URL.search(text):
         return text
-    text = _QUERY_IN_TEXT.sub(lambda match: "?" + redact_query_string(match[1]), text)
+    text = _QUERY_IN_TEXT.sub(
+        lambda match: f"{match[1]}?{redact_query_string(match[2])}", text
+    )
     return _redact_path(_USERINFO.sub(REDACTED + "@", text))
 
 
@@ -197,11 +202,16 @@ class RequestURLRedactionFilter(logging.Filter):
 
 
 def _redact_argument(argument: object) -> object:
+    """A string is masked as a whole URL, as uvicorn passes a request target;
+    anything else, such as an exception, as text that can quote one."""
+    if isinstance(argument, str):
+        masked = redact_url(argument)
+        return argument if masked == argument else masked
     try:
-        text = argument if isinstance(argument, str) else str(argument)
+        text = str(argument)
     except Exception:
         return argument  # the handler hits, and reports, the same failure
-    masked = redact_url(text)
+    masked = redact_urls_in_text(text)
     return argument if masked == text else masked
 
 
