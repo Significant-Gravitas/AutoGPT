@@ -122,6 +122,7 @@ from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import WRITE_TIMEOUT, ResilientSQLAlchemyJobStore
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
+from backend.executor.scheduler_shutdown import StopSafeBackgroundScheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring import (
     flush_matured_alerts,
@@ -3087,7 +3088,7 @@ class Scheduler(AppService):
         # unrestorable row rather than deleting it.
         self._execution_jobstore = self._persistent_jobstores[Jobstores.EXECUTION.value]
 
-        self.scheduler = BackgroundScheduler(
+        self.scheduler = StopSafeBackgroundScheduler(
             executors={
                 "default": ThreadPoolExecutor(
                     max_workers=self.db_pool_size()
