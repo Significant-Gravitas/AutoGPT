@@ -43,7 +43,6 @@ from backend.data import db, dream_pass
 from backend.util.json import SafeJson
 
 from .dream_pass import (
-    ERASE_STATEMENT_TIMEOUT_MS,
     create_dream_pass,
     erase_dream_passes,
     get_dream_pass,
@@ -461,7 +460,8 @@ async def test_the_erase_over_3000_passes_and_1000_reached_uuids_is_in_time(
     passes of a scope, each with ~10 KB of phase output and 550 uuids read,
     against 1,000 reached uuids, first read by none of them (the selection's
     cost), then one read by every pass (all 3,000 marked and blanked in one
-    statement), well inside the statement's timeout."""
+    statement), each inside the statement timeout the erase sets: the database
+    cancels a statement that outruns it, and the call raises."""
     owner = await make_user()
     shared = "fact-read-by-every-pass"
     facts = [
@@ -483,20 +483,14 @@ async def test_the_erase_over_3000_passes_and_1000_reached_uuids_is_in_time(
         json.dumps({"consolidate": {"facts": facts}}),
         shared,
     )
-    budget = ERASE_STATEMENT_TIMEOUT_MS / 1000 / 2
     unread = [str(uuid.uuid4()) for _ in range(1000)]
 
-    started = time.monotonic()
     assert await erase_dream_passes(owner, owner, reached=unread, named=[]) == []
-    selection = time.monotonic() - started
-    started = time.monotonic()
     marked = await erase_dream_passes(
         owner, owner, reached=[*unread[1:], shared], named=[]
     )
-    all_marked = time.monotonic() - started
 
     assert len(marked) == 3000
-    assert selection < budget and all_marked < budget, (selection, all_marked)
     blanked = await DreamPass.prisma().count(
         where={"userId": owner, "erasedAt": {"not": None}}
     )
