@@ -104,6 +104,34 @@ async def test_catalog_cells_select_latest_advertised_model(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode,expected_effort",
+    [("fast", "medium"), ("thinking", "xhigh")],
+)
+async def test_advanced_falls_back_to_preferred_gpt_6_astra(
+    monkeypatch,
+    catalog_state,
+    mode,
+    expected_effort,
+):
+    _transport(
+        monkeypatch,
+        [
+            _model("gpt-5.6-sol", default=True),
+            _model("gpt-6-astra"),
+        ],
+    )
+
+    resolved = await resolve_codex_model_route(
+        mode,
+        "advanced",
+        _lease(),
+    )
+
+    assert resolved == ("gpt-6-astra", expected_effort, "preferred")
+
+
+@pytest.mark.asyncio
 async def test_unavailable_catalog_model_uses_visible_account_default(
     monkeypatch,
     catalog_state,

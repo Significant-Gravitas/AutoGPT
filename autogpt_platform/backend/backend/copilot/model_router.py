@@ -93,9 +93,9 @@ _CODEX_PREFERRED_MODELS: dict[tuple[ModelMode, ModelTier], str] = {
     # it's just no longer the default fallback here or in catalog.py's
     # routing cell.
     ("fast", "standard"): LLMModel.GPT6_LUNA.value,
-    ("fast", "advanced"): LLMModel.GPT6_2_ASTRA.value,
+    ("fast", "advanced"): LLMModel.GPT6_ASTRA.value,
     ("thinking", "standard"): LLMModel.GPT5_6_TERRA.value,
-    ("thinking", "advanced"): LLMModel.GPT6_2_ASTRA.value,
+    ("thinking", "advanced"): LLMModel.GPT6_ASTRA.value,
 }
 
 _CODEX_PREFERRED_EFFORTS: dict[tuple[ModelMode, ModelTier], CodexReasoningEffort] = {
