@@ -74,11 +74,10 @@ def test_a_job_due_as_the_scheduler_stops_runs_once_on_the_next_start(tmp_path):
         )
         scheduler_thread = service.scheduler._thread
         lock.hold(scheduler_thread)
-        service.scheduler.resume()
-        assert lock.wait_until_asked_by(scheduler_thread)
-
-        stopper.start()
         try:
+            service.scheduler.resume()
+            assert lock.wait_until_asked_by(scheduler_thread)
+            stopper.start()
             assert shut_down.wait(_WAIT_S)
         finally:
             lock.let_go()
@@ -107,6 +106,8 @@ def test_a_one_shot_handed_to_the_pool_as_the_stop_begins_runs_once(tmp_path):
         removing = threading.Event()
         remove_job = service.scheduler.remove_job
 
+        # A job pass removes a one-shot it handed to the pool through
+        # self.remove_job, so this instance attribute is what it calls.
         def remove_once_the_stop_asks_for_the_lock(job_id, jobstore=None):
             # The job pass, holding the jobstore lock; the pool has the run.
             if job_id == "one-shot":
@@ -168,8 +169,8 @@ def test_only_a_start_that_goes_ahead_clears_a_stop():
 
 class _WatchedLock:
     """The scheduler's jobstore lock, noting each thread that asks for it and
-    able to keep one waiting at its ask: how a test orders a job pass
-    against a stop."""
+    able to keep one waiting at its ask until ``let_go``: how a test orders a
+    job pass against a stop."""
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
@@ -182,7 +183,7 @@ class _WatchedLock:
         with self._changed:
             self._askers.add(me)
             self._changed.notify_all()
-            self._changed.wait_for(lambda: self._held is not me, _WAIT_S)
+            self._changed.wait_for(lambda: self._held is not me)
         return self._lock.acquire(blocking, timeout)
 
     def release(self) -> None:
@@ -197,6 +198,8 @@ class _WatchedLock:
     def hold(self, thread: threading.Thread) -> None:
         with self._changed:
             self._held = thread
+            # So that waiting for its ask means one made since.
+            self._askers.discard(thread)
 
     def let_go(self) -> None:
         with self._changed:
@@ -226,7 +229,15 @@ def _started_service(
         real_start(self, paused=True)
 
     service = Scheduler(register_system_tasks=False)
-    stopper = threading.Thread(target=service.cleanup, name="Stopper", daemon=True)
+    stop_errors: list[BaseException] = []
+
+    def stop() -> None:
+        try:
+            service.cleanup()
+        except BaseException as e:
+            stop_errors.append(e)
+
+    stopper = threading.Thread(target=stop, name="Stopper", daemon=True)
     try:
         with (
             patch.object(
@@ -243,17 +254,23 @@ def _started_service(
         yield service, lock, stopper
     finally:
         _stop(service, stopper)
+    if stop_errors:
+        raise stop_errors[0]
 
 
 def _stop(service: Scheduler, stopper: threading.Thread) -> None:
-    """Stop *service* if its test didn't, then the event loop its start began."""
+    """Stop *service* if its test didn't, then close what its start opened:
+    the event loop, and the jobstores of a start that failed part-way."""
     if stopper.ident is not None:
-        # Twice the longest wait inside the stop, each of which is bounded.
+        # Twice the longest wait inside the stop, once any held pass is let go.
         stopper.join(2 * _WAIT_S)
         if stopper.is_alive():
             pytest.fail("the scheduler's stop never finished")
     elif service._scheduler is not None and service._scheduler.running:
         service.cleanup()
+    # Already closed by a stop; this is for a start that failed part-way.
+    for store in service._persistent_jobstores.values():
+        store.shutdown()
     loop, thread = scheduler_module._event_loop, scheduler_module._event_loop_thread
     if loop is None or loop.is_closed():
         return
