@@ -402,7 +402,10 @@ Key invariants:
   paths under the root the shim reported, already normalized, and a
   command's output names the resolved root. A path that reaches the root
   through some other link outside it (`/var/folders/...` for a root chosen
-  as `/private/var/folders/...`, say) is refused: name it by the root.
+  as `/private/var/folders/...`, say) is refused: name it by the root. On
+  Windows an 8.3 name counts where the root was configured with it
+  (`C:\Users\RUNNER~1\ws`): a root given by its long name isn't reached by
+  8.3 names.
 - **A link inside the root is still followed.** Its name is inside, so it
   is resolved, which is how the jail learns where it points. One that
   points at a network path (`\\host\share`, `/net/<host>`) has the system

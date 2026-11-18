@@ -270,7 +270,9 @@ def _root_spellings(allowed_root: str | os.PathLike[str], root_resolved: str) ->
     folder is a link and the root is in it: `~` expands to that name.
 
     A path that reaches the root through some other link outside it is not
-    taken: it has to be written by one of these names.
+    taken: it has to be written by one of these names. Nor is a path that
+    writes a long-named root by 8.3 names: the 8.3 form counts where the
+    root was configured in it.
 
     The configured root comes first: it is the one a request's path is
     joined to (from_root).

@@ -503,20 +503,40 @@ def test_a_link_inside_the_root_is_followed_and_the_resolved_path_decides(
 
 
 @windows_only
-def test_the_root_is_one_folder_whatever_its_case_separators_or_short_name(
-    root: Path,
-) -> None:
-    import ctypes
-
+def test_the_root_is_one_folder_whatever_its_case_or_separators(root: Path) -> None:
     resolved = Path(os.path.realpath(root))
-    spelled = [str(root).upper(), str(root).lower(), str(root).replace("\\", "/")]
-    short = ctypes.create_unicode_buffer(32768)
-    if ctypes.windll.kernel32.GetShortPathNameW(str(root), short, len(short)):
-        spelled.append(short.value)
 
-    for spelling in spelled:
+    for spelling in (str(root).upper(), str(root).lower(), str(root).replace("\\", "/")):
         assert assert_inside_jail(os.path.join(spelling, "a.txt"), root) == resolved / "a.txt"
         assert assert_inside_jail(root / "a.txt", spelling) == resolved / "a.txt"
+
+
+@windows_only
+def test_a_root_given_by_its_short_name_takes_paths_by_that_name_and_the_long_one(
+    root: Path,
+) -> None:
+    """A root typed with 8.3 names (`%TEMP%` often has them) is reported
+    that way, so the platform sends paths that way, and a command's output
+    names the long form the root resolves to. A root given by its long name
+    isn't reached by short ones: the platform takes a path only under the
+    root as reported, so it sends none."""
+    import ctypes
+
+    buffer = ctypes.create_unicode_buffer(32768)
+    if not ctypes.windll.kernel32.GetShortPathNameW(str(root), buffer, len(buffer)):
+        pytest.skip("this folder's short name can't be read")
+    short = buffer.value
+    if short.casefold() == str(root).casefold():
+        pytest.skip("this volume makes no 8.3 names")
+    resolved = Path(os.path.realpath(root))
+
+    assert Path(os.path.realpath(short)) == resolved
+    assert assert_inside_jail(os.path.join(short, "a.txt"), short) == resolved / "a.txt"
+    assert assert_inside_jail(resolved / "a.txt", short) == resolved / "a.txt"
+    assert assert_inside_jail("a.txt", short) == resolved / "a.txt"
+    with pytest.raises(PathJailError) as refused:
+        assert_inside_jail(os.path.join(short, "a.txt"), root)
+    assert refused.value.code == "PATH_OUTSIDE_ALLOWED_ROOT"
 
 
 @windows_only
