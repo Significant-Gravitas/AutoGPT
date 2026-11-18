@@ -4,6 +4,11 @@ import { hashKey, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 const MAX_TRACKED_LISTS = 10;
+const MAX_TRACKED_RUNS = 1000;
+// A retry starts no earlier than the failure before it ("failed"), and a
+// fetch paused while offline starts when it continues; neither dispatches
+// another "fetch".
+const ATTEMPT_STARTS = new Set(["fetch", "failed", "continue"]);
 
 /**
  * Orders live run updates against fetches of the run list, so rebuilding
@@ -22,7 +27,7 @@ export function useLiveUpdateLog() {
     return queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== "updated" || event.query.queryHash !== listHash)
         return;
-      if (event.action.type === "fetch") log.recordFetchStart();
+      if (ATTEMPT_STARTS.has(event.action.type)) log.recordFetchStart();
       if (event.action.type === "success") {
         log.recordFetchSuccess(event.query.state.dataUpdatedAt);
       }
@@ -41,12 +46,29 @@ function createLiveUpdateLog() {
   >();
   // dataUpdatedAt of a list -> sequence when the fetch behind it started
   const listSequences = new Map<number, number>();
+  // run id -> sequence of its latest update; outlives the list rebuilds,
+  // which forget `updates`, for the checks of single runs
+  const latest = new Map<string, number>();
 
   return {
     recordUpdate(execution: GraphExecution) {
       sequence += 1;
       updates.delete(execution.id);
       updates.set(execution.id, { execution, sequence });
+      latest.delete(execution.id);
+      latest.set(execution.id, sequence);
+      if (latest.size > MAX_TRACKED_RUNS) {
+        const oldest = latest.keys().next().value;
+        if (oldest !== undefined) latest.delete(oldest);
+      }
+    },
+    /** Where the sequence stands, for a read of a single run starting now. */
+    mark() {
+      return sequence;
+    },
+    /** Whether a live update for the run arrived after `mark`. */
+    updatedSince(runID: string, mark: number) {
+      return (latest.get(runID) ?? 0) > mark;
     },
     recordFetchStart() {
       sequence += 1;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import {
   okData,
@@ -156,7 +156,15 @@ export function useSidebarRunsList({
   function refetchRuns() {
     queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
   }
-  const refetchRunsAfterReconnect = useStableCallback(refetchRuns);
+
+  // Updates published while the socket was down never arrive, so re-read
+  // the runs after a reconnect: at once on Tasks, or else once Tasks opens.
+  const runsMissedUpdatesRef = useRef(false);
+  const readRunsIfMissed = useStableCallback(() => {
+    if (tabValue !== "runs" || !runsMissedUpdatesRef.current) return;
+    runsMissedUpdatesRef.current = false;
+    refetchRuns();
+  });
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
@@ -168,13 +176,15 @@ export function useSidebarRunsList({
     onExecutionUpdate: refetchRuns,
   });
 
-  // Updates published while the socket was down never arrive. The
-  // subscription above covers only the Tasks tab, so re-read the runs after
-  // a reconnect whichever tab is open.
   useEffect(
-    () => api.onWebSocketReconnect(refetchRunsAfterReconnect),
-    [api, refetchRunsAfterReconnect],
+    () =>
+      api.onWebSocketReconnect(() => {
+        runsMissedUpdatesRef.current = true;
+        readRunsIfMissed();
+      }),
+    [api, readRunsIfMissed],
   );
+  useEffect(() => readRunsIfMissed(), [tabValue, readRunsIfMissed]);
 
   // Notify parent about counts and loading state
   useEffect(() => {

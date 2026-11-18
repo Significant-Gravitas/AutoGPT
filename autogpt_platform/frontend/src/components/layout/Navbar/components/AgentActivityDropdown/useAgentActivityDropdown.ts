@@ -12,12 +12,16 @@ import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { checkOmittedRuns } from "./checkOmittedRuns";
 import {
   NotificationState,
+  activeRunsTheListOmits,
+  calculateTotalCount,
   categorizeExecutions,
   handleExecutionUpdate,
   keepActiveRunsTheListOmits,
   relabelNotifications,
+  removeExecutionFromAllCategories,
 } from "./helpers";
 import { useLiveUpdateLog } from "./useLiveUpdateLog";
 
@@ -65,6 +69,7 @@ export function useAgentActivityDropdown() {
   // Rebuild from each fetched list (keyed on dataUpdatedAt), then replay the
   // live updates that arrived after that list's fetch started.
   const processedListRef = useRef<number | null>(null);
+  const checkingRef = useRef(new Set<string>());
   useEffect(() => {
     if (
       !executions ||
@@ -83,7 +88,29 @@ export function useAgentActivityDropdown() {
       ),
     );
     processedListRef.current = dataUpdatedAt;
-  }, [executions, executionsSuccess, dataUpdatedAt, agentInfoMap, liveUpdates]);
+    void checkOmittedRuns({
+      runs: activeRunsTheListOmits(notifications, executions),
+      queryClient,
+      log: liveUpdates,
+      checking: checkingRef.current,
+      onRead: (run) =>
+        setNotifications((state) =>
+          handleExecutionUpdate(state, run, agentInfoMap),
+        ),
+      onGone: (runID) =>
+        setNotifications((state) =>
+          calculateTotalCount(removeExecutionFromAllCategories(state, runID)),
+        ),
+    });
+  }, [
+    executions,
+    executionsSuccess,
+    dataUpdatedAt,
+    agentInfoMap,
+    liveUpdates,
+    notifications,
+    queryClient,
+  ]);
 
   // Subscribe to execution events for all graphs
   useExecutionEvents({
