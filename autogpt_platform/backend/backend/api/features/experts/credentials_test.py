@@ -471,6 +471,11 @@ async def test_a_pending_seed_derives_from_the_expert_workflows(
 
     assert derive.await_args.args[1].Workflows == [workflow]
     assert reread.await_count == (0 if workflows_loaded else 1)
+    if not workflows_loaded:
+        # Without the nested LibraryAgent every workflow derives nothing.
+        assert reread.await_args.kwargs["include"] == {
+            "Workflows": {"include": {"LibraryAgent": True}}
+        }
 
 
 @pytest.mark.asyncio
