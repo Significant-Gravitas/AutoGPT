@@ -159,7 +159,9 @@ connection.
     that `autogpt-shim start` makes the first time and keeps in the shim's
     own folder. Neither of the two is sent, logged or printed. With no
     identifier to read, it comes from the stored value alone. The hostname
-    is never part of it.
+    is never part of it. A start that can't read an identifier that is
+    there (macOS's, when `ioreg` fails or doesn't answer in time) stops and
+    is started again, rather than connect under another ID.
   - The computer keeps its ID from one start to the next, and when the shim
     is upgraded or reinstalled, for as long as the stored value is kept.
     [CROSS_PLATFORM.md](CROSS_PLATFORM.md#machine-id) says where it is

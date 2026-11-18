@@ -220,10 +220,24 @@ def resolve_machine_id(config: ShimConfig) -> str:
     disk, a file that isn't a value), transient otherwise (a full disk, a
     share that is away). The folder is the one the audit key's lock is in,
     which a first start needs as well, and the setting that moves that one
-    moves this."""
+    moves this.
+
+    Transient too when the operating system's identifier couldn't be read
+    this once: the ID without it would be another computer's for this
+    start."""
     if config.machine_id is None:
         try:
             config.machine_id = machine_identity.own_machine_id()
+        except machine_identity.OsIdentifierUnreadable as exc:
+            # One read that failed (macOS's `ioreg` not answering at a busy
+            # login): the next start reads it again.
+            raise DaemonPreflightError(
+                f"{exc}; refusing to run under the machine ID this computer would have "
+                "without it, which is another one: each chat bound to this computer "
+                "would find it gone. The next start reads it again. To run without the "
+                "operating system's identifier, set machine_id in the config file",
+                transient=True,
+            ) from exc
         except machine_identity.MachineIdError as exc:
             # EEXIST: a file where the folder belongs, as Windows reports it.
             permanent = (

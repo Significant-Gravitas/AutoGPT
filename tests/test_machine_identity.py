@@ -320,12 +320,49 @@ def test_a_wsl2_distribution_reads_its_own_identifier_not_its_hosts(
         subprocess.CalledProcessError(1, "ioreg"),
     ],
 )
-def test_an_identifier_that_cannot_be_read_is_none(monkeypatch, failure: Exception) -> None:
+def test_a_macs_identifier_that_could_not_be_read_is_not_taken_for_none(
+    monkeypatch, failure: Exception
+) -> None:
+    """Every Mac has one. `ioreg` failing, or not answering in its five
+    seconds at a busy login, is that one read failing. Taken for a computer
+    with no identifier, the start went on under another machine ID."""
+
     def fails(*_args: object, **_kwargs: object) -> str:
         raise failure
 
     monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
     monkeypatch.setattr(platform_info.subprocess, "check_output", fails)
+
+    with pytest.raises(platform_info.MachineIdentifierUnreadable):
+        platform_info.os_machine_identifier()
+
+
+def test_a_mac_whose_answer_holds_no_identifier_has_none(monkeypatch) -> None:
+    """`ioreg` answered, so nothing failed: the same answer at every start."""
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setattr(
+        platform_info.subprocess, "check_output", lambda *_args, **_kwargs: "+-o Root\n  {\n  }\n"
+    )
+
+    assert platform_info.os_machine_identifier() is None
+
+
+def test_a_linux_identifier_file_that_may_not_be_read_is_still_none(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A file the account may not read stays that way from one start to the
+    next (a sandbox, a hardened /etc), so the ID from the stored value alone
+    is the same each time. Stopping there would keep the shim from ever
+    starting."""
+
+    def no_access(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(
+        platform_info, "_LINUX_MACHINE_ID_FILES", (str(tmp_path / "machine-id"),), raising=False
+    )
+    monkeypatch.setattr("builtins.open", no_access)
 
     assert platform_info.os_machine_identifier() is None
 
@@ -654,6 +691,65 @@ def test_a_computer_keeps_its_id_from_one_start_to_the_next(
     second = _daemon(_config(tmp_path, audit_log_path=tmp_path / "second.log")).machine_id
 
     assert first == second
+
+
+def test_a_start_that_cannot_read_the_identifier_stops_rather_than_be_another_computer(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    """The ID is derived from the identifier and the stored value. With the
+    identifier unread at one start (`ioreg` not answering in time), the ID
+    came from the stored value alone: another ID, so for that start the
+    platform saw a new computer, and no chat found its own."""
+    import asyncio
+
+    _this_computer_is(monkeypatch, tmp_path, "macos")
+    first = _daemon(_config(tmp_path, audit_log_path=tmp_path / "first.log")).machine_id
+
+    # The next start: the read doesn't come back in time.
+    _READ.cache_clear()
+
+    def no_answer(*_args: object, **_kwargs: object) -> str:
+        raise subprocess.TimeoutExpired("ioreg", 5)
+
+    with monkeypatch.context() as this_start:
+        this_start.setattr(platform_info, "detect_platform", lambda: "darwin")
+        this_start.setattr(platform_info.subprocess, "check_output", no_answer)
+        config = _config(tmp_path, audit_log_path=tmp_path / "second.log")
+        with pytest.raises(DaemonPreflightError) as refused:
+            _daemon(config)
+
+        assert config.machine_id is None
+        # To be started again, which reads it again: not for good.
+        assert refused.value.transient is True
+        assert "identifier" in str(refused.value)
+        assert "AUTOGPT_SHIM_FALLBACK_DIR" not in str(refused.value)
+        assert "machine_id" in str(refused.value)
+        again = _config(tmp_path, audit_log_path=tmp_path / "b.log")
+        assert asyncio.run(cli._cmd_start(again)) == 75
+        printed = capsys.readouterr()
+        assert "Preflight failed" in printed.err
+        assert "machine_id=" not in printed.out
+
+    # The start after that, with the identifier read: the same computer.
+    _READ.cache_clear()
+    _this_computer_is(monkeypatch, tmp_path, "macos")
+    third = _daemon(_config(tmp_path, audit_log_path=tmp_path / "third.log")).machine_id
+    assert third == first
+
+
+def test_a_first_start_that_cannot_read_the_identifier_keeps_no_value(
+    monkeypatch, tmp_path: Path
+) -> None:
+    def no_answer(*_args: object, **_kwargs: object) -> str:
+        raise subprocess.TimeoutExpired("ioreg", 5)
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setattr(platform_info.subprocess, "check_output", no_answer)
+
+    with pytest.raises(machine_identity.MachineIdError):
+        machine_identity.own_machine_id()
+
+    assert not machine_identity.seed_path().exists()
 
 
 def test_deleting_the_shims_state_gives_the_computer_a_new_id(monkeypatch, tmp_path: Path) -> None:

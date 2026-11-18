@@ -334,6 +334,15 @@ together, and sends, logs and prints neither:
 With no identifier to read, the ID comes from the stored value alone. The
 hostname is never part of it.
 
+An identifier that is there and couldn't be read at one start is another
+matter. macOS's is read by running `ioreg`, which can fail or not answer in
+its five seconds at a busy login. The ID derived without it would be
+another one, and for that start the platform would see a new computer, so
+the start stops with exit 75 and the next one reads it again. On Linux and
+Windows a read that fails keeps failing from one start to the next (no such
+file or value, or one the account may not read), so there it counts as no
+identifier, and the ID is the same each time.
+
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
 | The operating system's identifier | `ioreg -rd1 -c IOPlatformExpertDevice` → `IOPlatformUUID` | `/etc/machine-id` (fallback `/var/lib/dbus/machine-id`) | Registry `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid` | An input of the ID only: never sent, logged, printed or stored by the shim. |

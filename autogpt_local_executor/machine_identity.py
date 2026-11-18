@@ -23,7 +23,9 @@ logged or printed:
   work out from the operating system's identifier.
 
 With no identifier to read, the ID comes from the stored value alone, never
-from the hostname.
+from the hostname. An identifier that is there and couldn't be read this
+once is another matter: the ID without it would be another computer's, so
+that start stops and the next one reads it again (OsIdentifierUnreadable).
 
 So a computer keeps its ID from one start to the next, and when the program
 is reinstalled or upgraded, for as long as the shim's folder is kept and
@@ -71,6 +73,12 @@ class MachineIdError(Exception):
         super().__init__(f"{description} ({error})" if error is not None else description)
         self.description = description
         self.error = error
+
+
+class OsIdentifierUnreadable(MachineIdError):
+    """The operating system's identifier is there and couldn't be read at
+    this start (platform_info.MachineIdentifierUnreadable). The ID derived
+    without it would differ from the one every other start derives."""
 
 
 def canonical_os_identifier(identifier: str | None) -> str | None:
@@ -217,13 +225,22 @@ def _read(path: Path) -> bytes | None:
 def own_machine_id() -> str:
     """This computer's machine ID, for this account's shim, making the
     stored value if there is none (stored_seed): MachineIdError when it
-    can't be read or kept."""
-    return derive_machine_id(platform_info.os_machine_identifier(), stored_seed())
+    can't be read or kept, and OsIdentifierUnreadable when the operating
+    system's identifier couldn't be read this once. The identifier comes
+    first: a start that stops there has made no value."""
+    try:
+        identifier = platform_info.os_machine_identifier()
+    except platform_info.MachineIdentifierUnreadable as exc:
+        raise OsIdentifierUnreadable(
+            f"The operating system's identifier for this computer couldn't be read ({exc})"
+        ) from exc
+    return derive_machine_id(identifier, stored_seed())
 
 
 __all__ = [
     "SEED_FILE_NAME",
     "MachineIdError",
+    "OsIdentifierUnreadable",
     "canonical_os_identifier",
     "derive_machine_id",
     "own_machine_id",
