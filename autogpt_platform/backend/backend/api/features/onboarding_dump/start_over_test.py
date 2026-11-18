@@ -5,6 +5,7 @@ on Redis, the typed interview in the chat store's stand-in, and the take on
 the in-memory dump table, so these assert which take the plan step reads.
 """
 
+import time
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -49,7 +50,7 @@ from backend.api.features.onboarding_dump.voice_handoff_test import (
 from backend.copilot.model import INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF
 from backend.copilot.onboarding_interview import INTERVIEW_CLOSED
 from backend.util.settings import BehaveAs
-from backend.voice_relay import locks
+from backend.voice_relay import locks, tokens
 
 __all__ = [
     "allowance",
@@ -606,6 +607,151 @@ async def test_a_call_whose_words_are_taking_the_interview_refuses_the_start_ove
         INTERVIEW_STAGE_CLOSED
     )
     opening["open"].assert_not_awaited()
+
+
+# ---------- a call not yet settled ----------
+
+
+async def _call_still_running(rig: Rig, status: str | None = locks.LIVE) -> str:
+    """A call whose record still says it starts or runs, with no lock or
+    place in the live count behind it: its relay went away and the sweep has
+    not settled it yet."""
+    call_id = tokens.new_call_id()
+    fields: dict[str, object] = {
+        "uid": USER,
+        "started": time.time() - 60,
+        "prev": rig.interviews.latest_call,
+    }
+    if status is not None:
+        fields["status"] = status
+    await locks.write_call_record(rig.redis, call_id, fields)
+    rig.interviews.latest_call = call_id
+    return call_id
+
+
+@pytest.mark.parametrize("status", [None, locks.CONNECTING, locks.LIVE])
+async def test_a_start_over_while_a_call_is_not_settled_is_refused_until_it_settles(
+    rig: Rig,
+    stored: StoredInterview,
+    opening: dict[str, MagicMock],
+    allowance: AsyncMock,
+    status: str | None,
+):
+    _closed_on_a_confirm_arm(rig, stored)
+    running = await _call_still_running(rig, status)
+
+    with pytest.raises(HTTPException) as refused:
+        await interview.start_onboarding_interview(
+            USER, start_over=stored.session.session_id
+        )
+
+    assert refused.value.status_code == 503
+    assert rig.interviews.typed is stored.session
+    assert rig.interviews.latest_call == running
+    assert stored.session.metadata.onboarding_interview_stage == (
+        INTERVIEW_STAGE_CLOSED
+    )
+    assert await locks.interview_of(rig.redis, running) is None
+    opening["open"].assert_not_awaited()
+
+    await rig.no_words(running, "no_usable_speech")
+    await interview.start_onboarding_interview(
+        USER, start_over=stored.session.session_id
+    )
+
+    assert stored.session.metadata.onboarding_interview_stage == (
+        INTERVIEW_STAGE_HANDED_OFF
+    )
+    assert rig.interviews.latest_call is None
+    assert await locks.interview_of(rig.redis, running) == locks.INTERVIEW_SUPERSEDED
+
+
+async def test_applying_a_plan_that_names_a_call_not_settled_sets_nothing_aside(
+    rig: Rig, stored: StoredInterview
+):
+    _closed_on_a_confirm_arm(rig, stored)
+    settled = await rig.call(ending=PROFILE_CARD)
+    running = await _call_still_running(rig)
+    plan = interview.StartOver(
+        session_id=stored.session.session_id,
+        latest_call=running,
+        unclaimed_calls=(running, settled),
+    )
+
+    with pytest.raises(HTTPException) as refused:
+        await interview.apply_start_over(USER, plan)
+
+    assert refused.value.status_code == 503
+    assert await locks.interview_of(rig.redis, settled) is None
+    assert await locks.interview_of(rig.redis, running) is None
+    assert rig.interviews.typed is stored.session
+    assert rig.interviews.latest_call == running
+
+
+# ---------- the retired take is recorded before anything is set aside ----------
+
+
+async def test_a_start_over_whose_retired_take_cannot_be_recorded_sets_nothing_aside_and_a_retry_goes_ahead(
+    rig: Rig,
+    stored: StoredInterview,
+    opening: dict[str, MagicMock],
+    allowance: AsyncMock,
+    dumps: DumpStore,
+    jobs: dict[str, AsyncMock],
+    mocker: MockerFixture,
+):
+    rig.interviews.typed = stored.session
+    await _close_typed(stored)
+    earlier = f"interview-{stored.session.session_id}"
+    assert dumps.row is not None and dumps.row.recordingId == earlier
+    dumps.row.status = BrainDumpStatus.extracting
+    fresh = _next_typed_interview(mocker, opening, rig.interviews)
+    unwritable = mocker.patch.object(
+        rig.redis, "set", AsyncMock(side_effect=ConnectionError("redis down"))
+    )
+
+    with pytest.raises(HTTPException) as refused:
+        await interview.start_onboarding_interview(
+            USER, start_over=stored.session.session_id
+        )
+
+    assert refused.value.status_code == 503
+    assert rig.interviews.typed is stored.session
+    assert dumps.row.recordingId == earlier
+    assert dumps.row.status == BrainDumpStatus.extracting
+    opening["open"].assert_not_awaited()
+
+    mocker.stop(unwritable)
+    await interview.start_onboarding_interview(
+        USER, start_over=stored.session.session_id
+    )
+
+    assert rig.interviews.typed is fresh.session
+    assert await rig.redis.get(interview.retired_take_key(USER)) == earlier
+    await _type(fresh)
+    await _close_typed(fresh)
+    assert dumps.row.recordingId == f"interview-{fresh.session.session_id}"
+    assert dumps.row.status == BrainDumpStatus.completed
+
+
+async def test_a_start_over_retires_the_take_on_the_row_when_it_is_applied(
+    rig: Rig, stored: StoredInterview, dumps: DumpStore
+):
+    """A take that lands between the read of a start-over and its writes,
+    such as the closed interview's own hand-off finishing, is the one
+    retired."""
+    rig.interviews.typed = stored.session
+    stored.session.metadata.onboarding_interview_stage = INTERVIEW_STAGE_HANDED_OFF
+    plan = await interview.read_start_over(USER, stored.session.session_id)
+    assert plan is not None
+    landed = f"interview-{stored.session.session_id}"
+    await dumps.start_dump(USER, landed, BrainDumpInputMode.typed)
+
+    await interview.apply_start_over(USER, plan)
+
+    assert await rig.redis.get(interview.retired_take_key(USER)) == landed
+    assert dumps.row is not None and dumps.row.status == BrainDumpStatus.failed
+    assert dumps.row.errorCode == interview.SUPERSEDED
 
 
 # ---------- the new take, never the old one ----------

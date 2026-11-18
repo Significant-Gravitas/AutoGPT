@@ -437,10 +437,6 @@ class StartOver(BaseModel):
     # Their calls whose words have no claim on the interview yet, so a late
     # hand-off of one can never take the new interview.
     unclaimed_calls: tuple[str, ...] = ()
-    # The earlier take on the dump row, given up only while no pipeline has
-    # run it; one the pipeline ran stays what the plan step reads until the
-    # new interview's take replaces it.
-    take: str | None = None
 
 
 async def read_start_over(user_id: str, interview_id: str) -> StartOver | None:
@@ -456,7 +452,8 @@ async def read_start_over(user_id: str, interview_id: str) -> StartOver | None:
             theirs, which a start-over never breaks; 409
             ``onboarding_interview_closed`` naming a call whose words are
             taking the interview right now (:func:`_taken_meanwhile`); 503
-            while the interview or their calls cannot be read.
+            while the interview or their calls cannot be read, or while a
+            call of theirs is not settled (:func:`_call_not_settled`).
     """
     try:
         redis = await get_redis_async()
@@ -476,7 +473,6 @@ async def read_start_over(user_id: str, interview_id: str) -> StartOver | None:
         taken_by = await call_that_took_the_interview(user_id)
         latest = await get_onboarding_voice_call_id(user_id)
         calls = await _calls_back_from(redis, user_id, latest)
-        row = await dump_db.get_dump(user_id)
     except Exception as exc:
         logger.warning(
             f"Onboarding interview: start-over unreadable: {type(exc).__name__}"
@@ -495,11 +491,8 @@ async def read_start_over(user_id: str, interview_id: str) -> StartOver | None:
             and record.hand_off is None
         ):
             raise _taken_meanwhile(record.call_id)
-    take = (
-        row.recordingId
-        if row is not None and row.recordingId.startswith(INTERVIEW_RECORDING_PREFIX)
-        else None
-    )
+    if any(_takes_no_claim(record) for record in calls):
+        raise _call_not_settled()
     return StartOver(
         session_id=typed.session_id if typed is not None else None,
         latest_call=latest,
@@ -507,7 +500,6 @@ async def read_start_over(user_id: str, interview_id: str) -> StartOver | None:
         unclaimed_calls=tuple(
             record.call_id for record in calls if record.interview is None
         ),
-        take=take,
     )
 
 
@@ -516,44 +508,54 @@ async def apply_start_over(user_id: str, plan: StartOver) -> None:
     unclaimed words are superseded, their typed interview is retired (its
     stage ``handed_off``, so no hand-off of it runs, and forgotten on their
     onboarding row with any hand-off owed for it), their calls are forgotten
-    on the row, and an earlier take no pipeline has run is given up. One the
-    pipeline has run is remembered as retired, so the new interview's take
-    replaces it whatever its status (:func:`give_up_the_retired_take`). The
-    next start opens a fresh interview, typed or spoken.
+    on the row, and the earlier take on the dump row is remembered as
+    retired, so the new interview's take replaces it whatever its status
+    (:func:`give_up_the_retired_take`), and given up at once while no
+    pipeline has run it. The next start opens a fresh interview, typed or
+    spoken.
 
-    The calls are claimed first, and the claim that stands decides: a call
-    whose words took the interview since *plan* was read refuses the
-    start-over before anything else is written.
+    Nothing is set aside while a call of the person's is not settled. Then
+    the calls are claimed, and the claim that stands decides: a call whose
+    words took the interview since *plan* was read refuses the start-over.
+    The take is read and remembered next, after the claims, so a take that
+    landed since *plan* was read is the one retired, and before anything is
+    set aside, so a retry finds the interview still closed and records it
+    again.
 
     Raises:
         HTTPException: 409 ``onboarding_interview_closed`` naming a call that
-            took the interview since *plan* was read; 503 when any of it
-            cannot be written, and a retry reads what is left and sets it
-            aside.
+            took the interview since *plan* was read; 503 while a call is not
+            settled, and when any of it cannot be read or written, and a
+            retry reads what is left and sets it aside.
     """
     try:
         redis = await get_redis_async()
+        for call_id in plan.unclaimed_calls:
+            record = await locks.read_call(redis, call_id)
+            if record is not None and _takes_no_claim(record):
+                raise _call_not_settled()
         for call_id in plan.unclaimed_calls:
             standing = await locks.claim_interview(
                 redis, call_id, locks.INTERVIEW_SUPERSEDED
             )
             if standing == locks.INTERVIEW_TAKEN:
                 raise _taken_meanwhile(call_id)
+        owed = await _owed_hand_off(user_id)
+        take = await _interview_take_on_the_row(user_id)
+        if take is not None:
+            await redis.set(retired_take_key(user_id), take, ex=RETIRED_TAKE_TTL_S)
         if plan.session_id is not None:
             await update_session_interview_stage(
                 plan.session_id, user_id, INTERVIEW_STAGE_HANDED_OFF
             )
-            owed = await _owed_hand_off(user_id)
             if owed is not None and owed.session_id == plan.session_id:
                 await _forget_the_hand_off(user_id)
             await forget_onboarding_interview_session(plan.session_id)
         await forget_onboarding_voice_calls(
             user_id, latest=plan.latest_call, taken=plan.taken_by
         )
-        if plan.take is not None and not await service.give_up_unrun_take(
-            user_id, plan.take, SUPERSEDED
-        ):
-            await redis.set(retired_take_key(user_id), plan.take, ex=RETIRED_TAKE_TTL_S)
+        if take is not None:
+            await service.give_up_unrun_take(user_id, take, SUPERSEDED)
     except HTTPException:
         raise
     except Exception as exc:
@@ -562,6 +564,22 @@ async def apply_start_over(user_id: str, plan: StartOver) -> None:
         )
         raise _voice_calls_unreadable() from exc
     logger.info("Onboarding interview: started over")
+
+
+async def _interview_take_on_the_row(user_id: str) -> str | None:
+    """The interview take on the person's dump row, if it holds one."""
+    row = await dump_db.get_dump(user_id)
+    if row is None or not row.recordingId.startswith(INTERVIEW_RECORDING_PREFIX):
+        return None
+    return row.recordingId
+
+
+def _call_not_settled() -> HTTPException:
+    """The refusal of a start-over while a call of the person's is still
+    starting or running with no live relay to name: what its words become is
+    not yet known, so the ending stays, and a retry once the call is swept
+    goes ahead."""
+    return _voice_calls_unreadable()
 
 
 def _taken_meanwhile(call_id: str) -> HTTPException:
