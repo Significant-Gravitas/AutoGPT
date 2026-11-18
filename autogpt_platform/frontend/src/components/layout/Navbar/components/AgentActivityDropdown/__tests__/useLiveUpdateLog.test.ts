@@ -30,10 +30,33 @@ describe("reads of a single run against live updates and lists", () => {
     const log = createLiveUpdateLog();
     log.startRead(RUN);
     startList(log)(1);
-    log.updatesNewerThan(1, [{ id: RUN }]);
+    log.updatesNewerThan(1, [{ id: RUN }], false);
 
     expect(log.finishRead(RUN, status(RUN, AgentExecutionStatus.RUNNING))).toBe(
       false,
+    );
+  });
+
+  test("a list of every run fetched after a read started stands over it, run or no run", () => {
+    const log = createLiveUpdateLog();
+    log.startRead(RUN);
+    startList(log)(1);
+    // The list has every run but not this one: the run is gone.
+    log.updatesNewerThan(1, [], true);
+
+    expect(log.finishRead(RUN, status(RUN, AgentExecutionStatus.RUNNING))).toBe(
+      false,
+    );
+  });
+
+  test("a list of only the newest runs that leaves the run out doesn't stand over a read", () => {
+    const log = createLiveUpdateLog();
+    log.startRead(RUN);
+    startList(log)(1);
+    log.updatesNewerThan(1, [], false);
+
+    expect(log.finishRead(RUN, status(RUN, AgentExecutionStatus.RUNNING))).toBe(
+      true,
     );
   });
 
@@ -45,7 +68,7 @@ describe("reads of a single run against live updates and lists", () => {
     expect(log.finishRead(RUN, completed)).toBe(true);
     land(1);
 
-    expect(log.updatesNewerThan(1, [{ id: RUN }])).toEqual([completed]);
+    expect(log.updatesNewerThan(1, [{ id: RUN }], false)).toEqual([completed]);
   });
 
   test("a later list forgets a read it already includes", () => {
@@ -56,6 +79,6 @@ describe("reads of a single run against live updates and lists", () => {
     );
     startList(log)(1);
 
-    expect(log.updatesNewerThan(1, [{ id: RUN }])).toEqual([]);
+    expect(log.updatesNewerThan(1, [{ id: RUN }], false)).toEqual([]);
   });
 });

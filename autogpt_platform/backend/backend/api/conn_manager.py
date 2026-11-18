@@ -512,7 +512,9 @@ class _ShardStream:
         try:
             async with asyncio.timeout(_TAKE_BACK_TIMEOUT_S):
                 await subscription.remove(channel)
-        except (EventStreamLostError, TimeoutError):
+        except Exception:
+            # Any failure: no confirmation is coming, and a stale count would
+            # hide the channel's events and a real drop.
             self._unsubscribed(channel)
             logger.warning(f"Could not take back {channel}", exc_info=True)
             if not self._pump_ended:

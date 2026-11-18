@@ -20,6 +20,7 @@ import {
   categorizeExecutions,
   handleExecutionUpdate,
   keepActiveRunsTheListOmits,
+  listHasEveryRun,
   relabelNotifications,
   removeExecutionFromAllCategories,
 } from "./helpers";
@@ -82,7 +83,11 @@ export function useAgentActivityDropdown() {
     )
       return;
     const fromList = categorizeExecutions(executions, agentInfoMap);
-    const newer = liveUpdates.updatesNewerThan(dataUpdatedAt, executions);
+    const newer = liveUpdates.updatesNewerThan(
+      dataUpdatedAt,
+      executions,
+      listHasEveryRun(executions),
+    );
     setNotifications((shown) =>
       newer.reduce(
         (state, execution) =>
