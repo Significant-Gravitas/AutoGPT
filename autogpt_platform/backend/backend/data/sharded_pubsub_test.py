@@ -2,6 +2,7 @@
 shard) is covered over a real Redis in ``event_bus_liveness_test``."""
 
 import asyncio
+from contextlib import aclosing
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -17,7 +18,7 @@ from backend.data.sharded_pubsub import (
     ShardedSubscription,
     _Liveness,
 )
-from backend.util.testing import is_tcp_port_reachable
+from backend.util.testing import is_tcp_port_reachable, redis_shard_proxies
 
 
 class _FakePubSub:
@@ -175,8 +176,10 @@ async def test_pong_replies_are_not_yielded_in_either_form(confirmed_shard):
 
     pubsub.parse_response = parse_response
     pubsub.handle_message = handle_message
-    async with await ShardedSubscription.open("chan") as subscription:
-        messages = aiter(subscription.messages())
+    async with (
+        await ShardedSubscription.open("chan") as subscription,
+        aclosing(subscription.messages()) as messages,
+    ):
         assert await anext(messages) == {
             "type": "smessage",
             "channel": "chan",
@@ -229,16 +232,67 @@ async def test_a_moved_reply_points_the_next_subscription_at_the_new_owner():
             await ShardedSubscription.open(channel)
         assert cluster.nodes_manager.slots_cache[slot][0].port == owner.port
 
-        async with await ShardedSubscription.open(channel) as subscription:
+        async with (
+            await ShardedSubscription.open(channel) as subscription,
+            aclosing(subscription.messages()) as messages,
+        ):
             publisher = await redis_client.get_redis_async()
             async with asyncio.timeout(8):
                 await publisher.execute_command("SPUBLISH", channel, "after-moved")
-                async for message in subscription.messages():
+                async for message in messages:
                     if message["type"] == "smessage":
                         assert message["data"] == "after-moved"
                         break
     finally:
         cluster.nodes_manager.initialize()
+        await redis_client.disconnect_async()
+
+
+@pytest.mark.skipif(_shard_count() < 1, reason="needs a Redis cluster")
+async def test_a_dropped_connection_ends_the_stream_instead_of_resubscribing():
+    """A failed SSUBSCRIBE or SUNSUBSCRIBE write drops the connection. redis-py
+    would reconnect on the next read or command and resubscribe without a
+    word, losing whatever was published meanwhile; the stream must end."""
+    channel = f"{{reconnect-test-{uuid4()}}}/a"
+    try:
+        async with await ShardedSubscription.open(channel) as subscription:
+            connection = subscription._pubsub.connection
+            assert connection is not None
+            await connection.disconnect()  # as a failed write leaves it
+
+            with pytest.raises(EventStreamLostError):
+                await subscription.add(f"{{reconnect-test-{uuid4()}}}/b")
+            async with asyncio.timeout(8):
+                with pytest.raises(EventStreamLostError):
+                    async for _ in subscription.messages():
+                        pass
+            assert not connection.is_connected
+    finally:
+        await redis_client.disconnect_async()
+
+
+@pytest.mark.skipif(_shard_count() < 1, reason="needs a Redis cluster")
+async def test_a_reconnect_to_a_silent_shard_ends_the_stream():
+    """A reconnect authenticates before redis-py runs its connect callbacks,
+    and that read has no timeout of its own: a shard that accepts the
+    connection but never answers must still end the stream, not hold it."""
+    channel = f"{{silent-reconnect-{uuid4()}}}/a"
+    try:
+        async with redis_shard_proxies() as route:
+            proxy = await route(channel)
+            async with await ShardedSubscription.open(channel) as subscription:
+                connection = subscription._pubsub.connection
+                assert connection is not None
+                # The reconnect sends AUTH first, as with REDIS_PASSWORD set.
+                connection.password = "never-checked"
+                proxy.black_hole = True
+                await connection.disconnect()  # as a failed write leaves it
+
+                async with asyncio.timeout(8):
+                    with pytest.raises(EventStreamLostError):
+                        async for _ in subscription.messages():
+                            pass
+    finally:
         await redis_client.disconnect_async()
 
 

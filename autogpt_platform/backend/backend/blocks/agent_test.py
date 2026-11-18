@@ -14,6 +14,7 @@ import pytest
 import backend.blocks._sub_agent_wait as sub_agent_wait
 import backend.data.event_bus as event_bus
 import backend.data.redis_client as redis_client
+from backend.blocks import get_output_block_ids
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentOutputBlock
 from backend.data.execution import (
@@ -30,6 +31,13 @@ from backend.util.testing import is_tcp_port_reachable, redis_shard_proxies
 _T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 _USER, _GRAPH, _CHILD = "user-1", "graph-1", "child-exec-1"
 _WITHIN_S = 8.0
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _blocks_loaded() -> None:
+    """Load the block registry, which takes seconds cold, before any test
+    starts its _WITHIN_S bound."""
+    get_output_block_ids()
 
 
 def _output(n: int, value: str) -> NodeExecutionEvent:
@@ -182,7 +190,7 @@ async def test_a_newer_output_waits_for_a_failed_catch_up_to_be_retried(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """b was missed and the resync's catch-up failed; c then arrives live and
-    must not overtake b."""
+    must not overtake b, nor be lost when the database hasn't recorded it."""
     stream = _Stream()
     a, b, c = _output(1, "a"), _output(2, "b"), _output(3, "c")
     for item in (None, a, None, c, _finished_event()):
@@ -192,7 +200,7 @@ async def test_a_newer_output_waits_for_a_failed_catch_up_to_be_retried(
         ConnectionError("database manager unreachable"),
         _meta(ExecutionStatus.RUNNING),
         nodes=[],
-        later_nodes=[a, b, c],
+        later_nodes=[a, b],
     )
 
     outputs, _ = await _run(monkeypatch, stream, db)
@@ -204,8 +212,10 @@ async def test_a_live_end_during_a_pending_catch_up_ends_the_wait(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """The end arrives while a failed catch-up is still owed, and the database
-    hasn't recorded it yet: the retried catch-up yields what was missed, then
-    the live end finishes the wait, without waiting for the quiet recheck."""
+    hasn't recorded it yet: the end retries the catch-up at once, which yields
+    what was missed, then the live end finishes the wait."""
+    # Beyond the test's bound: only an immediate retry finishes in time.
+    monkeypatch.setattr(sub_agent_wait, "CATCH_UP_RETRY_S", 60.0)
     stream = _Stream()
     a, b = _output(1, "a"), _output(2, "b")
     for item in (None, a, None, _finished_event()):
@@ -287,9 +297,11 @@ async def test_a_live_end_after_a_failed_quiet_recheck_is_caught_up_first(
 async def test_a_run_gone_after_its_end_was_seen_ends_the_wait(
     monkeypatch: pytest.MonkeyPatch,
 ):
+    """b arrives live while a catch-up is owed, and the run is gone by the
+    time the end retries it: the wait ends on the end, with b."""
     stream = _Stream()
-    a = _output(1, "a")
-    for item in (None, a, None, _finished_event()):
+    a, b = _output(1, "a"), _output(2, "b")
+    for item in (None, a, None, b, _finished_event()):
         stream.items.put_nowait(item)
     db = _db(
         _meta(ExecutionStatus.RUNNING),
@@ -300,7 +312,7 @@ async def test_a_run_gone_after_its_end_was_seen_ends_the_wait(
 
     outputs, block = await _run(monkeypatch, stream, db)
 
-    assert outputs == [("result", "a")]
+    assert outputs == [("result", "a"), ("result", "b")]
     assert block.execution_stats.reconciled_cost_delta == 7
 
 
@@ -375,6 +387,117 @@ async def test_failed_catch_ups_back_off(monkeypatch: pytest.MonkeyPatch):
 
     # 0.05, 0.1, 0.2, 0.4 s apart: about five reads, not twenty.
     assert db.get_graph_execution_meta.await_count <= 8
+
+
+async def test_a_busy_child_adds_no_reads_while_a_retry_is_scheduled(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """While a failed catch-up's retry is scheduled, the child's finished
+    nodes wait for it rather than each reading a database that keeps failing.
+    It stays down, so the wait ends on the end seen live, with the outputs
+    seen live."""
+    # 0.1, 0.2 and 0.3 s of backoff before giving up: well inside _WITHIN_S.
+    monkeypatch.setattr(sub_agent_wait, "CATCH_UP_RETRY_S", 0.1)
+    monkeypatch.setattr(sub_agent_wait, "QUIET_RECHECK_S", 0.3)
+    stream = _Stream()
+    a, b = _output(1, "a"), _output(22, "b")
+    busy = [
+        _output(n, "-").model_copy(update={"block_id": AgentExecutorBlock().id})
+        for n in range(2, 22)
+    ]
+    for item in (None, a, *busy, b, _finished_event()):
+        stream.items.put_nowait(item)
+    db = _db(ConnectionError("database manager unreachable"), nodes=[])
+
+    outputs, _ = await _run(monkeypatch, stream, db)
+
+    # The gap, the end, then the retries until the wait gives up: about four
+    # reads, not one more for each of the 22 finished nodes.
+    assert db.get_graph_execution_meta.await_count < 10
+    assert outputs == [("result", "a"), ("result", "b")]
+
+
+async def test_a_due_retry_runs_before_the_events_queued_meanwhile(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A retry can fall due while the child's updates are already queued: a
+    queued event doesn't wait for a timeout, so unless the deadline is checked
+    first the retry trails every one of them, and a busy child keeps it back."""
+
+    async def no_more_events() -> AsyncIterator[ExecutionEvent | None]:
+        await asyncio.Event().wait()
+        yield None
+
+    wait = sub_agent_wait.SubAgentWait(
+        no_more_events(),
+        user_id=_USER,
+        graph_exec_id=_CHILD,
+        log_id="test",
+        logger=MagicMock(),
+    )
+    db = _db(_meta(ExecutionStatus.COMPLETED), nodes=[])
+    reads = db.get_graph_execution_meta.side_effect
+    queued_at_the_retry: list[int] = []
+
+    async def read(**kwargs: Any) -> GraphExecutionMeta | None:
+        queued_at_the_retry.append(wait._queue.qsize())
+        return await reads(**kwargs)
+
+    db.get_graph_execution_meta.side_effect = read
+    monkeypatch.setattr(sub_agent_wait, "execution_db", lambda: db)
+    # A failed catch-up's retry, already due, with three updates queued.
+    wait._stale = True
+    wait._retry_at = asyncio.get_running_loop().time() - 1.0
+    running = _output(1, "a").model_copy(update={"status": ExecutionStatus.RUNNING})
+    for _ in range(3):
+        wait._queue.put_nowait(running)
+
+    async with asyncio.timeout(_WITHIN_S):
+        outputs = [output async for output in wait.outputs()]
+
+    assert outputs == []
+    assert queued_at_the_retry[0] == 3
+
+
+async def test_outputs_held_while_a_catch_up_is_owed_are_capped(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A chatty child during a long outage mustn't hold every output in
+    memory. Past the cap the catch-up's read returns them, still in order."""
+    monkeypatch.setattr(sub_agent_wait, "MAX_HELD_OUTPUTS", 2)
+    monkeypatch.setattr(sub_agent_wait, "CATCH_UP_RETRY_S", 60.0)
+    stream = _Stream()
+    produced = [_output(n, str(n)) for n in range(1, 6)]
+    for item in (None, *produced, _finished_event()):
+        stream.items.put_nowait(item)
+    wait = sub_agent_wait.SubAgentWait(
+        stream.listen_with_resync("unused"),
+        user_id=_USER,
+        graph_exec_id=_CHILD,
+        log_id="test",
+        logger=MagicMock(),
+    )
+    # The gap's catch-up fails; the end's, with all five recorded, succeeds.
+    db = _db(
+        ConnectionError("database manager unreachable"),
+        _meta(ExecutionStatus.COMPLETED),
+        nodes=produced,
+    )
+    reads = db.get_graph_execution_meta.side_effect
+    held_at_each_read: list[int] = []
+
+    async def read(**kwargs: Any) -> GraphExecutionMeta | None:
+        held_at_each_read.append(len(wait._held))
+        return await reads(**kwargs)
+
+    db.get_graph_execution_meta.side_effect = read
+    monkeypatch.setattr(sub_agent_wait, "execution_db", lambda: db)
+
+    async with asyncio.timeout(_WITHIN_S):
+        outputs = [output async for output in wait.outputs()]
+
+    assert held_at_each_read == [0, 2]
+    assert outputs == [("result", str(n)) for n in range(1, 6)]
 
 
 async def test_an_owed_catch_up_runs_on_time_while_the_child_keeps_streaming(
@@ -500,6 +623,7 @@ async def test_a_child_that_ends_while_redis_is_dropped_still_ends_the_wait(
                 while not outputs:
                     await publisher.publish_event(a, channel)
                     await asyncio.sleep(0.1)
+            reads_before_the_drop = db.get_node_executions.await_count
             proxy.drop()
             db.get_node_executions.side_effect = None
             db.get_node_executions.return_value = [b, a]
@@ -515,3 +639,6 @@ async def test_a_child_that_ends_while_redis_is_dropped_still_ends_the_wait(
             await redis_client.disconnect_async()
 
     assert outputs == [("result", "a"), ("result", "b")]
+    # b was published while the connection was down: only a catch-up from
+    # the database could have found it.
+    assert db.get_node_executions.await_count > reads_before_the_drop

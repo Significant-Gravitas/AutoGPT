@@ -3,6 +3,7 @@ it on purpose, or prove that reads run side by side."""
 
 import asyncio
 import socket
+from asyncio import open_connection
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from functools import cache
@@ -34,6 +35,39 @@ def is_tcp_port_reachable(
 
     connection.close()
     return True
+
+
+async def unreachable_tcp_endpoints(
+    endpoints: dict[str, tuple[str, int]], *, within: float
+) -> list[str]:
+    """The ``endpoints`` that accepted no TCP connection within ``within``
+    seconds, each named with its address.
+
+    Each is tried again until then, so a service still starting gets its
+    time, and one that is down is reported instead of leaving its clients
+    retrying forever. Not cached, unlike :func:`is_tcp_port_reachable`.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + within
+    waiting = dict(endpoints)
+    while True:
+        for name, (host, port) in list(waiting.items()):
+            try:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host, port), timeout=1.0
+                )
+            except (OSError, TimeoutError):
+                continue
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except OSError:
+                pass
+            del waiting[name]
+        if not waiting or loop.time() >= deadline:
+            break
+        await asyncio.sleep(0.5)
+    return [f"{name} at {host}:{port}" for name, (host, port) in waiting.items()]
 
 
 class Rendezvous:
@@ -120,7 +154,7 @@ class TcpProxy:
             return
         self._track(asyncio.current_task())
         try:
-            up_reader, up_writer = await asyncio.open_connection(*self.upstream)
+            up_reader, up_writer = await open_connection(*self.upstream)
         except OSError:
             writer.close()
             return
