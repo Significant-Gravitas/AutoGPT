@@ -23,7 +23,9 @@ logged or printed:
   work out from the operating system's identifier.
 
 With no identifier to read, the ID comes from the stored value alone, never
-from the hostname.
+from the hostname. An identifier that is there and couldn't be read this
+once is another matter: the ID without it would be another computer's, so
+that start stops and the next one reads it again (OsIdentifierUnreadable).
 
 So a computer keeps its ID from one start to the next, and when the program
 is reinstalled or upgraded, for as long as the shim's folder is kept and
@@ -41,17 +43,22 @@ import hashlib
 import hmac
 import os
 import secrets
+import time
 import uuid
 from pathlib import Path
 
 from . import platform_info
 from .audit import _fallback_path
-from .fsops import rename_no_replace
+from .fsops import rename_no_replace_in_one_step
 
 # The stored value's file, in the shim's own folder.
 SEED_FILE_NAME = "machine-id-seed"
 _SEED_BYTES = 32
 _HEX_DIGITS = frozenset("0123456789abcdef")
+# How long a start waits for a value another start is still writing under
+# the name (_place's last way), and how often it looks.
+_BEING_WRITTEN_SECONDS = 2.0
+_BEING_WRITTEN_POLL_SECONDS = 0.02
 
 # The derivation below, and the form its inputs take, can't change once
 # computers are registered under it: the platform knows a computer by this
@@ -71,6 +78,12 @@ class MachineIdError(Exception):
         super().__init__(f"{description} ({error})" if error is not None else description)
         self.description = description
         self.error = error
+
+
+class OsIdentifierUnreadable(MachineIdError):
+    """The operating system's identifier is there and couldn't be read at
+    this start (platform_info.MachineIdentifierUnreadable). The ID derived
+    without it would differ from the one every other start derives."""
 
 
 def canonical_os_identifier(identifier: str | None) -> str | None:
@@ -130,16 +143,19 @@ def stored_seed() -> bytes:
 
     Made once. A new value is written whole to a file of its own (owner-only
     from its creation, synced) and only then given the value's name, in a
-    way that fails if the name is taken: two starts that each found none
-    both go on with the one that got the name first. So a file under that
-    name is always a whole value, and one that isn't was not written here:
-    it raises MachineIdError rather than be read as a value or replaced.
+    way that fails if the name is taken, always in one step (_place): two
+    starts that each found none both go on with the one that got the name
+    first. So a file under that name is a whole value, or on a filesystem
+    where the name has to be made first, one another start is writing this
+    moment, which is waited for (_read_whole). One that stays short of a
+    value, or holds anything else, was not written here: it raises
+    MachineIdError rather than be read as a value or replaced.
 
     A storage error raises MachineIdError too. A value made and not kept
     would be another at the next start, and the platform would see a new
     computer each time."""
     path = seed_path()
-    seed = _read(path)
+    seed = _read_whole(path)
     if seed is not None:
         return seed
     temp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
@@ -161,7 +177,7 @@ def stored_seed() -> bytes:
         raise MachineIdError(
             f"The value the machine ID is derived from couldn't be kept at {path}", exc
         ) from exc
-    seed = _read(path)
+    seed = _read_whole(path)
     if seed is None:
         raise MachineIdError(
             f"The value the machine ID is derived from was removed from {path} as it was made"
@@ -170,14 +186,27 @@ def stored_seed() -> bytes:
 
 
 def _place(temp: Path, path: Path) -> None:
-    """Give the file at `temp` the name `path`, unless something has that
-    name already: FileExistsError then, and what has it is left alone.
+    """Give the value in the file at `temp` the name `path`, unless
+    something has that name already: FileExistsError then, and what has it
+    is left alone. In one step, whichever way it takes, so that two starts
+    can't both find the name free and one replace the other's value after
+    that start has read it.
 
-    A hard link, where there are hard links: it fails if the name exists,
-    on every POSIX filesystem, NFS included. Where there are none (FAT, some
-    network shares), and on Windows, a rename that refuses to replace
-    (fsops.rename_no_replace), which a few old kernels and filesystems do
-    in two steps."""
+    - A hard link, where there are hard links: it fails if the name exists,
+      on every POSIX filesystem, NFS included.
+    - Else a rename that refuses to replace, where the system has one in one
+      step: Windows' rename, Linux's and macOS's with their flag for it
+      (fsops.rename_no_replace_in_one_step).
+    - Else (no links, and a kernel or a filesystem without that flag: FAT
+      and exFAT, an SMB share without links, sshfs) the name is made new and
+      the value written under it. Making a name new fails if it exists
+      everywhere. The value isn't under the name from the first moment
+      then, which is why a start waits for one still being written
+      (_read_whole).
+
+    Not a look for the name followed by a rename, which those last
+    filesystems would otherwise need: another start's value could take the
+    name between the two."""
     if os.name != "nt":
         try:
             os.link(temp, path)
@@ -186,12 +215,49 @@ def _place(temp: Path, path: Path) -> None:
             raise
         except OSError:
             pass
-    rename_no_replace(temp, path)
+    if rename_no_replace_in_one_step(temp, path):
+        return
+    _write_under_a_new_name(temp.read_bytes(), path)
 
 
-def _read(path: Path) -> bytes | None:
+def _write_under_a_new_name(value: bytes, path: Path) -> None:
+    """Make the name `path`, which fails if something has it, and write
+    `value` under it. A write that fails takes the name away again: this
+    start made it, and it holds no whole value."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(value)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(path)
+        raise
+
+
+class _StillBeingWritten(Exception):
+    """The file holds the start of a value and nothing else: another start
+    may be writing it this moment (_write_under_a_new_name)."""
+
+
+def _read_whole(path: Path) -> bytes | None:
+    """`_read`, waiting a short while for a value another start is still
+    writing. One that is still short of a value after that is no value."""
+    give_up = time.monotonic() + _BEING_WRITTEN_SECONDS
+    while True:
+        try:
+            return _read(path, may_be_unfinished=time.monotonic() < give_up)
+        except _StillBeingWritten:
+            time.sleep(_BEING_WRITTEN_POLL_SECONDS)
+
+
+def _read(path: Path, *, may_be_unfinished: bool = False) -> bytes | None:
     """The value in the file at `path`: None when there is no file,
-    MachineIdError when it can't be read or doesn't hold a whole value."""
+    MachineIdError when it can't be read or doesn't hold a whole value.
+    With `may_be_unfinished`, _StillBeingWritten for a file that holds only
+    the start of a value."""
     try:
         with open(path, "rb") as handle:
             # One byte more than a value with its line ending, to tell a
@@ -205,6 +271,8 @@ def _read(path: Path) -> bytes | None:
         ) from exc
     text = data.decode("ascii", "replace").removesuffix("\n").removesuffix("\r")
     if len(text) != 2 * _SEED_BYTES or not _HEX_DIGITS.issuperset(text):
+        if may_be_unfinished and len(data) < 2 * _SEED_BYTES and _HEX_DIGITS.issuperset(text):
+            raise _StillBeingWritten
         raise MachineIdError(
             f"{path} doesn't hold the value the machine ID is derived from, which the shim "
             "writes whole or not at all. The shim won't replace it: this computer would get "
@@ -217,13 +285,22 @@ def _read(path: Path) -> bytes | None:
 def own_machine_id() -> str:
     """This computer's machine ID, for this account's shim, making the
     stored value if there is none (stored_seed): MachineIdError when it
-    can't be read or kept."""
-    return derive_machine_id(platform_info.os_machine_identifier(), stored_seed())
+    can't be read or kept, and OsIdentifierUnreadable when the operating
+    system's identifier couldn't be read this once. The identifier comes
+    first: a start that stops there has made no value."""
+    try:
+        identifier = platform_info.os_machine_identifier()
+    except platform_info.MachineIdentifierUnreadable as exc:
+        raise OsIdentifierUnreadable(
+            f"The operating system's identifier for this computer couldn't be read ({exc})"
+        ) from exc
+    return derive_machine_id(identifier, stored_seed())
 
 
 __all__ = [
     "SEED_FILE_NAME",
     "MachineIdError",
+    "OsIdentifierUnreadable",
     "canonical_os_identifier",
     "derive_machine_id",
     "own_machine_id",

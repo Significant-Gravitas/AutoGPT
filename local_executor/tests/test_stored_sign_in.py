@@ -696,6 +696,85 @@ async def test_a_refresh_cancelled_during_its_exchange_gives_the_turn_back(
     assert await store.get_refresh_token() == "refresh-auth"
 
 
+async def test_a_refresh_cancelled_during_its_write_keeps_the_turn_until_the_write_is_over(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A sign-in and a sign-out keep their turn until their keychain call is
+    over, cancelled or not. A refresh didn't: cancelled while its new pair
+    was being written, it left its turn with the write still under way and
+    the store kept the turn for its next use. A sign-out on the same store
+    then went ahead with it, removed the record, and the write, landing
+    after it, put a sign-in back."""
+    keychain = _Keychain(monkeypatch)
+    platform = _Platform(monkeypatch)
+    config = _config(tmp_path)
+    store = KeychainTokenStore(config)
+    await store.store_tokens("access-0", "refresh-0")
+
+    keychain.hold_next_change = True
+    refresh = asyncio.ensure_future(OAuthFlow(config, store).refresh_token())
+    signing_out: asyncio.Future[None] | None = None
+    try:
+        assert await asyncio.to_thread(keychain.held.wait, 60)
+        assert platform.sent == ["refresh-0"]
+        refresh.cancel()
+        # The write is still in the keychain, so the refresh isn't over, and
+        # a sign-out on the same store waits for the turn.
+        signing_out = asyncio.ensure_future(store.clear_tokens())
+        await asyncio.wait([refresh, signing_out], timeout=1.0)
+        assert not refresh.done()
+        assert not signing_out.done()
+    finally:
+        keychain.go.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await refresh
+    assert signing_out is not None
+    await asyncio.wait_for(signing_out, timeout=120)
+    # The sign-out came after the write, and is what stands.
+    assert await store.get_refresh_token() is None
+    assert store.unsaved_refresh is None
+    # The turn went back: another process's sign-in has it.
+    await asyncio.to_thread(
+        _AnotherProcess(
+            lambda: KeychainTokenStore(config).store_tokens("access-9", "refresh-9")
+        ).result
+    )
+    assert await store.get_refresh_token() == "refresh-9"
+
+
+async def test_a_refresh_cancelled_once_its_pair_is_written_gives_the_turn_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pair is stored, so the store has nothing unsaved to keep the turn
+    for: another process isn't told the sign-in is busy until this one
+    refreshes again."""
+    keychain = _Keychain(monkeypatch)
+    _Platform(monkeypatch)
+    config = _config(tmp_path)
+    store = KeychainTokenStore(config)
+    await store.store_tokens("access-0", "refresh-0")
+
+    keychain.hold_next_change = True
+    refresh = asyncio.ensure_future(OAuthFlow(config, store).refresh_token())
+    try:
+        assert await asyncio.to_thread(keychain.held.wait, 60)
+        refresh.cancel()
+    finally:
+        keychain.go.set()
+    with pytest.raises(asyncio.CancelledError):
+        await refresh
+
+    assert await store.get_refresh_token() == "refresh-1"
+    assert store.unsaved_refresh is None
+    await asyncio.to_thread(
+        _AnotherProcess(
+            lambda: KeychainTokenStore(config).store_tokens("access-9", "refresh-9")
+        ).result
+    )
+    assert await store.get_refresh_token() == "refresh-9"
+
+
 @pytest.mark.parametrize("command", ["auth", "revoke"])
 def test_a_sign_in_or_sign_out_that_cannot_have_its_turn_says_why(
     tmp_path: Path,

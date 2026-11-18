@@ -21,7 +21,7 @@ Once connected, AutoGPT can:
 - *(Optional, disabled by default)* Execute shell commands as your user
   (per-OS shell selection — bash/zsh/pwsh/cmd)
 - *(Optional)* Operate apps on this computer through [cua-driver](https://github.com/trycua/cua): read windows, click, type, fill forms, in the background where it can
-- *(Optional)* Access local hardware (serial, USB, GPIO)
+- Hardware access (serial, USB, GPIO) is a design, not a feature yet: see [HARDWARE.md](docs/HARDWARE.md).
 - Local-model routing is disabled scaffolding; it is not a supported chat mode.
 
 Cross-platform: macOS, Windows, Linux (Tier 1); WSL2 + Windows-on-ARM
@@ -30,14 +30,25 @@ support matrix.
 
 ## Platform Binding Layer
 
-The platform-side code (WebSocket route, `LocalPCShim`, `ShimConnectionManager`, config hooks) lives in the AutoGPT monorepo:
+The platform-side code (WebSocket route, `LocalPCShim`, `ShimConnectionManager`, rollout flags) lives in the AutoGPT monorepo, where it merged with:
 👉 https://github.com/Significant-Gravitas/AutoGPT/pull/13050
 
 ## Install (alpha)
 
-```bash
-pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git
+Install the revision your deployment pins. The platform shows the command
+on its Local PC setup card, in a new chat's folder dialog while no computer
+is connected, and the revision it names is the one whose protocol that
+deployment speaks:
 
+```bash
+# From the setup card, with its revision in place of <revision>:
+pipx install "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git@<revision>"
+```
+
+A shim of another revision may speak another protocol version than the
+platform, and the two then refuse each other (close code 4426).
+
+```bash
 # One-time: sign in. With no --platform-url this is the hosted AutoGPT
 # platform (see "Which platform" below).
 autogpt-shim auth
@@ -58,6 +69,17 @@ autogpt-shim \
 # --enable-recording is reserved for the design preview. The daemon currently
 # refuses this flag with EX_CONFIG because capture + interpretation aren't yet
 # safe to expose end to end.
+```
+
+Computer use needs an extra, added to the install you have rather than by
+installing again: see [COMPUTER_USE.md](docs/COMPUTER_USE.md#turning-it-on).
+
+### For development
+
+To run the head of the default branch, which no deployment pins:
+
+```bash
+pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git
 ```
 
 ### Which platform
@@ -145,7 +167,7 @@ documentation, not a currently enabled product promise.
 | [PROTOCOL.md](docs/PROTOCOL.md) | WebSocket message protocol spec |
 | [OAUTH_FLOW.md](docs/OAUTH_FLOW.md) | Auth design (uses AutoGPT's existing OAuth provider) |
 | [SECURITY.md](docs/SECURITY.md) | Threat model and defense layers |
-| [PLATFORM_HOOKS.md](docs/PLATFORM_HOOKS.md) | Platform-side insertion points |
+| [PLATFORM_HOOKS.md](docs/PLATFORM_HOOKS.md) | The platform-side design sketch, and what the platform built |
 | [CROSS_PLATFORM.md](docs/CROSS_PLATFORM.md) | Per-OS support matrix and path-jail strategy |
 | [AUDIT_LOG.md](docs/AUDIT_LOG.md) | Audit log format, HMAC tamper-evidence, CLI |
 | [HARDWARE.md](docs/HARDWARE.md) | Hardware access wire spec (serial / USB / GPIO) |

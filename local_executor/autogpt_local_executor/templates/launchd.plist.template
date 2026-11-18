@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Source template: autogpt_local_executor/templates/launchd.plist.template
-  Rendered file:   ~/Library/LaunchAgents/net.autogpt.shim.plist
+  Rendered file:   ~/Library/LaunchAgents/{label}.plist
   Re-render with:  autogpt-shim install
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>net.autogpt.shim</string>
+    <string>{label}</string>
 
     <key>ProgramArguments</key>
     <array>

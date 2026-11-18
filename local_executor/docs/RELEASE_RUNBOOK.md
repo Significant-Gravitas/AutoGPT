@@ -240,8 +240,23 @@ git commit -m "autogpt-local-executor v0.0.1"
 git push -u origin bump-autogpt-local-executor-v0.0.1
 gh pr create --title "autogpt-local-executor v0.0.1" --body "..."
 
-# Scoop — same pattern in the bucket repo.
+# Scoop — same pattern in the bucket repo, after the check below.
 ```
+
+The Scoop manifest has never been installed from a real bucket: until the
+first release its `url` and `hash` are placeholders, so nothing could run
+it. Before the manifest goes to the bucket, install from the file itself on
+a Windows machine, with the release's `url` and `hash` filled in, and run
+what it installed:
+
+```powershell
+scoop install .\packaging\scoop\autogpt-local-executor.json
+autogpt-shim --version
+scoop uninstall autogpt-local-executor
+```
+
+The same goes for the Homebrew formula on a Mac
+(`brew install --build-from-source ./packaging/homebrew/autogpt-local-executor.rb`).
 
 Both can be self-reviewed and merged immediately for v0.0.1; once the
 release cadence picks up, an "auto-update" workflow in the tap/bucket
@@ -253,8 +268,8 @@ checker) becomes worth the time.
 Either side of merge to the tap/bucket:
 
 ```bash
-# macOS / Linux
-pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git
+# macOS / Linux: the tag this release pushed, not the default branch's head
+pipx install "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git@v<version>"
 autogpt-shim --version  # confirms install
 autogpt-shim doctor      # confirms permissions / TCC consent
 autogpt-shim auth
@@ -274,8 +289,6 @@ autogpt-shim --version
 
 When everything is green:
 
-- Update the platform PR (#13050) description / status if it's still
-  open.
 - Post in the relevant Slack channel: "v0.0.1 of autogpt-local-executor
   is on PyPI / brew / scoop. Gated behind the PostHog flag
   `local-pc-executor`. Install instructions at <repo README>."

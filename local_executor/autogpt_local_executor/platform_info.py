@@ -15,7 +15,6 @@ Everything in this module is sync — the daemon calls it once at startup.
 from __future__ import annotations
 
 import concurrent.futures
-import importlib.util
 import logging
 import os
 import platform as _platform
@@ -71,13 +70,6 @@ def detect_arch() -> str:
 # ── Capabilities ─────────────────────────────────────────────────────────────
 
 
-def _module_available(name: str) -> bool:
-    try:
-        return importlib.util.find_spec(name) is not None
-    except (ImportError, ValueError):
-        return False
-
-
 def detect_capabilities(
     *,
     enable_shell: bool = False,
@@ -100,13 +92,12 @@ def detect_capabilities(
     caps.append("files")  # always present
     if enable_computer_use and can_do_computer_use(cua_driver_path, driver_found=driver_found):
         caps.append("computer_use")
-    if enable_hardware:
-        if _module_available("serial"):
-            caps.append("hardware_serial")
-        if _module_available("usb"):
-            caps.append("hardware_usb")
-        if _module_available("RPi.GPIO"):
-            caps.append("hardware_gpio")
+    # Hardware isn't built: the shim has no HARDWARE_* message and no
+    # handler (docs/HARDWARE.md is a spec). `enable_hardware` used to add
+    # `hardware_serial`, `hardware_usb` and `hardware_gpio` here, one for
+    # each library installed, and a platform that was granted one and sent
+    # a hardware request got no reply at all. So none is advertised until
+    # there are handlers, whatever `enable_hardware` says.
     # Workflow recording remains a design preview. Its capture and
     # interpretation pipeline isn't safe to expose end to end, so this
     # capability is never advertised even when the preview flag is set.
@@ -499,6 +490,12 @@ session_display = SessionDisplay()
 _LINUX_MACHINE_ID_FILES: tuple[str, ...] = ("/etc/machine-id", "/var/lib/dbus/machine-id")
 
 
+class MachineIdentifierUnreadable(Exception):
+    """The operating system has an identifier, and this read of it failed
+    or ran out of time. Not the same as having none: the next read may well
+    give it."""
+
+
 @lru_cache(maxsize=1)
 def os_machine_identifier() -> str | None:
     """The operating system's own identifier for this installation, as it
@@ -509,10 +506,18 @@ def os_machine_identifier() -> str | None:
     It is one input of the shim's machine ID (machine_identity) and nothing
     else: other software on the computer reads the same value, and
     machine-id(5) asks applications not to send it over a network, so it is
-    never sent, logged, printed or stored. Read once for the process."""
+    never sent, logged, printed or stored. Read once for the process.
+
+    MachineIdentifierUnreadable when macOS's couldn't be read. Every Mac has
+    one, and it is read by running `ioreg`, which can fail or not answer in
+    its five seconds (a login under load): one read failing, where None
+    would give the computer another machine ID for that start. On Linux and
+    Windows a read that fails keeps failing, start after start (no such
+    file or value, or one this account may not read), so there it is None:
+    the same answer each time, and the same ID."""
     plat = detect_platform()
-    try:
-        if plat == "darwin":
+    if plat == "darwin":
+        try:
             out = subprocess.check_output(
                 ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
                 stdin=subprocess.DEVNULL,
@@ -520,13 +525,19 @@ def os_machine_identifier() -> str | None:
                 stderr=subprocess.DEVNULL,
                 timeout=5,
             )
-            for line in out.splitlines():
-                if "IOPlatformUUID" in line:
-                    # Line looks like: "IOPlatformUUID" = "ABCDEF12-..."
-                    parts = line.split("=", 1)
-                    if len(parts) == 2:
-                        return parts[1].strip().strip('"') or None
-        elif plat in ("linux", "wsl2"):
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise MachineIdentifierUnreadable(
+                f"`ioreg` didn't give this Mac's identifier ({type(exc).__name__})"
+            ) from exc
+        for line in out.splitlines():
+            if "IOPlatformUUID" in line:
+                # Line looks like: "IOPlatformUUID" = "ABCDEF12-..."
+                parts = line.split("=", 1)
+                if len(parts) == 2:
+                    return parts[1].strip().strip('"') or None
+        return None
+    try:
+        if plat in ("linux", "wsl2"):
             for candidate in _LINUX_MACHINE_ID_FILES:
                 try:
                     with open(candidate, encoding="utf-8") as f:
@@ -544,7 +555,7 @@ def os_machine_identifier() -> str | None:
             ) as key:
                 val, _ = winreg.QueryValueEx(key, "MachineGuid")  # type: ignore[attr-defined]
                 return str(val) or None
-    except (OSError, subprocess.SubprocessError):
+    except OSError:
         pass
     return None
 
@@ -721,6 +732,7 @@ __all__ = [
     "detect_arch",
     "detect_capabilities",
     "os_machine_identifier",
+    "MachineIdentifierUnreadable",
     "detect_platform",
     "is_case_insensitive_fs",
     "linux_display_problem",

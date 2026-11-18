@@ -1,11 +1,14 @@
 # Hardware Access — Wire Spec
 
-> **Status**: Draft v0.1 — spec only; handler implementation deferred.
+> **Status**: Draft v0.1 — spec only. None of it is built.
 >
-> Closes VISION.md §4. The shim already detects `hardware_serial` /
-> `hardware_usb` / `hardware_gpio` capabilities via `pyserial` /
-> `pyusb` / `RPi.GPIO` (or `gpiozero`) presence and advertises them
-> in HELLO under `capabilities[]` + populates `hardware_devices[]`.
+> Closes VISION.md §4. Today the shim has no `HARDWARE_*` message and no
+> handler. HELLO offers no `hardware_serial`, `hardware_usb` or
+> `hardware_gpio` capability and its `hardware_devices[]` is always
+> empty, so the platform is never granted hardware and has nothing to
+> send. `enable_hardware` loads from a config and has no effect yet;
+> `autogpt-shim start` says so when it is set. What follows describes the
+> design: read "the shim does" below as "the shim will".
 > This doc pins the wire ops so handlers (and the platform-side
 > adapter) can be written against a stable contract.
 
@@ -28,7 +31,7 @@ Device enumeration is part of HELLO and refreshed on demand via
 `HARDWARE_LIST`. The shim does NOT poll continuously — hot-plug events
 are out of scope for v1.
 
-### `HELLO.payload.hardware_devices[]` (already specified)
+### `HELLO.payload.hardware_devices[]` (the field exists; always empty today)
 
 ```json
 [
@@ -407,10 +410,11 @@ Hardware access bypasses the file-jail entirely. Three lines of defense:
    `~/.config/autogpt-local-executor/` on Linux,
    `~/Library/Application Support/autogpt-local-executor/` on macOS and
    `%APPDATA%\autogpt-local-executor\` on Windows) or
-   `AUTOGPT_SHIM_ENABLE_HARDWARE=true` in the environment. On its next
-   start the shim lists `hardware_serial` / `hardware_usb` /
-   `hardware_gpio` in HELLO `capabilities`, one for each of those
-   libraries that is installed. The shim closes the connection if
+   `AUTOGPT_SHIM_ENABLE_HARDWARE=true` in the environment. Once the
+   handlers exist, the shim will list `hardware_serial` / `hardware_usb` /
+   `hardware_gpio` in HELLO `capabilities` on its next start, one for each
+   of those libraries that is installed; today it lists none. The shim
+   closes the connection if
    HELLO_ACK grants a capability it did not advertise, so the platform
    cannot turn hardware on from its side.
 2. **OS-level permissions** (Linux: `dialout` / `gpio` groups; macOS:

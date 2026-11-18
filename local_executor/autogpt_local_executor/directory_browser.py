@@ -6,13 +6,13 @@ import os
 import re
 import secrets
 import time
-import unicodedata
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePath
 
-from . import platform_info
+from . import fsops, platform_info
+from .hidden_characters import has_hidden_character
 
 MAX_DIRECTORY_ENTRIES = 200
 MAX_SCANNED_ENTRIES = 1000
@@ -21,18 +21,25 @@ MAX_REFS_PER_BROWSE = 1200
 MAX_CURSORS_PER_BROWSE = 32
 BROWSE_TTL_SECONDS = 5 * 60
 
-_WINDOWS_SPECIAL_NAMES = frozenset(
+# Windows' own folders, left out of a listing of a drive's top folder
+# (`C:\\`), which is where they are the system's. Further down, a folder of
+# one of these names is the person's: `windows` in a Flutter project, a
+# folder called Recovery or ProgramData. Left out at every depth, those
+# couldn't be opened or chosen.
+_WINDOWS_SPECIAL_AT_A_DRIVE_TOP = frozenset(
     {
-        "$recycle.bin",
         "documents and settings",
         "program files",
         "program files (x86)",
         "programdata",
         "recovery",
-        "system volume information",
         "windows",
     }
 )
+# The two the system keeps on every volume, and so wherever a volume's top
+# folder is, one mounted in a folder included: the recycle bin, and the
+# volume's restore points and indexes. Left out everywhere.
+_WINDOWS_SPECIAL_ANYWHERE = frozenset({"$recycle.bin", "system volume information"})
 
 
 class DirectoryBrowseError(Exception):
@@ -195,6 +202,8 @@ class DirectoryBrowser:
         )
 
     def resolve(self, browse_id: str, directory_ref: str) -> Path:
+        """The folder a reference stands for, as one to share with a chat:
+        the person has to be able to write to it, not only open it."""
         self._evict_expired()
         session = self._get_session(browse_id)
         target = session.refs.get(directory_ref)
@@ -203,7 +212,7 @@ class DirectoryBrowser:
                 "DIRECTORY_REFERENCE_INVALID",
                 "The directory reference is invalid or expired",
             )
-        return self._canonical_accessible_directory(target.path)
+        return self._canonical_accessible_directory(target.path, to_share=True)
 
     def resolve_and_consume(self, browse_id: str, directory_ref: str) -> Path:
         """Resolve one selected reference and invalidate its whole browse session."""
@@ -266,6 +275,7 @@ class DirectoryBrowser:
         candidates: list[Path] = []
         scanned = 0
         hard_truncated = False
+        at_drive_top = self.platform_name == "windows" and _is_drive_top(current)
         try:
             with os.scandir(current) as iterator:
                 for entry in iterator:
@@ -273,7 +283,7 @@ class DirectoryBrowser:
                     if scanned > MAX_SCANNED_ENTRIES:
                         hard_truncated = True
                         break
-                    if not self._safe_directory_entry(entry):
+                    if not self._safe_directory_entry(entry, at_drive_top=at_drive_top):
                         continue
                     try:
                         child = self._canonical_accessible_directory(Path(entry.path))
@@ -328,7 +338,7 @@ class DirectoryBrowser:
         )
         return token
 
-    def _safe_directory_entry(self, entry: os.DirEntry[str]) -> bool:
+    def _safe_directory_entry(self, entry: os.DirEntry[str], *, at_drive_top: bool) -> bool:
         try:
             if (
                 entry.is_symlink()
@@ -338,11 +348,25 @@ class DirectoryBrowser:
                 return False
         except OSError:
             return False
-        if self.platform_name == "windows" and entry.name.casefold() in _WINDOWS_SPECIAL_NAMES:
-            return False
+        if self.platform_name == "windows":
+            name = entry.name.casefold()
+            if name in _WINDOWS_SPECIAL_ANYWHERE:
+                return False
+            if at_drive_top and name in _WINDOWS_SPECIAL_AT_A_DRIVE_TOP:
+                return False
         return _valid_wire_name(entry.name)
 
-    def _canonical_accessible_directory(self, path: Path) -> Path:
+    def _canonical_accessible_directory(self, path: Path, *, to_share: bool = False) -> Path:
+        """`path` as a folder the person can open: not a link, and one their
+        account can read and search (fsops.can_open_folder). That is what
+        listing it and opening it take.
+
+        With `to_share`, also one they can write to (fsops.can_write_folder):
+        what choosing it for a chat takes, since every file operation in it
+        would fail otherwise. Asked of every folder on the way too, as it
+        was, a writable folder under a read-only one couldn't be reached,
+        and a removable disk whose top folder is root's (ext4 and xfs, as
+        udisks mounts them) wasn't among the roots at all."""
         try:
             if path.is_symlink() or _is_reparse_point(path):
                 raise DirectoryBrowseError(
@@ -350,10 +374,16 @@ class DirectoryBrowser:
                     "Symbolic links and reparse points cannot be browsed",
                 )
             resolved = Path(os.path.realpath(path, strict=True))
-            if not resolved.is_dir() or not os.access(resolved, os.R_OK | os.W_OK | os.X_OK):
+            if not resolved.is_dir() or not fsops.can_open_folder(resolved):
                 raise DirectoryBrowseError(
                     "DIRECTORY_UNAVAILABLE",
                     "The selected directory is not accessible",
+                )
+            if to_share and not fsops.can_write_folder(resolved):
+                raise DirectoryBrowseError(
+                    "DIRECTORY_UNAVAILABLE",
+                    "This folder can be opened but not shared with a chat: this account "
+                    "can't write to it. Choose a folder it can write to.",
                 )
             return resolved
         except DirectoryBrowseError:
@@ -365,7 +395,10 @@ class DirectoryBrowser:
             ) from exc
 
     def _discover_roots(self) -> tuple[Path, ...]:
-        raw_roots = [self.home]
+        # The home folder by its real place. Where it is itself a link
+        # (`/home/u -> /data/u`), the refusal of links below, which is for
+        # the links a folder holds, dropped it from the roots altogether.
+        raw_roots = [Path(os.path.realpath(self.home))]
         if self.platform_name == "darwin":
             raw_roots.extend(self._children_of(Path("/Volumes")))
         elif self.platform_name == "windows":
@@ -392,10 +425,20 @@ class DirectoryBrowser:
         return tuple(roots)
 
     def _linux_user_mounts(self) -> list[Path]:
-        username = self.home.name
+        """The person's removable disks: what is mounted in the folder
+        udisks keeps for their account, `/media/<login name>` or
+        `/run/media/<login name>` as the distribution has it.
+
+        By the login name first. The home folder's name was used alone,
+        and the two differ for a home like `/home/kris@corp` and where HOME
+        is overridden: no disk showed then. It is still looked under, where
+        it is another name."""
+        names = dict.fromkeys(name for name in (_login_name(), self.home.name) if name)
         return [
-            *self._children_of(Path("/media") / username),
-            *self._children_of(Path("/run/media") / username),
+            child
+            for name in names
+            for parent in (Path("/media") / name, Path("/run/media") / name)
+            for child in self._children_of(parent)
         ]
 
     def _wsl_drive_roots(self) -> list[Path]:
@@ -451,10 +494,30 @@ class DirectoryBrowser:
         return path.name or str(path)
 
 
+def _login_name() -> str | None:
+    """The account's login name, from the user database. None where it has
+    no entry for the account, or the OS has no such database."""
+    try:
+        import pwd
+
+        return pwd.getpwuid(os.getuid()).pw_name
+    except (ImportError, KeyError, AttributeError):
+        return None
+
+
+def _is_drive_top(path: PurePath) -> bool:
+    """Whether `path` is a volume's top folder: `C:\\`, or a share's
+    (`\\\\server\\share\\`). It is its own parent."""
+    return path.parent == path
+
+
 def _valid_wire_name(name: str) -> bool:
-    if not name or "\x00" in name:
-        return False
-    if any(unicodedata.category(char).startswith("C") for char in name):
+    """Whether a folder's name goes into a listing: one that JSON can carry
+    and that shows as what it is. A name with a control, a bidi control or a
+    zero-width character in it is left out, since it could read as another
+    folder's; a joiner or non-joiner where its script uses one (a Persian
+    word, an emoji sequence) is part of the name (hidden_characters)."""
+    if not name or has_hidden_character(name):
         return False
     try:
         name.encode("utf-8")

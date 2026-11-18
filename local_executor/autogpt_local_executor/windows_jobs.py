@@ -191,27 +191,35 @@ class CommandJob:
             _kernel32().CloseHandle(handle)
 
 
+class JobError(OSError):
+    """A command the shim didn't run because it couldn't be put in a job of
+    its own, or let run in it. The text is the shim's own, with the system's
+    reason, and names no path: it can go to the platform as it is."""
+
+
 def run_in_job(pid: int) -> CommandJob:
     """Put process `pid`, created suspended (CREATE_SUSPENDED), in a job of
-    its own, then let it run. Raises OSError if the job couldn't be made or
+    its own, then let it run. Raises JobError if the job couldn't be made or
     the process couldn't be resumed: the process is then still suspended,
     and a job made for it is ended."""
     kernel32 = _kernel32()
     try:
         job = _job_holding(kernel32, pid)
     except OSError as exc:
-        raise OSError(
+        raise JobError(
             f"the command was not run: it could not be put in a job of its own, "
             f"which a stop needs to end what it starts ({exc})"
         ) from exc
     try:
         _resume(kernel32, pid)
-    except OSError:
+    except OSError as exc:
         try:
             job.terminate()
         finally:
             job.close()
-        raise
+        raise JobError(
+            f"the command was not run: it could not be let run in its job ({exc})"
+        ) from exc
     return job
 
 

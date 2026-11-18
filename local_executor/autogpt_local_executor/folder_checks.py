@@ -17,8 +17,12 @@ Here a look runs in a thread of its own and is waited for until a deadline:
   the same folder fails at once: a dead share holds one thread for each
   folder asked about, however many requests come in. Other folders are
   looked at as usual.
-- At most MAX_STUCK_FOLDER_CHECKS such looks are left running, whatever
-  their folders. Past that every look is refused until one returns.
+- At most MAX_STUCK_FOLDER_CHECKS looks run at once, whatever their
+  folders, those still waited for included: counting only the ones given up
+  on let requests that came in together each start one, and leave more
+  running than the limit when none of them answered. With every one of
+  them given up on, a look is refused at once until one returns; while one
+  is still waited for, a new look waits for a thread, inside its own time.
 - The threads are daemon threads, not the event loop's worker threads:
   asyncio.run() waits for its workers before it returns, and the
   interpreter waits for them again as it exits, so one stuck in a worker
@@ -40,7 +44,8 @@ _T = TypeVar("_T")
 # How long a control request waits for its looks at a folder, in all: half
 # of the ten seconds the platform waits for a control request's answer.
 FOLDER_CHECK_SECONDS = 5.0
-# The most looks left running once nobody waits for them, each in a thread.
+# The most looks running at once, each in a thread, and so the most left
+# running once nobody waits for them.
 MAX_STUCK_FOLDER_CHECKS = 8
 
 
@@ -84,26 +89,48 @@ class FolderChecks:
         `folder` is what `look` looks at. While an earlier look at it is
         still inside its own caller's wait, this one waits its turn, no
         later than `deadline`; once that look has been given up on, this
-        one fails at once. `on_abandoned` is called when this call leaves
-        its own look running, by its deadline or by being cancelled."""
+        one fails at once. It waits the same way for a thread, while the
+        most that may run are running and one of them is still waited for.
+        `on_abandoned` is called when this call leaves its own look
+        running, by its deadline or by being cancelled."""
         loop = asyncio.get_running_loop()
-        key = os.path.normcase(os.fspath(folder))
-        for done in [key for key, earlier in self._looks.items() if earlier.done.done()]:
-            del self._looks[done]
-        while (earlier := self._looks.get(key)) is not None and not earlier.done.done():
-            if earlier.abandoned:
-                raise FolderCheckTimeout(
-                    "The folder still hasn't answered an earlier request; try again later."
-                )
+        # The path as it is given, which is how its callers name a folder
+        # each time (a grant's root, the picker's resolved path). Not with
+        # its case folded: Windows has folders that differ only in case,
+        # where a folder is marked case-sensitive, and one of them not
+        # answering would have refused the other without a look.
+        key = os.fspath(folder)
+        while True:
+            for done in [key for key, earlier in self._looks.items() if earlier.done.done()]:
+                del self._looks[done]
+            # What is left is running, each in its thread.
+            earlier = self._looks.get(key)
+            if earlier is not None:
+                if earlier.abandoned:
+                    raise FolderCheckTimeout(
+                        "The folder still hasn't answered an earlier request; try again later."
+                    )
+                # Another request's look at this folder, with its caller
+                # still waiting: it ends, or is given up on, within that
+                # caller's time.
+                wait_for = [earlier]
+            elif len(self._looks) >= self._max_stuck:
+                # Every thread is taken. One whose caller still waits may
+                # well return; with none of those, nothing frees one soon.
+                wait_for = [look for look in self._looks.values() if not look.abandoned]
+                if not wait_for:
+                    raise FolderCheckTimeout(
+                        "Too many folders on this computer aren't answering; try again later."
+                    )
+            else:
+                break
             remaining = deadline - loop.time()
             if remaining <= 0:
                 raise FolderCheckTimeout("The folder didn't answer in time; try again later.")
-            # Another request's look at this folder, with its caller still
-            # waiting: it ends, or is given up on, within that caller's time.
-            await asyncio.wait({asyncio.wrap_future(earlier.done)}, timeout=remaining)
-        if self.stuck() >= self._max_stuck:
-            raise FolderCheckTimeout(
-                "Too many folders on this computer aren't answering; try again later."
+            await asyncio.wait(
+                {asyncio.wrap_future(look.done) for look in wait_for},
+                timeout=remaining,
+                return_when=asyncio.FIRST_COMPLETED,
             )
         remaining = deadline - loop.time()
         if remaining <= 0:

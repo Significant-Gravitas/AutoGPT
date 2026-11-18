@@ -61,6 +61,14 @@ def _read_afresh():
     _READ.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _a_short_wait_for_a_value_being_written(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A file that holds the start of a value is waited for, in case another
+    start is still writing it. The tests that put one there mean it to stay
+    that way, and the test of the wait sets its own."""
+    monkeypatch.setattr(machine_identity, "_BEING_WRITTEN_SECONDS", 0.05, raising=False)
+
+
 def _fallback_folder() -> Path:
     return Path(os.environ["AUTOGPT_SHIM_FALLBACK_DIR"])
 
@@ -320,12 +328,49 @@ def test_a_wsl2_distribution_reads_its_own_identifier_not_its_hosts(
         subprocess.CalledProcessError(1, "ioreg"),
     ],
 )
-def test_an_identifier_that_cannot_be_read_is_none(monkeypatch, failure: Exception) -> None:
+def test_a_macs_identifier_that_could_not_be_read_is_not_taken_for_none(
+    monkeypatch, failure: Exception
+) -> None:
+    """Every Mac has one. `ioreg` failing, or not answering in its five
+    seconds at a busy login, is that one read failing. Taken for a computer
+    with no identifier, the start went on under another machine ID."""
+
     def fails(*_args: object, **_kwargs: object) -> str:
         raise failure
 
     monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
     monkeypatch.setattr(platform_info.subprocess, "check_output", fails)
+
+    with pytest.raises(platform_info.MachineIdentifierUnreadable):
+        platform_info.os_machine_identifier()
+
+
+def test_a_mac_whose_answer_holds_no_identifier_has_none(monkeypatch) -> None:
+    """`ioreg` answered, so nothing failed: the same answer at every start."""
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setattr(
+        platform_info.subprocess, "check_output", lambda *_args, **_kwargs: "+-o Root\n  {\n  }\n"
+    )
+
+    assert platform_info.os_machine_identifier() is None
+
+
+def test_a_linux_identifier_file_that_may_not_be_read_is_still_none(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A file the account may not read stays that way from one start to the
+    next (a sandbox, a hardened /etc), so the ID from the stored value alone
+    is the same each time. Stopping there would keep the shim from ever
+    starting."""
+
+    def no_access(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(
+        platform_info, "_LINUX_MACHINE_ID_FILES", (str(tmp_path / "machine-id"),), raising=False
+    )
+    monkeypatch.setattr("builtins.open", no_access)
 
     assert platform_info.os_machine_identifier() is None
 
@@ -533,6 +578,151 @@ def test_without_hard_links_the_value_is_still_put_in_place_once(monkeypatch) ->
     assert path.read_bytes() == other
 
 
+def _neither_links_nor_a_one_step_rename(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A filesystem with no hard links, on a system whose rename has no way
+    to refuse to replace: exFAT or a FAT stick, an SMB share without links,
+    sshfs."""
+    from autogpt_local_executor import fsops
+
+    def no_links(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(machine_identity.os, "link", no_links)
+    monkeypatch.setattr(fsops, "_native_no_replace_rename", lambda _src, _dst: False)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows' own rename never replaces")
+def test_without_links_or_a_one_step_rename_another_starts_value_is_not_replaced(
+    monkeypatch,
+) -> None:
+    """There the value got its name by a look for the name and then a
+    rename, two steps. Another start's value that took the name between
+    them was replaced, after that start had read it: the two went on under
+    two machine IDs, and the first one's changed at its next start."""
+    from autogpt_local_executor import fsops
+
+    _neither_links_nor_a_one_step_rename(monkeypatch)
+    path = machine_identity.seed_path()
+    other = SEED_B.hex().encode("ascii") + b"\n"
+    arrived: list[bool] = []
+
+    def another_start_takes_the_name() -> None:
+        if not arrived:
+            arrived.append(True)
+            path.write_bytes(other)
+
+    # Wherever this start's placing of its own value looks or acts on the
+    # name, the other start's value has just got there.
+    lexists, open_ = fsops.os.path.lexists, machine_identity.os.open
+
+    def looked_just_before(name: object) -> bool:
+        found = lexists(name)
+        if Path(os.fspath(name)) == path:  # type: ignore[arg-type]
+            another_start_takes_the_name()
+        return found
+
+    def opened_just_after(name: object, flags: int, *rest: object) -> int:
+        if Path(os.fspath(name)) == path and flags & os.O_EXCL:  # type: ignore[arg-type]
+            another_start_takes_the_name()
+        return open_(name, flags, *rest)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(fsops.os.path, "lexists", looked_just_before)
+    monkeypatch.setattr(machine_identity.os, "open", opened_just_after)
+
+    seed = machine_identity.stored_seed()
+
+    assert arrived == [True]
+    assert path.read_bytes() == other
+    assert seed == SEED_B
+    assert [entry.name for entry in path.parent.iterdir()] == ["machine-id-seed"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows' own rename never replaces")
+def test_without_links_or_a_one_step_rename_two_starts_at_once_end_with_one_value(
+    monkeypatch,
+) -> None:
+    _neither_links_nor_a_one_step_rename(monkeypatch)
+    starts = 16
+    together = threading.Barrier(starts)
+    seeds: list[bytes] = []
+    failures: list[BaseException] = []
+
+    def start() -> None:
+        try:
+            together.wait(timeout=30)
+            seeds.append(machine_identity.stored_seed())
+        except BaseException as exc:
+            failures.append(exc)
+
+    threads = [threading.Thread(target=start) for _ in range(starts)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+
+    assert failures == []
+    assert len(seeds) == starts
+    assert len(set(seeds)) == 1
+    path = machine_identity.seed_path()
+    assert path.read_bytes() == seeds[0].hex().encode("ascii") + b"\n"
+    assert [entry.name for entry in path.parent.iterdir()] == ["machine-id-seed"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows' own rename never replaces")
+def test_without_links_or_a_one_step_rename_the_value_is_still_made_and_kept(monkeypatch) -> None:
+    _neither_links_nor_a_one_step_rename(monkeypatch)
+
+    first = machine_identity.stored_seed()
+
+    path = machine_identity.seed_path()
+    assert path.read_bytes() == first.hex().encode("ascii") + b"\n"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert machine_identity.stored_seed() == first
+    assert [entry.name for entry in path.parent.iterdir()] == ["machine-id-seed"]
+
+
+def test_a_value_another_start_is_still_writing_is_waited_for() -> None:
+    """Where the name is made first and the value written into it, another
+    start can find the name with less than a value under it. It waits for
+    the rest, a short while, and doesn't call the file broken."""
+    path = machine_identity.seed_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    value = SEED_A.hex().encode("ascii") + b"\n"
+    path.write_bytes(value[:20])
+    reading = threading.Event()
+    read = machine_identity._read
+
+    def read_and_say(name: Path, **how: Any) -> bytes | None:
+        reading.set()
+        return read(name, **how)
+
+    def the_other_start_finishes() -> None:
+        assert reading.wait(30)
+        path.write_bytes(value)
+
+    writer = threading.Thread(target=the_other_start_finishes)
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(machine_identity, "_read", read_and_say)
+        patched.setattr(machine_identity, "_BEING_WRITTEN_SECONDS", 60.0)
+        writer.start()
+        try:
+            assert machine_identity.stored_seed() == SEED_A
+        finally:
+            writer.join(30)
+
+
+def test_a_value_that_stays_cut_short_is_still_an_error(monkeypatch) -> None:
+    path = machine_identity.seed_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(SEED_A.hex().encode("ascii")[:20])
+    monkeypatch.setattr(machine_identity, "_BEING_WRITTEN_SECONDS", 0.2)
+
+    with pytest.raises(machine_identity.MachineIdError, match="doesn't hold the value"):
+        machine_identity.stored_seed()
+
+    assert path.read_bytes() == SEED_A.hex().encode("ascii")[:20]
+
+
 # ── What the daemon sends, records and prints ────────────────────────────────
 
 
@@ -654,6 +844,65 @@ def test_a_computer_keeps_its_id_from_one_start_to_the_next(
     second = _daemon(_config(tmp_path, audit_log_path=tmp_path / "second.log")).machine_id
 
     assert first == second
+
+
+def test_a_start_that_cannot_read_the_identifier_stops_rather_than_be_another_computer(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    """The ID is derived from the identifier and the stored value. With the
+    identifier unread at one start (`ioreg` not answering in time), the ID
+    came from the stored value alone: another ID, so for that start the
+    platform saw a new computer, and no chat found its own."""
+    import asyncio
+
+    _this_computer_is(monkeypatch, tmp_path, "macos")
+    first = _daemon(_config(tmp_path, audit_log_path=tmp_path / "first.log")).machine_id
+
+    # The next start: the read doesn't come back in time.
+    _READ.cache_clear()
+
+    def no_answer(*_args: object, **_kwargs: object) -> str:
+        raise subprocess.TimeoutExpired("ioreg", 5)
+
+    with monkeypatch.context() as this_start:
+        this_start.setattr(platform_info, "detect_platform", lambda: "darwin")
+        this_start.setattr(platform_info.subprocess, "check_output", no_answer)
+        config = _config(tmp_path, audit_log_path=tmp_path / "second.log")
+        with pytest.raises(DaemonPreflightError) as refused:
+            _daemon(config)
+
+        assert config.machine_id is None
+        # To be started again, which reads it again: not for good.
+        assert refused.value.transient is True
+        assert "identifier" in str(refused.value)
+        assert "AUTOGPT_SHIM_FALLBACK_DIR" not in str(refused.value)
+        assert "machine_id" in str(refused.value)
+        again = _config(tmp_path, audit_log_path=tmp_path / "b.log")
+        assert asyncio.run(cli._cmd_start(again)) == 75
+        printed = capsys.readouterr()
+        assert "Preflight failed" in printed.err
+        assert "machine_id=" not in printed.out
+
+    # The start after that, with the identifier read: the same computer.
+    _READ.cache_clear()
+    _this_computer_is(monkeypatch, tmp_path, "macos")
+    third = _daemon(_config(tmp_path, audit_log_path=tmp_path / "third.log")).machine_id
+    assert third == first
+
+
+def test_a_first_start_that_cannot_read_the_identifier_keeps_no_value(
+    monkeypatch, tmp_path: Path
+) -> None:
+    def no_answer(*_args: object, **_kwargs: object) -> str:
+        raise subprocess.TimeoutExpired("ioreg", 5)
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setattr(platform_info.subprocess, "check_output", no_answer)
+
+    with pytest.raises(machine_identity.MachineIdError):
+        machine_identity.own_machine_id()
+
+    assert not machine_identity.seed_path().exists()
 
 
 def test_deleting_the_shims_state_gives_the_computer_a_new_id(monkeypatch, tmp_path: Path) -> None:

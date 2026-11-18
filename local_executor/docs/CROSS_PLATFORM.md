@@ -45,14 +45,14 @@ One row per dimension. `n/a` means "doesn't apply on this OS." `same` means
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Path separator | `/` | `/` | `\` (also accepts `/`) | Shim normalizes incoming wire paths with `pathlib.PurePath`. |
+| Path separator | `/` | `/` | `\` (also accepts `/`) | The shim reads a wire path as the OS's own `pathlib.Path`. On macOS and Linux a `\` is an ordinary character of a name. |
 | Drive letters / UNC | n/a | n/a | `C:\`, `\\server\share` | A path on another drive, relative to another drive's folder (`D:x`), on another share or host (`\\server\share\x`, `//server/share/x`), or in a device namespace (`\\.\`, `\\?\`) is refused by its name, before anything looks at it: resolving one would have Windows connect to the host and sign in with the person's account, or open the device. A root that is itself on a share or a mapped drive takes the paths under it. See [Path Jail Strategy](#path-jail-strategy). |
-| Reserved filenames | none | none | `CON`, `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, `COM1`–`COM9`, `LPT1`–`LPT9`, and `COM`/`LPT` with a superscript `¹`, `²` or `³` (case-insensitive, with or without extension, and with spaces before the extension) | Reject in FILE_WRITE; reject reads if the name is `\\?\`-escaped to a real reserved device. |
-| Invalid path chars | `:` (legacy HFS quirk; modern APFS allows) | none | `< > : " \| ? *` and control chars 0–31 | Reject on FILE_WRITE before opening. |
-| Max path length | 1024 (PATH_MAX) | 4096 (PATH_MAX) | 260 (MAX_PATH) unless `\\?\` prefix → 32767 | Shim transparently uses `\\?\` on Windows for paths > 240 chars. |
-| Alternate data streams | n/a | n/a | `file.txt:hidden` (NTFS ADS) | Path jail strips/rejects any path containing `:` after the drive component. |
-| Case sensitivity (default FS) | **Insensitive** (APFS default) | **Sensitive** (ext4/btrfs/xfs) | **Insensitive** (NTFS default) | Path jail compares case-folded on macOS+Windows; raw-byte on Linux. See [Path Jail Strategy](#path-jail-strategy). |
-| Home dir env var | `$HOME` | `$HOME` | `%USERPROFILE%` (also `%HOMEDRIVE%%HOMEPATH%`) | Shim resolves `~` via `pathlib.Path.home()` which handles all three. |
+| Reserved filenames | none | none | `CON`, `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, `COM1`–`COM9`, `LPT1`–`LPT9`, and `COM`/`LPT` with a superscript `¹`, `²` or `³` (case-insensitive, with or without extension, and with spaces before the extension) | Refused for every request that names a path (each FILE_* message and a command's `cwd`), at any depth of the path, with `PATH_RESERVED_NAME`, before anything looks at the path. |
+| Invalid path chars | NUL (`\0`) | NUL (`\0`) | `< > " \| ? *` and control chars 0–31, after the drive letter; a `:` there is the next row but one | Refused for every request that names a path, with `PATH_INVALID_CHARS`, before anything looks at the path. A `:` in a name on macOS goes to the filesystem as it is. |
+| Max path length | 1024 (PATH_MAX) | 4096 (PATH_MAX) | 32767; a path over 260 (MAX_PATH) is opened only where Windows' long-path setting (`LongPathsEnabled`) is on | The jail refuses a longer path with `PATH_INVALID_CHARS`, counting the characters of the path as sent, with `~` expanded; the OS still applies its own limit to what passes. The shim never adds the `\\?\` prefix, and the jail refuses a path that has one: its `?` is no character of a path. |
+| Alternate data streams | n/a | n/a | `file.txt:hidden` (NTFS ADS) | The jail refuses any path with a `:` after the drive letter, with `PATH_INVALID_CHARS`, for every request that names a path. It never strips one. |
+| Case sensitivity (default FS) | **Insensitive** (APFS default) | **Sensitive** (ext4/btrfs/xfs) | **Insensitive** (NTFS default) | The jail never folds case to let a path in, on any OS. The resolved path must start with the resolved root exactly, or the filesystem itself must say that the root is one of the path's existing ancestors (the same device and inode), which is how another spelling of the root is recognised on a case-insensitive filesystem. Only the early refusal by name sets case aside, and it can only refuse. See [Path Jail Strategy](#path-jail-strategy). |
+| Home dir env var | `$HOME` | `$HOME` | `%USERPROFILE%` (also `%HOMEDRIVE%%HOMEPATH%`) | The jail expands a wire path's leading `~` with `Path.expanduser()`, which reads these. |
 
 ### Symlinks, junctions, and reparse points
 
@@ -60,7 +60,7 @@ One row per dimension. `n/a` means "doesn't apply on this OS." `same` means
 |---|---|---|---|---|
 | Symbolic links | Yes (`ln -s`) | Yes | Yes (NTFS, requires `SeCreateSymbolicLinkPrivilege` or developer mode) | Resolve before jail check. |
 | Junctions | n/a | n/a | Yes (`mklink /J`) | NTFS reparse points; `os.path.realpath` follows them. |
-| Firmlinks | Yes (`/Users`, `/Applications` etc. on APFS) | n/a | n/a | Transparent; `realpath` resolves them. |
+| Firmlinks | Yes (`/Users`, `/Applications` etc. on APFS) | n/a | n/a | Transparent: a firmlink is not a symlink, so `realpath` leaves the path as it is. |
 | Bind mounts | n/a | Yes | n/a | Not resolved by `realpath`; treated as part of the path tree. |
 | Canonicalize call | `os.path.realpath` | `os.path.realpath` | `os.path.realpath` (Python 3.8+ resolves junctions) | Always run realpath before path-jail comparison. |
 
@@ -72,14 +72,49 @@ accepting a path from the platform.
 | Platform | Roots exposed |
 |---|---|
 | macOS | Canonical home plus accessible real local data volumes immediately under `/Volumes`; system/startup volumes are excluded. |
-| Linux | Canonical home plus accessible user mounts immediately under `/media/$USER` and `/run/media/$USER`; `/`, `/proc`, `/sys`, `/dev`, and general `/run` are never roots. |
+| Linux | Canonical home plus accessible user mounts immediately under `/media/<login name>` and `/run/media/<login name>`, where udisks mounts a person's removable disks; the login name is the account's own from the user database, and the home folder's name is looked under as well where it differs (a home like `/home/kris@corp`, an overridden `HOME`). `/`, `/proc`, `/sys`, `/dev`, and general `/run` are never roots. |
 | WSL2 | Linux home/user mounts plus accessible one-letter fixed-drive mounts immediately under `/mnt`. |
 | Windows | Canonical `%USERPROFILE%` plus accessible fixed and removable drive roots (`GetDriveTypeW` 3 and 2); remote, optical and RAM-disk drives are excluded by their type. Only lettered volumes are listed, so the EFI and recovery partitions, which have no letter, are not; one given a letter is a fixed drive like any other. Redirecting reparse roots are excluded. A reparse point counts as redirecting when its tag has the name-surrogate bit (symlinks, junctions); OneDrive's cloud placeholders don't, and stay browsable. |
+
+"Canonical home" is the home folder by its real place: one that is itself a
+link (`/home/u -> /data/u`) is resolved first and offered under that path.
+Every other link is refused, as below.
 
 Each request lists one immediate level with fixed host-side scan/response caps.
 Symlinks, junctions, inaccessible entries, files, and invalid wire names are
 skipped. The result includes directory display names and canonical absolute
 paths only; navigation and selection use short-lived opaque references.
+
+An invalid wire name is one that isn't valid UTF-8, or one that could read
+as another folder's name in the dialog: it holds a control character, a bidi
+control, or a zero-width or other invisible format character. U+200C and
+U+200D are the exception where a script uses them: inside a Persian word,
+after an Indic virama, between the pictographs of an emoji sequence. The
+rule is Unicode's own for names (CONTEXTJ, RFC 5892), and the same on every
+OS; [PROTOCOL.md](PROTOCOL.md#directory_list_request--directory_list_response)
+has it in full.
+
+On Windows, a drive's top folder is listed without the system's own
+folders: `Windows`, `Program Files`, `Program Files (x86)`, `ProgramData`,
+`Recovery` and `Documents and Settings`. A folder of one of those names
+further down is the person's (the `windows` folder of a Flutter project,
+say) and is listed like any other. `$RECYCLE.BIN` and `System Volume
+Information`, which the system keeps on every volume, are left out wherever
+they are.
+
+A folder is listed and can be opened when the account can read and search
+it, and chosen for a chat only when it can also write to it. So a folder
+the account can only read is still a way to one inside it that is its own:
+a removable ext4 or xfs disk, whose top folder is root's as udisks mounts
+it, is among the roots. How each system is asked:
+
+| | Can be opened | Can be chosen |
+|---|---|---|
+| macOS, Linux, WSL2 | `access(2)` for read and search. It takes ACLs into account, and it doesn't open the folder: on macOS, opening one the privacy settings guard (Desktop, Documents, Downloads) would put a prompt on the screen for a folder the person only browsed past. | `access(2)` for write and search as well. |
+| Windows | The folder is opened for listing. `os.access` looks at the read-only attribute alone and would call every folder usable, another account's profile under `C:\Users` among them. | The system is asked for a handle on the folder with the right to add a file to it (`FILE_ADD_FILE`), which its access list grants or refuses. No file is made to find out. |
+
+These looks are part of a listing, so they share its time limit
+([PROTOCOL.md](PROTOCOL.md#a-folder-that-doesnt-answer)).
 
 ### Shell selection
 
@@ -134,10 +169,34 @@ Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/net.autogpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...`) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` undoes both: see [Uninstalling](#uninstalling). |
-| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: `AT_LOGON` (Task Scheduler `<LogonTrigger>`) | All require user opt-in: `install` prints the systemctl / launchctl / schtasks command that starts the service and never runs it. The macOS `SuccessfulExit=false` flag is load-bearing: launchd starts the daemon again after every nonzero exit, no more often than every 10 seconds (its default throttle). It doesn't watch TCC.db: while computer use is requested and Accessibility or Screen Recording isn't granted, each start runs the preflight, which starts cua-driver to check the grants, and exits 78 again, so the start after consent is granted in System Settings comes up without the user touching launchctl. See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
+| Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/co.agpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim`, a task of the account that ran `install` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...` from that account's own prompt: see [The Windows task's account](#the-windows-tasks-account)) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` undoes both: see [Uninstalling](#uninstalling). |
+| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: that account's own logon (Task Scheduler `<LogonTrigger>` with the account's `UserId`) | All require user opt-in: `install` prints the systemctl / launchctl / schtasks command that starts the service and never runs it. The macOS `SuccessfulExit=false` flag is load-bearing: launchd starts the daemon again after every nonzero exit, no more often than every 10 seconds (its default throttle). It doesn't watch TCC.db: while computer use is requested and Accessibility or Screen Recording isn't granted, each start runs the preflight, which starts cua-driver to check the grants, and exits 78 again, so the start after consent is granted in System Settings comes up without the user touching launchctl. See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
 | Logs | `~/Library/Logs/autogpt-local-executor/*.log` | `journalctl --user -u autogpt-shim` + `$XDG_STATE_HOME/autogpt-local-executor/` | `%LOCALAPPDATA%\autogpt-local-executor\logs\` | Audit log location per row "Audit log" below. |
+| Restart after an exit | launchd, on any non-zero exit (`KeepAlive: {SuccessfulExit=false}`), at most every 10 s | systemd, on failure after 5 s (`Restart=on-failure`), except after 77 and 78 | The shim itself: the task runs `autogpt-shim start --supervise` | Task Scheduler doesn't start a program again after it exits. Its restart-on-failure setting applies when the action can't be started at all; a program that starts and then exits, with whatever code, is a run that completed. So under the task the shim runs its daemon as a child process and starts it again after an exit that asks for it (75) or a crash, with a pause of 5 s that doubles up to a minute while the daemon doesn't stay up for a minute. 0, 77 and 78 end it, as under systemd. A plain `autogpt-shim start` in a terminal has no such loop. |
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
+
+#### The Windows task's account
+
+The Windows task is one account's own. `install` asks `whoami` for the SID
+of the account it runs as and writes it into the task's logon trigger and
+its principal. So the task starts the shim at that account's logon and runs
+it as that account, with that account's Credential Manager. Such a task is
+the account's to register: the `schtasks /Create` command that `install`
+prints takes no elevated prompt, and neither does `autogpt-shim uninstall`.
+If the account can't be read, `install` writes nothing and says why.
+
+A trigger and a principal that name no account make a task for every
+account's logon. Only an administrator may register that, and it runs as
+whoever registered it: registered from a prompt opened with an
+administrator's credentials, it started the shim at the administrator's
+logon and never for the person who had installed it.
+
+Task Scheduler keeps one task of a name for the whole computer, where
+launchd and systemd keep each account's services apart. So one account on a
+computer can have `\AutoGPT\Shim`. A second account can't register another
+under that name, and starts the shim itself with `autogpt-shim start`. From
+an elevated prompt, which sees every account's tasks, `uninstall` ends and
+deletes the task of that name whichever account it belongs to.
 
 #### Uninstalling
 
@@ -149,22 +208,39 @@ It runs the service manager itself, and waits a bounded time for each step:
 
 | OS | What it runs | It waits |
 |---|---|---|
-| macOS | `launchctl bootout <domain>/net.autogpt.shim`, in the login session (`gui/<uid>`) and the background one (`user/<uid>`, where an agent loaded over SSH is), then asks launchd until the service has gone | 30 s (launchd kills a service that hasn't exited after 20 s) |
+| macOS | `launchctl bootout <domain>/co.agpt.shim`, in the login session (`gui/<uid>`) and the background one (`user/<uid>`, where an agent loaded over SSH is), then asks launchd until the service has gone | 30 s (launchd kills a service that hasn't exited after 20 s) |
 | Linux, WSL2 | `systemctl --user disable --now autogpt-shim.service` while the unit file is there, or `systemctl --user stop` when it is already gone; then `systemctl --user daemon-reload` | 100 s (systemd kills a unit that hasn't stopped after 90 s) |
 | Windows | `schtasks /End` and then `schtasks /Delete` on `\AutoGPT\Shim`. Deleting alone would leave what the task started running | 30 s |
 
 It stops only the service the autostart entry started. A shim started by
 hand in a terminal isn't the service manager's, and keeps running.
 
+The LaunchAgent's label is `co.agpt.shim`: a launchd label is the reversed
+name of a domain its author owns, and the project's is agpt.co. It had
+another before. A Mac that installed the service under that earlier label
+still has it, and it would start a second shim for the same computer at
+every login beside the new one, where the platform lets one connection per
+computer stand. So on macOS `install` and `uninstall` also ask launchd for a
+service under the earlier label (`FORMER_LAUNCHD_LABEL` in `install.py`),
+unload it and remove its file, and say so; with none they say nothing. If it
+can't be unloaded, `install` says so before the new one is loaded, and
+`uninstall` exits 1 with the command that stops it. That code goes once no
+Mac has such a service.
+
 When the service can't be stopped, it says what failed, removes the file
 all the same, prints one command that stops the service without the file,
 and exits 1. That happens when the service manager's tool isn't on `PATH`,
 when there is no user session bus to reach systemd through (a shell from
-`su` or `sudo -u`), when the wait runs out, and on Windows when the task was
-registered from an elevated prompt and `uninstall` runs from a plain one.
-There a task that this prompt can't see looks like one that isn't
-registered, so `uninstall` can only rule a task out from an elevated prompt.
+`su` or `sudo -u`), when the wait runs out, and on Windows when a prompt that
+isn't elevated sees the task but may not end or delete it, as it may not
+for one that was registered from an elevated prompt.
 With nothing installed and nothing running it changes nothing and exits 0.
+
+On Windows a prompt that isn't elevated sees the account's own task, the one
+`install` has it register, and doesn't see another account's. To such a
+prompt a task it can't see looks like one that isn't registered. `uninstall`
+then says that this account has no task registered, and what such a prompt
+can't see, and exits 0: another account's task isn't this account's service.
 
 The systemd user unit sets `AUTOGPT_SHIM_SUPERVISOR=systemd`. It starts at
 login, before the desktop exports its display to the user manager. So when
@@ -178,7 +254,8 @@ service instead of restarting it, since a restart would only retry the
 rejected credentials. The systemd unit sets `RestartPreventExitStatus=77`.
 launchd's `KeepAlive` restarts any non-zero exit, so the LaunchAgent sets
 `AUTOGPT_SHIM_SUPERVISOR=launchd` and `start` exits 0 for this case.
-Task Scheduler retries three times, a minute apart. Run
+Under the Windows task the shim's own supervisor (`start --supervise`)
+doesn't start the daemon again after 77 either. Run
 `autogpt-shim auth`, then restart the service. Errors the shim won't
 retry, such as a protocol mismatch or a revoked session, already exit 0
 and are logged.
@@ -199,7 +276,8 @@ reason. A missing macOS permission still exits 78, so launchd relaunches
 the shim once it is granted.
 
 A failure at start that can clear on its own exits 75 (`EX_TEMPFAIL`),
-which systemd and launchd both restart: audit storage that is full or
+which systemd and launchd both restart, and the shim's supervisor does
+under the Windows task: audit storage that is full or
 not mounted yet, or a keychain still locked when the audit key is read.
 So does no keychain at all when the audit key or the sign-in is read, as
 with a Secret Service the desktop session starts after the systemd unit:
@@ -225,7 +303,7 @@ not open yet on macOS (Files and Folders), a missing permission that exits
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Primary installer | `pipx` | `pipx` | `pipx` | All paths go through pipx in v0. Until the first PyPI release, install from git: `pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git`. After it, `pipx install autogpt-local-executor` works too. |
+| Primary installer | `pipx` | `pipx` | `pipx` | All paths go through pipx in v0. Until the first PyPI release, install from git, at the revision the deployment's setup card names: `pipx install "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git@<revision>"`. After it, `pipx install autogpt-local-executor==<version>` works too. |
 | Secondary | Homebrew tap (`brew install Significant-Gravitas/tap/autogpt-local-executor`) | distro packages (deb/rpm) — best-effort | Scoop / winget — best-effort | Future. |
 | Signing | Apple Developer ID + notarization for `.pkg` | none (pipx wheels are unsigned) | Authenticode signing for `.exe` wrapper (SmartScreen) | Required if we ship native installers. |
 | Python runtime | 3.11+ via pyenv/pipx-bundled | 3.11+ via distro or pyenv | 3.11+ via python.org or Microsoft Store | Pin to 3.11 minimum in `pyproject.toml`. |
@@ -255,6 +333,15 @@ together, and sends, logs and prints neither:
 
 With no identifier to read, the ID comes from the stored value alone. The
 hostname is never part of it.
+
+An identifier that is there and couldn't be read at one start is another
+matter. macOS's is read by running `ioreg`, which can fail or not answer in
+its five seconds at a busy login. The ID derived without it would be
+another one, and for that start the platform would see a new computer, so
+the start stops with exit 75 and the next one reads it again. On Linux and
+Windows a read that fails keeps failing from one start to the next (no such
+file or value, or one the account may not read), so there it counts as no
+identifier, and the ID is the same each time.
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
@@ -299,9 +386,17 @@ operating system's identifier or makes the value: `--help`, `status`,
 commands leave the folder as it was. The value is written whole to a file
 of its own, readable by its owner only, and then given its name in a way
 that fails when the name is taken, so two starts at once end with one
-value and one ID, and a file under that name is never half a value. A file
-there that isn't a whole value stops `start` (exit 78) rather than be
-replaced. So does a folder the value can't be kept in (exit 78, or 75 when
+value and one ID. That way is always one step: a hard link, else a rename
+that refuses to replace (Windows' own, Linux's and macOS's with their flag
+for it). On a filesystem with neither (FAT and exFAT, an SMB share without
+links, sshfs) the name is made new, which fails everywhere if it exists,
+and the value written under it; never a look for the name followed by a
+rename, between which another start's value could take the name and be
+replaced. A file under the name is therefore a whole value, or on those
+last filesystems one another start is writing that moment, which a start
+waits two seconds for. A file there that then isn't a whole value stops
+`start` (exit 78) rather than be replaced. So does a folder the value
+can't be kept in (exit 78, or 75 when
 a restart can fix it, such as a full disk): the shim doesn't run under an
 ID made for one start, which the platform would see as a new computer each
 time. The message names the file and the two ways out: point
@@ -426,23 +521,28 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
     p = pathlib.Path(requested_path).expanduser()
 
     # 2. Reject obvious bad shapes BEFORE filesystem access.
+    if exceeds_path_max(p):           # 1024, 4096 or 32767 characters
+        return False
     if is_reserved_name(p):           # Windows: CON, PRN, NUL, COM1, ...
         return False
     if has_alternate_data_stream(p):  # Windows: "file.txt:hidden"
         return False
-    if has_invalid_chars(p):          # Windows: < > " | ? * and ctrl chars
-        return False
+    if has_invalid_chars(p):          # Windows: < > " | ? * and ctrl chars;
+        return False                  # elsewhere NUL
 
     # 3. Resolve the root, the folder the person chose, and refuse by its
     #    name a path that is plainly outside it, BEFORE anything looks at the
     #    path. Resolving `\\host\share\x` has Windows connect to the host and
     #    sign in with the person's account, `\\.\pipe\x` opens a device, and
     #    on macOS `/net/<host>/x` has autofs contact the host. A relative
-    #    path is taken from the root, and `.` and `..` are worked out on the
-    #    names. The names a path inside the root can start with are the root
-    #    as configured, the root as resolved, and the root by the home
-    #    folder's own name (what `~` expands to); case, the form of an
-    #    accented letter and, on Windows, the separator are set aside.
+    #    path is taken from the root. The path has to begin with the root
+    #    as it is written and stay under it name by name, each `..` followed
+    #    in its place: one that leaves the root and comes back
+    #    (`/net/<host>/../../workspace/x`) would have the folder outside
+    #    looked at on the way. The names a path inside the root can start
+    #    with are the root as configured, the root as resolved, and the root
+    #    by the home folder's own name (what `~` expands to); case, the form
+    #    of an accented letter and, on Windows, the separator are set aside.
     root_resolved = os.path.realpath(allowed_root, strict=True)
     if plainly_outside(p, root_spellings(allowed_root, root_resolved)):
         return False
@@ -490,7 +590,9 @@ Key invariants:
   its name is refused before `realpath`, `stat` or `open` is called on it:
   another drive, share, host or device namespace on Windows, and on every
   OS an absolute path that isn't under the root or one that climbs above
-  it through `..`. Step 3 only ever lets a path through to be resolved; it
+  it through `..` at any point, even to come back down into it: resolving
+  looks at every folder a path passes through, so where it ends doesn't
+  decide what is looked at. Step 3 only ever lets a path through to be resolved; it
   never lets one in. It compares names more loosely than the filesystem
   may (any case), so what passes is still decided by steps 4 to 6.
 - **The root's names are the ones the shim gave out.** The platform sends
@@ -551,6 +653,8 @@ operation can act on the root itself.
 | `\\.\pipe\x`, `\\.\C:\workspace\x` (Windows) | 3 (a device namespace) |
 | `D:\x`, `D:x` (root on `C:`) | 3 (another drive) |
 | `/net/<host>/x` (macOS autofs) | 3 (outside by its name: the host isn't contacted) |
+| `/net/<host>/../../workspace/x`, `/workspace/../workspace/x` | 3 (it leaves the root on its way, though it ends inside: nothing outside is looked at) |
+| `/workspace/sub/../x` | 3 (passes: its `..` stays inside the root) → 4 → 5 → allowed |
 | `/workspace/symlink-to-etc` | 4 (realpath resolves outside) → 5 → 6 |
 | `/WORKSPACE/foo` on case-insensitive FS | 3 (passes: case is set aside) → 5 (spelling differs) → 6 (the root is an ancestor) → allowed (correct) |
 | `/WS/foo` beside root `/Ws` in a case-sensitive directory | 3 (passes) → 5 → 6 (`/WS` is another directory) |
@@ -620,6 +724,6 @@ working `/proc/sys/kernel/osrelease` containing `WSL2`.
 - [PROTOCOL.md](PROTOCOL.md) — Wire-format enums for `platform`, `arch`,
   `shell`, file ops.
 - [SECURITY.md](SECURITY.md) — Per-OS path attack surface, keychain caveats.
-- [PLATFORM_HOOKS.md](PLATFORM_HOOKS.md) — Platform-side adapter changes
-  required to be cross-OS friendly.
+- [PLATFORM_HOOKS.md](PLATFORM_HOOKS.md) — The platform-side adapter's
+  cross-OS work list, and how each entry landed.
 - [OAUTH_FLOW.md](OAUTH_FLOW.md) — Localhost callback port + keychain backends.

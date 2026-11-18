@@ -18,6 +18,7 @@ import base64
 import binascii
 import contextlib
 import contextvars
+import functools
 import hashlib
 import json
 import logging
@@ -68,6 +69,7 @@ from .computer_use.catalog import (
     without_session,
 )
 from .computer_use.concealed import ClipboardState, clipboard_state, marker_in
+from .computer_use.driver import _in_a_thread_of_its_own
 from .computer_use.mcp_client import INVALID_PARAMS, McpError
 from .config import ShimConfig
 from .directory_browser import _is_reparse_point
@@ -223,7 +225,39 @@ class _BoundedCombinedOutput:
 
 
 def _jail_error_to_message(msg_id: str, exc: PathJailError) -> ErrorMessage:
+    """The reply for a path the jail refused. Where the path resolved to
+    stays here, in the log (PathJailError.detail)."""
+    if exc.detail:
+        logger.info("Refused a path (%s): %s", exc.code, exc.detail)
     return make_error(msg_id, exc.code, exc.message)
+
+
+def _cwd_problem(cwd: Path) -> str | None:
+    """What keeps a command from starting in `cwd`: `cwd_not_found` when
+    nothing is there, `cwd_not_a_directory` when what is there is no folder
+    (a file, or a path that goes through one). None when it is a folder, or
+    can't be told: then the start failed for some other reason."""
+    try:
+        mode = os.stat(cwd).st_mode
+    except FileNotFoundError:
+        return "cwd_not_found"
+    except NotADirectoryError:
+        return "cwd_not_a_directory"
+    except OSError:
+        return None
+    return None if stat.S_ISDIR(mode) else "cwd_not_a_directory"
+
+
+def _refused_by_the_system(doing: str, asked: str, exc: OSError) -> str:
+    """The text of a reply for work the system refused: what was being done,
+    the path as the platform asked for it, and the system's reason.
+
+    Not str(exc): that ends with the file name the system was given, which
+    is the resolved path, and tells the platform where a link in the shared
+    folder leads, or where the folder itself really is. The error as the
+    system gave it goes to the log."""
+    logger.info("%s %r: %s", doing, asked, exc)
+    return f"{doing} {asked!r}: {exc.strerror or type(exc).__name__}"
 
 
 def _ok_result(duration_ms: int, *, exit_code: int | None = None) -> dict:
@@ -396,9 +430,13 @@ def _resolved_root(config: ShimConfig) -> Path:
 
 
 def _is_link(path: Path) -> bool:
-    """A symlink, or a Windows junction: removing either leaves its target."""
-    isjunction = getattr(os.path, "isjunction", None)  # Python 3.12+
-    return path.is_symlink() or bool(isjunction and isjunction(path))
+    """A symlink, or a Windows junction: removing either leaves its target.
+
+    A junction is told by _is_reparse_point, not by os.path.isjunction,
+    which Python has only from 3.12 on. Asked directly, a junction counted
+    as a folder of its own on 3.11, and a recursive FILE_DELETE called
+    rmtree on it, which refuses a junction."""
+    return path.is_symlink() or _is_reparse_point(path)
 
 
 def _is_own_directory(path: Path) -> bool:
@@ -880,6 +918,7 @@ class CommandHandler:
                         msg.id,
                         ErrorCode.SHELL_NOT_AVAILABLE,
                         f"Shell {payload.shell.value!r} is not available on this OS.",
+                        details={"requested_shell": payload.shell.value},
                     )
                 shell_exe, shell_args = resolved
                 if plat == "windows" and shell_exe.lower().endswith("cmd.exe"):
@@ -913,27 +952,15 @@ class CommandHandler:
                 )
             )
             raise
-        except FileNotFoundError as exc:
+        except Exception as exc:
+            failure = await self._start_failure(msg.id, payload, cwd, exc)
             await self._audit(
                 msg.id,
                 payload,
                 cwd=str(cwd),
-                result=_err_result(_elapsed_ms(start), ErrorCode.SHELL_NOT_AVAILABLE.value),
+                result=_err_result(_elapsed_ms(start), failure.payload.code),
             )
-            return make_error(
-                msg.id,
-                ErrorCode.SHELL_NOT_AVAILABLE,
-                f"Executable not found: {exc}",
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.exception("Failed to spawn subprocess")
-            await self._audit(
-                msg.id,
-                payload,
-                cwd=str(cwd),
-                result=_err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
-            )
-            return make_error(msg.id, ErrorCode.INTERNAL_ERROR, str(exc))
+            return failure
 
         try:
             stdout_b, stderr_b, timed_out, output_truncated = await self._collect_process_output(
@@ -1213,6 +1240,60 @@ class CommandHandler:
         except Exception:  # pragma: no cover - best-effort
             logger.exception("Error terminating subprocess tree")
 
+    async def _start_failure(
+        self, request_id: str, payload: Any, cwd: Path, exc: Exception
+    ) -> ErrorMessage:
+        """The reply for a command that couldn't be started.
+
+        The jail lets a command name a `cwd` that isn't there yet, and a
+        start in one fails. Which failure it is depends on the system:
+        POSIX gives FileNotFoundError, or NotADirectoryError for a file,
+        with the folder as its file name; Windows gives error 267 ("the
+        directory name is invalid") for both, as a NotADirectoryError that
+        names nothing. A missing program is a FileNotFoundError too, and
+        every one of those used to be answered SHELL_NOT_AVAILABLE, so the
+        model was told the shell wasn't installed when the folder was
+        missing. So the folder itself is looked at: PATH_NOT_FOUND when it
+        is what's wrong, named as the request named it.
+
+        No reply holds the failure's own text, which names the resolved
+        folder or where the shim found the shell. That goes to the log."""
+        asked = payload.cwd or str(self.config.allowed_root)
+        problem = await _read_in_a_thread(_cwd_problem, cwd) if isinstance(exc, OSError) else None
+        if problem is not None:
+            logger.info("A command's cwd %s (asked for as %r): %s (%s)", cwd, asked, problem, exc)
+            wrong = "does not exist" if problem == "cwd_not_found" else "is not a folder"
+            return make_error(
+                request_id,
+                ErrorCode.PATH_NOT_FOUND,
+                f"The command's cwd {asked!r} {wrong}",
+                details={"path": asked, "reason": problem},
+            )
+        if isinstance(exc, FileNotFoundError):
+            logger.info("A command's program was not found: %s", exc)
+            if payload.argv is not None:
+                program = payload.argv[0] if payload.argv else ""
+                return make_error(
+                    request_id,
+                    ErrorCode.SHELL_NOT_AVAILABLE,
+                    f"Executable not found: {program!r}",
+                )
+            return make_error(
+                request_id,
+                ErrorCode.SHELL_NOT_AVAILABLE,
+                f"Shell {payload.shell.value!r} could not be started: its program was not found",
+                details={"requested_shell": payload.shell.value},
+            )
+        logger.error("Failed to spawn subprocess", exc_info=exc)
+        if isinstance(exc, windows_jobs.JobError):
+            # The shim's own refusal, in its own words: no path in it.
+            return make_error(request_id, ErrorCode.INTERNAL_ERROR, str(exc))
+        return make_error(
+            request_id,
+            ErrorCode.INTERNAL_ERROR,
+            f"The command could not be started ({type(exc).__name__})",
+        )
+
     async def _audit(
         self,
         request_id: str,
@@ -1316,7 +1397,9 @@ class FileHandler:
                 {**details_base, "size_bytes_returned": 0},
                 _err_result(_elapsed_ms(start), code.value),
             )
-            return make_error(msg.id, code, f"Could not read file: {exc}")
+            return make_error(
+                msg.id, code, _refused_by_the_system("Could not read file", payload.path, exc)
+            )
 
         if chunk is None:
             requested_size = (
@@ -1429,7 +1512,9 @@ class FileHandler:
                 {**details_base, "size_bytes_written": 0},
                 _err_result(_elapsed_ms(start), code.value),
             )
-            return make_error(msg.id, code, f"Could not write file: {exc}")
+            return make_error(
+                msg.id, code, _refused_by_the_system("Could not write file", payload.path, exc)
+            )
         await self._emit(
             "FILE_WRITE",
             msg.id,
@@ -1480,7 +1565,11 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
             )
-            return make_error(msg.id, ErrorCode.INTERNAL_ERROR, str(exc))
+            return make_error(
+                msg.id,
+                ErrorCode.INTERNAL_ERROR,
+                _refused_by_the_system("Could not stat", payload.path, exc),
+            )
 
         is_file = stat.S_ISREG(st.st_mode)
         is_dir = stat.S_ISDIR(st.st_mode)
@@ -1560,7 +1649,7 @@ class FileHandler:
                 {**details_base, "entries_returned": 0},
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_FOUND.value),
             )
-            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{base} does not exist")
+            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{payload.path!r} does not exist")
         if not await _read_in_a_thread(base.is_dir):
             await self._emit(
                 "FILE_LIST",
@@ -1568,7 +1657,9 @@ class FileHandler:
                 {**details_base, "entries_returned": 0},
                 _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
             )
-            return make_error(msg.id, ErrorCode.INTERNAL_ERROR, f"{base} is not a directory")
+            return make_error(
+                msg.id, ErrorCode.INTERNAL_ERROR, f"{payload.path!r} is not a directory"
+            )
 
         # max_entries has no bound on the wire; cap it so a huge value can't
         # walk a whole tree only to have the reply refused as too large. Zero
@@ -1698,7 +1789,9 @@ class FileHandler:
                 {**details_base, "entries_returned": 0},
                 _err_result(_elapsed_ms(start), code.value),
             )
-            return make_error(msg.id, code, f"Could not list {base}: {exc}")
+            return make_error(
+                msg.id, code, _refused_by_the_system("Could not list", payload.path, exc)
+            )
         await self._emit(
             "FILE_LIST",
             msg.id,
@@ -1744,7 +1837,7 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_FOUND.value),
             )
-            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{path} does not exist")
+            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{payload.path!r} does not exist")
 
         try:
             if await _read_in_a_thread(_is_own_directory, path):
@@ -1761,7 +1854,11 @@ class FileHandler:
                             details,
                             _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_EMPTY.value),
                         )
-                        return make_error(msg.id, ErrorCode.PATH_NOT_EMPTY, str(exc))
+                        return make_error(
+                            msg.id,
+                            ErrorCode.PATH_NOT_EMPTY,
+                            _refused_by_the_system("Could not remove folder", payload.path, exc),
+                        )
             else:
                 await _run_to_completion(os.unlink, str(path))
         except OSError as exc:
@@ -1771,7 +1868,11 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
             )
-            return make_error(msg.id, ErrorCode.INTERNAL_ERROR, str(exc))
+            return make_error(
+                msg.id,
+                ErrorCode.INTERNAL_ERROR,
+                _refused_by_the_system("Could not delete", payload.path, exc),
+            )
 
         await self._emit("FILE_DELETE", msg.id, details, _ok_result(_elapsed_ms(start)))
         return make_ack(msg.id)
@@ -1809,7 +1910,7 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_FOUND.value),
             )
-            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{src} does not exist")
+            return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{payload.src!r} does not exist")
         if not payload.overwrite and await _read_in_a_thread(os.path.lexists, dst):
             await self._emit(
                 "FILE_MOVE",
@@ -1817,7 +1918,7 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_EXISTS.value),
             )
-            return make_error(msg.id, ErrorCode.PATH_EXISTS, f"{dst} already exists")
+            return make_error(msg.id, ErrorCode.PATH_EXISTS, f"{payload.dst!r} already exists")
 
         try:
             # Without overwrite, a destination created after the check above
@@ -1831,7 +1932,7 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_EXISTS.value),
             )
-            return make_error(msg.id, ErrorCode.PATH_EXISTS, f"{dst} already exists")
+            return make_error(msg.id, ErrorCode.PATH_EXISTS, f"{payload.dst!r} already exists")
         except OSError as exc:
             await self._emit(
                 "FILE_MOVE",
@@ -1839,7 +1940,11 @@ class FileHandler:
                 details,
                 _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
             )
-            return make_error(msg.id, ErrorCode.INTERNAL_ERROR, str(exc))
+            return make_error(
+                msg.id,
+                ErrorCode.INTERNAL_ERROR,
+                _refused_by_the_system(f"Could not move {payload.src!r} to", payload.dst, exc),
+            )
 
         await self._emit("FILE_MOVE", msg.id, details, _ok_result(_elapsed_ms(start)))
         return make_ack(msg.id)
@@ -1906,7 +2011,7 @@ def _seen(future: asyncio.Future[Any]) -> None:
 
 class _ProgramLookups:
     """A machine's lookups on PATH for a Linux launch by name, made in a
-    worker thread one at a time: the program the name's first word would run
+    thread of their own one at a time: the program the name's first word would run
     (_program_on_path), then the one the matched app's launch command runs
     (_linux_launch).
 
@@ -1916,8 +2021,9 @@ class _ProgramLookups:
     thread. The next caller waits for that lookup too, no later than its
     deadline, rather than start one that would stall as well: one looking
     the same thing up takes its answer, and one looking another up starts
-    its own once it has ended. So a stall holds one worker thread, however
-    many launches come in."""
+    its own once it has ended. So a stall holds one thread, however many
+    launches come in, and not one of the event loop's own, which the shim's
+    stop waits for."""
 
     def __init__(self) -> None:
         # What the lookup under way, or the last, looks up, and how.
@@ -1942,7 +2048,12 @@ class _ProgramLookups:
                 raise TimeoutError
             lookup = self._lookup
             if lookup is None or lookup.done():
-                lookup = self._lookup = asyncio.ensure_future(asyncio.to_thread(look_up, what))
+                # In a daemon thread of its own, not one of the event loop's
+                # workers: a lookup a stalled mount holds would otherwise keep
+                # the shim from stopping (asyncio.run waits for its workers).
+                lookup = self._lookup = _in_a_thread_of_its_own(
+                    functools.partial(look_up, what), "path-lookup"
+                )
                 lookup.add_done_callback(_seen)
                 self._looked_up = (look_up, what)
             ours = self._looked_up == (look_up, what)

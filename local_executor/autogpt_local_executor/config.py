@@ -240,7 +240,12 @@ class ShimConfig(BaseSettings):
         description="Reserved local-model preview. Startup rejects this option until "
         "end-to-end routing and cancellation are supported.",
     )
-    enable_hardware: bool = Field(default=False)
+    enable_hardware: bool = Field(
+        default=False,
+        description="Reserved: has no effect yet. The shim handles no hardware "
+        "operations, and HELLO offers no hardware capability until it does. "
+        "See docs/HARDWARE.md.",
+    )
 
     # ── Limits (also negotiated via HELLO_ACK) ─────────────────────────────
     max_concurrent: int = Field(default=4, gt=0, description="Concurrent in-flight requests.")

@@ -63,10 +63,12 @@ class AutogptLocalExecutor < Formula
 
       One-time setup:
         autogpt-shim auth
-        autogpt-shim install     # register the launchd LaunchAgent
-        launchctl load ~/Library/LaunchAgents/net.autogpt.shim.plist
+        autogpt-shim install
 
-      Stop the service and remove the autostart entry with:
+      `install` writes the LaunchAgent and prints the command that loads it.
+      Run the command it prints: it starts the shim now and at each login.
+
+      `uninstall` stops the service, unloads it and removes the LaunchAgent:
         autogpt-shim uninstall
     EOS
   end
@@ -77,6 +79,6 @@ class AutogptLocalExecutor < Formula
     # each of which came from a resource block. Import them all, so one
     # missing from the resource blocks fails here rather than at `start`.
     # tests/test_packaging.py keeps this list to pyproject.toml's.
-    system libexec/"bin/python", "-c", "import pydantic, pydantic_settings, websockets, httpx, keyring"
+    system libexec/"bin/python", "-c", "import pydantic, pydantic_settings, websockets, httpx, idna, keyring"
   end
 end

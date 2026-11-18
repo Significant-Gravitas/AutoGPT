@@ -39,16 +39,18 @@ Use a dedicated workspace and enable only the capabilities you need.
 The public shim client receives only the `CONNECT_LOCAL_EXECUTOR` OAuth permission,
 which grants this connection and nothing else.
 Individual local capabilities are a separate, shim-enforced boundary: shell,
-computer use, clipboard access, local models, and hardware are only advertised
-when their local configuration gates are enabled and their runtime dependencies
-are available. Recording is stricter: it remains a design preview, is never
-advertised, and causes startup to fail closed if enabled. The platform's grant
-cannot turn on a locally disabled capability.
+computer use and clipboard access are only advertised when their local
+configuration gates are enabled and their runtime dependencies are
+available. Local models and hardware aren't built, and are never advertised:
+turning local models on fails startup, and `enable_hardware` has no effect
+yet. Recording remains a design preview, is never advertised, and causes
+startup to fail closed if enabled. The platform's grant cannot turn on a
+locally disabled capability.
 
 There are no separate OAuth scopes for shell, computer use, hardware, or
-background work. Hardware probes exist, but hardware operation dispatch is not
-implemented. The daemon checks negotiated capability grants outside the model
-before dispatching operations.
+background work. No hardware operation exists: there is no message for one
+and nothing to dispatch. The daemon checks negotiated capability grants
+outside the model before dispatching operations.
 
 All platform endpoints and explicit OAuth/WebSocket overrides require HTTPS
 or WSS. HTTP and WS are accepted only for exact `localhost` or literal loopback

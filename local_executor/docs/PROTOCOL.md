@@ -124,23 +124,23 @@ on the platform side, the session SHOULD be torn down with code 4426).
       "directory_browse",          // control WS only
       "shell",                     // optional: explicit local --enable-shell opt-in
       "files",                     // always present
-      "computer_use",              // optional: cua-driver installed and started
-      "local_llm",                 // optional: ollama running
-      "hardware_serial",           // optional: pyserial available
-      "hardware_usb",              // optional: pyusb available
-      "hardware_gpio"              // optional: RPi.GPIO available
+      "computer_use"               // optional: cua-driver installed and started
     ],
     "allowed_root": null,        // control WS; canonical root on a data WS
     "computer_use_driver": {"name": "cua-driver", "version": "0.38.0", "runtime": "direct"},
     "computer_use_tools": ["click", "get_window_state", "list_windows", "..."],
-    "local_llm_models": ["llama3.2:3b", "mistral:7b"],   // empty if no local_llm cap
-    "hardware_devices": [
-      {"type": "serial", "port": "/dev/ttyUSB0", "desc": "Arduino Uno"},
-      {"type": "usb",    "vid": "2341", "pid": "0043", "desc": "Arduino Uno"}
-    ]
+    "local_llm_models": [],      // reserved; always empty today
+    "hardware_devices": []       // reserved; always empty today
   }
 }
 ```
+
+Those four are every capability a HELLO carries today. `local_llm`,
+`recording`, `hardware_serial`, `hardware_usb` and `hardware_gpio` are
+reserved names for work that isn't built: the shim never offers them,
+whatever its local settings say, so the platform is never granted one and
+has nothing to send for them. `enable_hardware` loads and does nothing yet
+([HARDWARE.md](HARDWARE.md)).
 
 `machine_id` and `display_name` say which computer this is. Both leave the
 computer in every HELLO, on the control connection and on each chat's data
@@ -159,7 +159,9 @@ connection.
     that `autogpt-shim start` makes the first time and keeps in the shim's
     own folder. Neither of the two is sent, logged or printed. With no
     identifier to read, it comes from the stored value alone. The hostname
-    is never part of it.
+    is never part of it. A start that can't read an identifier that is
+    there (macOS's, when `ioreg` fails or doesn't answer in time) stops and
+    is started again, rather than connect under another ID.
   - The computer keeps its ID from one start to the next, and when the shim
     is upgraded or reinstalled, for as long as the stored value is kept.
     [CROSS_PLATFORM.md](CROSS_PLATFORM.md#machine-id) says where it is
@@ -277,6 +279,51 @@ Files, symlinks/junctions, inaccessible entries, and special roots are skipped.
 Responses carry only display name, canonical absolute path, and opaque
 reference—never content, size, timestamps, permissions, or recursive metadata.
 
+A folder is listed, and can be opened, when the person's account can read
+and search it. Choosing one for a chat (`ATTACH_SESSION`) takes write access
+as well, since every file operation in it would fail without. So a folder
+that only opens is in the listing like any other, on the way to a folder
+inside it that the account can write to; the listing has no field that
+tells the two apart, and choosing such a folder is refused with
+`DIRECTORY_UNAVAILABLE` and a message that says the account can't write to
+it. Access is asked of each system the way it answers truthfully
+([CROSS_PLATFORM.md](CROSS_PLATFORM.md#remote-directory-browser-roots)).
+
+A folder's name goes into a dialog a person reads, so a folder whose name
+could read as another's is left out of the listing, and with it the folders
+inside it. That is a name with a character of a Unicode `C` category:
+
+- a control character;
+- a bidi control, which reorders what is shown (U+202A to U+202E, U+2066 to
+  U+2069, U+200E, U+200F, U+061C);
+- a zero-width or other format character, which shows as nothing (`Documents`
+  followed by one looks like a second `Documents`), the tag characters that
+  England's, Scotland's and Wales' flags are written with among them;
+- a private-use or unassigned code point, which takes in a character newer
+  than the Unicode tables of the Python the shim runs on.
+
+A name that isn't valid UTF-8 is left out too.
+
+Two format characters are part of how some scripts are written. A name that
+uses one of them that way is listed and can be chosen like any other:
+
+- U+200C (zero width non-joiner) between two joining letters of a cursive
+  script, as inside many Persian words, or after an Indic virama;
+- U+200D (zero width joiner) after an Indic virama, or between two
+  pictographs, as in an emoji sequence (a family, a rainbow flag).
+
+Where they may stand is Unicode's own rule for names, CONTEXTJ in IDNA 2008
+(RFC 5892, appendix A.1 and A.2), and for an emoji sequence a joiner between
+two pictographs. Anywhere else one of them only hides, and the name is left
+out: at the start of a name, beside another one, between letters that don't
+join (Latin letters, say), and U+200C at the end of a name unless a virama
+is before it. `launch_app` takes an app's name by the same rule.
+
+The platform has to take such a path as well. It reads a chat's folder from
+that chat's HELLO (`allowed_root`) and tells the model where it works; a
+platform that refuses or rewrites every `C`-category character there can't
+run a chat in a folder that this lists.
+
 #### `ATTACH_SESSION` / `SESSION_ATTACHED`
 
 The platform allocates a draft/chat session ID and returns the reference chosen
@@ -318,7 +365,8 @@ references fail closed.
 The shim strictly re-resolves the directory, fingerprints its canonical path
 and filesystem identity, audits the change, consumes the browse, and signs a
 grant with a key derived from the machine-only audit key. The global config is
-never changed.
+never changed. A folder the account can open but not write to is refused
+(`DIRECTORY_UNAVAILABLE`), and the browse stays usable for another choice.
 
 #### Activation, restoration, and detachment
 
@@ -351,15 +399,27 @@ with `details.reason: "not_answering"`:
   its request was answered is dropped: no grant is issued and no chat is
   started for it.
 - While a look at a folder is still waiting, further requests about that
-  folder get the same answer at once, with no look of their own. Requests
-  about other folders, and other chats, are served as usual, and none of
-  them waits behind the folder that is away.
+  folder get the same answer at once, with no look of their own.
+  Activations and restores of other chats, whose folders are other folders,
+  are served as usual, and none of them waits behind the folder that is
+  away.
+- The folder picker takes one call at a time. A listing or an attach that
+  arrives while another one's look is still inside its five seconds waits
+  for it first, inside its own five seconds, and gets the same answer if
+  they run out before its turn comes or its own look returns. That can
+  happen once for each folder that goes away: when the look has been given
+  up on, the picker is free again, and a listing of another folder is
+  served as usual. (A chat's own file requests are another matter: see
+  [On a chat's own connection](#on-a-chats-own-connection) below.)
 - A listing or an attach given up on ends every browse under way, as a
   reconnect does: their references then get `DIRECTORY_REFERENCE_INVALID`,
   and the folder picker starts a new browse.
-- At most eight looks are left waiting at once, whatever their folders. Past
-  that, every request that looks at a folder gets `DIRECTORY_UNAVAILABLE`
-  until one of them returns.
+- At most eight looks run at once, whatever their folders, those still
+  inside their five seconds included, so no more than eight are ever left
+  waiting. With all eight given up on, every request that looks at a folder
+  gets `DIRECTORY_UNAVAILABLE` at once, until one of them returns. While one
+  of the eight is still inside its five seconds, a further request waits
+  for it, inside its own.
 
 A chat's data session makes its folder as it starts, as a legacy session
 does, within the same five seconds. Past them the chat's session ends
@@ -379,6 +439,52 @@ restored: the auto-retry layer re-sends only an idempotent one (see
 [Idempotency](#idempotency)), and a `COMPUTER_TOOL_CALL`, like every other
 non-idempotent request, goes back to the model, which decides. If the audit
 record can't be written, the child keeps running.
+
+###### On a chat's own connection
+
+None of those limits covers a chat that is already running when its folder
+goes away. A file request (`FILE_READ`, `FILE_WRITE`, `FILE_STAT`,
+`FILE_LIST`, `FILE_DELETE`, `FILE_MOVE`) and a command's check of its `cwd`
+run in a worker thread, and a thread that waits on a share that has stopped
+answering can't be stopped. While it waits, the request holds:
+
+- one of its chat's request slots (`max_concurrent`, 4);
+- one of the machine's request slots, which every chat on the computer
+  shares, and of which there are 4 as well ([Concurrency](#concurrency));
+- one of the event loop's worker threads. There are four more of those than
+  the computer has CPU cores, up to 32: 6 on two cores, 12 on eight.
+
+It holds them until the share answers or the shim's process ends. The 30
+seconds the platform waits for the reply free none of them, and neither does
+the end of the chat's session: its requests are let go after ten seconds,
+and their threads and machine slots stay held. The platform sends a read
+again, once, when its 30 seconds run out, so one read the model asks for
+becomes two requests.
+
+Four requests waiting on such a share therefore hold every machine slot, on
+a computer of any size, and one chat can send all four. From then on:
+
+- that chat's further requests are refused at once with `SHIM_OVERLOADED`
+  (`details.max_concurrent`);
+- every other chat's file and shell requests wait ten seconds for a slot and
+  then get `SHIM_OVERLOADED` with `details.reason: "machine_busy"`, for as
+  long as the share stays away;
+- what takes no machine slot is served as usual: the control connection (the
+  folder picker, attaching and starting chats), `COMPUTER_TOOL_CALL`s and the
+  keepalive. The four held threads leave two of a two-core computer's six
+  free, and the machine's slots keep file and shell work from taking more.
+
+The shim can't stop by itself in that state either. Its process waits for
+the worker thread to return, and an interrupt doesn't end it. A service
+manager's stop does, after its own limit: launchd kills the process after 20
+seconds and systemd after 90, and Task Scheduler ends the task at once.
+
+What the person does is bring the share back, or restart the shim:
+`launchctl kickstart -k gui/$(id -u)/co.agpt.shim`, `systemctl --user
+restart autogpt-shim`, or on Windows `schtasks /End /TN \AutoGPT\Shim` and
+then `schtasks /Run /TN \AutoGPT\Shim`. A shim started in a terminal has
+to be killed. After the restart a chat bound to that folder doesn't start
+until the folder answers, as above, so it holds nothing.
 
 #### `HELLO.platform` enum
 
@@ -1116,7 +1222,9 @@ argument inside a `run_steps` step, whatever tool the step names, or its
 `steps[i]`), since only a launch called on its own has its name checked
 against the installed apps; and a `launch_app` `name`, `bundle_id` or
 `aumid` that isn't an app's name or id (a path, a URL scheme, a leading
-`-`, a control character, on Linux a name whose first word is a program,
+`-`, a control or other invisible character, except a joiner where the
+name's script uses one, as in a folder's name ([`DIRECTORY_LIST_REQUEST`](#directory_list_request--directory_list_response)),
+on Linux a name whose first word is a program,
 a program's own name included, or, unless `urls` or `launch_path`
 is given, one that matches no installed app in `list_apps`, or more than
 one, or whose app's launch command the shim can't send with its program as
@@ -1187,17 +1295,30 @@ a copy made while it was read (`changed`).
   "version": "2.0",
   "payload": {
     "code": "PATH_OUTSIDE_ALLOWED_ROOT",
-    "message": "Path /etc/passwd is outside allowed root /Users/alice/autogpt-workspace",
+    "message": "Path '/etc/passwd' is outside allowed_root '/Users/alice/autogpt-workspace'",
     "fatal": false
   }
 }
 ```
 
+`message` is for a person or the model to read, and the platform acts on
+`code` alone. A message about a path names it as the request did, and the
+shared folder as the shim reported it in HELLO. It never holds what the path
+resolved to, the system's own file name for it, or where the shared folder
+really is when it was named through a link: those would tell the platform
+where a link in the folder points outside it, and stay in the shim's log on
+the computer. A path refused as outside the folder gets the same message
+whether its name alone or a link on the way put it there.
+
 Error codes:
 - `PATH_OUTSIDE_ALLOWED_ROOT` — file op tried to escape allowed_root
 - `PATH_RESERVED_NAME` — Windows reserved name (CON/PRN/NUL/COM*/LPT*)
 - `PATH_INVALID_CHARS` — path contains chars illegal on this OS
-- `PATH_NOT_FOUND` — FILE_STAT/READ/DELETE on a path that doesn't exist (and `missing_ok: false`)
+- `PATH_NOT_FOUND` — FILE_STAT/READ/DELETE on a path that doesn't exist (and `missing_ok: false`);
+  also an `EXECUTE_COMMAND` whose `cwd` isn't a folder the command can start in. The
+  jail lets a `cwd` name a folder that isn't made yet, so this is found when the
+  command starts. `details.path` is the `cwd` as the request named it, and
+  `details.reason` is `cwd_not_found` or `cwd_not_a_directory` (a file is there)
 - `PATH_NOT_EMPTY` — FILE_DELETE on a non-empty dir with `recursive: false`
 - `PATH_EXISTS` — FILE_MOVE with `overwrite: false` and dst exists
 - `COMMAND_TIMEOUT` — a `COMPUTER_TOOL_CALL` ran out of `timeout_seconds`
@@ -1213,6 +1334,7 @@ Error codes:
   such as -15 or -9), or -1 when there is none to read, so callers branch on
   the `timed_out` flag, not the code.
 - `SHELL_NOT_AVAILABLE` — `shell` selector requested a shell not installed on this OS
+  (`details.requested_shell`), or an `argv` command's program wasn't found
 - `UNSUPPORTED_ARCH` — HELLO `arch` value not recognized
 - `CAPABILITY_NOT_GRANTED` — requested capability not in granted_capabilities
 - `AUTH_FAILED` — token invalid or expired
@@ -1374,7 +1496,9 @@ The chats on a machine also share the control connection's `max_concurrent`
 slots. A request waits up to ten seconds for one, then gets
 `SHIM_OVERLOADED` with `details.reason: "machine_busy"`. A slot stays taken
 until its work ends, including work still running in a thread after its
-session ended.
+session ended. Work that waits on a share that has stopped answering never
+ends, and four such requests hold every slot: see
+[On a chat's own connection](#on-a-chats-own-connection).
 `COMPUTER_TOOL_CALL`s take no machine slot: those from every session on a
 machine take turns, since they share one screen, so calls waiting their turn
 would otherwise hold every slot while a long one ran. They still count

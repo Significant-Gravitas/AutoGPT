@@ -1210,6 +1210,120 @@ async def test_a_look_for_the_driver_its_caller_gave_up_on_is_the_next_callers(
         await bridge.close()
 
 
+class _StalledLook:
+    """A look for the driver that stops answering once `stall` is set, as on
+    a mount that went away, until `released`."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.stall = threading.Event()
+        self.released = threading.Event()
+        self.threads: list[threading.Thread] = []
+        self._find = driver.find_driver_binary
+        monkeypatch.setattr(driver, "find_driver_binary", self)
+
+    def __call__(self, explicit: Any = None) -> Path | None:
+        if self.stall.is_set():
+            self.threads.append(threading.current_thread())
+            self.released.wait(60)
+        return self._find(explicit)
+
+
+async def test_a_restart_whose_look_for_the_driver_never_returns_fails_within_its_bound(
+    fake_log: Path, monkeypatch
+) -> None:
+    """A restart looked for the driver again with no time limit, holding the
+    bridge's lock. With a folder on PATH or sys.path on a mount that stopped
+    answering, the request that restarted the driver never ended (a
+    COMPUTER_TOOLS_REQUEST has no deadline of its own), and every later
+    call, stop and close() waited behind the lock.
+
+    The look is waited for RESTART_LOOKUP_SECONDS now, then the request
+    fails. The look goes on in its one thread: a later call waits for that
+    same look, not one of its own."""
+    monkeypatch.setattr(driver, "RESTART_LOOKUP_SECONDS", 0.3, raising=False)
+    look = _StalledLook(monkeypatch)
+    bridge = _bridge()
+    try:
+        await bridge.snapshot()
+        # The driver exits, and the mount goes away before it is restarted.
+        with pytest.raises(DriverUnavailable, match="stopped during the call"):
+            await bridge.call_tool("drag", {"pid": -3}, timeout=30)
+        look.stall.set()
+
+        # No deadline of its own, as a COMPUTER_TOOLS_REQUEST has none.
+        with pytest.raises(DriverUnavailable, match="Looking for cua-driver") as failed:
+            await asyncio.wait_for(bridge.snapshot(), timeout=60)
+        assert failed.value.code == ErrorCode.INTERNAL_ERROR
+
+        # The next call is answered too, within its own deadline or the
+        # bound, and waits for the same look.
+        with pytest.raises((DriverUnavailable, driver.CallNotStarted)):
+            await asyncio.wait_for(bridge.call_tool("click", {"pid": 1}, timeout=5), timeout=60)
+        with pytest.raises(DriverUnavailable, match="Looking for cua-driver"):
+            await asyncio.wait_for(bridge.snapshot(), timeout=60)
+        assert len(look.threads) == 1
+
+        # Once the mount answers, the driver starts again.
+        look.released.set()
+        assert (await asyncio.wait_for(bridge.snapshot(), timeout=60)).tools
+    finally:
+        look.released.set()
+        await asyncio.wait_for(bridge.close(), timeout=60)
+
+
+async def test_close_returns_while_a_restarts_look_for_the_driver_is_stalled(
+    fake_log: Path, monkeypatch
+) -> None:
+    """close() takes the lock a start holds. A start stuck in its look held
+    it for good, and the shim's stop with it."""
+    monkeypatch.setattr(driver, "RESTART_LOOKUP_SECONDS", 0.3, raising=False)
+    look = _StalledLook(monkeypatch)
+    bridge = _bridge()
+    await bridge.snapshot()
+    with pytest.raises(DriverUnavailable, match="stopped during the call"):
+        await bridge.call_tool("drag", {"pid": -3}, timeout=30)
+    look.stall.set()
+    stuck = asyncio.ensure_future(bridge.snapshot())
+    try:
+        while not look.threads:
+            await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(bridge.close(), timeout=60)
+
+        with pytest.raises(DriverUnavailable):
+            await asyncio.wait_for(stuck, timeout=60)
+    finally:
+        look.released.set()
+        stuck.cancel()
+
+
+async def test_the_look_for_the_driver_runs_in_a_thread_the_exit_does_not_wait_for(
+    fake_log: Path, monkeypatch
+) -> None:
+    """asyncio.run waits for the event loop's worker threads before it
+    returns, and the interpreter waits for them again as it exits: a look
+    held by a mount that wasn't answering, in one of them, kept the shim
+    from stopping. It runs in a daemon thread of its own, as the look at
+    the home folder does."""
+    threads: list[threading.Thread] = []
+    find = driver.find_driver_binary
+
+    def seen(explicit: Any = None) -> Path | None:
+        threads.append(threading.current_thread())
+        return find(explicit)
+
+    monkeypatch.setattr(driver, "find_driver_binary", seen)
+    bridge = _bridge()
+    try:
+        assert await bridge.find_binary() == FAKE.absolute()
+    finally:
+        await bridge.close()
+
+    [thread] = threads
+    assert thread.daemon is True
+    assert thread is not threading.main_thread()
+
+
 # ── Catalog ──────────────────────────────────────────────────────────────
 
 
@@ -3998,8 +4112,10 @@ async def test_a_child_session_waits_only_briefly_for_a_busy_shared_driver(
 
     monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
     monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 0.2, raising=False)
-    parent = _daemon(tmp_path, session_id=None)
-    child = _daemon(tmp_path, session_id="child-1")
+    # A machine ID of the test's own: a Mac's is derived from what `ioreg`
+    # gives, and the OS the test runs on may have no `ioreg` to ask.
+    parent = _daemon(tmp_path, session_id=None, machine_id="a-mac")
+    child = _daemon(tmp_path, session_id="child-1", machine_id="a-mac")
     parent._computer_handler.share_with(child._computer_handler)
     driver = parent._computer_handler.driver
     await driver.snapshot()
@@ -4920,3 +5036,24 @@ async def test_on_windows_a_name_beside_a_path_that_is_no_string_is_still_checke
     assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
     assert response.payload.details == {"tool": "launch_app", "argument": "name"}
     assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps"]
+
+
+async def test_a_path_lookup_runs_in_a_thread_the_exit_does_not_wait_for(monkeypatch) -> None:
+    """The lookups on PATH for a Linux launch by name ran in the event
+    loop's worker threads, which asyncio.run and the interpreter's exit
+    both wait for: one held by a stalled mount kept the shim from stopping."""
+    threads: list[threading.Thread] = []
+
+    def look_up(word: str) -> str | None:
+        threads.append(threading.current_thread())
+        return f"/usr/bin/{word}"
+
+    monkeypatch.setattr(handlers_module, "_program_on_path", look_up)
+    lookups = handlers_module._ProgramLookups()
+    deadline = asyncio.get_running_loop().time() + 60
+
+    assert await lookups.program_by("zebra", deadline) == "/usr/bin/zebra"
+
+    [thread] = threads
+    assert thread.daemon is True
+    assert thread is not threading.main_thread()

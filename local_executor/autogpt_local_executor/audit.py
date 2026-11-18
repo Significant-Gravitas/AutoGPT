@@ -224,6 +224,9 @@ class AuditWriter:
                         "Existing audit log failed verification; refusing to append"
                     )
             self._seq, self._prev_hmac = self._load_tail_state(self.path)
+            # The first record of the chain this writer is on: what tells
+            # its own log, cut short, from another (_take_up_the_log_as_it_is).
+            self._first_hmac = _first_hmac(self.path)
             # 0600 on POSIX; on Windows the file keeps its folder's ACL.
             if not self.path.exists():
                 # Create empty so first write can fsync against an existing inode
@@ -278,14 +281,105 @@ class AuditWriter:
     ) -> None:
         with _file_lock(self._file_lock_path):
             # Another writer may have rotated or appended since this one last
-            # wrote; chain onto what the file holds now.
+            # wrote; chain onto what the file holds now, if this writer's
+            # records are still there.
             if _file_identity(self.path) != self._file_state:
-                self._seq, self._prev_hmac = self._load_tail_state(self.path)
+                self._take_up_the_log_as_it_is()
             # Rotate before writing if we'd cross a threshold. Rotation resets
             # the in-memory chain state.
             self._maybe_rotate()
             self._append_record(op, session_id, machine_id, request_id, details, result)
             self._file_state = _file_identity(self.path)
+
+    def _take_up_the_log_as_it_is(self) -> None:
+        """Set where the chain stands for a log that isn't as this writer
+        left it. Called with the log's lock held.
+
+        The log changes under a writer when another writer appends to it
+        (two shims; a shim and an `audit` command) or rotates it. Then this
+        writer chains on from what the file holds now. It used to do that
+        whatever the file held: with the log cut back to record 94 while
+        the shim had written 100, its next record became 95, chained to 94.
+        The log verified, and records 95 to 100 were gone without a trace.
+
+        A running writer knows the last record it wrote, or found when it
+        started, and the first record of the chain it is on. So:
+
+        1. The log still holds its last record, and what follows chains on
+           from it: another writer's records. It goes on from the last.
+        2. The log is still its chain (the same first record) without its
+           last record, or with something after that doesn't chain on: the
+           log was cut back or rewritten. Nothing the shim or its commands
+           do leaves that. It keeps the chain it had, so its next record
+           follows one that isn't there and the log fails verification from
+           there on (a sequence gap and a chain break).
+        3. The log is another one: empty, gone, or a chain it wasn't on. A
+           rotation by another writer leaves that, with this chain whole in
+           a rotated file, and the log is taken up as it is. Without a
+           rotated file that holds its last record, the records are no
+           longer on disk: the log was emptied, removed or replaced, or
+           rotated and then pruned. That can't be told from here, so the
+           log is taken up all the same, with a record of its own first
+           that says so (AUDIT_RECORDS_REMOVED). Breaking the chain there
+           would fail the next start over a prune.
+
+        Each of 2 and 3 is said in the shim's own log. The file alone can't
+        show either: cut back at its end, it is a valid, shorter chain. A
+        log changed while no shim runs has nothing to remember its head
+        (docs/AUDIT_LOG.md)."""
+        known = self._prev_hmac
+        if not isinstance(known, str):
+            # Nothing of this writer's to look for: the log was empty, or
+            # it is the new one after this writer's own rotation.
+            self._adopt()
+            return
+        last = (self._seq - 1, known)
+        carried_on = _chain_after(self.path, last, self.audit_key)
+        if carried_on is not None:
+            self._seq, self._prev_hmac = carried_on
+            return
+        first = _first_hmac(self.path)
+        if first is not None and first == self._first_hmac:
+            logger.error(
+                "The audit log at %s no longer holds record %d, the last one this shim "
+                "knew, with the records after it: it was cut back or rewritten while the "
+                "shim ran. The shim keeps the chain it had, so the log fails `autogpt-shim "
+                "audit verify` from its next record on. Keep the file, and move it aside "
+                "before the shim is started again.",
+                self.path,
+                last[0],
+            )
+            return
+        held = _in_a_rotated_file(self.path, last)
+        self._adopt()
+        if held:
+            return
+        logger.error(
+            "The audit log at %s is not the one this shim was writing, and no rotated file "
+            "holds record %d, the last one it knew: the log was emptied, removed or "
+            "replaced while the shim ran, or rotated and then pruned. The log as it is now "
+            "is taken up, with an AUDIT_RECORDS_REMOVED record that says so.",
+            self.path,
+            last[0],
+        )
+        self._append_record(
+            "AUDIT_RECORDS_REMOVED",
+            self._default_session_id or "-",
+            self._default_machine_id or "-",
+            None,
+            {"last_seq": last[0], "last_hmac": last[1]},
+            {
+                "ok": False,
+                "exit_code": None,
+                "duration_ms": 0,
+                "error_code": "AUDIT_RECORDS_REMOVED",
+            },
+        )
+
+    def _adopt(self) -> None:
+        """Take the chain the log holds now as this writer's."""
+        self._seq, self._prev_hmac = self._load_tail_state(self.path)
+        self._first_hmac = _first_hmac(self.path)
 
     def _append_record(
         self,
@@ -313,6 +407,8 @@ class AuditWriter:
         hmac_hex = hmac.new(self.audit_key, canonical_bytes(record), sha256).hexdigest()
         record["hmac"] = hmac_hex
         self._append(json.dumps(record, ensure_ascii=False) + "\n")
+        if self._seq == 1:
+            self._first_hmac = hmac_hex
         self._prev_hmac = hmac_hex
         self._seq += 1
 
@@ -410,6 +506,7 @@ class AuditWriter:
         # a new one, even if creating the empty file below fails.
         self._seq = 1
         self._prev_hmac = None
+        self._first_hmac = None
         _create_owner_only(self.path)
         self._file_state = _file_identity(self.path)
         logger.info("Rotated audit log (%s) → %s", reason, target.name)
@@ -1342,6 +1439,136 @@ def _file_lock(path: Path, *, read_only: bool = False) -> Iterator[None]:
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+def _record_on(line: bytes) -> dict[str, Any] | None:
+    """The record a line of the log holds, or None for a line that holds
+    none: a blank one, or one that isn't a JSON object."""
+    if not line.strip():
+        return None
+    try:
+        record = json.loads(line)
+    except (ValueError, RecursionError):
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def removals_recorded(data: bytes) -> list[tuple[int | None, int | None]]:
+    """The AUDIT_RECORDS_REMOVED records in a log's contents, each as (its
+    seq, the seq of the last record the shim knew before it): what a
+    verified log has to say that its chain can't."""
+    found: list[tuple[int | None, int | None]] = []
+    for line in data.splitlines():
+        if b"AUDIT_RECORDS_REMOVED" not in line:
+            continue
+        record = _record_on(line)
+        if record is None or record.get("op") != "AUDIT_RECORDS_REMOVED":
+            continue
+        details = record.get("details")
+        seq, last = (
+            record.get("seq"),
+            details.get("last_seq") if isinstance(details, dict) else None,
+        )
+        found.append(
+            (seq if isinstance(seq, int) else None, last if isinstance(last, int) else None)
+        )
+    return found
+
+
+def _first_hmac(path: Path) -> str | None:
+    """The HMAC of the first record in the log at `path`: None for no log,
+    an empty one, or a first line that holds no record."""
+    try:
+        with open(path, "rb") as file:
+            for line in file:
+                if line.strip():
+                    record = _record_on(line)
+                    digest = record.get("hmac") if record is not None else None
+                    return digest if isinstance(digest, str) else None
+    except OSError:
+        return None
+    return None
+
+
+def _chain_after(path: Path, last: tuple[int, str], audit_key: bytes) -> tuple[int, str] | None:
+    """Where the chain stands in the log at `path`, as the next sequence
+    number and the HMAC to chain to, if the log still holds the record
+    `last` (its seq and HMAC) and every record after it chains on from it,
+    each signed with `audit_key`. None if the record isn't there, or
+    something after it doesn't chain on."""
+    seq, digest = last
+    try:
+        needle = digest.encode("ascii")
+    except UnicodeEncodeError:
+        return None
+    found = False
+    try:
+        with open(path, "rb") as file:
+            for line in file:
+                if not found:
+                    # Parsed only where its HMAC is: the rest of a long log
+                    # is read past.
+                    if needle in line:
+                        record = _record_on(line)
+                        found = (
+                            record is not None
+                            and record.get("seq") == seq
+                            and record.get("hmac") == digest
+                        )
+                    continue
+                if not line.strip():
+                    continue
+                record = _record_on(line)
+                if (
+                    record is None
+                    or record.get("seq") != seq + 1
+                    or record.get("prev_hmac") != digest
+                    or not _signed(record, audit_key)
+                ):
+                    return None
+                seq, digest = record["seq"], record["hmac"]
+    except OSError:
+        return None
+    return (seq + 1, digest) if found else None
+
+
+def _signed(record: dict[str, Any], audit_key: bytes) -> bool:
+    """Whether a record's HMAC is its own, under `audit_key`."""
+    stored = record.get("hmac")
+    if not isinstance(stored, str) or not stored.isascii():
+        return False
+    try:
+        canonical = canonical_bytes({k: v for k, v in record.items() if k != "hmac"})
+    except (ValueError, RecursionError):
+        return False
+    return hmac.compare_digest(hmac.new(audit_key, canonical, sha256).hexdigest(), stored)
+
+
+def _in_a_rotated_file(current: Path, last: tuple[int, str]) -> bool:
+    """Whether a rotated file beside the log at `current` holds the record
+    `last` (its seq and HMAC): the newest first, as that is where a rotation
+    just made puts it."""
+    seq, digest = last
+    try:
+        needle = digest.encode("ascii")
+    except UnicodeEncodeError:
+        return False
+    for rotated in reversed(list_rotated_files(current)):
+        try:
+            with open(rotated, "rb") as file:
+                for line in file:
+                    if needle not in line:
+                        continue
+                    record = _record_on(line)
+                    if (
+                        record is not None
+                        and record.get("seq") == seq
+                        and record.get("hmac") == digest
+                    ):
+                        return True
+        except OSError:
+            continue
+    return False
+
+
 def list_rotated_files(current: Path) -> list[Path]:
     """Return rotated audit files (oldest first) next to `current`: those
     named as rotation names them, `<log>.YYYYMMDD-HHMMSS` with a `-N` for a
@@ -1371,4 +1598,5 @@ __all__ = [
     "load_audit_key",
     "holding_log_lock",
     "list_rotated_files",
+    "removals_recorded",
 ]

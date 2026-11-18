@@ -108,6 +108,7 @@ didn't trigger:
 | `WS_DISCONNECTED` | WebSocket loop ended (carries `details.reason`) |
 | `TOKEN_REFRESHED` | OAuth refresh token used |
 | `CONFIG_RELOADED` | `HELLO_ACK` rewrote runtime config |
+| `AUDIT_RECORDS_REMOVED` | The log the shim was writing is no longer there, nor in a rotated file: emptied, removed or replaced under the running shim, or rotated and then pruned. Written first in the log the shim takes up. `details` = `{last_seq, last_hmac}`, the last record it knew; `result.ok` is false. `audit verify` and `verify-all` print a note for each (see "Tamper-evidence chain") |
 | `JAIL_VIOLATION` | Path-jail rejected an op before exec. `details` = `{code, path, attempted_op}` — the ErrorCode value, the rejected raw path, and the wire-protocol op that triggered it (e.g. `FILE_READ`) |
 
 ### What's NEVER logged
@@ -133,8 +134,42 @@ default session ID, so one chat's operation cannot be attributed to another.
 Each record carries an HMAC of its own JSON form chained to the
 previous record's HMAC. Modifying a record or removing an interior record
 breaks verification. Removing a complete valid tail or an entire log/rotated
-file is not detectable without an independent checkpoint. A same-user attacker
-who obtains the key can forge records; this log does not provide OS isolation.
+file is not detectable from the file: what is left is a valid, shorter
+chain. A same-user attacker who obtains the key can forge records; this log
+does not provide OS isolation.
+
+The one thing that remembers the head of the chain is a shim that is
+running: it knows the last record it wrote, or found when it started, and
+the first record of the chain it is on. When it finds the log changed under
+it, at its next record:
+
+- **Another writer's records** (a second shim on the same log, an `audit`
+  command) follow its own and chain on from it: it goes on from the last of
+  them. Nothing is lost and nothing is said.
+- **Its own chain, cut short or rewritten.** The log still starts with the
+  same first record, but the shim's last record is gone, or what follows it
+  doesn't chain on. Nothing the shim or its commands do leaves that. The
+  shim keeps the chain it had, so its next record follows one that isn't
+  there: the log **fails verification** from that record on (a sequence
+  gap and a chain break), the shim's own log says so at error level, and
+  the next start refuses the log like any other that fails verification.
+  Keep the file for whoever looks into it, and move it aside.
+- **Another log in its place**: empty, gone, or a chain the shim wasn't on.
+  A rotation by another writer leaves exactly that, with the shim's chain
+  whole in a rotated file, and the shim takes the new log up. If no rotated
+  file holds its last record, its records are no longer on disk: the log
+  was emptied, removed or replaced, or rotated and then pruned. The shim
+  can't tell those apart, so it doesn't break the chain over them (a prune
+  would then fail the next start). It takes the log up and writes an
+  **`AUDIT_RECORDS_REMOVED`** record first, with the sequence number and
+  HMAC of the last record it knew, and says the same in its own log. The
+  log still verifies; `audit verify` and `verify-all` print a note for
+  each such record they find.
+
+With no shim running there is nothing to remember the head, and a log cut
+back at its end, or removed, leaves no sign. To start a new log under a
+running shim, use `autogpt-shim audit rotate`, which keeps the old chain in
+a rotated file; don't delete or empty the live log.
 
 ### Keying
 
@@ -280,8 +315,10 @@ record (`SHIM_START` for restarts, or just the first op) carries
 The daemon and an `autogpt-shim audit` command each open their own
 writer, so appends and rotations hold an exclusive lock on
 `.audit.log.lock` next to the log. A writer that finds the file
-rotated or appended to since its last write reloads the chain state
-from the file before it appends.
+rotated or appended to since its last write takes up the chain state
+from the file before it appends, once it has found its own last record
+there or in a rotated file (see "Tamper-evidence chain" for when it
+doesn't).
 
 `audit verify`, `verify-all` and `show` list and read the files under
 the same lock, so they never see a half-written record or miss a file that a
@@ -355,20 +392,37 @@ require shipping a CA flow we don't need for v0.
   whole record and the next write and start go on; a partial line left
   some other way (the machine losing power mid-write, say) stays to be
   reported.
-- **Record deletion** — `seq` jumps, prev_hmac mismatches.
+- **Record deletion** — `seq` jumps, prev_hmac mismatches. That covers a
+  record removed from the middle of a log at any time, and the newest
+  records of a log cut back while a shim is running on it, which the file
+  alone wouldn't show: the shim's next record keeps its place in the chain
+  it had.
+- **A log emptied, removed or replaced under a running shim** — the shim's
+  first record in the log it then finds is `AUDIT_RECORDS_REMOVED`, naming
+  the last record it knew. The chain isn't broken for this, since a
+  rotation followed by a prune looks the same.
 - **Field tampering** — HMAC mismatch on the tampered record.
 - **Wholesale log replacement** — verifier needs the audit key; an
   attacker who replaces both the log and the key in the keychain has
   also locked themselves out of any future verification by the user.
 - **Cross-machine impersonation** — `machine_id` is in every record
   and signed; can't lift a chain from one machine and replay on another.
-  It is the shim's own ID, so a log shown to someone else tells them
-  neither the operating system's identifier nor the hostname.
+  The ID the shim derives for itself holds neither the operating system's
+  identifier nor the hostname. That is all it promises for a log shown to
+  someone else: a `machine_id` the person set is written as they gave it,
+  which may be the hostname, and the records keep commands, arguments and
+  paths whole, which can name the computer or its user as well.
 
 ## What this does NOT catch
 
-- Removing the newest complete records, a whole rotated file or the whole
-  log. What is left still verifies; see "Tamper-evidence chain" above.
+- Removing the newest complete records or the whole log while no shim is
+  running on it, or a whole rotated file at any time. What is left still
+  verifies, and nothing remembers what was there; see "Tamper-evidence
+  chain" above.
+- Records removed under a running shim, once the evidence is removed too:
+  the record that broke the chain, or the `AUDIT_RECORDS_REMOVED` record,
+  is at the end of the log, and can be cut off like any other tail once
+  the shim has stopped.
 - Real-time tampering by a process running AS the shim user with
   keychain access. (Mitigation: keychain prompts are user-visible on
   macOS/Windows; an attacker writing to the audit key triggers a TCC

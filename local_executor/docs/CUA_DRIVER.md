@@ -437,7 +437,7 @@ With computer use on, the daemon checks before it connects that a usable
 cua-driver is installed. If not, the failure is permanent: the shim exits 78,
 which the systemd unit doesn't restart, and under the LaunchAgent it exits 0
 so launchd doesn't restart it either. Once the driver is installed, restart
-the service (`launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`, or
+the service (`launchctl kickstart -k gui/$(id -u)/co.agpt.shim`, or
 `systemctl --user restart autogpt-shim`). The look for the driver gets 5
 seconds (a chat's session, 2): a folder on PATH, or one Python imports from,
 on a mount that isn't answering holds it, and the shim wouldn't connect at
@@ -445,7 +445,11 @@ all, file and shell work included. Past that the session connects without
 the rest of this check, and the look goes on for HELLO, which offers
 computer use only once the look finds the driver, and on macOS only once a
 session's check of the grants below has passed (the next chat's, say, or the
-next start's). On macOS it starts the driver,
+next start's). A restart of the driver looks for it afresh, so one that was
+upgraded or moved is found, and waits for that look 5 seconds too: past
+that the request that needed the driver fails, nothing is started, and the
+next request waits for the same look. However many callers there are, the
+look is one, in a thread the shim's stop doesn't wait for. On macOS it starts the driver,
 where one of another release fails the same way, and asks
 `check_permissions` for Accessibility and Screen Recording without
 prompting; if either is missing it exits 78 and launchd starts it again

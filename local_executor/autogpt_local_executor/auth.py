@@ -412,7 +412,9 @@ async def _to_its_end(change: Callable[[], None], then: Callable[[], None]) -> N
     sign-in or a sign-out cancelled during its keychain call (Ctrl+C while
     the keychain asks the person) let go of the turn with the call still
     under way. Another process's sign-in then went ahead, and the call,
-    landing after it, replaced or removed it. The process couldn't have
+    landing after it, replaced or removed it. A refresh cancelled while its
+    new pair was being written kept the turn for the store instead, whose
+    next sign-out then went ahead of the write. The process couldn't have
     exited sooner in any case: asyncio.run waits for the thread."""
     loop = asyncio.get_running_loop()
     # Held only here, and waited for only through a shield, so nothing
@@ -557,17 +559,27 @@ class KeychainTokenStore:
         write. The look stays for where the lock file can't be used. The
         keychain can't compare and replace in one step, so there the read
         and the write run back to back in one thread, and a sign-in stored
-        between those two calls is still replaced."""
-        record = self._record(tokens.access_token, tokens.refresh_token)
+        between those two calls is still replaced.
 
-        def store_if_unchanged() -> bool:
+        Like a sign-in and a sign-out, it returns only when its keychain
+        calls are over, even if the caller is cancelled meanwhile
+        (_to_its_end): the caller's turn isn't left with the write still
+        under way, for this store's next sign-out to go ahead of it. Once
+        they are over the pair is no longer unsaved, stored or set aside,
+        so a cancelled caller doesn't keep the turn for it."""
+        record = self._record(tokens.access_token, tokens.refresh_token)
+        stored: list[bool] = []
+
+        def store_if_unchanged() -> None:
             current = self._read_record()
             if current is None or current["refresh_token"] != tokens.used_refresh_token:
-                return False
+                stored.append(False)
+                return
             keyring.set_password(KEYCHAIN_SERVICE, self._record_key, record)
-            return True
+            stored.append(True)
 
-        return await asyncio.to_thread(store_if_unchanged)
+        await _to_its_end(store_if_unchanged, self._forget_unsaved_refresh)
+        return stored[0]
 
     def _record(self, access_token: str, refresh_token: str) -> str:
         if not isinstance(access_token, str) or not access_token:

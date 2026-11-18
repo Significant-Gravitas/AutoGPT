@@ -52,6 +52,13 @@ def main() -> None:
             sys.exit(exit_code)
         return
 
+    if args.command == "start" and args.supervise:
+        # The daemon runs in a child process, which loads the config itself
+        # and exits by what it finds (supervise).
+        from . import supervise
+
+        sys.exit(supervise.run_supervised(sys.argv[1:]))
+
     config = _config_or_exit(lambda: _build_config(args))
 
     if args.command == "auth":
@@ -178,6 +185,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Reserved design-preview flag; currently fails startup closed on every OS.",
     )
+    start_p.add_argument(
+        "--supervise",
+        action="store_true",
+        default=False,
+        help="Run the daemon as a child process, and start it again after an exit that "
+        "asks for it (75) or a crash; 0, 77 and 78 end it. The Windows task that "
+        "`install` writes uses this, since Task Scheduler doesn't restart a program "
+        "that exited; launchd and systemd do it themselves.",
+    )
     sub.add_parser("status", help="Show the configuration and autostart status")
     sub.add_parser("revoke", help="Revoke tokens and disconnect")
     sub.add_parser(
@@ -246,9 +262,11 @@ def _config_error_exit_code() -> int:
 
 
 def _print_launchagent_stopped(fix: str) -> None:
+    from .install import LAUNCHD_LABEL
+
     print(
         f"The LaunchAgent will not restart on its own. {fix}, then run "
-        "`launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`.",
+        f"`launchctl kickstart -k gui/$(id -u)/{LAUNCHD_LABEL}`.",
         file=sys.stderr,
         flush=True,
     )
@@ -353,6 +371,8 @@ async def _cmd_start(config) -> int:
             print("Mode: persistent machine control (folders are selected per chat)")
         if config.enable_shell:
             print("WARNING: shell is enabled and can access anything your user account can access.")
+        if config.enable_hardware:
+            print("Note: enable_hardware has no effect yet; no hardware access is offered.")
         print("Press Ctrl+C to stop.\n")
         daemon = ShimDaemon(config=config, token_store=KeychainTokenStore(config))
         await daemon.run()
@@ -361,7 +381,8 @@ async def _cmd_start(config) -> int:
         if exc.transient:
             # It can clear on its own (audit storage that is full or not
             # mounted yet, a keychain still locked): 75 (EX_TEMPFAIL), which
-            # systemd and launchd both restart.
+            # systemd and launchd both restart, and the shim's own supervisor
+            # under the Windows task (supervise).
             return 75
         if exc.permanent and os.environ.get("AUTOGPT_SHIM_SUPERVISOR") == "launchd":
             # A setting or a missing package fails the same way on every
@@ -379,12 +400,7 @@ async def _cmd_start(config) -> int:
             # The LaunchAgent's KeepAlive restarts any non-zero exit, so 77
             # would retry the rejected credentials every few seconds. Signing
             # in again is the fix, so stop here until the user has done it.
-            print(
-                "The LaunchAgent will not restart on its own. Run `autogpt-shim auth`, "
-                "then `launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`.",
-                file=sys.stderr,
-                flush=True,
-            )
+            _print_launchagent_stopped("Run `autogpt-shim auth`")
             return 0
         return 77
     except (KeyboardInterrupt, asyncio.CancelledError):
@@ -499,11 +515,15 @@ def _cmd_install(args) -> None:
         )
     if uncarried:
         sys.exit(_config_error_exit_code())
-    status = _install.install_autostart(
-        at_login=args.at_login,
-        config_path=args.config,
-        global_args=_service_global_args(args, environment),
-    )
+    try:
+        status = _install.install_autostart(
+            at_login=args.at_login,
+            config_path=args.config,
+            global_args=_service_global_args(args, environment),
+        )
+    except _install.AutostartError as exc:
+        print(f"Could not write the autostart entry: {exc}.", file=sys.stderr)
+        sys.exit(1)
     print(f"Wrote autostart entry: {status.target_path}")
     print(f"Platform: {status.platform}")
     if status.enable_command:
@@ -815,7 +835,9 @@ def _audit_verify(current: Path) -> int:
     if contents is None:
         print(f"Audit log not found: {current}")
         return 1
-    return _print_violations(current, AuditWriter.verify_records(contents, key))
+    status = _print_violations(current, AuditWriter.verify_records(contents, key))
+    _print_removals(contents)
+    return status
 
 
 def _same_file(a: Path, b: Path) -> bool:
@@ -872,6 +894,7 @@ def _audit_verify_all(current: Path) -> int:
         if violations:
             failures += 1
         _print_violations(path, violations)
+        _print_removals(contents)
     if failures:
         print(f"\n{failures} of {checked} files have violations.")
         return 1
@@ -1234,6 +1257,21 @@ def _print_record_line(raw: bytes) -> None:
     ok = result.get("ok")
     marker = "ok" if ok else f"err:{result.get('error_code')}"
     print(_printable(f"seq={seq:>5}  {op:<22}  {marker}"))
+
+
+def _print_removals(contents: bytes) -> None:
+    """Say what a log's AUDIT_RECORDS_REMOVED records say. The chain can
+    verify with one in it: the record is the sign that the log a shim was
+    writing was emptied, removed or replaced under it, or rotated and then
+    pruned."""
+    from .audit import removals_recorded
+
+    for seq, last in removals_recorded(contents):
+        print(
+            f"  note: seq={'?' if seq is None else seq} records that the log before it, up "
+            f"to seq={'?' if last is None else last}, was no longer on disk while the shim "
+            "ran (emptied, removed or replaced, or rotated and pruned)"
+        )
 
 
 def _print_violations(path: Path, violations: list) -> int:

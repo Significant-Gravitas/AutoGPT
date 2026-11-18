@@ -19,6 +19,8 @@ import unicodedata
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any, NamedTuple
 
+from ..hidden_characters import has_hidden_character
+
 # The cua-driver release this catalog was reviewed against. A driver of
 # another minor version may add tools or arguments nobody reviewed, so the
 # bridge refuses to run one.
@@ -264,6 +266,10 @@ def is_web_address(value: object) -> bool:
     through."""
     if not isinstance(value, str):
         return False
+    # Every such character, a joiner a script uses included, which a name
+    # may hold (hidden_characters): a browser may drop one from a host's
+    # name before it looks the host up, and then loads another address than
+    # the one checked here. Such a host is written in its `xn--` form.
     if any(char.isspace() or unicodedata.category(char).startswith("C") for char in value):
         return False
     return value == "about:blank" or value[:8].translate(_ASCII_LOWER).startswith(
@@ -424,7 +430,10 @@ def _check_app_identity(
             not isinstance(value, str)
             or value.startswith("-")
             or any(char in _NOT_IN_AN_APP_NAME for char in value)
-            or any(unicodedata.category(char).startswith("C") for char in value)
+            # As a folder's name in the folder dialog: no control, bidi
+            # control or zero-width character, except a joiner where the
+            # name's script uses one (a Persian name, an emoji sequence).
+            or has_hidden_character(value)
         ):
             raise ArgumentRefused(
                 "launch_app",

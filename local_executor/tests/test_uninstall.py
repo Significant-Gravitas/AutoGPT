@@ -30,7 +30,7 @@ from autogpt_local_executor import install as install_mod
 # for it: only the tests at the end, on services of their own, may use it.
 _REAL_RUN_COMMAND = getattr(install_mod, "run_command", None)
 
-LABEL = "net.autogpt.shim"
+LABEL = "co.agpt.shim"
 UNIT = "autogpt-shim.service"
 TASK = r"\AutoGPT\Shim"
 PLATFORMS = ("darwin", "linux", "wsl2", "windows")
@@ -52,6 +52,11 @@ class _Manager:
 
     def __call__(self, argv: Sequence[str], timeout: float) -> Any:
         assert timeout > 0
+        if argv[-1].endswith(f"/{install_mod.FORMER_LAUNCHD_LABEL}"):
+            # What `uninstall` asks launchd about the LaunchAgent's earlier
+            # label is tests/test_launchd_label.py's: here there is none.
+            assert list(argv[:2]) == ["launchctl", "print"], argv
+            return _result(113, "Could not find service\n")
         self.calls.append((" ".join(argv), self.target.exists()))
         return self.answer(list(argv))
 
@@ -208,9 +213,21 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
+def _whoami(argv: Sequence[str], timeout: float) -> Any:
+    """What `install` asks before it writes an entry: `whoami /user`, for
+    whose the Windows task is, and launchd, for a LaunchAgent under the
+    earlier label, of which there is none here."""
+    if argv[0] == "launchctl":
+        assert list(argv[:2]) == ["launchctl", "print"], argv
+        assert argv[-1].endswith(f"/{install_mod.FORMER_LAUNCHD_LABEL}"), argv
+        return _result(113, "Could not find service\n")
+    assert list(argv) == ["whoami", "/user", "/fo", "csv", "/nh"], argv
+    return _result(0, '"desktop\\alice","S-1-5-21-1004336348-1177238915-682003330-1001"\r\n')
+
+
 def _installed(platform_name: str, home: Path) -> Path:
     """Install `platform_name`'s autostart entry under `home`; its file."""
-    status = install_mod.install_autostart(home=home, platform_name=platform_name)
+    status = install_mod.install_autostart(home=home, platform_name=platform_name, run=_whoami)
     assert status.target_path.is_file()
     return status.target_path
 
@@ -690,36 +707,81 @@ def test_a_task_this_prompt_may_not_change_is_reported(
     assert said in err
     assert "ERROR: Access is denied." in err
     assert "To stop it, run from an elevated prompt:" in err
-    assert f'  cmd /c "schtasks /End /TN {TASK} & schtasks /Delete /TN {TASK} /F"' in err
+    assert f'  cmd /c "schtasks /End /TN {TASK} && schtasks /Delete /TN {TASK} /F"' in err
     assert scheduler.registered is kept
     if not may_end:
         assert not any(line.startswith("schtasks /Delete") for line in manager.ran)
     assert not target.exists()
 
 
+def test_the_command_to_stop_a_task_by_hand_deletes_it_only_once_it_is_ended(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The command `uninstall` prints for a task it couldn't end joined its
+    two steps with `&`, which runs the second whatever the first did. Run
+    where ending the task is refused again, it deleted the task all the
+    same, and what the task had started ran on with no task left to end it
+    by: what `uninstall` itself takes care not to do."""
+    monkeypatch.setattr(install_mod, "_is_elevated", lambda: False)
+    target = _installed("windows", home)
+    manager = _Manager(target, _TaskScheduler(registered=True, running=True, may_end=False))
+
+    done = install_mod.uninstall_autostart(home=home, platform_name="windows", run=manager)
+
+    assert done.may_still_run
+    assert done.service.stop_command == (
+        f'cmd /c "schtasks /End /TN {TASK} && schtasks /Delete /TN {TASK} /F"'
+    )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="cmd.exe is Windows'")
+def test_cmd_runs_the_second_step_only_after_a_first_that_succeeded() -> None:
+    """What the command above rests on, with the real cmd.exe: a first step
+    that fails (a file that isn't there) and one that succeeds, each written
+    both ways."""
+    fails = "type autogpt-shim-no-such-file.txt 2>nul"
+    succeeds = "ver >nul"
+
+    def ran_the_second(first: str, joined_with: str) -> bool:
+        return "deleted" in _real(["cmd", "/c", f"{first} {joined_with} echo deleted"]).stdout
+
+    assert not ran_the_second(fails, "&&")
+    assert ran_the_second(succeeds, "&&")
+    # And what the command did before: the second step whatever the first did.
+    assert ran_the_second(fails, "&")
+
+
 @pytest.mark.parametrize("installed", [True, False])
-def test_a_task_another_account_registered_cannot_be_ruled_out_from_a_plain_prompt(
+def test_a_task_another_account_registered_is_not_this_accounts_service(
     home: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     installed: bool,
 ) -> None:
     """schtasks answers for a task this prompt can't see as for one that
-    isn't there. Only an elevated prompt sees every task."""
+    isn't there, and only an elevated prompt sees every task. The task
+    `install` writes is the account's own, which its own prompt sees: one
+    it can't see is another account's, or was registered from an elevated
+    prompt. So seeing none is no failure, and the answer says what a
+    prompt that isn't elevated can't see."""
     monkeypatch.setattr(install_mod, "_is_elevated", lambda: False)
     target = (
         _installed("windows", home) if installed else install_mod.target_path_for("windows", home)
     )
-    manager = _Manager(target, _TaskScheduler(registered=True, running=True, visible=False))
+    scheduler = _TaskScheduler(registered=True, running=True, visible=False)
+    manager = _Manager(target, scheduler)
 
     status = _run_cli(monkeypatch, "windows", manager, "uninstall")
 
     out, err = capsys.readouterr()
-    assert status == (1 if installed else 0)
-    assert f"this prompt isn't elevated and sees no task {TASK}" in err
-    assert "from an elevated prompt" in out + err
-    assert f"schtasks /End /TN {TASK}" in out + err
+    assert status == 0
+    assert err == ""
+    said = " ".join(out.split())
+    assert f"this account has no task {TASK} registered" in said
+    assert "run `autogpt-shim uninstall` from one" in said
     assert manager.ran == [f"schtasks /Query /TN {TASK}"]
+    # The other account's task is as it was.
+    assert scheduler.registered and scheduler.running
     assert not target.exists()
 
 
@@ -828,6 +890,7 @@ def test_install_says_uninstall_is_how_to_stop_the_service(
     config = home / "config.toml"
     config.write_text("", encoding="utf-8")
     monkeypatch.setattr(install_mod, "_current_platform_for_install", lambda: "darwin")
+    monkeypatch.setattr(install_mod, "run_command", _whoami)
     monkeypatch.setattr(sys, "argv", ["autogpt-shim", "--config", str(config), "install"])
     for field in ("platform_url", "platform_ws_url", "platform_oauth_url", "oauth_client_id"):
         monkeypatch.delenv(f"AUTOGPT_SHIM_{field.upper()}", raising=False)
@@ -985,7 +1048,7 @@ def test_real_launchd_stops_a_loaded_agent_by_its_label_alone(
     asks: bootout may answer before then."""
     assert _REAL_RUN_COMMAND is not None
     uid = os.getuid()
-    label = f"net.autogpt.shim.test-{uuid.uuid4().hex[:12]}"
+    label = f"co.agpt.shim.test-{uuid.uuid4().hex[:12]}"
     domain = next(
         (
             domain

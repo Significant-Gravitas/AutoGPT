@@ -183,7 +183,8 @@ class DaemonPreflightError(RuntimeError):
     supervised `start` then stops instead. `transient` marks one that can
     clear on its own (audit storage that is full or not mounted yet, a
     keychain still locked): `start` exits 75 (EX_TEMPFAIL), which systemd and
-    launchd both restart.
+    launchd both restart, and the shim's own supervisor under the Windows
+    task (supervise).
     """
 
     def __init__(self, message: str, *, permanent: bool = False, transient: bool = False) -> None:
@@ -219,10 +220,24 @@ def resolve_machine_id(config: ShimConfig) -> str:
     disk, a file that isn't a value), transient otherwise (a full disk, a
     share that is away). The folder is the one the audit key's lock is in,
     which a first start needs as well, and the setting that moves that one
-    moves this."""
+    moves this.
+
+    Transient too when the operating system's identifier couldn't be read
+    this once: the ID without it would be another computer's for this
+    start."""
     if config.machine_id is None:
         try:
             config.machine_id = machine_identity.own_machine_id()
+        except machine_identity.OsIdentifierUnreadable as exc:
+            # One read that failed (macOS's `ioreg` not answering at a busy
+            # login): the next start reads it again.
+            raise DaemonPreflightError(
+                f"{exc}; refusing to run under the machine ID this computer would have "
+                "without it, which is another one: each chat bound to this computer "
+                "would find it gone. The next start reads it again. To run without the "
+                "operating system's identifier, set machine_id in the config file",
+                transient=True,
+            ) from exc
         except machine_identity.MachineIdError as exc:
             # EEXIST: a file where the folder belongs, as Windows reports it.
             permanent = (
@@ -463,6 +478,20 @@ class MachineSlots:
 # What the folder picker's first listing looks at: the home folder and the
 # volumes beside it.
 _BROWSE_ROOTS = "<the folder picker's roots>"
+
+
+def _unexpected_failure(exc: Exception) -> str:
+    """What the platform is told of a failure no handler expected: its kind,
+    and for the system's own errors the system's reason. Not its text, which
+    for an OSError ends with the file name the system was given: a resolved
+    path, and with it where a link in the shared folder leads. The whole
+    failure is in the log."""
+    reason = exc.strerror if isinstance(exc, OSError) and exc.strerror else None
+    kind = type(exc).__name__ + (f": {reason}" if reason else "")
+    return (
+        f"The request failed in the local executor ({kind}). Its log on that computer "
+        "has the details."
+    )
 
 
 def _folder_not_answering(request_id: str, exc: FolderCheckTimeout) -> ErrorMessage:
@@ -1880,7 +1909,7 @@ class ShimDaemon:
                 response = make_error(
                     msg.id if hasattr(msg, "id") else new_id(),
                     ErrorCode.INTERNAL_ERROR,
-                    str(exc),
+                    _unexpected_failure(exc),
                 )
         finally:
             # Belt-and-braces: if either counter is still owed (e.g. we got
@@ -2729,8 +2758,9 @@ class ShimDaemon:
             return
         if found is None:
             await self._fail_preflight(
-                "Computer use is enabled but cua-driver is not installed. Reinstall with "
-                f"`{COMPUTER_USE_INSTALL}`, then run `autogpt-shim doctor`.",
+                "Computer use is enabled but cua-driver is not installed. Add the "
+                f"computer-use extra to this install with `{COMPUTER_USE_INSTALL}`, then "
+                "run `autogpt-shim doctor`.",
                 missing_permissions=["cua_driver"],
                 error_code=ErrorCode.DEPENDENCY_MISSING,
                 permanent=True,

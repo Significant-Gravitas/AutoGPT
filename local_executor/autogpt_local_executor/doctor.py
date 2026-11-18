@@ -220,7 +220,8 @@ def _check_computer_use(config: ShimConfig, plat: str) -> list[CheckResult]:
             CheckResult(
                 "FAIL",
                 "cua-driver",
-                f"not installed — reinstall with `{COMPUTER_USE_INSTALL}`",
+                "not installed — add the computer-use extra to this install with "
+                f"`{COMPUTER_USE_INSTALL}`",
                 blocking=True,
             )
         ]

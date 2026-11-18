@@ -62,13 +62,32 @@ class PathJailError(Exception):
     """Raised when a path violates the jail.
 
     `code` is one of the ErrorCode enum values for direct mapping to the
-    wire ERROR.code field.
+    wire ERROR.code field. `message` goes to the platform with it, and names
+    only the path that was asked for and the root as the platform was told
+    it. `detail` stays on this computer, for its log: where the path
+    resolved to, the root's own real place, the system's error with its
+    file name. Sent on, those told the platform where a link in the shared
+    folder points outside it, and on Windows, by the letter case of what
+    came back, whether a path exists.
     """
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, *, detail: str | None = None) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
+        self.detail = detail
+
+
+def _outside(raw: str, allowed_root: str | os.PathLike[str], detail: str) -> PathJailError:
+    """The one refusal of a path outside the root, whichever check found it:
+    by its name alone (step 3) or once it was resolved (steps 5 and 6). A
+    message of its own for each said which, and so whether a link is on the
+    way."""
+    return PathJailError(
+        "PATH_OUTSIDE_ALLOWED_ROOT",
+        f"Path {raw!r} is outside allowed_root {os.fspath(allowed_root)!r}",
+        detail=detail,
+    )
 
 
 def _is_reserved_name(p: PurePath) -> bool:
@@ -151,8 +170,9 @@ def assert_inside_jail(
 
     Only the root is looked at before the path's name is known to be
     inside it (step 3): a path on another drive, share, host or device
-    namespace, elsewhere on the disk or above the root through `..` is
-    refused without a `realpath`, `stat` or `open` of it.
+    namespace, elsewhere on the disk, or one that climbs above the root
+    through `..` at any point, is refused without a `realpath`, `stat` or
+    `open` of it.
     """
     raw = str(requested_path)
 
@@ -197,7 +217,10 @@ def assert_inside_jail(
         # but still surface it via the jail interface so handlers don't crash.
         raise PathJailError(
             "PATH_OUTSIDE_ALLOWED_ROOT",
-            f"allowed_root {str(allowed_root)!r} does not exist: {exc}",
+            f"allowed_root {str(allowed_root)!r} does not exist or can't be reached",
+            # The system's error names the part it stopped at, with the
+            # links before it followed.
+            detail=f"allowed_root {str(allowed_root)!r} couldn't be resolved: {exc}",
         ) from exc
 
     # 3. Refuse by its name a path that is plainly outside the root, before
@@ -207,9 +230,12 @@ def assert_inside_jail(
     #    a device, and on macOS `/net/<host>/x` has autofs contact the host,
     #    all before the path could be refused.
     if _plainly_outside(str(lex), _root_spellings(allowed_root, root_resolved)):
-        raise PathJailError(
-            "PATH_OUTSIDE_ALLOWED_ROOT",
-            f"Path {raw!r} is outside allowed_root {root_resolved!r}",
+        raise _outside(
+            raw,
+            allowed_root,
+            # Worked out on the names alone, as the check was.
+            f"{raw!r} comes to {os.path.normpath(from_root(lex, allowed_root))!r} by its "
+            f"name, outside the root, which is {root_resolved!r}",
         )
 
     # 4. Resolve symlinks, junctions, firmlinks, reparse points. Its name
@@ -223,7 +249,8 @@ def assert_inside_jail(
     except (OSError, ValueError) as exc:
         raise PathJailError(
             "PATH_INVALID_CHARS",
-            f"Cannot resolve path {raw!r}: {exc}",
+            f"Cannot resolve path {raw!r}: {_reason(exc)}",
+            detail=f"{raw!r} couldn't be resolved: {exc}",
         ) from exc
 
     # 5. Exact prefix with a path separator boundary, so /workspace doesn't
@@ -240,10 +267,19 @@ def assert_inside_jail(
     if _root_is_an_ancestor(resolved, root_resolved):
         return Path(resolved)
 
-    raise PathJailError(
-        "PATH_OUTSIDE_ALLOWED_ROOT",
-        f"Path {raw!r} (resolved to {resolved!r}) is outside allowed_root {root_resolved!r}",
+    raise _outside(
+        raw,
+        allowed_root,
+        f"{raw!r} resolves to {resolved!r}, outside the root, which is {root_resolved!r}",
     )
+
+
+def _reason(exc: BaseException) -> str:
+    """Why the system refused, in its own words, without the file name its
+    error ends with: that is the path it was given, a resolved one."""
+    if isinstance(exc, OSError):
+        return exc.strerror or type(exc).__name__
+    return str(exc)
 
 
 def from_root(requested_path: str | os.PathLike[str], allowed_root: str | os.PathLike[str]) -> str:
@@ -303,9 +339,14 @@ def _plainly_outside(
     every spelling of the root by its name alone. Nothing is looked at.
 
     A relative path is taken from the first spelling, the configured root,
-    as the path that goes on to be resolved is (from_root), and `.` and
-    `..` are worked out on the names, as the platform works them out
-    before it sends a path.
+    as the path that goes on to be resolved is (from_root). The path has to
+    begin with a spelling of the root as it is written, and stay under it
+    name by name: a `..` is followed in its place, not worked out first.
+    Resolving a path looks at each folder it passes through, so one that
+    leaves the root and comes back (`/net/host/../../workspace/file`, for a
+    root `/workspace`) would have the folder outside looked at on the way,
+    though it ends inside. The platform works `.` and `..` out before it
+    sends a path, so its own paths never do that.
     Names are compared without regard to case or to how an accented letter
     is written, since a filesystem may take either for the same folder (on
     Windows and macOS it does), and with either separator on Windows. That
@@ -313,7 +354,8 @@ def _plainly_outside(
     in. What is outside by its name:
 
     - a path that is not under the root: elsewhere on the disk, above the
-      root through `..`, or a name that only starts like the root's;
+      root through `..` at any point, even to come back into it, or a name
+      that only starts like the root's;
     - on Windows, another drive, a path relative to another drive's folder
       (`D:x`), another share or host (`\\\\host\\share\\x`,
       `//host/share/x`), and the device namespaces (`\\\\.\\`,
@@ -324,22 +366,42 @@ def _plainly_outside(
     """
     windows = pathmod is ntpath
     spellings = tuple(root_spellings)
-    candidate = _named(pathmod.join(spellings[0], requested), windows)
+    candidate = _named(pathmod.join(spellings[0], requested), windows, keep_dots=True)
     if candidate is None:
         return True
     for spelling in spellings:
         root = _named(spelling, windows)
-        if root is not None and candidate[0] == root[0] and candidate[1][: len(root[1])] == root[1]:
+        if root is not None and candidate[0] == root[0] and _stays_under(candidate[1], root[1]):
             return False
     return True
 
 
-def _named(path: str, windows: bool) -> tuple[str, tuple[str, ...]] | None:
+def _stays_under(names: tuple[str, ...], root: tuple[str, ...]) -> bool:
+    """Whether a path's names, with each `..` still in its place, begin
+    with the root's and never climb above it on the way. The top of a disk
+    or a share has nothing above it: its own `..` is the top."""
+    if names[: len(root)] != root:
+        return False
+    depth = 0
+    for name in names[len(root) :]:
+        if name != "..":
+            depth += 1
+        elif depth > 0:
+            depth -= 1
+        elif root:
+            return False
+    return True
+
+
+def _named(
+    path: str, windows: bool, *, keep_dots: bool = False
+) -> tuple[str, tuple[str, ...]] | None:
     """An absolute path as its anchor (a drive or a share on Windows, and
-    nothing elsewhere) and the names after it, with `.` and `..` worked out
-    on the names and each name in the form names are compared in. None for
-    what is no plain absolute path: on Windows a device path, a path
-    relative to a drive's folder, and one with no drive."""
+    nothing elsewhere) and the names after it, each in the form names are
+    compared in, with `.` dropped and `..` worked out on the names, or with
+    `keep_dots` left in its place. None for what is no plain absolute path:
+    on Windows a device path, a path relative to a drive's folder, and one
+    with no drive."""
     if windows:
         path = path.replace("/", "\\")
         if path.startswith("\\\\"):
@@ -363,7 +425,7 @@ def _named(path: str, windows: bool) -> tuple[str, tuple[str, ...]] | None:
     for name in rest.split(separator):
         if name in ("", "."):
             continue
-        if name == "..":
+        if name == ".." and not keep_dots:
             # The top's own `..` is the top.
             if names:
                 names.pop()
@@ -425,6 +487,7 @@ def assert_entry_inside_jail(
         raise PathJailError(
             exc.code,
             f"Path {raw!r} names an entry outside allowed_root {str(allowed_root)!r}",
+            detail=exc.detail,
         ) from exc
     return directory / lex.name
 

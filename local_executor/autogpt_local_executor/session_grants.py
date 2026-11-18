@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import fsops
 from .directory_browser import _is_reparse_point
 
 
@@ -156,7 +157,14 @@ def canonical_directory(path: Path) -> Path:
         if path.is_symlink() or _is_reparse_point(path):
             raise RootGrantError("Selected root cannot be a symbolic link")
         resolved = Path(os.path.realpath(path, strict=True))
-        if not resolved.is_dir() or not os.access(resolved, os.R_OK | os.W_OK | os.X_OK):
+        # A chat's folder is one the account can open and write to, as the
+        # folder dialog's choice requires (DirectoryBrowser.resolve), asked
+        # the way each system answers truthfully (fsops).
+        if (
+            not resolved.is_dir()
+            or not fsops.can_open_folder(resolved)
+            or not fsops.can_write_folder(resolved)
+        ):
             raise RootGrantError("Selected root is unavailable")
         return resolved
     except RootGrantError:
