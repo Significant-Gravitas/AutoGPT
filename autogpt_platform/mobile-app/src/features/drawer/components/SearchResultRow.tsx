@@ -68,9 +68,9 @@ const useStyles = createStyles((colors) => ({
     paddingVertical: spacing.xs,
     borderRadius: radius.md,
   },
-  active: { backgroundColor: colors.surfaceRaised },
+  active: { backgroundColor: colors.menuRowActive },
   pressed: { backgroundColor: colors.surfacePressed },
   body: { flex: 1, minWidth: 0 },
   title: { ...type.body, fontSize: 17, lineHeight: 22, color: colors.text },
-  meta: { ...type.small, fontSize: 14, color: colors.textTertiary },
+  meta: { ...type.small, fontSize: 14, color: colors.textSecondary },
 }));

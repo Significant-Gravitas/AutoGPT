@@ -9,7 +9,7 @@ import { createStyles } from "@/lib/theme";
 export default function AppLayout() {
   const styles = useStyles();
   return (
-    // Behind the drawer and the page's rounded corners, so both read as one sheet.
+    // The menu's grey, behind the see-through drawer and the page's rounded corners.
     <View style={styles.root}>
       <Drawer
         drawerContent={(props) => <AppDrawerContent {...props} />}
@@ -45,7 +45,7 @@ function renderPage({ children }: { children: ReactNode }) {
 }
 
 const useStyles = createStyles((colors) => ({
-  root: { flex: 1, backgroundColor: colors.background },
+  root: { flex: 1, backgroundColor: colors.menuBackground },
   drawer: { width: "78%", backgroundColor: "transparent" },
   scene: { backgroundColor: "transparent" },
 }));

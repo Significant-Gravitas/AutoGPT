@@ -9,8 +9,10 @@ import type { Turn } from "./turns";
  * The thread's scroll, the way ChatGPT does it: a sent message scrolls to the
  * top of the screen and its reply fills the space below, without the view
  * chasing the stream. Until the first send here, the list keeps to its end.
+ * `topInset` is the header floating over the list's top, which the sent
+ * message stops below.
  */
-export function useMessageList() {
+export function useMessageList(topInset: number) {
   const listRef = useRef<FlashListRef<Turn>>(null);
   const viewport = useRef(0);
   const lastTurnHeight = useRef(0);
@@ -23,7 +25,10 @@ export function useMessageList() {
 
   function updateBlank(anchored: boolean) {
     blankSpace.value = anchored
-      ? Math.max(0, viewport.current - lastTurnHeight.current - BOTTOM_PADDING)
+      ? Math.max(
+          0,
+          viewport.current - topInset - lastTurnHeight.current - BOTTOM_PADDING,
+        )
       : 0;
   }
 

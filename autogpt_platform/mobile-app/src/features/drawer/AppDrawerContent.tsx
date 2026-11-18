@@ -164,7 +164,8 @@ export function AppDrawerContent({ navigation }: Props) {
   );
 }
 
-// No background: the drawer is see-through, so the page's shadow shows on it.
+// No background: the drawer is see-through, so the page's shadow falls on the
+// menu's grey behind it (the app layout's root).
 const useStyles = createStyles((colors) => ({
   container: { flex: 1 },
   nav: { paddingTop: spacing.sm },

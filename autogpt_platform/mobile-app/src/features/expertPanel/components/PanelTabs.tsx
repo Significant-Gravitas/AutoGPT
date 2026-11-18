@@ -1,6 +1,6 @@
 import { Pressable, Text, View } from "react-native";
 
-import { createStyles, radius, spacing } from "@/lib/theme";
+import { createStyles, radius, shadows, spacing, useScheme } from "@/lib/theme";
 
 export type PanelTab = "activity" | "library" | "connections";
 
@@ -17,6 +17,7 @@ interface Props {
 
 export function PanelTabs({ selected, onSelect }: Props) {
   const styles = useStyles();
+  const isLight = useScheme() === "light";
 
   return (
     <View accessibilityRole="tablist" style={styles.track}>
@@ -28,7 +29,11 @@ export function PanelTabs({ selected, onSelect }: Props) {
             accessibilityRole="tab"
             accessibilityState={{ selected: isSelected }}
             onPress={() => onSelect(tab.id)}
-            style={[styles.segment, isSelected && styles.selected]}
+            style={[
+              styles.segment,
+              isSelected && styles.selected,
+              isSelected && isLight && styles.selectedShadow,
+            ]}
           >
             <Text style={[styles.label, isSelected && styles.selectedLabel]}>
               {tab.label}
@@ -46,14 +51,15 @@ const useStyles = createStyles((colors) => ({
     alignSelf: "center",
     padding: spacing.xs,
     borderRadius: radius.pill,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.panelTabTrack,
   },
   segment: {
     paddingHorizontal: spacing.lg,
     paddingVertical: 6,
     borderRadius: radius.pill,
   },
-  selected: { backgroundColor: colors.surfacePressed },
+  selected: { backgroundColor: colors.panelCard },
+  selectedShadow: shadows.selectedTab,
   label: { fontSize: 15, lineHeight: 20, fontWeight: "500", color: colors.textSecondary },
   selectedLabel: { color: colors.text },
 }));

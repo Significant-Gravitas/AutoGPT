@@ -11,7 +11,7 @@ import {
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { avatarSource } from "@/features/team/helpers";
-import { createStyles, radius, spacing, type } from "@/lib/theme";
+import { createStyles, radius, shadows, spacing, type, useScheme } from "@/lib/theme";
 
 import { DrawerRow } from "../DrawerRow";
 import { AppearancePicker } from "./AppearancePicker";
@@ -36,6 +36,7 @@ interface Anchor {
 /** The signed-in person's round avatar; tapping it opens a small menu just above. */
 export function UserMenu({ name, email, image, onOpenSettings, onSignOut }: Props) {
   const styles = useStyles();
+  const isLight = useScheme() === "light";
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const buttonRef = useRef<ComponentRef<typeof View>>(null);
   const [anchor, setAnchor] = useState<Anchor | null>(null);
@@ -74,7 +75,11 @@ export function UserMenu({ name, email, image, onOpenSettings, onSignOut }: Prop
         accessibilityLabel={`${title}, account menu`}
         accessibilityState={{ expanded: anchor !== null }}
         onPress={open}
-        style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.button,
+          isLight && styles.buttonShadow,
+          pressed && styles.pressed,
+        ]}
       >
         <ExpertAvatar
           name={title}
@@ -133,15 +138,9 @@ const useStyles = createStyles((colors) => ({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    shadowColor: "#000000",
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    backgroundColor: colors.menuButton,
   },
+  buttonShadow: shadows.menuButton,
   pressed: { opacity: 0.7 },
   account: { paddingHorizontal: spacing.sm, paddingTop: spacing.xs, paddingBottom: spacing.sm },
   title: { ...type.label, color: colors.text },

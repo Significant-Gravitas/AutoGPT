@@ -47,7 +47,7 @@ const useStyles = createStyles((colors) => ({
     minHeight: 44,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.menuButton,
   },
   input: {
     ...type.label,

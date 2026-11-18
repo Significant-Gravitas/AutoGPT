@@ -51,7 +51,7 @@ export function DrawerHeader({
         icon={Search01Icon}
         label="Search chats"
         onPress={onOpenSearch}
-        variant="icon"
+        variant="menu"
       />
     </View>
   );

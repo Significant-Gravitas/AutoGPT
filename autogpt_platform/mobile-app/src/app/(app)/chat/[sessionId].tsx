@@ -1,8 +1,4 @@
-import {
-  Folder01Icon,
-  PencilEdit02Icon,
-  SidebarRight01Icon,
-} from "@hugeicons/core-free-icons";
+import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Text, View } from "react-native";
 import { Drawer } from "react-native-drawer-layout";
@@ -10,7 +6,7 @@ import { Drawer } from "react-native-drawer-layout";
 import { Button } from "@/components/Button";
 import { IconButton } from "@/components/IconButton";
 import { PageFrame } from "@/components/PageFrame";
-import { ScreenHeader } from "@/components/ScreenHeader";
+import { FloatingHeader } from "@/components/FloatingHeader";
 import { ChatIdentity } from "@/features/chat/components/ChatIdentity";
 import { ChatThread } from "@/features/chat/components/ChatThread";
 import { useChatScreen } from "@/features/chat/useChatScreen";
@@ -104,7 +100,7 @@ export default function ChatScreen() {
       drawerPosition="right"
       // Pushes the chat aside, as the menu does from the other side.
       drawerType="slide"
-      // The app's menu drawer owns the swipe; this panel opens from its button.
+      // The app's menu drawer owns the swipe; this panel opens from the name pill.
       swipeEnabled={false}
       overlayAccessibilityLabel={expertID ? "Close details" : "Close files"}
       // PageFrame draws the wash; this overlay only takes the closing tap.
@@ -115,22 +111,29 @@ export default function ChatScreen() {
     >
       <PageFrame>
         <View style={styles.screen}>
-          <ScreenHeader
-            center={identity ? <ChatIdentity {...identity} /> : null}
+          {renderBody()}
+          {/* After the body, so it floats over the thread. */}
+          <FloatingHeader
+            center={
+              identity ? (
+                <ChatIdentity
+                  name={identity.name}
+                  avatar={identity.avatar}
+                  tint={identity.tint}
+                  onPress={hasFiles ? openFiles : undefined}
+                  actionLabel={expertID ? "open details" : "open files"}
+                />
+              ) : null
+            }
             right={
-              <>
-                {hasFiles ? (
-                  <IconButton
-                    icon={expertID ? SidebarRight01Icon : Folder01Icon}
-                    label={expertID ? "Details" : "Files"}
-                    onPress={openFiles}
-                  />
-                ) : null}
-                <IconButton icon={PencilEdit02Icon} label="New chat" onPress={newChat} />
-              </>
+              <IconButton
+                icon={PencilEdit02Icon}
+                label="New chat"
+                onPress={newChat}
+                variant="floating"
+              />
             }
           />
-          {renderBody()}
         </View>
       </PageFrame>
     </Drawer>
@@ -142,7 +145,7 @@ const useStyles = createStyles((colors) => ({
   // See-through, so the chat's shadow falls on the panel.
   panel: { width: "85%", backgroundColor: "transparent" },
   overlay: { backgroundColor: "transparent" },
-  backdrop: { backgroundColor: colors.background },
+  backdrop: { backgroundColor: colors.panelBackground },
   center: {
     flex: 1,
     alignItems: "center",
