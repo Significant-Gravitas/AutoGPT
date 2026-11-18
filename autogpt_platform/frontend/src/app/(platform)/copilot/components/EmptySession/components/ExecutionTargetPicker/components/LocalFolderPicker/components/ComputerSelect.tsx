@@ -6,7 +6,7 @@ import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
 import { useEffect, useRef } from "react";
 import { LocalExecutorSetup } from "../../LocalExecutorSetup/LocalExecutorSetup";
-import { computerOptions, hasComputersWithOneName } from "../helpers";
+import { computerMenu } from "../helpers";
 
 const MENU_ID = "local-executor-machine";
 const SETUP_PANEL_ID = "local-executor-another-computer";
@@ -32,6 +32,7 @@ export function ComputerSelect({
   onRefreshMachines,
   onToggleSetup,
 }: Props) {
+  const { options, hasSharedNames } = computerMenu(machines);
   const hasFocusInSetup = useRef(false);
 
   // The steps close by themselves when another computer connects. Focus that
@@ -52,14 +53,15 @@ export function ComputerSelect({
         label="Computer"
         value={selectedMachineID ?? ""}
         onValueChange={onSelectMachine}
-        options={computerOptions(machines)}
+        options={options}
         wrapperClassName="!mb-0"
       />
-      {hasComputersWithOneName(machines) ? (
+      {hasSharedNames ? (
         <Text variant="small" tone="secondary">
           Some of your computers have the same name. To tell them apart, set{" "}
           <span className="font-mono text-caption">display_name</span> in each
-          one&apos;s config.toml and start it again.
+          one&apos;s config.toml and start it again. The steps under Connect
+          Another Computer list where that file is.
         </Text>
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">

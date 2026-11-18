@@ -10,6 +10,7 @@ import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { computerMenu } from "../components/LocalFolderPicker/helpers";
 import { ExecutionTargetPicker } from "../ExecutionTargetPicker";
 
 const EXECUTORS_URL = "http://localhost:3000/api/proxy/api/copilot/executors";
@@ -32,6 +33,13 @@ const LAPTOP: ExecutorMachine = {
   display_name: "Laptop",
   platform: "darwin",
   arch: "arm64",
+};
+
+const STUDIO: ExecutorMachine = {
+  ...LAPTOP,
+  machine_id: "2e6b6f28-358a-8d25-6113-ef09e4dcce45",
+  connection_id: "connection-3",
+  display_name: "Studio",
 };
 
 type User = ReturnType<typeof userEvent.setup>;
@@ -239,6 +247,22 @@ describe("the folder dialog with more than one computer", () => {
     ).toBeDefined();
   });
 
+  test("names each computer when two connect at once", async () => {
+    const user = userEvent.setup();
+
+    render(<ExecutionTargetPicker />);
+    await openTheFolderDialog(user);
+    await openTheSetupSteps(user);
+    connected = [WORKSTATION, LAPTOP, STUDIO];
+    await checkAgain(user);
+
+    expect(
+      await screen.findByText(
+        "Laptop · macOS and Studio · macOS connected. Choose one under Computer.",
+      ),
+    ).toBeDefined();
+  });
+
   test("takes the notice away only when that computer disconnects", async () => {
     const user = userEvent.setup();
 
@@ -309,6 +333,27 @@ describe("the folder dialog with more than one computer", () => {
     ).toBe("false");
   });
 
+  test("starts with the steps closed again once the last computer has gone", async () => {
+    const user = userEvent.setup();
+
+    render(<ExecutionTargetPicker />);
+    await openTheFolderDialog(user);
+    await openTheSetupSteps(user);
+    connected = [];
+    await checkAgain(user);
+    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+    connected = [WORKSTATION];
+    await checkAgain(user);
+    await screen.findByText("This folder has no subfolders.");
+
+    expect(screen.queryByText("Connect a Computer")).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Connect Another Computer" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+  });
+
   test("tells apart two computers that share a name", async () => {
     const user = userEvent.setup();
     connected = [
@@ -340,5 +385,41 @@ describe("the folder dialog with more than one computer", () => {
 
     expect(chosenComputer()).toBe("Workstation · Windows");
     expect(screen.queryByText(/have the same name/)).toBeNull();
+  });
+});
+
+describe("the Computer menu's labels", () => {
+  function labels(machines: ExecutorMachine[]) {
+    return computerMenu(machines).options.map((option) => option.label);
+  }
+
+  test("each computer that shares a name shows the start of its own ID", () => {
+    const twin = { ...WORKSTATION, machine_id: LAPTOP.machine_id };
+
+    expect(labels([WORKSTATION, twin, LAPTOP])).toEqual([
+      "Workstation · Windows · 1c49dced",
+      "Workstation · Windows · 36d78179",
+      "Laptop · macOS",
+    ]);
+  });
+
+  test("IDs that start alike show as much as tells them apart", () => {
+    const first = { ...WORKSTATION, machine_id: "office-pc-1c49dced" };
+    const second = { ...WORKSTATION, machine_id: "office-pc-36d78179" };
+
+    expect(labels([first, second])).toEqual([
+      "Workstation · Windows · office-pc-1",
+      "Workstation · Windows · office-pc-3",
+    ]);
+  });
+
+  test("an ID that another one begins with still gets its own label", () => {
+    const short = { ...WORKSTATION, machine_id: "office-pc" };
+    const long = { ...WORKSTATION, machine_id: "office-pc-2" };
+
+    expect(labels([short, long])).toEqual([
+      "Workstation · Windows · office-pc",
+      "Workstation · Windows · office-pc-",
+    ]);
   });
 });
