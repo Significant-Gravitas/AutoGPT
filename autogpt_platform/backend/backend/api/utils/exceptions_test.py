@@ -7,6 +7,7 @@ import fastapi.testclient
 import pydantic
 import pytest
 
+from backend.api.rest_api import app as rest_app
 from backend.api.utils.exceptions import add_exception_handlers
 
 
@@ -64,6 +65,36 @@ def test_a_validation_failure_is_logged_as_an_error_only_when_it_is_ours(
     assert [
         r.levelno for r in caplog.records if r.name == "backend.api.utils.exceptions"
     ] == [level]
+
+
+def test_a_malformed_requests_warning_keeps_the_clients_keys_out(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A warning is still logged, so it carries no more than the error did."""
+    app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
+
+    @app.post("/limits")
+    async def set_limits(limits: _Limits) -> None:
+        pass
+
+    with caplog.at_level(logging.WARNING, logger="backend.api.utils.exceptions"):
+        response = fastapi.testclient.TestClient(app).post(
+            "/limits", json={"per_key": {_CLIENT_KEY: "many"}}
+        )
+
+    assert response.json()["detail"][0]["loc"] == ["body", "per_key", _CLIENT_KEY]
+    [record] = [r for r in caplog.records if r.name == "backend.api.utils.exceptions"]
+    assert record.levelno == logging.WARNING
+    assert _CLIENT_KEY not in record.getMessage()
+    assert "'loc': ['body', 'per_key', '*']" in record.getMessage()
+
+
+# A mapping's key is the client's data, a name no loaded model declares.
+_CLIENT_KEY = "acct-7Hq2Lx9Wd4"
+
+
+class _Limits(pydantic.BaseModel):
+    per_key: dict[str, int]
 
 
 def test_a_client_error_still_says_what_was_wrong() -> None:
