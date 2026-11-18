@@ -246,8 +246,7 @@ def _scrub_breadth_first(
     while queue:
         parent, key = queue.popleft()
         value = parent[key]
-        if key == "headers":
-            _mask_headers(value)
+        _mask_headers(key, value)
         if isinstance(value, dict):
             value, budget = _scrub_keys(parent, key, budget, credentials, secret_shapes)
             for nested_key in value:
@@ -315,20 +314,24 @@ def _scrub_keys(
         return value, budget
     renamed: dict[Any, Any] = {}
     for nested_key, nested in value.items():
-        new_key = renames.get(nested_key, nested_key)
-        while nested_key in renames and (new_key in renamed or new_key in value):
-            new_key += "*"
-        renamed[new_key] = nested
+        if nested_key in renames:
+            new_key = renames[nested_key]
+            while new_key in renamed or new_key in value:
+                new_key += "*"
+            nested_key = new_key
+        renamed[nested_key] = nested
     parent[key] = renamed
     return renamed, budget
 
 
-def _mask_headers(headers: object) -> None:
-    """Mask every credential header, whatever it is called: the SDK knows a
-    fixed list of names, which misses a webhook provider's secret token such as
-    Telegram's. Headers come as a mapping, or, in an ASGI scope among a frame's
-    variables, as name and value pairs, the names reprs of bytes, such as
-    ``["b'cookie'", "b'session=...'"]``."""
+def _mask_headers(key: object, headers: object) -> None:
+    """Mask every credential header, whatever it is called, under a ``headers``
+    key: the SDK knows a fixed list of names, which misses a webhook provider's
+    secret token such as Telegram's. Headers come as a mapping, or, in an ASGI
+    scope among a frame's variables, as name and value pairs, the names reprs of
+    bytes, such as ``["b'cookie'", "b'session=...'"]``."""
+    if key != "headers":
+        return
     if isinstance(headers, dict):
         for name in headers:
             if isinstance(name, str) and is_credential_header(name):

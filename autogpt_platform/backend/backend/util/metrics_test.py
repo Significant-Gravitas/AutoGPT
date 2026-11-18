@@ -378,21 +378,21 @@ def test_before_send_spends_its_budget_on_the_newest_entries(put, read) -> None:
 
 def test_before_send_transaction_keeps_every_span_id_past_its_budget() -> None:
     """A trace whose span IDs were filtered would fall apart in Sentry."""
-    description = "x" * metrics._SENTRY_MAX_VALUE_LENGTH
-    count = metrics._SENTRY_SCRUB_BUDGET // len(description) + 5
-    ids = [f"{index:016x}" for index in range(count)]
+    ids = [f"{index:016x}" for index in range(3)]
     spans = [
-        {"span_id": span_id, "parent_span_id": "b" * 16, "description": description}
+        {"span_id": span_id, "parent_span_id": "b" * 16, "description": "GET /x"}
         for span_id in ids
     ]
-    event = {"type": "transaction", "spans": spans, "contexts": {"trace": {}}}
+    # A name that leaves less of the budget than one span ID would take.
+    name = "x" * (metrics._SENTRY_SCRUB_BUDGET - len("transaction") - 8)
+    event = {"type": "transaction", "transaction": name, "spans": spans}
 
     scrubbed = metrics._before_send_transaction(event, {})
 
+    assert scrubbed["transaction"] == name
     assert [span["span_id"] for span in scrubbed["spans"]] == ids
     assert {span["parent_span_id"] for span in scrubbed["spans"]} == {"b" * 16}
-    descriptions = {span["description"] for span in scrubbed["spans"]}
-    assert descriptions == {description, "[Filtered]"}
+    assert scrubbed["spans"][-1]["description"] == "[Filtered]"
 
 
 def test_before_send_keeps_untyped_balance_message() -> None:

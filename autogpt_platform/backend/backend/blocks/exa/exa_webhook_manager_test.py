@@ -32,6 +32,7 @@ from backend.blocks.exa.search_monitor_trigger import (
     SearchMonitorEventFilter,
 )
 from backend.blocks.exa.webhook_blocks import ExaWebsetWebhookBlock, WebsetEventFilter
+from backend.util.url_redaction import mask_credential
 
 SECRET = "whsec_test_secret"
 BODY = b'{"id":"event_1","object":"event","type":"webset.item.created","data":{}}'
@@ -500,7 +501,7 @@ class TestSignatureTimestamp:
                 signed_webhook, _signed_at(-(SIGNATURE_TOLERANCE_SECONDS + 60))
             )
 
-        assert f"webhook #{signed_webhook.id}" in caplog.text
+        assert f"webhook #{mask_credential(signed_webhook.id)}" in caplog.text
         assert "signed 360s ago" in caplog.text
         assert SECRET not in caplog.text
 
