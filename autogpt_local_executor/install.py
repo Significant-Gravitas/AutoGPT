@@ -755,7 +755,8 @@ def _stop_scheduled_task(run: CommandRunner, *, task: str, elevated: bool) -> Se
     one that was registered from an elevated prompt. Seeing none is
     therefore no failure, and the answer says what such a prompt can't
     see; a task that is seen and can't be ended or deleted is one."""
-    by_hand = f'cmd /c "schtasks /End /TN {task} & schtasks /Delete /TN {task} /F"'
+    # `&&`, not `&`: by hand too, the task is deleted only once it is ended.
+    by_hand = f'cmd /c "schtasks /End /TN {task} && schtasks /Delete /TN {task} /F"'
     where = "" if elevated else "from an elevated prompt"
 
     def failed(found: bool | None, problem: str) -> ServiceStop:

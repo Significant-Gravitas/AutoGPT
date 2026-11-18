@@ -707,11 +707,41 @@ def test_a_task_this_prompt_may_not_change_is_reported(
     assert said in err
     assert "ERROR: Access is denied." in err
     assert "To stop it, run from an elevated prompt:" in err
-    assert f'  cmd /c "schtasks /End /TN {TASK} & schtasks /Delete /TN {TASK} /F"' in err
+    assert f'  cmd /c "schtasks /End /TN {TASK} && schtasks /Delete /TN {TASK} /F"' in err
     assert scheduler.registered is kept
     if not may_end:
         assert not any(line.startswith("schtasks /Delete") for line in manager.ran)
     assert not target.exists()
+
+
+def test_the_command_to_stop_a_task_by_hand_deletes_it_only_once_it_is_ended(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The command `uninstall` prints for a task it couldn't end joined its
+    two steps with `&`, which runs the second whatever the first did. Run
+    where ending the task is refused again, it deleted the task all the
+    same, and what the task had started ran on with no task left to end it
+    by: what `uninstall` itself takes care not to do."""
+    monkeypatch.setattr(install_mod, "_is_elevated", lambda: False)
+    target = _installed("windows", home)
+    manager = _Manager(target, _TaskScheduler(registered=True, running=True, may_end=False))
+
+    done = install_mod.uninstall_autostart(home=home, platform_name="windows", run=manager)
+
+    assert done.may_still_run
+    assert done.service.stop_command == (
+        f'cmd /c "schtasks /End /TN {TASK} && schtasks /Delete /TN {TASK} /F"'
+    )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="cmd.exe is Windows'")
+def test_cmd_runs_the_second_step_only_after_a_first_that_succeeded() -> None:
+    """What the command above rests on, with the real cmd.exe."""
+    stopped = _real(["cmd", "/c", "exit /b 1 && echo deleted"])
+    went_on = _real(["cmd", "/c", "exit /b 0 && echo deleted"])
+
+    assert "deleted" not in stopped.stdout
+    assert "deleted" in went_on.stdout
 
 
 @pytest.mark.parametrize("installed", [True, False])
