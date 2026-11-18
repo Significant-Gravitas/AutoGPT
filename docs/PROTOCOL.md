@@ -414,6 +414,14 @@ cmd.exe and batch files read their command line by other rules: an `argv`
 that names `cmd.exe` or a `.bat` file with an argument holding a `"` is not
 read back as sent. Send such a command as `command`.
 
+**Standard input**: a command has none. Its stdin is the null device
+(`/dev/null`, `NUL`) on every OS, however the shim was started: in a terminal,
+or by launchd, systemd or Task Scheduler. A program that reads its stdin gets
+the end of input at once, so one that prompts (`pip uninstall`, a bare
+`python`) gets no answer and goes on or fails as it does without one; it
+can't wait on a prompt, and nothing typed where the shim runs reaches it.
+Pass what a program needs as arguments, in a file, or in `env`.
+
 **`env` field**: the wire payload uses `env` (a `dict[str, str]`).
 The Python adapter on the platform side (the `LocalPCShim.commands.run`
 method that duck-types E2B's `AsyncSandbox`) accepts E2B's `envs=` kwarg

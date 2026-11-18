@@ -185,6 +185,7 @@ async def test_cmd_exe_is_started_with_one_command_line_not_an_argv(
     assert started["executable"] == CMD_EXE
     assert Path(started["cwd"]) == tmp_path.resolve()
     assert started["env"]["PYTHONIOENCODING"] == "utf-8"
+    assert started["stdin"] == asyncio.subprocess.DEVNULL
     assert started["stdout"] == started["stderr"] == asyncio.subprocess.PIPE
 
 

@@ -668,9 +668,9 @@ async def _start_with_command_line(
     command_line: str,
     *,
     executable: str,
-    stdin: int | None = None,
-    stdout: int | None = None,
-    stderr: int | None = None,
+    stdin: int,
+    stdout: int,
+    stderr: int,
     **popen: Any,
 ) -> asyncio.subprocess.Process:
     """Start `executable` on Windows with `command_line` as its whole
@@ -1098,7 +1098,9 @@ class CommandHandler:
         new_session: bool,
     ) -> asyncio.subprocess.Process:
         return await CommandHandler._spawn(
-            lambda **start: asyncio.create_subprocess_exec(*argv, **start),
+            lambda **start: asyncio.create_subprocess_exec(
+                *argv, stdin=asyncio.subprocess.DEVNULL, **start
+            ),
             cwd=cwd,
             env=env,
             creation_flags=creation_flags,
@@ -1118,7 +1120,9 @@ class CommandHandler:
         """Start cmd.exe on `command`, as any command is started."""
         command_line = _cmd_exe_command_line(cmd_exe, command)
         return await CommandHandler._spawn(
-            lambda **start: _start_with_command_line(command_line, executable=cmd_exe, **start),
+            lambda **start: _start_with_command_line(
+                command_line, executable=cmd_exe, stdin=asyncio.subprocess.DEVNULL, **start
+            ),
             cwd=cwd,
             env=env,
             creation_flags=creation_flags,
@@ -1134,6 +1138,11 @@ class CommandHandler:
         creation_flags: int,
         new_session: bool,
     ) -> asyncio.subprocess.Process:
+        """Start a command through `start`, which gives it no stdin: the
+        null device, on every OS. Left out, its stdin would be the shim's
+        own: a terminal when the shim was started in one, where a command
+        that prompts would wait on a prompt nobody sees, and what the person
+        typed there would go to the command."""
         # On Windows the command starts suspended, and runs once it is in a
         # job of its own, which a stop ends whole (windows_jobs).
         in_job = sys.platform == "win32"

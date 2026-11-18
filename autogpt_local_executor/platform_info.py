@@ -422,6 +422,7 @@ def _manager_environment() -> dict[str, str] | None:
     try:
         completed = subprocess.run(
             [systemctl, "--user", "show-environment"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             timeout=_MANAGER_TIMEOUT_SECONDS,
             check=False,
@@ -505,6 +506,7 @@ def detect_machine_id() -> str:
         if plat == "darwin":
             out = subprocess.check_output(
                 ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
+                stdin=subprocess.DEVNULL,
                 text=True,
                 stderr=subprocess.DEVNULL,
                 timeout=5,

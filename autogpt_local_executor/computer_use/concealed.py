@@ -149,6 +149,7 @@ def _linux_state(timeout: float | None = None) -> ClipboardState:
     try:
         listed = subprocess.run(
             argv,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=limit,
