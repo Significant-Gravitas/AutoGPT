@@ -98,7 +98,26 @@ async def test_create_post_sends_idempotency_key_once():
     assert await client.create_post({"targets": []}, "key-1") == {"id": "p1"}
     assert request.call_args.args == ("POST", f"{API_V1}/posts")
     assert request.call_args.kwargs["headers"] == {"Idempotency-Key": "key-1"}
-    assert client.writes.retry_max_attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_create_post_is_sent_once_on_the_write_client():
+    client = PostOnceClient(CREDENTIALS)
+    reads = mock.AsyncMock(return_value=FakeResponse(200, {"data": {}}))
+    writes = mock.AsyncMock(return_value=FakeResponse(503, {}))
+    client.reads._request = reads
+    client.writes._request = writes
+    with pytest.raises(PostOnceAPIError):
+        await client.create_post({"targets": []})
+    writes.assert_awaited_once()
+    reads.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_non_object_success_body_raises():
+    client, _ = client_with(FakeResponse(200, ["not", "an", "object"]))
+    with pytest.raises(PostOnceAPIError, match="unexpected success body"):
+        await client.get_post("p1")
 
 
 @pytest.mark.asyncio

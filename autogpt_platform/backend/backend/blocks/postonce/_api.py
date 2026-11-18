@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from backend.sdk import APIKeyCredentials, BaseModel, Requests
 from backend.util.request import Response
@@ -14,6 +14,9 @@ API_V1 = f"{POSTONCE_API_URL}/api/public/v1"
 # repeated create would post twice unless the caller passed an idempotency key.
 READ_RETRY_ATTEMPTS = 3
 RETRY_MAX_WAIT_SECONDS = 10.0
+
+# Every PostOnce success body is a JSON object such as {"data": ...}.
+_OBJECT_BODY = TypeAdapter(dict[str, Any])
 
 
 class PostOnceAPIError(ValueError):
@@ -70,8 +73,13 @@ class PostOnceClient:
         )
         if not response.ok:
             raise PostOnceAPIError(_error_message(response), response.status)
-        body = response.json()
-        return body if isinstance(body, dict) else {}
+        try:
+            return _OBJECT_BODY.validate_json(response.content)
+        except ValidationError as error:
+            raise PostOnceAPIError(
+                f"PostOnce returned an unexpected success body: {error}",
+                response.status,
+            ) from error
 
 
 def _requests(credentials: APIKeyCredentials, attempts: int) -> Requests:
