@@ -81,6 +81,14 @@ Symlinks, junctions, inaccessible entries, files, and invalid wire names are
 skipped. The result includes directory display names and canonical absolute
 paths only; navigation and selection use short-lived opaque references.
 
+On Windows, a drive's top folder is listed without the system's own
+folders: `Windows`, `Program Files`, `Program Files (x86)`, `ProgramData`,
+`Recovery` and `Documents and Settings`. A folder of one of those names
+further down is the person's (the `windows` folder of a Flutter project,
+say) and is listed like any other. `$RECYCLE.BIN` and `System Volume
+Information`, which the system keeps on every volume, are left out wherever
+they are.
+
 A folder is listed and can be opened when the account can read and search
 it, and chosen for a chat only when it can also write to it. So a folder
 the account can only read is still a way to one inside it that is its own:

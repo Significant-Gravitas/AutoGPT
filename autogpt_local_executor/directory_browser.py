@@ -10,7 +10,7 @@ import unicodedata
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from . import fsops, platform_info
 
@@ -21,18 +21,25 @@ MAX_REFS_PER_BROWSE = 1200
 MAX_CURSORS_PER_BROWSE = 32
 BROWSE_TTL_SECONDS = 5 * 60
 
-_WINDOWS_SPECIAL_NAMES = frozenset(
+# Windows' own folders, left out of a listing of a drive's top folder
+# (`C:\\`), which is where they are the system's. Further down, a folder of
+# one of these names is the person's: `windows` in a Flutter project, a
+# folder called Recovery or ProgramData. Left out at every depth, those
+# couldn't be opened or chosen.
+_WINDOWS_SPECIAL_AT_A_DRIVE_TOP = frozenset(
     {
-        "$recycle.bin",
         "documents and settings",
         "program files",
         "program files (x86)",
         "programdata",
         "recovery",
-        "system volume information",
         "windows",
     }
 )
+# The two the system keeps on every volume, and so wherever a volume's top
+# folder is, one mounted in a folder included: the recycle bin, and the
+# volume's restore points and indexes. Left out everywhere.
+_WINDOWS_SPECIAL_ANYWHERE = frozenset({"$recycle.bin", "system volume information"})
 
 
 class DirectoryBrowseError(Exception):
@@ -268,6 +275,7 @@ class DirectoryBrowser:
         candidates: list[Path] = []
         scanned = 0
         hard_truncated = False
+        at_drive_top = self.platform_name == "windows" and _is_drive_top(current)
         try:
             with os.scandir(current) as iterator:
                 for entry in iterator:
@@ -275,7 +283,7 @@ class DirectoryBrowser:
                     if scanned > MAX_SCANNED_ENTRIES:
                         hard_truncated = True
                         break
-                    if not self._safe_directory_entry(entry):
+                    if not self._safe_directory_entry(entry, at_drive_top=at_drive_top):
                         continue
                     try:
                         child = self._canonical_accessible_directory(Path(entry.path))
@@ -330,7 +338,7 @@ class DirectoryBrowser:
         )
         return token
 
-    def _safe_directory_entry(self, entry: os.DirEntry[str]) -> bool:
+    def _safe_directory_entry(self, entry: os.DirEntry[str], *, at_drive_top: bool) -> bool:
         try:
             if (
                 entry.is_symlink()
@@ -340,8 +348,12 @@ class DirectoryBrowser:
                 return False
         except OSError:
             return False
-        if self.platform_name == "windows" and entry.name.casefold() in _WINDOWS_SPECIAL_NAMES:
-            return False
+        if self.platform_name == "windows":
+            name = entry.name.casefold()
+            if name in _WINDOWS_SPECIAL_ANYWHERE:
+                return False
+            if at_drive_top and name in _WINDOWS_SPECIAL_AT_A_DRIVE_TOP:
+                return False
         return _valid_wire_name(entry.name)
 
     def _canonical_accessible_directory(self, path: Path, *, to_share: bool = False) -> Path:
@@ -467,6 +479,12 @@ class DirectoryBrowser:
     @staticmethod
     def _display_name(path: Path) -> str:
         return path.name or str(path)
+
+
+def _is_drive_top(path: PurePath) -> bool:
+    """Whether `path` is a volume's top folder: `C:\\`, or a share's
+    (`\\\\server\\share\\`). It is its own parent."""
+    return path.parent == path
 
 
 def _valid_wire_name(name: str) -> bool:

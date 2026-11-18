@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -240,3 +242,97 @@ def test_sibling_directories_that_differ_only_in_case_get_their_own_refs() -> No
     assert upper != lower
     assert again == lower
     assert str(session.refs[lower].path) == r"C:\Work\foo"
+
+
+# ── Windows system folders ───────────────────────────────────────────────────
+
+WINDOWS_SYSTEM_FOLDERS = [
+    "$RECYCLE.BIN",
+    "Documents and Settings",
+    "Program Files",
+    "Program Files (x86)",
+    "ProgramData",
+    "Recovery",
+    "System Volume Information",
+    "Windows",
+]
+# The two that are the system's own wherever they are: every volume has
+# them, a volume mounted in a folder among them.
+SYSTEM_FOLDERS_ANYWHERE = ["$RECYCLE.BIN", "System Volume Information"]
+
+
+def _children_listed(
+    folder: Path, monkeypatch: pytest.MonkeyPatch, *, drive_top: bool
+) -> list[str]:
+    """What a Windows browser lists in `folder`, taken for a drive's top
+    folder (`C:\\`) or for one further down."""
+    monkeypatch.setattr("autogpt_local_executor.directory_browser._windows_drive_roots", lambda: [])
+    monkeypatch.setattr(
+        "autogpt_local_executor.directory_browser._is_drive_top",
+        lambda path: drive_top and Path(path) == folder.resolve(),
+    )
+    browser = DirectoryBrowser(platform_name="windows", home=folder)
+    roots, home = _root_listing(browser)
+    listing = browser.list_directories(roots.browse_id, home.directory_ref)
+    return [entry.name for entry in listing.entries]
+
+
+def test_a_projects_folder_with_a_system_folders_name_is_listed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`C:\\src\\app\\windows`, which Flutter makes in every project, was
+    hidden like `C:\\Windows`, and so was any folder called Recovery or
+    ProgramData: the names were left out at every depth."""
+    app = tmp_path / "src" / "app"
+    for name in ["lib", "windows", *WINDOWS_SYSTEM_FOLDERS[:-1]]:
+        (app / name).mkdir(parents=True)
+
+    listed = _children_listed(app, monkeypatch, drive_top=False)
+
+    expected = {"lib", "windows", *WINDOWS_SYSTEM_FOLDERS[:-1]} - set(SYSTEM_FOLDERS_ANYWHERE)
+    assert sorted(listed, key=str.casefold) == sorted(expected, key=str.casefold)
+
+
+def test_the_system_folders_at_a_drives_top_are_left_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    drive = tmp_path / "C"
+    for name in ["Users", "src", *WINDOWS_SYSTEM_FOLDERS]:
+        (drive / name).mkdir(parents=True)
+
+    assert _children_listed(drive, monkeypatch, drive_top=True) == ["src", "Users"]
+
+
+def test_a_drives_top_is_told_by_its_path() -> None:
+    from pathlib import PureWindowsPath
+
+    from autogpt_local_executor.directory_browser import _is_drive_top
+
+    assert _is_drive_top(PureWindowsPath("C:\\")) is True
+    assert _is_drive_top(PureWindowsPath("d:\\")) is True
+    # A share's top folder is a volume's top too.
+    assert _is_drive_top(PureWindowsPath("\\\\server\\share\\")) is True
+    assert _is_drive_top(PureWindowsPath("C:\\Windows")) is False
+    assert _is_drive_top(PureWindowsPath("C:\\src\\app")) is False
+    assert _is_drive_top(PureWindowsPath("\\\\server\\share\\projects")) is False
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the real system drive")
+def test_the_real_system_drive_lists_users_and_not_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    drive = Path(os.environ.get("SystemDrive", "C:") + "\\")
+    monkeypatch.setattr(
+        "autogpt_local_executor.directory_browser._windows_drive_roots", lambda: [drive]
+    )
+    browser = DirectoryBrowser(platform_name="windows", home=tmp_path)
+    roots = browser.list_directories(None, None)
+    [top] = [entry for entry in roots.entries if Path(entry.path) == drive]
+
+    listed = {
+        entry.name.casefold()
+        for entry in browser.list_directories(roots.browse_id, top.directory_ref).entries
+    }
+
+    assert "users" in listed
+    assert not listed & {name.casefold() for name in WINDOWS_SYSTEM_FOLDERS}
