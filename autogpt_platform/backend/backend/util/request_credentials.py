@@ -21,7 +21,9 @@ from backend.util.url_redaction import (
 
 # Each is searched for in every string of an event, so their number is capped,
 # and so is their length: no credential the app issues comes near it, and a
-# frame variable is read as far as twice the longest (metrics._masked_head).
+# frame variable is read as far as twice the longest (metrics._masked_head). A
+# longer value is deliberately not masked by value, only where its shape or its
+# field's name shows it.
 MAX_REQUEST_CREDENTIALS = 16
 MAX_CREDENTIAL_LENGTH = 4096
 

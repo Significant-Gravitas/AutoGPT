@@ -9,9 +9,11 @@ rather than a Sentry alert flood.
 
 from __future__ import annotations
 
+import copy
 import json
 import sys
 import time
+from collections.abc import Callable
 
 import pytest
 import sentry_sdk
@@ -332,6 +334,108 @@ def test_before_send_filters_a_secret_that_only_starts_like_an_unset_one(
     scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
     assert scrubbed is not None
     assert scrubbed["logentry"]["formatted"] == "[Filtered]"
+
+
+def test_before_send_reads_the_sdks_annotations_within_the_budget() -> None:
+    """``_meta`` repeats each key a cut value sat under; its keys are read only
+    while the budget lasts, and past it the annotations are dropped whole."""
+    key = "x" * 40
+    meta = {"extra": {"runs": {key: {"": {"len": 9000}}}}}
+
+    def event(filler: int) -> dict:
+        return {"extra": {"filler": "y" * filler}, "_meta": copy.deepcopy(meta)}
+
+    kept = _before_send(event(1000), {})
+    assert kept is not None and kept["_meta"] == meta
+    left_out = _before_send(event(metrics._SENTRY_SCRUB_BUDGET - 20), {})
+    assert left_out is not None and "_meta" not in left_out
+
+
+def test_before_send_charges_a_query_as_sent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A query is charged its full length before it is read, so one past the
+    budget is filtered unread."""
+    read: list[str] = []
+    redact = metrics.redact_query_string
+    monkeypatch.setattr(
+        metrics,
+        "redact_query_string",
+        lambda query: read.append(query) or redact(query),
+    )
+    event = {
+        "extra": {"filler": "y" * (metrics._SENTRY_SCRUB_BUDGET - 100)},
+        "spans": [{"data": {"http.query": "token=" + "z" * 5000}}],
+    }
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    assert scrubbed["spans"][0]["data"]["http.query"] == "[Filtered]"
+    assert read == []
+
+
+def test_a_request_value_in_a_url_does_not_hide_its_credentials_from_sentry() -> None:
+    """A value the request sent can match part of a URL an event quotes, such
+    as its host; the URL's own credentials are masked all the same."""
+    event = {
+        "request": {"url": "http://backend/lookup?token=api.telegram.org"},
+        "message": "POST https://api.telegram.org/bot123:AA-b_c/getMe failed",
+    }
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    assert "123:AA-b_c" not in json.dumps(scrubbed)
+
+
+def test_before_send_stays_linear_whatever_credentials_the_request_repeats(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A request can send credentials made of one repeated character, and put
+    long runs of it in what its error reports."""
+    credentials = tuple("a" * (256 - i) for i in range(16))
+    monkeypatch.setattr(metrics, "request_credentials", lambda: credentials)
+    event = {"extra": {f"run{i}": "a" * 8192 for i in range(60)}}
+
+    started = time.thread_time()
+    scrubbed = _before_send(event, {})
+    # CPU time on this thread, so a runner that pauses the test doesn't count.
+    assert time.thread_time() - started < 1
+    assert scrubbed is not None and scrubbed["extra"]["run0"] != "a" * 8192
+
+
+@pytest.mark.parametrize("send", [_before_send, metrics._before_send_transaction])
+def test_a_credential_in_an_unmatched_routes_path_is_masked_everywhere(
+    monkeypatch: pytest.MonkeyPatch, send: Callable[[dict, dict], dict | None]
+) -> None:
+    """A request no route matched names its transaction after its raw path."""
+    bearer = "bt5Hn8Qr2Wx6Lk9Pz3Vm7Jc4eR1"
+    monkeypatch.setattr(metrics, "request_credentials", lambda: (bearer,))
+    event = {
+        "type": "transaction",
+        "transaction": f"/zzz/{bearer}",
+        "transaction_info": {"source": "url"},
+        "request": {"url": f"http://h/zzz/{bearer}"},
+    }
+
+    scrubbed = send(event, {})
+
+    assert scrubbed is not None
+    assert bearer not in json.dumps(scrubbed)
+    assert scrubbed["transaction"] == f"/zzz/{REDACTED}"
+
+
+def test_an_unmatched_routes_transaction_is_masked_as_a_url() -> None:
+    """Read as a whole URL, so its query is masked whatever comes before it."""
+    secret = "S3cret-query-value-123"
+    event = {
+        "type": "transaction",
+        "transaction": f'/a"?token={secret}',
+        "transaction_info": {"source": "url"},
+    }
+
+    scrubbed = metrics._before_send_transaction(event, {})
+
+    assert secret not in json.dumps(scrubbed)
 
 
 def test_before_send_reads_an_event_whose_request_is_not_a_mapping() -> None:

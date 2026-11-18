@@ -6,6 +6,7 @@ request_url_logging_test.py and credential_scrubbing_test.py check the same
 masking end to end.
 """
 
+import contextvars
 import logging
 import random
 import re
@@ -22,6 +23,7 @@ from backend.util.url_redaction import (
     RequestURLRedactionFilter,
     credentials_in_headers,
     credentials_in_url,
+    keep_request_credentials,
     mask_credential,
     mask_known,
     redact_query_string,
@@ -199,6 +201,15 @@ def test_redact_url(url: str, expected: str) -> None:
             f"GET https://h/v1/models(test)?key={REDACTED}",
         ),
         ("dial http://[::1]?key=abcdefgh", f"dial http://[::1]?key={REDACTED}"),
+        # Characters a client can send raw in a path.
+        (
+            "GET /api/foo|bar^baz\\qux?token=S3cret-12345678 HTTP/1.1",
+            f"GET /api/foo|bar^baz\\qux?token={REDACTED} HTTP/1.1",
+        ),
+        (
+            "GET /api/{share_token}?token=S3cret-12345678",
+            f"GET /api/{{share_token}}?token={REDACTED}",
+        ),
         ("Did it work? Yes.", "Did it work? Yes."),
         # Code that only looks like a query, as a traceback's source lines and
         # an exception's message quote it, is left as it is.
@@ -286,7 +297,10 @@ def test_credentials_in_headers() -> None:
     "text, credentials, expected",
     [
         ("pre-abcdefXYZ-post", ("abcdef", "defXYZ"), f"pre-{REDACTED}-post"),
-        ("AAAA", ("AAA",), REDACTED),
+        # Found as str.replace finds it, so a credential overlapping itself
+        # leaves its tail, which no issued credential does.
+        ("AAAA", ("AAA",), f"{REDACTED}A"),
+        ("xAAAAx", ("AAA", "x"), f"{REDACTED}{REDACTED}A{REDACTED}"),
         ("tok1tok2", ("tok1", "tok2"), REDACTED * 2),
         ("nothing here", ("absent",), "nothing here"),
     ],
@@ -295,6 +309,69 @@ def test_mask_known_masks_overlapping_credentials_as_one(
     text: str, credentials: tuple[str, ...], expected: str
 ) -> None:
     assert mask_known(text, credentials) == expected
+
+
+def test_blank_query_values_take_no_credential_slots() -> None:
+    """A query can repeat a name with blanks before the value a route reads."""
+    token = "the-value-a-route-reads-123"
+    url = "/ws?" + "token=&" * 40 + f"token={token}"
+    assert token in credentials_in_url(url)
+
+
+def test_a_cookie_is_read_as_the_route_reads_it() -> None:
+    value = "quoted-session-value-123456"
+    found = credentials_in_headers([("cookie", f'session_token= "{value}"')])
+    assert value in found
+
+
+def test_a_request_value_in_a_url_does_not_hide_its_credentials() -> None:
+    """A value the request sent can match part of a URL a log line quotes, such
+    as its host; the URL's own credentials are masked all the same."""
+    record = logging.LogRecord(
+        "x",
+        logging.ERROR,
+        __file__,
+        1,
+        "POST %s failed",
+        ("https://api.telegram.org/bot123:AA-b_c/getMe",),
+        None,
+    )
+    in_text = logging.LogRecord(
+        "x",
+        logging.ERROR,
+        __file__,
+        1,
+        "POST https://api.telegram.org/bot123:AA-b_c/getMe failed",
+        (),
+        None,
+    )
+
+    def filtered() -> None:
+        keep_request_credentials(("api.telegram.org",))
+        for each in (record, in_text):
+            RequestURLRedactionFilter().filter(each)
+
+    contextvars.copy_context().run(filtered)
+
+    for each in (record, in_text):
+        assert "123:AA-b_c" not in each.getMessage()
+
+
+def test_a_typed_argument_keeps_its_format_when_masked() -> None:
+    """A number that matches a credential is masked where the rendered line
+    shows it, so ``%d`` still formats it."""
+    number = 12345678901234567890
+    record = logging.LogRecord(
+        "x", logging.ERROR, __file__, 1, "Account %d failed", (number,), None
+    )
+
+    def filtered() -> None:
+        keep_request_credentials((str(number),))
+        RequestURLRedactionFilter().filter(record)
+
+    contextvars.copy_context().run(filtered)
+
+    assert record.getMessage() == f"Account {REDACTED} failed"
 
 
 def test_mask_credential_keeps_only_a_prefix_of_a_long_one() -> None:
@@ -418,6 +495,42 @@ def test_masking_a_query_in_text_stays_linear_in_a_long_path() -> None:
     assert redact_urls_in_text(line) == line
     # CPU time on this thread, so a runner that pauses the test doesn't count.
     assert time.thread_time() - started < 0.5
+
+
+@pytest.mark.parametrize("length, size", [(256, 100_000), (16, 1_000_000)])
+def test_masking_known_credentials_stays_linear_when_they_repeat_a_character(
+    length: int, size: int
+) -> None:
+    """A request can send credentials made of one repeated character, each of
+    which then matches at every place of a long run of it."""
+    credentials = tuple("a" * (length - i) for i in range(16))
+    started = time.thread_time()
+    assert REDACTED in mask_known("a" * size, credentials)
+    # CPU time on this thread, so a runner that pauses the test doesn't count.
+    assert time.thread_time() - started < 0.5
+
+
+def test_logging_a_long_path_stays_linear_whatever_credentials_it_repeats() -> None:
+    """The access log quotes a client's path, and the same client chooses the
+    credentials the line is masked for."""
+    record = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        __file__,
+        1,
+        '%s - "%s %s HTTP/%s" %d',
+        ("1.2.3.4:5", "GET", "/" + "a" * 100_000, "1.1", 404),
+        None,
+    )
+
+    def filtered() -> None:
+        keep_request_credentials(tuple("a" * (256 - i) for i in range(16)))
+        RequestURLRedactionFilter().filter(record)
+
+    started = time.thread_time()
+    contextvars.copy_context().run(filtered)
+    assert time.thread_time() - started < 0.5
+    assert REDACTED in record.getMessage()
 
 
 def test_reading_a_urls_credentials_stays_linear() -> None:

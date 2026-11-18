@@ -220,13 +220,13 @@ _SDK_FIELDS = frozenset(
 _SDK_FIELD_VALUE = re.compile(
     r"[0-9a-f]{16}|[0-9a-f]{32}|\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d)?"
 )
-# Fields that name the event itself rather than carry what it reports. They are
-# never masked for a value the request carried: a caller can present any value
-# as a credential, and masking one of these would move their errors out of the
-# alerts and issues they belong to. Everywhere else the value is still masked.
-_EVENT_NAMES = frozenset(
-    {"environment", "release", "dist", "server_name", "transaction", "logger"}
-)
+# Fields that name the event itself, from the deployment and the code rather
+# than the request. They are never masked for a value the request carried: a
+# caller can present any value as a credential, and masking one of these would
+# move their errors out of the alerts and issues they belong to. Everywhere
+# else the value is still masked. The transaction is not one: a request no
+# route matched names it after its raw path.
+_EVENT_NAMES = frozenset({"environment", "release", "dist", "server_name", "logger"})
 _EXCEPTION_NAMES = frozenset({"type", "module"})
 _CODE_LOCATION_NAMES = frozenset({"function", "module", "filename", "abs_path"})
 
@@ -284,17 +284,18 @@ def _scrub_sentry_event(event: dict, *, secret_shapes: bool = True) -> None:
         [(event, key) for key in keys], _SENTRY_SCRUB_BUDGET, search
     )
     if "breadcrumbs" in event:
-        _scrub_breadth_first([(event, "breadcrumbs")], budget, search)
+        budget = _scrub_breadth_first([(event, "breadcrumbs")], budget, search)
     meta = event.get("_meta")
-    if isinstance(meta, dict) and not _drop_masked_annotations(meta, search):
+    if isinstance(meta, dict) and not _drop_masked_annotations(meta, search, budget):
         del event["_meta"]
 
 
-def _drop_masked_annotations(meta: dict, search: _Search) -> bool:
+def _drop_masked_annotations(meta: dict, search: _Search, budget: int) -> bool:
     """Drop the annotations ``_meta`` keeps under a key the scrubber masks: they
     mirror the event's paths, so they repeat a key as it was sent, such as a
-    credential used as a mapping's key whose value the SDK cut. Return False if
-    there are more than ``_MAX_META_NODES`` to read."""
+    credential used as a mapping's key whose value the SDK cut. Each key read is
+    charged to what is left of ``budget``. Return False if there are more than
+    ``_MAX_META_NODES`` to read, or more text than the budget covers."""
     pending = [meta]
     read = 0
     while pending:
@@ -303,13 +304,14 @@ def _drop_masked_annotations(meta: dict, search: _Search) -> bool:
             read += 1
             if read > _MAX_META_NODES:
                 return False
-            if (
-                isinstance(key, str)
-                and len(key) >= MIN_CREDENTIAL_LENGTH
-                and _scrub_text(key, search) != key
-            ):
-                del node[key]
-            elif isinstance(node[key], dict):
+            if isinstance(key, str) and len(key) >= MIN_CREDENTIAL_LENGTH:
+                budget -= len(key)
+                if budget < 0:
+                    return False
+                if _scrub_text(key, search) != key:
+                    del node[key]
+                    continue
+            if isinstance(node[key], dict):
                 pending.append(node[key])
     return True
 
@@ -347,12 +349,13 @@ def _scrub_breadth_first(
                 indices = indices[::-1]
             queue.extend((value, index) for index in indices)
         elif isinstance(value, str):
-            if key in _QUERY_KEYS:
-                value = redact_query_string(value)
+            # Charged as sent, before anything reads it.
             if len(value) > budget:
                 parent[key] = _FILTERED_VALUE
                 continue
             budget -= len(value)
+            if key in _QUERY_KEYS:
+                value = redact_query_string(value)
             names_event = key in search.name_fields.get(id(parent), ())
             parent[key] = _scrub_text(value, search, known=not names_event)
     return budget
@@ -360,15 +363,15 @@ def _scrub_breadth_first(
 
 def _scrub_text(text: str, search: _Search, known: bool = True) -> str:
     """``text``, or ``[Filtered]`` if it holds a secret-shaped value, with the
-    request's credentials, unless not ``known``, and the credentials in any URL
-    in it masked."""
+    credentials in any URL in it masked, then, unless not ``known``, the
+    request's credentials: in that order, so a request value that is part of a
+    URL can't hide the URL's credentials from their masking."""
     if search.secret_shapes and (
         _EMBEDDED_SECRET_ASSIGNMENT.search(text) or _TOKEN_SHAPED_VALUE.search(text)
     ):
         return _FILTERED_VALUE
-    if known:
-        text = mask_known(text, search.credentials)
-    return redact_urls_in_text(text)
+    text = redact_urls_in_text(text)
+    return mask_known(text, search.credentials) if known else text
 
 
 def _scrub_keys(

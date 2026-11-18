@@ -226,6 +226,33 @@ async def test_serve_cancels_a_server_whose_startup_never_finishes(
             task.cancel()
 
 
+async def test_serve_ends_a_request_still_running_at_shutdown() -> None:
+    started = asyncio.Event()
+
+    async def app(scope: dict, receive: object, send: object) -> None:
+        started.set()
+        await asyncio.Event().wait()
+
+    async def run() -> None:
+        async with (
+            serve_app(app, log_config=None) as host,
+            httpx.AsyncClient(base_url=f"http://{host}") as client,
+        ):
+            request = asyncio.create_task(client.get("/hang"))
+            await started.wait()
+            request.cancel()
+            await asyncio.wait({request})
+
+    running = asyncio.create_task(run())
+    # Far longer than the shutdown deadline; only a shutdown that waits on the
+    # request for good reaches it.
+    done, _ = await asyncio.wait({running}, timeout=30)
+    if running not in done:
+        running.cancel()
+    assert running in done
+    running.result()
+
+
 @asynccontextmanager
 async def serve(
     process: AppProcess, monkeypatch: pytest.MonkeyPatch
@@ -249,10 +276,18 @@ async def serve(
 @asynccontextmanager
 async def serve_app(app: ASGIApp, **options: object) -> AsyncIterator[str]:
     """Serve ``app`` under uvicorn with ``options``, on a free local port and
-    with no lifespan."""
+    with no lifespan. A request still running at shutdown is cancelled after a
+    few seconds, which uvicorn logs, rather than hold the test up."""
     server = uvicorn.Server(
         uvicorn.Config(
-            app, **{**options, "host": "127.0.0.1", "port": 0, "lifespan": "off"}
+            app,
+            **{
+                "timeout_graceful_shutdown": 5,
+                **options,
+                "host": "127.0.0.1",
+                "port": 0,
+                "lifespan": "off",
+            },
         )
     )
     serving = asyncio.create_task(server.serve())

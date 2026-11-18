@@ -10,15 +10,16 @@ import pydantic
 import pytest
 import starlette.routing
 from fastapi.exceptions import RequestValidationError
+from pydantic_core import PydanticCustomError
 
 from backend.api.external.v2.errors import add_v2_exception_handlers
+from backend.api.utils import validation_errors
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.api.utils.validation_errors import (
-    _MAX_INPUT_NODES,
     MAX_REPORTED_VALIDATION_ERRORS,
     MAX_VALIDATION_ERROR_CHARS,
     MAX_VALIDATION_ERROR_LOC_PARTS,
-    REDACTED,
+    VALIDATOR_MESSAGE_NOT_LOGGED,
     bounded_validation_errors,
     loggable_validation_errors,
 )
@@ -77,7 +78,7 @@ class _CountedReads(Mapping[str, str]):
             yield f"key-{index}"
 
 
-def test_a_large_refused_mapping_is_read_only_as_far_as_the_log_needs() -> None:
+def test_a_large_refused_mapping_is_not_read_for_the_log() -> None:
     """A missing field's error keeps the whole mapping it was missing from."""
     refused = _CountedReads(100_000)
     error = pydantic.ValidationError.from_exception_data(
@@ -85,38 +86,67 @@ def test_a_large_refused_mapping_is_read_only_as_far_as_the_log_needs() -> None:
     )
 
     assert loggable_validation_errors(error)[0]["loc"] == ["ids"]
-    assert refused.read <= _MAX_INPUT_NODES
+    assert refused.read == 0
 
 
-def test_a_validators_message_is_logged_only_when_its_input_can_be_checked() -> None:
-    """A validator's own message can quote what was sent, so a value too large
-    to read whole leaves it out, and a short one quoted in it is masked."""
-    secret = "s3cr3t!"
-
-    def logged(refused: object) -> str:
-        error = pydantic.ValidationError.from_exception_data(
-            "_Ids",
-            [
-                {
-                    "type": "value_error",
-                    "loc": ("name",),
-                    "input": refused,
-                    "ctx": {"error": ValueError(f"unknown mode '{secret}'")},
-                }
-            ],
-        )
-        return loggable_validation_errors(error)[0]["msg"]
-
-    assert logged(secret) == f"Value error, unknown mode '{REDACTED}'"
-    too_large = {f"field{i}": "x" for i in range(300)} | {"mode": secret}
-    assert logged(too_large) == (
-        "Not logged: the refused value is too large to check for credentials"
-    )
-    # pydantic's own messages say what was expected, so they are kept.
+def test_a_validators_own_message_stays_out_of_the_log() -> None:
+    """A validator, a custom error or an attribute read can quote what was sent
+    in any form, so its message isn't logged; pydantic's own messages, which
+    say what was expected, are."""
+    secret = "line one\nS3cr3t-line-two"
     error = pydantic.ValidationError.from_exception_data(
-        "_Ids", [{"type": "missing", "loc": ("ids",), "input": too_large}]
+        "_Ids",
+        [
+            {
+                "type": "value_error",
+                "loc": ("name",),
+                "input": secret,
+                "ctx": {"error": ValueError(f"bad token {secret!r}")},
+            },
+            {
+                "type": PydanticCustomError(
+                    "token_refused", "{token} refused", {"token": secret}
+                ),
+                "loc": ("token",),
+                "input": secret,
+            },
+            {"type": "missing", "loc": ("ids",), "input": {}},
+        ],
     )
-    assert loggable_validation_errors(error)[0]["msg"] == "Field required"
+
+    logged = loggable_validation_errors(error)
+    assert [entry["msg"] for entry in logged] == [
+        VALIDATOR_MESSAGE_NOT_LOGGED,
+        VALIDATOR_MESSAGE_NOT_LOGGED,
+        "Field required",
+    ]
+    # The response keeps the validator's message.
+    assert "S3cr3t-line-two" in bounded_validation_errors(error)[0]["msg"]
+
+
+def test_only_the_reported_errors_locations_are_rewritten(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A request with thousands of keys a model refuses costs no more than the
+    errors a log line reports."""
+    rewritten: list[object] = []
+    location = validation_errors._loggable_location
+
+    def counted(error: Mapping[str, object]) -> object:
+        rewritten.append(error)
+        return location(error)
+
+    monkeypatch.setattr(validation_errors, "_loggable_location", counted)
+
+    class Strict(pydantic.BaseModel):
+        model_config = pydantic.ConfigDict(extra="forbid")
+
+    with pytest.raises(pydantic.ValidationError) as caught:
+        Strict.model_validate({f"extra{i}": i for i in range(10_000)})
+    logged = loggable_validation_errors(caught.value)
+
+    assert len(rewritten) == MAX_REPORTED_VALIDATION_ERRORS
+    assert logged[-1]["msg"] == "9980 more validation errors omitted"
 
 
 def test_a_list_field_reports_a_bounded_number_of_errors() -> None:

@@ -6,9 +6,7 @@ line; ``backend/util/architecture_validation_errors_test.py`` enforces that.
 """
 
 import functools
-import itertools
 import sys
-from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, get_args
 
@@ -23,20 +21,18 @@ MAX_VALIDATION_ERROR_CHARS = 200
 MAX_VALIDATION_ERROR_LOC_PARTS = 16
 # FastAPI's first location part says where in the request a value was.
 _REQUEST_PARTS = frozenset({"body", "query", "path", "header", "cookie"})
-# A shorter refused value is masked only where a message quotes it: masked
-# anywhere, it could hide the limit a message names.
-_MIN_MASKED_INPUT = 8
-_QUOTES = ("'", '"', "`")
-# How much of a refused value is read for text a message might quote.
-_MAX_INPUT_NODES = 256
-# pydantic's own messages say what was expected, not what was sent. A union's
-# rejected tag is the exception, and is logged from its context instead; a
-# validator's own message, or a custom error's, can say anything.
+# pydantic's own messages say what was expected, not what was sent, so a log
+# keeps them. The exceptions: a union's rejected tag, logged from its context
+# instead, and the messages of a validator, an attribute read and a custom
+# error, which can quote the refused value in any form (escaped, sliced,
+# re-cased), so a log leaves them out.
 _INPUT_FREE_TYPES = frozenset(get_args(ErrorType)) - {
     "union_tag_invalid",
     "value_error",
     "assertion_error",
+    "get_attribute_error",
 }
+VALIDATOR_MESSAGE_NOT_LOGGED = "Not logged: a validator's message can quote the input"
 
 
 def bounded_validation_errors(
@@ -54,23 +50,16 @@ def loggable_validation_errors(
     """``bounded_validation_errors`` for a log line, which the caller's own data
     stays out of. A location part that no loaded pydantic model declares, such
     as a mapping's key, is ``*``, and so is a key a model refused as extra,
-    whatever another model calls its fields. A union's rejected tag is left out
-    of its message, other text of the refused value that a message quotes is
-    masked, and a message that can quote it is left out when the value is too
-    large to read whole. Field names, indices and the reasons are kept."""
+    whatever another model calls its fields. pydantic's own messages are kept,
+    but a union's rejected tag is left out of its message, and a validator's or
+    a custom error's message, which can quote the refused value in any form, is
+    left out whole. Field names, indices and the reasons are kept."""
     names = _declared_names(len(sys.modules))
-    errors = [
-        (
-            {**error, "loc": (*error.get("loc", ())[:-1], "*")}
-            if error.get("type") == "extra_forbidden"
-            else error
-        )
-        for error in exc.errors()
-    ]
     return _bounded(
-        errors,
+        exc.errors(),
         lambda part: part if isinstance(part, int) or part in names else "*",
         _message_without_input,
+        _loggable_location,
     )
 
 
@@ -88,13 +77,17 @@ def _bounded(
     errors: Sequence[Mapping[str, Any]],
     loc_part: Callable[[Any], str | int],
     message: Callable[[Mapping[str, Any]], str],
+    location: Callable[[Mapping[str, Any]], Sequence[Any]] = (
+        lambda error: error.get("loc", ())
+    ),
 ) -> list[dict[str, Any]]:
+    """Only the errors reported are rendered, however many ``errors`` holds."""
     reported: list[dict[str, Any]] = [
         {
             "type": _capped(error.get("type", "")),
             "loc": [
                 loc_part(part)
-                for part in error.get("loc", ())[:MAX_VALIDATION_ERROR_LOC_PARTS]
+                for part in location(error)[:MAX_VALIDATION_ERROR_LOC_PARTS]
             ],
             "msg": _capped(message(error)),
         }
@@ -111,60 +104,25 @@ def _bounded(
     return reported
 
 
+def _loggable_location(error: Mapping[str, Any]) -> Sequence[Any]:
+    """A location, with the key a model refused as extra as ``*``."""
+    location = error.get("loc", ())
+    if error.get("type") == "extra_forbidden":
+        return (*location[:-1], "*")
+    return location
+
+
 def _message_without_input(error: Mapping[str, Any]) -> str:
     error_type = error.get("type")
+    if error_type in _INPUT_FREE_TYPES:
+        return error.get("msg", "")
     if error_type == "union_tag_invalid":
         context = error.get("ctx") or {}
         return (
             f"Input tag '{REDACTED}' found using {context.get('discriminator')} "
             f"does not match any of the expected tags: {context.get('expected_tags')}"
         )
-    texts, complete = _texts_in(error.get("input"))
-    if not complete and error_type not in _INPUT_FREE_TYPES:
-        return "Not logged: the refused value is too large to check for credentials"
-    message = error.get("msg", "")
-    for text in sorted(texts, key=len, reverse=True):
-        if len(text) >= _MIN_MASKED_INPUT:
-            message = message.replace(text, REDACTED)
-        else:
-            for quote in _QUOTES:
-                message = message.replace(
-                    f"{quote}{text}{quote}", f"{quote}{REDACTED}{quote}"
-                )
-    return message
-
-
-def _texts_in(value: Any) -> tuple[set[str], bool]:
-    """The strings in ``value``, its keys long enough to be a secret included,
-    read breadth-first and no further than ``_MAX_INPUT_NODES`` values; and
-    whether that was all of it."""
-    found: set[str] = set()
-    pending: deque[tuple[Any, bool]] = deque([(value, False)])
-    # Children are queued only while the budget has room, so a large refused
-    # mapping costs no more than the values it is read for.
-    room = _MAX_INPUT_NODES - 1
-    complete = True
-    while pending:
-        item, is_key = pending.popleft()
-        if isinstance(item, str):
-            if item and (not is_key or len(item) >= _MIN_MASKED_INPUT):
-                found.add(item)
-            continue
-        if isinstance(item, Mapping):
-            children = itertools.chain.from_iterable(
-                ((key, True), (child, False)) for key, child in item.items()
-            )
-            size = 2 * len(item)
-        elif isinstance(item, (list, tuple)):
-            children = ((child, False) for child in item)
-            size = len(item)
-        else:
-            continue
-        taken = list(itertools.islice(children, room))
-        complete = complete and len(taken) == size
-        room -= len(taken)
-        pending.extend(taken)
-    return found, complete
+    return VALIDATOR_MESSAGE_NOT_LOGGED
 
 
 @functools.lru_cache(maxsize=1)

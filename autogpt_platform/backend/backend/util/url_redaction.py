@@ -22,6 +22,7 @@ import logging
 import re
 from collections.abc import Iterable, Mapping
 from contextvars import ContextVar
+from http.cookies import _unquote as _unquote_cookie
 from urllib.parse import unquote, unquote_plus
 
 REDACTED = "[REDACTED]"
@@ -47,18 +48,22 @@ _CREDENTIAL_PATH_SEGMENT = re.compile(
     r"(?!\{\w+\}(?:[/?\s\"']|$))([^/?\s]+))"
 )
 # A query in a longer message starts at a "?" right after a path: a run of the
-# characters a path has (RFC 3986's, brackets for an IPv6 host included),
-# holding a "/" (a URL's "//" included). So code a
-# traceback or an error quotes, such as a regex's "(?=", isn't taken for one. A
-# request target can't contain whitespace, so the query runs to the next
-# whitespace. Nothing else ends it: a raw quote can sit in a value, and
-# uvicorn's WebSocket scope keeps even a raw # in the query. The run is read
-# once, from its start and without backtracking: a client sends the path an
-# access log quotes, and trying it from each "/" takes time growing with the
+# characters a path can hold (RFC 3986's, brackets for an IPv6 host, and the
+# braces, bars, carets, backslashes and backticks a client can send raw), with a
+# "/" in it (a URL's "//" included). So code a traceback or an error quotes,
+# such as a regex's "(?=", isn't taken for one, though code with a "/" just
+# before its "(?=" loses the rest of that word. A query with no path before it,
+# or after a quote, which ends a quoted URL, isn't read: the price of keeping
+# code intact. A request target can't contain whitespace, so the query runs to
+# the next whitespace. Nothing else ends it: a raw quote can sit in a value,
+# and uvicorn's WebSocket scope keeps even a raw # in the query. The run is
+# read once, from its start and without backtracking: a client sends the path
+# an access log quotes, and trying it from each "/" takes time growing with the
 # square of its length.
+_PATH_CHARACTERS = r"\w\-.~%!$&'()*+,;=:@\[\]{}|^\\`"
 _QUERY_IN_TEXT = re.compile(
-    r"(?<![\w\-.~%!$&'()*+,;=:@/\[\]])"
-    r"([\w\-.~%!$&'()*+,;=:@\[\]]*+/[\w\-.~%!$&'()*+,;=:@/\[\]]*+)\?(\S+)"
+    rf"(?<![{_PATH_CHARACTERS}/])"
+    rf"([{_PATH_CHARACTERS}]*+/[{_PATH_CHARACTERS}/]*+)\?(\S+)"
 )
 _QUERY_VALUE = re.compile(r"=[^&]*")
 # The user and password in a URL's authority. They end at its last "@", as a
@@ -82,6 +87,9 @@ _CREDENTIAL_NAME = re.compile(
 # A shorter value can't be a credential the platform issued or a provider's
 # key, and masking it everywhere it turns up would mangle the rest of an event.
 MIN_CREDENTIAL_LENGTH = 16
+# Past this many places in one text, mask_known replaces credentials one after
+# another rather than merging overlapping ones.
+_MAX_MERGED_MATCHES = 1024
 # A credential shown by its prefix must be long enough that the rest can't be
 # guessed: a UUID keeps 90 random bits once its first 8 characters are shown.
 _SHOWN_PREFIX_LENGTH = 8
@@ -100,16 +108,26 @@ def request_credentials() -> tuple[str, ...]:
 
 
 def mask_known(text: str, credentials: Iterable[str]) -> str:
-    """``text`` with every place any of ``credentials`` occurs masked. They are
-    found in ``text`` as given, and overlapping ones are masked as one, so none
-    is left partly shown by another's mask."""
+    """``text`` with every place any of ``credentials``, longest first, occurs
+    masked. Each is found without overlapping itself, as ``str.replace`` finds
+    it, and places where different ones overlap are masked as one, so none is
+    left partly shown by another's mask. Past ``_MAX_MERGED_MATCHES`` places
+    they are replaced one after another instead: only crafted text holds that
+    many, and the work stays linear in ``text`` either way."""
+    present = [
+        credential for credential in credentials if credential and credential in text
+    ]
     spans: list[tuple[int, int]] = []
-    for credential in credentials:
-        start = text.find(credential) if credential else -1
-        while start != -1:
-            spans.append((start, start + len(credential)))
-            start = text.find(credential, start + 1)
-    if not spans:
+    if len(present) > 1:
+        for credential in present:
+            start = text.find(credential)
+            while start != -1 and len(spans) <= _MAX_MERGED_MATCHES:
+                stop = start + len(credential)
+                spans.append((start, stop))
+                start = text.find(credential, stop)
+    if len(present) < 2 or len(spans) > _MAX_MERGED_MATCHES:
+        for credential in present:
+            text = text.replace(credential, REDACTED)
         return text
     spans.sort()
     merged = [list(spans[0])]
@@ -165,18 +183,24 @@ def credentials_in_url(url: str) -> set[str]:
     Like ``redact_url``, this reads paths across the whole URL.
     """
     found = {match[1] for match in _CREDENTIAL_PATH_SEGMENT.finditer(url)}
-    # Named and valued as the route reads them, form-decoded, and as sent.
-    named = (
-        match
+    # Named and valued as the route reads them, form-decoded, and as sent. A
+    # value runs to the next "&", as redact_url masks it, and one too short to
+    # be a credential takes none of the slots: a query can repeat a name with
+    # blanks before the value a route reads.
+    values = (
+        url[match.end() : _end_of_value(url, match.end())]
         for match in _QUERY_NAME.finditer(url)
         if _CREDENTIAL_NAME.search(unquote_plus(match[1]))
     )
-    for match in itertools.islice(named, _MAX_QUERY_CREDENTIALS):
-        # A value runs to the next "&", as redact_url masks it.
-        end = url.find("&", match.end())
-        value = url[match.end() : end if end >= 0 else len(url)]
+    long_enough = (value for value in values if len(value) >= MIN_CREDENTIAL_LENGTH)
+    for value in itertools.islice(long_enough, _MAX_QUERY_CREDENTIALS):
         found.update((value, unquote(value), unquote_plus(value)))
     return {value for value in found if len(value) >= MIN_CREDENTIAL_LENGTH}
+
+
+def _end_of_value(url: str, start: int) -> int:
+    end = url.find("&", start)
+    return end if end >= 0 else len(url)
 
 
 def credentials_in_headers(headers: Iterable[tuple[str, str]]) -> set[str]:
@@ -188,8 +212,10 @@ def credentials_in_headers(headers: Iterable[tuple[str, str]]) -> set[str]:
             for cookie in value.split(";"):
                 cookie_name, _, cookie_value = cookie.strip().partition("=")
                 if _CREDENTIAL_NAME.search(cookie_name):
-                    cookie_value = cookie_value.strip('"')
-                    found.update((cookie_value, unquote(cookie_value)))
+                    # As sent, and as Starlette reads it: trimmed, unquoted.
+                    read = _unquote_cookie(cookie_value.strip())
+                    unquoted = cookie_value.strip('"')
+                    found.update((unquoted, unquote(unquoted), read, unquote(read)))
         elif is_credential_header(name):
             found.update((value, value.partition(" ")[2].strip()))
     return {value for value in found if len(value) >= MIN_CREDENTIAL_LENGTH}
@@ -238,18 +264,27 @@ class RequestURLRedactionFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         credentials = request_credentials()
+        # A string argument is masked in place; any other, such as an exception
+        # or a number, where the rendered record shows it, so its format (%d,
+        # %r) still applies to it.
+        render = not isinstance(record.msg, str) and _masks(record.msg, credentials)
         if isinstance(record.args, Mapping):
-            record.args = {
-                key: _redact_argument(value, credentials)
-                for key, value in record.args.items()
+            named = {
+                key: _masked_argument(argument, credentials)
+                for key, argument in record.args.items()
             }
+            record.args = {key: argument for key, (argument, _) in named.items()}
+            render = render or any(masks for _, masks in named.values())
         elif isinstance(record.args, tuple):
-            record.args = tuple(
-                _redact_argument(arg, credentials) for arg in record.args
+            listed = [_masked_argument(arg, credentials) for arg in record.args]
+            record.args = tuple(argument for argument, _ in listed)
+            render = render or any(masks for _, masks in listed)
+        if render or (
+            isinstance(record.msg, str)
+            and (
+                _MENTIONS_URL.search(record.msg)
+                or any(credential in record.msg for credential in credentials)
             )
-        if isinstance(record.msg, str) and (
-            _MENTIONS_URL.search(record.msg)
-            or any(credential in record.msg for credential in credentials)
         ):
             try:
                 message = record.getMessage()
@@ -257,30 +292,48 @@ class RequestURLRedactionFilter(logging.Filter):
                 # A malformed record fails again, and is reported, in the
                 # handler; raising here would fail the request that logged it.
                 return True
-            masked = redact_urls_in_text(mask_known(message, credentials))
+            masked = _masked_text(message, credentials)
             if masked != message:
                 record.msg, record.args = masked, ()
         if record.exc_info and not record.exc_text:
             # Rendered as every handler's formatter renders it, which then
             # uses this text instead of rendering the traceback again.
             traceback = _TRACEBACK_FORMATTER.formatException(record.exc_info)
-            record.exc_text = redact_urls_in_text(mask_known(traceback, credentials))
+            record.exc_text = _masked_text(traceback, credentials)
         return True
 
 
-def _redact_argument(argument: object, credentials: tuple[str, ...]) -> object:
-    """A string is masked as a whole URL, as uvicorn passes a request target;
-    anything else, such as an exception, as text that can quote one. Either is
-    masked for ``credentials`` too."""
+def _masked_argument(
+    argument: object, credentials: tuple[str, ...]
+) -> tuple[object, bool]:
+    """A string argument masked in place, and for any other, whether its text
+    has something to mask, which is then masked in the rendered record."""
     if isinstance(argument, str):
-        masked = redact_url(mask_known(argument, credentials))
-        return argument if masked == argument else masked
+        return _masked_url(argument, credentials), False
+    return argument, _masks(argument, credentials)
+
+
+def _masked_url(url: str, credentials: tuple[str, ...]) -> str:
+    """``url`` masked as a whole URL, as uvicorn passes a request target, then
+    for ``credentials``."""
+    masked = mask_known(redact_url(url), credentials)
+    return url if masked == url else masked
+
+
+def _masked_text(text: str, credentials: tuple[str, ...]) -> str:
+    """``text`` with the credentials of any URL it quotes masked, then
+    ``credentials``: in that order, so a request value that is part of a URL,
+    such as its host, can't hide the URL's credentials from their masking."""
+    return mask_known(redact_urls_in_text(text), credentials)
+
+
+def _masks(value: object, credentials: tuple[str, ...]) -> bool:
+    """Whether ``value``, as text, has anything to mask."""
     try:
-        text = str(argument)
+        text = str(value)
     except Exception:
-        return argument  # the handler hits, and reports, the same failure
-    masked = redact_urls_in_text(mask_known(text, credentials))
-    return argument if masked == text else masked
+        return False  # the handler hits, and reports, the same failure
+    return _masked_text(text, credentials) != text
 
 
 # At DEBUG, websockets logs every handshake header it reads as ``< name: value``

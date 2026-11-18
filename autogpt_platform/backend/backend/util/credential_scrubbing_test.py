@@ -24,7 +24,7 @@ import sentry_sdk
 from fastapi import FastAPI, Request, WebSocket
 from prisma.errors import ClientNotConnectedError
 from prisma.models import AgentGraphExecution, IntegrationWebhook
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from websockets.asyncio.client import connect
 from websockets.exceptions import InvalidStatus
 
@@ -106,6 +106,15 @@ class Strict(BaseModel):
 
 class LookupFailedLoudly(RuntimeError):
     pass
+
+
+class Checked(BaseModel):
+    token: str
+
+    @field_validator("token")
+    @classmethod
+    def _recognised(cls, token: str) -> str:
+        raise ValueError(f"unrecognised token {token!r}")
 
 
 # --- 1. Frame locals ---------------------------------------------------------
@@ -403,6 +412,32 @@ async def test_a_rejected_tag_stays_out_of_the_log_whatever_its_length_or_place(
         f"Input tag '{REDACTED}' found using 'type' does not match any of the "
         "expected tags: 'secret', 'note'"
     ) in logs
+
+
+async def test_a_validators_message_stays_out_of_the_log(
+    service_output: io.StringIO,
+) -> None:
+    """A validator can quote what was sent in any form, here escaped by
+    ``!r``, which no search for the value as sent would find."""
+    app = FastAPI()
+
+    @app.post("/checked")
+    async def check(body: Checked) -> None:
+        return None
+
+    add_exception_handlers(app)
+    token = f"first line\n{SESSION_COOKIE}"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://backend"
+    ) as client:
+        response = await client.post("/checked", json={"token": token})
+    # The response keeps the validator's message.
+    assert "unrecognised token" in response.json()["detail"][0]["msg"]
+
+    logs = service_output.getvalue()
+    assert not _leaks(SESSION_COOKIE, logs)
+    assert "'loc': ['body', 'token']" in logs
+    assert "Not logged: a validator's message can quote the input" in logs
 
 
 async def test_a_key_refused_as_extra_stays_out_of_the_log(
