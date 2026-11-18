@@ -20,7 +20,7 @@ import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { QueryClient } from "@tanstack/react-query";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import AgentLibraryPage from "../page";
 
 vi.mock("@/lib/auth/actions", async (importOriginal) => ({
@@ -139,6 +139,38 @@ function serveAgentPage({
   return { runReads: () => runReads };
 }
 
+test("the runs list reads its runs once on a first load", async () => {
+  const { runReads } = serveAgentPage({
+    status: () => AgentExecutionStatus.RUNNING,
+  });
+  installLiveSocket();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+
+  render(
+    <NuqsTestingAdapter hasMemory searchParams="activeTab=runs">
+      <AgentLibraryPage />
+    </NuqsTestingAdapter>,
+    { queryClient },
+  );
+  expect(
+    await screen.findByRole("img", { name: "Task running" }),
+  ).toBeDefined();
+  // Let any read the first render started get under way.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+  const [runs] = queryClient.getQueryCache().findAll({
+    predicate: (query) =>
+      String(query.queryKey[0]).endsWith(`/graphs/${GRAPH_ID}/executions`),
+  });
+  expect(runs?.state).toMatchObject({
+    fetchStatus: "idle",
+    isInvalidated: false,
+  });
+  expect(runReads()).toBe(1);
+});
+
 test("a run that finished while the live connection was down shows as finished in the runs list once it reconnects", async () => {
   let status: AgentExecutionStatus = AgentExecutionStatus.RUNNING;
   serveAgentPage({ status: () => status });
@@ -191,11 +223,14 @@ test("a run that finished during a disconnect on another tab shows as finished b
   await waitFor(() => expect(runs?.state.fetchStatus).toBe("idle"));
   const readAt = runs?.state.dataUpdatedAt;
 
+  // No spread before the reconnect notice, so any read the reconnect
+  // schedules is under way within the tick below.
+  const random = vi.spyOn(Math, "random").mockReturnValue(0);
+  onTestFinished(() => random.mockRestore());
   status = AgentExecutionStatus.COMPLETED;
   await live.drop(first);
   await live.acceptNext();
   await live.caughtUp();
-  // Let any read the reconnect started get under way.
   await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
   // Scheduled doesn't show the runs, so they wait for Tasks: a failed read
   // here would only put an error in front of the schedules.
