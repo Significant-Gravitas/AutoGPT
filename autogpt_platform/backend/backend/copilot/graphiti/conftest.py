@@ -60,6 +60,7 @@ from .recall_fake_redis import FakeRedis
 from .scope import MemoryScope
 
 # No database manager runs in the copilot-sdk shard (see sdk/conftest.py).
+fake_database_manager_clients = database_manager_fixtures.fake_database_manager_clients
 database_manager = database_manager_fixtures.database_manager
 
 

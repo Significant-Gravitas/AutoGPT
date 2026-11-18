@@ -5,8 +5,10 @@ in, instead of after the real client's retries (seconds per call at best,
 close to an hour at the default retry count). What the code does with the
 failure is unchanged; only the wait goes.
 
-A conftest turns it on for its folder with
-``database_manager = database_manager_fixtures.database_manager``.
+A conftest turns it on for its folder with::
+
+    fake_database_manager_clients = database_manager_fixtures.fake_database_manager_clients
+    database_manager = database_manager_fixtures.database_manager
 """
 
 from __future__ import annotations
@@ -27,18 +29,18 @@ _CALLS_THIS_SESSION: Counter[str] = Counter()
 
 
 class DatabaseManagerFake:
-    """``calls`` lists the methods called during one test."""
+    """``calls`` lists the methods called while one test ran, including any
+    from a background task an earlier test left running."""
 
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def client(self, client_type: type) -> _FakeDatabaseManagerClient:
-        return _FakeDatabaseManagerClient(self, client_type)
+
+_current = DatabaseManagerFake()
 
 
 class _FakeDatabaseManagerClient:
-    def __init__(self, fake: DatabaseManagerFake, client_type: type) -> None:
-        self._fake = fake
+    def __init__(self, client_type: type) -> None:
         self._client_type = client_type
 
     def close(self) -> None:
@@ -53,7 +55,7 @@ class _FakeDatabaseManagerClient:
             raise AttributeError(f"Method {name} not found in {self._client_type}")
 
         def fail() -> NoReturn:
-            self._fake.calls.append(name)
+            _current.calls.append(name)
             _CALLS_THIS_SESSION[name] += 1
             raise httpx.ConnectError(
                 f"No database manager runs in these tests ({name})",
@@ -73,22 +75,25 @@ class _FakeDatabaseManagerClient:
         return sync_method
 
 
-@pytest.fixture(autouse=True)
-def database_manager(monkeypatch: pytest.MonkeyPatch) -> Iterator[DatabaseManagerFake]:
+@pytest.fixture(scope="package", autouse=True)
+def fake_database_manager_clients() -> Iterator[None]:
     """Build the fake wherever a database manager client is built, so it also
     reaches modules that imported a client getter by name. A test that patches
     a getter or a ``db_accessors`` function itself still wins.
 
+    It holds for the whole folder, not per test: a background task a test left
+    running (a chat title, a cost log) reaches for the client between tests.
+
     The getters cache a client per thread, and only this thread's cache is
-    cleared: a worker thread that cached a real client before the fixture ran
-    keeps it.
+    cleared: a worker thread that cached a real client before the folder's
+    first test keeps it.
     """
-    fake = DatabaseManagerFake()
+
     real_get_service_client = service.get_service_client
 
     def get_service_client(client_type: type, *args: Any, **kwargs: Any) -> Any:
         if client_type in (DatabaseManagerClient, DatabaseManagerAsyncClient):
-            return fake.client(client_type)
+            return _FakeDatabaseManagerClient(client_type)
         return real_get_service_client(client_type, *args, **kwargs)
 
     getters = (
@@ -97,10 +102,19 @@ def database_manager(monkeypatch: pytest.MonkeyPatch) -> Iterator[DatabaseManage
     )
     for getter in getters:
         clear_thread_cache(getter)
-    monkeypatch.setattr(service, "get_service_client", get_service_client)
-    yield fake
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(service, "get_service_client", get_service_client)
+        yield
     for getter in getters:
         clear_thread_cache(getter)
+
+
+@pytest.fixture(autouse=True)
+def database_manager(fake_database_manager_clients: None) -> DatabaseManagerFake:
+    """A fresh record of the calls the fake answers during this test."""
+    global _current
+    _current = DatabaseManagerFake()
+    return _current
 
 
 def write_calls_summary(terminalreporter: Any) -> None:

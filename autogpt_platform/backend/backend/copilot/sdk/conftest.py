@@ -164,6 +164,7 @@ def build_structured_transcript(
 
 # No database manager runs for these tests; nor for billing_e2e, dream and
 # graphiti, whose conftests turn the fake on too.
+fake_database_manager_clients = database_manager_fixtures.fake_database_manager_clients
 database_manager = database_manager_fixtures.database_manager
 
 
