@@ -85,8 +85,8 @@ _MAX_QUERY_CREDENTIALS = 16
 # (`b'cookie'`), are masked. The accepted cost: a name that only contains one of
 # these words, such as `author` or `design`, has its value masked too.
 _CREDENTIAL_NAME = re.compile(
-    r"(?i)auth|code|cookie|credential|jwt|key|password|secret|sess|sid|sig|state"
-    r"|token|sec-websocket-protocol|content-mac"
+    r"(?i)auth|code|cookie|credential|csrf|jwt|key|password|secret|sess|sid|sig"
+    r"|state|token|sec-websocket-protocol|content-mac"
 )
 # A shorter value can't be a credential the platform issued or a provider's
 # key, and masking it everywhere it turns up would mangle the rest of an event.
@@ -294,13 +294,23 @@ class RequestURLRedactionFilter(logging.Filter):
         ):
             try:
                 message = record.getMessage()
-            except Exception:
-                # A malformed record fails again, and is reported, in the
-                # handler; raising here would fail the request that logged it.
-                return True
-            masked = _masked_text(message, credentials)
-            if masked != message:
-                record.msg, record.args = masked, ()
+            except Exception as failure:
+                # The handler would fail on it again and report its arguments
+                # and the failure's text, which can hold what this filter
+                # couldn't check, so it gets a notice instead: the format,
+                # masked, and the failure's type. Raising here would fail the
+                # request that logged it.
+                template = record.msg if isinstance(record.msg, str) else ""
+                shown = _masked_text(template, credentials)
+                record.msg = (
+                    "Not logged: a record that couldn't be formatted "
+                    f"({type(failure).__name__}): {shown}"
+                )
+                record.args = ()
+            else:
+                masked = _masked_text(message, credentials)
+                if masked != message:
+                    record.msg, record.args = masked, ()
         if record.exc_info and not record.exc_text:
             # Rendered as every handler's formatter renders it, which then
             # uses this text instead of rendering the traceback again.
@@ -334,13 +344,14 @@ def _masked_text(text: str, credentials: tuple[str, ...]) -> str:
 
 
 def _masks(value: object, credentials: tuple[str, ...]) -> bool:
-    """Whether ``value``, as ``%s`` or ``%r`` shows it, has anything to mask."""
+    """Whether ``value``, as ``%s`` or ``%r`` shows it, has anything to mask.
+    A value that either can't show can't be checked, so it counts as one."""
     shown: list[str] = []
     for show in (str, repr):
         try:
             shown.append(show(value))
         except Exception:
-            pass  # the handler hits, and reports, the same failure
+            return True
     return any(_masked_text(text, credentials) != text for text in dict.fromkeys(shown))
 
 

@@ -7,6 +7,7 @@ masking end to end.
 """
 
 import contextvars
+import io
 import logging
 import random
 import re
@@ -359,6 +360,16 @@ def test_a_request_value_in_a_url_does_not_hide_its_credentials() -> None:
         assert "123:AA-b_c" not in each.getMessage()
 
 
+def test_one_credential_repeated_past_the_cap_is_masked_where_it_occurs() -> None:
+    """The cap counts the places where different credentials occur; one
+    credential, however often it repeats, is replaced where it occurs."""
+    credential = "ABCDEFGHIJKLMNOP"
+
+    masked = mask_known(f"keep {credential} " * 2000, (credential,))
+
+    assert masked == f"keep {REDACTED} " * 2000
+
+
 def test_overlapping_credentials_past_the_cap_leave_no_tail() -> None:
     """Past the cap, a text is masked whole rather than credential by
     credential, which could leave the tail of one another covered."""
@@ -415,6 +426,46 @@ def test_an_argument_whose_repr_fails_is_masked_as_its_str() -> None:
     contextvars.copy_context().run(filtered)
 
     assert token not in record.getMessage()
+
+
+_UNSHOWN = "unshown-secret-Zq81mN2p"
+
+
+class _Unshowable:
+    """A value neither ``str`` nor ``repr`` can show, whose failure quotes a
+    secret that no request sent."""
+
+    def __str__(self) -> str:
+        raise RuntimeError(f"cannot show {_UNSHOWN}")
+
+    def __repr__(self) -> str:
+        raise RuntimeError(f"cannot show {_UNSHOWN}")
+
+
+@pytest.mark.parametrize(
+    "msg, args",
+    [
+        ("Lookup %s failed", (_Unshowable(),)),
+        (f"GET https://api.example.test/v1?token={_UNSHOWN} %d", ("not a number",)),
+    ],
+    ids=["an argument that can't be shown", "a malformed record quoting a URL"],
+)
+def test_a_record_that_cant_be_formatted_is_not_logged(
+    msg: str, args: tuple, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A handler reports a record it can't format with its arguments and the
+    failure's text, either of which can hold what the filter couldn't check,
+    so the record reaches it as a notice that keeps the format, masked."""
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.addFilter(RequestURLRedactionFilter())
+    record = logging.LogRecord("x", logging.ERROR, __file__, 1, msg, args, None)
+
+    handler.handle(record)
+    handler.close()
+
+    assert _UNSHOWN not in stream.getvalue() + capsys.readouterr().err
+    assert "Not logged" in stream.getvalue()
 
 
 def test_an_argument_shown_alike_by_str_and_repr_is_scanned_once(
@@ -557,6 +608,8 @@ def test_credential_header_filter(name: str, masked: bool) -> None:
         "oauth_verifier",
         "oauthState",
         "api_key2",
+        # A bare anti-forgery cookie or parameter.
+        "_csrf",
         # Header names as Sentry shows an ASGI scope's bytes.
         "b'cookie'",
         "b'authorization'",
@@ -565,7 +618,7 @@ def test_credential_header_filter(name: str, masked: bool) -> None:
 )
 def test_a_name_holding_a_credential_word_is_read_as_a_credential(name: str) -> None:
     """Names that must stay masked, whatever the matching becomes: glued ones
-    and byte-form header names included, which a whole-word matcher missed."""
+    and byte-form header names included."""
     value = "a-value-long-enough-to-count"
 
     assert is_credential_header(name)

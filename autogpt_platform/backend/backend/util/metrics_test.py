@@ -426,6 +426,36 @@ def test_a_credential_in_an_unmatched_routes_path_is_masked_everywhere(
     assert scrubbed["transaction"] == f"/zzz/{REDACTED}"
 
 
+@pytest.mark.parametrize(
+    "transaction_info, kept",
+    [
+        ({"source": "route"}, True),
+        ({"source": "custom"}, True),
+        ({"source": "view"}, True),
+        ({"source": "component"}, True),
+        ({"source": "task"}, True),
+        ({"source": "url"}, False),
+        ({}, False),
+        (None, False),
+    ],
+)
+def test_a_transaction_is_masked_only_when_its_name_is_a_raw_path(
+    monkeypatch: pytest.MonkeyPatch, transaction_info: dict | None, kept: bool
+) -> None:
+    """A name code set keeps its name, whatever a request sends; a raw path,
+    which a request no route matched gives, is masked by the request's
+    values, and so is a name whose source the SDK didn't say."""
+    name = "/api/v1/graphs/a-credential-long-enough/execute"
+    monkeypatch.setattr(metrics, "request_credentials", lambda: (name,))
+    event: dict = {"type": "transaction", "transaction": name}
+    if transaction_info is not None:
+        event["transaction_info"] = transaction_info
+
+    scrubbed = metrics._before_send_transaction(event, {})
+
+    assert (scrubbed["transaction"] == name) is kept
+
+
 def test_a_matched_routes_transaction_keeps_its_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1195,6 +1225,22 @@ def test_an_asgi_scopes_credential_headers_are_masked_by_name(
     assert [name for name, _ in headers] == ["b'cookie'", "b'x-api-key'", "b'accept'"]
     assert headers[0][1] == headers[1][1] == "[Filtered]"
     assert headers[2][1] == "b'*/*'"
+
+
+@pytest.mark.parametrize(
+    "name", ["b'cookie'", "b'set-cookie'", "b'authorization'", "b'x-api-key'"]
+)
+def test_mask_headers_masks_a_byte_form_credential_header(name: str) -> None:
+    """A header name as Sentry shows an ASGI scope's bytes is read whole, so in
+    either shape `_mask_headers` reads, it keeps no part of its value."""
+    pairs = [[name, "b'opaque-value'"], ["b'accept'", "b'*/*'"]]
+    mapping = {name: "opaque-value", "b'accept'": "*/*"}
+
+    metrics._mask_headers("headers", pairs)
+    metrics._mask_headers("headers", mapping)
+
+    assert pairs == [[name, "[Filtered]"], ["b'accept'", "b'*/*'"]]
+    assert mapping == {name: "[Filtered]", "b'accept'": "*/*"}
 
 
 def _event_with_ip_headers() -> dict:

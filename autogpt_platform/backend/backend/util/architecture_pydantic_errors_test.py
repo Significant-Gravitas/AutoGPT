@@ -27,9 +27,10 @@ def test_no_code_raises_a_built_in_pydantic_error():
     ]
 
     assert not offenders, (
-        "A built-in pydantic error's context reaches the logs as written. Raise "
-        "`ValueError` or `PydanticCustomError` instead of `PydanticKnownError`:\n"
-        + "\n".join(sorted(offenders))
+        "A built-in pydantic error's context reaches the logs as written, so only "
+        f"backend/{_RENDERER} may use `PydanticKnownError`. Raise `ValueError` or "
+        "`PydanticCustomError` instead, and don't import or name it. These lines "
+        "do:\n" + "\n".join(sorted(offenders))
     )
 
 
