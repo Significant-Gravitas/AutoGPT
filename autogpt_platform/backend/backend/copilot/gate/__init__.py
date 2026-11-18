@@ -44,12 +44,16 @@ from .policy import (
     strictest_mode,
     verdict_for_effect,
 )
-from .spent_approval import SPENT, FoldPass, passing, take_pass, unmatched, use
+from .spent_approval import FoldPass, passing, take_pass, unmatched, use
 from .subject import Subject
 
 logger = logging.getLogger(__name__)
 
 _ALREADY_HELD = "This exact call is already waiting for the user's approval."
+_CONSUMED = (
+    "This approval was already used by an identical call that ran. "
+    "Do not retry; tell the user what ran."
+)
 _REJECTED = (
     "The user declined this action. Do not retry it, do not adjust the "
     "arguments and try again, and do not use a different tool to achieve the "
@@ -225,7 +229,10 @@ async def check_action(
             if review_store.is_spend_card(review):
                 await raise_ceiling(CEILING_UNIT_MICRODOLLARS)
             return Decision(allowed=True, approved=True, decided=True)
-        return Decision(allowed=False, reason=SPENT)
+        # Lost the race for the card: an identical call spent it. Rarely the
+        # card lapsed and another reader discarded it between this read and
+        # the spend, so nothing ran on it; this call must not run either way.
+        return Decision(allowed=False, reason=_CONSUMED)
     if review is not None and review.status == ReviewStatus.REJECTED:
         await review_store.discard(review, user_id)
         await chat_rules.set_ask(

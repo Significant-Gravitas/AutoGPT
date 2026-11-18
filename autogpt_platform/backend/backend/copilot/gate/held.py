@@ -649,19 +649,25 @@ async def _recover(
     spend: Literal["spent", "unconfirmed", "unspent"],
 ) -> list[PendingMessage]:
     """``_resolve`` failed. What the chat hears goes by how far the fold got
-    with the approval (``spend``), never by a guess from the card alone:
+    with the approval (``spend``), never by a guess from the card alone. The
+    card is looked up again only when nothing was spent::
 
-    - spent (``SpentThenFailed``): the call may have run, whatever a lookup
-      would find;
-    - unconfirmed (``UnconfirmedSpend``): nothing ran; the call is proposed
-      again, which runs it on an approval that still stands or asks afresh;
-    - unspent: nothing ran. Only the card the fold read, still standing,
-      puts the call back for the next turn; gone or replaced by a later card
-      (the same call proposed again since), the card is no longer this
-      call's; unreadable, the call is proposed again.
+        spend        card the fold read     no card, or a later    lookup
+                     still stands           one under the id       fails
+        -----------  ---------------------  ---------------------  ---------------
+        unspent      held again; the next   "no longer open";      "propose it
+                     turn runs it           not held               again"
+        unconfirmed  "propose it again", not held: nothing ran, and proposed
+                     again it runs on an approval that still stands or asks
+                     afresh (no lookup)
+        spent        "may have run", outcome ``unknown``, not held (no
+                     lookup: the spend deleted exactly the card read)
 
-    A call is held again only where a later turn will find it: a held call
-    whose card is gone is never answered.
+    ``spent`` is :class:`SpentThenFailed` (the gate's spend went through, then
+    the call or its delivery failed), ``unconfirmed`` is
+    :class:`UnconfirmedSpend` (the spend itself failed), and ``unspent`` is
+    any other failure. A call is held again only where a later turn will find
+    it: a held call whose card is gone is never answered.
     """
     logger.warning(f"Held call {call.review_id} not delivered ({spend})", exc_info=True)
     if spend == "spent":

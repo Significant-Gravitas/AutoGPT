@@ -82,7 +82,14 @@ def unmatched() -> None:
     """The call the fold is running reached its gate under another review id
     than its pass: its arguments changed on the way. The gate rules on it as
     on any call; the fold then drops the card it read, which must not stand
-    for a later identical call once this one may have run."""
+    for a later identical call once this one may have run.
+
+    A tool that gates a sub-action before its own call (another review id)
+    marks the pass here too. If the call then reaches its own gate, the pass
+    is taken there and spent, which overrides the mark. If it never does, the
+    card is dropped, which fails closed: the approval goes unused rather than
+    standing for an identical call that may then run a second time.
+    """
     for fold_pass in (_passes.get() or {}).values():
         if fold_pass.use == "unused":
             fold_pass.use = "unmatched"

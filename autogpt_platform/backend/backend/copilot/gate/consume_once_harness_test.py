@@ -66,8 +66,9 @@ class Seen(BaseModel):
     # Every result a fold delivered so far, as (tool call, outcome).
     results: list[tuple[str, str]] = []
     gate_on: bool = True
-    # Spend faults that have fired so far.
-    faults: int = 0
+    # The cards a faulted delete was aimed at so far, by creation time (None
+    # for a delete by id, which takes whichever card is there).
+    faulted: list[datetime | None] = []
 
 
 class PostStub(BaseTool):
@@ -228,9 +229,10 @@ def _judged(step: str, before: Seen, after: Seen, claimed: list[str]) -> list[st
                 _restored(before.slots[slot])
                 for slot in before.slots.keys() - after.slots.keys()
             )
-            excused = (
-                lapsed or after.faults > before.faults or not counted or settled_a_copy
-            )
+            # Only the card the fault was aimed at is excused.
+            aimed = after.faulted[len(before.faulted) :]
+            faulted = before.card[1] in aimed or None in aimed
+            excused = lapsed or faulted or not counted or settled_a_copy
             if ran == 0 and not excused:
                 found.append(f"{step} removed an approved card and nothing ran")
             if ran > 1:
@@ -406,7 +408,7 @@ class Scene:
             entries=Counter(c.tool_call_id for c in mine.values()),
             slots={k: c.model_dump_json() for k, c in mine.items()},
             gate_on=bool(self.gate.return_value) if self.gate else True,
-            faults=self.database.fired if self.database else 0,
+            faulted=list(self.database.faulted) if self.database else [],
             runs=len(self.tool.runs),
             fold_runs=self.tool.fold_runs,
             results=[
@@ -715,8 +717,9 @@ class FaultyReviews:
 
     def __init__(self, real: Any, deletes: Deletes, reads_fail_after_delete: bool):
         self.reads_fail = False
-        # Faults that have fired, and the one the next delete takes, if armed.
-        self.fired = 0
+        # The card each fault that fired was aimed at (None: a delete by id),
+        # and the fault the next delete takes, if armed.
+        self.faulted: list[datetime | None] = []
         self._armed: Deletes | None = None
         self._real = real
         self._deletes = deletes
@@ -742,22 +745,27 @@ class FaultyReviews:
         return await self._deleting(
             lambda: self._real.delete_review_as_read(
                 node_exec_id, user_id, status, created_at
-            )
+            ),
+            created_at,
         )
 
     async def delete_review_by_node_exec_id(
         self, node_exec_id: str, user_id: str
     ) -> int:
         return await self._deleting(
-            lambda: self._real.delete_review_by_node_exec_id(node_exec_id, user_id)
+            lambda: self._real.delete_review_by_node_exec_id(node_exec_id, user_id),
+            None,
         )
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._real, name)
 
-    async def _deleting(self, delete: Callable[[], Awaitable[int]]) -> int:
+    async def _deleting(
+        self, delete: Callable[[], Awaitable[int]], card: datetime | None
+    ) -> int:
         mode, self._armed = self._armed or self._deletes, None
-        self.fired += mode != "ok"
+        if mode != "ok":
+            self.faulted.append(card)
         try:
             if mode == "fail":
                 raise ConnectionError("database unreachable")

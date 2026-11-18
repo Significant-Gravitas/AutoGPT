@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from datetime import datetime, timedelta
 
 import pytest
 from prisma.enums import ReviewStatus
@@ -91,12 +92,16 @@ async def test_a_spend_takes_only_the_card_as_it_was_read(
         session.session_id, test_user_id, "bash_exec", args
     )
 
-    async def approved_card():
+    async def approved_card(created_at: datetime | None = None):
         assert await review_store.open_review(
             review_id, test_user_id, session, "bash_exec", args, "needs you"
         )
         await PendingHumanReview.prisma().update(
-            where={"nodeExecId": review_id}, data={"status": ReviewStatus.APPROVED}
+            where={"nodeExecId": review_id},
+            data={
+                "status": ReviewStatus.APPROVED,
+                **({"createdAt": created_at} if created_at else {}),
+            },
         )
         card = await review_store.find_review(
             review_id, test_user_id, session.session_id
@@ -111,7 +116,9 @@ async def test_a_spend_takes_only_the_card_as_it_was_read(
     assert not await review_store.consume(read, test_user_id)
 
     await PendingHumanReview.prisma().delete(where={"nodeExecId": review_id})
-    fresh = await approved_card()
+    # A fresh card opens a few round trips later, which millisecond precision
+    # can't always tell apart on a fast runner: pin it a second on.
+    fresh = await approved_card(read.created_at + timedelta(seconds=1))
     assert fresh.created_at != read.created_at
     assert not await review_store.consume(read, test_user_id)
     assert await review_store.consume(fresh, test_user_id)

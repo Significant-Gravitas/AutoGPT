@@ -430,6 +430,11 @@ async def test_a_lost_consume_race_does_not_execute(gate_on, clean_session_state
     ):
         decision = await check_action("bash_exec", {"command": "ls"}, "u", _session())
     assert not decision.allowed
+    # The model reads this; it is the wording the gate has always used.
+    assert decision.reason == (
+        "This approval was already used by an identical call that ran. "
+        "Do not retry; tell the user what ran."
+    )
 
 
 async def test_a_rejection_makes_the_tool_ask_for_the_rest_of_the_chat(
