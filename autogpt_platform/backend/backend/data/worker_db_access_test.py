@@ -5,6 +5,9 @@ The copilot executor and the graph executor do not, so a query function
 imported straight into the code they run raises ``ClientNotConnectedError``
 in production while passing every test that has a database. The packages
 below import query functions only through ``backend.data.db_accessors``.
+
+Only what these packages import themselves is checked, not the helpers they
+call in other packages.
 """
 
 import ast
@@ -89,28 +92,45 @@ def _is_query_module(dotted: str) -> bool:
     return path.with_suffix(".py").is_file() or path.is_dir()
 
 
+def _bindings(imports: list[tuple[int, str, str]]) -> dict[str, str]:
+    """What each name an import binds refers to; ``import a.b`` binds ``a``."""
+    bound = {}
+    for _, dotted, local in imports:
+        root = local.split(".")[0]
+        bound[root] = root if "." in local else dotted
+    return bound
+
+
+def _resolve(node: ast.AST, bound: dict[str, str]) -> str | None:
+    """The dotted name an attribute chain refers to, if it starts at an import."""
+    attrs = []
+    while isinstance(node, ast.Attribute):
+        attrs.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name) and node.id in bound:
+        return ".".join([bound[node.id], *reversed(attrs)])
+    return None
+
+
 def _served_functions() -> set[str]:
     """Dotted names of the functions DatabaseManager exposes over RPC."""
-    tree = ast.parse((_BACKEND / "data" / "db_manager.py").read_text(encoding="utf-8"))
-    names = {
-        local: dotted
-        for _, dotted, local in _imports(tree, _BACKEND / "data" / "db_manager.py")
-    }
+    path = _BACKEND / "data" / "db_manager.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    bound = _bindings(_imports(tree, path))
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            bound[node.name] = f"backend.data.db_manager.{node.name}"
     served = set()
     for node in ast.walk(tree):
-        if not (
+        if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == "_"
             and node.args
         ):
-            continue
-        target, attrs = node.args[0], []
-        while isinstance(target, ast.Attribute):
-            attrs.append(target.attr)
-            target = target.value
-        if isinstance(target, ast.Name) and target.id in names:
-            served.add(".".join([names[target.id], *reversed(attrs)]))
+            target = _resolve(node.args[0], bound)
+            if target:
+                served.add(target)
     return served
 
 
@@ -121,8 +141,8 @@ def _violations(module: pathlib.Path) -> list[str]:
     tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
     where = module.relative_to(_BACKEND).as_posix()
     found = []
-    query_modules = {}
-    for line, dotted, local in _imports(tree, module):
+    imports = _imports(tree, module)
+    for line, dotted, _ in imports:
         source, _, name = dotted.rpartition(".")
         if dotted in _PURE:
             continue
@@ -134,21 +154,19 @@ def _violations(module: pathlib.Path) -> list[str]:
             found.append(f"{where}:{line} imports the query module {dotted}")
         elif _is_query_module(source) and not name[:1].isupper():
             found.append(f"{where}:{line} imports {dotted}")
-        elif any(served.startswith(f"{dotted}.") for served in _SERVED):
-            query_modules[local] = dotted
+    bound = _bindings(imports)
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             if node.func.attr == "prisma":
                 found.append(f"{where}:{node.lineno} calls .prisma()")
-        if (
-            isinstance(node, ast.Attribute)
-            and isinstance(node.value, ast.Name)
-            and f"{query_modules.get(node.value.id)}.{node.attr}" in _SERVED
-        ):
-            found.append(
-                f"{where}:{node.lineno} calls "
-                f"{query_modules[node.value.id]}.{node.attr}"
-            )
+        if not isinstance(node, ast.Attribute):
+            continue
+        target = _resolve(node, bound) or ""
+        source, _, name = target.rpartition(".")
+        if source == "backend.data.db" and name in _CONNECTION_NAMES:
+            found.append(f"{where}:{node.lineno} uses {target}")
+        elif target in _SERVED - _PURE:
+            found.append(f"{where}:{node.lineno} calls {target}")
     return found
 
 
@@ -175,7 +193,18 @@ def test_worker_packages_do_not_query_the_database_directly():
             "calls backend.data.user.get_user_by_id",
         ),
         ("from backend.data.db import prisma\n", "from backend.data.db"),
+        (
+            "from backend.data import db as core\nasync def f():\n"
+            "    await core.prisma.user.find_first()\n",
+            "uses backend.data.db.prisma",
+        ),
         ("async def f():\n    await User.prisma().find_first()\n", ".prisma()"),
+        (
+            "import backend.data.user\nasync def f():\n"
+            "    await backend.data.user.get_user_by_id('u')\n",
+            "calls backend.data.user.get_user_by_id",
+        ),
+        ("from backend.data.db_manager import _spend_credits\n", "imports"),
     ],
 )
 def test_direct_database_access_is_reported(tmp_path, monkeypatch, source, expected):
@@ -202,5 +231,9 @@ def test_direct_database_access_is_reported(tmp_path, monkeypatch, source, expec
 def test_routed_access_and_types_pass(tmp_path, monkeypatch, source):
     module = tmp_path / "example.py"
     module.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(
+        "backend.data.worker_db_access_test._is_query_module",
+        lambda dotted: dotted == "backend.copilot.db",
+    )
     monkeypatch.setattr("backend.data.worker_db_access_test._BACKEND", tmp_path)
     assert _violations(module) == []

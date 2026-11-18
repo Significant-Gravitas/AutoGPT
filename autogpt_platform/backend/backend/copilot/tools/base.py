@@ -738,9 +738,13 @@ class BaseTool:
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
             # A tool that queried Prisma directly instead of over RPC is a bug
-            # in the tool, not a failed call, so it is reported as an error.
+            # in the tool, not a failed call, so it is reported as an error. A
+            # message, not the exception: its frames hold the tool's arguments.
             if isinstance(e, ClientNotConnectedError):
-                sentry_sdk.capture_exception(e)
+                sentry_sdk.capture_message(
+                    f"{self.name} queried Prisma without a connection",
+                    level="error",
+                )
             tracing.set_status("internal_error")
             mark_tool_raised(e)
             full = ErrorResponse(

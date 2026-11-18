@@ -79,8 +79,18 @@ async def test_only_a_query_without_a_connection_is_reported_as_an_error(
     async def body():
         raise error
 
-    capture = mocker.patch("backend.copilot.tools.base.sentry_sdk.capture_exception")
+    sentry = mocker.patch("backend.copilot.tools.base.sentry_sdk")
     result = await _tool(body).execute("u1", MagicMock(session_id="s1"), "call-3")
 
     assert result.success is False
-    assert capture.call_args_list == ([mocker.call(error)] if reported else [])
+    sentry.capture_exception.assert_not_called()
+    assert sentry.capture_message.call_args_list == (
+        [
+            mocker.call(
+                "read_workspace_file queried Prisma without a connection",
+                level="error",
+            )
+        ]
+        if reported
+        else []
+    )
