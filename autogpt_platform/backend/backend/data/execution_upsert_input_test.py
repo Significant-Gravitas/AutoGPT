@@ -31,7 +31,8 @@ async def test_the_waiting_run_lookup_is_an_anti_join(server: SpinTestServer):
 async def test_the_input_goes_to_the_earliest_waiting_run_of_this_node_in_this_run(
     server: SpinTestServer,
 ):
-    node_id, run_id, other_run_id = await _graph_with_two_runs(server)
+    node_id, other_node_id, run_id, other_run_id = await _graph_with_two_runs(server)
+    other_node = await _waiting_run(other_node_id, run_id, "input", hours_ago=6)
     has_pin = await _waiting_run(node_id, run_id, "data", hours_ago=5)
     not_incomplete = await _waiting_run(node_id, run_id, "input", hours_ago=4)
     await prisma.models.AgentNodeExecution.prisma().update(
@@ -47,7 +48,13 @@ async def test_the_input_goes_to_the_earliest_waiting_run_of_this_node_in_this_r
     )
 
     assert result.node_exec_id == earliest
-    assert result.node_exec_id not in (has_pin, not_incomplete, other_run, later)
+    assert result.node_exec_id not in (
+        other_node,
+        has_pin,
+        not_incomplete,
+        other_run,
+        later,
+    )
     assert inputs == {"input": "seed", "data": "value"}
 
 
@@ -55,7 +62,7 @@ async def test_the_input_goes_to_the_earliest_waiting_run_of_this_node_in_this_r
 async def test_node_exec_id_picks_that_run_and_refuses_it_once_it_has_the_input(
     server: SpinTestServer,
 ):
-    node_id, run_id, _ = await _graph_with_two_runs(server)
+    node_id, _, run_id, _ = await _graph_with_two_runs(server)
     await _waiting_run(node_id, run_id, "input", hours_ago=2)
     named = await _waiting_run(node_id, run_id, "input", hours_ago=1)
 
@@ -70,7 +77,7 @@ async def test_node_exec_id_picks_that_run_and_refuses_it_once_it_has_the_input(
         )
 
 
-async def _graph_with_two_runs(server: SpinTestServer) -> tuple[str, str, str]:
+async def _graph_with_two_runs(server: SpinTestServer) -> tuple[str, str, str, str]:
     user = await create_test_user()
     graph = await server.agent_server.test_create_graph(
         CreateGraph(graph=create_test_graph()), user.id
@@ -85,7 +92,7 @@ async def _graph_with_two_runs(server: SpinTestServer) -> tuple[str, str, str]:
             user_id=user.id,
         )
         run_ids.append(run.id)
-    return graph.nodes[-1].id, run_ids[0], run_ids[1]
+    return graph.nodes[-1].id, graph.nodes[0].id, run_ids[0], run_ids[1]
 
 
 async def _waiting_run(node_id: str, run_id: str, pin: str, hours_ago: int) -> str:
