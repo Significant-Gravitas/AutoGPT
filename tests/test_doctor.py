@@ -153,18 +153,16 @@ def test_doctor_fails_without_cua_driver(tmp_path, monkeypatch, capsys) -> None:
     assert "computer-use]" in capsys.readouterr().out
 
 
-def test_the_install_hint_replaces_a_shim_installed_from_git(tmp_path, monkeypatch, capsys) -> None:
-    """The hint was `pipx install 'autogpt-local-executor[computer-use]'`. The
-    setup card installs the shim from Git, and pipx leaves an installed
-    package as it is without --force, so cua-driver stayed missing."""
+def test_the_install_hint_takes_double_quotes(tmp_path, monkeypatch, capsys) -> None:
+    """cmd.exe splits single-quoted text at its spaces. What the hint does,
+    and why it no longer reinstalls, is in tests/test_install_hint.py."""
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
     monkeypatch.setattr(doctor, "find_driver_binary", lambda _path=None: None)
 
     doctor.run_doctor(_config(tmp_path, enable_computer_use=True))
 
     out = capsys.readouterr().out
-    # Double quotes: cmd.exe splits single-quoted text at its spaces.
-    assert 'pipx install --force "autogpt-local-executor[computer-use] @ git+https://' in out
+    assert '"autogpt-local-executor[computer-use]"' in out
     assert "'" not in doctor.COMPUTER_USE_INSTALL
 
 

@@ -36,15 +36,27 @@ from .mcp_client import McpClosedError, McpError, StdioMcpClient
 logger = logging.getLogger(__name__)
 
 DRIVER_NAME = "cua-driver"
-# How to add computer use to a shim installed from Git, as the platform's
-# setup card and the README install it. pipx leaves an installed package
-# as it is without --force, extra or not. docs/COMPUTER_USE.md says the same.
+# How to add computer use to a shim that is installed without it, as the
+# platform's setup card installs it: the extra's packages are added to the
+# install that is there. pip leaves an installed package as it is, whatever
+# it was installed from (a Git revision, an index, a file), and fetches
+# only what the extra asks for. So the shim keeps its revision, which is
+# the one its deployment's platform speaks the protocol of, and a download
+# that fails leaves it as it was.
+#
+# The hint used to be `pipx install --force` on the repository with no
+# revision: that replaced the shim with whatever was on the default
+# branch, and removed the installed one before the new one was built.
+# `pipx install` without --force does nothing for a package pipx already
+# has, extra or not, which is why this runs pip in pipx's environment.
+# docs/COMPUTER_USE.md says the same, and tests/test_install_hint.py runs
+# pip to hold it to this.
+#
 # Double quotes, which cmd.exe, PowerShell and POSIX shells all take (the
 # text has no $, backtick or !); cmd.exe would split single-quoted text at
 # its spaces.
 COMPUTER_USE_INSTALL = (
-    'pipx install --force "autogpt-local-executor[computer-use] @ '
-    'git+https://github.com/Significant-Gravitas/autogpt-local-executor.git"'
+    'pipx runpip autogpt-local-executor install "autogpt-local-executor[computer-use]"'
 )
 START_TIMEOUT_SECONDS = 30.0
 LIST_TIMEOUT_SECONDS = 30.0
@@ -543,8 +555,9 @@ class CuaDriverBridge:
                 ) from None
             if binary is None:
                 raise DriverUnavailable(
-                    "cua-driver is not installed. Reinstall the local executor with its "
-                    f"computer-use extra: {COMPUTER_USE_INSTALL}",
+                    "cua-driver is not installed. Add the computer-use extra to this "
+                    "install, which leaves the local executor itself as it is: "
+                    f"{COMPUTER_USE_INSTALL}",
                     code=ErrorCode.DEPENDENCY_MISSING,
                     details={"dependency": DRIVER_NAME},
                 )

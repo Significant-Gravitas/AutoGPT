@@ -251,7 +251,7 @@ not open yet on macOS (Files and Folders), a missing permission that exits
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Primary installer | `pipx` | `pipx` | `pipx` | All paths go through pipx in v0. Until the first PyPI release, install from git: `pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git`. After it, `pipx install autogpt-local-executor` works too. |
+| Primary installer | `pipx` | `pipx` | `pipx` | All paths go through pipx in v0. Until the first PyPI release, install from git, at the revision the deployment's setup card names: `pipx install "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git@<revision>"`. After it, `pipx install autogpt-local-executor==<version>` works too. |
 | Secondary | Homebrew tap (`brew install Significant-Gravitas/tap/autogpt-local-executor`) | distro packages (deb/rpm) — best-effort | Scoop / winget — best-effort | Future. |
 | Signing | Apple Developer ID + notarization for `.pkg` | none (pipx wheels are unsigned) | Authenticode signing for `.exe` wrapper (SmartScreen) | Required if we ship native installers. |
 | Python runtime | 3.11+ via pyenv/pipx-bundled | 3.11+ via distro or pyenv | 3.11+ via python.org or Microsoft Store | Pin to 3.11 minimum in `pyproject.toml`. |

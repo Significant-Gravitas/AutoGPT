@@ -20,14 +20,15 @@ project is ready:
    should be wired to bump these manifests automatically on every new tag.
 
 The package is not on PyPI yet. Until its first PyPI release, install it
-from the git repository, as [the README](../README.md) does:
+from the git repository at the revision your deployment's setup card names,
+as [the README](../README.md) does:
 
 ```bash
-pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git
+pipx install "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git@<revision>"
 ```
 
-After the first PyPI release, `pipx install autogpt-local-executor` works
-too. See the "Packaging & install" table in `docs/CROSS_PLATFORM.md`.
+After the first PyPI release, `pipx install autogpt-local-executor==<version>`
+works too. See the "Packaging & install" table in `docs/CROSS_PLATFORM.md`.
 
 ## Release flow
 

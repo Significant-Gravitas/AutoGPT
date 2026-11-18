@@ -31,9 +31,20 @@ The platform-side code (WebSocket route, `LocalPCShim`, `ShimConnectionManager`,
 
 ## Install (alpha)
 
-```bash
-pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git
+Install the revision your deployment pins. The platform shows the command
+on its Local PC setup card, in a new chat's folder dialog while no computer
+is connected, and the revision it names is the one whose protocol that
+deployment speaks:
 
+```bash
+# From the setup card, with its revision in place of <revision>:
+pipx install "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git@<revision>"
+```
+
+A shim of another revision may speak another protocol version than the
+platform, and the two then refuse each other (close code 4426).
+
+```bash
 # One-time: sign in. With no --platform-url this is the hosted AutoGPT
 # platform (see "Which platform" below).
 autogpt-shim auth
@@ -54,6 +65,17 @@ autogpt-shim \
 # --enable-recording is reserved for the design preview. The daemon currently
 # refuses this flag with EX_CONFIG because capture + interpretation aren't yet
 # safe to expose end to end.
+```
+
+Computer use needs an extra, added to the install you have rather than by
+installing again: see [COMPUTER_USE.md](docs/COMPUTER_USE.md#turning-it-on).
+
+### For development
+
+To run the head of the default branch, which no deployment pins:
+
+```bash
+pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git
 ```
 
 ### Which platform

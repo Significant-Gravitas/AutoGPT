@@ -253,8 +253,8 @@ checker) becomes worth the time.
 Either side of merge to the tap/bucket:
 
 ```bash
-# macOS / Linux
-pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git
+# macOS / Linux: the tag this release pushed, not the default branch's head
+pipx install "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git@v<version>"
 autogpt-shim --version  # confirms install
 autogpt-shim doctor      # confirms permissions / TCC consent
 autogpt-shim auth
