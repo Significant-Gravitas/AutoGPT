@@ -258,6 +258,10 @@ class ConnectionManager:
     ) -> None:
         """SSUBSCRIBE on the socket's stream for the channel's shard, opening
         that stream if this is the socket's first channel there."""
+        outbox = self._outbox_for(user_id, websocket)
+        if not outbox.is_open:
+            # Closing for falling behind: a stream would read for nothing.
+            raise EventStreamLostError(f"{full_channel}: the socket is closing")
         shard = redis.resolve_shard_for_channel(full_channel)
         streams = self._ws_streams.setdefault(websocket, {})
         stream = streams.get(shard)
@@ -268,7 +272,6 @@ class ConnectionManager:
             async def on_lost() -> None:
                 await self._close_for_lost_stream(websocket)
 
-            outbox = self._outbox_for(user_id, websocket)
             stream = streams[shard] = _ShardStream(on_lost, outbox)
             self._streams_per_shard[shard] += 1
             self._user_streams[(user_id, shard)] += 1
@@ -318,9 +321,13 @@ class ConnectionManager:
             f"behind ({why})"
         )
         # Nothing it reads would reach the client now, and the close may never
-        # get through a transport the client has stopped reading.
-        for stream in self._ws_streams.get(websocket, {}).values():
-            await stream.stop()
+        # get through a transport the client has stopped reading. A copy: the
+        # socket's own messages can still add or drop streams meanwhile.
+        for stream in list(self._ws_streams.get(websocket, {}).values()):
+            try:
+                await stream.stop()
+            except Exception:
+                logger.warning("Failed to stop a slow client's stream", exc_info=True)
         await self._close_to_resync(websocket, "Client fell behind")
 
     async def _close_to_resync(self, websocket: WebSocket, reason: str) -> None:

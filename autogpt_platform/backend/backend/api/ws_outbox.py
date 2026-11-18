@@ -49,6 +49,11 @@ class WSOutbox:
         self._closer: asyncio.Task[None] | None = None
         self._open = True
 
+    @property
+    def is_open(self) -> bool:
+        """False once the client fell behind, or the socket closed."""
+        return self._open
+
     def put(self, delivery: Delivery, size: int) -> None:
         """Run ``delivery``, an event holding ``size`` bytes of memory, after
         those put before it. Never waits. A delivery that raises is logged

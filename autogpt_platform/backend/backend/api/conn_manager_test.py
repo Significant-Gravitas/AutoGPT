@@ -4,6 +4,7 @@ import gc
 import json
 import sys
 from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1555,6 +1556,95 @@ async def test_a_socket_closed_for_falling_behind_stops_reading_redis(
         await _until(lambda: healthy_ws.send_text.await_count == 1)
     finally:
         stuck.reading.set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("meanwhile", ["streams-change", "a-stop-raises"])
+async def test_a_slow_client_is_closed_whatever_its_streams_do_meanwhile(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+    meanwhile: str,
+) -> None:
+    """The close runs in its own task while the socket's messages are still
+    handled: an unsubscribe can drop one of its streams while another stops,
+    and a stop can fail. The socket is closed either way, with nothing left
+    raised, and it takes no new subscribe."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    shard_of = {
+        "graph-a": ("redis", 1),
+        "graph-b": ("redis", 2),
+        "graph-c": ("redis", 3),
+    }
+    fake_redis.shard_of = lambda channel: next(
+        shard for graph_id, shard in shard_of.items() if graph_id in channel
+    )
+    ws: AsyncMock = AsyncMock(spec=WebSocket)
+    client = _StuckClient(ws)
+    for graph_id in ("graph-a", "graph-b"):
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id=graph_id, websocket=ws
+        )
+    first, _ = connection_manager._ws_streams[ws].values()
+    stopping, release = asyncio.Event(), asyncio.Event()
+
+    async def close_slowly() -> None:
+        stopping.set()
+        await release.wait()
+
+    if meanwhile == "streams-change":
+        fake_redis.clients[0].aclose.side_effect = close_slowly
+    failing_stop = (
+        patch.object(first, "stop", AsyncMock(side_effect=RuntimeError("boom")))
+        if meanwhile == "a-stop-raises"
+        else nullcontext()
+    )
+    inbox = fake_redis.pubsubs[0].inbox
+    try:
+        with failing_stop:
+            inbox.put_nowait(_graph_event("graph-a"))
+            async with asyncio.timeout(_HANG_SECONDS):
+                await client.waited_on.wait()
+            inbox.put_nowait(_graph_event("graph-a"))
+            if meanwhile == "streams-change":
+                async with asyncio.timeout(_HANG_SECONDS):
+                    await stopping.wait()
+                await connection_manager.unsubscribe_graph_execs(
+                    user_id="user-1", graph_id="graph-b", websocket=ws
+                )
+                with pytest.raises(EventStreamLostError):
+                    await connection_manager.subscribe_graph_execs(
+                        user_id="user-1", graph_id="graph-c", websocket=ws
+                    )
+                release.set()
+            await _until(lambda: connection_manager._outboxes[ws]._closer is not None)
+            closer = connection_manager._outboxes[ws]._closer
+            assert closer is not None
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.wait([closer])
+        assert closer.exception() is None
+        ws.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
+        )
+        fake_redis.clients[1].aclose.assert_awaited()
+        assert len(fake_redis.clients) == 2
+    finally:
+        release.set()
+        client.reading.set()
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_stream_takes_no_new_subscribe(
+    fake_redis: _FakeRedis, outbox: WSOutbox
+) -> None:
+    """Retired with its socket closing, it would otherwise reopen a Redis
+    connection for a client that is gone."""
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
+    await stream.add("{u/g}/exec/a", AsyncMock())
+    await stream.stop()
+    with pytest.raises(EventStreamLostError):
+        await stream.add("{u/g}/exec/b", AsyncMock())
+    assert len(fake_redis.clients) == 1
 
 
 @pytest.mark.asyncio
