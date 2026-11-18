@@ -627,8 +627,9 @@ Calls that skip OpenRouter never reach Broadcast and have no
 a user's connected Codex account and the local transport. Auxiliary calls
 that are not attributed yet (the baseline path's context compaction, the
 action gate's classifiers, web search, Graphiti memory) send no user or
-chat, and Broadcast delivers none of them: on 18 Nov 2026 every
-`$ai_generation` in the production project from the past 60 days had both.
+chat, and none had reached PostHog by 18 Nov 2026: every `$ai_generation`
+in the production project from the past 60 days had both (the check is in
+[`privacy-objections.md`](privacy-objections.md), step 5).
 
 ## Feedback prompts
 

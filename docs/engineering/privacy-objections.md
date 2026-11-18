@@ -15,7 +15,10 @@ one condition on that ID stops them:
 - Product analytics the backend sends through `backend/util/posthog_client.py`:
   the events in [`tracking-plan.md`](tracking-plan.md) whose sender is the
   backend, billing and lifecycle events, the `$set` events that update the
-  person, and `$feature_flag_called` from flag checks.
+  person, and `$feature_flag_called` from flag checks. The account deletion
+  events are the exception: they are sent under a random ID with no person
+  profile, so they aren't tied to anyone and the filter doesn't need to
+  catch them.
 - AI monitoring of AutoPilot: the `$ai_trace`, `$ai_span` and `$ai_metric`
   events the backend sends, and the `$ai_generation` events OpenRouter
   Broadcast sends for the model calls `copilot/llm_attribution.py` attributes
@@ -37,30 +40,23 @@ Say what still applies in the reply (step 5), so it promises only what we did.
 - **Langfuse.** AutoPilot conversations are no longer traced to Langfuse:
   [#16026](https://github.com/Significant-Gravitas/AutoGPT/pull/16026)
   removed the backend's tracing, live in prod since v0.11.0 (4 Nov 2026), and
-  OpenRouter Broadcast's Langfuse destination was switched off the same day.
-  Traces from before then carry the user ID; step 4 deletes them.
+  Kris switched off OpenRouter Broadcast's Langfuse destination the same
+  day. Older traces of attributed calls carry the user ID; step 4 deletes
+  them. Older traces of calls sent without the user can't be found by user
+  and stay until Langfuse is shut down.
 - **Model calls sent without the user.** Many OpenRouter calls don't name the
   user: AutoPilot's web search, the action gate's classifiers, Graphiti
   memory and the baseline path's compaction, and calls outside AutoPilot such
-  as workflow LLM blocks, onboarding and run summaries. Broadcast delivers
-  none of them to PostHog: on 18 Nov 2026 every `$ai_generation` in the
-  production project from the past 60 days carried a user ID and a chat
-  session, although web search alone had run over 2,000 times in 30 days.
-  So nothing of theirs from these calls is in PostHog to stop or delete.
+  as workflow LLM blocks, onboarding and run summaries. None of them had
+  reached PostHog on 18 Nov 2026: every `$ai_generation` in the production
+  project from the past 60 days carried a user ID and a chat session,
+  although web search alone had run over 2,000 times in 30 days. Web search
+  uses the same OpenRouter key as the chat, so Broadcast's key filter isn't
+  the reason; its sampling, which goes by session, likely is. Leave the
+  PostHog destination's sampling and key settings in OpenRouter as they are.
   Calls that skip OpenRouter (direct Anthropic, a Claude Code subscription, a
-  connected Codex account) never reach Broadcast at all. To
-  check this still holds, run in PostHog's SQL editor:
-
-  ```sql
-  select count() from events
-  where event = '$ai_generation'
-    and timestamp > now() - interval 30 day
-    and distinct_id != 'openrouter_connection_test'
-    and not match(distinct_id, '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
-  ```
-
-  Anything above 0 means some calls now arrive without the user: name them in
-  the reply, and attribute them in `copilot/llm_attribution.py`.
+  connected Codex account) never reach Broadcast at all. Step 5 checks this
+  still holds.
 
 ## Steps
 
@@ -118,15 +114,36 @@ Say what still applies in the reply (step 5), so it promises only what we did.
    recordings. PostHog deletes the events in a later batch, at off-peak times
    (weekends on PostHog Cloud), so they show in queries for up to a week.
 
-   Delete their traces from before 4 Nov 2026 in Langfuse too: in Traces,
-   filter by the user ID, select all rows across pages, and delete them. A
-   reply rating is usually a score on its trace and goes with it; a few are
-   scores on the chat session, so delete the user's scores as well.
+   Delete their traces in Langfuse too (none are newer than 4 Nov 2026): in
+   Traces, filter by the user ID and note the session IDs they show. A reply
+   rating is usually a score on its trace and goes with it; a few are scores
+   on the chat session, so first delete the scores on those sessions, then
+   select all of the user's traces across pages and delete them.
 
 5. **Reply within one month** of the request, saying what you did: analytics
    and AI monitoring are no longer recorded against their account, and, if
    they asked, their past data is queued for deletion and gone within a week.
    Name what still applies from "What it doesn't stop".
+
+   Before replying, check that model calls without the user still don't
+   reach PostHog. In PostHog's SQL editor:
+
+   ```sql
+   select properties.$ai_span_name, properties.$ai_model, count()
+   from events
+   where event = '$ai_generation'
+     and timestamp > now() - interval 30 day
+     and distinct_id != 'openrouter_connection_test'
+     and (properties.$ai_session_id is null
+       or not match(distinct_id, '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'))
+   group by properties.$ai_span_name, properties.$ai_model
+   ```
+
+   No rows means the reply can stand as it is. Any rows are calls PostHog now
+   holds without a user, which neither the filter nor step 4 reaches: say so
+   in the reply, and raise it with engineering, who must pass the user and
+   chat to those call sites with `openrouter_attribution`
+   (`copilot/llm_attribution.py`).
 
 6. **Log it** in the privacy@ complaints log (SECRT-2860): the date of the
    request, the user ID, what they asked for, what was done, and the date of
