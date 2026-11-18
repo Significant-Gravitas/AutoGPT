@@ -192,7 +192,7 @@ async def download_in_chunks(
                 resumes += 1
                 logger.warning(
                     f"Resuming gcs://{bucket}/{blob} at byte {sent} of {size} "
-                    f"after {e!r}"
+                    f"after {type(e).__name__}: {e}"
                 )
     finally:
         try:

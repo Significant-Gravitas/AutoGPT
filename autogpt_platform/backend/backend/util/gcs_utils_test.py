@@ -1,4 +1,6 @@
 import asyncio
+import functools
+import random
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -251,6 +253,31 @@ async def test_download_in_chunks_refuses_a_resume_that_ignores_the_range(
     assert _CONTENT.startswith(b"".join(received))
 
 
+@pytest.mark.asyncio
+async def test_download_in_chunks_retries_a_refused_resume_without_logging_credentials(
+    dropping_gcs, monkeypatch, caplog
+):
+    monkeypatch.setattr(
+        aiohttp,
+        "ClientSession",
+        functools.partial(
+            aiohttp.ClientSession, headers={"Authorization": "Bearer test-token"}
+        ),
+    )
+    gcs = await dropping_gcs(drops=1, refuse=1)
+
+    chunks = download_in_chunks("bucket", "blob", 1024)
+    with caplog.at_level("WARNING"):
+        first = await anext(chunks)
+        gcs.drop.set()
+        content = first + b"".join([chunk async for chunk in chunks])
+
+    assert content == _CONTENT
+    assert len(gcs.ranges) == 3
+    assert "ClientResponseError" in caplog.text
+    assert "test-token" not in caplog.text
+
+
 class StreamResponseStub:
     def __init__(self, content: bytes):
         self._content = content
@@ -269,7 +296,8 @@ class StreamResponseStub:
         pass
 
 
-_CONTENT = bytes(range(256)) * 800
+# Not periodic, so bytes served from the wrong offset never match by chance.
+_CONTENT = random.Random(0).randbytes(204_800)
 _CUT = 50_000
 
 
@@ -296,11 +324,13 @@ async def dropping_gcs(monkeypatch):
 class DroppingGCS:
     """GCS's media endpoint over real TCP. It honours ``Range: bytes=N-`` and
     closes the connection ``_CUT`` bytes into each of its first ``drops``
-    bodies, once ``drop`` is set, as GCS did mid-download in production."""
+    bodies, once ``drop`` is set, as GCS did mid-download in production.
+    The first ``refuse`` requests after the first answer 503."""
 
-    def __init__(self, drops: int, honour_range: bool = True):
+    def __init__(self, drops: int, honour_range: bool = True, refuse: int = 0):
         self.drops = drops
         self.honour_range = honour_range
+        self.refuse = refuse
         self.ranges: list[str | None] = []
         self.drop = asyncio.Event()
 
@@ -313,6 +343,13 @@ class DroppingGCS:
         )
         range_header = headers.get("range")
         self.ranges.append(range_header)
+        if 1 < len(self.ranges) <= 1 + self.refuse:
+            writer.write(
+                b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n"
+            )
+            await writer.drain()
+            writer.close()
+            return
         start = 0
         if range_header and self.honour_range:
             start = int(range_header.removeprefix("bytes=").removesuffix("-"))

@@ -128,12 +128,15 @@ async def _stream_file_content(
             raise fastapi.HTTPException(status_code=404, detail="File not found")
         except (aiohttp.ClientError, OSError) as e:
             if attempt < _STORAGE_READ_ATTEMPTS:
-                logger.warning(f"Retrying read of file {file.id} after {e!r}")
+                logger.warning(
+                    f"Retrying read of file {file.id} after {type(e).__name__}: {e}"
+                )
                 attempt += 1
                 continue
             logger.error(
                 f"Failed to read file {file.id} from storage after {attempt} "
-                f"attempts (storagePath={file.storage_path}): {e!r}",
+                f"attempts (storagePath={file.storage_path}): "
+                f"{type(e).__name__}: {e}",
                 exc_info=True,
             )
             raise fastapi.HTTPException(

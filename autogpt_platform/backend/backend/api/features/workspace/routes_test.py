@@ -7,7 +7,9 @@ import aiohttp
 import fastapi
 import fastapi.testclient
 import pytest
+from multidict import CIMultiDict, CIMultiDictProxy
 from prisma.errors import UniqueViolationError
+from yarl import URL
 
 from backend.api.features.workspace.routes import router
 from backend.data.skill_capacity import SkillLimitError
@@ -1140,6 +1142,17 @@ class TestCreateFileDownloadResponse:
         [
             aiohttp.ClientPayloadError("Response payload is not completed"),
             TimeoutError(),
+            aiohttp.ClientResponseError(
+                aiohttp.RequestInfo(
+                    url=URL("https://storage.googleapis.com/storage/v1/b/bucket/o/f"),
+                    method="GET",
+                    headers=CIMultiDictProxy(
+                        CIMultiDict(Authorization="Bearer test-token")
+                    ),
+                ),
+                (),
+                status=503,
+            ),
         ],
     )
     async def test_persistent_storage_error_returns_502_and_logs(
@@ -1168,6 +1181,7 @@ class TestCreateFileDownloadResponse:
         assert len(errors) == 1
         assert errors[0].exc_info is not None
         assert type(error).__name__ in errors[0].getMessage()
+        assert "test-token" not in caplog.text
 
 
 def test_download_file_missing_content_returns_404(mocker):
