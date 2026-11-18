@@ -407,8 +407,11 @@ require shipping a CA flow we don't need for v0.
   also locked themselves out of any future verification by the user.
 - **Cross-machine impersonation** — `machine_id` is in every record
   and signed; can't lift a chain from one machine and replay on another.
-  It is the shim's own ID, so a log shown to someone else tells them
-  neither the operating system's identifier nor the hostname.
+  The ID the shim derives for itself holds neither the operating system's
+  identifier nor the hostname. That is all it promises for a log shown to
+  someone else: a `machine_id` the person set is written as they gave it,
+  which may be the hostname, and the records keep commands, arguments and
+  paths whole, which can name the computer or its user as well.
 
 ## What this does NOT catch
 
