@@ -266,14 +266,19 @@ def _stop(service: Scheduler, stopper: threading.Thread) -> None:
         stopper.join(2 * _WAIT_S)
         if stopper.is_alive():
             pytest.fail("the scheduler's stop never finished")
-    elif service._scheduler is not None and service._scheduler.running:
-        service.cleanup()
-    # Each is tried even if one before it fails, and a failure still raises.
+    # Run last to first, each tried even if one after it fails; a failure
+    # still raises.
     with ExitStack() as closing:
         closing.callback(_close_event_loop)
         # Already closed by a stop; these are for a start that failed part-way.
         for store in service._persistent_jobstores.values():
             closing.callback(store.shutdown)
+        if (
+            stopper.ident is None
+            and service._scheduler is not None
+            and service._scheduler.running
+        ):
+            closing.callback(service.cleanup)
 
 
 def _close_event_loop() -> None:
@@ -284,6 +289,8 @@ def _close_event_loop() -> None:
     if thread is not None and thread.is_alive():
         loop.call_soon_threadsafe(loop.stop)
         thread.join(_WAIT_S)
+        if thread.is_alive():
+            pytest.fail("the scheduler's event loop never stopped")
     if not loop.is_running():
         loop.close()
 
