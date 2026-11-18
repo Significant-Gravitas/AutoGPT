@@ -339,7 +339,8 @@ jobs:
         run: |
           # From the job's own start, as its timeout counts: the service
           # containers come up before this step, sometimes minutes before.
-          started=$(gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${CHECK_RUN_ID}" --jq .started_at) || started=
+          # Bounded: the loop below, which ends at the stop file, waits on it.
+          started=$(timeout 20 gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${CHECK_RUN_ID}" --jq .started_at) || started=
           if [[ -z "$started" ]] || ! start=$(date -d "$started" +%s 2>/dev/null); then
             echo "Could not read the job's start time; counting from this step."
             start=$(date +%s)

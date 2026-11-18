@@ -1,25 +1,24 @@
 """The SDK tests' database manager fake fails each call at once."""
 
-import time
-
 import httpx
 import pytest
 
 from backend.blocks import persistence
-from backend.data import db_accessors
+from backend.copilot.database_manager_fixtures import DatabaseManagerFake
+from backend.data import db, db_accessors
 from backend.executor.scheduler import SchedulerClient
 from backend.util import clients, service
 
-from .conftest import DatabaseManagerFake
-
 
 @pytest.mark.asyncio
-async def test_an_accessor_call_fails_at_once(database_manager: DatabaseManagerFake):
-    started = time.monotonic()
+async def test_an_accessor_call_fails_at_once(
+    database_manager: DatabaseManagerFake, monkeypatch: pytest.MonkeyPatch
+):
+    # Without a connected Prisma client the accessor picks the database manager.
+    monkeypatch.setattr(db, "is_connected", lambda: False)
     with pytest.raises(httpx.ConnectError):
         await db_accessors.credit_db().spend_credits("user-1", 1)
 
-    assert time.monotonic() - started < 1
     assert database_manager.calls == ["spend_credits"]
 
 

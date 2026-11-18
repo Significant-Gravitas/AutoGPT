@@ -2,21 +2,16 @@
 
 from __future__ import annotations
 
-import inspect
-from collections import Counter
-from collections.abc import Iterator
-from typing import Any, NoReturn
+from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-import httpx
 import pytest
 import pytest_asyncio
 
+from backend.copilot import database_manager_fixtures
 from backend.copilot.sdk.cli_version import _VERSIONS, _cli_the_sdk_finds
-from backend.data.db_manager import DatabaseManagerAsyncClient, DatabaseManagerClient
-from backend.util import clients, json, service
-from backend.util.cache import clear_thread_cache
+from backend.util import json
 
 
 def build_cli_cost_row(session_id: str, total: float) -> str:
@@ -167,97 +162,14 @@ def build_structured_transcript(
     return "\n".join(lines) + "\n"
 
 
-class DatabaseManagerFake:
-    """The database manager for tests that start none.
-
-    Every call fails at once with the error an unreachable database manager
-    ends in, instead of after the real client's retries (seconds per call at
-    best, close to an hour at the default retry count). What the code does
-    with the failure is unchanged. ``calls`` lists the methods called.
-    """
-
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-
-    def client(self, client_type: type) -> _FakeDatabaseManagerClient:
-        return _FakeDatabaseManagerClient(self, client_type)
-
-
-class _FakeDatabaseManagerClient:
-    def __init__(self, fake: DatabaseManagerFake, client_type: type) -> None:
-        self._fake = fake
-        self._client_type = client_type
-
-    def close(self) -> None:
-        pass
-
-    async def aclose(self) -> None:
-        pass
-
-    def __getattr__(self, name: str) -> Any:
-        method = getattr(self._client_type, name, None)
-        if method is None:
-            raise AttributeError(f"Method {name} not found in {self._client_type}")
-
-        def fail() -> NoReturn:
-            self._fake.calls.append(name)
-            _CALLS_THIS_SESSION[name] += 1
-            raise httpx.ConnectError(
-                f"No database manager runs in the copilot SDK tests ({name})"
-            )
-
-        if inspect.iscoroutinefunction(method):
-
-            async def async_method(*args: Any, **kwargs: Any) -> Any:
-                fail()
-
-            return async_method
-
-        def sync_method(*args: Any, **kwargs: Any) -> Any:
-            fail()
-
-        return sync_method
-
-
-_CALLS_THIS_SESSION: Counter[str] = Counter()
-
-
-@pytest.fixture(autouse=True)
-def database_manager(monkeypatch: pytest.MonkeyPatch) -> Iterator[DatabaseManagerFake]:
-    """Every test here gets the database manager fake.
-
-    It stands in where the clients are built, so it also reaches modules that
-    imported a client getter by name. A test that patches a getter or a
-    ``db_accessors`` function itself still wins.
-    """
-    fake = DatabaseManagerFake()
-    real_get_service_client = service.get_service_client
-
-    def get_service_client(client_type: type, *args: Any, **kwargs: Any) -> Any:
-        if client_type in (DatabaseManagerClient, DatabaseManagerAsyncClient):
-            return fake.client(client_type)
-        return real_get_service_client(client_type, *args, **kwargs)
-
-    getters = (
-        clients.get_database_manager_client,
-        clients.get_database_manager_async_client,
-    )
-    for getter in getters:
-        clear_thread_cache(getter)
-    monkeypatch.setattr(service, "get_service_client", get_service_client)
-    yield fake
-    for getter in getters:
-        clear_thread_cache(getter)
+# No database manager runs for these tests; nor for billing_e2e, dream and
+# graphiti, whose conftests turn the fake on too.
+database_manager = database_manager_fixtures.database_manager
 
 
 def pytest_terminal_summary(terminalreporter: Any) -> None:
-    """List the calls the fake answered, so a CI log shows which code paths
-    still reach for a database manager instead of a stub of their own."""
-    if not _CALLS_THIS_SESSION:
-        return
-    terminalreporter.write_sep("-", "database manager calls answered by the fake")
-    for name, count in _CALLS_THIS_SESSION.most_common():
-        terminalreporter.write_line(f"{count:6d}  {name}")
+    """Once per run (here only): the calls the fake answered in every folder."""
+    database_manager_fixtures.write_calls_summary(terminalreporter)
 
 
 @pytest.fixture(autouse=True)
@@ -267,7 +179,5 @@ def login_chain_unchanged(request):
         yield
         return
     unchanged = AsyncMock(return_value={})
-    with (
-        patch("backend.util.sandbox_login.changed_login_files", unchanged),
-    ):
+    with (patch("backend.util.sandbox_login.changed_login_files", unchanged),):
         yield
