@@ -92,7 +92,9 @@ export function useLibraryAgentList({
         // unknown; recheck after its Retry-After until they are known.
         refetchInterval: (query) =>
           recheckWhileSchedulesUnknown(
-            query.state.data ? unpaginate(query.state.data, "agents") : [],
+            hasUnknownSchedules(
+              query.state.data ? unpaginate(query.state.data, "agents") : [],
+            ),
           ),
       },
     },

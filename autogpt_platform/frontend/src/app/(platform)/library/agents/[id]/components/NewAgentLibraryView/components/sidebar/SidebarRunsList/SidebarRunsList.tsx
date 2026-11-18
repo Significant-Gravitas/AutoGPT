@@ -134,7 +134,14 @@ export function SidebarRunsList({
             <TabsLineTrigger value="scheduled">
               Scheduled{" "}
               <span className="ml-3 inline-block">
-                {schedulesUnavailable ? "—" : schedulesCount}
+                {schedulesUnavailable ? (
+                  <>
+                    <span aria-hidden="true">—</span>
+                    <span className="sr-only">Unknown</span>
+                  </>
+                ) : (
+                  schedulesCount
+                )}
               </span>
             </TabsLineTrigger>
             {triggersCount > 0 && (

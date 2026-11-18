@@ -137,6 +137,40 @@ test("Home rechecks on its own once the scheduler's Retry-After has passed", asy
   expect(within(tile).queryByText(NOTICE)).toBeNull();
 });
 
+test("an outage that outlasts a deploy rechecks Home only once a minute", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const reads = serveDashboard(() => duringOutage);
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+
+  render(<HomeRecap />, { queryClient });
+  const tile = await screen.findByRole("region", { name: "Now & next" });
+  expect(await within(tile).findByText(NOTICE)).toBeDefined();
+
+  // Moves the clock on, then waits out any read it started.
+  async function advanceAndSettle(ms: number) {
+    await act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+    await waitFor(() =>
+      expect(
+        queryClient.isFetching({ queryKey: getGetHomeDashboardQueryKey() }),
+      ).toBe(0),
+    );
+  }
+
+  // Well past a deploy's gap it keeps Home's usual minute: not within 45 s of
+  // its last read, and again within 75 s.
+  await advanceAndSettle(195_000);
+  const before = reads();
+  await advanceAndSettle(45_000);
+  expect(reads()).toBe(before);
+  await advanceAndSettle(30_000);
+  expect(reads()).toBeGreaterThan(before);
+  expect(within(tile).getByText(NOTICE)).toBeDefined();
+});
+
 test("a recheck that fails keeps Home's tiles instead of the page error", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   serveDashboard(() => duringOutage);

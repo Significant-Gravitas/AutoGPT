@@ -141,6 +141,15 @@ async function libraryReadsSettled(queryClient: QueryClient) {
   );
 }
 
+// Moves the clock on, then waits out any read it started. A read the clock
+// starts is in flight as soon as the timer fires, so none is missed.
+async function advanceAndSettle(queryClient: QueryClient, ms: number) {
+  await act(async () => {
+    vi.advanceTimersByTime(ms);
+  });
+  await libraryReadsSettled(queryClient);
+}
+
 function tile(name: "Scheduled" | "Idle") {
   return screen.getByRole("button", { name: new RegExp(`^${name}\\b`) });
 }
@@ -274,27 +283,21 @@ describe("LibraryPage while the scheduler is out", () => {
     expect(await screen.findByText(NOTICE)).toBeDefined();
     await libraryReadsSettled(queryClient);
 
-    // A deploy-length gap: every Retry-After, for 2.5 minutes.
-    for (let recheck = 1; recheck <= 10; recheck++) {
-      const before = reads;
-      await act(async () => {
-        vi.advanceTimersByTime(15_000);
-      });
-      await waitFor(() => expect(reads).toBeGreaterThan(before));
-      await libraryReadsSettled(queryClient);
-    }
+    // Two minutes in, still within a deploy's gap, it rechecks after every
+    // Retry-After.
+    await advanceAndSettle(queryClient, 120_000);
+    let before = reads;
+    await advanceAndSettle(queryClient, 15_000);
+    expect(reads).toBeGreaterThan(before);
 
-    // Past it, each list re-reads every loaded page only once a minute.
-    const slowed = reads;
-    await act(async () => {
-      vi.advanceTimersByTime(30_000);
-    });
-    await libraryReadsSettled(queryClient);
-    expect(reads).toBe(slowed);
-    await act(async () => {
-      vi.advanceTimersByTime(31_000);
-    });
-    await waitFor(() => expect(reads).toBeGreaterThan(slowed));
+    // Well past the gap, each list re-reads every loaded page once a minute:
+    // not within 45 s of its last read, and again within 75 s.
+    await advanceAndSettle(queryClient, 60_000);
+    before = reads;
+    await advanceAndSettle(queryClient, 45_000);
+    expect(reads).toBe(before);
+    await advanceAndSettle(queryClient, 30_000);
+    expect(reads).toBeGreaterThan(before);
     expect(screen.getByText(NOTICE)).toBeDefined();
   });
 

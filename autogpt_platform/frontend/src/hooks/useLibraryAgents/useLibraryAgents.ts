@@ -1,5 +1,6 @@
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
+import { hasUnknownSchedules } from "@/services/schedules/scheduler-availability";
 import { useRecheckWhileSchedulesUnknown } from "@/services/schedules/useRecheckWhileSchedulesUnknown";
 import { useEffect, useMemo } from "react";
 import { buildAgentInfoMap } from "./store";
@@ -36,7 +37,9 @@ export function useLibraryAgents() {
         // scheduler answers; recheck after its Retry-After.
         refetchInterval: (query) =>
           recheckWhileSchedulesUnknown(
-            query.state.data ? unpaginate(query.state.data, "agents") : [],
+            hasUnknownSchedules(
+              query.state.data ? unpaginate(query.state.data, "agents") : [],
+            ),
           ),
       },
     },

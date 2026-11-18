@@ -579,16 +579,21 @@ describe("FollowupsPage", () => {
       vi.useRealTimers();
     });
     const outage = serveSchedulerOutage();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
 
-    render(<FollowupsPage />);
+    render(<FollowupsPage />, { queryClient });
     expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
 
-    // Nothing asks again before Retry-After: 14 s after the first 503, with a
-    // second to spare for a slow runner, both lists are still waiting.
+    // Nothing asks again well before Retry-After: 10 s after the first 503
+    // neither list has been read again, nor is a read on its way.
     const answered = outage.reads();
     await act(async () => {
-      vi.advanceTimersByTime(outage.firstAnsweredAt() + 14_000 - Date.now());
+      vi.advanceTimersByTime(outage.firstAnsweredAt() + 10_000 - Date.now());
     });
+    expect(queryClient.isFetching()).toBe(0);
     expect(outage.reads()).toBe(answered);
 
     server.use(
@@ -598,7 +603,7 @@ describe("FollowupsPage", () => {
       defaultGraphSchedulesHandler(),
     );
     await act(async () => {
-      vi.advanceTimersByTime(2_000);
+      vi.advanceTimersByTime(6_000);
     });
 
     const list = await screen.findByTestId("followups-list");
@@ -630,11 +635,11 @@ describe("FollowupsPage", () => {
     expect(failures).toBe(4);
     expect(outage.reads()).toBe(1);
 
+    onTestFinished(() => focusManager.setFocused(undefined));
     act(() => {
       focusManager.setFocused(false);
       focusManager.setFocused(true);
     });
-    onTestFinished(() => focusManager.setFocused(undefined));
     await waitFor(() => expect(queryClient.isFetching()).toBe(0));
     expect(outage.reads()).toBe(1);
   });

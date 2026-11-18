@@ -166,6 +166,10 @@ test("a scheduler outage keeps the workflow's tasks and says schedules are unava
   // The schedule count is unknown, and the tab says why it lists nothing.
   const scheduledTab = screen.getByRole("tab", { name: /^Scheduled/ });
   expect(within(scheduledTab).getByText("—")).toBeDefined();
+  // A screen reader hears "Unknown", not a dash.
+  expect(
+    screen.getByRole("tab", { name: /^Scheduled\s*Unknown$/ }),
+  ).toBeDefined();
   await userEvent.click(scheduledTab);
   expect(await screen.findAllByText(NOTICE)).not.toHaveLength(0);
   expect(screen.queryByText("No scheduled workflows")).toBeNull();
@@ -183,6 +187,23 @@ test("a scheduler outage keeps the workflow's tasks and says schedules are unava
   // The schedule that came back is opened, not "Nothing scheduled yet".
   expect(await screen.findByText("Next run")).toBeDefined();
   expect(screen.queryByText("Nothing scheduled yet")).toBeNull();
+});
+
+test("with the scheduler up, an open Scheduled tab opens its first schedule", async () => {
+  serveAgentPage(() => HttpResponse.json([morningRun]));
+  installLiveSocket();
+
+  render(
+    <NuqsTestingAdapter hasMemory searchParams="activeTab=scheduled">
+      <AgentLibraryPage />
+    </NuqsTestingAdapter>,
+  );
+
+  // The workflow has tasks too, yet the open tab shows its first item, as the
+  // Tasks tab shows its first task.
+  expect(await screen.findByText("Next run")).toBeDefined();
+  expect(screen.queryByText("Nothing scheduled yet")).toBeNull();
+  expect(screen.queryByText(NOTICE)).toBeNull();
 });
 
 test("a recheck still waiting on the scheduler keeps the tabs and the notice", async () => {
