@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+import uvicorn
 from autogpt_libs.auth import dependencies as auth_dependencies
 from starlette.datastructures import URL
 from starlette.requests import Request
@@ -25,7 +26,9 @@ from websockets.exceptions import ConnectionClosedError
 from backend.api import rest_api, ws_api
 from backend.api.conn_manager import ConnectionManager
 from backend.api.features.integrations import router as integrations_router
-from backend.util.logging_test_helpers import CapturingTransport, serve
+from backend.monitoring.instrumentation import METRICS_ENV_VAR
+from backend.util.logging_test_helpers import CapturingTransport
+from backend.util.process import AppProcess
 from backend.util.url_redaction import REDACTED
 
 SESSION_TOKEN = "SECRET123"
@@ -176,6 +179,41 @@ async def test_sentry_gets_no_credentials_from_request_urls(
         event.get("transaction", "").removeprefix(f"http://{host}")
         for event in sentry.events
     }
+
+
+@asynccontextmanager
+async def serve(
+    process: AppProcess, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[str]:
+    """Serve what ``process.run()`` hands uvicorn, on a free local port and
+    without the lifespan's database and Redis connections."""
+    runs: list[tuple] = []
+    monkeypatch.setattr(
+        uvicorn, "run", lambda app, **kwargs: runs.append((app, kwargs))
+    )
+    # AgentServer.run() turns asyncio debug on for local runs; undo it after.
+    monkeypatch.setenv("PYTHONASYNCIODEBUG", "")
+    # Nor a metrics listener of its own, which would outlive the test.
+    monkeypatch.setenv(METRICS_ENV_VAR, "false")
+    process.run()
+    [(app, kwargs)] = runs
+    server = uvicorn.Server(
+        uvicorn.Config(
+            app, **{**kwargs, "host": "127.0.0.1", "port": 0, "lifespan": "off"}
+        )
+    )
+    serving = asyncio.create_task(server.serve())
+    try:
+        for _ in range(1000):
+            if server.started or serving.done():
+                break
+            await asyncio.sleep(0.01)
+        assert server.started, "uvicorn did not start"
+        port = server.servers[0].sockets[0].getsockname()[1]
+        yield f"127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        await serving
 
 
 @asynccontextmanager

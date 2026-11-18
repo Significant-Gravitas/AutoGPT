@@ -15,6 +15,7 @@ import string
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import Annotated, Literal
 from unittest.mock import AsyncMock
 
 import httpx
@@ -23,7 +24,7 @@ import sentry_sdk
 from fastapi import FastAPI, Request
 from prisma.errors import ClientNotConnectedError
 from prisma.models import AgentGraphExecution, IntegrationWebhook
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 from websockets.asyncio.client import connect
 
 from backend.api import rest_api, ws_api
@@ -44,8 +45,9 @@ from backend.integrations.webhooks import utils as webhooks_utils
 from backend.integrations.webhooks.github import GithubWebhooksManager
 from backend.integrations.webhooks.utils import setup_webhook_for_block
 from backend.util import metrics
-from backend.util.logging_test_helpers import CapturingTransport, serve
+from backend.util.logging_test_helpers import CapturingTransport
 from backend.util.request_credentials import RequestCredentialsMiddleware
+from backend.util.request_url_logging_test import serve
 from backend.util.service import AppService
 from backend.util.url_redaction import REDACTED
 
@@ -68,6 +70,20 @@ _GEMINI_MODELS = "https://generativelanguage.googleapis.com/v1beta/models"
 
 class Limits(BaseModel):
     per_key: dict[str, int]
+
+
+class _Secret(BaseModel):
+    type: Literal["secret"]
+    value: str
+
+
+class _Note(BaseModel):
+    type: Literal["note"]
+    text: str
+
+
+class Filed(BaseModel):
+    item: Annotated[_Secret | _Note, Field(discriminator="type")]
 
 
 # --- 1. Frame locals ---------------------------------------------------------
@@ -136,7 +152,8 @@ async def test_a_credential_header_copied_into_any_variable_is_masked(
         cookie_lookup = dict(request.cookies)
         header_value = request.headers["x-api-key"]
         body = long_body.replace(API_KEY, header_value)
-        raise RuntimeError(f"No match among {len(cookie_lookup)} for {len(body)}")
+        raw = body.encode()
+        raise RuntimeError(f"No match among {len(cookie_lookup)} for {len(raw)}")
 
     async with _behind_the_rest_middleware("/lookup", lookup) as client:
         response = await client.get(
@@ -157,9 +174,10 @@ async def test_a_credential_header_copied_into_any_variable_is_masked(
     assert variables["header_value"] == f"'{REDACTED}'"
     # A long variable is cut where the SDK is told to cut it, and a credential
     # across the cut is masked before it, not left half there.
-    assert variables["body"].endswith(f"... ({len(long_body):,} long)")
-    assert not _leaks(API_KEY, variables["body"])
-    assert f"key: {REDACTED}" in variables["body"]
+    for name in ("body", "raw"):
+        assert variables[name].endswith(f"... ({len(long_body):,} long)")
+        assert not _leaks(API_KEY, variables[name])
+        assert f"key: {REDACTED}" in variables[name]
 
 
 def test_every_service_app_keeps_its_requests_credentials() -> None:
@@ -173,6 +191,24 @@ def test_every_service_app_keeps_its_requests_credentials() -> None:
     for app in (rest_api.app, ws_api.app, Service().build_fastapi_app()):
         middleware = {entry.cls for entry in app.user_middleware}
         assert RequestCredentialsMiddleware in middleware, app
+
+
+async def test_a_query_full_of_tokens_leaves_room_for_the_headers(
+    sentry: CapturingTransport,
+) -> None:
+    """A caller can send any number of credential-named query values, longer
+    than any header's, and the header's credential is still masked."""
+    query = {f"token{index}": f"{index:02d}" + "q" * 46 for index in range(20)}
+
+    async def lookup(request: Request) -> None:
+        header_value = request.headers["x-api-key"]
+        raise RuntimeError(f"No match for {len(header_value)}")
+
+    async with _behind_the_rest_middleware("/lookup", lookup) as client:
+        await client.get("/lookup", params=query, headers={"X-API-Key": API_KEY})
+
+    assert not _leaks(API_KEY, sentry.payload)
+    assert _frame_variables(sentry.events)["lookup"]["header_value"] == f"'{REDACTED}'"
 
 
 # --- 2. Internal RPC and REST errors ------------------------------------------
@@ -235,6 +271,8 @@ async def test_an_error_logs_no_key_from_an_outgoing_url(
     logs = service_output.getvalue()
     assert not _leaks(API_KEY, logs)
     assert not _leaks(API_KEY, sentry.payload)
+    # The error reached Sentry, masked the same way.
+    assert f"models?key={REDACTED}" in sentry.payload
     # In the message and in the traceback's, whose frames are kept.
     assert logs.count(f"{_GEMINI_MODELS}?key={REDACTED}") >= 2
     assert "response.raise_for_status()" in logs
@@ -264,6 +302,28 @@ async def test_a_rejected_mappings_keys_stay_out_of_the_log(
     logs = service_output.getvalue()
     assert not _leaks(API_KEY, logs)
     assert "'loc': ['body', 'per_key', '*']" in logs
+
+
+async def test_a_rejected_tag_stays_out_of_the_log(service_output: io.StringIO) -> None:
+    """pydantic quotes a union's rejected tag in its message, and the input it
+    names is the whole object around it."""
+    app = FastAPI()
+
+    @app.post("/filed")
+    async def file_item(filed: Filed) -> None:
+        return None
+
+    add_exception_handlers(app)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://backend"
+    ) as client:
+        response = await client.post("/filed", json={"item": {"type": API_KEY}})
+    assert response.status_code == 422
+
+    logs = service_output.getvalue()
+    assert not _leaks(API_KEY, logs)
+    assert f"Input tag '{REDACTED}' found using 'type'" in logs
+    assert "'loc': ['body', 'item']" in logs
 
 
 # --- 3. Webhook logs ---------------------------------------------------------
@@ -428,6 +488,19 @@ def test_the_event_bus_logs_an_events_size_not_the_event(
         assert line in logs
 
 
+async def test_a_wildcard_channel_names_its_webhook_only_by_prefix() -> None:
+    bus = integrations_db.WebhookEventBus()
+    event = integrations_db.WebhookEvent(
+        provider="github", webhook_id=WEBHOOK_ID, event_type="*", payload={}
+    )
+
+    with pytest.raises(ValueError) as refused:
+        await bus.publish_event(event, f"{WEBHOOK_ID}/*")
+
+    assert not _leaks(WEBHOOK_ID[8:], str(refused.value))
+    assert f"{WEBHOOK_ID[:8]}.../*" in str(refused.value)
+
+
 # --- 4. WebSocket handshake headers -------------------------------------------
 
 
@@ -506,6 +579,30 @@ async def test_sentry_gets_no_credentials_from_outgoing_request_urls(
     assert f"/v1beta/models?key={REDACTED}" in error["exception"]["values"][0]["value"]
 
 
+async def test_a_value_naming_the_event_is_not_taken_for_a_credential(
+    sentry: CapturingTransport,
+) -> None:
+    """Any caller can send any value as a token; masking the event's own names
+    with it would move their errors out of the alerts and issues they belong to."""
+    environment = metrics._sentry_environment()
+
+    async def lookup_that_fails_loudly(request: Request) -> None:
+        raise RuntimeError("No match")
+
+    async with _behind_the_rest_middleware("/lookup", lookup_that_fails_loudly) as c:
+        await c.get(
+            "/lookup",
+            params={"token": environment, "key": "lookup_that_fails_loudly"},
+            headers={"X-API-Key": API_KEY},
+        )
+
+    [error] = [event for event in sentry.events if event.get("exception")]
+    assert error["environment"] == environment
+    assert "lookup_that_fails_loudly" in _frame_variables([error])
+    # A credential the same request carries is still masked.
+    assert not _leaks(API_KEY, sentry.payload)
+
+
 # --- 6. Credentials in keys ---------------------------------------------------
 
 
@@ -537,6 +634,46 @@ async def test_a_credential_used_as_a_key_is_masked(
         if crumb.get("type") == "http"
     ]
     assert crumb["http.query"] == f"{REDACTED}={REDACTED}"
+
+
+def test_a_credential_key_past_the_budget_is_masked() -> None:
+    """Past the budget values are filtered, but keys are kept for the event's
+    shape, so they are still checked for the request's credentials."""
+    event = {
+        "request": {"url": f"http://backend/api/public/shared/{SHARE_TOKEN}"},
+        "extra": {
+            # Leaves less of the budget than the key takes, once the URL is read.
+            "filler": "x" * (metrics._SENTRY_SCRUB_BUDGET - 50),
+            "runs": {SHARE_TOKEN: "run-1"},
+        },
+    }
+
+    scrubbed = metrics._before_send(event, {})
+
+    assert scrubbed is not None
+    assert scrubbed["extra"]["filler"] != "[Filtered]"
+    assert not _leaks(SHARE_TOKEN, json.dumps(scrubbed))
+    assert list(scrubbed["extra"]["runs"]) == [REDACTED]
+
+
+def test_keys_masked_alike_are_all_kept() -> None:
+    query = f"token={SESSION_COOKIE}"
+    event = {
+        "request": {
+            "url": f"http://backend/api/public/shared/{SHARE_TOKEN}",
+            "query_string": query,
+        },
+        "extra": {"by": {SHARE_TOKEN: 1, SESSION_COOKIE: 2, REDACTED: 3}},
+    }
+
+    scrubbed = metrics._before_send(event, {})
+
+    assert scrubbed is not None
+    assert scrubbed["extra"]["by"] == {
+        f"{REDACTED}*": 1,
+        f"{REDACTED}**": 2,
+        REDACTED: 3,
+    }
 
 
 @pytest.mark.parametrize("seed", range(5))

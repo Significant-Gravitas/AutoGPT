@@ -1,5 +1,7 @@
 import ast
 
+import pytest
+
 from backend.util.architecture_test import (
     BACKEND_ROOT,
     _annotation_names,
@@ -17,6 +19,7 @@ from backend.util.architecture_test import (
 # validated value comes from the request.
 
 _VALIDATION_ERROR_HELPER = "api/utils/validation_errors.py"
+_HELPER_MODULE = "backend.api.utils.validation_errors"
 _BOUNDED_READERS = frozenset(
     {
         "bounded_validation_errors",
@@ -65,6 +68,7 @@ def test_api_reads_validation_errors_only_through_the_bounded_helper():
 
 def _validation_error_reads(tree: ast.Module) -> list[tuple[int, str]]:
     """Every `.errors()` call, and every other use of a caught ValidationError."""
+    readers = _imported_readers(tree)
     found = [
         (node.lineno, "calls `.errors()`")
         for node in ast.walk(tree)
@@ -76,7 +80,7 @@ def _validation_error_reads(tree: ast.Module) -> list[tuple[int, str]]:
         if handler.name:
             found += [
                 (use.lineno, f"renders the caught `{handler.name}`")
-                for use in _unbounded_uses(handler, handler.name)
+                for use in _unbounded_uses(handler, handler.name, readers)
             ]
         if _catches_a_validation_error(handler.type):
             found += [
@@ -96,7 +100,7 @@ def _validation_error_reads(tree: ast.Module) -> list[tuple[int, str]]:
                 *arguments.kwonlyargs,
             ]
             if _annotation_names(argument.annotation) & _VALIDATION_ERROR_NAMES
-            for use in _unbounded_uses(function, argument.arg)
+            for use in _unbounded_uses(function, argument.arg, readers)
         ]
     return found
 
@@ -145,12 +149,25 @@ def _logs_a_traceback(call: ast.Call) -> bool:
     ) or any(keyword.arg == "exc_info" for keyword in call.keywords)
 
 
-def _unbounded_uses(scope: ast.AST, name: str) -> list[ast.Name]:
-    """Loads of `name` other than a bounded reader's argument/`raise … from name`."""
+def _imported_readers(tree: ast.Module) -> set[str]:
+    """The names a module binds the helper's readers to, by importing them."""
+    return {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == _HELPER_MODULE
+        for alias in node.names
+        if alias.name in _BOUNDED_READERS
+    }
+
+
+def _unbounded_uses(scope: ast.AST, name: str, readers: set[str]) -> list[ast.Name]:
+    """Loads of `name` other than an imported reader's argument/`raise … from name`."""
     bounded = {
         id(argument)
         for node in ast.walk(scope)
-        if isinstance(node, ast.Call) and _decorator_name(node.func) in _BOUNDED_READERS
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in readers
         for argument in node.args
     } | {
         id(node.cause)
@@ -165,3 +182,30 @@ def _unbounded_uses(scope: ast.AST, name: str) -> list[ast.Name]:
         and isinstance(node.ctx, ast.Load)
         and id(node) not in bounded
     ]
+
+
+@pytest.mark.parametrize(
+    "source, flagged",
+    [
+        (
+            "from backend.api.utils.validation_errors import describe_validation_error\n"
+            "try:\n    pass\nexcept ValidationError as exc:\n"
+            "    log(describe_validation_error(exc))\n",
+            False,
+        ),
+        # A method of the same name elsewhere renders what it likes.
+        (
+            "try:\n    pass\nexcept ValidationError as exc:\n"
+            "    log(legacy.describe_validation_error(exc))\n",
+            True,
+        ),
+        (
+            "def describe_validation_error(e):\n    return str(e)\n"
+            "try:\n    pass\nexcept ValidationError as exc:\n"
+            "    log(describe_validation_error(exc))\n",
+            True,
+        ),
+    ],
+)
+def test_only_the_helpers_own_readers_bound_a_caught_error(source: str, flagged: bool):
+    assert bool(_validation_error_reads(ast.parse(source))) is flagged

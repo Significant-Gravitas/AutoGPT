@@ -34,10 +34,17 @@ def request_credentials() -> tuple[str, ...]:
     return _request_credentials.get()
 
 
-def longest_first(credentials: set[str]) -> tuple[str, ...]:
-    """At most ``MAX_REQUEST_CREDENTIALS``, longest first, so that one holding
+def select_credentials(*groups: set[str]) -> tuple[str, ...]:
+    """At most ``MAX_REQUEST_CREDENTIALS``, taken from ``groups`` in order, so
+    that values of a later group, such as a URL's, never crowd out an earlier
+    one's, such as the headers'. Returned longest first, so that one holding
     another is masked whole."""
-    return tuple(sorted(credentials, key=len, reverse=True)[:MAX_REQUEST_CREDENTIALS])
+    chosen: list[str] = []
+    for group in groups:
+        room = MAX_REQUEST_CREDENTIALS - len(chosen)
+        fresh = sorted(group.difference(chosen), key=len, reverse=True)
+        chosen += fresh[:room]
+    return tuple(sorted(chosen, key=len, reverse=True))
 
 
 class RequestCredentialsMiddleware:
@@ -62,4 +69,8 @@ def _credentials_in_scope(scope: Scope) -> tuple[str, ...]:
     ]
     query = scope.get("query_string", b"").decode("latin-1")
     target = f"{scope.get('path', '')}?{query}"
-    return longest_first(credentials_in_headers(headers) | credentials_in_url(target))
+    # The session cookie, Authorization and a provider's secret first: the
+    # query's values are the ones a caller can send any number of.
+    return select_credentials(
+        credentials_in_headers(headers), credentials_in_url(target)
+    )

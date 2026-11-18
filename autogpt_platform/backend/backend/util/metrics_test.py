@@ -295,6 +295,17 @@ def test_before_send_keeps_a_repr_whose_secret_fields_are_unset(unset: str) -> N
     assert scrubbed["logentry"]["formatted"] == "[Filtered]"
 
 
+@pytest.mark.parametrize(
+    "message", ["password=None.", "secret=None-example", "password=null-abc123"]
+)
+def test_before_send_filters_a_secret_that_only_starts_like_an_unset_one(
+    message: str,
+) -> None:
+    scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
+    assert scrubbed is not None
+    assert scrubbed["logentry"]["formatted"] == "[Filtered]"
+
+
 def test_before_send_scans_a_run_of_jwt_starts_in_linear_time() -> None:
     message = "-eyJ" * 20_000
     started = time.perf_counter()
@@ -377,10 +388,16 @@ def test_before_send_spends_its_budget_on_the_newest_entries(put, read) -> None:
 
 
 def test_before_send_transaction_keeps_every_span_id_past_its_budget() -> None:
-    """A trace whose span IDs were filtered would fall apart in Sentry."""
+    """A trace whose span IDs or timestamps were filtered would fall apart."""
     ids = [f"{index:016x}" for index in range(3)]
+    started = "2026-11-18T09:00:00.123456Z"
     spans = [
-        {"span_id": span_id, "parent_span_id": "b" * 16, "description": "GET /x"}
+        {
+            "span_id": span_id,
+            "parent_span_id": "b" * 16,
+            "start_timestamp": started,
+            "description": "GET /x",
+        }
         for span_id in ids
     ]
     # A name that leaves less of the budget than one span ID would take.
@@ -392,7 +409,32 @@ def test_before_send_transaction_keeps_every_span_id_past_its_budget() -> None:
     assert scrubbed["transaction"] == name
     assert [span["span_id"] for span in scrubbed["spans"]] == ids
     assert {span["parent_span_id"] for span in scrubbed["spans"]} == {"b" * 16}
+    assert {span["start_timestamp"] for span in scrubbed["spans"]} == {started}
     assert scrubbed["spans"][-1]["description"] == "[Filtered]"
+
+
+def test_before_send_scrubs_a_payloads_field_named_like_a_trace_id() -> None:
+    """Only the SDK's own records keep their IDs unsearched, even a value in
+    their format: here a request's credential that looks like a trace ID."""
+    token = "0123456789abcdef0123456789abcdef"
+    payload = {
+        "trace_id": token,
+        "span_id": {"api_key": "k"},
+        "event_id": "Bearer abcdefghijklmnop",
+    }
+    event = {
+        "request": {"url": f"http://backend/api/public/shared/{token}"},
+        "extra": {"payload": payload},
+    }
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    assert scrubbed["extra"]["payload"] == {
+        "trace_id": "[REDACTED]",
+        "span_id": {"api_key": "[Filtered]"},
+        "event_id": "[Filtered]",
+    }
 
 
 def test_before_send_keeps_untyped_balance_message() -> None:

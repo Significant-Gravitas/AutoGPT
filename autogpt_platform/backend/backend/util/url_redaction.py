@@ -6,16 +6,17 @@ bearer secrets themselves: whoever holds one can post to a webhook, claim a
 platform link, read a shared chat or run, or accept an org invitation. uvicorn
 logs the path and query of every request and Sentry attaches both to every
 event, so anything that records a request URL masks it here first. Outgoing
-URLs carry credentials too: an API key in ``?key=``, or a Telegram bot's token
-in the path of every call to its API. Headers carry the session cookie,
-``Authorization`` and a webhook provider's own secret token.
+URLs carry credentials too: an API key in ``?key=``, a Telegram bot's token in
+the path of every call to its API, or a user and password in a proxy's or a
+database's URL. Headers carry the session cookie, ``Authorization`` and a
+webhook provider's own secret token.
 """
 
 import itertools
 import logging
 import re
 from collections.abc import Iterable, Mapping
-from urllib.parse import unquote
+from urllib.parse import unquote, unquote_plus
 
 REDACTED = "[REDACTED]"
 
@@ -38,9 +39,12 @@ _CREDENTIAL_PATH_SEGMENT = re.compile(
 # value, and uvicorn's WebSocket scope keeps even a raw # in the query.
 _QUERY_IN_TEXT = re.compile(r"\?(\S+)")
 _QUERY_VALUE = re.compile(r"=[^&]*")
+# The user and password in a URL's authority. They end at the authority's "@",
+# before any "/", "?" or "#", so an "@" in a path or query isn't taken for one.
+_USERINFO = re.compile(r"(?<=://)[^/?#\s@]+@")
 # Every URL redact_urls_in_text masks holds one of these, so a string without
 # any is left as it is: Sentry's scrubber runs it on every string of an event.
-_MENTIONS_URL = re.compile(r"\?|/api/|api\.telegram\.org/")
+_MENTIONS_URL = re.compile(r"\?|/api/|api\.telegram\.org/|://[^/?#\s@]*@")
 # A query parameter's name, wherever a "?" or "&" starts one: a "?" in a value,
 # or in the Host header Sentry builds a URL from, starts another as a server
 # would read it.
@@ -71,6 +75,7 @@ def redact_url(url: str) -> str:
     which can hold a ``?`` of its own.
     """
     target, question_mark, query = url.partition("?")
+    target = _USERINFO.sub(REDACTED + "@", target)
     return _redact_path(target + question_mark + redact_query_string(query))
 
 
@@ -78,9 +83,8 @@ def redact_urls_in_text(text: str) -> str:
     """Mask the credentials in every request URL inside a longer message."""
     if not _MENTIONS_URL.search(text):
         return text
-    return _redact_path(
-        _QUERY_IN_TEXT.sub(lambda match: "?" + redact_query_string(match[1]), text)
-    )
+    text = _QUERY_IN_TEXT.sub(lambda match: "?" + redact_query_string(match[1]), text)
+    return _redact_path(_USERINFO.sub(REDACTED + "@", text))
 
 
 def redact_query_string(query: str) -> str:
@@ -97,16 +101,17 @@ def credentials_in_url(url: str) -> set[str]:
     Like ``redact_url``, this reads paths across the whole URL.
     """
     found = {match[1] for match in _CREDENTIAL_PATH_SEGMENT.finditer(url)}
+    # Named and valued as the route reads them, form-decoded, and as sent.
     named = (
         match
         for match in _QUERY_NAME.finditer(url)
-        if _CREDENTIAL_NAME.search(match[1])
+        if _CREDENTIAL_NAME.search(unquote_plus(match[1]))
     )
     for match in itertools.islice(named, _MAX_QUERY_CREDENTIALS):
         # A value runs to the next "&", as redact_url masks it.
         end = url.find("&", match.end())
         value = url[match.end() : end if end >= 0 else len(url)]
-        found.update((value, unquote(value)))
+        found.update((value, unquote(value), unquote_plus(value)))
     return {value for value in found if len(value) >= MIN_CREDENTIAL_LENGTH}
 
 

@@ -2423,7 +2423,7 @@ async def create_preset(
             webhook.organization_id,
             webhook.team_id,
         ) != (organization_id, team_id):
-            raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
+            raise NotFoundError(f"Webhook #{mask_credential(webhook.id)} not found")
     else:
         organization_id, team_id = await resolve_member_tenancy(
             user_id, graph.organization_id, graph.team_id

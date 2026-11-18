@@ -64,7 +64,7 @@ async def setup_webhook_for_block(
             "for which we do not have a WebhooksManager"
         )
 
-    # The inputs' names only: a trigger's inputs can hold a secret of the user's.
+    # A trigger's inputs can hold a secret of the user's, so only their names.
     logger.debug(
         "Setting up webhook for block #%s with inputs %s",
         trigger_block.id,
@@ -157,8 +157,8 @@ async def setup_webhook_for_block(
             organization_id=organization_id,
             team_id=team_id,
         )
-    # Not the webhook itself: its ID is the credential in its ingress URL, and
-    # its secret signs deliveries.
+    # A webhook's ID is the credential in its ingress URL and its secret signs
+    # deliveries, so it is logged by its masked ID and kind.
     logger.debug(
         "Acquired webhook #%s (%s %s)",
         mask_credential(webhook.id),

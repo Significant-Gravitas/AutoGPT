@@ -7,6 +7,8 @@ line; ``backend/util/architecture_validation_errors_test.py`` enforces that.
 
 import functools
 import sys
+from collections import deque
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 import pydantic
@@ -22,6 +24,8 @@ _REQUEST_PARTS = frozenset({"body", "query", "path", "header", "cookie"})
 # A shorter refused value is masked nowhere in a message: it can't be a secret,
 # and masking it could hide the limit a message names.
 _MIN_MASKED_INPUT = 8
+# How much of a refused value is read for text a message might quote.
+_MAX_INPUT_NODES = 256
 
 
 def bounded_validation_errors(
@@ -30,15 +34,48 @@ def bounded_validation_errors(
     """The first ``MAX_REPORTED_VALIDATION_ERRORS`` of ``exc``'s errors, each
     reduced to ``type``, ``loc`` and ``msg`` with every string capped. The three
     fields are an allowlist, so a field a later pydantic adds is not reported."""
-    errors = exc.errors()
+    return _bounded(exc.errors(), _capped_part, lambda error: error.get("msg", ""))
+
+
+def loggable_validation_errors(
+    exc: RequestValidationError | pydantic.ValidationError,
+) -> list[dict[str, Any]]:
+    """``bounded_validation_errors`` for a log line, which the caller's own data
+    stays out of. A location part that no loaded pydantic model declares, such
+    as a mapping's key, is ``*``, and text of the refused value that a message
+    quotes, such as a union's rejected tag, is masked; field names, indices and
+    the reasons are kept."""
+    names = _declared_names(len(sys.modules))
+    return _bounded(
+        exc.errors(),
+        lambda part: part if isinstance(part, int) or part in names else "*",
+        _message_without_input,
+    )
+
+
+def describe_validation_error(exc: pydantic.ValidationError) -> str:
+    """A log line's account of ``exc``: how many errors, in what, and each as
+    ``loggable_validation_errors`` renders it."""
+    count = exc.error_count()
+    return (
+        f"{count} validation error{'' if count == 1 else 's'} for {exc.title}: "
+        f"{loggable_validation_errors(exc)}"
+    )
+
+
+def _bounded(
+    errors: Sequence[Mapping[str, Any]],
+    loc_part: Callable[[Any], str | int],
+    message: Callable[[Mapping[str, Any]], str],
+) -> list[dict[str, Any]]:
     reported: list[dict[str, Any]] = [
         {
             "type": _capped(error.get("type", "")),
             "loc": [
-                _capped_part(part)
+                loc_part(part)
                 for part in error.get("loc", ())[:MAX_VALIDATION_ERROR_LOC_PARTS]
             ],
-            "msg": _capped(error.get("msg", "")),
+            "msg": _capped(message(error)),
         }
         for error in errors[:MAX_REPORTED_VALIDATION_ERRORS]
     ]
@@ -53,40 +90,39 @@ def bounded_validation_errors(
     return reported
 
 
-def loggable_validation_errors(
-    exc: RequestValidationError | pydantic.ValidationError,
-) -> list[dict[str, Any]]:
-    """``bounded_validation_errors`` for a log line, which the caller's own data
-    stays out of. A location part that no loaded pydantic model declares, such
-    as a mapping's key, is ``*``, and a message that quotes the value it refused
-    has it masked; field names, indices and the reasons are kept."""
-    names = _declared_names(len(sys.modules))
-    reported = bounded_validation_errors(exc)
-    for report, error in zip(reported, exc.errors()[:MAX_REPORTED_VALIDATION_ERRORS]):
-        report["loc"] = [
-            part if isinstance(part, int) or part in names else "*"
-            for part in report["loc"]
-        ]
-        refused = error.get("input")
-        if isinstance(refused, str) and len(refused) >= _MIN_MASKED_INPUT:
-            report["msg"] = _capped(error.get("msg", "").replace(refused, REDACTED))
-    return reported
+def _message_without_input(error: Mapping[str, Any]) -> str:
+    message = error.get("msg", "")
+    for text in sorted(_texts_in(error.get("input")), key=len, reverse=True):
+        message = message.replace(text, REDACTED)
+    return message
 
 
-def describe_validation_error(exc: pydantic.ValidationError) -> str:
-    """A log line's account of ``exc``: how many errors, in what, and each as
-    ``loggable_validation_errors`` renders it."""
-    count = exc.error_count()
-    return (
-        f"{count} validation error{'' if count == 1 else 's'} for {exc.title}: "
-        f"{loggable_validation_errors(exc)}"
-    )
+def _texts_in(value: Any) -> set[str]:
+    """The strings in ``value``, its keys included, long enough to be a secret;
+    read breadth-first and no further than ``_MAX_INPUT_NODES`` values."""
+    found: set[str] = set()
+    pending: deque[Any] = deque([value])
+    for _ in range(_MAX_INPUT_NODES):
+        if not pending:
+            break
+        item = pending.popleft()
+        if isinstance(item, str):
+            if len(item) >= _MIN_MASKED_INPUT:
+                found.add(item)
+        elif isinstance(item, Mapping):
+            pending.extend(item.keys())
+            pending.extend(item.values())
+        elif isinstance(item, (list, tuple)):
+            pending.extend(item)
+    return found
 
 
 @functools.lru_cache(maxsize=1)
 def _declared_names(module_count: int) -> frozenset[str]:
     """The name, field names and aliases of every pydantic model loaded, read
-    again once ``module_count``, the number of modules loaded, changes."""
+    again once ``module_count``, the number of modules loaded, changes. A model
+    built later without a module, as ``create_model`` builds one, is missed
+    until then, and its names are logged as ``*``."""
     names = set(_REQUEST_PARTS)
     unread: list[type[pydantic.BaseModel]] = [pydantic.BaseModel]
     seen: set[type[pydantic.BaseModel]] = set()

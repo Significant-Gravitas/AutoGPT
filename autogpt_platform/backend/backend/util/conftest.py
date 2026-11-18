@@ -38,6 +38,8 @@ def service_output(
     """Everything a service process writes to stdout and stderr at
     ``log_level``. ``cloud`` is the structured JSON Cloud Logging collects."""
     monkeypatch.setenv("LOG_LEVEL", log_level)
+    # Read by the configuration itself as well, so each case gets its format.
+    monkeypatch.setenv("ENABLE_CLOUD_LOGGING", str(request.param).lower())
     monkeypatch.setattr(
         service_logging, "is_structured_logging_enabled", lambda: request.param
     )
@@ -65,9 +67,10 @@ def sentry(monkeypatch: pytest.MonkeyPatch) -> Iterator[CapturingTransport]:
         during_init.delenv("PYTEST_CURRENT_TEST", raising=False)
         metrics.sentry_init()
     [options] = calls
-    # The profiler starts a sampler thread, and the asyncio integration patches
-    # the session's shared event loop; neither sees request data.
-    options["profiles_sample_rate"] = 0.0
+    # The continuous profiler starts a sampler thread that outlives the client,
+    # and the asyncio integration patches the session's shared event loop;
+    # neither sees request data.
+    options["profile_session_sample_rate"] = 0.0
     options["integrations"] = [
         integration
         for integration in options["integrations"]

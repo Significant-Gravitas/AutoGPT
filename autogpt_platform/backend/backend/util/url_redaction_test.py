@@ -106,6 +106,12 @@ from backend.util.url_redaction import (
             "https://api.telegram.org/file/bot123:AA/photos/p.jpg",
             f"https://api.telegram.org/file/bot{REDACTED}/photos/p.jpg",
         ),
+        # A user and password in the authority, but not an @ in a path or query.
+        (
+            "https://bot:pa55w0rd@proxy.example:8080/v1/x",
+            f"https://{REDACTED}@proxy.example:8080/v1/x",
+        ),
+        ("https://host/u/@me", "https://host/u/@me"),
         # A route's template names a credential without being one.
         ("/api/public/shared/{share_token}", "/api/public/shared/{share_token}"),
         (
@@ -151,6 +157,14 @@ def test_redact_url(url: str, expected: str) -> None:
             '"GET /ws?a=1#&token=t HTTP/1.1"',
             f'"GET /ws?a={REDACTED}&token={REDACTED} HTTP/1.1"',
         ),
+        (
+            "could not connect to postgresql://app:hunter22@db:5432/app: refused",
+            f"could not connect to postgresql://{REDACTED}@db:5432/app: refused",
+        ),
+        (
+            "mail a@b.example from https://host/u/@me",
+            "mail a@b.example from https://host/u/@me",
+        ),
         # Telegram's bot token is in the path, with no query and no /api/.
         (
             "POST https://api.telegram.org/bot123:AA-b_c/getMe",
@@ -188,6 +202,11 @@ _UUID = "0b5e55ed-8a1f-4e27-b9c3-d4527e19beef"
         (
             "/cb?code=4%2F0AfJohX-abcdefgh&state=s",
             {"4%2F0AfJohX-abcdefgh", "4/0AfJohX-abcdefgh"},
+        ),
+        # A name and value as the route reads them, form-decoded, and as sent.
+        (
+            "/cb?%74oken=abc+def+ghi+jkl+mno",
+            {"abc+def+ghi+jkl+mno", "abc def ghi jkl mno"},
         ),
         # A crafted Host header doesn't hide the path behind it.
         (f"http://evil?/api/invitations/{_UUID}/accept", {_UUID}),
@@ -302,12 +321,13 @@ def test_no_request_target_keeps_its_credential_whatever_surrounds_it(
     masking again changes nothing."""
     rng = random.Random(seed)
     for _ in range(200):
-        target = _random_request_target(rng)
+        target, credential = _random_request_target(rng)
         masked = redact_url(target)
         assert _SECRET not in masked, target
         assert redact_url(masked) == masked, target
-        # Found whole too, so it can be masked wherever a route passed it on.
-        assert any(_SECRET in found for found in credentials_in_url(target)), target
+        # Found whole too, as the route reads it, so it can be masked wherever
+        # the route passes it on.
+        assert credential in credentials_in_url(target), target
         line = f'1.2.3.4:5 - "GET {target} HTTP/1.1" 200'
         masked_line = redact_urls_in_text(line)
         assert _SECRET not in masked_line, line
@@ -325,7 +345,8 @@ def test_masking_stays_linear_in_a_url_stacked_with_prefixes() -> None:
 
 def test_reading_a_urls_credentials_stays_linear() -> None:
     """A query of thousands of pairs named like a credential, each value running
-    to an "&" far behind: read whole for each, it took minutes."""
+    to an "&" far behind. Read whole for each, the work grows with the square of
+    the query: about 10 s and gigabytes of copies on this one."""
     url = "/x" + "?key=" * 50_000 + "&a=b" * 50_000
     started = time.monotonic()
     assert credentials_in_url(url)
@@ -363,19 +384,23 @@ _CREDENTIAL_PATHS = [
 ]
 
 
-def _random_request_target(rng: random.Random) -> str:
+def _random_request_target(rng: random.Random) -> tuple[str, str]:
+    """A target, and its credential as the route reads it."""
+
     def junk() -> str:
         return "".join(rng.choices(_JUNK, k=rng.randint(0, 3)))
 
     pairs = [f"{junk()}={junk()}" for _ in range(rng.randint(0, 3))]
     if rng.random() < 0.5:
-        pairs.insert(rng.randint(0, len(pairs)), f"token={junk()}{_SECRET}{junk()}")
+        credential = f"{junk()}{_SECRET}{junk()}"
+        pairs.insert(rng.randint(0, len(pairs)), f"token={credential}")
         path = rng.choice(["/ws", "/api/email/unsubscribe", "/"])
     else:
+        credential = _SECRET
         # A crafted path or Host header can stack another prefix in front.
         stacked = rng.choice(["", "", "/api/public/shared", "/api/invitations"])
         path = stacked + rng.choice(_CREDENTIAL_PATHS).format(_SECRET)
     # Sentry prefixes the scheme and the Host header, which the client controls.
     origin = f"http://h{junk()}" if rng.random() < 0.3 else ""
     query = "?" + "&".join(pairs) if pairs or rng.random() < 0.5 else ""
-    return origin + path + query
+    return origin + path + query, credential
