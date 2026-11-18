@@ -23,18 +23,6 @@ one condition on that ID stops them:
 
 ## What it doesn't stop
 
-- **Langfuse.** AutoPilot conversations are also traced to Langfuse, by the
-  backend and by Broadcast, until Langfuse tracing is removed
-  ([#16026](https://github.com/Significant-Gravitas/AutoGPT/pull/16026)).
-  Those traces carry the user ID, so they can be deleted (step 4), but new
-  ones keep arriving until then.
-- **Model calls sent without the user.** Some calls through OpenRouter are not
-  attributed yet: the baseline path's context compaction, the action gate's
-  classifiers, web search and Graphiti memory (see "LLM analytics" in
-  [`tracking-plan.md`](tracking-plan.md)). Broadcast sends them without the
-  user ID, so neither the filter nor a deletion by user ID reaches them.
-  Calls that skip OpenRouter (direct Anthropic, a Claude Code subscription, a
-  connected Codex account) never reach Broadcast at all.
 - **The browser.** Browser analytics and session recordings run only with
   consent from the cookie banner. The filter drops browser events sent after
   sign-in, but not session recordings, events before sign-in, or events from
@@ -43,6 +31,36 @@ one condition on that ID stops them:
   answer per domain.
 
 Say what still applies in the reply (step 5), so it promises only what we did.
+
+## Gaps that are closed
+
+- **Langfuse.** AutoPilot conversations are no longer traced to Langfuse:
+  [#16026](https://github.com/Significant-Gravitas/AutoGPT/pull/16026)
+  removed the backend's tracing, live in prod since v0.11.0 (4 Nov 2026), and
+  OpenRouter Broadcast's Langfuse destination was switched off the same day.
+  Traces from before then carry the user ID; step 4 deletes them.
+- **Model calls sent without the user.** Many OpenRouter calls don't name the
+  user: AutoPilot's web search, the action gate's classifiers, Graphiti
+  memory and the baseline path's compaction, and calls outside AutoPilot such
+  as workflow LLM blocks, onboarding and run summaries. Broadcast delivers
+  none of them to PostHog: on 18 Nov 2026 every `$ai_generation` in the
+  production project from the past 60 days carried a user ID and a chat
+  session, although web search alone had run over 2,000 times in 30 days.
+  So nothing of theirs from these calls is in PostHog to stop or delete.
+  Calls that skip OpenRouter (direct Anthropic, a Claude Code subscription, a
+  connected Codex account) never reach Broadcast at all. To
+  check this still holds, run in PostHog's SQL editor:
+
+  ```sql
+  select count() from events
+  where event = '$ai_generation'
+    and timestamp > now() - interval 30 day
+    and distinct_id != 'openrouter_connection_test'
+    and not match(distinct_id, '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+  ```
+
+  Anything above 0 means some calls now arrive without the user: name them in
+  the reply, and attribute them in `copilot/llm_attribution.py`.
 
 ## Steps
 
@@ -100,7 +118,7 @@ Say what still applies in the reply (step 5), so it promises only what we did.
    recordings. PostHog deletes the events in a later batch, at off-peak times
    (weekends on PostHog Cloud), so they show in queries for up to a week.
 
-   While Langfuse tracing is on, delete their data there too: in Traces,
+   Delete their traces from before 4 Nov 2026 in Langfuse too: in Traces,
    filter by the user ID, select all rows across pages, and delete them. A
    reply rating is usually a score on its trace and goes with it; a few are
    scores on the chat session, so delete the user's scores as well.
