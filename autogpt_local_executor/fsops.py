@@ -203,7 +203,13 @@ def can_open_folder(path: str | os.PathLike[str]) -> bool:
     On Windows os.access looks at the read-only attribute and no further,
     so it calls every folder usable, another account's profile among them.
     There the folder is opened for listing, which its access list allows or
-    refuses."""
+    refuses.
+
+    The answer is Windows' for this process. An administrator's process
+    whose backup and restore privileges are switched on (one started from
+    Git Bash, say) is let in whatever the access list says, here and in
+    can_write_folder. Listing then works too; a file made the ordinary way
+    doesn't use those privileges and can still be refused."""
     if sys.platform != "win32":
         return os.access(path, os.R_OK | os.X_OK)
     try:
