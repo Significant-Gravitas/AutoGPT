@@ -437,7 +437,7 @@ async def test_a_validators_message_stays_out_of_the_log(
     logs = service_output.getvalue()
     assert not _leaks(SESSION_COOKIE, logs)
     assert "'loc': ['body', 'token']" in logs
-    assert "Not logged: a validator's message can quote the input" in logs
+    assert f"'msg': 'Value error, {REDACTED}'" in logs
 
 
 async def test_a_key_refused_as_extra_stays_out_of_the_log(
