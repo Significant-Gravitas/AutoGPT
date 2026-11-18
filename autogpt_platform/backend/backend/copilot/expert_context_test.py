@@ -222,7 +222,9 @@ class TestBuildExpertIdentitySuffix:
             )
 
         assert "For this session you are Theo" in result
-        mock_db.get_expert.assert_awaited_once()
+        mock_db.get_expert.assert_awaited_once_with(
+            "user-1", "exp-2", include_workflows=False
+        )
         mock_db.resolve_private_expert_tenancy.assert_awaited_once_with(
             "user-1", "exp-2"
         )

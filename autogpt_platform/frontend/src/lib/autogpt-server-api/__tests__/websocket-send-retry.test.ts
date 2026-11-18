@@ -14,6 +14,8 @@ describe("pending subscriptions share connection retries", () => {
     "00000000-0000-4000-8000-000000000001" as GraphExecutionID;
   beforeEach(() => {
     vi.useFakeTimers();
+    // The top of each jittered retry window: the full backoff step.
+    vi.spyOn(Math, "random").mockReturnValue(1 - Number.EPSILON);
     vi.stubGlobal("WebSocket", FakeWebSocket);
     FakeWebSocket.instances = [];
     api = new BackendAPI("http://test", "ws://test/ws");

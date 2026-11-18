@@ -258,9 +258,10 @@ internally.
 
 Before exposing the proxy, complete the [Account policy](#account-policy)
 bootstrap, promote the intended administrator, and close new-account signup.
-The bundled nginx records the external proxy as the immediate client, so the
-proxy must preserve its own client-attribution logs and enforce any per-client
-IP rate limits or access rules.
+Set `TRUSTED_PROXIES` on the container to that proxy's addresses, so the
+bundled nginx reads the visitor's address from `X-Forwarded-For` and the
+sign-in limits, IP blocks and sign-in log see each visitor rather than the
+proxy; see [Client IP Addresses](client-ip.md#the-single-container-image).
 
 Set `AUTOGPT_PUBLIC_URL` to the browser-visible HTTPS origin, for example:
 

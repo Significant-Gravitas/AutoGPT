@@ -2,6 +2,7 @@
 and the mounted apps that must answer through it."""
 
 import logging
+from collections.abc import Iterator, Mapping
 
 import fastapi
 import fastapi.testclient
@@ -9,14 +10,18 @@ import pydantic
 import pytest
 import starlette.routing
 from fastapi.exceptions import RequestValidationError
+from pydantic_core import PydanticCustomError
 
 from backend.api.external.v2.errors import add_v2_exception_handlers
+from backend.api.utils import validation_errors
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.api.utils.validation_errors import (
     MAX_REPORTED_VALIDATION_ERRORS,
     MAX_VALIDATION_ERROR_CHARS,
     MAX_VALIDATION_ERROR_LOC_PARTS,
+    VALIDATOR_MESSAGE_NOT_LOGGED,
     bounded_validation_errors,
+    loggable_validation_errors,
 )
 
 OVER_CAP = "x" * (MAX_VALIDATION_ERROR_CHARS + 100)
@@ -52,6 +57,96 @@ def test_the_rejected_value_is_not_reported() -> None:
     assert [error["loc"] for error in reported] == [["ids"], ["name"]]
     assert all(set(error) == {"type", "loc", "msg"} for error in reported)
     assert OVER_CAP not in str(reported)
+
+
+class _CountedReads(Mapping[str, str]):
+    """A large mapping that counts how many of its keys were read."""
+
+    def __init__(self, size: int) -> None:
+        self.size = size
+        self.read = 0
+
+    def __getitem__(self, key: str) -> str:
+        return "a value as long as a credential"
+
+    def __len__(self) -> int:
+        return self.size
+
+    def __iter__(self) -> Iterator[str]:
+        for index in range(self.size):
+            self.read += 1
+            yield f"key-{index}"
+
+
+def test_a_large_refused_mapping_is_not_read_for_the_log() -> None:
+    """A missing field's error keeps the whole mapping it was missing from."""
+    refused = _CountedReads(100_000)
+    error = pydantic.ValidationError.from_exception_data(
+        "_Ids", [{"type": "missing", "loc": ("ids",), "input": refused}]
+    )
+
+    assert loggable_validation_errors(error)[0]["loc"] == ["ids"]
+    assert refused.read == 0
+
+
+def test_a_validators_own_message_stays_out_of_the_log() -> None:
+    """A validator, a custom error or an attribute read can quote what was sent
+    in any form, so its message isn't logged; pydantic's own messages, which
+    say what was expected, are."""
+    secret = "line one\nS3cr3t-line-two"
+    error = pydantic.ValidationError.from_exception_data(
+        "_Ids",
+        [
+            {
+                "type": "value_error",
+                "loc": ("name",),
+                "input": secret,
+                "ctx": {"error": ValueError(f"bad token {secret!r}")},
+            },
+            {
+                "type": PydanticCustomError(
+                    "token_refused", "{token} refused", {"token": secret}
+                ),
+                "loc": ("token",),
+                "input": secret,
+            },
+            {"type": "missing", "loc": ("ids",), "input": {}},
+        ],
+    )
+
+    logged = loggable_validation_errors(error)
+    assert [entry["msg"] for entry in logged] == [
+        VALIDATOR_MESSAGE_NOT_LOGGED,
+        VALIDATOR_MESSAGE_NOT_LOGGED,
+        "Field required",
+    ]
+    # The response keeps the validator's message.
+    assert "S3cr3t-line-two" in bounded_validation_errors(error)[0]["msg"]
+
+
+def test_only_the_reported_errors_locations_are_rewritten(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A request with thousands of keys a model refuses costs no more than the
+    errors a log line reports."""
+    rewritten: list[object] = []
+    location = validation_errors._loggable_location
+
+    def counted(error: Mapping[str, object]) -> object:
+        rewritten.append(error)
+        return location(error)
+
+    monkeypatch.setattr(validation_errors, "_loggable_location", counted)
+
+    class Strict(pydantic.BaseModel):
+        model_config = pydantic.ConfigDict(extra="forbid")
+
+    with pytest.raises(pydantic.ValidationError) as caught:
+        Strict.model_validate({f"extra{i}": i for i in range(10_000)})
+    logged = loggable_validation_errors(caught.value)
+
+    assert len(rewritten) == MAX_REPORTED_VALIDATION_ERRORS
+    assert logged[-1]["msg"] == "9980 more validation errors omitted"
 
 
 def test_a_list_field_reports_a_bounded_number_of_errors() -> None:

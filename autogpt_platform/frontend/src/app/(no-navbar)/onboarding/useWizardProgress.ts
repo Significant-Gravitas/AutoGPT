@@ -24,9 +24,11 @@ export function useWizardProgress({
   ready,
   steps,
   hasPaywall = true,
+  isUserSettled = true,
 }: {
   userID: string | null;
   ready: boolean;
+  isUserSettled?: boolean;
   steps: StepLayout;
   hasPaywall?: boolean;
 }) {
@@ -49,12 +51,38 @@ export function useWizardProgress({
     error: null as string | null,
   });
   const saver = useRef<ReturnType<typeof createProgressSaver> | null>(null);
+  const early = useRef<EarlyLoad | null>(null);
+
+  // The read only needs the account, so it runs while the layout's own reads
+  // are in flight; the effect below applies it once the layout is ready.
+  useEffect(() => {
+    if (!userID || !isUserSettled) return;
+    const abort = new AbortController();
+    const load: EarlyLoad = {
+      userID,
+      attempt,
+      abort,
+      result: loadWizardProgress(userID, reloadLatest.current, abort),
+    };
+    early.current = load;
+    return () => {
+      // Once applied, the read belongs to the effect below, which cancels it.
+      if (early.current !== load) return;
+      early.current = null;
+      abort.abort();
+    };
+  }, [userID, isUserSettled, attempt]);
 
   useEffect(() => {
     if (!ready || !userID) return;
     let active = true;
     let unsubscribe: (() => void) | undefined;
-    const abort = new AbortController();
+    const pending =
+      early.current?.userID === userID && early.current.attempt === attempt
+        ? early.current
+        : null;
+    early.current = null;
+    const abort = pending?.abort ?? new AbortController();
     const { steps, params, router } = latest.current;
     const isCurrent = () => active && currentUserID.current === userID;
     useOnboardingWizardStore.getState().reset();
@@ -81,11 +109,8 @@ export function useWizardProgress({
     }
 
     async function initialize() {
-      const result = await loadWizardProgress(
-        userID!,
-        reloadLatest.current,
-        abort,
-      );
+      const result = await (pending?.result ??
+        loadWizardProgress(userID!, reloadLatest.current, abort));
       if (!isCurrent()) return;
       if (result.kind === "complete") {
         clearLocalProgress(userID!);
@@ -230,4 +255,11 @@ export function useWizardProgress({
     retry,
     finish,
   };
+}
+
+interface EarlyLoad {
+  userID: string;
+  attempt: number;
+  abort: AbortController;
+  result: ReturnType<typeof loadWizardProgress>;
 }
