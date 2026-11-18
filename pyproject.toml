@@ -21,6 +21,9 @@ dependencies = [
     "pydantic-settings>=2.0",
     "websockets>=14.0",
     "httpx>=0.27",
+    # Unicode's rule for where a zero-width joiner may stand in a name, and
+    # the joining types it needs (hidden_characters). httpx brings it too.
+    "idna>=3.7",
     "keyring>=25.0",
 ]
 

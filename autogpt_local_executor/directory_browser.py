@@ -6,13 +6,13 @@ import os
 import re
 import secrets
 import time
-import unicodedata
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePath
 
 from . import fsops, platform_info
+from .hidden_characters import has_hidden_character
 
 MAX_DIRECTORY_ENTRIES = 200
 MAX_SCANNED_ENTRIES = 1000
@@ -512,9 +512,12 @@ def _is_drive_top(path: PurePath) -> bool:
 
 
 def _valid_wire_name(name: str) -> bool:
-    if not name or "\x00" in name:
-        return False
-    if any(unicodedata.category(char).startswith("C") for char in name):
+    """Whether a folder's name goes into a listing: one that JSON can carry
+    and that shows as what it is. A name with a control, a bidi control or a
+    zero-width character in it is left out, since it could read as another
+    folder's; a joiner or non-joiner where its script uses one (a Persian
+    word, an emoji sequence) is part of the name (hidden_characters)."""
+    if not name or has_hidden_character(name):
         return False
     try:
         name.encode("utf-8")

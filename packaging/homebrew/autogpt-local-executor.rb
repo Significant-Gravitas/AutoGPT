@@ -77,6 +77,6 @@ class AutogptLocalExecutor < Formula
     # each of which came from a resource block. Import them all, so one
     # missing from the resource blocks fails here rather than at `start`.
     # tests/test_packaging.py keeps this list to pyproject.toml's.
-    system libexec/"bin/python", "-c", "import pydantic, pydantic_settings, websockets, httpx, keyring"
+    system libexec/"bin/python", "-c", "import pydantic, pydantic_settings, websockets, httpx, idna, keyring"
   end
 end

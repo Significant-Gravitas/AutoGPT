@@ -85,6 +85,15 @@ Symlinks, junctions, inaccessible entries, files, and invalid wire names are
 skipped. The result includes directory display names and canonical absolute
 paths only; navigation and selection use short-lived opaque references.
 
+An invalid wire name is one that isn't valid UTF-8, or one that could read
+as another folder's name in the dialog: it holds a control character, a bidi
+control, or a zero-width or other invisible format character. U+200C and
+U+200D are the exception where a script uses them: inside a Persian word,
+after an Indic virama, between the pictographs of an emoji sequence. The
+rule is Unicode's own for names (CONTEXTJ, RFC 5892), and the same on every
+OS; [PROTOCOL.md](PROTOCOL.md#directory_list_request--directory_list_response)
+has it in full.
+
 On Windows, a drive's top folder is listed without the system's own
 folders: `Windows`, `Program Files`, `Program Files (x86)`, `ProgramData`,
 `Recovery` and `Documents and Settings`. A folder of one of those names

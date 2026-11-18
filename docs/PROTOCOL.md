@@ -287,6 +287,41 @@ tells the two apart, and choosing such a folder is refused with
 it. Access is asked of each system the way it answers truthfully
 ([CROSS_PLATFORM.md](CROSS_PLATFORM.md#remote-directory-browser-roots)).
 
+A folder's name goes into a dialog a person reads, so a folder whose name
+could read as another's is left out of the listing, and with it the folders
+inside it. That is a name with a character of a Unicode `C` category:
+
+- a control character;
+- a bidi control, which reorders what is shown (U+202A to U+202E, U+2066 to
+  U+2069, U+200E, U+200F, U+061C);
+- a zero-width or other format character, which shows as nothing (`Documents`
+  followed by one looks like a second `Documents`), the tag characters that
+  England's, Scotland's and Wales' flags are written with among them;
+- a private-use or unassigned code point, which takes in a character newer
+  than the Unicode tables of the Python the shim runs on.
+
+A name that isn't valid UTF-8 is left out too.
+
+Two format characters are part of how some scripts are written. A name that
+uses one of them that way is listed and can be chosen like any other:
+
+- U+200C (zero width non-joiner) between two joining letters of a cursive
+  script, as inside many Persian words, or after an Indic virama;
+- U+200D (zero width joiner) after an Indic virama, or between two
+  pictographs, as in an emoji sequence (a family, a rainbow flag).
+
+Where they may stand is Unicode's own rule for names, CONTEXTJ in IDNA 2008
+(RFC 5892, appendix A.1 and A.2), and for an emoji sequence a joiner between
+two pictographs. Anywhere else one of them only hides, and the name is left
+out: at the start of a name, beside another one, between letters that don't
+join (Latin letters, say), and U+200C at the end of a name unless a virama
+is before it. `launch_app` takes an app's name by the same rule.
+
+The platform has to take such a path as well. It reads a chat's folder from
+that chat's HELLO (`allowed_root`) and tells the model where it works; a
+platform that refuses or rewrites every `C`-category character there can't
+run a chat in a folder that this lists.
+
 #### `ATTACH_SESSION` / `SESSION_ATTACHED`
 
 The platform allocates a draft/chat session ID and returns the reference chosen
@@ -1127,7 +1162,9 @@ argument inside a `run_steps` step, whatever tool the step names, or its
 `steps[i]`), since only a launch called on its own has its name checked
 against the installed apps; and a `launch_app` `name`, `bundle_id` or
 `aumid` that isn't an app's name or id (a path, a URL scheme, a leading
-`-`, a control character, on Linux a name whose first word is a program,
+`-`, a control or other invisible character, except a joiner where the
+name's script uses one, as in a folder's name ([`DIRECTORY_LIST_REQUEST`](#directory_list_request--directory_list_response)),
+on Linux a name whose first word is a program,
 a program's own name included, or, unless `urls` or `launch_path`
 is given, one that matches no installed app in `list_apps`, or more than
 one, or whose app's launch command the shim can't send with its program as
