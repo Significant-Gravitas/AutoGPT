@@ -361,6 +361,13 @@ mail, calendar and files.
   (`api/features/integrations/sign_in_connection.py`) keeps them as the
   account's connection, or widens the one it has. It never adds a second
   connection for an account, and it never fails the sign-in.
+- **A new account:** the handoff comes before the account's first request has
+  set it up, and a connection is stored in the account's personal org, which
+  that request makes. So the backend holds a sign-up's connection (encrypted
+  in Redis, for 10 minutes) and `POST /api/auth/user` keeps it once it has set
+  the account up. That request is still the one that creates the account, so
+  `/auth/callback` still sends the signup goal and records the signup's
+  consent.
 - **One OAuth client:** a provider renews a refresh token only for the client
   it was issued to, so login must use the backend's client. Microsoft already
   does (one Entra app). For Google, `AUTH_GOOGLE_CLIENT_ID`/`SECRET` must be

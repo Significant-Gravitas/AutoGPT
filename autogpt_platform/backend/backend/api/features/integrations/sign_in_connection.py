@@ -9,8 +9,16 @@ Only the frontend's server can call it: its service token names the user who
 just signed in. A sign-in never adds a second connection for an account that
 already has one: it widens the existing one when the new token covers it, and
 otherwise leaves it alone.
+
+A sign-up's handoff arrives before the account's first request has set it up,
+and a connection can only be stored once the account has its personal org. The
+connection is held until then instead (encrypted, for ``HELD_FOR_SECONDS``),
+and ``POST /auth/user``, the request that sets the account up, keeps it. That
+request stays the one that creates the account, so everything it does for a
+new account (the signup goal, the consent record) still happens.
 """
 
+import asyncio
 import logging
 import time
 from typing import Annotated, Literal
@@ -22,6 +30,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, SecretStr
 
 from backend.data.model import OAuth2Credentials
+from backend.data.org_migration import has_personal_org
+from backend.data.redis_client import get_redis_async
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.oauth.google import GoogleOAuthHandler
 from backend.integrations.oauth.microsoft_tokens import (
@@ -33,6 +43,7 @@ from backend.integrations.oauth.sign_in import (
     SignInConnectionError,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.encryption import JSONCryptor
 
 from .router import (
     _get_provider_oauth_handler,
@@ -46,6 +57,12 @@ logger = logging.getLogger(__name__)
 SIGN_IN_CONNECTION_SCOPE = "integrations:sign-in-connection"
 # Well past any Google or Microsoft token, so only a malformed body hits it.
 TOKEN_MAX_LENGTH = 16_384
+# The sign-up's own redirect sets the account up within seconds; a connection
+# nobody takes by then is dropped, and onboarding offers to connect instead.
+HELD_FOR_SECONDS = 600
+# Every sign-in's POST /auth/user looks for a held connection, so an
+# unreachable Redis must cost it at most this, never a hung read.
+HELD_LOOKUP_TIMEOUT_SECONDS = 2.0
 
 sign_in_connection_router = APIRouter()
 _bearer = HTTPBearer(auto_error=False)
@@ -63,7 +80,7 @@ class SignInConnectionRequest(BaseModel):
     id_token: SecretStr | None = Field(default=None, max_length=TOKEN_MAX_LENGTH)
 
 
-SignInConnectionResult = Literal["created", "updated", "kept", "skipped"]
+SignInConnectionResult = Literal["created", "updated", "kept", "skipped", "held"]
 
 
 class SignInConnectionResponse(BaseModel):
@@ -116,9 +133,72 @@ async def connect_from_sign_in(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
         ) from None
-    result = await keep_sign_in_connection(user_id, credentials)
+    if await has_personal_org(user_id):
+        result = await keep_sign_in_connection(user_id, credentials)
+    else:
+        await hold_sign_in_connection(user_id, credentials)
+        result = "held"
     logger.info("Sign-in connection for %s: %s", request.provider, result)
     return SignInConnectionResponse(result=result)
+
+
+def _held_key(user_id: str) -> str:
+    return f"sign-in-connection:{user_id}"
+
+
+async def hold_sign_in_connection(user_id: str, credentials: OAuth2Credentials) -> None:
+    """Keeps a sign-up's connection until its account is set up."""
+    sealed = JSONCryptor().encrypt(credentials.model_dump(mode="json"))
+    await asyncio.wait_for(
+        _put_held(user_id, sealed), timeout=HELD_LOOKUP_TIMEOUT_SECONDS
+    )
+
+
+async def _put_held(user_id: str, sealed: str) -> None:
+    redis = await get_redis_async()
+    await redis.set(_held_key(user_id), sealed, ex=HELD_FOR_SECONDS)
+
+
+async def keep_held_sign_in_connection(
+    user_id: str,
+) -> SignInConnectionResult | None:
+    """Keeps the connection held for *user_id*, now that the account is set up.
+
+    Called by ``POST /auth/user`` once the account exists. Takes the held
+    connection at most once, and never fails the request it runs in: without
+    the connection, onboarding offers to connect.
+    """
+    try:
+        sealed = await asyncio.wait_for(
+            _take_held(user_id), timeout=HELD_LOOKUP_TIMEOUT_SECONDS
+        )
+    except Exception:
+        logger.warning("Couldn't read the held sign-in connection", exc_info=True)
+        return None
+    if not sealed:
+        return None
+    try:
+        credentials = OAuth2Credentials.model_validate(JSONCryptor().decrypt(sealed))
+    except Exception as error:
+        # Only the type: a validation error quotes its input, the tokens.
+        logger.warning(
+            "A held sign-in connection couldn't be read: %s", type(error).__name__
+        )
+        return None
+    try:
+        result = await keep_sign_in_connection(user_id, credentials)
+    except Exception:
+        logger.warning("A held sign-in connection wasn't kept", exc_info=True)
+        return None
+    logger.info("Held sign-in connection for %s: %s", credentials.provider, result)
+    return result
+
+
+async def _take_held(user_id: str) -> str | None:
+    redis = await get_redis_async()
+    sealed = await redis.getdel(_held_key(user_id))
+    # The client decodes responses, which its stubs can't know.
+    return sealed.decode() if isinstance(sealed, bytes) else sealed
 
 
 async def _credentials_from_sign_in(

@@ -1,9 +1,13 @@
+import asyncio
+import logging
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
 import jwt
 import pytest
+from cryptography.fernet import Fernet
 from pydantic import SecretStr
 
 from backend.api.features.integrations import sign_in_connection
@@ -11,6 +15,7 @@ from backend.api.rest_api import app as rest_app
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth import google as google_oauth
 from backend.integrations.oauth.google import GoogleOAuthHandler
+from backend.util import encryption
 
 app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
 # Mirror the prefix rest_api.py mounts it under.
@@ -54,17 +59,48 @@ class _TokenInfo:
 
 @pytest.fixture
 def store(monkeypatch):
-    """The user's saved connections, and what the endpoint writes."""
+    """The user's saved connections, and what the endpoint writes. The account
+    is set up (it has its personal org) unless a test says otherwise."""
     saved: list[OAuth2Credentials] = []
     manager = MagicMock()
     manager.store.get_creds_by_provider = AsyncMock(side_effect=lambda *_: saved)
     manager.create = AsyncMock()
     upgrade = AsyncMock()
+    has_org = AsyncMock(return_value=True)
     monkeypatch.setattr(sign_in_connection, "creds_manager", manager)
     monkeypatch.setattr(sign_in_connection, "_upgrade_existing_credential", upgrade)
+    monkeypatch.setattr(sign_in_connection, "has_personal_org", has_org)
     app.dependency_overrides[sign_in_connection.signed_in_user] = lambda: "user-1"
-    yield MagicMock(saved=saved, create=manager.create, upgrade=upgrade)
+    yield MagicMock(
+        saved=saved, create=manager.create, upgrade=upgrade, has_org=has_org
+    )
     app.dependency_overrides.clear()
+
+
+class _FakeRedis:
+    def __init__(self):
+        self.values: dict[str, str] = {}
+        self.expiry: dict[str, int | None] = {}
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> None:
+        self.values[key] = value
+        self.expiry[key] = ex
+
+    async def getdel(self, key: str) -> str | None:
+        self.expiry.pop(key, None)
+        return self.values.pop(key, None)
+
+
+@pytest.fixture
+def held(monkeypatch):
+    """Redis, where a sign-up's connection waits for its account, sealed with
+    the backend's encryption key."""
+    redis = _FakeRedis()
+    monkeypatch.setattr(
+        sign_in_connection, "get_redis_async", AsyncMock(return_value=redis)
+    )
+    monkeypatch.setattr(encryption, "ENCRYPTION_KEY", Fernet.generate_key().decode())
+    return redis
 
 
 @pytest.fixture
@@ -269,3 +305,66 @@ def test_refusals_never_echo_a_token(store, google, caplog):
     for secret in ("sign-in-access", "sign-in-refresh"):
         assert secret not in res.text
         assert secret not in caplog.text
+
+
+def test_a_sign_ups_connection_waits_for_the_account_to_be_set_up(store, google, held):
+    # The handoff comes as the sign-up completes, before the request that
+    # sets the account up (and gives it the org a connection is stored in).
+    store.has_org.return_value = False
+
+    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+
+    assert res.status_code == 200, res.text
+    assert res.json() == {"result": "held"}
+    store.create.assert_not_called()
+    key = "sign-in-connection:user-1"
+    assert held.expiry[key] == sign_in_connection.HELD_FOR_SECONDS
+    # Encrypted while it waits.
+    for secret in ("sign-in-access", "sign-in-refresh"):
+        assert secret not in held.values[key]
+
+
+def test_setting_the_account_up_keeps_its_held_connection_once(store, google, held):
+    store.has_org.return_value = False
+    client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+
+    result = asyncio.run(sign_in_connection.keep_held_sign_in_connection("user-1"))
+
+    assert result == "created"
+    (user_id, created), _ = store.create.call_args
+    assert user_id == "user-1"
+    assert created.username == "pat@gmail.com"
+    assert set(created.scopes) == {"openid", GMAIL, CALENDAR}
+    assert created.access_token.get_secret_value() == "ya29.sign-in-access"
+    assert created.refresh_token.get_secret_value() == "1//sign-in-refresh"
+    # Taken, so the account's next sign-in finds nothing waiting.
+    assert held.values == {}
+    assert (
+        asyncio.run(sign_in_connection.keep_held_sign_in_connection("user-1")) is None
+    )
+    assert store.create.call_count == 1
+
+
+def test_a_held_connection_that_cant_be_read_is_dropped_quietly(store, held, caplog):
+    held.values["sign-in-connection:user-1"] = "ya29.not-sealed"
+
+    with caplog.at_level(logging.WARNING):
+        result = asyncio.run(sign_in_connection.keep_held_sign_in_connection("user-1"))
+
+    assert result is None
+    store.create.assert_not_called()
+    assert "ya29.not-sealed" not in caplog.text
+
+
+def test_an_unreachable_redis_never_holds_up_a_sign_in(store, monkeypatch):
+    async def never_connects():
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(sign_in_connection, "get_redis_async", never_connects)
+    monkeypatch.setattr(sign_in_connection, "HELD_LOOKUP_TIMEOUT_SECONDS", 0.05)
+    started = time.monotonic()
+
+    result = asyncio.run(sign_in_connection.keep_held_sign_in_connection("user-1"))
+
+    assert result is None
+    assert time.monotonic() - started < 2
