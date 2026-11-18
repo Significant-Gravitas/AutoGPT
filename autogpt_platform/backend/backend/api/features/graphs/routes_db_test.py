@@ -40,7 +40,8 @@ async def test_listed_versions_carry_the_credentials_their_sub_graphs_need(
             ),
             user_id,
         )
-    ctx = _request_context(user_id)
+    org_id, team_id = await get_user_default_team(user_id)
+    ctx = _request_context(user_id, org_id=org_id, team_id=team_id)
 
     find_many = mocker.spy(AgentGraphActions, "find_many")
     listed = {
@@ -90,7 +91,8 @@ async def test_a_listed_version_walks_both_versions_of_a_sub_graph_it_calls(
         ),
         user_id,
     )
-    ctx = _request_context(user_id)
+    org_id, team_id = await get_user_default_team(user_id)
+    ctx = _request_context(user_id, org_id=org_id, team_id=team_id)
 
     [listed] = await get_graph_all_versions(parent.id, user_id, ctx)
     single = await get_graph(parent.id, user_id, ctx, version=parent.version)

@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from backend.data import db
 from backend.data.expert_attribution import resolve_attributable_expert
+from backend.data.tenancy import tenancy_for_new_row
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, dumps, sanitize_string
 
@@ -359,6 +360,9 @@ async def create_chat_session(
     expert_id: str | None = None,
 ) -> ChatSessionInfo:
     """Create a chat session, atomically validating expert attribution."""
+    organization_id, team_id = await tenancy_for_new_row(
+        user_id, organization_id, team_id
+    )
     requested_expert_id = expert_id
     if requested_expert_id:
         async with db.transaction() as tx:
@@ -404,7 +408,7 @@ def _chat_session_create_input(
     *,
     session_id: str,
     user_id: str,
-    organization_id: str | None,
+    organization_id: str,
     team_id: str | None,
     metadata: ChatSessionMetadata | None,
     expert_id: str | None,
@@ -415,8 +419,7 @@ def _chat_session_create_input(
         credentials=SafeJson({}),
         successfulAgentRuns=SafeJson({}),
         successfulAgentSchedules=SafeJson({}),
-        # Tenancy dual-write fields
-        **({"organizationId": organization_id} if organization_id else {}),
+        organizationId=organization_id,
         **({"teamId": team_id} if team_id else {}),
         **({"expertId": expert_id} if expert_id else {}),
         metadata=SafeJson(_persisted_metadata(metadata).model_dump()),
@@ -2053,11 +2056,12 @@ async def append_plain_session_message(
         return None
 
     session_id = str(uuid.uuid4())
+    organization_id, team_id = await tenancy_for_new_row(user_id, None)
     data = _chat_session_create_input(
         session_id=session_id,
         user_id=user_id,
-        organization_id=None,
-        team_id=None,
+        organization_id=organization_id,
+        team_id=team_id,
         expert_id=None,
         metadata=await _default_route_metadata(user_id, origin="interactive"),
     )

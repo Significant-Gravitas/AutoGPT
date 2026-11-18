@@ -36,9 +36,23 @@ from autogpt_libs.auth.permissions import (
 from prisma.models import OrgMember, TeamMember
 
 from backend.data.db import prisma
+from backend.data.org_migration import personal_org_tenancy
 from backend.util.exceptions import NotAuthorizedError
 
 logger = logging.getLogger(__name__)
+
+
+async def tenancy_for_new_row(
+    user_id: str, organization_id: str | None, team_id: str | None = None
+) -> tuple[str, str | None]:
+    """The org and team a new row of *user_id*'s is written with.
+
+    The given ones, or without an org the user's personal org and its default
+    team: the tenancy the org bootstrap gave every row written before tagging.
+    """
+    if organization_id:
+        return organization_id, team_id
+    return await personal_org_tenancy(user_id)
 
 
 async def get_user_team_ids(user_id: str, organization_id: str) -> list[str]:

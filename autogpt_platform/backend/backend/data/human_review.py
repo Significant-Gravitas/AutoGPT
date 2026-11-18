@@ -33,6 +33,7 @@ from backend.copilot.constants import (
     step_card_id,
 )
 from backend.data.execution import get_graph_execution_meta
+from backend.data.tenancy import tenancy_for_new_row
 from backend.notifications.review_alerts import sync_awaiting_review
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
@@ -171,12 +172,18 @@ async def create_auto_approval_record(
     graph_exec_id, chat_session_id = _review_scope(graph_exec_id, chat_session_id)
     # A chat review's session is the caller's by construction (the review row
     # was looked up by userId); a graph execution is checked here.
-    if graph_exec_id is not None and not await get_graph_execution_meta(
-        user_id=user_id, execution_id=graph_exec_id
-    ):
+    run = (
+        await get_graph_execution_meta(user_id=user_id, execution_id=graph_exec_id)
+        if graph_exec_id is not None
+        else None
+    )
+    if graph_exec_id is not None and not run:
         raise ValueError(
             f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
         )
+    organization_id, team_id = await tenancy_for_new_row(
+        user_id, run.organization_id if run else None, run.team_id if run else None
+    )
 
     scope_id = graph_exec_id or chat_session_id
     assert scope_id
@@ -197,6 +204,8 @@ async def create_auto_approval_record(
                 "status": ReviewStatus.APPROVED,
                 "processed": True,
                 "reviewedAt": datetime.now(timezone.utc),
+                "organizationId": organization_id,
+                **({"teamId": team_id} if team_id else {}),
             },
             "update": {},  # Already exists, no update needed
         },
@@ -238,6 +247,9 @@ async def get_or_create_human_review(
     graph_exec_id, chat_session_id = _review_scope(graph_exec_id, chat_session_id)
     if chat_session_id:
         graph_id = graph_version = None
+    organization_id, team_id = await tenancy_for_new_row(
+        user_id, organization_id, team_id
+    )
     try:
         logger.debug(f"Getting or creating review for node {node_exec_id}")
 
@@ -255,7 +267,7 @@ async def get_or_create_human_review(
                     "instructions": message,
                     "editable": editable,
                     "status": ReviewStatus.WAITING,
-                    **({"organizationId": organization_id} if organization_id else {}),
+                    "organizationId": organization_id,
                     **({"teamId": team_id} if team_id else {}),
                 },
                 "update": {},  # Do nothing on update - keep existing review as is
@@ -309,6 +321,9 @@ async def record_gate_approval(
 
     A decision already on the row stands; None means it is still waiting.
     """
+    organization_id, team_id = await tenancy_for_new_row(
+        user_id, organization_id, team_id
+    )
     review = await PendingHumanReview.prisma().upsert(
         where={"nodeExecId": node_exec_id},
         data={
@@ -323,7 +338,7 @@ async def record_gate_approval(
                 "reviewMessage": message,
                 "processed": True,
                 "reviewedAt": datetime.now(timezone.utc),
-                **({"organizationId": organization_id} if organization_id else {}),
+                "organizationId": organization_id,
                 **({"teamId": team_id} if team_id else {}),
             },
             "update": {},

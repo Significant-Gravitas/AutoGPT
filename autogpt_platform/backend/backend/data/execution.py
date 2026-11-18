@@ -53,7 +53,11 @@ from backend.data.sharing.execution_shares import (
     live_execution_share,
     soft_delete_and_unshare_execution,
 )
-from backend.data.tenancy import get_user_team_ids, visibility_filter
+from backend.data.tenancy import (
+    get_user_team_ids,
+    tenancy_for_new_row,
+    visibility_filter,
+)
 from backend.notifications.scoring import score_completed_run
 from backend.util import type as type_utils
 from backend.util.exceptions import (
@@ -1023,6 +1027,9 @@ async def create_graph_execution(
         if expert is None:
             raise ValueError(f"Expert #{expert_id} is unavailable")
 
+    organization_id, team_id = await tenancy_for_new_row(
+        user_id, organization_id, team_id
+    )
     result = await AgentGraphExecution.prisma().create(
         data={
             "agentGraphId": graph_id,
@@ -1060,8 +1067,7 @@ async def create_graph_execution(
             **({"scheduleId": schedule_id} if schedule_id else {}),
             **({"webhookId": webhook_id} if webhook_id else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
-            # Tenancy dual-write fields
-            **({"organizationId": organization_id} if organization_id else {}),
+            "organizationId": organization_id,
             **({"teamId": team_id} if team_id else {}),
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,

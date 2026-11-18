@@ -23,7 +23,7 @@ from backend.data.graph import (
 from backend.data.includes import AGENT_GRAPH_INCLUDE
 from backend.data.notifications import NotificationEventModel, VerdictData
 from backend.data.profile import ensure_user_profile
-from backend.data.tenancy import require_role_where_resource_lives
+from backend.data.tenancy import require_role_where_resource_lives, tenancy_for_new_row
 from backend.notifications.queue import queue_notification_async
 from backend.util.exceptions import (
     ConflictError,
@@ -1005,6 +1005,7 @@ async def create_store_submission(
                 "Remove them before submitting it."
             )
 
+        new_listing_org_id, _ = await tenancy_for_new_row(user_id, organization_id)
         async with transaction() as tx:
             # Determine next version number for this listing
             existing_listing = await prisma.models.StoreListing.prisma(tx).find_unique(
@@ -1075,6 +1076,11 @@ async def create_store_submission(
                     "submittedAt": datetime.now(tz=timezone.utc),
                     "changesSummary": changes_summary,
                     "recommendedScheduleCron": recommended_schedule_cron,
+                    "organizationId": (
+                        existing_listing.owningOrgId
+                        if existing_listing
+                        else new_listing_org_id
+                    ),
                     "StoreListing": {
                         "connect_or_create": {
                             "where": {"agentGraphId": graph_id},
@@ -1089,11 +1095,7 @@ async def create_store_submission(
                                 # rejects the whole create when a raw FK
                                 # field is mixed in ("Field does not exist
                                 # in enclosing type").
-                                **(
-                                    {"OwningOrg": {"connect": {"id": organization_id}}}
-                                    if organization_id
-                                    else {}
-                                ),
+                                "OwningOrg": {"connect": {"id": new_listing_org_id}},
                             },
                         }
                     },
@@ -1624,6 +1626,7 @@ async def review_store_submission(
                             submission.name,
                             submission.agentGraphVersion,
                             creator_user_id,
+                            submission.organizationId,
                         )
                         for sub_graph in sub_graphs
                     ]
@@ -1920,8 +1923,12 @@ async def _approve_sub_agent(
     main_agent_name: str,
     main_agent_graph_version: int,
     main_agent_user_id: str,
+    main_agent_organization_id: str,
 ) -> None:
-    """Approve a single sub-agent by creating/updating store listings as needed"""
+    """Approve a single sub-agent by creating/updating store listings as needed.
+
+    A new listing goes to the organization of the workflow it is a part of.
+    """
     heading = f"Sub-agent of {main_agent_name} v{main_agent_graph_version}"
 
     # Find existing listing for this sub-agent
@@ -1944,11 +1951,15 @@ async def _approve_sub_agent(
                 slug=f"sub-agent-{sub_graph.id[:8]}",
                 agentGraphId=sub_graph.id,
                 owningUserId=main_agent_user_id,
+                owningOrgId=main_agent_organization_id,
                 hasApprovedVersion=True,
                 Versions={
                     "create": [
                         _create_sub_agent_version_data(
-                            sub_graph, heading, main_agent_name
+                            sub_graph,
+                            heading,
+                            main_agent_name,
+                            main_agent_organization_id,
                         )
                     ]
                 },
@@ -1988,7 +1999,9 @@ async def _approve_sub_agent(
     next_version = max((v.version for v in listing.Versions or []), default=0) + 1
     await prisma.models.StoreListingVersion.prisma(tx).create(
         data={
-            **_create_sub_agent_version_data(sub_graph, heading, main_agent_name),
+            **_create_sub_agent_version_data(
+                sub_graph, heading, main_agent_name, listing.owningOrgId
+            ),
             "version": next_version,
             "storeListingId": listing.id,
         }
@@ -2015,11 +2028,15 @@ def _format_graph_refs(refs: list[tuple[str, int]]) -> str:
 
 
 def _create_sub_agent_version_data(
-    sub_graph: prisma.models.AgentGraph, heading: str, main_agent_name: str
+    sub_graph: prisma.models.AgentGraph,
+    heading: str,
+    main_agent_name: str,
+    organization_id: str,
 ) -> prisma.types.StoreListingVersionCreateInput:
     """Create store listing version data for a sub-agent"""
     return prisma.types.StoreListingVersionCreateInput(
         agentGraphId=sub_graph.id,
+        organizationId=organization_id,
         agentGraphVersion=sub_graph.version,
         name=sub_graph.name or heading,
         submissionStatus=prisma.enums.SubmissionStatus.APPROVED,

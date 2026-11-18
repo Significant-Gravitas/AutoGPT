@@ -334,6 +334,10 @@ def _patch_submission(
     """create_store_submission without a database, for user-id's graph agent-id
     v1, by a member of any organization. Returns the AgentGraph and
     StoreListingVersion prisma mocks."""
+    mocker.patch(
+        "backend.data.tenancy.personal_org_tenancy",
+        AsyncMock(return_value=("org-personal", "team-default")),
+    )
     now = datetime.now()
     mock_profile = prisma.models.Profile(
         id="profile-id",
