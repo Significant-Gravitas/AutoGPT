@@ -26,7 +26,9 @@ export function HomeRecap() {
     return <HomeSkeleton />;
   }
 
-  if (isError || !dashboard) {
+  // A failed refresh keeps the last dashboard; only a first load that failed
+  // takes the page.
+  if (!dashboard) {
     return (
       <section className={SHELL_CLASS}>
         <div className={CONTENT_CLASS}>

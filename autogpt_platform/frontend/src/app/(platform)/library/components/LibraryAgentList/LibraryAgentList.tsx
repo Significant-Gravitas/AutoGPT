@@ -216,7 +216,7 @@ export function LibraryAgentList({
           <div className="flex h-[200px] items-center justify-center">
             <LoadingSpinner size="large" />
           </div>
-        ) : isFavoritesTab && agents.length === 0 ? (
+        ) : isFavoritesTab && favoritesCount === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-foreground-tertiary">
             <Icon icon={FavouriteIcon} className="h-10 w-10" />
             <Text variant="body">No favorite workflows yet</Text>

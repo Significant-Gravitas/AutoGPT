@@ -107,9 +107,12 @@ function defaultGraphSchedulesHandler() {
 const SCHEDULES_UNAVAILABLE =
   "Schedules are temporarily unavailable — your schedules are safe and will run once it's back.";
 
-// What the backend answers while the scheduler restarts on a deploy.
+// What the backend answers while the scheduler restarts on a deploy. Returns
+// how many schedule reads it has answered.
 function serveSchedulerOutage() {
+  let reads = 0;
   function schedulerOut() {
+    reads += 1;
     return HttpResponse.json(
       {
         message: "Failed to process GET /api/schedules",
@@ -126,6 +129,7 @@ function serveSchedulerOutage() {
     ),
     http.get("http://localhost:3000/api/proxy/api/schedules", schedulerOut),
   );
+  return () => reads;
 }
 
 describe("FollowupsPage", () => {
@@ -569,10 +573,17 @@ describe("FollowupsPage", () => {
     onTestFinished(() => {
       vi.useRealTimers();
     });
-    serveSchedulerOutage();
+    const reads = serveSchedulerOutage();
 
     render(<FollowupsPage />);
     expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
+
+    // Nothing asks again before Retry-After.
+    const answered = reads();
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(reads()).toBe(answered);
 
     server.use(
       getListCopilotFollowupSchedulesMockHandler([
@@ -581,7 +592,7 @@ describe("FollowupsPage", () => {
       defaultGraphSchedulesHandler(),
     );
     await act(async () => {
-      vi.advanceTimersByTime(15_000);
+      vi.advanceTimersByTime(6_000);
     });
 
     const list = await screen.findByTestId("followups-list");
@@ -614,7 +625,41 @@ describe("FollowupsPage", () => {
     expect(screen.queryByTestId("schedules-unavailable")).toBeNull();
   });
 
-  test("an outage of one list keeps the other's schedules with the partial warning", async () => {
+  test("a recheck still waiting on the scheduler keeps the notice, not a spinner", async () => {
+    serveSchedulerOutage();
+    render(<FollowupsPage />);
+    expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
+
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    onTestFinished(() => release());
+    let waiting = 0;
+    async function heldEmptyList() {
+      waiting += 1;
+      await held;
+      return HttpResponse.json([]);
+    }
+    server.use(
+      http.get(
+        "http://localhost:3000/api/proxy/api/schedules/followups",
+        heldEmptyList,
+      ),
+      http.get("http://localhost:3000/api/proxy/api/schedules", heldEmptyList),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(waiting).toBe(2));
+    expect(screen.getByTestId("schedules-unavailable")).toBeDefined();
+    expect(screen.queryByTestId("followups-loading")).toBeNull();
+
+    release();
+    expect(await screen.findByTestId("followups-empty")).toBeDefined();
+    expect(screen.queryByTestId("schedules-unavailable")).toBeNull();
+  });
+
+  test("an outage of one list keeps the other's schedules and says the rest are unavailable", async () => {
     server.use(
       http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
         HttpResponse.json(
@@ -634,8 +679,8 @@ describe("FollowupsPage", () => {
 
     const list = await screen.findByTestId("followups-list");
     expect(within(list).getByText(/Still listed/)).toBeDefined();
-    expect(await screen.findByTestId("schedules-partial-error")).toBeDefined();
-    expect(screen.queryByTestId("schedules-unavailable")).toBeNull();
+    expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
+    expect(screen.queryByTestId("schedules-partial-error")).toBeNull();
   });
 
   test("a paused list that fails to load is an error, not the empty state", async () => {

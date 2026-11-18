@@ -7,6 +7,7 @@ import {
   getPaginationNextPageNumber,
   unpaginate,
 } from "@/app/api/helpers";
+import { recheckWhileSchedulesUnknown } from "@/services/schedules/scheduler-availability";
 
 interface Props {
   searchTerm: string;
@@ -17,6 +18,7 @@ export function useFavoriteAgents({ searchTerm }: Props) {
     data: agentsQueryData,
     fetchNextPage,
     hasNextPage,
+    isFetching,
     isFetchingNextPage,
     isLoading,
     isPlaceholderData,
@@ -30,6 +32,10 @@ export function useFavoriteAgents({ searchTerm }: Props) {
       query: {
         getNextPageParam: getPaginationNextPageNumber,
         placeholderData: keepPreviousData,
+        refetchInterval: (query) =>
+          recheckWhileSchedulesUnknown(
+            query.state.data ? unpaginate(query.state.data, "agents") : [],
+          ),
       },
     },
   );
@@ -47,6 +53,7 @@ export function useFavoriteAgents({ searchTerm }: Props) {
     agentLoading,
     hasNextPage: hasNextPage && !isPlaceholderData,
     agentCount,
+    isFetching,
     isFetchingNextPage,
     fetchNextPage,
   };

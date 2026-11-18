@@ -269,6 +269,7 @@ export function useLibraryAgentList({
     errorGraphIds,
     completedGraphIds,
   );
+  const schedulesUnknown = hasUnknownSchedules(agents);
 
   useEffect(() => {
     if (statusFilter === "all") {
@@ -293,11 +294,13 @@ export function useLibraryAgentList({
     prevFilteredLengthRef.current = filteredAgents.length;
   }, [agents.length, filteredAgents.length, statusFilter]);
 
+  // Pages read while schedules were unknown say nothing about the Scheduled
+  // and Idle filters, so their count starts over once the scheduler answers.
   useEffect(() => {
     setConsecutiveEmptyPages(0);
     prevFilteredLengthRef.current = 0;
     prevAgentsLengthRef.current = 0;
-  }, [statusFilter]);
+  }, [statusFilter, schedulesUnknown]);
 
   const filteredExhausted =
     statusFilter !== "all" && consecutiveEmptyPages >= FILTER_EXHAUST_THRESHOLD;
@@ -327,9 +330,11 @@ export function useLibraryAgentList({
     displayedCount,
     favoritesCount: favoriteAgentsData.agentCount,
     agents: filteredAgents,
-    schedulesUnknown: hasUnknownSchedules(agents),
+    schedulesUnknown,
     retrySchedules,
-    retryingSchedules: isFetching && !isFetchingNextPage,
+    retryingSchedules: isFavoritesTab
+      ? favoriteAgentsData.isFetching && !favoriteAgentsData.isFetchingNextPage
+      : isFetching && !isFetchingNextPage,
     hasNextPage: agentsHasNextPage && !filteredExhausted,
     isFetchingNextPage: agentsIsFetchingNextPage,
     fetchNextPage: agentsFetchNextPage,
@@ -350,6 +355,7 @@ function filterAgentsByStatus<
     graph_id: string;
     has_external_trigger: boolean;
     is_scheduled?: boolean;
+    schedule_info_unavailable?: boolean;
     recommended_schedule_cron?: string | null;
   },
 >(
@@ -375,9 +381,14 @@ function filterAgentsByStatus<
       return (
         !isRunning && !hasError && !agent.has_external_trigger && isScheduled
       );
+    // An unknown schedule may be a scheduled workflow, so it isn't idle.
     if (statusFilter === "idle")
       return (
-        !isRunning && !hasError && !agent.has_external_trigger && !isScheduled
+        !isRunning &&
+        !hasError &&
+        !agent.has_external_trigger &&
+        !isScheduled &&
+        !agent.schedule_info_unavailable
       );
     if (statusFilter === "healthy") return !hasError;
     return true;

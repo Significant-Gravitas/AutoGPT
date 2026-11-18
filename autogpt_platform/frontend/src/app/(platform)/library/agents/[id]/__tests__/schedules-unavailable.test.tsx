@@ -13,6 +13,7 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { server } from "@/mocks/mock-server";
 import { installLiveSocket } from "@/tests/integrations/live-socket";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -22,7 +23,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { expect, test, vi } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import AgentLibraryPage from "../page";
 
 vi.mock("@/lib/auth/actions", async (importOriginal) => ({
@@ -84,7 +85,7 @@ const morningRun = {
 };
 
 function serveAgentPage(
-  schedules: () => Response,
+  schedules: () => Response | Promise<Response>,
   { withRuns = true }: { withRuns?: boolean } = {},
 ) {
   const run = {
@@ -172,11 +173,53 @@ test("a scheduler outage keeps the workflow's tasks and says schedules are unava
   schedulerUp = true;
   fireEvent.click(screen.getAllByRole("button", { name: "Try again" })[0]);
 
-  expect(await screen.findByText("Every morning")).toBeDefined();
+  // Listed in the sidebar, and opened beside it.
+  expect(await screen.findAllByText("Every morning")).not.toHaveLength(0);
   await waitFor(() => expect(screen.queryByText(NOTICE)).toBeNull());
   expect(
     within(screen.getByRole("tab", { name: /^Scheduled/ })).getByText("1"),
   ).toBeDefined();
+  // The schedule that came back is opened, not "Nothing scheduled yet".
+  expect(await screen.findByText("Next run")).toBeDefined();
+  expect(screen.queryByText("Nothing scheduled yet")).toBeNull();
+});
+
+test("a recheck still waiting on the scheduler keeps the tabs and the notice", async () => {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  onTestFinished(() => release());
+  let reads = 0;
+  serveAgentPage(async () => {
+    reads += 1;
+    if (reads === 1) return schedulerOut();
+    await held;
+    return schedulerOut();
+  });
+  installLiveSocket();
+
+  render(
+    <NuqsTestingAdapter hasMemory searchParams="activeTab=scheduled">
+      <AgentLibraryPage />
+    </NuqsTestingAdapter>,
+  );
+  expect(await screen.findAllByText(NOTICE)).not.toHaveLength(0);
+
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await waitFor(() => expect(reads).toBe(2));
+
+  // A schedule list that never loaded drops its error while it refetches;
+  // the page still knows the scheduler is out.
+  expect(screen.getByRole("tab", { name: /^Tasks/ })).toBeDefined();
+  expect(screen.getAllByText(NOTICE)).not.toHaveLength(0);
+
+  release();
+  // Let the held answer land before the test ends.
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  expect(screen.getAllByText(NOTICE)).not.toHaveLength(0);
 });
 
 test("a workflow with no tasks yet isn't shown as empty while its schedules are unknown", async () => {

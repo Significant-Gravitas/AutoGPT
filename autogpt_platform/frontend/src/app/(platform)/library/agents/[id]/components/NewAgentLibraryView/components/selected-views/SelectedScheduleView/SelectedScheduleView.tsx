@@ -9,7 +9,6 @@ import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
-import { isSchedulerUnavailableError } from "@/services/schedules/scheduler-availability";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
@@ -33,7 +32,7 @@ export function SelectedScheduleView({
   onSelectRun,
   banner,
 }: Props) {
-  const { schedule, isLoading, error } = useSelectedScheduleView(
+  const { schedule, unavailable, isLoading, error } = useSelectedScheduleView(
     agent.graph_id,
     scheduleId,
   );
@@ -43,7 +42,7 @@ export function SelectedScheduleView({
   const breakpoint = useBreakpoint();
   const isLgScreenUp = isLargeScreen(breakpoint);
 
-  if (isSchedulerUnavailableError(error)) {
+  if (unavailable) {
     return (
       <SelectedViewLayout agent={agent} banner={banner}>
         <SchedulesUnavailableNotice />

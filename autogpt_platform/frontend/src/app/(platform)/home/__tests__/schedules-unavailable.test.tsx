@@ -1,6 +1,7 @@
 import { act, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, expect, test, vi } from "vitest";
+import { getGetHomeDashboardMockHandler } from "@/app/api/__generated__/endpoints/home/home.msw";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { server } from "@/mocks/mock-server";
 import {
@@ -78,9 +79,9 @@ const afterRecovery: HomeDashboardResponse = {
 function serveDashboard(current: () => HomeDashboardResponse) {
   let reads = 0;
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () => {
+    getGetHomeDashboardMockHandler(() => {
       reads += 1;
-      return HttpResponse.json(current());
+      return current();
     }),
   );
   return () => reads;
@@ -132,4 +133,54 @@ test("Home rechecks on its own once the scheduler's Retry-After has passed", asy
   await waitFor(() => expect(reads()).toBeGreaterThan(before));
   expect(await within(tile).findByText("Spanish practice plan")).toBeDefined();
   expect(within(tile).queryByText(NOTICE)).toBeNull();
+});
+
+test("a recheck that fails keeps Home's tiles instead of the page error", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  serveDashboard(() => duringOutage);
+
+  render(<HomeRecap />);
+  const tile = await screen.findByRole("region", { name: "Now & next" });
+  expect(await within(tile).findByText(NOTICE)).toBeDefined();
+
+  let failed = 0;
+  server.use(
+    http.get("/api/proxy/api/home", () => {
+      failed += 1;
+      return HttpResponse.json({ detail: "boom" }, { status: 500 });
+    }),
+  );
+  await act(async () => {
+    vi.advanceTimersByTime(15_000);
+  });
+
+  await waitFor(() => expect(failed).toBeGreaterThan(0));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  expect(
+    screen.queryByText("Your Home briefing could not be loaded"),
+  ).toBeNull();
+  expect(within(tile).getByText(NOTICE)).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Your team" })).toBeDefined();
+});
+
+test("Now & next's live region is in place before an outage starts", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  let dashboard = afterRecovery;
+  serveDashboard(() => dashboard);
+
+  render(<HomeRecap />);
+  const tile = await screen.findByRole("region", { name: "Now & next" });
+  expect(await within(tile).findByText("Spanish practice plan")).toBeDefined();
+  // Mounted, and empty, so its text is announced when it arrives.
+  const region = within(tile).getByTestId("schedules-unavailable-status");
+  expect(region.textContent).toBe("");
+
+  dashboard = duringOutage;
+  await act(async () => {
+    vi.advanceTimersByTime(60_000);
+  });
+
+  await waitFor(() => expect(region.textContent).toContain(NOTICE));
 });

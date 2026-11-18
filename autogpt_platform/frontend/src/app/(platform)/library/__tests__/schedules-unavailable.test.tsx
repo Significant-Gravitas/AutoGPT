@@ -1,4 +1,5 @@
 import { act, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   fireEvent,
@@ -78,7 +79,10 @@ const afterRecovery: LibraryAgent[] = [
   triage,
 ];
 
-function serveLibrary(agents: () => LibraryAgent[]) {
+function serveLibrary(
+  agents: () => LibraryAgent[],
+  favorites: () => LibraryAgent[] = () => [],
+) {
   server.use(
     getGetV2ListLibraryAgentsMockHandler(() => ({
       agents: agents(),
@@ -89,16 +93,16 @@ function serveLibrary(agents: () => LibraryAgent[]) {
         page_size: 100,
       },
     })),
-    getGetV2ListFavoriteLibraryAgentsMockHandler({
+    getGetV2ListFavoriteLibraryAgentsMockHandler(() => ({
       ...getGetV2ListFavoriteLibraryAgentsResponseMock(),
-      agents: [],
+      agents: favorites(),
       pagination: {
-        total_items: 0,
+        total_items: favorites().length,
         total_pages: 1,
         current_page: 1,
         page_size: 10,
       },
-    }),
+    })),
     getGetV2ListLibraryFoldersMockHandler(
       getGetV2ListLibraryFoldersResponseMock({
         folders: [],
@@ -112,6 +116,18 @@ function serveLibrary(agents: () => LibraryAgent[]) {
     ),
     getGetV1ListAllExecutionsMockHandler([]),
   );
+}
+
+function favoritesTab() {
+  return screen
+    .getAllByRole("tab")
+    .find((tab) => tab.textContent?.match(/favorites/i));
+}
+
+async function settle() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
 }
 
 function tile(name: "Scheduled" | "Idle") {
@@ -196,6 +212,41 @@ describe("LibraryPage while the scheduler is out", () => {
     await waitFor(() =>
       expect(within(tile("Scheduled")).getByText("1")).toBeDefined(),
     );
+
+    // Known again, so the rechecks stop.
+    await settle();
+    const recovered = reads;
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+    await settle();
+    expect(reads).toBe(recovered);
+  });
+
+  test("the Favorites tab rechecks on its own too", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let favorites = duringOutage;
+    serveLibrary(
+      () => afterRecovery,
+      () => favorites,
+    );
+
+    render(<LibraryPage />);
+    await waitFor(() =>
+      expect(favoritesTab()?.hasAttribute("data-disabled")).toBe(false),
+    );
+    await userEvent.click(favoritesTab()!);
+    expect(await screen.findByText(NOTICE)).toBeDefined();
+
+    favorites = afterRecovery;
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+    });
+
+    await waitFor(() => expect(screen.queryByText(NOTICE)).toBeNull());
+    expect(
+      within(await cardFor("Morning digest")).getByText("Scheduled"),
+    ).toBeDefined();
   });
 
   test("a library whose schedules are known shows no notice and never rechecks", async () => {
@@ -214,17 +265,13 @@ describe("LibraryPage while the scheduler is out", () => {
       expect(within(tile("Scheduled")).getByText("1")).toBeDefined(),
     );
     // Let the page's first reads finish before counting.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    });
+    await settle();
     const settled = reads;
 
     await act(async () => {
       vi.advanceTimersByTime(60_000);
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    });
+    await settle();
 
     expect(reads).toBe(settled);
     expect(screen.queryByText(NOTICE)).toBeNull();

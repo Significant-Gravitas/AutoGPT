@@ -35,14 +35,15 @@ export function NowNext({ dashboard, onRetry, retrying, className }: Props) {
 
       <div className="pb-2">
         <HomeSectionLabel>Coming up</HomeSectionLabel>
-        {dashboard.schedules_unavailable ? (
-          <SchedulesUnavailableNotice
-            onRetry={onRetry}
-            retrying={retrying}
-            stacked
-            className="mx-4 my-3"
-          />
-        ) : dashboard.upcoming_tasks.length === 0 ? (
+        <SchedulesUnavailableNotice
+          show={!!dashboard.schedules_unavailable}
+          onRetry={onRetry}
+          retrying={retrying}
+          stacked
+          className="mx-4 my-3"
+        />
+        {dashboard.schedules_unavailable ? null : dashboard.upcoming_tasks
+            .length === 0 ? (
           <HomeTileEmpty
             title="Nothing is scheduled"
             description="Your team is ready when you are."

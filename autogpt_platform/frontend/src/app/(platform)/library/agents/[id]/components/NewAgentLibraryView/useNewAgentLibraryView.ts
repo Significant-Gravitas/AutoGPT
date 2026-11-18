@@ -9,7 +9,8 @@ import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutio
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { okData } from "@/app/api/helpers";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
-import { isSchedulerUnavailableError } from "@/services/schedules/scheduler-availability";
+import { useSchedulerOutage } from "@/services/schedules/useSchedulerOutage";
+import { useSchedulerRetryOptions } from "@/services/schedules/useSchedulerQueryOptions";
 import { useParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -169,15 +170,20 @@ export function useNewAgentLibraryView() {
     });
   }
 
-  const { data: schedules, error: schedulesError } =
-    useGetV1ListExecutionSchedulesForAGraph(agent?.graph_id || "", {
+  const schedulerRetryOptions = useSchedulerRetryOptions();
+  const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(
+    agent?.graph_id || "",
+    {
       query: {
         enabled: !!agent?.graph_id,
         select: okData,
+        ...schedulerRetryOptions,
       },
-    });
+    },
+  );
+  const schedules = schedulesQuery.data;
   // Unknown, not none: a workflow with schedules but no runs yet isn't empty.
-  const schedulesUnavailable = isSchedulerUnavailableError(schedulesError);
+  const schedulesUnavailable = useSchedulerOutage(schedulesQuery);
 
   function handleScheduleDeleted(deletedScheduleId: string) {
     if (activeItem !== deletedScheduleId) {

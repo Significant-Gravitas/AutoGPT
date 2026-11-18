@@ -23,7 +23,7 @@ import {
   useExecutionEvents,
 } from "@/hooks/useExecutionEvents";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { isSchedulerUnavailableError } from "@/services/schedules/scheduler-availability";
+import { useSchedulerOutage } from "@/services/schedules/useSchedulerOutage";
 import { useSchedulerQueryOptions } from "@/services/schedules/useSchedulerQueryOptions";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
@@ -136,9 +136,7 @@ export function useSidebarRunsList({
   const triggersCount = triggers.length + triggerAgents.length;
   // While the scheduler restarts its schedules are unknown, and the runs,
   // templates and triggers still list.
-  const schedulesUnavailable = isSchedulerUnavailableError(
-    schedulesQuery.error,
-  );
+  const schedulesUnavailable = useSchedulerOutage(schedulesQuery);
   const loading =
     !runsQuery.isSuccess ||
     (!schedulesQuery.isSuccess && !schedulesUnavailable) ||
@@ -217,6 +215,12 @@ export function useSidebarRunsList({
       onSelectRun(schedules[0].id, "scheduled");
     }
   }, [activeItem, runs.length, schedules, onSelectRun]);
+
+  useEffect(() => {
+    if (schedules.length > 0 && tabValue === "scheduled" && !activeItem) {
+      onSelectRun(schedules[0].id, "scheduled");
+    }
+  }, [schedules, activeItem, tabValue, onSelectRun]);
 
   useEffect(() => {
     if (templates.length > 0 && tabValue === "templates" && !activeItem) {

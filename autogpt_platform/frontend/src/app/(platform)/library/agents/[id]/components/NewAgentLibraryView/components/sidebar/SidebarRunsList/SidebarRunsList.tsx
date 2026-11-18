@@ -180,14 +180,14 @@ export function SidebarRunsList({
           className="mx-4 mt-0 flex min-h-0 flex-1 flex-col"
         >
           <div className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-border-strong scrollbar-track-transparent flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:flex-col lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto">
-            {schedulesUnavailable ? (
-              <SchedulesUnavailableNotice
-                onRetry={retrySchedules}
-                retrying={retryingSchedules}
-                stacked
-                className="w-full"
-              />
-            ) : schedules.length > 0 ? (
+            <SchedulesUnavailableNotice
+              show={schedulesUnavailable}
+              onRetry={retrySchedules}
+              retrying={retryingSchedules}
+              stacked
+              className="w-full"
+            />
+            {schedulesUnavailable ? null : schedules.length > 0 ? (
               schedules.map((s: GraphExecutionJobInfo) => (
                 <div className="w-[15rem] lg:w-full" key={s.id}>
                   <ScheduleListItem
