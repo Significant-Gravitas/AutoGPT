@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import tomllib
 import warnings
@@ -163,3 +164,71 @@ def test_every_source_file_compiles_without_a_warning() -> None:
             ]
 
     assert not warned, "\n".join(warned)
+
+
+# ── The Scoop manifest ───────────────────────────────────────────────────────
+
+SCOOP = ROOT / "packaging" / "scoop" / "autogpt-local-executor.json"
+
+
+def _scoop_manifest() -> dict:
+    return json.loads(SCOOP.read_text(encoding="utf-8"))
+
+
+def test_the_scoop_manifest_installs_the_file_scoop_downloaded() -> None:
+    """Its installer script ran `pip install --target ... "$url"`. Scoop
+    sets no `$url` for an installer script, so pip was handed nothing and
+    failed ("Invalid requirement"). With the address written in, pip would
+    have fetched the wheel a second time, outside the hash Scoop checked.
+
+    Scoop leaves the file it downloaded and checked in `$dir`, under
+    `$fname`: that file is what gets installed."""
+    script = _scoop_manifest()["installer"]["script"]
+    text = "\n".join(script)
+
+    assert "$url" not in text
+    assert '"$dir\\$fname"' in text
+    # Every variable the script uses is one Scoop gives an installer script.
+    used = set(re.findall(r"\$\{?([A-Za-z_]\w*)", text))
+    assert used <= {"dir", "fname", "LASTEXITCODE"}, used
+
+
+def test_the_scoop_manifest_installs_into_an_environment_its_command_runs_from() -> None:
+    """`pip --target` put the package in a folder the launcher it made
+    doesn't look in: `autogpt-shim` started and failed with
+    ModuleNotFoundError. A virtual environment's launcher runs its own
+    Python, which finds what was installed beside it."""
+    manifest = _scoop_manifest()
+    text = "\n".join(manifest["installer"]["script"])
+
+    assert "--target" not in text
+    assert 'python -m venv "$dir\\venv"' in text
+    assert '& "$dir\\venv\\Scripts\\python.exe" -m pip install' in text
+    assert manifest["bin"] == [["venv\\Scripts\\autogpt-shim.exe", "autogpt-shim"]]
+
+
+def test_the_scoop_installer_stops_at_a_step_that_failed() -> None:
+    """PowerShell goes on after a program that failed. Scoop would then
+    report an install with no `autogpt-shim` in it."""
+    script = _scoop_manifest()["installer"]["script"]
+    steps = [index for index, line in enumerate(script) if "python" in line]
+
+    assert len(steps) == 2
+    for index in steps:
+        assert "$LASTEXITCODE" in script[index + 1], script[index]
+
+
+def test_the_scoop_manifest_is_still_a_stub_and_says_so() -> None:
+    """Nothing can run it until a wheel is published: its address and hash
+    are placeholders, and the packaging notes and the release runbook say
+    it has never been installed from a real bucket."""
+    manifest = _scoop_manifest()
+    assert manifest["url"].startswith("PLACEHOLDER-")
+    assert manifest["hash"].startswith("PLACEHOLDER-")
+    readme = (ROOT / "packaging" / "README.md").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs" / "RELEASE_RUNBOOK.md").read_text(encoding="utf-8")
+    for document in (readme, runbook):
+        # Whatever the line breaks.
+        assert "has never been installed from a real bucket" in " ".join(document.split())
+    assert "scoop install" in runbook
+    assert "Before the manifest goes to the bucket" in " ".join(runbook.split())

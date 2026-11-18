@@ -7,8 +7,19 @@ we plan to support post-PyPI-publish:
 - `scoop/autogpt-local-executor.json` — Scoop manifest
 
 They are NOT wired up to a live tap / bucket yet — that is a repo-org-level
-decision (which GitHub org, which tap name, who has push access). When the
-project is ready:
+decision (which GitHub org, which tap name, who has push access).
+
+Neither can be run today. Both name placeholder downloads until a release
+is on PyPI, so the Scoop manifest has never been installed from a real
+bucket, and the Homebrew formula has never been installed from a real tap.
+They were read against Scoop's and Homebrew's documentation, not run:
+installing from each, on Windows and on a Mac, is a step of the release
+([RELEASE_RUNBOOK.md](../docs/RELEASE_RUNBOOK.md)), before either is
+published. The Scoop manifest installs the wheel Scoop downloaded and
+checked into a virtual environment of its own; pip then fetches the
+package's dependencies from PyPI, which the manifest's `hash` doesn't cover.
+
+When the project is ready:
 
 1. Publish `autogpt-local-executor` to PyPI.
 2. Fill in the `PLACEHOLDER-*` `url` / `sha256` / `hash` values from the
