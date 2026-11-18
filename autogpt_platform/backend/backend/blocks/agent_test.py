@@ -529,6 +529,7 @@ async def test_a_child_that_ends_while_redis_is_dropped_still_ends_the_wait(
                 while not outputs:
                     await publisher.publish_event(a, channel)
                     await asyncio.sleep(0.1)
+            reads_before_the_drop = db.get_node_executions.await_count
             proxy.drop()
             db.get_node_executions.side_effect = None
             db.get_node_executions.return_value = [b, a]
@@ -544,3 +545,6 @@ async def test_a_child_that_ends_while_redis_is_dropped_still_ends_the_wait(
             await redis_client.disconnect_async()
 
     assert outputs == [("result", "a"), ("result", "b")]
+    # b was published while the connection was down: only a catch-up from
+    # the database could have found it.
+    assert db.get_node_executions.await_count > reads_before_the_drop
