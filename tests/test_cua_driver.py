@@ -4112,8 +4112,10 @@ async def test_a_child_session_waits_only_briefly_for_a_busy_shared_driver(
 
     monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
     monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 0.2, raising=False)
-    parent = _daemon(tmp_path, session_id=None)
-    child = _daemon(tmp_path, session_id="child-1")
+    # A machine ID of the test's own: a Mac's is derived from what `ioreg`
+    # gives, and the OS the test runs on may have no `ioreg` to ask.
+    parent = _daemon(tmp_path, session_id=None, machine_id="a-mac")
+    child = _daemon(tmp_path, session_id="child-1", machine_id="a-mac")
     parent._computer_handler.share_with(child._computer_handler)
     driver = parent._computer_handler.driver
     await driver.snapshot()
