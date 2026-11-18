@@ -353,6 +353,8 @@ async def _cmd_start(config) -> int:
             print("Mode: persistent machine control (folders are selected per chat)")
         if config.enable_shell:
             print("WARNING: shell is enabled and can access anything your user account can access.")
+        if config.enable_hardware:
+            print("Note: enable_hardware has no effect yet; no hardware access is offered.")
         print("Press Ctrl+C to stop.\n")
         daemon = ShimDaemon(config=config, token_store=KeychainTokenStore(config))
         await daemon.run()

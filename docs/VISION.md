@@ -15,9 +15,9 @@
 >   autostart entry (launchd, systemd or Task Scheduler), and the daemon
 >   reconnects with backoff and jitter. Scheduled tasks, file watchers and
 >   background turns are not built.
-> - **4. Hardware**: not built. `enable_hardware` only adds capability
->   names to HELLO; the shim handles no hardware operations. See
->   [HARDWARE.md](HARDWARE.md).
+> - **4. Hardware**: not built. The shim handles no hardware operations
+>   and offers no hardware capability in HELLO; `enable_hardware` has no
+>   effect yet. See [HARDWARE.md](HARDWARE.md).
 > - **5. Privacy mode**: not built. See [PRIVACY_MODE.md](PRIVACY_MODE.md).
 > - **6. Multi-machine**: not built. See [MULTI_MACHINE.md](MULTI_MACHINE.md).
 > - **7. Local LLM routing**: not built. The code is disabled scaffolding,

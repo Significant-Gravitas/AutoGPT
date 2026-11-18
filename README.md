@@ -17,7 +17,7 @@ Once connected, AutoGPT can:
 - *(Optional, disabled by default)* Execute shell commands as your user
   (per-OS shell selection — bash/zsh/pwsh/cmd)
 - *(Optional)* Operate apps on this computer through [cua-driver](https://github.com/trycua/cua): read windows, click, type, fill forms, in the background where it can
-- *(Optional)* Access local hardware (serial, USB, GPIO)
+- Hardware access (serial, USB, GPIO) is a design, not a feature yet: see [HARDWARE.md](docs/HARDWARE.md).
 - Local-model routing is disabled scaffolding; it is not a supported chat mode.
 
 Cross-platform: macOS, Windows, Linux (Tier 1); WSL2 + Windows-on-ARM

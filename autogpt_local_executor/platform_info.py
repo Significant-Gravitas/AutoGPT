@@ -15,7 +15,6 @@ Everything in this module is sync — the daemon calls it once at startup.
 from __future__ import annotations
 
 import concurrent.futures
-import importlib.util
 import logging
 import os
 import platform as _platform
@@ -71,13 +70,6 @@ def detect_arch() -> str:
 # ── Capabilities ─────────────────────────────────────────────────────────────
 
 
-def _module_available(name: str) -> bool:
-    try:
-        return importlib.util.find_spec(name) is not None
-    except (ImportError, ValueError):
-        return False
-
-
 def detect_capabilities(
     *,
     enable_shell: bool = False,
@@ -100,13 +92,12 @@ def detect_capabilities(
     caps.append("files")  # always present
     if enable_computer_use and can_do_computer_use(cua_driver_path, driver_found=driver_found):
         caps.append("computer_use")
-    if enable_hardware:
-        if _module_available("serial"):
-            caps.append("hardware_serial")
-        if _module_available("usb"):
-            caps.append("hardware_usb")
-        if _module_available("RPi.GPIO"):
-            caps.append("hardware_gpio")
+    # Hardware isn't built: the shim has no HARDWARE_* message and no
+    # handler (docs/HARDWARE.md is a spec). `enable_hardware` used to add
+    # `hardware_serial`, `hardware_usb` and `hardware_gpio` here, one for
+    # each library installed, and a platform that was granted one and sent
+    # a hardware request got no reply at all. So none is advertised until
+    # there are handlers, whatever `enable_hardware` says.
     # Workflow recording remains a design preview. Its capture and
     # interpretation pipeline isn't safe to expose end to end, so this
     # capability is never advertised even when the preview flag is set.

@@ -124,23 +124,23 @@ on the platform side, the session SHOULD be torn down with code 4426).
       "directory_browse",          // control WS only
       "shell",                     // optional: explicit local --enable-shell opt-in
       "files",                     // always present
-      "computer_use",              // optional: cua-driver installed and started
-      "local_llm",                 // optional: ollama running
-      "hardware_serial",           // optional: pyserial available
-      "hardware_usb",              // optional: pyusb available
-      "hardware_gpio"              // optional: RPi.GPIO available
+      "computer_use"               // optional: cua-driver installed and started
     ],
     "allowed_root": null,        // control WS; canonical root on a data WS
     "computer_use_driver": {"name": "cua-driver", "version": "0.38.0", "runtime": "direct"},
     "computer_use_tools": ["click", "get_window_state", "list_windows", "..."],
-    "local_llm_models": ["llama3.2:3b", "mistral:7b"],   // empty if no local_llm cap
-    "hardware_devices": [
-      {"type": "serial", "port": "/dev/ttyUSB0", "desc": "Arduino Uno"},
-      {"type": "usb",    "vid": "2341", "pid": "0043", "desc": "Arduino Uno"}
-    ]
+    "local_llm_models": [],      // reserved; always empty today
+    "hardware_devices": []       // reserved; always empty today
   }
 }
 ```
+
+Those four are every capability a HELLO carries today. `local_llm`,
+`recording`, `hardware_serial`, `hardware_usb` and `hardware_gpio` are
+reserved names for work that isn't built: the shim never offers them,
+whatever its local settings say, so the platform is never granted one and
+has nothing to send for them. `enable_hardware` loads and does nothing yet
+([HARDWARE.md](HARDWARE.md)).
 
 `machine_id` and `display_name` say which computer this is. Both leave the
 computer in every HELLO, on the control connection and on each chat's data
