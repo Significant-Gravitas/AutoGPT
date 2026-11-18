@@ -100,6 +100,7 @@ export function useScheduleAgentModal(
       inputCredentials,
       createScheduleMutation,
       toast,
+      userId,
     ],
   );
 
