@@ -8,6 +8,8 @@ interface Props {
   show?: boolean;
   onRetry?: () => void;
   retrying?: boolean;
+  /** Button under the text whatever the viewport, for a narrow column. */
+  stacked?: boolean;
   className?: string;
 }
 
@@ -19,6 +21,7 @@ export function SchedulesUnavailableNotice({
   show = true,
   onRetry,
   retrying = false,
+  stacked = false,
   className,
 }: Props) {
   return (
@@ -26,7 +29,8 @@ export function SchedulesUnavailableNotice({
       className={
         show
           ? cn(
-              "flex flex-col gap-3 rounded-md border border-border-base bg-surface-muted px-3 py-2 sm:flex-row sm:items-center sm:justify-between",
+              "flex flex-col gap-3 rounded-md border border-border-base bg-surface-muted px-3 py-2",
+              !stacked && "sm:flex-row sm:items-center sm:justify-between",
               className,
             )
           : "sr-only"
@@ -60,7 +64,7 @@ export function SchedulesUnavailableNotice({
           size="small"
           loading={retrying}
           onClick={onRetry}
-          className="shrink-0 self-start sm:self-auto"
+          className={cn("shrink-0 self-start", !stacked && "sm:self-auto")}
         >
           Try again
         </Button>

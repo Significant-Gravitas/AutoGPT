@@ -83,7 +83,12 @@ export function LibraryAgentCard({
         }}
       >
         <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">
-          <div className="relative flex items-center gap-3 pt-3 pr-4 pl-2">
+          <div
+            className={cn(
+              "relative flex items-center gap-3 pt-3 pr-4",
+              statusInfo.scheduleUnknown ? "pl-4" : "pl-2",
+            )}
+          >
             {!statusInfo.scheduleUnknown && (
               <StatusBadge status={statusInfo.status} />
             )}

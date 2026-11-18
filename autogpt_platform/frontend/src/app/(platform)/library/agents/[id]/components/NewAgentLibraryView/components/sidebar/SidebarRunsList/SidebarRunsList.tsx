@@ -184,6 +184,7 @@ export function SidebarRunsList({
               <SchedulesUnavailableNotice
                 onRetry={retrySchedules}
                 retrying={retryingSchedules}
+                stacked
                 className="w-full"
               />
             ) : schedules.length > 0 ? (

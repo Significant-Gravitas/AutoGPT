@@ -39,6 +39,7 @@ export function NowNext({ dashboard, onRetry, retrying, className }: Props) {
           <SchedulesUnavailableNotice
             onRetry={onRetry}
             retrying={retrying}
+            stacked
             className="mx-4 my-3"
           />
         ) : dashboard.upcoming_tasks.length === 0 ? (
