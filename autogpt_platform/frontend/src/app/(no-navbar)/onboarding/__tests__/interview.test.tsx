@@ -642,6 +642,28 @@ describe("onboarding interview", () => {
     expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
   });
 
+  it("offers Skip again only once Otto's reply ends, so a reply that closes the interview is never skipped over", async () => {
+    serverInterview.messages = [KICKOFF_ROW, GREETING_ROW];
+    startsWith({ session_id: SESSION_ID, turn_id: null, stage: null });
+    server.use(...interviewHandlers());
+    replyHold = createStreamHold(5);
+
+    render(<OnboardingPage />);
+    expect(
+      await screen.findByRole("button", { name: "Skip for now" }),
+    ).toBeDefined();
+
+    await sendAnswer("I run a bakery.");
+    expect(await screen.findByText(NEXT_QUESTION)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+
+    replyHold.release();
+
+    expect(
+      await screen.findByRole("button", { name: "Skip for now" }),
+    ).toBeDefined();
+  });
+
   it("queues a message sent while Otto is still replying", async () => {
     serverInterview.messages = [KICKOFF_ROW, GREETING_ROW];
     startsWith({ session_id: SESSION_ID, turn_id: null, stage: null });

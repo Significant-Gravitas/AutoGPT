@@ -173,6 +173,9 @@ export function useInterviewStep() {
   });
 
   const isTurnRunning = status === "streaming" || status === "submitted";
+  // Otto's reply may close the interview and hand it off, so Skip waits for
+  // it; Stop stays offered meanwhile, and a stopped reply brings Skip back.
+  const isReplying = shown === "type" && status === "streaming";
   const detailsQuery = useInterviewDetails({
     sessionId,
     arm:
@@ -488,7 +491,7 @@ export function useInterviewStep() {
   }
 
   async function skip() {
-    if (isOver || isStepBusy || isLeavingRef.current) return;
+    if (isOver || isStepBusy || isReplying || isLeavingRef.current) return;
     isLeavingRef.current = true;
     setIsLeaving(true);
     setIntroPath("B");
@@ -628,7 +631,7 @@ export function useInterviewStep() {
     isOver,
     // Skip is for an open interview, and keeps out of the way of a call in
     // flight, whose words would land after it.
-    canSkip: !isOver && !isStepBusy,
+    canSkip: !isOver && !isStepBusy && !isReplying,
     canFinishEarly: hasAnswered(messages) && !isTurnRunning && !isOver,
     isLeaving,
     finishFailure,
