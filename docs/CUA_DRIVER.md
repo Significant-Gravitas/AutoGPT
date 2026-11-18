@@ -349,7 +349,15 @@ Known gaps:
   way the driver matches: the exact name, ignoring case and a trailing
   `.exe`, or one that starts with it. There it lists the installed apps
   for each launch it checks, just before the launch, so an app removed
-  since an earlier listing doesn't let its name through. On every OS it refuses a `name`,
+  since an earlier listing doesn't let its name through. An `aumid` the
+  driver (0.38) activates as a packaged app whatever its text, with no look
+  at the name or the installed apps; one that names no packaged app fails
+  the call there, and isn't run as a program. The shim refuses an `aumid`
+  that isn't an AUMID all the same, as it does a `bundle_id`, so that
+  nothing rests on how the driver treats one. The name's check is left out
+  only for a call that carries what the driver takes before a name and
+  never falls back from: a `launch_path` or a `path`, which the person
+  approves, or an AUMID as `aumid` or `bundle_id`. On every OS it refuses a `name`,
   `bundle_id` or `aumid` with a path, a URL scheme or a leading `-`. A plain launch, an app by its name or
   id, asks nothing, and a launched app can do whatever it does.
 - `set_value` writes a field's value directly, without visible keystrokes.

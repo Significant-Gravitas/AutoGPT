@@ -58,13 +58,13 @@ from .computer_use import (
 from .computer_use.catalog import (
     InstalledApp,
     LinuxLaunch,
-    is_aumid,
     linux_app_matching,
     linux_apps,
     linux_launch,
     linux_launch_uses_name,
     takes_session,
     windows_app_name_matches,
+    windows_launch_uses_name,
     without_session,
 )
 from .computer_use.concealed import ClipboardState, clipboard_state, marker_in
@@ -2371,7 +2371,13 @@ class ComputerUseHandler:
 
         tool, arguments = msg.payload.tool, msg.payload.arguments
         try:
-            check_arguments(tool, arguments, msg.payload.approved_arguments, on_path=noted)
+            check_arguments(
+                tool,
+                arguments,
+                msg.payload.approved_arguments,
+                platform=self.driver.platform,
+                on_path=noted,
+            )
         except (ApprovalRequired, ArgumentRefused):
             return _LookedUp({})
         programs: dict[str, str | None] = {}
@@ -2543,8 +2549,15 @@ class ComputerUseHandler:
             # On the event loop: the one thing the check looks at on disk,
             # the program a Linux launch's name runs, was looked up on PATH
             # before the call took the computer (_looked_up). A name not
-            # looked up then can't come up here: the check is the same.
-            check_arguments(tool, arguments, approved, on_path=looked_up.programs.__getitem__)
+            # looked up then can't come up here: the check is the same. Both
+            # go by the driver's system, as the launch's name check does.
+            check_arguments(
+                tool,
+                arguments,
+                approved,
+                platform=self.driver.platform,
+                on_path=looked_up.programs.__getitem__,
+            )
         except ApprovalRequired as exc:
             raise ComputerUseError(
                 ErrorCode.APPROVAL_REQUIRED,
@@ -2588,8 +2601,12 @@ class ComputerUseHandler:
         and, when none matches, hands it to ShellExecuteEx, which runs a
         program of that name from PATH, out of sight: `logoff` signs the
         person out. So the name goes ahead only when an installed app would
-        match it. A launch_path, path or AUMID takes precedence over the
-        name in the driver's routing, so those calls aren't checked.
+        match it. The driver takes a launch_path, then a path, then an
+        aumid, then a bundle_id that is an AUMID, before a name, and with
+        one of them never falls back to the name, so those calls aren't
+        checked (windows_launch_uses_name): only a string counts, as the
+        driver reads only strings, and of an aumid only one that is an
+        AUMID, which is the only kind sent.
 
         On Linux the driver runs the name as a command line, looks for an
         installed app when no program has its first word, and, when none
@@ -2611,10 +2628,7 @@ class ComputerUseHandler:
         if not isinstance(name, str):
             return
         if platform == "win32":
-            if any(arguments.get(key) for key in ("launch_path", "path", "aumid")):
-                return
-            bundle_id = arguments.get("bundle_id")
-            if isinstance(bundle_id, str) and is_aumid(bundle_id):
+            if not windows_launch_uses_name(arguments):
                 return
             apps = await self._installed_apps_listed(deadline)
             if not windows_app_name_matches(name, [app.name for app in apps]):

@@ -1084,8 +1084,12 @@ against the installed apps; and a `launch_app` `name`, `bundle_id` or
 a program's own name included, or, unless `urls` or `launch_path`
 is given, one that matches no installed app in `list_apps`, or more than
 one, or whose app's launch command the shim can't send with its program as
-an absolute path, and on Windows a `bundle_id` that isn't an AUMID or a
-`name` no installed app in `list_apps` would match). On Linux a launch by
+an absolute path, and on Windows a `bundle_id` or an `aumid` that isn't an
+AUMID (`Package!App`: one `!` with text on both sides), or a `name` no
+installed app in `list_apps` would match; the name is checked unless the
+call also carries a `launch_path`, a `path`, or an AUMID as `aumid` or
+`bundle_id`, which the driver takes before a name and never falls back
+from). On Linux a launch by
 `name` reaches cua-driver as the matched app's own launch command, so its
 result names that command ([CUA_DRIVER.md](CUA_DRIVER.md#residual-risk)).
 

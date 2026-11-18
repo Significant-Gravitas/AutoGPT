@@ -442,19 +442,36 @@ def _check_app_identity(
     # reaching the driver. An app's display name, as list_apps gives it
     # ("Google Chrome", "Firefox"), starts with no program's name (PATH
     # lookups are case-sensitive).
-    # On Windows the driver launches a bundle_id that is an AUMID as a
-    # packaged app and hands any other to ShellExecuteEx as a program name,
-    # without looking for an installed app first: `logoff` signs the person
-    # out. (A launch by `name` is checked against the installed apps, which
-    # takes the driver: ComputerUseHandler._check_launch_name.)
-    bundle_id = arguments.get("bundle_id")
-    if platform == "win32" and isinstance(bundle_id, str) and not is_aumid(bundle_id):
-        raise ArgumentRefused(
-            "launch_app",
-            "bundle_id",
-            "on Windows a bundle_id is a packaged app's AUMID (`Package!App`); name the "
-            "app in name, as list_apps shows it, or pass its AUMID as aumid",
-        )
+    # On Windows cua-driver 0.38 takes what to launch in this order
+    # (platform-windows, launch_app): a `launch_path`, then a `path`, each
+    # handed to ShellExecuteEx as it is; then an `aumid`, any string at all,
+    # activated as a packaged app with no look at the name or the installed
+    # apps (one that names no packaged app fails the call: it isn't run as a
+    # program, and the name isn't tried instead); then a `bundle_id` that is
+    # an AUMID, the same way; then the `name`, looked up among the installed
+    # apps and, when none matches, handed to ShellExecuteEx as a program
+    # name, as a `bundle_id` that isn't an AUMID is when there is no name:
+    # `logoff` signs the person out.
+    # So a bundle_id has to be an AUMID, and so does an aumid: nothing the
+    # driver takes without a look at the installed apps goes to it
+    # unchecked, and its own handling of a string that is no AUMID isn't
+    # what stands between a call and a program. (A launch by `name` is
+    # checked against the installed apps, which takes the driver:
+    # ComputerUseHandler._check_launch_name.)
+    if platform == "win32":
+        for argument, instead in (
+            ("bundle_id", "or pass its AUMID as aumid"),
+            ("aumid", "or leave aumid out"),
+        ):
+            value = arguments.get(argument)
+            if isinstance(value, str) and value and not is_aumid(value):
+                raise ArgumentRefused(
+                    "launch_app",
+                    argument,
+                    f"on Windows {'a' if argument == 'bundle_id' else 'an'} {argument} is a "
+                    "packaged app's AUMID (`Package!App`); name the app in name, as "
+                    f"list_apps shows it, {instead}",
+                )
     name = arguments.get("name")
     words = name.split() if platform.startswith("linux") and isinstance(name, str) else []
     if words and on_path(words[0]):
@@ -473,6 +490,27 @@ def is_aumid(value: str) -> bool:
     (`{PackageFamilyName}!{ApplicationId}`): one `!`, text on both sides."""
     family, separator, app = value.partition("!")
     return bool(separator and family and app) and "!" not in app
+
+
+def windows_launch_uses_name(arguments: Mapping[str, Any]) -> bool:
+    """Whether cua-driver 0.38 on Windows may act on a launch_app's `name`.
+    It reads each argument only when it is a string, and takes a
+    `launch_path`, a `path`, an `aumid` and a `bundle_id` that is an AUMID
+    before a name, in that order, never falling back to the name once it
+    has one of them. An `aumid` counts here only when it is an AUMID: any
+    other is refused before the call is sent (check_arguments), and were
+    one sent, the name would still be checked."""
+    if not isinstance(arguments.get("name"), str):
+        return False
+    for argument in ("launch_path", "path"):
+        value = arguments.get(argument)
+        if isinstance(value, str) and value:
+            return False
+    for argument in ("aumid", "bundle_id"):
+        value = arguments.get(argument)
+        if isinstance(value, str) and is_aumid(value):
+            return False
+    return True
 
 
 def windows_app_name_matches(name: str, app_names: Iterable[str]) -> bool:

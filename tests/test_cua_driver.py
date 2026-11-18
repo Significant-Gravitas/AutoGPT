@@ -1912,6 +1912,9 @@ async def test_a_launch_name_is_refused_when_the_apps_cannot_be_listed(
     make_handler, fake_log, monkeypatch, platform: str
 ) -> None:
     monkeypatch.setenv("FAKE_CUA_LIST_APPS_ERROR", "the shell did not answer")
+    # No program of the name on PATH, wherever the tests run: on Linux such a
+    # name is refused before the apps are listed.
+    _programs_found(monkeypatch, {})
     handler = make_handler(platform=platform)
 
     response = await handler.handle(_call("launch_app", {"name": "Notepad"}))
@@ -1943,6 +1946,7 @@ async def test_a_launch_the_name_lookup_doesnt_decide_lists_no_apps(
     on Linux links to open and then a launch_path do; macOS looks a name up
     among its apps and goes no further."""
     monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad"]))
+    _programs_found(monkeypatch, {})
     handler = make_handler(platform=platform)
 
     response = await handler.handle(_call("launch_app", arguments, approved_arguments=approved))
@@ -2389,7 +2393,6 @@ async def test_a_launch_by_name_is_looked_up_off_the_event_loop(
     loop_thread = threading.get_ident()
     looked_up: list[str] = []
     looked_up_from: list[int] = []
-    check = handlers_module.check_arguments
 
     def look_up(word: str) -> str | None:
         # A PATH where no program has the name's first word.
@@ -2397,12 +2400,8 @@ async def test_a_launch_by_name_is_looked_up_off_the_event_loop(
         looked_up_from.append(threading.get_ident())
         return "/usr/bin/zebra-notes" if word == "zebra-notes" else None
 
-    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = (), *, on_path) -> None:
-        # Linux's check on every OS.
-        check(tool, arguments, approved, platform="linux", on_path=on_path)
-
-    monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
     monkeypatch.setattr(handlers_module, "_program_on_path", look_up)
+    # Linux's check on every OS: the handler checks by its driver's system.
     handler = make_handler(platform="linux")
 
     response = await handler.handle(_call("launch_app", {"name": "Zebra Notes"}))
@@ -2434,15 +2433,8 @@ async def test_a_launch_whose_name_lookup_stalls_lets_go_of_the_computer_by_its_
         released.wait(timeout=60)
         return {"zebra": "/usr/bin/zebra", **_PROGRAMS}.get(word)
 
-    check = handlers_module.check_arguments
-
-    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = (), *, on_path=None):
-        # Linux's check on every OS. Given no on_path, it looks names up
-        # itself, as it did in its worker thread.
-        check(tool, arguments, approved, platform="linux", on_path=on_path or stalled)
-
-    monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
-    monkeypatch.setattr(handlers_module, "_program_on_path", stalled, raising=False)
+    monkeypatch.setattr(handlers_module, "_program_on_path", stalled)
+    # Linux's check on every OS: the handler checks by its driver's system.
     handler = make_handler(platform="linux")
     try:
         launch = _call("launch_app", {"name": "zebra notes"}, timeout_seconds=1)
@@ -2492,14 +2484,9 @@ async def test_a_launch_whose_apps_program_lookup_stalls_never_starts(
         released.wait(timeout=60)
         return "/usr/bin/zebra-notes"
 
-    check = handlers_module.check_arguments
-
-    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = (), *, on_path) -> None:
-        # Linux's check on every OS, so that the name is looked up too.
-        check(tool, arguments, approved, platform="linux", on_path=on_path)
-
-    monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
     monkeypatch.setattr(handlers_module, "_program_on_path", stalled)
+    # Linux's check on every OS, so that the name is looked up too: the
+    # handler checks by its driver's system.
     handler = make_handler(platform="linux")
     # The driver is up already, so the launches' deadlines pass in the stalled
     # lookup, not in the driver's start.
@@ -4758,3 +4745,148 @@ async def test_a_web_address_reaches_the_driver(make_handler, fake_log) -> None:
     assert isinstance(response, ComputerToolResultMessage)
     [call] = _records(fake_log, "call")
     assert call["arguments"]["url"] == "https://example.com/"
+
+
+# ── On Windows an aumid must look like one ───────────────────────────────────
+
+NOTEPAD = "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        # cua-driver 0.38's own cases (platform-windows, launch_uwp.rs).
+        ("Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", True),
+        ("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", True),
+        ("notepad", False),
+        ("notepad.exe", False),
+        ("C:\\Windows\\System32\\notepad.exe", False),
+        ("", False),
+        ("!App", False),
+        ("Pkg!", False),
+        ("a!b!c", False),
+        # One `!`, with text on both sides, whatever the text.
+        ("a!b", True),
+        ("!", False),
+        ("!!", False),
+    ],
+)
+def test_the_shim_takes_for_an_aumid_what_the_driver_does(value: str, expected: bool) -> None:
+    assert catalog.is_aumid(value) is expected
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"aumid": "x", "name": "logoff"},
+        {"aumid": "logoff"},
+        {"aumid": "x"},
+        {"aumid": "notepad.exe", "name": "Notepad"},
+        {"aumid": "a!b!c"},
+        {"aumid": "Pkg!"},
+        # Beside a bundle_id that is one: the driver takes the aumid first.
+        {"aumid": "logoff", "bundle_id": NOTEPAD},
+    ],
+)
+def test_on_windows_an_aumid_that_is_not_one_is_refused(arguments: dict) -> None:
+    """Only bundle_id was held to an AUMID's shape. cua-driver 0.38 takes
+    any `aumid` for a packaged app's and, with one given, never looks at
+    the name: the shim skipped its check of the name for any aumid at all,
+    and sent on a string it had checked for nothing."""
+    with pytest.raises(catalog.ArgumentRefused) as refused:
+        catalog.check_arguments("launch_app", arguments, platform="win32", on_path=lambda _: None)
+
+    assert refused.value.argument == "aumid"
+    assert "AUMID" in refused.value.reason
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [{"aumid": NOTEPAD}, {"aumid": NOTEPAD, "name": "logoff"}, {"aumid": "", "name": "Notepad"}],
+)
+def test_on_windows_a_well_formed_aumid_is_taken(arguments: dict) -> None:
+    catalog.check_arguments("launch_app", arguments, platform="win32", on_path=lambda _: None)
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+@pytest.mark.parametrize("arguments", [{"aumid": "x"}, {"aumid": "x", "name": "Calculator"}])
+def test_an_aumid_means_nothing_off_windows_and_is_left_as_it_was(
+    platform: str, arguments: dict
+) -> None:
+    """The macOS driver launches by bundle_id, else by name, and an app it
+    doesn't find is an error. The Linux one reads launch_path, name and
+    urls. Neither reads an aumid."""
+    catalog.check_arguments("launch_app", arguments, platform=platform, on_path=lambda _: None)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "uses_name"),
+    [
+        ({"name": "Notepad"}, True),
+        ({"name": "Notepad", "bundle_id": "notepad"}, True),
+        ({"name": "Notepad", "aumid": ""}, True),
+        ({"name": "Notepad", "launch_path": ""}, True),
+        ({"name": "Notepad", "path": None}, True),
+        # What the driver takes before a name, in its order: launch_path,
+        # path, aumid, then a bundle_id that is an AUMID.
+        ({"name": "logoff", "launch_path": "C:\\x.exe"}, False),
+        ({"name": "logoff", "path": "C:\\x.exe"}, False),
+        ({"name": "logoff", "aumid": NOTEPAD}, False),
+        ({"name": "logoff", "bundle_id": NOTEPAD}, False),
+        # Not strings, so the driver doesn't read them, and falls to the name.
+        ({"name": "logoff", "launch_path": 5}, True),
+        ({"name": "logoff", "path": ["C:\\x.exe"]}, True),
+        ({"name": "logoff", "aumid": 5}, True),
+        # An aumid that isn't one is refused before this; were it sent, the
+        # name would still be checked.
+        ({"name": "logoff", "aumid": "x"}, True),
+        ({"aumid": NOTEPAD}, False),
+        ({}, False),
+    ],
+)
+def test_the_shim_knows_when_the_windows_driver_acts_on_a_name(
+    arguments: dict, uses_name: bool
+) -> None:
+    assert catalog.windows_launch_uses_name(arguments) is uses_name
+
+
+@pytest.mark.parametrize(
+    "arguments", [{"aumid": "x", "name": "logoff"}, {"aumid": "logoff"}], ids=["with-name", "alone"]
+)
+async def test_on_windows_a_launch_by_an_aumid_that_is_not_one_reaches_no_driver(
+    make_handler, fake_log, monkeypatch, tmp_path, arguments: dict
+) -> None:
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad"]))
+    handler = make_handler(platform="win32")
+
+    response = await handler.handle(_call("launch_app", arguments))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "launch_app", "argument": "aumid"}
+    assert [call["tool"] for call in _records(fake_log, "call")] == []
+    [record] = _audit(tmp_path)
+    assert record["result"]["error_code"] == "FEATURE_NOT_SUPPORTED"
+
+
+async def test_on_windows_a_name_beside_a_path_that_is_no_string_is_still_checked(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """The driver reads a launch_path only when it is a string. One that
+    isn't made the shim skip its check of the name, which the driver then
+    acted on."""
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad"]))
+    handler = make_handler(platform="win32")
+
+    response = await handler.handle(
+        _call(
+            "launch_app",
+            {"name": "logoff", "launch_path": 5},
+            approved_arguments=["launch_path"],
+        )
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "launch_app", "argument": "name"}
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps"]
