@@ -179,11 +179,16 @@ const RUN_LIST_LIMIT = 250;
  * the newest runs only, so an older one may still be going. A shorter list
  * covers every run, so a run it omits is gone.
  */
+/** Whether a run list holds every run, rather than only the newest. */
+export function listHasEveryRun(listed: GeneratedGraphExecutionMeta[]) {
+  return listed.length < RUN_LIST_LIMIT;
+}
+
 export function activeRunsTheListOmits(
   shown: NotificationState,
   listed: GeneratedGraphExecutionMeta[],
 ): AgentExecutionWithInfo[] {
-  if (listed.length < RUN_LIST_LIMIT) return [];
+  if (listHasEveryRun(listed)) return [];
   const listedIDs = new Set(listed.map((execution) => execution.id));
   return shown.activeExecutions.filter(
     (execution) => !listedIDs.has(execution.id),

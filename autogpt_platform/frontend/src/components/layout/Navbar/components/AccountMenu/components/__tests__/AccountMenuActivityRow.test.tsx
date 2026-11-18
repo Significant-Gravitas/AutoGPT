@@ -34,7 +34,7 @@ import { render as renderWithoutProviders } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { AccountMenuActivityRow } from "../AccountMenuActivityRow";
 
 vi.mock("@/lib/auth/actions", async (importOriginal) => ({
@@ -72,6 +72,11 @@ vi.mock("next/link", () => ({
 }));
 
 let releaseHeldList: (() => void) | undefined;
+
+beforeEach(() => {
+  // latestReadTaken() must only ever see this test's reads.
+  vi.mocked(getV1GetExecutionDetails).mockClear();
+});
 
 afterEach(() => {
   // Settle a held response even when the test failed before releasing it.
@@ -163,9 +168,10 @@ async function findRunLine(
   return within(list).findByText(line, undefined, wait);
 }
 
-/** Waits until Activity has taken the answer to its latest read by ID. */
+/** Waits until Activity has taken the answer to this test's latest read by ID. */
 async function latestReadTaken() {
   const read = vi.mocked(getV1GetExecutionDetails).mock.results.at(-1);
+  // Cleared before each test, so a test whose read never happened fails here.
   expect(read).toBeDefined();
   // Activity awaited this promise first, so its handling has run by now.
   await Promise.resolve(read?.value).catch(() => undefined);
@@ -551,10 +557,13 @@ test("a left-out run's read by ID doesn't take an answer that was already on its
       },
     },
   );
+  // Activity reads the run with a request of its own while the poll waits.
+  await vi.waitFor(() => expect(reads).toBe(2));
+  await latestReadTaken();
   releasePoll();
   // Whatever took the poll's answer has handled it once the poll settles.
   await poll;
-  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  await act(async () => {});
 
   const oldRun = await findRunOf(list, "Old workflow");
   expect(oldRun.getByText(/^Awaiting approval /)).toBeDefined();
