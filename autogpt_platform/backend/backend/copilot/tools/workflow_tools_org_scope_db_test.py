@@ -1,7 +1,8 @@
-"""Otto runs a workflow, a preset or a marketplace listing of the user's own only
-from a chat in the organization it belongs to, and bills that organization:
-the real run_agent tool against workflows, library entries and presets in
-Postgres. Only the executor's queue is stubbed."""
+"""Otto runs a workflow, a preset or a marketplace listing of the user's own, and
+sets up a trigger on a workflow, only from a chat in the organization it belongs
+to, and bills that organization: the real run_agent and trigger tools against
+workflows, library entries and presets in Postgres. Only the executor's queue is
+stubbed."""
 
 import uuid
 from collections.abc import AsyncIterator
@@ -28,12 +29,14 @@ from ._test_data import (
     make_session,
 )
 from .run_agent import RunAgentTool
+from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 
 
 class World(BaseModel):
     user: str
     orgs: dict[str, tuple[str, str]]
     calls: dict[str, dict[str, str]]
+    trigger_calls: dict[str, dict[str, str]]
 
 
 @pytest_asyncio.fixture(loop_scope="session")
@@ -85,6 +88,10 @@ async def world(mocker) -> AsyncIterator[World]:
             user=user.id,
             orgs={"personal": personal, "work": (work.id, work_team.id)},
             calls=calls,
+            trigger_calls={
+                "library agent": {"library_agent_id": library_agent.id},
+                "graph id": {"graph_id": graph.id},
+            },
         )
     finally:
         await prisma.storelisting.delete_many(where={"owningUserId": users})
@@ -162,6 +169,33 @@ async def test_the_gate_asks_nothing_for_a_workflow_the_run_refuses(
     )
 
     assert subject is NO_OP
+
+
+@pytest.mark.parametrize("call", ["library agent", "graph id"])
+@pytest.mark.parametrize(
+    "chat_org, error",
+    [("personal", "no_webhook_trigger"), ("work", "workflow_in_another_organization")],
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_otto_sets_up_a_trigger_only_from_its_workflows_organization(
+    world: World, call: str, chat_org: str, error: str
+):
+    """The workflow has no trigger block: from its own org, the tool gets past
+    the lookup to that check."""
+    session = make_session(user_id=world.user)
+    session.organization_id, session.team_id = world.orgs[chat_org]
+
+    response = await SetupAgentWebhookTriggerTool().execute(
+        user_id=world.user,
+        session_id=session.session_id,
+        tool_call_id=str(uuid.uuid4()),
+        session=session,
+        name="On push",
+        **world.trigger_calls[call],
+    )
+
+    assert isinstance(response.output, str)
+    assert orjson.loads(response.output).get("error") == error
 
 
 async def _workflow(

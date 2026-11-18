@@ -15,7 +15,8 @@ from backend.copilot.credential_selection import (
     selected_credentials,
     turn_credential_pins,
 )
-from backend.data.db_accessors import library_db, store_db
+from backend.copilot.model import ChatSession
+from backend.data.db_accessors import library_db, orgs_db, store_db
 from backend.data.graph import GraphModel
 from backend.data.model import (
     Credentials,
@@ -31,6 +32,8 @@ from backend.integrations.oauth.refresh_failure import reconnect_required
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
 from backend.util.request import CREDENTIAL_REJECTED_STATUS_CODES
+
+from .models import ErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -790,3 +793,24 @@ _SECRET_PARAM_RE = re.compile(
     r"(?i)['\"]?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token"
     r"|client[_-]?secret|token|secret|password)\b['\"]?\s*[=:]\s*(?:\"[^\"]*\"|'[^']*'|\S+)"
 )
+
+
+async def chat_tenancy(
+    user_id: str, session: ChatSession
+) -> tuple[str | None, str | None]:
+    """The org and team a workflow started from this chat belongs to: the chat's,
+    or the user's default for a chat from before org tagging."""
+    if session.organization_id is not None:
+        return session.organization_id, session.team_id
+    return await orgs_db().get_user_default_team(user_id)
+
+
+def workflow_in_another_organization(session_id: str | None) -> ErrorResponse:
+    return ErrorResponse(
+        message=(
+            "That workflow is in another of your organizations, so it can't run "
+            "here. Switch to that organization to run it."
+        ),
+        error="workflow_in_another_organization",
+        session_id=session_id,
+    ).from_outside()

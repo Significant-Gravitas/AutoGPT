@@ -98,10 +98,12 @@ from .models import (
 from .schedule_duplicates import find_duplicate_graph_schedule
 from .utils import (
     build_missing_credentials_from_graph,
+    chat_tenancy,
     extract_credentials_from_schema,
     fetch_graph_from_store_slug,
     get_or_create_library_agent,
     match_user_credentials_to_graph,
+    workflow_in_another_organization,
 )
 
 logger = logging.getLogger(__name__)
@@ -565,7 +567,7 @@ class RunAgentTool(BaseTool):
             return result
 
         except InAnotherOrganizationError:
-            return _in_another_organization(session_id)
+            return workflow_in_another_organization(session_id)
         except ExpertNotFoundError:
             return ErrorResponse(
                 message="This expert is no longer available. Please start a new chat.",
@@ -953,7 +955,7 @@ class RunAgentTool(BaseTool):
         try:
             preset, graph = await _preset_graph(user_id, session, params.preset_id)
         except InAnotherOrganizationError:
-            return _in_another_organization(session_id)
+            return workflow_in_another_organization(session_id)
         if not preset:
             return ErrorResponse(
                 message=f"Preset '{params.preset_id}' not found.",
@@ -1090,7 +1092,7 @@ class RunAgentTool(BaseTool):
         # defend against a race (creds deleted between prereq and
         # execute) by turning credential errors back into the inline
         # setup card.
-        org_id, team_id = await _run_tenancy(user_id, session)
+        org_id, team_id = await chat_tenancy(user_id, session)
 
         # An External API call's session is never saved, so no chat can take the
         # run's approvals or vouch for it on resume: it is an API run, as on v1.
@@ -1435,7 +1437,7 @@ class RunAgentTool(BaseTool):
         # expert-scoped chat belongs to that expert, so it surfaces on her
         # Team card / expert page, counts toward her weekly credit budget,
         # and is cleaned up when she is archived.
-        org_id, team_id = await _run_tenancy(user_id, session)
+        org_id, team_id = await chat_tenancy(user_id, session)
 
         scheduler = get_scheduler_client()
         existing = await find_duplicate_graph_schedule(
@@ -1594,7 +1596,7 @@ async def _agent_graph(
 
     Raises InAnotherOrganizationError for one in another of the user's orgs.
     """
-    org_id, _ = await _run_tenancy(user_id, session)
+    org_id, _ = await chat_tenancy(user_id, session)
     if params.library_agent_id:
         try:
             library_agent = await library_db().get_library_agent(
@@ -1640,7 +1642,7 @@ async def _preset_graph(
     preset = await library_db().get_preset(user_id=user_id, preset_id=preset_id)
     if preset is None or preset.expert_id != session.expert_id:
         return None, None
-    org_id, _ = await _run_tenancy(user_id, session)
+    org_id, _ = await chat_tenancy(user_id, session)
     if not in_tenant(preset.organization_id, org_id):
         raise InAnotherOrganizationError()
     graph = await graph_db().get_graph(
@@ -1653,29 +1655,8 @@ async def _preset_graph(
     return preset, graph
 
 
-async def _run_tenancy(
-    user_id: str, session: ChatSession
-) -> tuple[str | None, str | None]:
-    """The org and team a run from this chat belongs to and bills: the chat's,
-    or the user's default for a chat from before org tagging."""
-    if session.organization_id is not None:
-        return session.organization_id, session.team_id
-    return await orgs_db().get_user_default_team(user_id)
-
-
 class InAnotherOrganizationError(Exception):
     """The workflow or preset a call names is in another of the user's orgs."""
-
-
-def _in_another_organization(session_id: str) -> ErrorResponse:
-    return ErrorResponse(
-        message=(
-            "That workflow is in another of your organizations, so it can't run "
-            "here. Switch to that organization to run it."
-        ),
-        error="workflow_in_another_organization",
-        session_id=session_id,
-    ).from_outside()
 
 
 async def _bind_builder_graph(
