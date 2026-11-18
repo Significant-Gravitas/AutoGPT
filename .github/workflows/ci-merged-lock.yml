@@ -30,10 +30,15 @@ jobs:
         after=tomllib.loads(Path('poetry.lock').read_text())\ndef inventory(lock):\n    return {p['name']:\
         \ (p['version'],p.get('source')) for p in lock['package']}\nold,new=inventory(before),inventory(after)\n\
         changed={k:[old.get(k),new.get(k)] for k in old.keys()|new.keys() if old.get(k)!=new.get(k)}\n\
-        assert set(changed) <= {'async-timeout'},changed\nassert after['metadata']['python-versions']=='>=3.12,<3.14'\n\
+        assert set(changed) == {'async-timeout','backports-tarfile'},changed\nassert all(new.get(name)\
+        \ is None for name in changed)\nexpected_markers = {\n    'async-timeout': 'python_version ==\
+        \ \"3.11\" and python_full_version < \"3.11.3\"',\n    'backports-tarfile': 'python_version ==\
+        \ \"3.11\"',\n}\nfor package in before['package']:\n    if package['name'] in changed:\n     \
+        \   assert package['markers'] == expected_markers[package['name']],package\nassert after['metadata']['python-versions']=='>=3.12,<3.14'\n\
         Path(os.environ['RUNNER_TEMP'], 'lock-changes.json').write_text(json.dumps(changed,indent=2))\n\
         print(json.dumps(changed,indent=2))\nPY\ngit diff -- poetry.lock > \"$RUNNER_TEMP/lock.diff\"\n"
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: ${{ !cancelled() }}
       with:
         name: merged-backend-lock
         path: 'autogpt_platform/backend/poetry.lock
