@@ -1285,6 +1285,9 @@ class CommandHandler:
                 details={"requested_shell": payload.shell.value},
             )
         logger.error("Failed to spawn subprocess", exc_info=exc)
+        if isinstance(exc, windows_jobs.JobError):
+            # The shim's own refusal, in its own words: no path in it.
+            return make_error(request_id, ErrorCode.INTERNAL_ERROR, str(exc))
         return make_error(
             request_id,
             ErrorCode.INTERNAL_ERROR,

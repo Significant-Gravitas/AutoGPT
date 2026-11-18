@@ -155,6 +155,40 @@ async def test_a_shell_this_os_does_not_have_names_the_shell_asked_for(
     assert reply.payload.details == {"requested_shell": "zsh"}
 
 
+async def test_a_command_the_shim_would_not_run_without_a_job_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On Windows a command that can't be put in a job of its own isn't run.
+    That refusal is the shim's own, with no path in it, and reaches the
+    platform as it is; any other failure to start is answered by its kind."""
+    from autogpt_local_executor import windows_jobs
+
+    async def no_job(*_args: Any, **_kwargs: Any) -> Any:
+        raise windows_jobs.JobError(
+            "the command was not run: it could not be put in a job of its own"
+        )
+
+    monkeypatch.setattr(CommandHandler, "_spawn_argv", staticmethod(no_job))
+
+    reply = await CommandHandler(_config(tmp_path)).handle(_command("argv"))
+
+    assert isinstance(reply, ErrorMessage)
+    assert reply.payload.code == ErrorCode.INTERNAL_ERROR
+    assert "job of its own" in reply.payload.message
+
+    async def some_other_failure(*_args: Any, **_kwargs: Any) -> Any:
+        raise PermissionError(13, "Permission denied", str(tmp_path / "somewhere"))
+
+    monkeypatch.setattr(CommandHandler, "_spawn_argv", staticmethod(some_other_failure))
+
+    reply = await CommandHandler(_config(tmp_path)).handle(_command("argv"))
+
+    assert isinstance(reply, ErrorMessage)
+    assert reply.payload.code == ErrorCode.INTERNAL_ERROR
+    assert str(tmp_path) not in reply.payload.message
+    assert "PermissionError" in reply.payload.message
+
+
 @pytest.mark.parametrize("how", ["argv", "shell"])
 async def test_a_command_in_a_folder_that_is_there_still_runs(tmp_path: Path, how: str) -> None:
     (tmp_path / "work").mkdir()

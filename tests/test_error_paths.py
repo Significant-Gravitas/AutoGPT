@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -242,7 +243,11 @@ def test_a_root_that_is_not_there_is_said_without_the_systems_file_name(tmp_path
 
     assert ELSEWHERE not in refused.value.message
     assert repr(str(root)) in refused.value.message
-    assert ELSEWHERE in refused.value.detail
+    assert refused.value.detail
+    if sys.platform != "win32":
+        # POSIX names the part it stopped at, with the links before it
+        # followed. Windows names the path as it was given.
+        assert ELSEWHERE in refused.value.detail
 
 
 # ── Replies built from the system's own error ────────────────────────────────
