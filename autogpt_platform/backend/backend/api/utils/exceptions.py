@@ -22,7 +22,10 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
-from backend.api.utils.validation_errors import bounded_validation_errors
+from backend.api.utils.validation_errors import (
+    bounded_validation_errors,
+    loggable_validation_errors,
+)
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.clients import SCHEDULER_SUSTAINED_OUTAGE_SECONDS
@@ -167,16 +170,20 @@ async def _handle_validation_error(
     request: fastapi.Request, exc: Exception
 ) -> fastapi.responses.Response:
     errors: Sequence | str
+    logged: Sequence | str
     if isinstance(exc, (RequestValidationError, pydantic.ValidationError)):
+        # The client sent the data the response quotes back; the log keeps out
+        # what it said, such as a mapping's keys.
         errors = bounded_validation_errors(exc)
+        logged = loggable_validation_errors(exc)
     else:
-        errors = str(exc)
+        errors = logged = str(exc)
 
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
         redact_url(request.url.path),
-        errors,
+        logged,
     )
 
     response_content = {
