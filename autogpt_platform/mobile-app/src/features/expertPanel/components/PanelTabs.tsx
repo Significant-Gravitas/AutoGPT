@@ -2,11 +2,12 @@ import { Pressable, Text, View } from "react-native";
 
 import { createStyles, radius, spacing } from "@/lib/theme";
 
-export type PanelTab = "activity" | "library";
+export type PanelTab = "activity" | "library" | "connections";
 
 const TABS: { id: PanelTab; label: string }[] = [
   { id: "activity", label: "Activity" },
   { id: "library", label: "Library" },
+  { id: "connections", label: "Connections" },
 ];
 
 interface Props {

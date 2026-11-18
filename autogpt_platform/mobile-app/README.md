@@ -11,7 +11,9 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 - **Opening fast:** the app saves the chat list, your experts and your last few chats on the phone, so they open at once and then catch up with the server. A chat also starts loading as your finger lands on its row.
 - **Steps:** what the expert is doing shows as a live list and folds to one line when the reply lands.
 - **Attach and dictate:** in a chat, attach photos and files; anywhere the composer is, dictate into the field.
+- **Connecting services:** when Otto or an expert needs a service, the chat shows a card with one row per service: sign in, add a key or login, reconnect, or allow an expert to use an account you already have. Once every row is connected, the chat carries on by itself.
 - **Chat panel:** in an expert's chat, their profile with Activity (upcoming routines, recent runs, computer state) and Library (files) tabs; in a chat with Otto, the chat's files. Share the chat from its top bar.
+- **Connections:** the expert panel's Connections tab lists the accounts the expert can use (Remove takes away their access, not the account) and what their workflows still need; a chat with Otto lists all your connections under its files. "Add connection" allows an account you have or connects a new service, an MCP server by address included.
 - **Team:** the experts you have hired; tap one to chat. Create a new expert from the header, or hire one from the Marketplace.
 - **Marketplace:** every expert you can hire, with search and areas. Hire from the list or from an expert's page, which shows what they do and their skills; the new expert says hello in their first chat.
 - **Settings:** the web `/settings` page in a WebView, reached from the user row at the foot of the drawer.
@@ -19,7 +21,7 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 
 ## What it does not do
 
-Sign-up, onboarding, billing and paywalls, social login, connecting integrations, push notifications, choosing a model, pausing a single routine, uploading or generating an expert's picture, deleting or downloading files, store builds, and CI.
+Sign-up, onboarding, billing and paywalls, social login, push notifications, choosing a model, pausing a single routine, uploading or generating an expert's picture, deleting or downloading files, store builds, and CI.
 
 ## Run it
 
@@ -45,6 +47,12 @@ The app follows the auth service's contract for installed apps in [`docs/enginee
 - Dictation and Settings use web routes that read a cookie, so for those two the app sends the same credential as the session cookie.
 
 A web app from before that contract answers a sign-in with a cookie only, and the app then says the server can't sign it in yet.
+
+### Connecting services
+
+Sign-ins open in the phone's own browser sheet (never a WebView, which Google refuses) and come back to `autogpt-app://integrations/oauth`. That needs a web app whose `/auth/integrations/oauth_callback` and `/auth/integrations/mcp_callback` routes send sign-ins started from the app back to it; with an older web app the sheet stays on its own page until you close it. Keys, logins and MCP tokens need no web change. If the web app sets `NATIVE_OAUTH_RETURN_URL`, it must stay `autogpt-app://integrations/oauth`, the address the app waits for.
+
+On iOS the system asks before every sign-in whether the app may use the web app's domain; that prompt can't be changed. On Android, Expo Go can't receive `autogpt-app://` links, so test sign-ins in a development build (`npx expo run:android`). A sign-in on a physical phone comes back to the web app's address, so `localhost` only works on a simulator.
 
 ## Environment
 
@@ -72,7 +80,8 @@ Set these in `.env.local` (see `.env.example`). Trailing slashes are dropped.
 - Attaching a file with a name already used in the same chat fails; the backend refuses it.
 - File chips under a sent message are kept only until the chat reloads from the server.
 - Settings shows the web page's own navigation, and is always light.
-- Credential and approval cards in a chat are not shown.
+- Approval cards in a chat are not shown.
+- A connect card that also asks for details, a service that signs in with a device code (such as Codex) or through Ayrshare, and a connect that hits a paywall all send you to the web to finish.
 - Images in Otto's replies show as their alt text only.
 - Only `http` and `https` links open.
 - Plain HTTP only works in development; release builds need HTTPS.

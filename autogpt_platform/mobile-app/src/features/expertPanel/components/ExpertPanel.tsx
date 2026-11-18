@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
+import { ExpertConnections } from "@/features/connections/components/ExpertConnections/ExpertConnections";
 import { FileLibrary } from "@/features/files/components/FileLibrary";
 import { createStyles, spacing } from "@/lib/theme";
 
@@ -21,7 +22,7 @@ interface Props {
   onClose: () => void;
 }
 
-/** The panel in an expert's chat: who they are, what they do, their files. */
+/** The panel in an expert's chat: who they are, what they do, their files and connections. */
 export function ExpertPanel({
   sessionID,
   expertID,
@@ -58,13 +59,22 @@ export function ExpertPanel({
       <PanelTabs selected={tab} onSelect={setTab} />
       {tab === "activity" ? (
         <ActivityTab expertID={expertID} expertName={name} isOpen={isOpen} />
-      ) : (
+      ) : null}
+      {tab === "library" ? (
         <FileLibrary
           sessionID={sessionID}
           expert={{ id: expertID, name }}
           isOpen={isOpen}
         />
-      )}
+      ) : null}
+      {tab === "connections" ? (
+        <ExpertConnections
+          sessionID={sessionID}
+          expertID={expertID}
+          expertName={name}
+          isOpen={isOpen}
+        />
+      ) : null}
     </ScrollView>
   );
 }
