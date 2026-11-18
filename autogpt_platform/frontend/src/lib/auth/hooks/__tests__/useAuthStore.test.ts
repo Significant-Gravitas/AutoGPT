@@ -27,16 +27,6 @@ vi.mock("@/services/analytics/reset-identity", () => ({
 vi.mock("@/services/push-notifications/helpers", () => ({
   teardownPushSubscriptionBeforeLogout: vi.fn(),
 }));
-const { mockClearAllCompletedSessions } = vi.hoisted(() => ({
-  mockClearAllCompletedSessions: vi.fn(),
-}));
-vi.mock("@/app/(platform)/copilot/store", () => ({
-  useCopilotUIStore: {
-    getState: () => ({
-      clearAllCompletedSessions: mockClearAllCompletedSessions,
-    }),
-  },
-}));
 vi.mock("../helpers", () => ({
   fetchUser: vi.fn(),
   handleStorageEvent: vi.fn(),
@@ -533,30 +523,5 @@ describe("useAuthStore onboarding handoff", () => {
 
     expect(window.sessionStorage.getItem(WELCOME)).toBe("1");
     expect(window.sessionStorage.getItem(INTRO)).toBe("A");
-  });
-});
-
-describe("useAuthStore account change", () => {
-  afterEach(async () => {
-    useAuthStore.setState({ user: null });
-    await vi.dynamicImportSettled();
-    vi.clearAllMocks();
-  });
-
-  it("clears the finished-chats list when the user signs out", async () => {
-    useAuthStore.setState({ user: { id: "user-1" } as User });
-    useAuthStore.setState({ user: null });
-
-    await vi.waitFor(() =>
-      expect(mockClearAllCompletedSessions).toHaveBeenCalledOnce(),
-    );
-  });
-
-  it("keeps the finished-chats list when the same user is refreshed", async () => {
-    useAuthStore.setState({ user: { id: "user-1" } as User });
-    useAuthStore.setState({ user: { id: "user-1" } as User });
-    await vi.dynamicImportSettled();
-
-    expect(mockClearAllCompletedSessions).not.toHaveBeenCalled();
   });
 });

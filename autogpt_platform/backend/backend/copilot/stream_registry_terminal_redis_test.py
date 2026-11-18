@@ -201,3 +201,32 @@ async def test_lost_error_and_finish_recover_at_live_timeout(mocker):
         )
         assert queue.get_nowait() == (None, StreamFinish())
         assert queue.empty()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_message, turn_failed",
+    [
+        (None, False),
+        ("provider unavailable", True),
+        (registry.CANCELLED_MESSAGE, None),
+    ],
+)
+async def test_an_ended_turn_marks_the_chat_unread_unless_the_user_stopped_it(
+    mocker, error_message, turn_failed
+):
+    mocker.patch.object(registry, "chat_db").return_value.set_turn_duration = (
+        AsyncMock()
+    )
+    release = mocker.patch.object(registry, "release_turn_slot", AsyncMock())
+    # The owner's queue, held calls and notifications are outside this test.
+    mocker.patch.object(registry, "_notification_bus")
+    mocker.patch.object(registry, "dispatch_next_for_user", AsyncMock())
+    mocker.patch.object(registry.after_turn, "run_after_turn", AsyncMock())
+    async with FakeRedis(decode_responses=True) as redis:
+        mocker.patch.object(registry, "get_redis_async", return_value=redis)
+        await registry.create_session("s", "u1", "", "", turn_id="t")
+        await registry.mark_session_completed("s", error_message, turn_id="t")
+
+    # Released with the slot, in the write that sets the chat back to idle.
+    release.assert_awaited_once_with("u1", "s", turn_failed=turn_failed)

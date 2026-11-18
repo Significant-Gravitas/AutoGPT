@@ -20,7 +20,11 @@ import {
 } from "@/components/molecules/Collapsible/Collapsible";
 import { SidebarMenu } from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
-import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import {
+  ArrowDown01Icon,
+  MessageDone01Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
 import Link, { useLinkStatus } from "next/link";
 import { type ReactNode, useId } from "react";
 import { useExpertChatGroup } from "./useExpertChatGroup";
@@ -34,6 +38,11 @@ const NEW_CHAT_SLOT_SIZE_CLASS = "size-5 max-md:size-9";
 // trigger's `px-2` (0.5rem) + the chevron's `size-5` (1.25rem) + the `gap-2`
 // between them (0.5rem) = 2.25rem. Change any of the three and this moves.
 const NEW_CHAT_LINK_OFFSET_CLASS = "right-9";
+// The mark-as-read button floats over a second slot, the same size, just left
+// of the new-chat one: its offset plus that slot plus the trigger's `gap-2`
+// (2.25rem + 1.25rem + 0.5rem = 4rem, or 2.25rem + 2.25rem + 0.5rem = 5rem at
+// touch widths). Without a new-chat link it takes that link's place.
+const MARK_READ_OFFSET_CLASS = "right-16 max-md:right-20";
 
 interface Props {
   /** The group's expert; null for Otto's own chats. */
@@ -50,6 +59,10 @@ interface Props {
   previewSessions: SessionSummaryResponse[];
   pinnedSeparately: boolean;
   activeSessionId: string | null;
+  /** The group's chats that want the user, loaded or not. */
+  attentionCount: number;
+  /** Clears the group's unread and failed chats; absent when it has none. */
+  onMarkAllRead?: () => void;
   renderItem: (session: SessionSummaryResponse) => ReactNode;
 }
 
@@ -68,6 +81,8 @@ export function ExpertChatGroup({
   previewSessions,
   pinnedSeparately,
   activeSessionId,
+  attentionCount,
+  onMarkAllRead,
   renderItem,
 }: Props) {
   const countID = useId();
@@ -112,12 +127,29 @@ export function ExpertChatGroup({
             avatarUrl={avatarUrl}
             color={color}
             isAutopilot={isAutopilot}
-            nameAccessory={<SessionCount id={countID} count={total} />}
+            nameAccessory={
+              <>
+                <SessionCount id={countID} count={total} />
+                {attentionCount > 0 && (
+                  <AttentionCount count={attentionCount} />
+                )}
+              </>
+            }
           />
-          {newChatHref && (
+          {onMarkAllRead && (
             <span
               aria-hidden
               className={cn("ml-auto shrink-0", NEW_CHAT_SLOT_SIZE_CLASS)}
+            />
+          )}
+          {newChatHref && (
+            <span
+              aria-hidden
+              className={cn(
+                "shrink-0",
+                !onMarkAllRead && "ml-auto",
+                NEW_CHAT_SLOT_SIZE_CLASS,
+              )}
             />
           )}
           {/* Hidden at rest on desktop like the new-chat link, and revealed
@@ -130,10 +162,19 @@ export function ExpertChatGroup({
             className={cn(
               "shrink-0 transition-[opacity,transform] duration-200 group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 group-data-[state=open]/expert-group:rotate-180 motion-reduce:transition-none md:opacity-0",
               CHEVRON_SIZE_CLASS,
-              !newChatHref && "ml-auto",
+              !newChatHref && !onMarkAllRead && "ml-auto",
             )}
           />
         </CollapsibleTrigger>
+        {onMarkAllRead && (
+          <MarkAllReadButton
+            label={label}
+            offsetClass={
+              newChatHref ? MARK_READ_OFFSET_CLASS : NEW_CHAT_LINK_OFFSET_CLASS
+            }
+            onClick={onMarkAllRead}
+          />
+        )}
         {newChatHref && <NewChatLink href={newChatHref} label={label} />}
       </div>
 
@@ -252,6 +293,50 @@ function SessionCount({ id, count }: { id: string; count: number }) {
     >
       {count}
     </span>
+  );
+}
+
+function AttentionCount({ count }: { count: number }) {
+  return (
+    <span className="flex shrink-0 items-center gap-1 rounded-full bg-brand/10 px-1.5 text-caption-sm leading-4.5 font-semibold text-brand tabular-nums">
+      <span aria-hidden className="size-1.5 rounded-full bg-brand" />
+      <span className="sr-only">Needs attention:</span>
+      {count}
+    </span>
+  );
+}
+
+interface MarkAllReadButtonProps {
+  label: string;
+  offsetClass: string;
+  onClick: () => void;
+}
+
+function MarkAllReadButton({
+  label,
+  offsetClass,
+  onClick,
+}: MarkAllReadButtonProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Mark all ${label} chats as read`}
+          onClick={onClick}
+          className={cn(
+            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-foreground-tertiary transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-surface-active hover:text-foreground-strong focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none md:opacity-0",
+            NEW_CHAT_SLOT_SIZE_CLASS,
+            offsetClass,
+          )}
+        >
+          <Icon icon={MessageDone01Icon} className="size-4 max-md:size-5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipPortal>
+        <TooltipContent side="top">Mark all as read</TooltipContent>
+      </TooltipPortal>
+    </Tooltip>
   );
 }
 

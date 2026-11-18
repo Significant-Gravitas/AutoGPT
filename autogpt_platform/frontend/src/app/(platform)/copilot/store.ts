@@ -4,7 +4,6 @@ import {
   clearContentCache,
   forgetArtifactContent,
 } from "./components/ArtifactPanel/components/useArtifactContent";
-import { parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
   id: string;
@@ -198,18 +197,9 @@ function scheduleWidthPersist(key: Key, value: number) {
   }, 200);
 }
 
-function persistCompletedSessions(ids: Set<string>) {
-  if (!isClient) return;
-  try {
-    if (ids.size === 0) {
-      storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
-    } else {
-      storage.set(Key.COPILOT_COMPLETED_SESSIONS, JSON.stringify([...ids]));
-    }
-  } catch {
-    // Keep in-memory state authoritative if persistence is unavailable
-  }
-}
+// Retired: which chats had finished was kept per browser until the server
+// kept it (SECRT-3542). Cleaned so the old list doesn't linger.
+if (isClient) storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
 
 interface CopilotUIState {
   /** Prompt extracted from URL hash (e.g. /copilot#prompt=...) for input prefill. */
@@ -253,11 +243,6 @@ interface CopilotUIState {
 
   isSearchOpen: boolean;
   setSearchOpen: (open: boolean) => void;
-
-  completedSessionIDs: Set<string>;
-  addCompletedSession: (id: string) => void;
-  clearCompletedSession: (id: string) => void;
-  clearAllCompletedSessions: () => void;
 
   isNotificationsEnabled: boolean;
   setNotificationsEnabled: (enabled: boolean) => void;
@@ -397,28 +382,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
 
   isSearchOpen: false,
   setSearchOpen: (open) => set({ isSearchOpen: open }),
-
-  completedSessionIDs: isClient
-    ? parseSessionIDs(storage.get(Key.COPILOT_COMPLETED_SESSIONS))
-    : new Set(),
-  addCompletedSession: (id) =>
-    set((state) => {
-      const next = new Set(state.completedSessionIDs);
-      next.add(id);
-      persistCompletedSessions(next);
-      return { completedSessionIDs: next };
-    }),
-  clearCompletedSession: (id) =>
-    set((state) => {
-      const next = new Set(state.completedSessionIDs);
-      next.delete(id);
-      persistCompletedSessions(next);
-      return { completedSessionIDs: next };
-    }),
-  clearAllCompletedSessions: () => {
-    persistCompletedSessions(new Set());
-    set({ completedSessionIDs: new Set<string>() });
-  },
 
   isNotificationsEnabled: getPersistedNotificationsEnabled(),
   setNotificationsEnabled: (enabled) => {
@@ -847,7 +810,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     storage.clean(Key.COPILOT_CONTEXT_PANEL_TAB);
     storage.clean(Key.COPILOT_CONTEXT_PANEL_WIDTH);
     storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
-    storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     storage.clean(Key.COPILOT_DRY_RUN);
     // Retired key — still cleaned so a user who set it before the control
     // was removed does not keep a dead entry forever.
@@ -855,7 +817,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     storage.clean(Key.COPILOT_MODEL);
     storage.clean(Key.COPILOT_LOCAL_PC_WARNING_ACKED);
     set({
-      completedSessionIDs: new Set<string>(),
       contextPanelWidth: DEFAULT_PANEL_WIDTH,
       artifactPanelWidth: DEFAULT_ARTIFACT_PANEL_WIDTH,
       isSearchOpen: false,

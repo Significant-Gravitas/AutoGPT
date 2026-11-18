@@ -294,6 +294,8 @@ OPEN_WHILE_PAYWALLED = {
     "PUT /api/chat/sessions/{session_id}/credential-selection",
     "POST /api/chat/sessions/{session_id}/feedback",
     "PATCH /api/chat/sessions/{session_id}/pinned",
+    "POST /api/chat/sessions/read",
+    "POST /api/chat/sessions/{session_id}/read",
     "POST /api/chat/sessions/{session_id}/share",
     "PATCH /api/chat/sessions/{session_id}/title",
     "POST /api/copilot/sessions/{session_id}/executor/consent",

@@ -4775,6 +4775,48 @@
         }
       }
     },
+    "/api/chat/sessions/read": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Mark Sessions Read",
+        "description": "Mark the user's unread chats read, on every device: one expert's, Otto's\nown, or all of them. A chat waiting on a question or an approval keeps\nits `needs_you` marker until that is answered.",
+        "operationId": "postV2MarkSessionsRead",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkSessionsReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkSessionsReadResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/sessions/{session_id}": {
       "delete": {
         "tags": ["v2", "chat", "chat"],
@@ -5554,6 +5596,37 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/read": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Mark Session Read",
+        "description": "Mark one chat read on every device, once its owner has seen it. A chat\nthat isn't theirs, or has nothing unread, is left as it is.",
+        "operationId": "postV2MarkSessionRead",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -31734,6 +31807,38 @@
         "title": "MCPToolsDiscoveredResponse",
         "description": "Response when MCP tools are discovered from a server (agent-internal)."
       },
+      "MarkSessionsReadRequest": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Expert Id"
+          },
+          "autopilot_only": {
+            "type": "boolean",
+            "title": "Autopilot Only",
+            "description": "Only Otto's own chats, those with no expert.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "MarkSessionsReadRequest",
+        "description": "Which chats to mark read; every chat when both are left out."
+      },
+      "MarkSessionsReadResponse": {
+        "properties": {
+          "marked": {
+            "type": "integer",
+            "title": "Marked",
+            "description": "How many unread chats were marked read."
+          }
+        },
+        "type": "object",
+        "required": ["marked"],
+        "title": "MarkSessionsReadResponse"
+      },
       "MarketplaceListing": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -36668,6 +36773,18 @@
             "title": "Total",
             "description": "Every chat in the group, not just those listed."
           },
+          "attention_count": {
+            "type": "integer",
+            "title": "Attention Count",
+            "description": "Of `total`, the chats with an `attention` marker.",
+            "default": 0
+          },
+          "unread_count": {
+            "type": "integer",
+            "title": "Unread Count",
+            "description": "Of `total`, the `error` and `unread` chats marking read clears.",
+            "default": 0
+          },
           "sessions": {
             "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
             "type": "array",
@@ -36727,6 +36844,14 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "attention": {
+            "anyOf": [
+              { "type": "string", "enum": ["needs_you", "error", "unread"] },
+              { "type": "null" }
+            ],
+            "title": "Attention",
+            "description": "What the chat wants from its owner, the most urgent first: `needs_you` (a question or an approval waits on them), `error` (a turn failed since they last opened it) or `unread` (a turn ended since then). Opening the chat clears `error` and `unread`."
           }
         },
         "type": "object",

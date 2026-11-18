@@ -7,11 +7,13 @@ export interface SidebarChat {
   expert_id?: string | null;
   is_processing?: boolean;
   is_pinned?: boolean;
+  attention?: "needs_you" | "error" | "unread" | null;
 }
 
 export interface SidebarRequest {
-  path: "session-groups" | "sessions";
+  path: "session-groups" | "sessions" | "sessions/read";
   params: URLSearchParams;
+  body?: unknown;
 }
 
 // One minute apart, newest first, `Z`-suffixed so the API client turns them
@@ -40,6 +42,33 @@ export function sidebarBackend(
       requests.push({ path: "sessions", params });
       return HttpResponse.json(listRead(chats(), params));
     }),
+    // Clears the unread and error markers of the chats asked for, as the
+    // server does; a chat that needs the user keeps its marker.
+    http.post("*/api/chat/sessions/read", async ({ request }) => {
+      const body = (await request.json()) as {
+        expert_id?: string | null;
+        autopilot_only?: boolean;
+      };
+      requests.push({
+        path: "sessions/read",
+        params: new URL(request.url).searchParams,
+        body,
+      });
+      let marked = 0;
+      for (const chat of chats()) {
+        const inScope = body.expert_id
+          ? chat.expert_id === body.expert_id
+          : !body.autopilot_only || !chat.expert_id;
+        if (
+          inScope &&
+          (chat.attention === "unread" || chat.attention === "error")
+        ) {
+          chat.attention = null;
+          marked += 1;
+        }
+      }
+      return HttpResponse.json({ marked });
+    }),
   ];
 }
 
@@ -51,6 +80,7 @@ export function toSummary(chat: SidebarChat, index: number) {
     expert_id: chat.expert_id ?? null,
     is_processing: chat.is_processing ?? false,
     is_pinned: chat.is_pinned ?? false,
+    attention: chat.attention ?? null,
     created_at: at,
     updated_at: at,
   };
@@ -79,6 +109,10 @@ export function groupedRead(chats: SidebarChat[], params: URLSearchParams) {
     groups: [...byExpert.entries()].map(([expertId, groupChats]) => ({
       expert_id: expertId,
       total: groupChats.length,
+      attention_count: groupChats.filter((chat) => chat.attention).length,
+      unread_count: groupChats.filter(
+        (chat) => chat.attention === "unread" || chat.attention === "error",
+      ).length,
       sessions: groupChats.filter((chat) => kept.has(chat.id)),
     })),
     pinned: pinnedApart ? summaries.filter((chat) => chat.is_pinned) : [],

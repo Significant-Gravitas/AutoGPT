@@ -3,6 +3,8 @@ import { renderHook, cleanup, act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
+import { getPostV2MarkSessionReadMockHandler } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { server } from "@/mocks/mock-server";
 import { COPILOT_COMPLETION_NOTIFICATION } from "../helpers";
 
 type WSHandler = (notification: unknown) => void;
@@ -52,9 +54,17 @@ function setFocused(focused: boolean) {
   vi.spyOn(document, "hasFocus").mockReturnValue(focused);
 }
 
+let markedRead: string[] = [];
+
 beforeEach(() => {
   capturedHandler = null;
   NotificationCtor.mockClear();
+  markedRead = [];
+  server.use(
+    getPostV2MarkSessionReadMockHandler(({ params }) => {
+      markedRead.push(String(params.sessionId));
+    }),
+  );
 
   (
     FakeNotification as unknown as { permission: NotificationPermission }
@@ -62,7 +72,6 @@ beforeEach(() => {
   vi.stubGlobal("Notification", FakeNotification);
 
   useCopilotUIStore.setState({
-    completedSessionIDs: new Set(),
     isNotificationsEnabled: true,
     isSoundEnabled: false,
   });
@@ -79,18 +88,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const completion = (sessionID: string) => ({
+  type: "copilot_completion",
+  event: "session_completed",
+  session_id: sessionID,
+});
+
 describe("useCopilotNotifications — OS notification dispatch", () => {
   it("fires a browser notification with the AutoGPT/Task completed copy and 192px icon when a non-active session completes off-screen", async () => {
     renderHook(() => useCopilotNotifications(null), { wrapper: makeWrapper() });
     expect(capturedHandler).not.toBeNull();
 
-    act(() => {
-      capturedHandler!({
-        type: "copilot_completion",
-        event: "session_completed",
-        session_id: "sess-1",
-      });
-    });
+    act(() => capturedHandler!(completion("sess-1")));
 
     await waitFor(() => {
       expect(NotificationCtor).toHaveBeenCalledTimes(1);
@@ -120,71 +129,84 @@ describe("useCopilotNotifications — OS notification dispatch", () => {
       expect(NotificationCtor).not.toHaveBeenCalled();
     });
   });
+
+  it("notifies once for the same completion delivered twice", async () => {
+    renderHook(() => useCopilotNotifications(null), { wrapper: makeWrapper() });
+
+    act(() => capturedHandler!(completion("sess-1")));
+    act(() => capturedHandler!(completion("sess-1")));
+    act(() => capturedHandler!(completion("sess-2")));
+
+    await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(2));
+  });
+
+  it("notifies again for a chat's next finished turn", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      renderHook(() => useCopilotNotifications(null), {
+        wrapper: makeWrapper(),
+      });
+
+      act(() => capturedHandler!(completion("sess-1")));
+      await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(1));
+
+      vi.setSystemTime(Date.now() + 60_000);
+      act(() => capturedHandler!(completion("sess-1")));
+      await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(2));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
-describe("useCopilotNotifications — opening a finished chat", () => {
-  it("takes the open chat off the finished list", async () => {
+describe("useCopilotNotifications — marking the open chat read", () => {
+  it("marks the chat read on the server when the user opens it", async () => {
     setVisibility("visible");
     setFocused(true);
-    useCopilotUIStore.setState({
-      completedSessionIDs: new Set(["sess-1", "sess-2"]),
-    });
 
     renderHook(() => useCopilotNotifications("sess-1"), {
       wrapper: makeWrapper(),
     });
 
-    await waitFor(() => {
-      expect(useCopilotUIStore.getState().completedSessionIDs).toEqual(
-        new Set(["sess-2"]),
-      );
-    });
+    await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
   });
 
-  it("notifies again for a chat's next finished turn once it has been opened", async () => {
-    const { rerender } = renderHook(
-      ({ active }: { active: string | null }) =>
-        useCopilotNotifications(active),
-      {
-        wrapper: makeWrapper(),
-        initialProps: { active: null as string | null },
-      },
-    );
-    const completion = {
-      type: "copilot_completion",
-      event: "session_completed",
-      session_id: "sess-1",
-    };
-
-    act(() => capturedHandler!(completion));
-    await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(1));
-
+  it("marks it read again when a turn finishes while the user watches, without a notification", async () => {
     setVisibility("visible");
     setFocused(true);
-    rerender({ active: "sess-1" });
-    await waitFor(() => {
-      expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
+    renderHook(() => useCopilotNotifications("sess-1"), {
+      wrapper: makeWrapper(),
     });
-    rerender({ active: null });
-    setVisibility("hidden");
+    await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
 
-    act(() => capturedHandler!(completion));
-    await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(2));
+    act(() => capturedHandler!(completion("sess-1")));
+
+    await waitFor(() => expect(markedRead).toEqual(["sess-1", "sess-1"]));
+    expect(NotificationCtor).not.toHaveBeenCalled();
+  });
+
+  it("leaves other chats unread", async () => {
+    setVisibility("visible");
+    setFocused(true);
+    renderHook(() => useCopilotNotifications("sess-1"), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
+
+    act(() => capturedHandler!(completion("sess-2")));
+    await act(async () => {});
+
+    expect(markedRead).toEqual(["sess-1"]);
   });
 });
 
 describe("useCopilotNotifications — background tabs", () => {
-  it("keeps the open chat on the finished list until its tab is visible", async () => {
-    useCopilotUIStore.setState({ completedSessionIDs: new Set(["sess-1"]) });
-
+  it("waits until the tab is visible before marking the open chat read", async () => {
     renderHook(() => useCopilotNotifications("sess-1"), {
       wrapper: makeWrapper(),
     });
     await act(async () => {});
-
-    expect(useCopilotUIStore.getState().completedSessionIDs).toContain(
-      "sess-1",
-    );
+    expect(markedRead).toEqual([]);
 
     setVisibility("visible");
     setFocused(true);
@@ -192,35 +214,27 @@ describe("useCopilotNotifications — background tabs", () => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
 
-    await waitFor(() => {
-      expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
-    });
+    await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
   });
 });
 
 describe("useCopilotNotifications — unfocused windows", () => {
-  it("keeps the open chat on the finished list until its window has focus", async () => {
+  it("waits until the window has focus before marking the open chat read", async () => {
     setVisibility("visible");
     setFocused(false);
-    useCopilotUIStore.setState({ completedSessionIDs: new Set(["sess-1"]) });
 
     renderHook(() => useCopilotNotifications("sess-1"), {
       wrapper: makeWrapper(),
     });
     await act(async () => {});
-
-    expect(useCopilotUIStore.getState().completedSessionIDs).toContain(
-      "sess-1",
-    );
+    expect(markedRead).toEqual([]);
 
     setFocused(true);
     act(() => {
       window.dispatchEvent(new Event("focus"));
     });
 
-    await waitFor(() => {
-      expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
-    });
+    await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
   });
 });
 
@@ -236,19 +250,10 @@ describe("useCopilotNotifications — focus inside an iframe", () => {
       window.dispatchEvent(new Event("blur"));
     });
 
-    act(() => {
-      capturedHandler!({
-        type: "copilot_completion",
-        event: "session_completed",
-        session_id: "sess-1",
-      });
-    });
+    act(() => capturedHandler!(completion("sess-1")));
     await act(async () => {});
 
     expect(NotificationCtor).not.toHaveBeenCalled();
-    expect(useCopilotUIStore.getState().completedSessionIDs).not.toContain(
-      "sess-1",
-    );
   });
 });
 
@@ -258,13 +263,14 @@ describe("useCopilotNotifications — returning into an embedded frame", () => {
   });
 
   it("notices the user is back even when no focus event reaches the page", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     setVisibility("visible");
     setFocused(false);
-    useCopilotUIStore.setState({ completedSessionIDs: new Set(["sess-1"]) });
     renderHook(() => useCopilotNotifications("sess-1"), {
       wrapper: makeWrapper(),
     });
+    await act(async () => {});
+    expect(markedRead).toEqual([]);
 
     // Focus returns straight into an iframe: the document has focus again,
     // but neither "focus" nor "visibilitychange" fires here.
@@ -272,32 +278,22 @@ describe("useCopilotNotifications — returning into an embedded frame", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_000);
     });
+    // waitFor polls on an interval of its own.
+    vi.useRealTimers();
 
-    expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
+    await waitFor(() => expect(markedRead).toEqual(["sess-1"]));
   });
 });
 
-describe("useCopilotNotifications — tab title", () => {
-  it("leaves the tab title alone when sessions finish", async () => {
-    document.title = "AutoPilot";
-    useCopilotUIStore.setState({
-      completedSessionIDs: new Set(["sess-old-1", "sess-old-2"]),
-    });
+describe("useCopilotNotifications — browser storage", () => {
+  it("keeps no list of finished chats in the browser", async () => {
     renderHook(() => useCopilotNotifications(null), { wrapper: makeWrapper() });
 
-    act(() => {
-      capturedHandler!({
-        type: "copilot_completion",
-        event: "session_completed",
-        session_id: "sess-3",
-      });
-    });
+    act(() => capturedHandler!(completion("sess-3")));
+    await waitFor(() => expect(NotificationCtor).toHaveBeenCalledTimes(1));
 
-    await waitFor(() => {
-      expect(useCopilotUIStore.getState().completedSessionIDs).toContain(
-        "sess-3",
-      );
-    });
-    expect(document.title).toBe("AutoPilot");
+    expect(
+      window.localStorage.getItem("copilot-completed-sessions"),
+    ).toBeNull();
   });
 });

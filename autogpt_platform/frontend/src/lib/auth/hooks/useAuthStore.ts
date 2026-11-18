@@ -582,7 +582,6 @@ useAuthStore.subscribe((state, previousState) => {
   else if (previousState.user) setAnalyticsIdentitySignedIn(false);
   if (previousState.user && previousState.user.id !== state.user?.id) {
     resetAnalyticsIdentity();
-    clearCopilotCompletedSessions();
   }
   // Whoever signs in claims the onboarding handoff: a different account
   // than this tab last had starts without it, however the last session
@@ -597,14 +596,3 @@ useAuthStore.subscribe((state, previousState) => {
 useAuthStore.subscribe((state, previousState) => {
   if (state.user !== previousState.user) setImpersonationViewer(state.user);
 });
-
-// Loaded lazily: the copilot store pulls in React hooks the auth store
-// otherwise has no reason to load.
-function clearCopilotCompletedSessions() {
-  if (typeof window === "undefined") return;
-  import("@/app/(platform)/copilot/store")
-    .then(({ useCopilotUIStore }) =>
-      useCopilotUIStore.getState().clearAllCompletedSessions(),
-    )
-    .catch(() => {});
-}
