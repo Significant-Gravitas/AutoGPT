@@ -10,7 +10,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
-from backend.api.ws_outbox import WSOutbox
+from backend.api.ws_outbox import WSBacklog, WSOutbox
 from backend.data import redis_client as redis
 from backend.data.db_accessors import execution_db
 from backend.data.event_bus import _assert_no_wildcard
@@ -98,6 +98,8 @@ class ConnectionManager:
         self._ws_streams: dict[WebSocket, dict[Shard, _ShardStream]] = {}
         # websocket → its events on their way to the client, from every shard
         self._outboxes: dict[WebSocket, WSOutbox] = {}
+        # what every socket's outbox holds together
+        self._backlog = WSBacklog()
         # user_id → that user's sockets on this process
         self._user_sockets: dict[str, set[WebSocket]] = {}
         # shard → shard streams open to it from this process
@@ -294,10 +296,10 @@ class ConnectionManager:
         outbox = self._outboxes.get(websocket)
         if outbox is None:
 
-            async def on_overflow() -> None:
-                await self._close_for_slow_client(websocket, user_id)
+            async def on_overflow(why: str) -> None:
+                await self._close_for_slow_client(websocket, user_id, why)
 
-            outbox = self._outboxes[websocket] = WSOutbox(on_overflow)
+            outbox = self._outboxes[websocket] = WSOutbox(on_overflow, self._backlog)
         return outbox
 
     async def _close_for_lost_stream(self, websocket: WebSocket) -> None:
@@ -306,12 +308,19 @@ class ConnectionManager:
         logger.warning("Closing WebSocket after its event stream was lost")
         await self._close_to_resync(websocket, "Event stream interrupted")
 
-    async def _close_for_slow_client(self, websocket: WebSocket, user_id: str) -> None:
+    async def _close_for_slow_client(
+        self, websocket: WebSocket, user_id: str, why: str
+    ) -> None:
         """Close a socket whose client fell too far behind: the events it
         would get next are dropped, so it resyncs as after a lost stream."""
         logger.warning(
-            f"Closing WebSocket for user #{user_id}: its client fell too far behind"
+            f"Closing WebSocket for user #{user_id}: its client fell too far "
+            f"behind ({why})"
         )
+        # Nothing it reads would reach the client now, and the close may never
+        # get through a transport the client has stopped reading.
+        for stream in self._ws_streams.get(websocket, {}).values():
+            await stream.stop()
         await self._close_to_resync(websocket, "Client fell behind")
 
     async def _close_to_resync(self, websocket: WebSocket, reason: str) -> None:
@@ -481,6 +490,10 @@ class _ShardStream:
 
     async def add(self, channel: str, handler: MessageHandler) -> None:
         _assert_no_wildcard(channel)
+        if self._stopping:
+            # Retired with its socket closing; reopened, it would read for a
+            # client that is gone.
+            raise EventStreamLostError(f"{channel}: the stream has stopped")
         if channel in self._subscribing:
             raise RuntimeError(f"{channel} is already being subscribed")
         # In place before the SSUBSCRIBE: the pump reads a message queued

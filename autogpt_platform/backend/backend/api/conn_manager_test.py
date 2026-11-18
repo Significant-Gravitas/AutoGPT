@@ -2,6 +2,7 @@ import ast
 import asyncio
 import gc
 import json
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,7 @@ from backend.api.conn_manager import (
     graph_exec_channel_key,
 )
 from backend.api.model import WSMethod
-from backend.api.ws_outbox import WSOutbox
+from backend.api.ws_outbox import WSBacklog, WSOutbox
 from backend.data.execution import GraphExecutionMeta, graph_all_channel
 from backend.data.sharded_pubsub import EventStreamLostError
 
@@ -114,7 +115,7 @@ async def connection_manager():
 @pytest.fixture
 async def outbox():
     """The socket's outbox a test's shard stream sends through."""
-    box = WSOutbox(on_overflow=AsyncMock())
+    box = WSOutbox(on_overflow=AsyncMock(), backlog=WSBacklog())
     yield box
     await box.stop()
 
@@ -1392,9 +1393,9 @@ async def test_a_subscribe_is_confirmed_while_a_send_waits_on_the_client(
     fake_redis: _FakeRedis,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The shard stream whose event waits on the client must still read
-    Redis's confirmation of the next subscribe on it. Before #16916 the
-    subscribe waited out its whole bound and failed."""
+    """While an event's send waits on the client, the shard stream still
+    reads Redis's confirmation of the next subscribe on it, so the subscribe
+    is answered instead of waiting out its bound."""
     monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 60.0)
     client = _StuckClient(mock_websocket)
     await connection_manager.subscribe_graph_execs(
@@ -1407,8 +1408,11 @@ async def test_a_subscribe_is_confirmed_while_a_send_waits_on_the_client(
             await connection_manager.subscribe_graph_execs(
                 user_id="user-1", graph_id="graph-b", websocket=mock_websocket
             )
+        graph_b = event_bus_channel(graph_all_channel("user-1", "graph-b"))
+        assert graph_b in fake_redis.subscribed()
         assert len(fake_redis.pubsubs) == 1
-        assert not client.reading.is_set()
+        # The first event's send, still waiting on the client.
+        assert mock_websocket.send_text.await_count == 1
     finally:
         client.reading.set()
 
@@ -1485,9 +1489,11 @@ async def test_a_socket_whose_client_falls_too_far_behind_is_closed(
     mock_websocket: AsyncMock,
     fake_redis: _FakeRedis,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Past the outbox's bound the client would miss events anyway, so it is
-    closed as for a lost stream: it reconnects, resubscribes and refetches."""
+    closed as for a lost stream: it reconnects, resubscribes and refetches.
+    The warning names the bound and how far behind the client was."""
     monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 3)
     client = _StuckClient(mock_websocket)
     await connection_manager.subscribe_graph_execs(
@@ -1505,8 +1511,91 @@ async def test_a_socket_whose_client_falls_too_far_behind_is_closed(
             code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
         )
         assert client.cancelled.is_set()
+        assert "fell too far behind (MAX_QUEUED_EVENTS: 3 events," in caplog.text
     finally:
         client.reading.set()
+
+
+@pytest.mark.asyncio
+async def test_a_socket_closed_for_falling_behind_stops_reading_redis(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Its shard streams would only drop what they read, and its close may
+    never get through to a client that stopped reading, so they stop at once
+    and take no new subscribe. Another socket's stream on the same shard
+    reads on."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    stuck_ws: AsyncMock = AsyncMock(spec=WebSocket)
+    stuck = _StuckClient(stuck_ws)
+    healthy_ws: AsyncMock = AsyncMock(spec=WebSocket)
+    healthy_ws.send_text = AsyncMock()
+    for ws, graph_id in ((stuck_ws, "graph-a"), (healthy_ws, "graph-b")):
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id=graph_id, websocket=ws
+        )
+    stuck_redis, healthy_redis = fake_redis.clients
+    stuck_inbox, healthy_inbox = (p.inbox for p in fake_redis.pubsubs)
+    try:
+        stuck_inbox.put_nowait(_graph_event("graph-a"))
+        async with asyncio.timeout(_HANG_SECONDS):
+            await stuck.waited_on.wait()
+        stuck_inbox.put_nowait(_graph_event("graph-a"))
+        await _until(lambda: stuck_ws.close.await_count == 1)
+        stuck_redis.aclose.assert_awaited_once()
+        with pytest.raises(EventStreamLostError):
+            await connection_manager.subscribe_graph_execs(
+                user_id="user-1", graph_id="graph-c", websocket=stuck_ws
+            )
+        assert len(fake_redis.clients) == 2
+
+        healthy_redis.aclose.assert_not_awaited()
+        healthy_inbox.put_nowait(_graph_event("graph-b"))
+        await _until(lambda: healthy_ws.send_text.await_count == 1)
+    finally:
+        stuck.reading.set()
+
+
+@pytest.mark.asyncio
+async def test_a_full_process_closes_the_socket_furthest_behind(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every socket's outbox counts against one budget for the process, so
+    sockets stuck behind can't add up past it: the one furthest behind is
+    closed to make room for another socket's event."""
+    stuck_ws: AsyncMock = AsyncMock(spec=WebSocket)
+    stuck = _StuckClient(stuck_ws)
+    healthy_ws: AsyncMock = AsyncMock(spec=WebSocket)
+    healthy_ws.send_text = AsyncMock()
+    for ws, graph_id in ((stuck_ws, "graph-a"), (healthy_ws, "graph-b")):
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id=graph_id, websocket=ws
+        )
+    stuck_inbox, healthy_inbox = (p.inbox for p in fake_redis.pubsubs)
+    held = 2 * sys.getsizeof(_graph_event("graph-a")["data"])
+    needed = sys.getsizeof(_graph_event("graph-b")["data"])
+    monkeypatch.setattr(
+        "backend.api.ws_outbox.MAX_QUEUED_BYTES_PER_PROCESS", held + needed - 1
+    )
+    try:
+        stuck_inbox.put_nowait(_graph_event("graph-a"))
+        async with asyncio.timeout(_HANG_SECONDS):
+            await stuck.waited_on.wait()
+        stuck_inbox.put_nowait(_graph_event("graph-a"))
+        await _until(lambda: connection_manager._backlog.queued_bytes == held)
+
+        healthy_inbox.put_nowait(_graph_event("graph-b"))
+        await _until(lambda: stuck_ws.close.await_count == 1)
+        stuck_ws.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
+        )
+        await _until(lambda: healthy_ws.send_text.await_count == 1)
+        healthy_ws.close.assert_not_awaited()
+    finally:
+        stuck.reading.set()
 
 
 @pytest.mark.asyncio
