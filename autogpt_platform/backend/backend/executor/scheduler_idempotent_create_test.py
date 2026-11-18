@@ -519,7 +519,8 @@ async def _create(
         user_id=user.id,
         ctx=RequestContext(
             user_id=user.id,
-            org_id="",
+            # The org `test_create_graph` puts the workflow in.
+            org_id=f"test-org-{user.id}",
             team_id=None,
             is_org_owner=True,
             is_org_admin=True,

@@ -93,6 +93,7 @@ function computeAgentStatus(
     monthlySpend: 0,
     nextScheduledRun: null,
     triggerType: agent.has_external_trigger ? "webhook" : null,
+    scheduleUnknown: status === "idle" && !!agent.schedule_info_unavailable,
   };
 }
 

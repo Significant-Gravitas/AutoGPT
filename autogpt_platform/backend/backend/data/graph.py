@@ -1778,6 +1778,14 @@ async def get_graph(
         )
         if library_agent and library_agent.AgentGraph:
             graph = library_agent.AgentGraph
+        # The caller's own workflow is found only in its own org, library included.
+        if (
+            graph is not None
+            and organization_id is not None
+            and graph.userId == user_id
+            and graph.organizationId not in (organization_id, None)
+        ):
+            graph = None
 
     if graph is None:
         return None
