@@ -4,6 +4,10 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import {
+  forgetScheduleCreateKey,
+  withScheduleCreateKey,
+} from "@/services/schedules/schedule-create-key";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useState } from "react";
@@ -39,7 +43,8 @@ export function useCronSchedulerDialog({
   const { mutateAsync: createSchedule, isPending: isCreatingSchedule } =
     usePostV1CreateExecutionSchedule({
       mutation: {
-        onSuccess: (response) => {
+        onSuccess: (response, create) => {
+          forgetScheduleCreateKey(create);
           if (response.status === 200) {
             setOpen(false);
             toast({
@@ -49,12 +54,15 @@ export function useCronSchedulerDialog({
             invalidateAllScheduleQueries(queryClient, flowID ?? undefined);
           }
         },
-        onError: (error) => {
+        onError: (error, create) => {
+          forgetScheduleCreateKey(create, error);
           toast({
             variant: "destructive",
             title: "Failed to create schedule",
             description:
-              (error.detail as string) ?? "An unexpected error occurred.",
+              error instanceof Error
+                ? error.message
+                : "An unexpected error occurred.",
           });
         },
       },
@@ -100,16 +108,18 @@ export function useCronSchedulerDialog({
       return;
     }
 
-    await createSchedule({
-      graphId: flowID || "",
-      data: {
-        name: scheduleName.trim(),
-        graph_version: flowID ? flowVersion : undefined,
-        cron: cronExpression,
-        inputs: inputs,
-        credentials: credentials,
-      },
-    });
+    await createSchedule(
+      withScheduleCreateKey({
+        graphId: flowID || "",
+        data: {
+          name: scheduleName.trim(),
+          graph_version: flowID ? flowVersion : undefined,
+          cron: cronExpression,
+          inputs: inputs,
+          credentials: credentials,
+        },
+      }),
+    );
   }
 
   return {

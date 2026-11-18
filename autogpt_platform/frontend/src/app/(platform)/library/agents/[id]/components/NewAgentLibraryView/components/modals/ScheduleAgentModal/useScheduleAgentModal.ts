@@ -3,6 +3,10 @@ import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecu
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
+import {
+  forgetScheduleCreateKey,
+  withScheduleCreateKey,
+} from "@/services/schedules/schedule-create-key";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
@@ -28,7 +32,8 @@ export function useScheduleAgentModal(
 
   const createScheduleMutation = useCreateSchedule({
     mutation: {
-      onSuccess: (response) => {
+      onSuccess: (response, create) => {
+        forgetScheduleCreateKey(create);
         if (response.status === 200) {
           toast({
             title: "Schedule created",
@@ -41,7 +46,8 @@ export function useScheduleAgentModal(
           callbacks?.onClose?.();
         }
       },
-      onError: (error: any) => {
+      onError: (error: any, create) => {
+        forgetScheduleCreateKey(create, error);
         toast({
           title: "❌ Failed to create schedule",
           description: error.message || "An unexpected error occurred.",
@@ -64,7 +70,7 @@ export function useScheduleAgentModal(
 
       return new Promise<void>((resolve, reject) => {
         createScheduleMutation.mutate(
-          {
+          withScheduleCreateKey({
             graphId: agent.graph_id,
             data: {
               name: scheduleName,
@@ -73,7 +79,7 @@ export function useScheduleAgentModal(
               graph_version: agent.graph_version,
               credentials: inputCredentials,
             },
-          },
+          }),
           {
             onSuccess: () => resolve(),
             onError: (error) => reject(error),

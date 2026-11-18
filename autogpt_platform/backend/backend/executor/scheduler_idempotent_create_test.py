@@ -36,10 +36,6 @@ from backend.util.test import SpinTestServer
 
 INPUTS = {"input_1": "Hello", "input_2": "World"}
 
-pytestmark = pytest.mark.xfail(
-    strict=True, reason="#16901: every schedule create mints its own id"
-)
-
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_retried_create_returns_the_schedule_the_first_attempt_made(
@@ -193,6 +189,21 @@ def test_a_new_create_at_the_accounts_limit_is_refused(scheduler: Scheduler):
         _add(scheduler, str(uuid.uuid4()))
 
     assert _job_ids(scheduler) == held
+
+
+def test_another_account_repeating_a_create_under_its_key_gets_a_conflict(
+    scheduler: Scheduler,
+):
+    """Everything but the account matches, so only the owner check stands
+    between this create and the other account's schedule."""
+    key = str(uuid.uuid4())
+    _add(scheduler, key)
+
+    with pytest.raises(ConflictError):
+        _add(scheduler, key, user_id="user-2")
+
+    [job] = scheduler.scheduler.get_jobs(Jobstores.EXECUTION.value)
+    assert (job.id, job.kwargs["user_id"]) == (key, "user-1")
 
 
 def test_two_copies_of_a_create_that_both_miss_the_replay_make_one_schedule(

@@ -76,30 +76,37 @@ async function clickSchedule(
   await waitFor(() => expect(keys).toHaveLength(sent + 1));
 }
 
-describe("ScheduleAgentModal retried creates (#16901)", () => {
-  test.fails(
-    "a create whose answer was lost is sent again with its key, even after a reload, and a new create after success gets a new one",
-    async () => {
-      const user = userEvent.setup();
-      const keys = answerCreates([503, 504]);
-      const firstTab = renderModal();
-
-      await clickSchedule(user, keys);
-      firstTab.unmount();
-      renderModal();
-      await clickSchedule(user, keys);
-      await clickSchedule(user, keys);
-      await clickSchedule(user, keys);
-
-      const [key] = keys;
-      expect(key).toMatch(UUID_V4);
-      expect(keys.slice(0, 3)).toEqual([key, key, key]);
-      expect(keys[3]).toMatch(UUID_V4);
-      expect(keys[3]).not.toBe(key);
-    },
+function sessionStorageValues() {
+  const { sessionStorage } = window;
+  return Array.from({ length: sessionStorage.length }, (_, index) =>
+    sessionStorage.getItem(sessionStorage.key(index) ?? ""),
   );
+}
 
-  test.fails.each([409, 403])(
+describe("ScheduleAgentModal retried creates (#16901)", () => {
+  test("a create whose answer was lost is sent again with its key, which survives a reload, and a new create after success gets a new one", async () => {
+    const user = userEvent.setup();
+    const keys = answerCreates([503, 504]);
+    const firstTab = renderModal();
+
+    await clickSchedule(user, keys);
+    // A reload keeps sessionStorage, and nothing the page held in memory.
+    expect(sessionStorageValues()).toContain(keys[0]);
+    firstTab.unmount();
+    renderModal();
+    await clickSchedule(user, keys);
+    await clickSchedule(user, keys);
+    await waitFor(() => expect(sessionStorageValues()).not.toContain(keys[0]));
+    await clickSchedule(user, keys);
+
+    const [key] = keys;
+    expect(key).toMatch(UUID_V4);
+    expect(keys.slice(0, 3)).toEqual([key, key, key]);
+    expect(keys[3]).toMatch(UUID_V4);
+    expect(keys[3]).not.toBe(key);
+  });
+
+  test.each([409, 403])(
     "a %i is final, so the next attempt starts over with a new key",
     async (status) => {
       const user = userEvent.setup();
@@ -115,20 +122,17 @@ describe("ScheduleAgentModal retried creates (#16901)", () => {
     },
   );
 
-  test.fails(
-    "keys are made where crypto.randomUUID is missing, as on a self-hosted install served over plain HTTP",
-    async () => {
-      const real = globalThis.crypto;
-      vi.stubGlobal("crypto", {
-        getRandomValues: real.getRandomValues.bind(real),
-      });
-      const user = userEvent.setup();
-      const keys = answerCreates([]);
-      renderModal();
+  test("keys are made where crypto.randomUUID is missing, as on a self-hosted install served over plain HTTP", async () => {
+    const real = globalThis.crypto;
+    vi.stubGlobal("crypto", {
+      getRandomValues: real.getRandomValues.bind(real),
+    });
+    const user = userEvent.setup();
+    const keys = answerCreates([]);
+    renderModal();
 
-      await clickSchedule(user, keys);
+    await clickSchedule(user, keys);
 
-      expect(keys[0]).toMatch(UUID_V4);
-    },
-  );
+    expect(keys[0]).toMatch(UUID_V4);
+  });
 });

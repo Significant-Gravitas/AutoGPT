@@ -110,46 +110,41 @@ describe("useCronSchedulerDialog", () => {
     invalidateSpy.mockRestore();
   });
 
-  test.fails(
-    "a create whose answer was lost is sent again with its key, and a new create after success gets a new one (#16901)",
-    async () => {
-      const keys: unknown[] = [];
-      server.use(
-        http.post(
-          "/api/proxy/api/graphs/:graphId/schedules",
-          async ({ request }) => {
-            const body = (await request.json()) as { schedule_id?: unknown };
-            keys.push(body.schedule_id);
-            return keys.length === 1
-              ? HttpResponse.json({ detail: "HTTP 503" }, { status: 503 })
-              : HttpResponse.json(
-                  getPostV1CreateExecutionScheduleResponseMock(),
-                );
-          },
-        ),
-      );
-      const { result } = renderFilledDialog();
+  test("a create whose answer was lost is sent again with its key, and a new create after success gets a new one (#16901)", async () => {
+    const keys: unknown[] = [];
+    server.use(
+      http.post(
+        "/api/proxy/api/graphs/:graphId/schedules",
+        async ({ request }) => {
+          const body = (await request.json()) as { schedule_id?: unknown };
+          keys.push(body.schedule_id);
+          return keys.length === 1
+            ? HttpResponse.json({ detail: "HTTP 503" }, { status: 503 })
+            : HttpResponse.json(getPostV1CreateExecutionScheduleResponseMock());
+        },
+      ),
+    );
+    const { result } = renderFilledDialog();
 
-      await act(async () => {
-        await result.current.handleCreateSchedule().catch(() => undefined);
-      });
-      await act(async () => {
-        await result.current.handleCreateSchedule();
-      });
-      await act(async () => {
-        await result.current.handleCreateSchedule();
-      });
+    await act(async () => {
+      await result.current.handleCreateSchedule().catch(() => undefined);
+    });
+    await act(async () => {
+      await result.current.handleCreateSchedule();
+    });
+    await act(async () => {
+      await result.current.handleCreateSchedule();
+    });
 
-      const [key, retried, next] = keys;
-      expect(key).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-      );
-      expect(retried).toBe(key);
-      expect(next).not.toBe(key);
-    },
-  );
+    const [key, retried, next] = keys;
+    expect(key).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(retried).toBe(key);
+    expect(next).not.toBe(key);
+  });
 
-  test.fails("a refused create's toast gives the server's reason", async () => {
+  test("a refused create's toast gives the server's reason", async () => {
     server.use(
       http.post("/api/proxy/api/graphs/:graphId/schedules", () =>
         HttpResponse.json(
