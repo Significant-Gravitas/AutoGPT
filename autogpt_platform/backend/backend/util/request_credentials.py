@@ -57,7 +57,9 @@ def select_credentials(*groups: set[str]) -> tuple[str, ...]:
 
 class RequestCredentialsMiddleware:
     """Keeps each HTTP request's and WebSocket connection's credentials while
-    the app it wraps handles it."""
+    the app it wraps handles it. The value is never reset: an error is reported
+    after the middleware returns, and a task the request starts inherits it,
+    which can only mask more of what that task reports."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
