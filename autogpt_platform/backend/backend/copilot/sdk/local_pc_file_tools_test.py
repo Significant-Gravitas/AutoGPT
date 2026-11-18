@@ -8,7 +8,7 @@ import contextlib
 import io
 import json
 import threading
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -445,6 +445,23 @@ class TestLocalPCEditsTakeTurns:
 _LOCKS_THE_MAP_KEPT = 1_000
 
 
+async def _until(condition: Callable[[], bool]) -> None:
+    """Wait for what another task brings about. The limit only fails a test
+    that would otherwise hang."""
+    async with asyncio.timeout(30):
+        while not condition():
+            await asyncio.sleep(0.001)
+
+
+async def _end(*tasks: asyncio.Task[Any] | None) -> None:
+    """End the edits a test started, so one left waiting by a failed check
+    doesn't keep its claim on a lock into the next test."""
+    started = [task for task in tasks if task is not None]
+    for task in started:
+        task.cancel()
+    await asyncio.gather(*started, return_exceptions=True)
+
+
 class TestAnEditLockInUseIsKept:
     """An edit of a file whose lock was dropped took a fresh lock and ran
     beside the edit still holding the old one, so one of the two writes was
@@ -484,23 +501,35 @@ class TestAnEditLockInUseIsKept:
                 {"file_path": "notes.txt", "old_string": "one", "new_string": "1"}
             )
         )
-        await asyncio.wait_for(first_reading.wait(), 30)
-        for n in range(_LOCKS_THE_MAP_KEPT + 1):
-            other = await _handle_edit_file(
-                {"file_path": f"other-{n}.txt", "old_string": "old", "new_string": "x"}
+        second: asyncio.Task[dict[str, Any]] | None = None
+        try:
+            await asyncio.wait_for(first_reading.wait(), 30)
+            # Only the first edit is under way, so the one lock is the file's.
+            ((key, held_lock),) = _edit_locks.items()
+            for n in range(_LOCKS_THE_MAP_KEPT + 1):
+                other = await _handle_edit_file(
+                    {
+                        "file_path": f"other-{n}.txt",
+                        "old_string": "old",
+                        "new_string": "x",
+                    }
+                )
+                assert other["isError"] is False
+            second = asyncio.create_task(
+                _handle_edit_file(
+                    {"file_path": "notes.txt", "old_string": "two", "new_string": "2"}
+                )
             )
-            assert other["isError"] is False
-        second = asyncio.create_task(
-            _handle_edit_file(
-                {"file_path": "notes.txt", "old_string": "two", "new_string": "2"}
-            )
-        )
-        # The second edit's chance to read the file while the first holds it,
-        # which only an edit that doesn't wait takes.
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(second_read.wait(), 0.5)
-        first_may_finish.set()
-        results = await asyncio.wait_for(asyncio.gather(first, second), 30)
+            # The second edit either queues on the lock the first holds, or
+            # reads the file beside it. Whichever it does shows, so nothing
+            # here depends on how long it takes to get there.
+            await _until(lambda: held_lock.users == 2 or second_read.is_set())
+            assert not second_read.is_set()
+            assert _edit_locks.get(key) is held_lock
+            first_may_finish.set()
+            results = await asyncio.wait_for(asyncio.gather(first, second), 30)
+        finally:
+            await _end(first, second)
 
         assert [result["isError"] for result in results] == [False, False]
         assert stored[held] == b"1 2"
@@ -523,21 +552,33 @@ class TestAnEditLockInUseIsKept:
 
         first_leaves, others_leave = asyncio.Event(), asyncio.Event()
         first = asyncio.create_task(edit("first", first_leaves))
-        await asyncio.sleep(0)
-        assert inside == ["first"]
-        waiting = asyncio.create_task(edit("waiting", others_leave))
-        await asyncio.sleep(0)
-        first_leaves.set()
-        await asyncio.wait_for(first, 30)
-        for n in range(_LOCKS_THE_MAP_KEPT + 1):
-            async with _edit_lock(f"local_pc:machine-1:/Users/test/ws/other-{n}.txt"):
-                pass
-        third = asyncio.create_task(edit("third", others_leave))
-        # Their chance to be in the file together, which only a second lock
-        # for it gives them.
-        await asyncio.sleep(0.2)
-        others_leave.set()
-        await asyncio.wait_for(asyncio.gather(waiting, third), 30)
+        waiting: asyncio.Task[None] | None = None
+        third: asyncio.Task[None] | None = None
+        try:
+            await _until(lambda: inside == ["first"])
+            file_lock = _edit_locks[key]
+            waiting = asyncio.create_task(edit("waiting", others_leave))
+            await _until(lambda: file_lock.users == 2)
+            first_leaves.set()
+            await asyncio.wait_for(first, 30)
+            for n in range(_LOCKS_THE_MAP_KEPT + 1):
+                async with _edit_lock(
+                    f"local_pc:machine-1:/Users/test/ws/other-{n}.txt"
+                ):
+                    pass
+            third = asyncio.create_task(edit("third", others_leave))
+            # The third edit either queues on the lock the waiting one claimed
+            # (one of the two is in the file, and both hold a claim on that
+            # lock), or it took a second lock and the two are in the file
+            # together. Whichever it does shows, with no wait to outrun.
+            await _until(
+                lambda: len(inside) == 2 or (len(inside) == 1 and file_lock.users == 2)
+            )
+            assert _edit_locks.get(key) is file_lock
+            others_leave.set()
+            await asyncio.wait_for(asyncio.gather(waiting, third), 30)
+        finally:
+            await _end(first, waiting, third)
 
         assert most_inside == 1
 
