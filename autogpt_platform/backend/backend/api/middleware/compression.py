@@ -18,6 +18,9 @@ class BoundedGZipMiddleware(GZipMiddleware):
     held back until it ends or passes ``max_size``, so at most ``max_size``
     bytes are buffered: one that ends within the cap is compressed chunk by
     chunk, and one that passes it is sent uncompressed.
+
+    A file download (a ``Content-Disposition`` header) is never held back or
+    compressed, so its status goes out with its first chunk.
     """
 
     def __init__(
@@ -59,7 +62,8 @@ class _BoundedGZipResponder(GZipResponder):
             return
         if message["type"] == "http.response.start":
             declared_length = _declared_length(message)
-            if declared_length > self.max_size:
+            is_file = "content-disposition" in Headers(raw=message["headers"])
+            if declared_length > self.max_size or is_file:
                 self.passthrough = True
                 await self.send(message)
                 return

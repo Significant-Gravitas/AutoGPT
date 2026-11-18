@@ -9,9 +9,11 @@ rather than a Sentry alert flood.
 
 from __future__ import annotations
 
+import copy
 import json
 import sys
 import time
+from collections.abc import Callable
 
 import pytest
 import sentry_sdk
@@ -34,6 +36,7 @@ from backend.util.metrics import (
     _before_send,
 )
 from backend.util.settings import AppEnvironment, BehaveAs, Config
+from backend.util.url_redaction import REDACTED
 
 
 def _log_event(logger: str, message: str) -> dict:
@@ -270,12 +273,185 @@ def test_before_send_filters_a_jwt_wherever_its_run_starts(
     assert (scrubbed["logentry"]["formatted"] == "[Filtered]") is filtered
 
 
+@pytest.mark.parametrize("name", metrics._SECRET_NAMES)
+def test_before_send_filters_a_secret_under_its_name_however_it_is_spelled(
+    name: str,
+) -> None:
+    for spelled in (name, name.upper(), name.title(), name.replace("_", "-")):
+        for assignment in (f"{spelled}=hunter22", f'"{spelled}": "hunter22"'):
+            message = f"Request failed with {assignment}"
+            scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
+            assert scrubbed is not None
+            assert scrubbed["logentry"]["formatted"] == "[Filtered]", assignment
+
+
+@pytest.mark.parametrize("unset", ["None", "null", "''", '""'])
+def test_before_send_keeps_a_repr_whose_secret_fields_are_unset(unset: str) -> None:
+    """A model's repr shows every field, the unset ones too."""
+    message = f"Preset(id='p-1', webhook_id={unset}, share_token={unset})"
+    scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
+    assert scrubbed is not None
+    assert scrubbed["logentry"]["formatted"] == message
+    held = f"Preset(id='p-1', webhook_id={unset}, secret='hunter22')"
+    scrubbed = _before_send(_log_event("backend.api.rest_api", held), {})
+    assert scrubbed is not None
+    assert scrubbed["logentry"]["formatted"] == "[Filtered]"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        '{"password": null, "name": "x"}',
+        "Login(password=None, name='x')",
+        "Preset(webhook_id=None, created=datetime.datetime(2026, 1, 1, 0, 0))",
+        "User(password=None, status=<Status.ACTIVE: 'active'>, logins=3)",
+    ],
+)
+def test_before_send_keeps_a_secret_left_unset_before_the_next_field(
+    message: str,
+) -> None:
+    scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
+    assert scrubbed is not None
+    assert scrubbed["logentry"]["formatted"] == message
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "password=None.",
+        "secret=None-example",
+        "password=null-abc123",
+        # In free text a comma can be part of the value.
+        "password=None,hunter22",
+        "login failed: password=None, hunter22 rejected",
+        # Shaped like a repr's next field, but its value isn't one.
+        "login failed: password=None, name=hunter22 rejected",
+    ],
+)
+def test_before_send_filters_a_secret_that_only_starts_like_an_unset_one(
+    message: str,
+) -> None:
+    scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
+    assert scrubbed is not None
+    assert scrubbed["logentry"]["formatted"] == "[Filtered]"
+
+
+def test_before_send_reads_the_sdks_annotations_within_the_budget() -> None:
+    """``_meta`` repeats each key a cut value sat under; its keys are read only
+    while the budget lasts, and past it the annotations are dropped whole."""
+    key = "x" * 40
+    meta = {"extra": {"runs": {key: {"": {"len": 9000}}}}}
+
+    def event(filler: int) -> dict:
+        return {"extra": {"filler": "y" * filler}, "_meta": copy.deepcopy(meta)}
+
+    kept = _before_send(event(1000), {})
+    assert kept is not None and kept["_meta"] == meta
+    left_out = _before_send(event(metrics._SENTRY_SCRUB_BUDGET - 20), {})
+    assert left_out is not None and "_meta" not in left_out
+
+
+def test_before_send_charges_a_query_as_sent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A query is charged its full length before it is read, so one past the
+    budget is filtered unread."""
+    read: list[str] = []
+    redact = metrics.redact_query_string
+    monkeypatch.setattr(
+        metrics,
+        "redact_query_string",
+        lambda query: read.append(query) or redact(query),
+    )
+    event = {
+        "extra": {"filler": "y" * (metrics._SENTRY_SCRUB_BUDGET - 100)},
+        "spans": [{"data": {"http.query": "token=" + "z" * 5000}}],
+    }
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    assert scrubbed["spans"][0]["data"]["http.query"] == "[Filtered]"
+    assert read == []
+
+
+def test_a_request_value_in_a_url_does_not_hide_its_credentials_from_sentry() -> None:
+    """A value the request sent can match part of a URL an event quotes, such
+    as its host; the URL's own credentials are masked all the same."""
+    event = {
+        "request": {"url": "http://backend/lookup?token=api.telegram.org"},
+        "message": "POST https://api.telegram.org/bot123:AA-b_c/getMe failed",
+    }
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    assert "123:AA-b_c" not in json.dumps(scrubbed)
+
+
+def test_before_send_stays_linear_whatever_credentials_the_request_repeats(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A request can send credentials made of one repeated character, and put
+    long runs of it in what its error reports."""
+    credentials = tuple("a" * (256 - i) for i in range(16))
+    monkeypatch.setattr(metrics, "request_credentials", lambda: credentials)
+    event = {"extra": {f"run{i}": "a" * 8192 for i in range(60)}}
+
+    started = time.thread_time()
+    scrubbed = _before_send(event, {})
+    # CPU time on this thread, so a runner that pauses the test doesn't count;
+    # about 0.14 s here with branch coverage on, and over 6 s for work growing
+    # with the square of the input.
+    assert time.thread_time() - started < 3
+    assert scrubbed is not None and scrubbed["extra"]["run0"] != "a" * 8192
+
+
+@pytest.mark.parametrize("send", [_before_send, metrics._before_send_transaction])
+def test_a_credential_in_an_unmatched_routes_path_is_masked_everywhere(
+    monkeypatch: pytest.MonkeyPatch, send: Callable[[dict, dict], dict | None]
+) -> None:
+    """A request no route matched names its transaction after its raw path."""
+    bearer = "bt5Hn8Qr2Wx6Lk9Pz3Vm7Jc4eR1"
+    monkeypatch.setattr(metrics, "request_credentials", lambda: (bearer,))
+    event = {
+        "type": "transaction",
+        "transaction": f"/zzz/{bearer}",
+        "transaction_info": {"source": "url"},
+        "request": {"url": f"http://h/zzz/{bearer}"},
+    }
+
+    scrubbed = send(event, {})
+
+    assert scrubbed is not None
+    assert bearer not in json.dumps(scrubbed)
+    assert scrubbed["transaction"] == f"/zzz/{REDACTED}"
+
+
+def test_an_unmatched_routes_transaction_is_masked_as_a_url() -> None:
+    """Read as a whole URL, so its query is masked whatever comes before it."""
+    secret = "S3cret-query-value-123"
+    event = {
+        "type": "transaction",
+        "transaction": f'/a"?token={secret}',
+        "transaction_info": {"source": "url"},
+    }
+
+    scrubbed = metrics._before_send_transaction(event, {})
+
+    assert secret not in json.dumps(scrubbed)
+
+
+def test_before_send_reads_an_event_whose_request_is_not_a_mapping() -> None:
+    """An event that breaks the SDK's shape is still sent, not dropped."""
+    event = {"request": "GET /lookup", "transaction_info": "url", "message": "x"}
+    assert _before_send(event, {}) == event
+
+
 def test_before_send_scans_a_run_of_jwt_starts_in_linear_time() -> None:
     message = "-eyJ" * 20_000
-    started = time.perf_counter()
+    started = time.thread_time()
     scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
     # A pattern entered at every eyJ takes about 10 s on this input.
-    assert time.perf_counter() - started < 1.0
+    assert time.thread_time() - started < 1.0
     assert scrubbed is not None
     assert scrubbed["logentry"]["formatted"] == message
 
@@ -349,6 +525,95 @@ def test_before_send_spends_its_budget_on_the_newest_entries(put, read) -> None:
     first_kept = next(i for i, value in enumerate(values) if value != "[Filtered]")
     assert values[first_kept:] == chunks[first_kept:]
     assert set(values[:first_kept]) == {"[Filtered]"}
+
+
+def test_before_send_transaction_keeps_every_span_id_past_its_budget() -> None:
+    """A trace whose span IDs or timestamps were filtered would fall apart."""
+    ids = [f"{index:016x}" for index in range(3)]
+    started = "2026-11-18T09:00:00.123456Z"
+    spans = [
+        {
+            "span_id": span_id,
+            "parent_span_id": "b" * 16,
+            "start_timestamp": started,
+            "description": "GET /x",
+        }
+        for span_id in ids
+    ]
+    # A name that leaves less of the budget than one span ID would take.
+    name = "x" * (metrics._SENTRY_SCRUB_BUDGET - len("transaction") - 8)
+    event_id = "c" * 32
+    event = {
+        "type": "transaction",
+        "transaction": name,
+        # The event's own, after the name: read once the budget is spent.
+        "event_id": event_id,
+        "start_timestamp": started,
+        "timestamp": started,
+        "spans": spans,
+    }
+
+    scrubbed = metrics._before_send_transaction(event, {})
+
+    assert scrubbed["transaction"] == name
+    assert scrubbed["event_id"] == event_id
+    assert scrubbed["start_timestamp"] == scrubbed["timestamp"] == started
+    assert [span["span_id"] for span in scrubbed["spans"]] == ids
+    assert {span["parent_span_id"] for span in scrubbed["spans"]} == {"b" * 16}
+    assert {span["start_timestamp"] for span in scrubbed["spans"]} == {started}
+    assert scrubbed["spans"][-1]["description"] == "[Filtered]"
+
+
+def test_before_send_scrubs_a_payloads_field_named_like_a_trace_id() -> None:
+    """Only the SDK's own records keep their IDs unsearched, even a value in
+    their format: here a request's credential that looks like a trace ID."""
+    token = "0123456789abcdef0123456789abcdef"
+    payload = {
+        "trace_id": token,
+        "span_id": {"api_key": "k"},
+        "event_id": "Bearer abcdefghijklmnop",
+    }
+    event = {
+        "request": {"url": f"http://backend/api/public/shared/{token}"},
+        "extra": {"payload": payload},
+    }
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    assert scrubbed["extra"]["payload"] == {
+        "trace_id": "[REDACTED]",
+        "span_id": {"api_key": "[Filtered]"},
+        "event_id": "[Filtered]",
+    }
+
+
+def test_before_send_masks_a_quoted_urls_query_but_not_code_like_one() -> None:
+    message = r"pattern (?=[A-Z]) failed for https://h/v1/models?key=AIza-12345678"
+    event = {
+        "exception": {
+            "values": [
+                {
+                    "value": message,
+                    "stacktrace": {
+                        "frames": [
+                            {"context_line": '    re.compile(r"(?P<k>\\w+)=(?=x)")'}
+                        ]
+                    },
+                }
+            ]
+        }
+    }
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    exception = scrubbed["exception"]["values"][0]
+    assert exception["value"] == (
+        r"pattern (?=[A-Z]) failed for https://h/v1/models?key=[REDACTED]"
+    )
+    frame = exception["stacktrace"]["frames"][0]
+    assert frame["context_line"] == '    re.compile(r"(?P<k>\\w+)=(?=x)")'
 
 
 def test_before_send_keeps_untyped_balance_message() -> None:
@@ -572,6 +837,55 @@ def test_a_large_frame_local_reaches_the_event_truncated(monkeypatch) -> None:
 
     raising_frame = event["exception"]["values"][0]["stacktrace"]["frames"][-1]
     assert len(raising_frame["vars"]["content"]) < 2_000
+
+
+def test_a_long_local_is_masked_in_one_window_however_its_credentials_repeat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A credential repeated through a long value shortens it wherever it is
+    masked, and the longest kept credential sets how far a cut one can reach.
+    One window of the value is read all the same: the head is shorter instead."""
+    longest = "L0ng-" * 80
+    repeated = "r3peated-Credential-0123456789"
+    monkeypatch.setattr(metrics, "request_credentials", lambda: (longest, repeated))
+    read: list[int] = []
+    mask_known = metrics.mask_known
+
+    def counted(text: str, credentials: tuple[str, ...]) -> str:
+        read.append(len(text))
+        return mask_known(text, credentials)
+
+    monkeypatch.setattr(metrics, "mask_known", counted)
+
+    for value in (repeated * 100_000, (repeated * 100_000).encode()):
+        preview = metrics._bounded_repr(value)
+        assert preview is not None and f"{len(value):,} long" in preview
+        assert repeated[:8] not in preview and REDACTED in preview
+    assert read == [metrics._MAX_LOCAL_REPR + 2 * len(longest)] * 2
+
+
+@pytest.mark.parametrize("inside", range(8, 31, 5))
+def test_a_local_cut_inside_a_credential_keeps_none_of_it(
+    monkeypatch: pytest.MonkeyPatch, inside: int
+) -> None:
+    """The credentials masked before it shorten the window, which can bring
+    one that the window cuts, `inside` characters in, into the head."""
+    credential = "cUt-Credential-0123456789abcdef"
+    monkeypatch.setattr(metrics, "request_credentials", lambda: (credential,))
+    window = metrics._MAX_LOCAL_REPR + 2 * len(credential)
+    before = credential * 20
+    filler = "x" * (window - len(before) - inside)
+    value = before + filler + credential + "y" * 5_000
+
+    preview = metrics._bounded_repr(value)
+
+    assert preview is not None and f"{REDACTED}x" in preview
+    assert not any(credential[i : i + 8] in preview for i in range(len(credential) - 7))
+
+
+def test_a_long_bytearray_local_keeps_its_type() -> None:
+    preview = metrics._bounded_repr(bytearray(b"z" * 5_000))
+    assert preview is not None and preview.startswith("bytearray(b'zzz")
 
 
 def test_both_event_bounds_hold_through_one_trip_to_before_send(monkeypatch) -> None:

@@ -22,11 +22,12 @@ import {
   EXECUTION_REFETCH_THROTTLE_MS,
   useExecutionEvents,
 } from "@/hooks/useExecutionEvents";
-import { useStableCallback } from "@/hooks/useStableCallback";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useSchedulerOutage } from "@/services/schedules/useSchedulerOutage";
+import { useSchedulerQueryOptions } from "@/services/schedules/useSchedulerQueryOptions";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
+import { useRunsReadAfterReconnect } from "./useRunsReadAfterReconnect";
 
 function parseTab(
   value: string | null,
@@ -72,7 +73,6 @@ export function useSidebarRunsList({
 
   const tabValue = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
   const queryClient = useQueryClient();
-  const api = useBackendAPI();
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(
     graphId,
@@ -86,10 +86,12 @@ export function useSidebarRunsList({
     },
   );
 
+  const schedulerQueryOptions = useSchedulerQueryOptions();
   const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(graphId, {
     query: {
       enabled: !!graphId,
       select: okData,
+      ...schedulerQueryOptions,
     },
   });
 
@@ -132,13 +134,16 @@ export function useSidebarRunsList({
   // Combined count: webhook triggers + trigger agents (both shown
   // under the "Triggers" tab as separate sections).
   const triggersCount = triggers.length + triggerAgents.length;
+  // While the scheduler restarts its schedules are unknown, and the runs,
+  // templates and triggers still list.
+  const schedulesUnavailable = useSchedulerOutage(schedulesQuery);
   const loading =
     !runsQuery.isSuccess ||
-    !schedulesQuery.isSuccess ||
+    (!schedulesQuery.isSuccess && !schedulesUnavailable) ||
     !presetsQuery.presetsSettled ||
     (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
   const error =
-    schedulesQuery.error ||
+    (schedulesUnavailable ? null : schedulesQuery.error) ||
     runsQuery.error ||
     presetsQuery.error ||
     (triggerAgentsEnabled ? triggerAgentsQuery.error : null);
@@ -152,11 +157,19 @@ export function useSidebarRunsList({
     }
   }
 
+  function retrySchedules() {
+    void schedulesQuery.refetch();
+  }
+
   // The key includes the graph ID, so this refetches only this graph's runs.
   function refetchRuns() {
     queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
   }
-  const refetchRunsAfterReconnect = useStableCallback(refetchRuns);
+
+  useRunsReadAfterReconnect({
+    queryKey: runsQuery.queryKey,
+    onTasks: tabValue === "runs",
+  });
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
@@ -167,14 +180,6 @@ export function useSidebarRunsList({
     throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
     onExecutionUpdate: refetchRuns,
   });
-
-  // Updates published while the socket was down never arrive. The
-  // subscription above covers only the Tasks tab, so re-read the runs after
-  // a reconnect whichever tab is open.
-  useEffect(
-    () => api.onWebSocketReconnect(refetchRunsAfterReconnect),
-    [api, refetchRunsAfterReconnect],
-  );
 
   // Notify parent about counts and loading state
   useEffect(() => {
@@ -204,12 +209,17 @@ export function useSidebarRunsList({
     }
   }, [runs, activeItem, tabValue, onSelectRun]);
 
-  // If there are no runs but there are schedules, and nothing is selected, auto-select the first schedule
+  // Nothing selected and schedules to show, either because there are no runs
+  // or because the Scheduled tab is open: select the first schedule.
   useEffect(() => {
-    if (!activeItem && runs.length === 0 && schedules.length > 0) {
+    if (
+      !activeItem &&
+      schedules.length > 0 &&
+      (runs.length === 0 || tabValue === "scheduled")
+    ) {
       onSelectRun(schedules[0].id, "scheduled");
     }
-  }, [activeItem, runs.length, schedules, onSelectRun]);
+  }, [activeItem, runs.length, schedules, tabValue, onSelectRun]);
 
   useEffect(() => {
     if (templates.length > 0 && tabValue === "templates" && !activeItem) {
@@ -235,6 +245,9 @@ export function useSidebarRunsList({
   return {
     runs,
     schedules,
+    schedulesUnavailable,
+    retrySchedules,
+    retryingSchedules: schedulesQuery.isFetching,
     templates,
     triggers,
     triggerAgents,

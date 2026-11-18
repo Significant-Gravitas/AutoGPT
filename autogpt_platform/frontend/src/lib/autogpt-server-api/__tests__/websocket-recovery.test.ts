@@ -94,6 +94,9 @@ describe("WebSocket recovery and logout", () => {
     const fourth = await socketAt(3);
     fourth.open();
     fourth.pong();
+    // A reconnect counts as healthy from the answer to its ordering ping.
+    await vi.advanceTimersByTimeAsync(0);
+    fourth.pong();
     await vi.advanceTimersByTimeAsync(10_000);
     fourth.serverClose(1006);
     await vi.advanceTimersByTimeAsync(500);
@@ -240,6 +243,7 @@ describe("WebSocket recovery and logout", () => {
     const second = await socketAt(1);
     second.open();
     second.pong();
+    await vi.advanceTimersByTimeAsync(0);
     // The server answers a socket's messages in order, so the pong to a
     // ping sent after the resubscription means the server has handled it.
     expect(
@@ -247,8 +251,126 @@ describe("WebSocket recovery and logout", () => {
     ).toEqual(["heartbeat", "subscribe_graph_executions", "heartbeat"]);
     expect(reconnected).not.toHaveBeenCalled();
     second.pong();
-    await vi.advanceTimersByTimeAsync(0);
     expect(reconnected).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the ordering ping after what a view subscribes during the spread", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    api.onWebSocketConnect(
+      () => void api.subscribeToGraphExecutions("graph-1" as GraphID),
+    );
+    const first = await socketAt();
+    first.open();
+    first.pong();
+    first.serverClose(1011);
+    await vi.advanceTimersByTimeAsync(750);
+    const second = await socketAt(1);
+    second.open();
+    second.pong();
+    await vi.advanceTimersByTimeAsync(500);
+    void api.subscribeToGraphExecutions("graph-2" as GraphID);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(
+      second.send.mock.calls.map(([data]) => JSON.parse(data).method),
+    ).toEqual([
+      "heartbeat",
+      "subscribe_graph_executions",
+      "subscribe_graph_executions",
+      "heartbeat",
+    ]);
+  });
+
+  it("asks again when a view subscribes while the ordering ping is out", async () => {
+    const reconnected = vi.fn();
+    api.onWebSocketReconnect(reconnected);
+    void api.connectWebSocket();
+    const first = await socketAt();
+    first.open();
+    first.pong();
+    first.serverClose(1011);
+    await vi.advanceTimersByTimeAsync(500);
+    const second = await socketAt(1);
+    second.open();
+    second.pong();
+    await vi.advanceTimersByTimeAsync(0);
+    void api.subscribeToGraphExecutions("graph-2" as GraphID);
+
+    // That pong can't cover graph-2, sent after its ping.
+    second.pong();
+    expect(reconnected).not.toHaveBeenCalled();
+    expect(
+      second.send.mock.calls.map(([data]) => JSON.parse(data).method),
+    ).toEqual([
+      "heartbeat",
+      "heartbeat",
+      "subscribe_graph_executions",
+      "heartbeat",
+    ]);
+    second.pong();
+    expect(reconnected).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps waiting while the server is still answering the resubscriptions", async () => {
+    void api.connectWebSocket();
+    const first = await socketAt();
+    first.open();
+    first.pong();
+    first.serverClose(1011);
+    await vi.advanceTimersByTimeAsync(500);
+    const second = await socketAt(1);
+    second.open();
+    second.pong();
+    await vi.advanceTimersByTimeAsync(25_000);
+    second.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          method: "subscribe_graph_executions",
+          success: true,
+        }),
+      }),
+    );
+
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(second.close).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(second.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts a reconnect as healthy only once it has resubscribed", async () => {
+    void api.connectWebSocket();
+    const first = await socketAt();
+    first.open();
+    first.pong();
+    await vi.advanceTimersByTimeAsync(10_000);
+    first.serverClose(1011);
+    await vi.advanceTimersByTimeAsync(500);
+    const second = await socketAt(1);
+    second.open();
+    second.pong();
+    // The ordering ping is never answered.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(second.close).toHaveBeenCalled();
+    second.serverClose(1006);
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(FakeWebSocket.instances).toHaveLength(3);
+  });
+
+  it("keeps the periodic heartbeat from pushing back a check that is out", async () => {
+    void api.connectWebSocket();
+    const socket = await socketAt();
+    socket.open();
+    socket.pong();
+    await vi.advanceTimersByTimeAsync(91_000);
+    window.dispatchEvent(new Event("focus"));
+
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(socket.close).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(socket.close).toHaveBeenCalledTimes(1);
   });
 
   it("spreads the refetches after a reconnect over up to 2 s", async () => {
@@ -264,11 +386,14 @@ describe("WebSocket recovery and logout", () => {
     const second = await socketAt(1);
     second.open();
     second.pong();
-    second.pong();
 
+    // The ordering ping, and so the refetch, waits out the spread.
     await vi.advanceTimersByTimeAsync(999);
-    expect(reconnected).not.toHaveBeenCalled();
+    expect(second.send).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
+    expect(second.send).toHaveBeenCalledTimes(2);
+    expect(reconnected).not.toHaveBeenCalled();
+    second.pong();
     expect(reconnected).toHaveBeenCalledTimes(1);
   });
 

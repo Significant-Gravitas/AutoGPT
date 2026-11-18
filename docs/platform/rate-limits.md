@@ -249,7 +249,7 @@ Where you can close your account yourself, the **Delete account** dialog asks wh
 
 ### API v2
 
-Every call to [API v2](integrating/api-guide.md) shares one limit, on top of the lower limits on a few endpoints that [Errors, rate limits, and pagination](integrating/api-conventions.md#rate-limits) lists:
+Every call to [API v2](integrating/api-guide.md) shares one limit, on top of the lower limits on a few endpoints and on presenting a credential, which [Errors, rate limits, and pagination](integrating/api-conventions.md#rate-limits) lists:
 
 | Caller                                                     | Limit                 | Counted per |
 | ---------------------------------------------------------- | --------------------- | ----------- |
@@ -259,7 +259,7 @@ Every call to [API v2](integrating/api-guide.md) shares one limit, on top of the
 
 - Each minute starts on the clock minute. Responses carry their place in the window in `X-RateLimit-*` headers, and a `429` adds `Retry-After`; a refusal of a credential that keeps failing carries `Retry-After` alone.
 - A request that presents a credential is also counted before the credential is checked, per credential at each IP address, so repeated failures are refused without the cost of checking them.
-- **Self-hosting:** the per-IP counts read `X-Forwarded-For`, not the connection address. Set `TRUSTED_PROXY_COUNT` on the backend to the number of entries your own proxies add; see [Client IP Addresses](client-ip.md#limits-on-the-external-api).
+- **Self-hosting:** behind a reverse proxy, list it in `TRUSTED_PROXIES` on the backend, so the per-IP counts see each caller rather than the proxy; see [Client IP Addresses](client-ip.md#limits-on-the-external-api).
 
 ### API v1
 
