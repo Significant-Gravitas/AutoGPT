@@ -70,9 +70,9 @@ def _transport(monkeypatch, models: list[CodexModelInfo]):
     "mode,tier,expected_model,expected_effort",
     [
         ("fast", "standard", "gpt-6-luna", "low"),
-        ("fast", "advanced", "gpt-6-astra", "medium"),
+        ("fast", "advanced", "gpt-6.2-astra", "medium"),
         ("thinking", "standard", "gpt-5.6-terra", "high"),
-        ("thinking", "advanced", "gpt-6-astra", "xhigh"),
+        ("thinking", "advanced", "gpt-6.2-astra", "xhigh"),
     ],
 )
 async def test_catalog_cells_select_latest_advertised_model(
@@ -88,6 +88,7 @@ async def test_catalog_cells_select_latest_advertised_model(
         _model("gpt-5.6-terra"),
         _model("gpt-5.6-sol", default=True),
         _model("gpt-6-astra"),
+        _model("gpt-6.2-astra"),
     ]
     transport = _transport(monkeypatch, models)
     lease = _lease()

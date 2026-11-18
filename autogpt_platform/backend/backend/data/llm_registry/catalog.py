@@ -2080,9 +2080,8 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=128000,
                 # $8/1M in, $40/1M out, $0.40/1M cache read -- live
                 # OpenRouter rate as of 2026-11-17. Cheaper successor to
-                # gpt-6-astra (which stays listed and remains the Codex
-                # advanced default until Codex advertises this model).
-                # Tier 3 like gpt-6-astra.
+                # gpt-6-astra (which stays listed). Now the Codex advanced
+                # default. Tier 3 like gpt-6-astra.
                 price_tier=3,
                 cost=CatalogModelCost(
                     run_credits=16,
@@ -2494,11 +2493,14 @@ def _build_catalog() -> CatalogPayload:
                     # (still selectable, still billed) -- only the default
                     # moved.
                     "standard": "gpt-6-luna",
-                    "advanced": "gpt-6-astra",
+                    # gpt-6.2-astra supersedes gpt-6-astra as the advanced
+                    # default (2026-11): Codex now advertises it and it is
+                    # cheaper. gpt-6-astra stays in the catalog.
+                    "advanced": "gpt-6.2-astra",
                 },
                 "thinking": {
                     "standard": "gpt-5.6-terra",
-                    "advanced": "gpt-6-astra",
+                    "advanced": "gpt-6.2-astra",
                 },
             }
         },
