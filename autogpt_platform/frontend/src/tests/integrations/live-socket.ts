@@ -15,6 +15,12 @@ export const AFTER_RECONNECT = { timeout: 6000 };
  * reconnect on its own. The test file also mocks `getWebSocketToken` to
  * return a token, or the app never opens a socket.
  */
+function heartbeatsSent(socket: FakeWebSocket) {
+  return socket.send.mock.calls.filter(
+    ([data]) => JSON.parse(data).method === "heartbeat",
+  ).length;
+}
+
 export function installLiveSocket() {
   FakeWebSocket.instances = [];
   vi.stubGlobal("WebSocket", FakeWebSocket);
@@ -40,6 +46,18 @@ export function installLiveSocket() {
     /** What the server does when it loses its event stream. */
     async drop(socket: FakeWebSocket) {
       await act(async () => socket.serverClose(1011));
+    },
+    /**
+     * Waits until a reconnected socket has sent its ordering ping (the one
+     * after the resubscriptions) and the app has taken the answer, so its
+     * reconnect handlers have run.
+     */
+    async caughtUp(socket: FakeWebSocket) {
+      await waitFor(
+        () => expect(heartbeatsSent(socket)).toBeGreaterThanOrEqual(2),
+        AFTER_RECONNECT,
+      );
+      await act(async () => {});
     },
     /** Delivers a run update over the socket, as the server publishes one. */
     async publish(socket: FakeWebSocket, execution: Record<string, unknown>) {

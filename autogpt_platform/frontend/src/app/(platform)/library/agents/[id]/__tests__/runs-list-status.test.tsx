@@ -16,7 +16,7 @@ import {
   AFTER_RECONNECT,
   installLiveSocket,
 } from "@/tests/integrations/live-socket";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { act, render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, expect, test, vi } from "vitest";
@@ -160,14 +160,29 @@ test("a run that finished during a disconnect on another tab shows as finished b
     await screen.findByRole("tab", { name: /^Scheduled/, selected: true }),
   ).toBeDefined();
 
-  status = AgentExecutionStatus.COMPLETED;
-  await live.drop(first);
-  await live.acceptNext();
-  await userEvent.click(screen.getByRole("tab", { name: /^Tasks/ }));
+  let runReads = 0;
+  function countRunReads({ request }: { request: Request }) {
+    const { pathname } = new URL(request.url);
+    if (pathname.endsWith(`/graphs/${GRAPH_ID}/executions`)) runReads += 1;
+  }
+  server.events.on("request:start", countRunReads);
+  try {
+    status = AgentExecutionStatus.COMPLETED;
+    await live.drop(first);
+    await live.caughtUp(await live.acceptNext());
+    // Scheduled doesn't show the runs, so they wait for Tasks: a failed read
+    // here would only put an error in front of the schedules.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    expect(runReads).toBe(0);
 
-  expect(
-    await screen.findByRole("img", { name: "Task completed" }, AFTER_RECONNECT),
-  ).toBeDefined();
+    await userEvent.click(screen.getByRole("tab", { name: /^Tasks/ }));
+    expect(
+      await screen.findByRole("img", { name: "Task completed" }),
+    ).toBeDefined();
+    expect(runReads).toBeGreaterThan(0);
+  } finally {
+    server.events.removeListener("request:start", countRunReads);
+  }
 });
 
 test("a simulated run's icon names its status", async () => {

@@ -1,4 +1,6 @@
 import {
+  getGetV1GetExecutionDetailsMockHandler,
+  getGetV1GetExecutionDetailsResponseMock,
   getGetV1ListAllExecutionsMockHandler,
   getGetV1ListAllExecutionsResponseMock,
 } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
@@ -15,10 +17,11 @@ import {
   AFTER_RECONNECT,
   installLiveSocket,
 } from "@/tests/integrations/live-socket";
-import { render, screen, within } from "@/tests/integrations/test-utils";
+import { act, render, screen, within } from "@/tests/integrations/test-utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render as renderWithoutProviders } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { AccountMenuActivityRow } from "../AccountMenuActivityRow";
@@ -97,6 +100,19 @@ function serveActivity(
     }),
     getGetV1ListAllExecutionsMockHandler(() => listRuns()),
   );
+}
+
+/** The app's providers around a query client the test configures. */
+function providersFor(queryClient: QueryClient) {
+  return function Providers({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <BackendAPIProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+        </BackendAPIProvider>
+      </QueryClientProvider>
+    );
+  };
 }
 
 async function openActivity() {
@@ -214,22 +230,13 @@ test("opening the menu again shows a run that finished while it was closed", asy
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
   });
-  function Providers({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        <BackendAPIProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-        </BackendAPIProvider>
-      </QueryClientProvider>
-    );
-  }
   // The row mounts only while the account menu is open.
   function AccountMenu({ open }: { open: boolean }) {
     return open ? <AccountMenuActivityRow /> : null;
   }
 
   const { rerender } = renderWithoutProviders(<AccountMenu open />, {
-    wrapper: Providers,
+    wrapper: providersFor(queryClient),
   });
   await userEvent.click(
     await screen.findByTestId("account-menu-activity-trigger"),
@@ -248,8 +255,14 @@ test("opening the menu again shows a run that finished while it was closed", asy
   expect(await findRunLine(list, /^Completed /)).toBeDefined();
 });
 
-test("keeps a run still going that a full list of newer runs leaves out", async () => {
-  // GET /executions answers with the newest 250 runs only.
+/**
+ * GET /executions answers with the newest 250 runs only. After the
+ * reconnect, the list leaves out an older run Activity shows as going, and
+ * the app reads that run by ID: `readOldRun` answers with its status.
+ */
+async function showOldRunThenReconnect(
+  readOldRun: () => Promise<AgentExecutionStatus>,
+) {
   const newer = Array.from({ length: 250 }, (_, i) =>
     run(`run-${i}`, AgentExecutionStatus.COMPLETED, "graph-busy"),
   );
@@ -269,6 +282,15 @@ test("keeps a run still going that a full list of newer runs leaves out", async 
       "graph-new": "New workflow",
     },
   );
+  server.use(
+    getGetV1GetExecutionDetailsMockHandler(async () => ({
+      ...getGetV1GetExecutionDetailsResponseMock(),
+      ...run("run-old", await readOldRun(), "graph-old"),
+      inputs: {},
+      outputs: {},
+      node_executions: [],
+    })),
+  );
   const live = installLiveSocket();
 
   const list = await openActivity();
@@ -282,11 +304,107 @@ test("keeps a run still going that a full list of newer runs leaves out", async 
   ).toBeDefined();
 
   await live.drop(first);
-  await live.acceptNext();
-
+  const second = await live.acceptNext();
   // The refetched list has landed once the new run shows.
   expect(await findRunOf(list, "New workflow", AFTER_RECONNECT)).toBeDefined();
+  return { list, live, second };
+}
+
+test("keeps a run still going that a full list of newer runs leaves out", async () => {
+  const { list } = await showOldRunThenReconnect(
+    async () => AgentExecutionStatus.RUNNING,
+  );
+
   expect(
     (await findRunOf(list, "Old workflow")).getByText(/running$/),
   ).toBeDefined();
+});
+
+test("a run a full list leaves out that ended while the live connection was down shows as ended", async () => {
+  const { list } = await showOldRunThenReconnect(
+    async () => AgentExecutionStatus.COMPLETED,
+  );
+
+  const oldRun = await findRunOf(list, "Old workflow");
+  expect(await oldRun.findByText(/^Completed /)).toBeDefined();
+  expect(oldRun.queryByText(/running$/)).toBeNull();
+});
+
+test("a live update that lands while a left-out run is read by ID stands", async () => {
+  let readStarted = false;
+  let releaseRead = () => {};
+  const readHeld = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  releaseHeldList = releaseRead;
+  const { list, live, second } = await showOldRunThenReconnect(async () => {
+    readStarted = true;
+    // Read before the run was stopped, answered after.
+    await readHeld;
+    return AgentExecutionStatus.RUNNING;
+  });
+  await vi.waitFor(() => expect(readStarted).toBe(true));
+
+  await live.publish(second, {
+    ...run("run-old", AgentExecutionStatus.TERMINATED, "graph-old"),
+    started_at: new Date(Date.now() - 2 * 24 * 3_600_000).toISOString(),
+  });
+  const oldRun = await findRunOf(list, "Old workflow");
+  expect(await oldRun.findByText(/^Stopped /)).toBeDefined();
+  releaseRead();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+  expect(
+    (await findRunOf(list, "Old workflow")).getByText(/^Stopped /),
+  ).toBeDefined();
+});
+
+test("a retried refetch isn't overruled by an update from before its first attempt failed", async () => {
+  let releaseFailure = () => {};
+  const failureHeld = new Promise<void>((resolve) => {
+    releaseFailure = resolve;
+  });
+  releaseHeldList = releaseFailure;
+  serveActivity(async () => [run("run-1", AgentExecutionStatus.RUNNING)]);
+  let requests = 0;
+  server.use(
+    http.get("/api/proxy/api/executions", async () => {
+      requests += 1;
+      if (requests !== 2) {
+        // Stopped, then resumed before the retry read it.
+        return HttpResponse.json([run("run-1", AgentExecutionStatus.RUNNING)]);
+      }
+      await failureHeld;
+      return HttpResponse.json({ detail: "Unavailable" }, { status: 503 });
+    }),
+  );
+  const live = installLiveSocket();
+  // The app retries a failed read (lib/react-query/queryClient.ts).
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: 1, retryDelay: 0 } },
+  });
+  renderWithoutProviders(<AccountMenuActivityRow />, {
+    wrapper: providersFor(queryClient),
+  });
+  await userEvent.click(
+    await screen.findByTestId("account-menu-activity-trigger"),
+  );
+  const list = await screen.findByTestId("agent-activity-dropdown");
+  const first = await live.acceptNext();
+  expect(await findRunLine(list, /running$/)).toBeDefined();
+
+  await live.drop(first);
+  const second = await live.acceptNext();
+  await vi.waitFor(() => expect(requests).toBe(2), AFTER_RECONNECT);
+  // The stop arrives while the reconnect read is out, and that read fails.
+  await live.publish(second, {
+    ...run("run-1", AgentExecutionStatus.TERMINATED),
+    ended_at: new Date().toISOString(),
+  });
+  expect(await findRunLine(list, /^Stopped /)).toBeDefined();
+  releaseFailure();
+
+  await vi.waitFor(() => expect(requests).toBe(3));
+  expect(await findRunLine(list, /running$/)).toBeDefined();
+  expect(within(list).queryByText(/^Stopped /)).toBeNull();
 });
