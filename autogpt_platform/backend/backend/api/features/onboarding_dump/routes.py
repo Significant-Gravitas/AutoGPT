@@ -49,6 +49,7 @@ from backend.api.features.onboarding_dump.models import (
     VoiceCallStartResponse,
     VoiceCallStatusResponse,
     clients_recording_id,
+    start_over_of,
 )
 from backend.api.features.onboarding_dump.plan_models import (
     PlanHireResponse,
@@ -176,9 +177,14 @@ async def finalize_brain_dump(
     ``greeting_ready``. Idempotent per ``recording_id`` — a client that
     retries after a timeout gets the stored result rather than a second
     transcription.
+
+    A skip is refused (409 ``onboarding_interview_closed``) while the
+    person's onboarding interview is closed with its take kept, which the
+    plan step reads.
     """
     try:
         if request.input_mode == BrainDumpInputMode.skipped:
+            await interview.refuse_a_skip_over_a_finished_take(user_id)
             return await service.finalize_skipped_dump(user_id, request.recording_id)
 
         if request.input_mode == BrainDumpInputMode.typed:
@@ -248,18 +254,21 @@ async def start_onboarding_interview(
     ``ending_pick`` is a tester's pick of the ending, kept for the interview's
     close while the ending picker is on for them, and ignored otherwise.
 
-    ``start_over`` asks for a fresh interview in place of one that is over,
-    typed or taken by a call: it is set aside and a new typed interview
-    opens, once the turn budget would admit its greeting. A live call still
-    refuses it (409 ``call_in_progress``). An interview that is not over
-    opens as it would without it.
+    ``start_over`` asks for a fresh interview in place of the one that is
+    over and named by ``start_over_from`` (the typed interview's session or
+    the call that took it): it is set aside and a new typed interview opens,
+    once the turn budget and the cap on turns running at once would admit
+    its greeting. A live call still refuses it (409 ``call_in_progress``),
+    and so does a call whose words took the interview meanwhile (409
+    ``onboarding_interview_closed`` naming it). An interview that is not
+    over, or not the one named, opens as it would without it.
     """
     await interview_endings.keep_text_pick(
         user_id, request.ending_pick if request is not None else None
     )
     try:
         started = await interview.start_onboarding_interview(
-            user_id, start_over=request is not None and request.start_over
+            user_id, start_over=start_over_of(request)
         )
     except fastapi.HTTPException as e:
         if e.status_code in (429, 503):
@@ -379,8 +388,10 @@ async def start_onboarding_voice_call(
     otherwise.
 
     ``start_over`` asks for the call to start a fresh interview in place of
-    one that is over: instead of the 409, it is set aside once every other
-    check passes. A live call still refuses it (409 ``call_in_progress``).
+    the one that is over and named by ``start_over_from``: instead of the
+    409, it is set aside once every other check passes. A live call still
+    refuses it (409 ``call_in_progress``), and so does a call whose words
+    took the interview meanwhile (409 ``onboarding_interview_closed``).
 
     ``language`` is the browser's language tag: the call starts in it when
     the call offers it, and in English otherwise.
@@ -389,7 +400,7 @@ async def start_onboarding_voice_call(
         return await voice.start_voice_call(
             user_id,
             request.ending_pick if request is not None else None,
-            start_over=request is not None and request.start_over,
+            start_over=start_over_of(request),
             language=request.language if request is not None else None,
         )
     except fastapi.HTTPException as e:

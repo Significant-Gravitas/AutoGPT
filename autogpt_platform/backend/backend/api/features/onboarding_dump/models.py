@@ -499,6 +499,12 @@ class VoiceCallStartRequest(BaseModel):
     """The person asked to do their interview over: a closed interview is
     set aside for this call, instead of refusing it."""
 
+    start_over_from: str | None = Field(default=None, max_length=64)
+    """With ``start_over``, the interview the person saw end: their typed
+    interview's session or the call that took it. It is set aside only while
+    it is still their closed interview; otherwise the call starts as it
+    would without ``start_over``."""
+
     language: str | None = Field(default=None, max_length=35)
     """The browser's language, as a BCP-47 tag such as ``es-MX``: the call
     starts in it when the call offers it, and in English otherwise."""
@@ -514,6 +520,22 @@ class InterviewStartRequest(BaseModel):
     start_over: bool = False
     """The person asked to do their interview over: a closed interview is
     set aside for a fresh typed one, instead of reopening it."""
+
+    start_over_from: str | None = Field(default=None, max_length=64)
+    """With ``start_over``, the interview the person saw end: their typed
+    interview's session or the call that took it. It is set aside only while
+    it is still their closed interview; otherwise the interview opens as it
+    would without ``start_over``."""
+
+
+def start_over_of(
+    request: VoiceCallStartRequest | InterviewStartRequest | None,
+) -> str | None:
+    """The interview a start asks to set aside, or None for a plain start:
+    ``start_over`` without the interview it names starts as without it."""
+    if request is None or not request.start_over:
+        return None
+    return request.start_over_from
 
 
 class InterviewFinishRequest(BaseModel):

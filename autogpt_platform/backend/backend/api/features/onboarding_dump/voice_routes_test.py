@@ -442,10 +442,10 @@ async def test_a_start_over_sets_an_interview_that_is_over_aside_for_the_call(
     apply = mocker.patch.object(voice, "apply_start_over", AsyncMock())
     voice_on.interview.return_value = _interview(test_user_id, stage)
 
-    response = await start({"start_over": True})
+    response = await start({"start_over": True, "start_over_from": "earlier"})
 
     assert response.status_code == 200
-    read.assert_awaited_once_with(test_user_id)
+    read.assert_awaited_once_with(test_user_id, "earlier")
     apply.assert_awaited_once_with(test_user_id, plan)
     voice_on.interview.assert_not_awaited()
 
@@ -459,7 +459,7 @@ async def test_a_start_over_with_voice_off_sets_nothing_aside(
     apply = mocker.patch.object(voice, "apply_start_over", AsyncMock())
     voice_on.flag.return_value = (False, False)
 
-    response = await start({"start_over": True})
+    response = await start({"start_over": True, "start_over_from": "c"})
 
     assert response.status_code == 404
     apply.assert_not_awaited()

@@ -798,6 +798,36 @@ def test_skipped_finalize_records_the_skip_without_a_transcript(dumps: DumpStore
     assert dumps.row.transcript is None
 
 
+def test_a_skip_over_a_closed_interviews_take_is_refused_and_the_take_stays(
+    dumps: DumpStore, mocker: MockerFixture
+):
+    asyncio.run(
+        dumps.start_dump("test-user-id", "interview-earlier", BrainDumpInputMode.typed)
+    )
+    assert dumps.row is not None
+    dumps.row.status = BrainDumpStatus.completed
+    mocker.patch.object(
+        interview,
+        "find_onboarding_interview_session",
+        AsyncMock(return_value=None),
+    )
+    mocker.patch.object(
+        interview,
+        "call_that_took_the_interview",
+        AsyncMock(return_value="a-call"),
+    )
+
+    response = finalize(input_mode="skipped")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "code": "onboarding_interview_closed",
+        "call_id": "a-call",
+    }
+    assert dumps.row.recordingId == "interview-earlier"
+    assert dumps.row.status == BrainDumpStatus.completed
+
+
 def test_a_transcribed_take_offers_no_recording(dumps: DumpStore):
     upload_part()
     finalize()
@@ -2268,7 +2298,7 @@ def test_starting_the_interview_answers_it_with_otto_s_first_turn(
     }
     # Opened from who the person is, outside the org and team the request
     # runs in.
-    start_interview.assert_awaited_once_with(test_user_id, start_over=False)
+    start_interview.assert_awaited_once_with(test_user_id, start_over=None)
 
 
 def test_reopening_an_interview_under_way_starts_no_turn(
@@ -2629,10 +2659,25 @@ def test_starting_over_asks_for_a_fresh_interview(
         session=_interview(test_user_id), turn_id="turn-1"
     )
 
+    response = client.post(
+        INTERVIEW_URL, json={"start_over": True, "start_over_from": "earlier"}
+    )
+
+    assert response.status_code == 200
+    start_interview.assert_awaited_once_with(test_user_id, start_over="earlier")
+
+
+def test_a_start_over_naming_no_interview_starts_as_usual(
+    start_interview: AsyncMock, test_user_id: str
+):
+    start_interview.return_value = interview.StartedInterview(
+        session=_interview(test_user_id), turn_id="turn-1"
+    )
+
     response = client.post(INTERVIEW_URL, json={"start_over": True})
 
     assert response.status_code == 200
-    start_interview.assert_awaited_once_with(test_user_id, start_over=True)
+    start_interview.assert_awaited_once_with(test_user_id, start_over=None)
 
 
 def test_a_start_over_while_the_interview_is_off_is_a_404_that_opens_nothing(
@@ -2640,7 +2685,9 @@ def test_a_start_over_while_the_interview_is_off_is_a_404_that_opens_nothing(
 ):
     interview_flag.return_value = (False, True)
 
-    response = client.post(INTERVIEW_URL, json={"start_over": True})
+    response = client.post(
+        INTERVIEW_URL, json={"start_over": True, "start_over_from": "earlier"}
+    )
 
     assert response.status_code == 404
     start_interview.assert_not_awaited()

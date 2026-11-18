@@ -145,7 +145,7 @@ async def start_voice_call(
     user_id: str,
     ending_pick: str | None = None,
     *,
-    start_over: bool = False,
+    start_over: str | None = None,
     language: str | None = None,
 ) -> VoiceCallStartResponse:
     """Start a voice call for *user_id*'s onboarding interview.
@@ -154,8 +154,10 @@ async def start_voice_call(
     of the ending experiment's arm only while the picker is on for them and
     the arm fits a call (``interview_endings.honoured_pick``).
 
-    With *start_over*, an interview that is over is no refusal: once every
-    other check passes and the start is counted, it is set aside
+    *start_over* names the closed interview the person asked to set aside
+    (``interview.read_start_over``). While it is still the person's closed
+    interview, that is no refusal: once every other check passes, the start
+    is counted and its room registered, it is set aside
     (``interview.apply_start_over``) and the call starts a fresh one.
 
     *language* is the browser's language tag; the start token carries the
@@ -171,7 +173,7 @@ async def start_voice_call(
 async def _start_voice_call(
     user_id: str,
     ending_pick: str | None,
-    start_over: bool = False,
+    start_over: str | None = None,
     language: str | None = None,
 ) -> VoiceCallStartResponse:
     # Read side by side; refused in the module's order.
@@ -197,8 +199,6 @@ async def _start_voice_call(
             raise refusal
     # Counted only for a start that is going ahead: each opens a room.
     await _timed("starts", enforce_voice_start_budget(user_id))
-    if plan is not None:
-        await _timed("start_over", apply_start_over(user_id, plan))
     redis = await _bounded(get_redis_async())
     call_id = tokens.new_call_id()
     # The arm is read only for a start that is going ahead, since reading it
@@ -214,6 +214,11 @@ async def _start_voice_call(
         ),
         _timed("replace", _bounded(locks.replace_start(redis, user_id, call_id))),
     )
+    # Last of all, so a start refused above sets nothing aside. A room
+    # registered for a start-over refused here never gets a token, and is
+    # closed at the sweep as any start that never began.
+    if plan is not None:
+        await _timed("start_over", apply_start_over(user_id, plan))
     ending = _voice_arm(arm)
     return VoiceCallStartResponse(
         call_id=call_id,
@@ -299,14 +304,16 @@ async def _refusals(
 
 
 async def _interview_read(
-    user_id: str, start_over: bool
+    user_id: str, start_over: str | None
 ) -> tuple[StartOver | None, HTTPException | None]:
     """What a start-over sets aside, or None, with the interview's refusal:
-    without *start_over*, an interview that is over refuses the call; with
-    it, only what :func:`read_start_over` refuses does."""
+    an interview that is over refuses the call, unless *start_over* names
+    it, when only what :func:`read_start_over` refuses does."""
     try:
-        if start_over:
-            return await read_start_over(user_id), None
+        if start_over is not None:
+            plan = await read_start_over(user_id, start_over)
+            if plan is not None:
+                return plan, None
         await _refuse_if_interview_over(user_id)
     except HTTPException as refusal:
         return None, refusal

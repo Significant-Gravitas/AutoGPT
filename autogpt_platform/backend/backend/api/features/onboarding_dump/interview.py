@@ -30,7 +30,8 @@ noticing. :func:`hand_off_interview_transcript` takes the user's words from
 any interview; the typed interview's come from its chat session, a voice
 call's from its transcript of record (:func:`close_voice_interview`).
 
-A person has one interview, typed or spoken. The voice call start route
+A person has one interview at a time, typed or spoken, until they start it
+over from its ending (:func:`read_start_over`). The voice call start route
 refuses a call once the typed interview is over; the typed interview is
 refused while a call of theirs is live, and is over once a call took the
 interview (:func:`refuse_while_a_call_holds_the_interview`). A call takes it
@@ -74,7 +75,12 @@ from backend.api.features.onboarding_dump.rate_limit import (
     check_interview_turn_budget,
     enforce_interview_turn_budget,
 )
-from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.active_turns import (
+    ConcurrentTurnLimitError,
+    count_running_turns,
+    get_running_turn_limit,
+    running_turn_limit_message,
+)
 from backend.copilot.expert_kickoff import is_hidden_chat_message
 from backend.copilot.model import (
     INTERVIEW_STAGE_CLOSED,
@@ -170,12 +176,14 @@ async def enforce_onboarding_interview_allowance(user_id: str) -> None:
     interview's turns past its own allowance gate, ``budget_gate.refusal_for``,
     the same way). It is bounded instead by:
 
-    - its own turn budget, on the personalization budget's rules and on
-      every tier (``rate_limit.enforce_interview_turn_budget``), charged here
-      once a turn is about to be dispatched;
-    - one interview per user (its session id, recorded on the user's
-      onboarding row);
-    - the code-owned reply cap (``INTERVIEW_TURN_CAP``);
+    - the person's own turn budget, on the personalization budget's rules
+      and on every tier (``rate_limit.enforce_interview_turn_budget``),
+      charged here once a turn is about to be dispatched; it is counted per
+      person, so it bounds every interview they hold, one started over
+      included;
+    - one interview at a time per user (its session id, recorded on the
+      user's onboarding row);
+    - the code-owned reply cap (``INTERVIEW_TURN_CAP``), per interview;
     - no turn once it is closed or handed off (409 here, a refused turn on
       the executor);
     - the scope guard (``onboarding_interview_scope``).
@@ -197,14 +205,17 @@ class StartedInterview(BaseModel):
 
 
 async def start_onboarding_interview(
-    user_id: str, *, start_over: bool = False
+    user_id: str, *, start_over: str | None = None
 ) -> StartedInterview:
     """Open the user's onboarding interview and have Otto speak first.
 
-    With *start_over*, a closed interview is set aside first
+    *start_over* names the closed interview the person asked to set aside:
+    their typed interview's session, or the call that took it. While it is
+    still the person's closed interview it is set aside first
     (:func:`read_start_over`, :func:`apply_start_over`) and a fresh one
-    opens, once the turn budget would admit its greeting; an interview that
-    is not closed opens as it would without it.
+    opens, once the turn budget and the cap on turns running at once would
+    admit its greeting. Otherwise the interview opens as it would without
+    it.
 
     The one call a route makes to start or reopen an interview. The user has
     one interview, so a second call adopts it; an interview the user has
@@ -224,10 +235,11 @@ async def start_onboarding_interview(
             voice call holds the interview, and whatever
             :func:`enforce_onboarding_interview_allowance` raises.
     """
-    if start_over:
-        plan = await read_start_over(user_id)
+    if start_over is not None:
+        plan = await read_start_over(user_id, start_over)
         if plan is not None:
             await check_interview_turn_budget(user_id)
+            await _refuse_at_the_running_turn_cap(user_id)
             await apply_start_over(user_id, plan)
     await refuse_while_a_call_holds_the_interview(user_id)
     session = await get_or_create_onboarding_interview_session(user_id)
@@ -299,6 +311,25 @@ def _hand_off_in_background(user_id: str, session: ChatSession) -> None:
     )
 
 
+async def _refuse_at_the_running_turn_cap(user_id: str) -> None:
+    """Refuse a start-over the cap on turns running at once would refuse a
+    greeting for, before anything is set aside: the kickoff's own admit is
+    the same count (``active_turns.acquire_turn_slot``).
+
+    Raises:
+        HTTPException: 429 at the cap, 503 while the count cannot be read.
+    """
+    try:
+        running = await count_running_turns(user_id)
+    except Exception as exc:
+        logger.warning(
+            f"Onboarding interview: running turns unreadable: {type(exc).__name__}"
+        )
+        raise _voice_calls_unreadable() from exc
+    if running >= get_running_turn_limit():
+        raise HTTPException(status_code=429, detail=running_turn_limit_message())
+
+
 async def _refuse_if_busy(session_id: str) -> None:
     try:
         busy = await is_turn_in_flight(session_id)
@@ -357,6 +388,39 @@ async def call_that_took_the_interview(user_id: str) -> str | None:
     return await get_onboarding_voice_interview_call_id(user_id)
 
 
+async def refuse_a_skip_over_a_finished_take(user_id: str) -> None:
+    """Refuse a skip while the person's interview is closed with its take on
+    the dump row, accepted or in the pipeline: the plan step reads that
+    take, and a skip would replace it. A take that failed, an interview
+    still open, and a take of no interview leave the skip as it was.
+
+    Raises:
+        HTTPException: 409 ``onboarding_interview_closed``, naming the call
+            that took the interview when one did; 503 while the take or the
+            interview cannot be read.
+    """
+    try:
+        row = await dump_db.get_dump(user_id)
+        if (
+            row is None
+            or not row.recordingId.startswith(INTERVIEW_RECORDING_PREFIX)
+            or row.status == BrainDumpStatus.failed
+        ):
+            return
+        typed = await find_onboarding_interview_session(user_id)
+        typed_over = typed is not None and interview_is_over(typed)
+        taken_by = await call_that_took_the_interview(user_id)
+    except Exception as exc:
+        logger.warning(f"Onboarding interview: skip unreadable: {type(exc).__name__}")
+        raise _voice_calls_unreadable() from exc
+    if taken_by:
+        raise HTTPException(
+            status_code=409, detail={"code": INTERVIEW_CLOSED, "call_id": taken_by}
+        )
+    if typed_over:
+        raise HTTPException(status_code=409, detail={"code": INTERVIEW_CLOSED})
+
+
 class StartOver(BaseModel):
     """What starting a closed interview over sets aside, read before anything
     is written (:func:`read_start_over`)."""
@@ -379,15 +443,20 @@ class StartOver(BaseModel):
     take: str | None = None
 
 
-async def read_start_over(user_id: str) -> StartOver | None:
+async def read_start_over(user_id: str, interview_id: str) -> StartOver | None:
     """What starting the person's interview over would set aside, or None
-    when it is not closed (the typed interview is not over and no call took
-    it), and an ordinary start serves. Writes nothing.
+    when an ordinary start serves: their interview is not closed (the typed
+    interview is not over and no call took it), or *interview_id*, the
+    interview the person saw end, is no longer the closed one (their typed
+    interview's session while it is over, or the call that took it). Writes
+    nothing.
 
     Raises:
         HTTPException: 409 ``call_in_progress`` naming a live call of
-            theirs, which a start-over never breaks; 503 while the interview
-            or their calls cannot be read.
+            theirs, which a start-over never breaks; 409
+            ``onboarding_interview_closed`` naming a call whose words are
+            taking the interview right now (:func:`_taken_meanwhile`); 503
+            while the interview or their calls cannot be read.
     """
     try:
         redis = await get_redis_async()
@@ -406,15 +475,26 @@ async def read_start_over(user_id: str) -> StartOver | None:
         typed = await find_onboarding_interview_session(user_id)
         taken_by = await call_that_took_the_interview(user_id)
         latest = await get_onboarding_voice_call_id(user_id)
-        unclaimed = await _unclaimed_calls(redis, user_id, latest)
+        calls = await _calls_back_from(redis, user_id, latest)
         row = await dump_db.get_dump(user_id)
     except Exception as exc:
         logger.warning(
             f"Onboarding interview: start-over unreadable: {type(exc).__name__}"
         )
         raise _voice_calls_unreadable() from exc
-    if not ((typed is not None and interview_is_over(typed)) or taken_by):
+    typed_over = typed is not None and interview_is_over(typed)
+    closed = {typed.session_id} if typed is not None and typed_over else set()
+    if taken_by:
+        closed.add(taken_by)
+    if interview_id not in closed:
         return None
+    for record in calls:
+        if (
+            record.interview == locks.INTERVIEW_TAKEN
+            and record.call_id != taken_by
+            and record.hand_off is None
+        ):
+            raise _taken_meanwhile(record.call_id)
     take = (
         row.recordingId
         if row is not None and row.recordingId.startswith(INTERVIEW_RECORDING_PREFIX)
@@ -424,7 +504,9 @@ async def read_start_over(user_id: str) -> StartOver | None:
         session_id=typed.session_id if typed is not None else None,
         latest_call=latest,
         taken_by=taken_by,
-        unclaimed_calls=tuple(unclaimed),
+        unclaimed_calls=tuple(
+            record.call_id for record in calls if record.interview is None
+        ),
         take=take,
     )
 
@@ -434,17 +516,29 @@ async def apply_start_over(user_id: str, plan: StartOver) -> None:
     unclaimed words are superseded, their typed interview is retired (its
     stage ``handed_off``, so no hand-off of it runs, and forgotten on their
     onboarding row with any hand-off owed for it), their calls are forgotten
-    on the row, and an earlier take no pipeline has run is given up. The
+    on the row, and an earlier take no pipeline has run is given up. One the
+    pipeline has run is remembered as retired, so the new interview's take
+    replaces it whatever its status (:func:`give_up_the_retired_take`). The
     next start opens a fresh interview, typed or spoken.
 
+    The calls are claimed first, and the claim that stands decides: a call
+    whose words took the interview since *plan* was read refuses the
+    start-over before anything else is written.
+
     Raises:
-        HTTPException: 503 when any of it cannot be written; a retry reads
-            what is left and sets it aside.
+        HTTPException: 409 ``onboarding_interview_closed`` naming a call that
+            took the interview since *plan* was read; 503 when any of it
+            cannot be written, and a retry reads what is left and sets it
+            aside.
     """
     try:
         redis = await get_redis_async()
         for call_id in plan.unclaimed_calls:
-            await locks.claim_interview(redis, call_id, locks.INTERVIEW_SUPERSEDED)
+            standing = await locks.claim_interview(
+                redis, call_id, locks.INTERVIEW_SUPERSEDED
+            )
+            if standing == locks.INTERVIEW_TAKEN:
+                raise _taken_meanwhile(call_id)
         if plan.session_id is not None:
             await update_session_interview_stage(
                 plan.session_id, user_id, INTERVIEW_STAGE_HANDED_OFF
@@ -456,8 +550,12 @@ async def apply_start_over(user_id: str, plan: StartOver) -> None:
         await forget_onboarding_voice_calls(
             user_id, latest=plan.latest_call, taken=plan.taken_by
         )
-        if plan.take is not None:
-            await service.give_up_unrun_take(user_id, plan.take, SUPERSEDED)
+        if plan.take is not None and not await service.give_up_unrun_take(
+            user_id, plan.take, SUPERSEDED
+        ):
+            await redis.set(retired_take_key(user_id), plan.take, ex=RETIRED_TAKE_TTL_S)
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.warning(
             f"Onboarding interview: start-over not written: {type(exc).__name__}"
@@ -466,13 +564,55 @@ async def apply_start_over(user_id: str, plan: StartOver) -> None:
     logger.info("Onboarding interview: started over")
 
 
-async def _unclaimed_calls(
+def _taken_meanwhile(call_id: str) -> HTTPException:
+    """The refusal of a start-over a call's words took the interview from:
+    as for an interview a call took, naming the call, whose ending the step
+    shows."""
+    return HTTPException(
+        status_code=409, detail={"code": INTERVIEW_CLOSED, "call_id": call_id}
+    )
+
+
+# The take a start-over left on the dump row because the pipeline had run
+# it: the next interview's take replaces it whatever its status. Kept as long
+# as an owed hand-off is.
+RETIRED_TAKE_TTL_S = 24 * 60 * 60
+
+
+def retired_take_key(user_id: str) -> str:
+    return f"onboarding:interview:retired_take:{user_id}"
+
+
+async def give_up_the_retired_take(user_id: str, recording_id: str) -> None:
+    """Before *recording_id*'s take is handed off: give up the take a
+    start-over retired, when it still holds the dump row and is another
+    take, so the new interview's words become the plan however far the
+    pipeline got with the old ones (``service.give_up_retired_take``).
+
+    Raises:
+        HTTPException: 503 while the retired take cannot be read or given
+            up; the hand-off is retried.
+    """
+    try:
+        redis = await get_redis_async()
+        retired = as_str(await redis.get(retired_take_key(user_id)))
+        if retired is None or retired == recording_id:
+            return
+        if await service.give_up_retired_take(user_id, retired, SUPERSEDED):
+            logger.info("Onboarding interview: a retired take was given up")
+    except Exception as exc:
+        logger.warning(
+            f"Onboarding interview: retired take unreadable: {type(exc).__name__}"
+        )
+        raise _voice_calls_unreadable() from exc
+
+
+async def _calls_back_from(
     redis: AsyncRedisClient, user_id: str, latest: str | None
-) -> list[str]:
-    """The person's calls from *latest* back along each record's ``prev``
-    whose words have no claim on the interview, neither taken nor
-    superseded. Stops at a record that expired or is not theirs."""
-    unclaimed: list[str] = []
+) -> list[locks.CallRecord]:
+    """The person's calls from *latest* back along each record's ``prev``.
+    Stops at a record that expired or is not theirs."""
+    calls: list[locks.CallRecord] = []
     seen: set[str] = set()
     current = latest
     while (
@@ -484,10 +624,9 @@ async def _unclaimed_calls(
         record = await locks.read_call(redis, current)
         if record is None or record.uid != user_id:
             break
-        if record.interview is None:
-            unclaimed.append(record.call_id)
+        calls.append(record)
         current = record.prev
-    return unclaimed
+    return calls
 
 
 def _voice_calls_unreadable() -> HTTPException:
@@ -1357,6 +1496,7 @@ async def _hand_off_call_words(
 ) -> FinalizeResponse:
     text = words.strip()[:MAX_TYPED_CHARS]
     recording_id = interview_recording_id(call_id)
+    await give_up_the_retired_take(user_id, recording_id)
     take = await service.finalize_typed_take(
         user_id,
         recording_id,
@@ -1663,15 +1803,16 @@ async def hand_off_interview_transcript(
     An interview where nothing was said leaves the user's dump row alone, as
     the typed route does for empty text, and answers with the quality gate's
     own "nothing usable" code, which the onboarding screens already handle.
+    A take a start-over retired gives the row up first
+    (:func:`give_up_the_retired_take`).
     """
     text = transcript.strip()[:MAX_TYPED_CHARS]
     if not text:
         return _nothing_said()
+    recording_id = interview_recording_id(interview_id)
+    await give_up_the_retired_take(user_id, recording_id)
     return await service.finalize_typed_dump(
-        user_id,
-        interview_recording_id(interview_id),
-        text,
-        background_tasks,
+        user_id, recording_id, text, background_tasks
     )
 
 
