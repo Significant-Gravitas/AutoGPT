@@ -733,6 +733,36 @@ async def test_a_home_folder_that_doesnt_answer_cant_hold_the_drivers_start(
     assert loop_thread not in looks
 
 
+async def test_a_look_at_the_home_folder_cant_hold_the_shim_from_stopping(
+    fake_log: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """asyncio.run waits for the event loop's worker threads before it
+    returns, without limit on Python 3.11, and the interpreter waits for
+    them again as it exits. The look at the home folder ran in one, so a
+    shim told to stop while a home on a dead mount held the look stayed
+    until the mount answered. It runs in a daemon thread of its own now,
+    which neither waits for."""
+    monkeypatch.setattr(driver, "HOME_FOLDER_SECONDS", 0.3)
+    released = threading.Event()
+    threads: list[threading.Thread] = []
+
+    def stalled() -> Path | None:
+        threads.append(threading.current_thread())
+        released.wait(60)
+        return None
+
+    monkeypatch.setattr(driver, "home_folder", stalled)
+    bridge = _bridge(platform="linux")
+    try:
+        await bridge.snapshot()
+        [thread] = threads
+        assert thread.daemon is True
+        assert thread is not threading.main_thread()
+    finally:
+        released.set()
+        await bridge.close()
+
+
 async def test_only_catalog_tools_are_offered(fake_log: Path, monkeypatch) -> None:
     """A driver lists more tools than the shim relays."""
     monkeypatch.setenv("FAKE_CUA_EXTRA_TOOLS", "kill_app,set_config")

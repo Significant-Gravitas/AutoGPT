@@ -10,6 +10,7 @@ with its telemetry and update checks off. See docs/CUA_DRIVER.md.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import contextlib
 import importlib.util
 import logging
@@ -18,11 +19,12 @@ import shutil
 import stat
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 from pydantic import ValidationError
 
@@ -644,17 +646,19 @@ class CuaDriverBridge:
         A home folder that can't be used doesn't fail the start: the driver
         starts in the shim's own folder then. So it does when the look at
         the home folder isn't back within HOME_FOLDER_SECONDS (a mount that
-        isn't answering). The look runs in a worker thread, one at a time,
-        as the look for the driver does (find_binary): a start that went on
-        without it leaves it to finish, and the next start waits for that
-        look rather than hold another thread in one of its own. A home
-        folder that goes between the look and the start fails that start;
-        the next one looks again."""
+        isn't answering). The look runs in a thread of its own, one at a
+        time: a start that went on without it leaves it to finish, and the
+        next start waits for that look rather than hold another thread in
+        one of its own. That thread is a daemon thread, not one of the event
+        loop's workers (_in_a_thread_of_its_own): a look still held when the
+        shim is told to stop doesn't keep it from stopping. A home folder
+        that goes between the look and the start fails that start; the next
+        one looks again."""
         if not self._platform.startswith("linux"):
             return None
         looking = self._home_looking
         if looking is None or looking.done():
-            looking = self._home_looking = asyncio.ensure_future(asyncio.to_thread(home_folder))
+            looking = self._home_looking = _in_a_thread_of_its_own(home_folder, "home-folder")
             looking.add_done_callback(_retrieved)
         done, _ = await asyncio.wait({looking}, timeout=HOME_FOLDER_SECONDS)
         if not done:
@@ -744,6 +748,35 @@ async def _display_followed(deadline: float) -> None:
     were all held."""
     async with asyncio.timeout_at(deadline):
         await asyncio.wrap_future(platform_info.session_display.refresh())
+
+
+_T = TypeVar("_T")
+
+
+def _in_a_thread_of_its_own(look: Callable[[], _T], name: str) -> asyncio.Future[_T]:
+    """What `look()` returns or raises, run in a daemon thread of its own,
+    as a future of the running loop.
+
+    Not in one of the event loop's worker threads (asyncio.to_thread):
+    asyncio.run waits for those before it returns, without a limit on Python
+    3.11, and the interpreter waits for them again as it exits. A look held
+    by a mount that isn't answering, in one of them, kept the shim from
+    stopping when it was told to, and its supervisor from starting it again.
+    Neither waits for a daemon thread."""
+    done: concurrent.futures.Future[_T] = concurrent.futures.Future()
+    # Running from here on: a waiter that gives up can't cancel it.
+    done.set_running_or_notify_cancel()
+
+    def work() -> None:
+        try:
+            result = look()
+        except BaseException as exc:
+            done.set_exception(exc)
+        else:
+            done.set_result(result)
+
+    threading.Thread(target=work, name=f"autogpt-shim-{name}", daemon=True).start()
+    return asyncio.wrap_future(done)
 
 
 def _retrieved(task: asyncio.Future[Any]) -> None:
