@@ -6357,8 +6357,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             transcript_snap = state.transcript_builder.snapshot()
             events_yielded = 0
 
+            attempt_events = _run_stream_attempt(stream_ctx, state)
             try:
-                async for event in _run_stream_attempt(stream_ctx, state):
+                async for event in attempt_events:
                     if not isinstance(event, _EPHEMERAL_EVENT_TYPES):
                         events_yielded += 1
                     # Emit a one-time StreamStatus when the SDK switches
@@ -6546,6 +6547,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     break
                 attempt += 1  # advance to next context-level attempt
                 continue
+            finally:
+                # A Stop that lands outside the attempt still interrupts and
+                # closes its CLI here, before the stream's lock is released.
+                await attempt_events.aclose()
         else:
             # while condition became False — all attempts exhausted without
             # break.  skip_transcript_upload is already set by _reduce_context

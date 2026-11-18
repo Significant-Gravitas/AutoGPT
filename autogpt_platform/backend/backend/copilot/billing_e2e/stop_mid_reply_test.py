@@ -101,14 +101,15 @@ async def test_a_message_sent_right_after_a_stop_mid_reply_is_answered(
     session.title = "Stop mid-reply"
     cwd = tmp_path / "copilot-cwd"
     async with _SlowFirstReply() as provider:
-        executor = _StoppedExecutor(monkeypatch, _config(), session, execution_loop)
+        executor = _StoppedExecutor(
+            monkeypatch, _config(), session, execution_loop, cwd
+        )
         turns = SdkTurnsViaExecutor(
             tmp_path, monkeypatch, provider, _config(), executor
         )
         try:
             executor.stop_when = provider.replying
             await _send(turns, session, "count to a thousand")
-            left_running = _clis_in(cwd)
             executor.stop_when = None
             await _send(turns, session, "never mind, just say hi")
         finally:
@@ -116,7 +117,7 @@ async def test_a_message_sent_right_after_a_stop_mid_reply_is_answered(
                 process.kill()
 
     assert executor.stopped_mid_reply, "the CLI never started its reply"
-    assert left_running == [], "the stopped turn ended with its CLI still running"
+    assert executor.left_running == [], "the stopped turn ended with its CLI running"
     # Within the window the cancel route waits, after which it completes the
     # turn itself and admits the next one.
     assert executor.completed_after is not None
@@ -141,12 +142,16 @@ class _StoppedExecutor(Executor):
         config: ChatConfig,
         session: ChatSession,
         loop: asyncio.AbstractEventLoop,
+        cwd: Path,
     ) -> None:
         super().__init__(monkeypatch, config, session, use_sdk=True)
         self._processor.execution_loop = loop
+        self._cwd = cwd
         self.stop_when: asyncio.Event | None = None
         self.stopped_mid_reply = False
         self.completed_after: float | None = None
+        # The CLIs still running when the stopped turn reported its end.
+        self.left_running: list[psutil.Process] | None = None
         # Each turn's outcome: the error it ended with, None if answered.
         self.outcomes: dict[str, str | None] = {}
         self._stopped_at: float | None = None
@@ -178,6 +183,7 @@ class _StoppedExecutor(Executor):
     async def _completed(self, _session_id: str, **kwargs) -> None:
         if self._stopped_at is not None and self.completed_after is None:
             self.completed_after = time.monotonic() - self._stopped_at
+            self.left_running = _clis_in(self._cwd)
         # The store keeps a turn's first outcome; the worker's fail-close after
         # it is a no-op there.
         self.outcomes.setdefault(kwargs["turn_id"], kwargs.get("error_message"))

@@ -337,9 +337,14 @@ async def test_a_cancel_during_the_drivers_cleanup_waits_for_it():
         await stream.aclose()
 
     turn = asyncio.create_task(_stopped_turn())
-    await asyncio.wait_for(cleaning.wait(), timeout=5)
-    turn.cancel()
-    finish_cleanup.set()
+    try:
+        await asyncio.wait_for(cleaning.wait(), timeout=5)
+        turn.cancel()
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert not turn.done(), "the turn ended before its driver's cleanup did"
+    finally:
+        finish_cleanup.set()
 
     with pytest.raises(asyncio.CancelledError):
         await asyncio.wait_for(turn, timeout=5)
