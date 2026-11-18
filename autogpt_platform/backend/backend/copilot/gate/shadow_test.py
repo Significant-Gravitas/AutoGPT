@@ -398,6 +398,7 @@ class _FailingFetch(_Fetch):
     """A read that raises, its error quoting the page it was reading."""
 
     async def _execute(self, user_id, session, **kwargs):
+        self.runs += 1
         raise RuntimeError(f"502 Bad Gateway: {self.content}")
 
 
@@ -417,8 +418,7 @@ async def test_a_read_that_raises_is_screened_on_its_error_like_an_output(
         assert _PAGE not in result.output
         assert json.loads(result.output)["type"] == "approval_required"
         (row,) = rows.rows.values()
-        # Released, it is the same error, still a failure.
-        assert _PAGE in row.payload["content"] and row.payload["success"] is False
+        assert _PAGE in row.payload["content"]
     else:
         assert json.loads(result.output)["error"] == f"502 Bad Gateway: {_PAGE}"
         assert rows.rows == {}
@@ -426,6 +426,19 @@ async def test_a_read_that_raises_is_screened_on_its_error_like_an_output(
     if mode != "off":
         assert _PAGE in judge.await_args.kwargs["text"]
     assert len(_recorded(events)) == int(mode == "shadow")
+
+
+async def test_a_held_read_that_raised_is_released_as_the_same_failure(rows, events):
+    tool = _FailingFetch(_PAGE)
+    judge = AsyncMock(return_value=_HELD)
+    with _flags(True), patch(f"{_READS}.judge_content", judge):
+        await _read(tool)
+        rows.answer(ReviewStatus.APPROVED)
+        released = await _read(tool)
+
+    assert not released.success
+    assert json.loads(released.output)["error"] == f"502 Bad Gateway: {_PAGE}"
+    assert tool.runs == 1, "a released read must not be fetched again"
 
 
 async def test_an_external_caller_gets_no_detail_of_a_read_that_raises(rows, events):

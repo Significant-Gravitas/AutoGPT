@@ -1203,13 +1203,14 @@ class TestGateTracesOfGoogleCalls:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "names_google_block, provider, raises, action_redacted, read_redacted",
+        "names_google_block, provider, fails, action_redacted, read_redacted",
         [
-            (True, None, False, True, True),
-            (False, "google", False, False, True),
-            (False, None, False, False, False),
-            (True, None, True, True, True),
-            (False, None, True, False, False),
+            (True, None, None, True, True),
+            (False, "google", None, False, True),
+            (False, None, None, False, False),
+            (True, None, "running", True, True),
+            (False, None, "running", False, False),
+            (False, "google", "after", False, True),
         ],
         ids=[
             "names a Google block",
@@ -1217,10 +1218,11 @@ class TestGateTracesOfGoogleCalls:
             "neither",
             "names a Google block and fails",
             "fails",
+            "fails after returning Google data",
         ],
     )
     async def test_redacted_while_the_gate_runs(
-        self, names_google_block, provider, raises, action_redacted, read_redacted
+        self, names_google_block, provider, fails, action_redacted, read_redacted
     ):
         block = GmailReadBlock() if names_google_block else GetWikipediaSummaryBlock()
         traced: dict[str, object] = {}
@@ -1232,6 +1234,11 @@ class TestGateTracesOfGoogleCalls:
         async def read(*args, **kwargs):
             traced["read"] = redact_google_data({"text": "the email"})
 
+        recorded = AsyncMock(
+            side_effect=(
+                RuntimeError("could not record the email") if fails == "after" else None
+            )
+        )
         with (
             patch("backend.copilot.gate.check_action", side_effect=action),
             patch(
@@ -1239,9 +1246,9 @@ class TestGateTracesOfGoogleCalls:
                 new=AsyncMock(return_value=None),
             ),
             patch("backend.copilot.gate.reads.screen_read", side_effect=read),
-            patch("backend.copilot.tools.base._record_activity", new=AsyncMock()),
+            patch("backend.copilot.tools.base._record_activity", new=recorded),
         ):
-            await self._block_tool(provider, raises).execute(
+            await self._block_tool(provider, raises=fails == "running").execute(
                 "u1", MagicMock(session_id="s1"), "call-1", id=block.id
             )
 
