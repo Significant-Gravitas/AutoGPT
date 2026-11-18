@@ -399,10 +399,17 @@ with `details.reason: "not_answering"`:
   its request was answered is dropped: no grant is issued and no chat is
   started for it.
 - While a look at a folder is still waiting, further requests about that
-  folder get the same answer at once, with no look of their own. Control
-  requests about other folders, and other chats, are served as usual, and
-  none of them waits behind the folder that is away. (A chat's own file
-  requests are another matter: see
+  folder get the same answer at once, with no look of their own.
+  Activations and restores of other chats, whose folders are other folders,
+  are served as usual, and none of them waits behind the folder that is
+  away.
+- The folder picker takes one call at a time. A listing or an attach that
+  arrives while another one's look is still inside its five seconds waits
+  for it first, inside its own five seconds, and gets the same answer if
+  they run out before its turn comes or its own look returns. That can
+  happen once for each folder that goes away: when the look has been given
+  up on, the picker is free again, and a listing of another folder is
+  served as usual. (A chat's own file requests are another matter: see
   [On a chat's own connection](#on-a-chats-own-connection) below.)
 - A listing or an attach given up on ends every browse under way, as a
   reconnect does: their references then get `DIRECTORY_REFERENCE_INVALID`,

@@ -114,7 +114,9 @@ def test_the_section_says_what_the_person_does() -> None:
 def test_the_bounded_looks_no_longer_read_as_covering_a_chats_requests() -> None:
     protocol = " ".join((ROOT / "docs" / "PROTOCOL.md").read_text(encoding="utf-8").split())
 
-    assert "Control requests about other folders, and other chats, are served as usual" in protocol
+    assert "Activations and restores of other chats, whose folders are other folders" in protocol
+    # The folder picker's own calls take turns, which the section says too.
+    assert "The folder picker takes one call at a time" in protocol
     assert re.search(r"A chat's own file requests are another matter", protocol)
     # The Concurrency section points at it from where the slots are described.
     concurrency = protocol[protocol.index("## Concurrency") :]
