@@ -1263,6 +1263,7 @@ class _Declared(_Fetch):
     ],
     ids=["undeclared", "declared-but-absent", "declared", "over-budget", "unreadable"],
 )
+@pytest.mark.absent_outside_part
 async def test_a_result_is_judged_whole_unless_its_declaration_holds(
     rows, parts, whole
 ):
