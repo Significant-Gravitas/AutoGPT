@@ -1461,7 +1461,7 @@ async def webhook_ingress_generic(
         "Validated %s %s %s event",
         provider.value,
         webhook.webhook_type,
-        loggable_event_type(event_type),
+        loggable_event_type(event_type, webhook_id),
     )
 
     webhook_event = WebhookEvent(
@@ -1477,7 +1477,7 @@ async def webhook_ingress_generic(
         return
     logger.debug(
         "Publishing %s event for webhook #%s",
-        loggable_event_type(event_type),
+        loggable_event_type(event_type, webhook_id),
         mask_credential(webhook_id),
     )
     await publish_webhook_event(webhook_event)
@@ -1550,7 +1550,7 @@ async def _execute_webhook_node_trigger(
     if not node.is_triggered_by_event_type(event_type):
         logger.debug(
             f"Node #{node.id} doesn't trigger on event "
-            f"{loggable_event_type(event_type)}"
+            f"{loggable_event_type(event_type, webhook_id)}"
         )
         return
     logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
@@ -1669,7 +1669,7 @@ async def _execute_webhook_preset_trigger(
     if not trigger_node.block.is_triggered_by_event_type(trigger_inputs, event_type):
         logger.debug(
             f"Preset #{preset.id} doesn't trigger on event "
-            f"{loggable_event_type(event_type)}"
+            f"{loggable_event_type(event_type, webhook_id)}"
         )
         return
     logger.debug(

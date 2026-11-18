@@ -20,6 +20,7 @@ import uvicorn
 from autogpt_libs.auth import dependencies as auth_dependencies
 from starlette.datastructures import URL
 from starlette.requests import Request
+from starlette.types import ASGIApp
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedError
 
@@ -186,11 +187,14 @@ async def test_serve_cancels_a_server_whose_startup_never_finishes(
 ) -> None:
     """uvicorn reads ``should_exit`` only once it has started, so a server
     stuck starting up is cancelled on the way out, not awaited forever."""
-    stalled = asyncio.Event()
+    stalled, released, exited = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
     async def startup(self: uvicorn.Server, sockets: object = None) -> None:
         stalled.set()
-        await asyncio.Event().wait()
+        try:
+            await released.wait()
+        finally:
+            exited.set()
 
     monkeypatch.setattr(uvicorn.Server, "startup", startup)
 
@@ -199,11 +203,27 @@ async def test_serve_cancels_a_server_whose_startup_never_finishes(
             pass
 
     entering = asyncio.create_task(enter())
-    await stalled.wait()
-    entering.cancel()
-    # Far longer than the cleanup takes; only a cleanup that hangs reaches it.
-    done, _ = await asyncio.wait({entering}, timeout=30)
-    assert entering in done and entering.cancelled()
+    stalling = asyncio.create_task(stalled.wait())
+    try:
+        # Each wait is far longer than what it waits for; only a hang ends it.
+        done, _ = await asyncio.wait(
+            {entering, stalling}, timeout=30, return_when=asyncio.FIRST_COMPLETED
+        )
+        if entering in done:
+            entering.result()  # whatever failed before uvicorn started up
+        assert stalling in done, "uvicorn never started up"
+        entering.cancel()
+        done, _ = await asyncio.wait({entering}, timeout=30)
+        assert entering in done and entering.cancelled()
+        assert exited.is_set()
+    finally:
+        # A startup the cleanup left waiting ends here, so no task outlives
+        # the test.
+        released.set()
+        stalling.cancel()
+        _, pending = await asyncio.wait({entering, stalling}, timeout=30)
+        for task in pending:
+            task.cancel()
 
 
 @asynccontextmanager
@@ -222,9 +242,17 @@ async def serve(
     monkeypatch.setenv(METRICS_ENV_VAR, "false")
     process.run()
     [(app, kwargs)] = runs
+    async with serve_app(app, **kwargs) as host:
+        yield host
+
+
+@asynccontextmanager
+async def serve_app(app: ASGIApp, **options: object) -> AsyncIterator[str]:
+    """Serve ``app`` under uvicorn with ``options``, on a free local port and
+    with no lifespan."""
     server = uvicorn.Server(
         uvicorn.Config(
-            app, **{**kwargs, "host": "127.0.0.1", "port": 0, "lifespan": "off"}
+            app, **{**options, "host": "127.0.0.1", "port": 0, "lifespan": "off"}
         )
     )
     serving = asyncio.create_task(server.serve())
@@ -242,7 +270,13 @@ async def serve(
         else:
             # uvicorn reads should_exit only once it has started.
             serving.cancel()
-        await asyncio.wait({serving})
+        try:
+            await asyncio.wait({serving})
+        except asyncio.CancelledError:
+            # Cancelled while it shuts down: it isn't left running either.
+            serving.cancel()
+            await asyncio.wait({serving})
+            raise
         if not serving.cancelled():
             serving.result()
 

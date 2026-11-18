@@ -23,6 +23,7 @@ from backend.util.url_redaction import (
     credentials_in_headers,
     credentials_in_url,
     mask_credential,
+    mask_known,
     redact_query_string,
     redact_url,
     redact_urls_in_text,
@@ -192,6 +193,12 @@ def test_redact_url(url: str, expected: str) -> None:
             "proxy https://user:pass@word@proxy.example:8080 refused",
             f"proxy https://{REDACTED}@proxy.example:8080 refused",
         ),
+        # A path or host can hold brackets and parentheses.
+        (
+            "GET https://h/v1/models(test)?key=AIza-12345678",
+            f"GET https://h/v1/models(test)?key={REDACTED}",
+        ),
+        ("dial http://[::1]?key=abcdefgh", f"dial http://[::1]?key={REDACTED}"),
         ("Did it work? Yes.", "Did it work? Yes."),
         # Code that only looks like a query, as a traceback's source lines and
         # an exception's message quote it, is left as it is.
@@ -275,6 +282,21 @@ def test_credentials_in_headers() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    "text, credentials, expected",
+    [
+        ("pre-abcdefXYZ-post", ("abcdef", "defXYZ"), f"pre-{REDACTED}-post"),
+        ("AAAA", ("AAA",), REDACTED),
+        ("tok1tok2", ("tok1", "tok2"), REDACTED * 2),
+        ("nothing here", ("absent",), "nothing here"),
+    ],
+)
+def test_mask_known_masks_overlapping_credentials_as_one(
+    text: str, credentials: tuple[str, ...], expected: str
+) -> None:
+    assert mask_known(text, credentials) == expected
+
+
 def test_mask_credential_keeps_only_a_prefix_of_a_long_one() -> None:
     assert mask_credential(_UUID) == "0b5e55ed..."
     assert mask_credential("short-secret") == REDACTED
@@ -313,6 +335,7 @@ def test_credential_header_filter_passes_any_record() -> None:
     [
         ("Authorization", True),
         ("proxy-authorization", True),
+        ("x-airtable-content-mac", True),
         ("Cookie", True),
         ("set-cookie", True),
         ("X-API-Key", True),
@@ -384,6 +407,17 @@ def test_masking_stays_linear_in_a_url_stacked_with_prefixes() -> None:
     assert redact_url(url) == f"/api/invitations/{REDACTED}" * 50_000
     # CPU time on this thread, so a runner that pauses the test doesn't count.
     assert time.thread_time() - started < 2
+
+
+def test_masking_a_query_in_text_stays_linear_in_a_long_path() -> None:
+    """A client sends the path an access log line quotes, and each "/" in it
+    could start the path before a query; tried from each, the work grew with
+    the square of its length, about half a second at 16 KB."""
+    line = '1.2.3.4:5 - "GET /api' + "/a" * 32_768 + ' HTTP/1.1" 404'
+    started = time.thread_time()
+    assert redact_urls_in_text(line) == line
+    # CPU time on this thread, so a runner that pauses the test doesn't count.
+    assert time.thread_time() - started < 0.5
 
 
 def test_reading_a_urls_credentials_stays_linear() -> None:

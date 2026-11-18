@@ -18,6 +18,7 @@ from backend.api.utils.validation_errors import (
     MAX_REPORTED_VALIDATION_ERRORS,
     MAX_VALIDATION_ERROR_CHARS,
     MAX_VALIDATION_ERROR_LOC_PARTS,
+    REDACTED,
     bounded_validation_errors,
     loggable_validation_errors,
 )
@@ -85,6 +86,37 @@ def test_a_large_refused_mapping_is_read_only_as_far_as_the_log_needs() -> None:
 
     assert loggable_validation_errors(error)[0]["loc"] == ["ids"]
     assert refused.read <= _MAX_INPUT_NODES
+
+
+def test_a_validators_message_is_logged_only_when_its_input_can_be_checked() -> None:
+    """A validator's own message can quote what was sent, so a value too large
+    to read whole leaves it out, and a short one quoted in it is masked."""
+    secret = "s3cr3t!"
+
+    def logged(refused: object) -> str:
+        error = pydantic.ValidationError.from_exception_data(
+            "_Ids",
+            [
+                {
+                    "type": "value_error",
+                    "loc": ("name",),
+                    "input": refused,
+                    "ctx": {"error": ValueError(f"unknown mode '{secret}'")},
+                }
+            ],
+        )
+        return loggable_validation_errors(error)[0]["msg"]
+
+    assert logged(secret) == f"Value error, unknown mode '{REDACTED}'"
+    too_large = {f"field{i}": "x" for i in range(300)} | {"mode": secret}
+    assert logged(too_large) == (
+        "Not logged: the refused value is too large to check for credentials"
+    )
+    # pydantic's own messages say what was expected, so they are kept.
+    error = pydantic.ValidationError.from_exception_data(
+        "_Ids", [{"type": "missing", "loc": ("ids",), "input": too_large}]
+    )
+    assert loggable_validation_errors(error)[0]["msg"] == "Field required"
 
 
 def test_a_list_field_reports_a_bounded_number_of_errors() -> None:

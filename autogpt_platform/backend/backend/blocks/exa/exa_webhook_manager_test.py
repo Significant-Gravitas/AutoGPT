@@ -496,6 +496,7 @@ class TestSignatureTimestamp:
         # The line to look for when every delivery to a trigger with a secret
         # is refused: it names the webhook and how far off the time was. The
         # ID is the credential in the webhook's ingress URL, so only its start
+        # is logged.
         signed_webhook.id = "5e7f0c2a-9b14-4d3e-8a61-2c4b9d0e7f13"
         with caplog.at_level(logging.WARNING, logger=_webhook.__name__):
             await _refusal(

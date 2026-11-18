@@ -419,7 +419,7 @@ class WebhookEventBus(AsyncRedisEventBus[WebhookEvent]):
         # A channel is named for its webhook, whose ID is the credential in its
         # ingress URL.
         webhook_id, _, event_type = channel_key.partition("/")
-        return f"{mask_credential(webhook_id)}/{loggable_event_type(event_type)}"
+        return f"{mask_credential(webhook_id)}/{loggable_event_type(event_type, webhook_id)}"
 
 
 _webhook_event_bus = WebhookEventBus()

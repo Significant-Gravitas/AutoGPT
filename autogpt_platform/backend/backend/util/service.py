@@ -257,9 +257,11 @@ class RemoteCallError(BaseModel):
 
 
 class ValidationFailure(Exception):
-    """Stands in for a pydantic ``ValidationError`` in a service's log and error
-    report, with its traceback: it says where and why validation failed, but
-    not what failed it, which pydantic's own message quotes."""
+    """Stands in for a pydantic ``ValidationError`` in a service's log, with its
+    traceback: its message says where and why validation failed, but not what
+    failed it, which pydantic's own message quotes. The traceback's frames still
+    go to Sentry with their variables, which its scrubber masks as in any
+    event."""
 
     @classmethod
     def of(cls, exc: ValidationError) -> "ValidationFailure":

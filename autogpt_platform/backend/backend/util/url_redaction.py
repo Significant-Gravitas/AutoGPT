@@ -10,15 +10,26 @@ URLs carry credentials too: an API key in ``?key=``, a Telegram bot's token in
 the path of every call to its API, or a user and password in a proxy's or a
 database's URL. Headers carry the session cookie, ``Authorization`` and a
 webhook provider's own secret token.
+
+The credentials of the request being handled are kept here too, by
+``backend.util.request_credentials``, so that a log line or an error report
+masks them by value wherever the code handling the request quotes them. A copy
+derived from one (sliced, re-encoded, case-folded) is not recognised.
 """
 
 import itertools
 import logging
 import re
 from collections.abc import Iterable, Mapping
+from contextvars import ContextVar
 from urllib.parse import unquote, unquote_plus
 
 REDACTED = "[REDACTED]"
+# Set once per request in its own task, longest first, and never reset: an
+# error is logged and reported after the request's middleware has returned.
+_request_credentials: ContextVar[tuple[str, ...]] = ContextVar(
+    "request_credentials", default=()
+)
 
 # The segment after each of these prefixes is a credential, even on a route
 # that doesn't exist. /api/invitations/pending is the one static route among
@@ -35,13 +46,20 @@ _CREDENTIAL_PATH_SEGMENT = re.compile(
     r"|(?i:api\.telegram\.org)(?::443)?/(?:file/)?bot)"
     r"(?!\{\w+\}(?:[/?\s\"']|$))([^/?\s]+))"
 )
-# A query in a longer message starts at a "?" right after a path: from a "/",
-# or a URL's "//", in characters a path has. So code a traceback or an error
-# quotes, such as a regex's "(?=", isn't taken for one. A request target can't
-# contain whitespace, so the query runs to the next whitespace. Nothing else
-# ends it: a raw quote can sit in a value, and uvicorn's WebSocket scope keeps
-# even a raw # in the query.
-_QUERY_IN_TEXT = re.compile(r"(/[\w\-.~%!$&*+,;=:@/]*)\?(\S+)")
+# A query in a longer message starts at a "?" right after a path: a run of the
+# characters a path has (RFC 3986's, brackets for an IPv6 host included),
+# holding a "/" (a URL's "//" included). So code a
+# traceback or an error quotes, such as a regex's "(?=", isn't taken for one. A
+# request target can't contain whitespace, so the query runs to the next
+# whitespace. Nothing else ends it: a raw quote can sit in a value, and
+# uvicorn's WebSocket scope keeps even a raw # in the query. The run is read
+# once, from its start and without backtracking: a client sends the path an
+# access log quotes, and trying it from each "/" takes time growing with the
+# square of its length.
+_QUERY_IN_TEXT = re.compile(
+    r"(?<![\w\-.~%!$&'()*+,;=:@/\[\]])"
+    r"([\w\-.~%!$&'()*+,;=:@\[\]]*+/[\w\-.~%!$&'()*+,;=:@/\[\]]*+)\?(\S+)"
+)
 _QUERY_VALUE = re.compile(r"=[^&]*")
 # The user and password in a URL's authority. They end at its last "@", as a
 # URL parser reads a password that holds one, and the authority ends before any
@@ -59,7 +77,7 @@ _MAX_QUERY_CREDENTIALS = 16
 # Names of headers, cookies and query parameters whose values are credentials.
 _CREDENTIAL_NAME = re.compile(
     r"(?i)auth|code|cookie|credential|jwt|key|password|secret|sess|sid|sig|state"
-    r"|token|sec-websocket-protocol"
+    r"|token|sec-websocket-protocol|content-mac"
 )
 # A shorter value can't be a credential the platform issued or a provider's
 # key, and masking it everywhere it turns up would mangle the rest of an event.
@@ -68,6 +86,45 @@ MIN_CREDENTIAL_LENGTH = 16
 # guessed: a UUID keeps 90 random bits once its first 8 characters are shown.
 _SHOWN_PREFIX_LENGTH = 8
 _MIN_PREFIXED_CREDENTIAL_LENGTH = 32
+
+
+def keep_request_credentials(credentials: tuple[str, ...]) -> None:
+    """Keep ``credentials``, longest first, as those of the request the current
+    task handles."""
+    _request_credentials.set(credentials)
+
+
+def request_credentials() -> tuple[str, ...]:
+    """The credentials of the request being handled, longest first."""
+    return _request_credentials.get()
+
+
+def mask_known(text: str, credentials: Iterable[str]) -> str:
+    """``text`` with every place any of ``credentials`` occurs masked. They are
+    found in ``text`` as given, and overlapping ones are masked as one, so none
+    is left partly shown by another's mask."""
+    spans: list[tuple[int, int]] = []
+    for credential in credentials:
+        start = text.find(credential) if credential else -1
+        while start != -1:
+            spans.append((start, start + len(credential)))
+            start = text.find(credential, start + 1)
+    if not spans:
+        return text
+    spans.sort()
+    merged = [list(spans[0])]
+    for start, stop in spans[1:]:
+        if start < merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], stop)
+        else:
+            merged.append([start, stop])
+    parts: list[str] = []
+    shown = 0
+    for start, stop in merged:
+        parts += [text[shown:start], REDACTED]
+        shown = stop
+    parts.append(text[shown:])
+    return "".join(parts)
 
 
 def redact_url(url: str) -> str:
@@ -169,51 +226,60 @@ _TRACEBACK_FORMATTER = logging.Formatter()
 
 
 class RequestURLRedactionFilter(logging.Filter):
-    """Masks request URLs in a log record before any handler sees it.
+    """Masks request URLs in a log record before any handler sees it, and the
+    credentials of the request being handled wherever the record quotes them.
 
     Each argument is masked as a whole URL, which is how uvicorn passes the
-    request target. A format string that mentions a URL itself, or a message
-    that arrives already formatted, is rendered and scanned instead, and so is
-    the record's traceback, whose exception can quote an outgoing request's URL.
+    request target. A format string that mentions a URL or a credential itself,
+    or a message that arrives already formatted, is rendered and scanned
+    instead, and so is the record's traceback, whose exception can quote an
+    outgoing request's URL or a header's value.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
+        credentials = request_credentials()
         if isinstance(record.args, Mapping):
             record.args = {
-                key: _redact_argument(value) for key, value in record.args.items()
+                key: _redact_argument(value, credentials)
+                for key, value in record.args.items()
             }
         elif isinstance(record.args, tuple):
-            record.args = tuple(_redact_argument(arg) for arg in record.args)
-        if isinstance(record.msg, str) and _MENTIONS_URL.search(record.msg):
+            record.args = tuple(
+                _redact_argument(arg, credentials) for arg in record.args
+            )
+        if isinstance(record.msg, str) and (
+            _MENTIONS_URL.search(record.msg)
+            or any(credential in record.msg for credential in credentials)
+        ):
             try:
                 message = record.getMessage()
             except Exception:
                 # A malformed record fails again, and is reported, in the
                 # handler; raising here would fail the request that logged it.
                 return True
-            masked = redact_urls_in_text(message)
+            masked = redact_urls_in_text(mask_known(message, credentials))
             if masked != message:
                 record.msg, record.args = masked, ()
         if record.exc_info and not record.exc_text:
             # Rendered as every handler's formatter renders it, which then
             # uses this text instead of rendering the traceback again.
-            record.exc_text = redact_urls_in_text(
-                _TRACEBACK_FORMATTER.formatException(record.exc_info)
-            )
+            traceback = _TRACEBACK_FORMATTER.formatException(record.exc_info)
+            record.exc_text = redact_urls_in_text(mask_known(traceback, credentials))
         return True
 
 
-def _redact_argument(argument: object) -> object:
+def _redact_argument(argument: object, credentials: tuple[str, ...]) -> object:
     """A string is masked as a whole URL, as uvicorn passes a request target;
-    anything else, such as an exception, as text that can quote one."""
+    anything else, such as an exception, as text that can quote one. Either is
+    masked for ``credentials`` too."""
     if isinstance(argument, str):
-        masked = redact_url(argument)
+        masked = redact_url(mask_known(argument, credentials))
         return argument if masked == argument else masked
     try:
         text = str(argument)
     except Exception:
         return argument  # the handler hits, and reports, the same failure
-    masked = redact_urls_in_text(text)
+    masked = redact_urls_in_text(mask_known(text, credentials))
     return argument if masked == text else masked
 
 

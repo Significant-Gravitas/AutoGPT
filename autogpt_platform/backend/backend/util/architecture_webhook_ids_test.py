@@ -39,7 +39,8 @@ def test_webhook_ids_are_logged_and_raised_only_masked():
 
 def _unmasked_webhook_ids(tree: ast.Module) -> list[int]:
     """Lines where a logging call's or a raised exception's arguments carry a
-    webhook's ID unmasked, as an argument or inside an f-string."""
+    webhook's ID unmasked, as an argument or inside an f-string. A raised
+    exception's cause is checked too, since a traceback prints it."""
     found: list[int] = []
     for node in ast.walk(tree):
         if (
@@ -47,24 +48,36 @@ def _unmasked_webhook_ids(tree: ast.Module) -> list[int]:
             and isinstance(node.func, ast.Attribute)
             and node.func.attr in _LOG_METHODS
         ):
-            call = node
-        elif isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call):
-            call = node.exc
+            calls = [node]
+        elif isinstance(node, ast.Raise):
+            calls = [
+                part for part in (node.exc, node.cause) if isinstance(part, ast.Call)
+            ]
         else:
             continue
-        arguments = [*call.args, *(keyword.value for keyword in call.keywords)]
-        found += [hit.lineno for argument in arguments for hit in _raw_ids(argument)]
+        found += [
+            hit.lineno
+            for call in calls
+            for argument in [*call.args, *(keyword.value for keyword in call.keywords)]
+            for hit in _raw_ids(argument)
+        ]
     return found
 
 
 def _raw_ids(node: ast.AST) -> Iterator[ast.expr]:
-    """The webhook-ID expressions in `node`, outside any `mask_credential` call."""
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "mask_credential"
-    ):
-        return
+    """The webhook-ID expressions in `node`, outside any `mask_credential` call
+    and the ID `loggable_event_type` masks in an event type."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        if node.func.id == "mask_credential":
+            return
+        if node.func.id == "loggable_event_type":
+            shown = [
+                *node.args[:1],
+                *(k.value for k in node.keywords if k.arg != "webhook_id"),
+            ]
+            for argument in shown:
+                yield from _raw_ids(argument)
+            return
     if isinstance(node, ast.expr) and _is_webhook_id(node):
         yield node
         return
@@ -99,6 +112,14 @@ def _is_webhook_id(node: ast.expr) -> bool:
         ('logger.info(f"Webhook #{mask_credential(webhook_id)} not found")', False),
         ('logger.info("Pruned %s", mask_credential(webhook.id))', False),
         ("raise ValueError(mask_credential(webhook_id))", False),
+        ('logger.debug("%s", loggable_event_type(event_type, webhook_id))', False),
+        ('logger.debug("%s", loggable_event_type(webhook_id, webhook_id))', True),
+        ('raise RuntimeError("Setup failed") from ValueError(webhook_id)', True),
+        (
+            'raise RuntimeError("Setup failed") from '
+            "ValueError(mask_credential(webhook_id))",
+            False,
+        ),
         ('logger.debug(f"Provider webhook #{webhook.provider_webhook_id}")', False),
         # Where the ID itself is the point, such as the ingress URL.
         ('return f"{base}/webhooks/{webhook_id}/ingress"', False),

@@ -10,10 +10,11 @@ import itertools
 import sys
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, get_args
 
 import pydantic
 from fastapi.exceptions import RequestValidationError
+from pydantic_core.core_schema import ErrorType
 
 from backend.util.url_redaction import REDACTED
 
@@ -22,11 +23,20 @@ MAX_VALIDATION_ERROR_CHARS = 200
 MAX_VALIDATION_ERROR_LOC_PARTS = 16
 # FastAPI's first location part says where in the request a value was.
 _REQUEST_PARTS = frozenset({"body", "query", "path", "header", "cookie"})
-# A shorter refused value is masked nowhere in a message: it can't be a secret,
-# and masking it could hide the limit a message names.
+# A shorter refused value is masked only where a message quotes it: masked
+# anywhere, it could hide the limit a message names.
 _MIN_MASKED_INPUT = 8
+_QUOTES = ("'", '"', "`")
 # How much of a refused value is read for text a message might quote.
 _MAX_INPUT_NODES = 256
+# pydantic's own messages say what was expected, not what was sent. A union's
+# rejected tag is the exception, and is logged from its context instead; a
+# validator's own message, or a custom error's, can say anything.
+_INPUT_FREE_TYPES = frozenset(get_args(ErrorType)) - {
+    "union_tag_invalid",
+    "value_error",
+    "assertion_error",
+}
 
 
 def bounded_validation_errors(
@@ -44,9 +54,10 @@ def loggable_validation_errors(
     """``bounded_validation_errors`` for a log line, which the caller's own data
     stays out of. A location part that no loaded pydantic model declares, such
     as a mapping's key, is ``*``, and so is a key a model refused as extra,
-    whatever another model calls its fields; text of the refused value that a
-    message quotes, such as a union's rejected tag, is masked. Field names,
-    indices and the reasons are kept."""
+    whatever another model calls its fields. A union's rejected tag is left out
+    of its message, other text of the refused value that a message quotes is
+    masked, and a message that can quote it is left out when the value is too
+    large to read whole. Field names, indices and the reasons are kept."""
     names = _declared_names(len(sys.modules))
     errors = [
         (
@@ -101,36 +112,59 @@ def _bounded(
 
 
 def _message_without_input(error: Mapping[str, Any]) -> str:
+    error_type = error.get("type")
+    if error_type == "union_tag_invalid":
+        context = error.get("ctx") or {}
+        return (
+            f"Input tag '{REDACTED}' found using {context.get('discriminator')} "
+            f"does not match any of the expected tags: {context.get('expected_tags')}"
+        )
+    texts, complete = _texts_in(error.get("input"))
+    if not complete and error_type not in _INPUT_FREE_TYPES:
+        return "Not logged: the refused value is too large to check for credentials"
     message = error.get("msg", "")
-    for text in sorted(_texts_in(error.get("input")), key=len, reverse=True):
-        message = message.replace(text, REDACTED)
+    for text in sorted(texts, key=len, reverse=True):
+        if len(text) >= _MIN_MASKED_INPUT:
+            message = message.replace(text, REDACTED)
+        else:
+            for quote in _QUOTES:
+                message = message.replace(
+                    f"{quote}{text}{quote}", f"{quote}{REDACTED}{quote}"
+                )
     return message
 
 
-def _texts_in(value: Any) -> set[str]:
-    """The strings in ``value``, its keys included, long enough to be a secret;
-    read breadth-first and no further than ``_MAX_INPUT_NODES`` values."""
+def _texts_in(value: Any) -> tuple[set[str], bool]:
+    """The strings in ``value``, its keys long enough to be a secret included,
+    read breadth-first and no further than ``_MAX_INPUT_NODES`` values; and
+    whether that was all of it."""
     found: set[str] = set()
-    pending: deque[Any] = deque([value])
+    pending: deque[tuple[Any, bool]] = deque([(value, False)])
     # Children are queued only while the budget has room, so a large refused
     # mapping costs no more than the values it is read for.
     room = _MAX_INPUT_NODES - 1
+    complete = True
     while pending:
-        item = pending.popleft()
+        item, is_key = pending.popleft()
         if isinstance(item, str):
-            if len(item) >= _MIN_MASKED_INPUT:
+            if item and (not is_key or len(item) >= _MIN_MASKED_INPUT):
                 found.add(item)
             continue
         if isinstance(item, Mapping):
-            children = itertools.chain.from_iterable(item.items())
+            children = itertools.chain.from_iterable(
+                ((key, True), (child, False)) for key, child in item.items()
+            )
+            size = 2 * len(item)
         elif isinstance(item, (list, tuple)):
-            children = iter(item)
+            children = ((child, False) for child in item)
+            size = len(item)
         else:
             continue
         taken = list(itertools.islice(children, room))
+        complete = complete and len(taken) == size
         room -= len(taken)
         pending.extend(taken)
-    return found
+    return found, complete
 
 
 @functools.lru_cache(maxsize=1)

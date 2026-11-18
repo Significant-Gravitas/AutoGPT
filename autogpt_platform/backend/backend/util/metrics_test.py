@@ -298,7 +298,12 @@ def test_before_send_keeps_a_repr_whose_secret_fields_are_unset(unset: str) -> N
 
 @pytest.mark.parametrize(
     "message",
-    ['{"password": null, "name": "x"}', "Login(password=None, name='x')"],
+    [
+        '{"password": null, "name": "x"}',
+        "Login(password=None, name='x')",
+        "Preset(webhook_id=None, created=datetime.datetime(2026, 1, 1, 0, 0))",
+        "User(password=None, status=<Status.ACTIVE: 'active'>, logins=3)",
+    ],
 )
 def test_before_send_keeps_a_secret_left_unset_before_the_next_field(
     message: str,
@@ -317,6 +322,8 @@ def test_before_send_keeps_a_secret_left_unset_before_the_next_field(
         # In free text a comma can be part of the value.
         "password=None,hunter22",
         "login failed: password=None, hunter22 rejected",
+        # Shaped like a repr's next field, but its value isn't one.
+        "login failed: password=None, name=hunter22 rejected",
     ],
 )
 def test_before_send_filters_a_secret_that_only_starts_like_an_unset_one(
@@ -325,6 +332,12 @@ def test_before_send_filters_a_secret_that_only_starts_like_an_unset_one(
     scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
     assert scrubbed is not None
     assert scrubbed["logentry"]["formatted"] == "[Filtered]"
+
+
+def test_before_send_reads_an_event_whose_request_is_not_a_mapping() -> None:
+    """An event that breaks the SDK's shape is still sent, not dropped."""
+    event = {"request": "GET /lookup", "transaction_info": "url", "message": "x"}
+    assert _before_send(event, {}) == event
 
 
 def test_before_send_scans_a_run_of_jwt_starts_in_linear_time() -> None:
@@ -730,13 +743,13 @@ def test_a_long_local_is_masked_in_one_window_however_its_credentials_repeat(
     repeated = "r3peated-Credential-0123456789"
     monkeypatch.setattr(metrics, "request_credentials", lambda: (longest, repeated))
     read: list[int] = []
-    mask_known = metrics._mask_known
+    mask_known = metrics.mask_known
 
     def counted(text: str, credentials: tuple[str, ...]) -> str:
         read.append(len(text))
         return mask_known(text, credentials)
 
-    monkeypatch.setattr(metrics, "_mask_known", counted)
+    monkeypatch.setattr(metrics, "mask_known", counted)
 
     for value in (repeated * 100_000, (repeated * 100_000).encode()):
         preview = metrics._bounded_repr(value)

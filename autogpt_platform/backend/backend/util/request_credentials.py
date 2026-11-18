@@ -6,15 +6,18 @@ request data, but not the copies a route makes of them, such as a header's
 value in a variable of its own, which the event carries with every frame's
 variables. So each service's app keeps the credentials in a request's URL and
 headers as it arrives, and the scrubber in ``backend.util.metrics`` masks each
-of them wherever it turns up in an event raised while handling it.
+of them wherever it turns up in an event raised while handling it, as the log
+filters in ``backend.util.url_redaction`` do in a log line.
 """
-
-from contextvars import ContextVar
 
 from starlette.applications import Starlette
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from backend.util.url_redaction import credentials_in_headers, credentials_in_url
+from backend.util.url_redaction import (
+    credentials_in_headers,
+    credentials_in_url,
+    keep_request_credentials,
+)
 
 # Each is searched for in every string of an event, so their number is capped,
 # and so is their length: no credential the app issues comes near it, and a
@@ -22,19 +25,10 @@ from backend.util.url_redaction import credentials_in_headers, credentials_in_ur
 MAX_REQUEST_CREDENTIALS = 16
 MAX_CREDENTIAL_LENGTH = 4096
 
-_request_credentials: ContextVar[tuple[str, ...]] = ContextVar(
-    "request_credentials", default=()
-)
-
 
 def remember_request_credentials(app: Starlette) -> None:
     """Keep each request's credentials while ``app`` handles it."""
     app.add_middleware(RequestCredentialsMiddleware)
-
-
-def request_credentials() -> tuple[str, ...]:
-    """The credentials of the request being handled, longest first."""
-    return _request_credentials.get()
 
 
 def select_credentials(*groups: set[str]) -> tuple[str, ...]:
@@ -70,7 +64,7 @@ class RequestCredentialsMiddleware:
         if scope["type"] in ("http", "websocket"):
             # Never reset: an error is reported after the request's middleware
             # has returned, and the value lives in the request's own task.
-            _request_credentials.set(_credentials_in_scope(scope))
+            keep_request_credentials(_credentials_in_scope(scope))
         await self.app(scope, receive, send)
 
 

@@ -74,7 +74,20 @@ def test_api_reads_validation_errors_only_through_the_bounded_helper():
 
 def _validation_error_reads(tree: ast.Module) -> list[tuple[int, str]]:
     """Every `.errors()` call, and every other use of a caught ValidationError."""
-    readers = _reader_calls(tree)
+    parents = {
+        child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)
+    }
+    readers = _reader_calls(tree, parents)
+    # A local the response's rendering was assigned to, by its scope and name.
+    rendered_locals = {
+        (id(_scope_of(node, parents)), target.id)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Call)
+        and readers.get(id(node.value)) == _RESPONSE_READER
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
     found = [
         (node.lineno, "calls `.errors()`")
         for node in ast.walk(tree)
@@ -91,6 +104,11 @@ def _validation_error_reads(tree: ast.Module) -> list[tuple[int, str]]:
         for argument in [*call.args, *(keyword.value for keyword in call.keywords)]
         for inner in ast.walk(argument)
         if readers.get(id(inner)) == _RESPONSE_READER
+        or (
+            isinstance(inner, ast.Name)
+            and isinstance(inner.ctx, ast.Load)
+            and (id(_scope_of(inner, parents)), inner.id) in rendered_locals
+        )
     ]
     for handler in _handlers_seeing_a_validation_error(tree):
         if handler.name:
@@ -165,16 +183,14 @@ def _logs_a_traceback(call: ast.Call) -> bool:
     ) or any(keyword.arg == "exc_info" for keyword in call.keywords)
 
 
-_SCOPES = (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+_SCOPES = (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
-def _reader_calls(tree: ast.Module) -> dict[int, str]:
+def _reader_calls(tree: ast.Module, parents: dict[ast.AST, ast.AST]) -> dict[int, str]:
     """The calls, by identity, of a name that resolves to one of the helper's
     readers, imported from the helper in the call's own function, an enclosing
-    one or the module and bound to nothing else there, with the reader's name."""
-    parents = {
-        child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)
-    }
+    one or the module and bound to nothing else there, with the reader's name.
+    As in Python, a class body's names are seen only from the body itself."""
     # Each scope's names, with the reader each is bound to, or None for any
     # other binding, which then decides the name in that scope.
     bindings: dict[int, dict[str, str | None]] = {}
@@ -187,12 +203,18 @@ def _reader_calls(tree: ast.Module) -> dict[int, str]:
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
             continue
         scope: ast.AST | None = _scope_of(node, parents)
+        own = True
         while scope is not None:
-            table = bindings.get(id(scope), {})
+            table = (
+                bindings.get(id(scope), {})
+                if own or not isinstance(scope, ast.ClassDef)
+                else {}
+            )
             if node.func.id in table:
                 if reader := table[node.func.id]:
                     calls[id(node)] = reader
                 break
+            own = False
             scope = _scope_of(scope, parents) if scope in parents else None
     return calls
 
@@ -243,7 +265,10 @@ def _unbounded_uses(
         id(argument)
         for node in ast.walk(scope)
         if isinstance(node, ast.Call) and id(node) in readers
-        for argument in node.args
+        for argument in [
+            *node.args,
+            *(keyword.value for keyword in node.keywords if keyword.arg == "exc"),
+        ]
     } | {
         id(node.cause)
         for node in ast.walk(scope)
@@ -330,6 +355,38 @@ def _unbounded_uses(
             "from backend.api.utils.validation_errors import bounded_validation_errors\n"
             "try:\n    pass\nexcept ValidationError as exc:\n"
             "    raise HTTPException(422, detail=bounded_validation_errors(exc))\n",
+            False,
+        ),
+        # The response's rendering logged through a local.
+        (
+            "from backend.api.utils.validation_errors import bounded_validation_errors\n"
+            "try:\n    pass\nexcept ValidationError as exc:\n"
+            "    detail = bounded_validation_errors(exc)\n"
+            "    logger.error('Invalid: %s', detail)\n",
+            True,
+        ),
+        (
+            "from backend.api.utils.validation_errors import bounded_validation_errors\n"
+            "try:\n    pass\nexcept ValidationError as exc:\n"
+            "    detail = bounded_validation_errors(exc)\n"
+            "    raise HTTPException(422, detail=detail)\n",
+            False,
+        ),
+        # A reader called by keyword.
+        (
+            "from backend.api.utils.validation_errors import loggable_validation_errors\n"
+            "try:\n    pass\nexcept ValidationError as exc:\n"
+            "    logger.error('Invalid: %s', loggable_validation_errors(exc=exc))\n",
+            False,
+        ),
+        # A method of the same name binds only in its class.
+        (
+            "from backend.api.utils.validation_errors import describe_validation_error\n"
+            "class Report:\n"
+            "    def describe_validation_error(self, e):\n        return str(e)\n"
+            "def report():\n"
+            "    try:\n        pass\n    except ValidationError as exc:\n"
+            "        log(describe_validation_error(exc))\n",
             False,
         ),
     ],

@@ -21,11 +21,12 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 import sentry_sdk
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket
 from prisma.errors import ClientNotConnectedError
 from prisma.models import AgentGraphExecution, IntegrationWebhook
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from websockets.asyncio.client import connect
+from websockets.exceptions import InvalidStatus
 
 from backend.api import rest_api, ws_api
 from backend.api.conn_manager import ConnectionManager
@@ -52,12 +53,14 @@ from backend.util import metrics
 from backend.util.logging_test_helpers import CapturingTransport
 from backend.util.request_credentials import (
     MAX_CREDENTIAL_LENGTH,
+    MAX_REQUEST_CREDENTIALS,
     RequestCredentialsMiddleware,
+    remember_request_credentials,
     select_credentials,
 )
-from backend.util.request_url_logging_test import serve
+from backend.util.request_url_logging_test import serve, serve_app
 from backend.util.service import AppService
-from backend.util.url_redaction import REDACTED
+from backend.util.url_redaction import REDACTED, request_credentials
 
 SHARE_TOKEN = "5ec2e7ab-31d4-4c7e-9a52-6f08b3d1c0de"
 WEBHOOK_ID = "0b5e55ed-8a1f-4e27-b9c3-d4527e19beef"
@@ -70,6 +73,8 @@ TELEGRAM_SECRET_TOKEN = "tg9Kd3Pw7Xq2Mz5Rb8Lf1Hs4"
 SESSION_COOKIE = "Zk3pQ9vT2mW8xR4sL7yN1bH6cJ0dF5gA.aB3cD4eF5gH6iJ7kL8mN9"
 BEARER_TOKEN = "bt5Hn8Qr2Wx6Lk9Pz3Vm7Jc4"
 TRIGGER_SECRET = "tr4Gv8Nk2Yw6Qs9Lp3Xd7Mh1"
+QUERY_TOKEN = "qt3Lm8Vx2Kp7Rw4Nz9Hb5Jd6"
+_SESSION_COOKIE_NAME = "__Secure-better-auth.session_token"
 # A stored secret Telegram's verifier can't compare, so it fails with a
 # traceback while its frame holds the header's value.
 _UNCOMPARABLE_SECRET = "sécret"
@@ -203,6 +208,20 @@ def test_a_value_longer_than_any_credential_is_not_kept() -> None:
     too_long = "t" * (MAX_CREDENTIAL_LENGTH + 1)
     longest = "l" * MAX_CREDENTIAL_LENGTH
     assert select_credentials({too_long, API_KEY}, {longest}) == (longest, API_KEY)
+
+
+async def test_a_request_keeps_at_most_its_cap_of_credentials_headers_first() -> None:
+    kept: list[str] = []
+
+    async def lookup(request: Request) -> None:
+        kept.extend(request_credentials())
+
+    tokens = {f"token{i}": f"query-credential-{i:02d}-{'q' * 20}" for i in range(40)}
+    async with _behind_the_rest_middleware("/lookup", lookup) as client:
+        await client.get("/lookup", params=tokens, headers={"X-API-Key": API_KEY})
+
+    assert len(kept) == MAX_REQUEST_CREDENTIALS
+    assert API_KEY in kept
 
 
 def test_every_service_app_keeps_its_requests_credentials() -> None:
@@ -351,6 +370,41 @@ async def test_a_rejected_tag_stays_out_of_the_log(service_output: io.StringIO) 
     assert "'loc': ['body', 'item']" in logs
 
 
+@pytest.mark.parametrize(
+    "item",
+    [
+        pytest.param({"type": "hunter2"}, id="short"),
+        pytest.param(
+            {**{f"field{i}": "x" for i in range(300)}, "type": API_KEY},
+            id="past-what-is-read",
+        ),
+    ],
+)
+async def test_a_rejected_tag_stays_out_of_the_log_whatever_its_length_or_place(
+    service_output: io.StringIO, item: dict[str, str]
+) -> None:
+    app = FastAPI()
+
+    @app.post("/filed")
+    async def file_item(filed: Filed) -> None:
+        return None
+
+    add_exception_handlers(app)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://backend"
+    ) as client:
+        response = await client.post("/filed", json={"item": item})
+    # The response keeps pydantic's own message.
+    assert item["type"] in response.json()["detail"][0]["msg"]
+
+    logs = service_output.getvalue()
+    assert item["type"] not in logs
+    assert (
+        f"Input tag '{REDACTED}' found using 'type' does not match any of the "
+        "expected tags: 'secret', 'note'"
+    ) in logs
+
+
 async def test_a_key_refused_as_extra_stays_out_of_the_log(
     service_output: io.StringIO,
 ) -> None:
@@ -494,7 +548,12 @@ async def test_setting_up_a_webhook_logs_no_secret_or_ingress_credential(
     webhook, feedback = await setup_webhook_for_block(
         "user-1",
         GenericWebhookTriggerBlock(),
-        {"secret_token": TRIGGER_SECRET, "constants": {"team": "blue"}},
+        # A stored config can carry a key the block doesn't declare.
+        {
+            "secret_token": TRIGGER_SECRET,
+            "constants": {"team": "blue"},
+            f"note_{API_KEY}": "x",
+        },
         for_graph_id="graph-1",
     )
     assert feedback is None and webhook is not None
@@ -509,8 +568,8 @@ async def test_setting_up_a_webhook_logs_no_secret_or_ingress_credential(
     )
 
     # A resource is built from the trigger's inputs, such as a GitHub repo,
-    # which can be given as a URL with a token in it.
-    repo = f"https://x-access-token:{API_KEY}@github.com/owner/repo"
+    # which can hold whatever the user typed.
+    repo = API_KEY
     unset, reason = await setup_webhook_for_block(
         "user-1",
         GithubPullRequestTriggerBlock(),
@@ -530,7 +589,7 @@ async def test_setting_up_a_webhook_logs_no_secret_or_ingress_credential(
         f"Acquired webhook #{webhook.id[:8]}... (generic_webhook plain)",
         "Manual webhook registered with ingress URL: "
         + webhook.url.replace(webhook.id, REDACTED),
-        f"Constructed resource string https://{REDACTED}@github.com/owner/repo",
+        "Constructed resource string from {repo}",
     ):
         assert line in logs
 
@@ -580,6 +639,7 @@ def test_the_event_bus_logs_an_events_size_not_the_event(
         ("order.left at the door, code 4417", "[unlisted]"),
         ("order.x\nERROR a forged line", "[unlisted]"),
         ("order." + "x" * 64, "[unlisted]"),
+        (f"order.{WEBHOOK_ID}", f"order.{WEBHOOK_ID[:8]}..."),
     ],
 )
 def test_webhook_logs_show_an_event_type_only_if_shaped_like_one(
@@ -587,7 +647,7 @@ def test_webhook_logs_show_an_event_type_only_if_shaped_like_one(
 ) -> None:
     """Most event types come from the delivery, such as a Slant3D order's
     status, and the logs show only those that read as one."""
-    assert loggable_event_type(event_type) == shown
+    assert loggable_event_type(event_type, WEBHOOK_ID) == shown
     channel = f"{WEBHOOK_ID}/{event_type}"
     assert integrations_db.WebhookEventBus()._loggable_key(channel) == (
         f"{WEBHOOK_ID[:8]}.../{shown}"
@@ -686,11 +746,14 @@ async def test_sentry_gets_no_credentials_from_outgoing_request_urls(
 
 
 async def test_a_value_naming_the_event_is_not_taken_for_a_credential(
-    sentry: CapturingTransport,
+    sentry: CapturingTransport, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Any caller can send any value as a token; masking the event's own names
     with it would move their errors out of the alerts and issues they belong to."""
-    environment = metrics._sentry_environment()
+    # Pinned, so the test doesn't depend on a configured name being as long as
+    # a credential.
+    environment = "app:pinned-environment-name"
+    monkeypatch.setitem(sentry_sdk.get_client().options, "environment", environment)
     user_id = "user-7a2c9e41b3d5f608"
 
     async def lookup_that_fails_loudly(request: Request) -> None:
@@ -792,6 +855,100 @@ def test_keys_masked_alike_are_all_kept() -> None:
         f"{REDACTED}**": 2,
         REDACTED: 3,
     }
+
+
+def test_a_secret_field_renamed_for_its_name_is_still_filtered() -> None:
+    """A key named like a secret field is filtered by that name even when the
+    request also sent the name as a credential, which renames the key."""
+    event = {
+        "request": {"url": "http://backend/lookup?token=codex_access_token"},
+        "extra": {"codex": {"codex_access_token": "plain words, not token-shaped"}},
+    }
+
+    scrubbed = metrics._before_send(event, {})
+
+    assert scrubbed is not None
+    assert scrubbed["extra"]["codex"] == {REDACTED: "[Filtered]"}
+
+
+async def test_the_sdks_record_of_a_cut_value_keeps_no_credential_key(
+    sentry: CapturingTransport,
+) -> None:
+    """The SDK records each value it cuts under ``_meta``, at the value's path,
+    keys and all."""
+
+    async def find_run(request: Request) -> None:
+        share_token = request.path_params["share_token"]
+        sentry_sdk.set_extra(
+            "runs", {share_token: "x" * 20_000, "fallback": "y" * 20_000}
+        )
+        raise RuntimeError("no run is shared")
+
+    async with _behind_the_rest_middleware(
+        "/api/public/shared/{share_token}", find_run
+    ) as client:
+        await client.get(f"/api/public/shared/{SHARE_TOKEN}")
+
+    assert not _leaks(SHARE_TOKEN, sentry.payload)
+    [error] = [event for event in sentry.events if event.get("exception")]
+    # The record of what was cut elsewhere is kept.
+    assert list(error["_meta"]["extra"]["runs"]) == ["fallback"]
+
+
+async def test_an_error_log_masks_the_requests_credentials_wherever_quoted(
+    service_output: io.StringIO,
+) -> None:
+    """The REST server's error handlers and uvicorn's own error log mask the
+    request's credentials by value, outside any URL too, as Sentry does."""
+    app = FastAPI()
+
+    @app.get("/api/public/shared/{share_token}")
+    async def shared(request: Request, share_token: str) -> None:
+        raise RuntimeError(f"bad cookie {request.headers['authorization']}")
+
+    @app.get("/api/public/shared/{share_token}/runs")
+    async def runs(request: Request, share_token: str) -> None:
+        cookie = request.cookies[_SESSION_COOKIE_NAME]
+        raise ValueError(f"no run for {share_token} with {cookie}")
+
+    @app.websocket("/ws")
+    async def socket(websocket: WebSocket) -> None:
+        raise RuntimeError(
+            f"refused {websocket.query_params['token']} "
+            f"{websocket.headers['authorization']} "
+            f"{websocket.cookies[_SESSION_COOKIE_NAME]}"
+        )
+
+    add_exception_handlers(app)
+    remember_request_credentials(app)
+    headers = {
+        "Authorization": f"Bearer {BEARER_TOKEN}",
+        "Cookie": f"{_SESSION_COOKIE_NAME}={SESSION_COOKIE}",
+    }
+    async with (
+        serve_app(app, log_config=None, ws="websockets-sansio") as host,
+        httpx.AsyncClient(base_url=f"http://{host}", headers=headers) as client,
+    ):
+        failed = await client.get(f"/api/public/shared/{SHARE_TOKEN}")
+        refused = await client.get(f"/api/public/shared/{SHARE_TOKEN}/runs")
+        with pytest.raises(InvalidStatus):
+            async with connect(
+                f"ws://{host}/ws?token={QUERY_TOKEN}", additional_headers=headers
+            ):
+                pass
+    assert (failed.status_code, refused.status_code) == (500, 400)
+
+    logs = service_output.getvalue()
+    for credential in (BEARER_TOKEN, SESSION_COOKIE, SHARE_TOKEN, QUERY_TOKEN):
+        assert not _leaks(credential, logs)
+    for line in (
+        f"failed. Investigate and resolve the underlying issue: bad cookie {REDACTED}",
+        f"RuntimeError: bad cookie {REDACTED}",
+        f"failed with 400: no run for {REDACTED} with {REDACTED}",
+        "Exception in ASGI application",
+        f"RuntimeError: refused {REDACTED} {REDACTED} {REDACTED}",
+    ):
+        assert line in logs
 
 
 @pytest.mark.parametrize("seed", range(5))
