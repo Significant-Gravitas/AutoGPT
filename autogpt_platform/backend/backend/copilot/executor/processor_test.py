@@ -2262,11 +2262,11 @@ class TestSyncFailCloseSession:
             # a slow runner can outlast a poll. A refresh within half a poll of
             # the last one means the worker polled a turn that had already failed.
             now = time.monotonic()
-            if now - polled_at[-1] < 0.5:
+            if now - polled_at[-1] < 0.5:  # pragma: no cover
                 raise AssertionError(
                     "The worker polled a completed deadline error instead of exiting"
                 )
-            if len(polled_at) > 20:
+            if len(polled_at) > 20:  # pragma: no cover
                 raise AssertionError("The turn never ended")
             polled_at.append(now)
 
