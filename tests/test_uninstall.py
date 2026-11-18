@@ -638,7 +638,8 @@ def test_a_launchagent_that_never_unloads_is_reported_once_the_wait_runs_out(
     assert f"launchd still has gui/501/{LABEL} loaded 30 s after it was told to unload it" in err
     assert "Boot-out failed: 36: Operation now in progress).\n" in err
     assert f"  launchctl bootout gui/$(id -u)/{LABEL}" in err
-    assert 30 <= sum(clock.slept) < 31
+    # 150 looks, 0.2 s apart: the sum of those isn't exactly 30 in floating point.
+    assert 29.5 < sum(clock.slept) < 30.5
     assert not target.exists()
 
 
