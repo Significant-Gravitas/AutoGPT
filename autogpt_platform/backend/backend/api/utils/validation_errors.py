@@ -58,6 +58,8 @@ _SCHEMA_CONTEXT = frozenset(
         "pattern",
         "tz_expected",
         "whole_digits",
+        # Counted from the input, but a count or an offset can't carry a
+        # credential, and both help debugging.
         "actual_length",
         "tz_actual",
     }
