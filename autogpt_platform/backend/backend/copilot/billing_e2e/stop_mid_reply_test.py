@@ -39,6 +39,7 @@ from .executor_turns import Executor, SdkTurnsViaExecutor
 from .invoice import Route
 from .ledger import PlatformLedger
 from .provider import FakeProvider
+from .replies import GREETING
 from .trial_account import usage_state_of
 
 
@@ -125,6 +126,8 @@ async def test_a_message_sent_right_after_a_stop_mid_reply_is_answered(
     # The next turn resumes the CLI session the Stop interrupted, and is answered.
     assert turns.resumed[-1] == (1, session.session_id)
     assert list(executor.outcomes.values()) == [CANCELLED_MESSAGE, None]
+    assert session.messages[-1].role == "assistant"
+    assert session.messages[-1].content == GREETING
 
 
 async def _send(turns: SdkTurnsViaExecutor, session: ChatSession, text: str) -> None:

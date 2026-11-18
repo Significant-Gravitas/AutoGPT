@@ -150,7 +150,9 @@ async def test_a_turn_closed_mid_reply_has_stopped_its_cli_when_the_close_return
     its session, not later when the attempt is garbage-collected."""
     client = _turns._make_client_mock(result_message=_turns._make_result_message())
     cli = client.__aenter__.return_value
-    cli.interrupt = AsyncMock()
+    calls: list[str] = []
+    cli.interrupt = AsyncMock(side_effect=lambda: calls.append("interrupt"))
+    client.__aexit__.side_effect = lambda *_args: calls.append("close")
     session = _turns._make_session()
     session.messages[-1].content = "hello"
 
@@ -171,8 +173,8 @@ async def test_a_turn_closed_mid_reply_has_stopped_its_cli_when_the_close_return
             pytest.fail("the turn never sent its query")
         await turn.aclose()
 
-    cli.interrupt.assert_awaited_once()
-    client.__aexit__.assert_awaited_once()
+    # Interrupted first: a CLI closed mid-reply waits out the SDK's grace.
+    assert calls == ["interrupt", "close"]
 
 
 @pytest.mark.asyncio

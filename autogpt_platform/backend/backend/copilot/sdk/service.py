@@ -4305,7 +4305,7 @@ def _check_empty_tool_breaker(
 async def _run_stream_attempt(
     ctx: _StreamContext,
     state: "_RetryState",
-) -> AsyncIterator[StreamBaseResponse]:
+) -> AsyncGenerator[StreamBaseResponse, None]:
     """Run one SDK streaming attempt.
 
     Opens a `ClaudeSDKClient`, sends the query, iterates SDK messages with
