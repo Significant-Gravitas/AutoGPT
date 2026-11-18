@@ -113,6 +113,14 @@ it, is among the roots. How each system is asked:
 | macOS, Linux, WSL2 | `access(2)` for read and search. It takes ACLs into account, and it doesn't open the folder: on macOS, opening one the privacy settings guard (Desktop, Documents, Downloads) would put a prompt on the screen for a folder the person only browsed past. | `access(2)` for write and search as well. |
 | Windows | The folder is opened for listing. `os.access` looks at the read-only attribute alone and would call every folder usable, another account's profile under `C:\Users` among them. | The system is asked for a handle on the folder with the right to add a file to it (`FILE_ADD_FILE`), which its access list grants or refuses. No file is made to find out. |
 
+On Windows the answer is the system's for the shim's own process. An
+administrator's process whose backup and restore privileges are switched on
+(one started from Git Bash; PowerShell and cmd.exe leave them off) is let
+into a folder whatever its access list says, so both checks say yes for it.
+Listing such a folder then works; writing a file in it the ordinary way
+doesn't use those privileges and can still be refused. The shim isn't meant
+to run as an administrator ([SECURITY.md](SECURITY.md)).
+
 These looks are part of a listing, so they share its time limit
 ([PROTOCOL.md](PROTOCOL.md#a-folder-that-doesnt-answer)).
 

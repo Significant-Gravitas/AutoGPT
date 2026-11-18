@@ -15,10 +15,12 @@ every file operation in it failed.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -213,6 +215,98 @@ def _icacls(folder: Path, *arguments: str) -> None:
     )
 
 
+_BACKUP_RIGHTS = ("SeBackupPrivilege", "SeRestorePrivilege")
+
+
+@contextlib.contextmanager
+def _backup_rights(*, on: bool) -> Iterator[None]:
+    """Run the block with this process's backup and restore privileges
+    switched on or off, and put them back as they were after.
+
+    An administrator's process holds both, switched off unless the program
+    that started it switched them on, which Git Bash does and PowerShell
+    doesn't. With them on, Windows lets the process open a folder for
+    listing, or for adding a file, whatever the folder's access list says.
+    So whether an access list stops these tests' account depended on the
+    shell that started pytest. pytest.skip when they are to be on and the
+    account doesn't hold them (one that is no administrator)."""
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+    class Luid(ctypes.Structure):
+        _fields_ = [("low", wintypes.DWORD), ("high", wintypes.LONG)]
+
+    class Privilege(ctypes.Structure):
+        # TOKEN_PRIVILEGES with its one LUID_AND_ATTRIBUTES.
+        _fields_ = [("count", wintypes.DWORD), ("luid", Luid), ("attributes", wintypes.DWORD)]
+
+    adjust, query, enabled, not_all_assigned = 0x0020, 0x0008, 0x00000002, 1300
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    advapi32.OpenProcessToken.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.HANDLE),
+    ]
+    advapi32.LookupPrivilegeValueW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        ctypes.POINTER(Luid),
+    ]
+    advapi32.AdjustTokenPrivileges.argtypes = [
+        wintypes.HANDLE,
+        wintypes.BOOL,
+        ctypes.POINTER(Privilege),
+        wintypes.DWORD,
+        ctypes.POINTER(Privilege),
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+
+    token = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(
+        kernel32.GetCurrentProcess(), adjust | query, ctypes.byref(token)
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    def switch(name: str, attributes: int) -> int | None:
+        """Set the privilege `name` to `attributes`. Returns what it was
+        set to before, or None when the token doesn't hold it."""
+        wanted, before, size = (
+            Privilege(count=1, attributes=attributes),
+            Privilege(),
+            wintypes.DWORD(),
+        )
+        if not advapi32.LookupPrivilegeValueW(None, name, ctypes.byref(wanted.luid)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        ctypes.set_last_error(0)
+        if not advapi32.AdjustTokenPrivileges(
+            token, False, ctypes.byref(wanted), ctypes.sizeof(before), ctypes.byref(before), size
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if ctypes.get_last_error() == not_all_assigned:
+            return None
+        # Nothing comes back for a privilege that was that way already.
+        return before.attributes if before.count else attributes
+
+    was: dict[str, int] = {}
+    try:
+        for name in _BACKUP_RIGHTS:
+            before = switch(name, enabled if on else 0)
+            if before is None:
+                if on:
+                    pytest.skip(f"this account doesn't hold {name}")
+                continue
+            was[name] = before
+        yield
+    finally:
+        for name, before in was.items():
+            switch(name, before & enabled)
+        kernel32.CloseHandle(token)
+
+
 @windows_only
 def test_on_windows_a_folder_the_account_cannot_list_is_not_listed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -226,14 +320,15 @@ def test_on_windows_a_folder_the_account_cannot_list_is_not_listed(
     # RD: list the folder. For this folder only, not what is made in it.
     _icacls(locked, "/deny", f"{account}:(RD)")
     try:
-        assert os.access(locked, os.R_OK | os.W_OK | os.X_OK) is True
-        assert fsops.can_open_folder(locked) is False
+        with _backup_rights(on=False):
+            assert os.access(locked, os.R_OK | os.W_OK | os.X_OK) is True
+            assert fsops.can_open_folder(locked) is False
 
-        browser = _browser(tmp_path, monkeypatch)
-        roots = browser.list_directories(None, None)
-        _home, at_home = _open(browser, roots.browse_id, roots, tmp_path.name)
+            browser = _browser(tmp_path, monkeypatch)
+            roots = browser.list_directories(None, None)
+            _home, at_home = _open(browser, roots.browse_id, roots, tmp_path.name)
 
-        assert _names(at_home) == ["fine"]
+            assert _names(at_home) == ["fine"]
     finally:
         _icacls(locked, "/remove:d", account)
 
@@ -248,27 +343,57 @@ def test_on_windows_a_folder_the_account_cannot_write_to_opens_but_cannot_be_cho
     # WD: add a file to the folder. Not inherited, so `mine` keeps its own.
     _icacls(read_only, "/deny", f"{account}:(WD)")
     try:
-        assert os.access(read_only, os.W_OK) is True
-        assert fsops.can_open_folder(read_only) is True
-        assert fsops.can_write_folder(read_only) is False
-        assert fsops.can_write_folder(read_only / "mine") is True
-        # Asking left nothing behind.
-        assert [entry.name for entry in read_only.iterdir()] == ["mine"]
+        with _backup_rights(on=False):
+            assert os.access(read_only, os.W_OK) is True
+            assert fsops.can_open_folder(read_only) is True
+            assert fsops.can_write_folder(read_only) is False
+            assert fsops.can_write_folder(read_only / "mine") is True
+            # Asking left nothing behind.
+            assert [entry.name for entry in read_only.iterdir()] == ["mine"]
 
-        browser = _browser(tmp_path, monkeypatch)
-        roots = browser.list_directories(None, None)
-        _home, at_home = _open(browser, roots.browse_id, roots, tmp_path.name)
-        folder, inside = _open(browser, roots.browse_id, at_home, "read-only")
-        assert _names(inside) == ["mine"]
-        [mine] = inside.entries
+            browser = _browser(tmp_path, monkeypatch)
+            roots = browser.list_directories(None, None)
+            _home, at_home = _open(browser, roots.browse_id, roots, tmp_path.name)
+            folder, inside = _open(browser, roots.browse_id, at_home, "read-only")
+            assert _names(inside) == ["mine"]
+            [mine] = inside.entries
 
-        with pytest.raises(DirectoryBrowseError):
-            browser.resolve(roots.browse_id, folder.directory_ref)
-        with pytest.raises(RootGrantError):
-            session_grants.canonical_directory(read_only)
-        assert browser.resolve(roots.browse_id, mine.directory_ref) == read_only / "mine"
+            with pytest.raises(DirectoryBrowseError):
+                browser.resolve(roots.browse_id, folder.directory_ref)
+            with pytest.raises(RootGrantError):
+                session_grants.canonical_directory(read_only)
+            assert browser.resolve(roots.browse_id, mine.directory_ref) == read_only / "mine"
     finally:
         _icacls(read_only, "/remove:d", account)
+
+
+@windows_only
+def test_on_windows_a_process_with_its_backup_rights_on_is_answered_as_windows_answers_it(
+    tmp_path: Path,
+) -> None:
+    """An administrator's process started from Git Bash has its backup and
+    restore privileges switched on, and Windows then lets it open a folder
+    for listing or for adding a file whatever the access list says. The
+    checks ask Windows, so there they say yes. A file made the ordinary way
+    doesn't use those privileges, and is still refused."""
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    account = _this_account()
+    _icacls(locked, "/deny", f"{account}:(RD,WD)")
+    try:
+        with _backup_rights(on=False):
+            assert fsops.can_open_folder(locked) is False
+            assert fsops.can_write_folder(locked) is False
+        with _backup_rights(on=True):
+            assert fsops.can_open_folder(locked) is True
+            assert fsops.can_write_folder(locked) is True
+            with pytest.raises(PermissionError):
+                (locked / "made.txt").write_text("", encoding="utf-8")
+        # And off again once the block is over.
+        with _backup_rights(on=False):
+            assert fsops.can_open_folder(locked) is False
+    finally:
+        _icacls(locked, "/remove:d", account)
 
 
 # ── A folder whose check never returns ───────────────────────────────────────
