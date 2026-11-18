@@ -512,8 +512,11 @@ class TestShimConnectionManager:
         assert lookup.cut_off
 
     @pytest.mark.asyncio
-    async def test_transport_open_uses_original_timeout_budget(self):
+    async def test_transport_open_uses_original_timeout_budget(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
         opening = _NeverFinishes()
+        open_started = asyncio.Event()
 
         class SilentOpenRelay(TestShimConnectionManager.NoPresenceRelay):
             async def wait_for_presence(self, session_id: str, *, timeout: float):
@@ -526,15 +529,28 @@ class TestShimConnectionManager:
                 )
 
             async def open_transport(self, presence):
+                open_started.set()
                 await opening.wait()
                 raise AssertionError("open should be cancelled by the timeout")
 
         manager = ShimConnectionManager(relay=SilentOpenRelay())
 
-        # The open never finishes, so only the budget can end the call.
+        # The open never finishes, so only the budget can end the call. The
+        # budget is run out once the open is under way: a short one would also
+        # have to leave the open time to start, which a paused runner doesn't
+        # promise.
         async with _hang_guard():
-            with pytest.raises(TimeoutError, match="did not connect within"):
-                await manager.wait_for("slow-open", timeout=0.03)
+            budgets = _budgets_started(monkeypatch)
+            call = asyncio.create_task(manager.wait_for("slow-open", timeout=3600))
+            try:
+                await open_started.wait()
+                (budget,) = budgets
+                budget.reschedule(asyncio.get_running_loop().time())
+                with pytest.raises(TimeoutError, match="did not connect within"):
+                    await call
+            finally:
+                call.cancel()
+                await asyncio.gather(call, return_exceptions=True)
 
         assert opening.cut_off
 
@@ -599,6 +615,20 @@ def _hang_guard() -> asyncio.Timeout:
     """Fails a test that would otherwise hang. Far above anything it guards,
     so a paused runner cannot trip it."""
     return asyncio.timeout(30)
+
+
+def _budgets_started(monkeypatch: pytest.MonkeyPatch) -> list[asyncio.Timeout]:
+    """Every `asyncio.timeout` started from here on, each working as before,
+    so a test can run one out when it chooses rather than wait for it."""
+    started: list[asyncio.Timeout] = []
+    start = asyncio.timeout
+
+    def recorded(delay: float | None) -> asyncio.Timeout:
+        started.append(start(delay))
+        return started[-1]
+
+    monkeypatch.setattr(asyncio, "timeout", recorded)
+    return started
 
 
 class TestDisconnectCleanup:
