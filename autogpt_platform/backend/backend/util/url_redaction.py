@@ -79,10 +79,57 @@ _MENTIONS_URL = re.compile(r"\?|/api/|(?i:api\.telegram\.org)(?::443)?/|://[^/?#
 _QUERY_NAME = re.compile(r"[?&]([^=&?]*)=")
 # How many values named like a credential one URL is read for.
 _MAX_QUERY_CREDENTIALS = 16
-# Names of headers, cookies and query parameters whose values are credentials.
-_CREDENTIAL_NAME = re.compile(
-    r"(?i)auth|code|cookie|credential|jwt|key|password|secret|sess|sid|sig|state"
-    r"|token|sec-websocket-protocol|content-mac"
+# The words that name a credential in a header, cookie or query parameter,
+# each matched as a whole word of the name. A name is split at "_", "-", ".",
+# spaces, a change from lower to upper case and one between letters and
+# digits, so `auth_token`, `x-auth-key`, `token2`, `clientSecret` and
+# `Authorization` match while `author` and `design` don't. Names written as one
+# word are listed whole, and a few are phrases of several words.
+_CREDENTIAL_WORDS = frozenset(
+    {
+        "accesstoken",
+        "apikey",
+        "auth",
+        "authentication",
+        "authorization",
+        "authtoken",
+        "code",
+        "cookie",
+        "cookies",
+        "credential",
+        "credentials",
+        "csrf",
+        "csrftoken",
+        "jwt",
+        "key",
+        "keys",
+        "passwd",
+        "password",
+        "passwords",
+        "refreshtoken",
+        "secret",
+        "secrets",
+        "sess",
+        "session",
+        "sessionid",
+        "sessiontoken",
+        "sid",
+        "sig",
+        "signature",
+        "state",
+        "token",
+        "tokens",
+        "xsrf",
+        "xsrftoken",
+    }
+)
+_CREDENTIAL_PHRASES = (
+    "-sec-websocket-protocol-",
+    "-sec-web-socket-protocol-",
+    "-content-mac-",
+)
+_NAME_WORD_BREAKS = re.compile(
+    r"[\s_.\-]+|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Za-z])(?=[0-9])|(?<=[0-9])(?=[A-Za-z])"
 )
 # A shorter value can't be a credential the platform issued or a provider's
 # key, and masking it everywhere it turns up would mangle the rest of an event.
@@ -192,7 +239,7 @@ def credentials_in_url(url: str) -> set[str]:
     values = (
         url[match.end() : _end_of_value(url, match.end())]
         for match in _QUERY_NAME.finditer(url)
-        if _CREDENTIAL_NAME.search(unquote_plus(match[1]))
+        if is_credential_name(unquote_plus(match[1]))
     )
     long_enough = (value for value in values if len(value) >= MIN_CREDENTIAL_LENGTH)
     for value in itertools.islice(long_enough, _MAX_QUERY_CREDENTIALS):
@@ -213,7 +260,7 @@ def credentials_in_headers(headers: Iterable[tuple[str, str]]) -> set[str]:
         if name.lower() == "cookie":
             for cookie in value.split(";"):
                 cookie_name, _, cookie_value = cookie.strip().partition("=")
-                if _CREDENTIAL_NAME.search(cookie_name):
+                if is_credential_name(cookie_name):
                     # As sent, and as Starlette reads it: trimmed, unquoted.
                     read = _unquote_cookie(cookie_value.strip())
                     unquoted = cookie_value.strip('"')
@@ -227,7 +274,17 @@ def is_credential_header(name: str) -> bool:
     """Whether a header's value is a credential: the session cookie and
     ``Authorization``, an API key, or a webhook's signature or secret token,
     whatever the header is called."""
-    return bool(_CREDENTIAL_NAME.search(name))
+    return is_credential_name(name)
+
+
+def is_credential_name(name: str) -> bool:
+    """Whether a header, cookie or query parameter called ``name`` holds a
+    credential, by the whole words of its name."""
+    words = [word.lower() for word in _NAME_WORD_BREAKS.split(name) if word]
+    if any(word in _CREDENTIAL_WORDS for word in words):
+        return True
+    joined = "-" + "-".join(words) + "-"
+    return any(phrase in joined for phrase in _CREDENTIAL_PHRASES)
 
 
 def mask_credential(credential: str) -> str:

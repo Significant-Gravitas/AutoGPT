@@ -23,6 +23,7 @@ from backend.util.url_redaction import (
     RequestURLRedactionFilter,
     credentials_in_headers,
     credentials_in_url,
+    is_credential_name,
     keep_request_credentials,
     mask_credential,
     mask_known,
@@ -468,6 +469,67 @@ def test_credential_header_filter(name: str, masked: bool) -> None:
         assert record.getMessage() == f"{direction} {name}: " + (
             REDACTED if masked else "v-1"
         )
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "auth",
+        "auth_token",
+        "token2",
+        "x-auth-key",
+        "api_key",
+        "apiKey",
+        "apikey",
+        "X-API-Key",
+        "Authorization",
+        "access_token",
+        "accessToken",
+        "client_secret",
+        "clientSecret",
+        "password",
+        "__Secure-better-auth.session_token",
+        "sessionid",
+        "csrftoken",
+        "X-CSRF-Token",
+        "X-Hub-Signature-256",
+        "X-Amz-Credential",
+        "sig",
+        "code",
+        "state",
+        "jwt",
+        "set-cookie",
+        "Sec-WebSocket-Protocol",
+        "x-airtable-content-mac",
+    ],
+)
+def test_a_credential_word_in_a_name_is_read_as_a_credential(name: str) -> None:
+    assert is_credential_name(name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "author",
+        "design",
+        "encode",
+        "keyword",
+        "monkey",
+        "signal",
+        "signup",
+        "assignee",
+        "inside",
+        "statement",
+        "Sec-WebSocket-Version",
+        "content-type",
+        "User-Agent",
+    ],
+)
+def test_a_word_only_holding_a_credential_word_is_not(name: str) -> None:
+    """A credential word inside another word, such as `auth` in `author`, is
+    not one: its parameter's value is kept."""
+    assert not is_credential_name(name)
+    assert not credentials_in_url(f"/x?{name}=a-value-long-enough-to-count")
 
 
 def test_every_route_with_a_credential_in_its_path_is_masked_and_no_other() -> None:
