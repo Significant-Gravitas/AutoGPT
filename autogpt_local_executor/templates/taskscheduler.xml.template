@@ -4,10 +4,17 @@
   Rendered file:   %LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml
   Re-render with:  autogpt-shim install
 
-  Register the rendered task with:
+  The task is one account's own: the logon trigger and the principal both
+  name the account that ran `autogpt-shim install`, so it starts the shim
+  at that account's logon and runs it as that account. A task that names
+  no account is one for every account's logon, which only an administrator
+  may register.
+
+  Register the rendered task, in a prompt of that account's (it takes no
+  elevated one), with:
     schtasks /Create /TN "AutoGPT\Shim" /XML "%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml"
 
-  End it and remove it, from an elevated prompt, with:
+  End it and remove it, from such a prompt too, with:
     autogpt-shim uninstall
 
   Task Scheduler doesn't start a program again after it exits: its
@@ -24,10 +31,12 @@
   <Triggers>
     <LogonTrigger>
       <Enabled>true</Enabled>
+      <UserId>{user_id}</UserId>
     </LogonTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
+      <UserId>{user_id}</UserId>
       <LogonType>InteractiveToken</LogonType>
       <RunLevel>LeastPrivilege</RunLevel>
     </Principal>

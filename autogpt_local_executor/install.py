@@ -14,12 +14,17 @@ the OS service manager (launchctl, systemctl, schtasks): starting the shim at
 every login stays the person's own step. `uninstall` does run the service
 manager: it stops the service and unregisters it, and only then removes the
 file (`uninstall_autostart`).
+
+Each entry is one account's own: the LaunchAgent and the systemd unit are in
+the account's home folder, and the Windows task names the account that ran
+`install` (`_windows_account_sid`).
 This module is import-safe on every OS; the OS-specific writers are only
 called via dispatch from `install_autostart()` / `uninstall_autostart()`.
 """
 
 from __future__ import annotations
 
+import csv
 import os
 import platform as _platform
 import re
@@ -63,6 +68,10 @@ class AutostartContext:
     # Other global options `install` was given (--platform-url, say), which
     # `start` needs as well.
     global_args: tuple[str, ...] = ()
+    # The account the Windows task belongs to: its SID, or its name. The
+    # LaunchAgent and the systemd unit name none, because launchd and
+    # systemd keep each account's services apart themselves.
+    user_id: str | None = None
 
     @property
     def start_argv(self) -> tuple[str, ...]:
@@ -79,7 +88,7 @@ def render_template(name: str, ctx: AutostartContext) -> str:
 
     KeyError surfaces unknown placeholders.
     """
-    for value in (*ctx.start_argv, ctx.stdout_log, ctx.stderr_log):
+    for value in (*ctx.start_argv, ctx.stdout_log, ctx.stderr_log, ctx.user_id or ""):
         if _CONTROL_CHARACTER.search(value):
             raise ValueError(f"Autostart value {value!r} contains a control character")
     return _read_template(name).format(**_TEMPLATE_VALUES[name](ctx))
@@ -118,6 +127,11 @@ def _systemd_word(arg: str) -> str:
 
 
 def _task_scheduler_values(ctx: AutostartContext) -> dict[str, str]:
+    if not ctx.user_id:
+        # A logon trigger and a principal that name no account make a task
+        # for every account's logon, which only an administrator may
+        # register, and which then runs as whoever registered it.
+        raise ValueError("The Windows task has to name the account it belongs to")
     program, *arguments = ctx.start_argv
     # Task Scheduler doesn't start a program again after it exits, so under
     # the task the shim does that itself (supervise). launchd and systemd
@@ -126,6 +140,7 @@ def _task_scheduler_values(ctx: AutostartContext) -> dict[str, str]:
     return {
         "command": _xml_escape(subprocess.list2cmdline([program])),
         "arguments": _xml_escape(subprocess.list2cmdline(arguments)),
+        "user_id": _xml_escape(ctx.user_id),
     }
 
 
@@ -204,7 +219,7 @@ def default_config_path() -> Path:
 
 
 def build_context(
-    config_path: Path | None, *, global_args: tuple[str, ...] = ()
+    config_path: Path | None, *, global_args: tuple[str, ...] = (), user_id: str | None = None
 ) -> AutostartContext:
     # A --config that names no file is an error at start, so the default
     # location is named only when a config file is there. The CLI has already
@@ -219,6 +234,7 @@ def build_context(
         stdout_log=str(default_stdout_log()),
         stderr_log=str(default_stderr_log()),
         global_args=global_args,
+        user_id=user_id,
     )
 
 
@@ -390,9 +406,14 @@ def status_for(platform_name: str, home: Path | None = None) -> AutostartStatus:
             enable_command=(f'schtasks /Create /TN "{TASKSCHED_TASK_NAME}" /XML "{target}"'),
             disable_command=UNINSTALL_COMMAND,
             notes=(
-                "Task Scheduler XML is written but NOT registered. Run the "
-                "schtasks command above (elevated cmd / PowerShell) to "
-                "register it.",
+                "The task is written but NOT registered. Run the schtasks command "
+                "above to register it. It is this account's own task, for its own "
+                "logon, so it takes no elevated prompt: run it in a prompt of this "
+                "account's.",
+                "Task Scheduler keeps one task of this name for the whole computer. "
+                "If another account on this computer has registered it, schtasks "
+                "refuses this one, and `autogpt-shim start` is how this account "
+                "runs the shim.",
             ),
         )
     return AutostartStatus(
@@ -423,12 +444,16 @@ def install_autostart(
     home: Path | None = None,
     platform_name: str | None = None,
     global_args: tuple[str, ...] = (),
+    run: CommandRunner | None = None,
 ) -> AutostartStatus:
     """Write the autostart file for this OS.
 
     `at_login` is accepted for forward compatibility; v0 only supports
     "at login" triggers (matching CROSS_PLATFORM.md), so we currently
     raise if the caller sets it to False.
+
+    Raises AutostartError when an entry that would work can't be written:
+    on Windows, when the account the task is for can't be read.
     """
     if not at_login:
         raise NotImplementedError(
@@ -438,7 +463,9 @@ def install_autostart(
     writer = _WRITERS.get(plat)
     if writer is None:
         raise ValueError(f"Unsupported platform for autostart install: {plat!r}")
-    ctx = build_context(config_path, global_args=global_args)
+    # Before anything is written: without it there is no task to write.
+    user_id = _windows_account_sid(run or run_command) if plat == "windows" else None
+    ctx = build_context(config_path, global_args=global_args, user_id=user_id)
     target = target_path_for(plat, home)
     # Ensure parent log dirs exist; templates reference them.
     Path(ctx.stdout_log).parent.mkdir(parents=True, exist_ok=True)
@@ -514,6 +541,41 @@ def run_command(argv: Sequence[str], timeout: float) -> CommandResult:
     # schtasks writes in the console's code page, the others UTF-8.
     encoding = "oem" if sys.platform == "win32" else "utf-8"
     return CommandResult(done.returncode, done.stdout.decode(encoding, errors="replace"))
+
+
+class AutostartError(Exception):
+    """`install` couldn't write an autostart entry that would work."""
+
+
+_SID = re.compile(r"S-1-\d+(?:-\d+)+")
+
+
+def _windows_account_sid(run: CommandRunner) -> str:
+    """The SID of the account this process runs as: the one the Windows
+    task is for.
+
+    `whoami` reads it from this process's own token, so it is the account
+    whose home folder and Credential Manager this `install` uses, also in a
+    prompt that was opened with another account's credentials. Both of the
+    task's `UserId`s take an account's name or its SID; the SID needs no
+    lookup, stays the account's when the account is renamed, and holds
+    nothing XML has to escape.
+
+    `whoami /user /fo csv /nh` prints one line, the name and then the SID,
+    each in quotes. The SID is read from its own column: a name may hold
+    anything, something shaped like a SID included."""
+    asked = run(["whoami", "/user", "/fo", "csv", "/nh"], _ASK_SECONDS)
+    if not asked.succeeded:
+        raise AutostartError(
+            f"the account the task is for couldn't be read: `whoami /user` said: {asked.said()}"
+        )
+    rows = [row for row in csv.reader(asked.output.splitlines()) if row]
+    sid = rows[0][-1].strip() if len(rows) == 1 else ""
+    if not _SID.fullmatch(sid):
+        raise AutostartError(
+            "the account the task is for couldn't be read: `whoami /user` gave no SID"
+        )
+    return sid
 
 
 @dataclass(frozen=True)
@@ -669,11 +731,17 @@ def _stop_scheduled_task(run: CommandRunner, *, task: str, elevated: bool) -> Se
     with the task gone nothing can end it by name. So a task that can't be
     ended is kept, for a prompt that may end it.
 
+    The task is the account's own (`_windows_account_sid`), registered
+    from its own prompt, so a prompt that isn't elevated sees it, ends it
+    and deletes it.
+
     schtasks exits 1 for every failure and words them in the system's
     language, so a task this prompt can't see looks like one that isn't
-    there. Only an elevated prompt sees every task; registering this one
-    takes such a prompt, and one registered with another account's
-    credentials belongs to that account."""
+    there. A prompt that isn't elevated doesn't see another account's
+    task, which isn't this account's service, and may not see or change
+    one that was registered from an elevated prompt. Seeing none is
+    therefore no failure, and the answer says what such a prompt can't
+    see; a task that is seen and can't be ended or deleted is one."""
     by_hand = f'cmd /c "schtasks /End /TN {task} & schtasks /Delete /TN {task} /F"'
     where = "" if elevated else "from an elevated prompt"
 
@@ -690,11 +758,13 @@ def _stop_scheduled_task(run: CommandRunner, *, task: str, elevated: bool) -> Se
                 said=f"The service wasn't set to start: no task {task} is registered.",
                 stop_command=by_hand,
             )
-        return failed(
-            None,
-            f"this prompt isn't elevated and sees no task {task} (`schtasks /Query` said: "
-            f"{seen.said()}). A task registered from an elevated prompt, or with another "
-            "account's credentials, can't be seen or ended from here",
+        return ServiceStop(
+            found=False,
+            said=f"The service wasn't set to start: this account has no task {task} "
+            "registered that a prompt without elevation sees. If the shim still starts "
+            "at logon, the task was registered from an elevated prompt: run "
+            f"`{UNINSTALL_COMMAND}` from one.",
+            stop_command=by_hand,
         )
     ended = run(["schtasks", "/End", "/TN", task], _TASK_SCHEDULER_STOP_SECONDS)
     if not ended.succeeded:
@@ -823,6 +893,7 @@ def uninstall_autostart(
 
 __all__ = [
     "AutostartContext",
+    "AutostartError",
     "AutostartStatus",
     "CommandResult",
     "ServiceStop",

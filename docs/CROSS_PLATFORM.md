@@ -160,11 +160,34 @@ Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/net.autogpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...`) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` undoes both: see [Uninstalling](#uninstalling). |
-| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: `AT_LOGON` (Task Scheduler `<LogonTrigger>`) | All require user opt-in: `install` prints the systemctl / launchctl / schtasks command that starts the service and never runs it. The macOS `SuccessfulExit=false` flag is load-bearing: launchd starts the daemon again after every nonzero exit, no more often than every 10 seconds (its default throttle). It doesn't watch TCC.db: while computer use is requested and Accessibility or Screen Recording isn't granted, each start runs the preflight, which starts cua-driver to check the grants, and exits 78 again, so the start after consent is granted in System Settings comes up without the user touching launchctl. See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
+| Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/net.autogpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim`, a task of the account that ran `install` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...` from that account's own prompt: see [The Windows task's account](#the-windows-tasks-account)) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` undoes both: see [Uninstalling](#uninstalling). |
+| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: that account's own logon (Task Scheduler `<LogonTrigger>` with the account's `UserId`) | All require user opt-in: `install` prints the systemctl / launchctl / schtasks command that starts the service and never runs it. The macOS `SuccessfulExit=false` flag is load-bearing: launchd starts the daemon again after every nonzero exit, no more often than every 10 seconds (its default throttle). It doesn't watch TCC.db: while computer use is requested and Accessibility or Screen Recording isn't granted, each start runs the preflight, which starts cua-driver to check the grants, and exits 78 again, so the start after consent is granted in System Settings comes up without the user touching launchctl. See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
 | Logs | `~/Library/Logs/autogpt-local-executor/*.log` | `journalctl --user -u autogpt-shim` + `$XDG_STATE_HOME/autogpt-local-executor/` | `%LOCALAPPDATA%\autogpt-local-executor\logs\` | Audit log location per row "Audit log" below. |
 | Restart after an exit | launchd, on any non-zero exit (`KeepAlive: {SuccessfulExit=false}`), at most every 10 s | systemd, on failure after 5 s (`Restart=on-failure`), except after 77 and 78 | The shim itself: the task runs `autogpt-shim start --supervise` | Task Scheduler doesn't start a program again after it exits. Its restart-on-failure setting applies when the action can't be started at all; a program that starts and then exits, with whatever code, is a run that completed. So under the task the shim runs its daemon as a child process and starts it again after an exit that asks for it (75) or a crash, with a pause of 5 s that doubles up to a minute while the daemon doesn't stay up for a minute. 0, 77 and 78 end it, as under systemd. A plain `autogpt-shim start` in a terminal has no such loop. |
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
+
+#### The Windows task's account
+
+The Windows task is one account's own. `install` asks `whoami` for the SID
+of the account it runs as and writes it into the task's logon trigger and
+its principal. So the task starts the shim at that account's logon and runs
+it as that account, with that account's Credential Manager. Such a task is
+the account's to register: the `schtasks /Create` command that `install`
+prints takes no elevated prompt, and neither does `autogpt-shim uninstall`.
+If the account can't be read, `install` writes nothing and says why.
+
+A trigger and a principal that name no account make a task for every
+account's logon. Only an administrator may register that, and it runs as
+whoever registered it: registered from a prompt opened with an
+administrator's credentials, it started the shim at the administrator's
+logon and never for the person who had installed it.
+
+Task Scheduler keeps one task of a name for the whole computer, where
+launchd and systemd keep each account's services apart. So one account on a
+computer can have `\AutoGPT\Shim`. A second account can't register another
+under that name, and starts the shim itself with `autogpt-shim start`. From
+an elevated prompt, which sees every account's tasks, `uninstall` ends and
+deletes the task of that name whichever account it belongs to.
 
 #### Uninstalling
 
@@ -187,11 +210,16 @@ When the service can't be stopped, it says what failed, removes the file
 all the same, prints one command that stops the service without the file,
 and exits 1. That happens when the service manager's tool isn't on `PATH`,
 when there is no user session bus to reach systemd through (a shell from
-`su` or `sudo -u`), when the wait runs out, and on Windows when the task was
-registered from an elevated prompt and `uninstall` runs from a plain one.
-There a task that this prompt can't see looks like one that isn't
-registered, so `uninstall` can only rule a task out from an elevated prompt.
+`su` or `sudo -u`), when the wait runs out, and on Windows when a prompt that
+isn't elevated sees the task but may not end or delete it, as it may not
+for one that was registered from an elevated prompt.
 With nothing installed and nothing running it changes nothing and exits 0.
+
+On Windows a prompt that isn't elevated sees the account's own task, the one
+`install` has it register, and doesn't see another account's. To such a
+prompt a task it can't see looks like one that isn't registered. `uninstall`
+then says that this account has no task registered, and what such a prompt
+can't see, and exits 0: another account's task isn't this account's service.
 
 The systemd user unit sets `AUTOGPT_SHIM_SUPERVISOR=systemd`. It starts at
 login, before the desktop exports its display to the user manager. So when

@@ -34,6 +34,8 @@ def ctx() -> install_mod.AutostartContext:
         config_path="/opt/etc/autogpt-local-executor/config.toml",
         stdout_log="/opt/var/log/autogpt-local-executor/shim.out.log",
         stderr_log="/opt/var/log/autogpt-local-executor/shim.err.log",
+        # Only the Windows task names an account.
+        user_id="S-1-5-21-1004336348-1177238915-682003330-1001",
     )
 
 
@@ -163,6 +165,7 @@ def test_task_xml_is_utf16_as_declared_and_quotes_the_command_line(tmp_path: Pat
         config_path=r"C:\Users\alice\R&D Files\config.toml",
         stdout_log=r"C:\logs\out.log",
         stderr_log=r"C:\logs\err.log",
+        user_id="S-1-5-21-1004336348-1177238915-682003330-1001",
     )
     target = install_mod.write_windows_task_xml(ctx, tmp_path / "task.xml")
 
@@ -194,6 +197,7 @@ def test_an_allowed_root_given_to_install_stays_one_argument_in_each_template(
         stdout_log="/tmp/out.log",
         stderr_log="/tmp/err.log",
         global_args=("--allowed-root", root),
+        user_id="S-1-5-21-1004336348-1177238915-682003330-1001",
     )
     argv = ["/opt/bin/autogpt-shim", "--allowed-root", root, "start"]
 
@@ -387,12 +391,17 @@ def test_install_windows_writes_task_xml(tmp_path: Path, monkeypatch: pytest.Mon
         status = install_mod.install_autostart(
             config_path=tmp_path / "cfg.toml",
             home=tmp_path,
+            # `whoami /user`, which says whose task it is.
+            run=lambda argv, timeout: install_mod.CommandResult(
+                0, '"desktop\\alice","S-1-5-21-1004336348-1177238915-682003330-1001"\r\n'
+            ),
         )
     expected = localappdata / "autogpt-local-executor" / "autogpt-shim.xml"
     assert status.target_path == expected
     assert expected.is_file()
     content = expected.read_text(encoding="utf-16")
     assert "<LogonTrigger>" in content
+    assert content.count("<UserId>S-1-5-21-1004336348-1177238915-682003330-1001</UserId>") == 2
     assert '<Command>"C:\\Program Files\\autogpt-shim.exe"</Command>' in content
 
 

@@ -518,11 +518,15 @@ def _cmd_install(args) -> None:
         )
     if uncarried:
         sys.exit(_config_error_exit_code())
-    status = _install.install_autostart(
-        at_login=args.at_login,
-        config_path=args.config,
-        global_args=_service_global_args(args, environment),
-    )
+    try:
+        status = _install.install_autostart(
+            at_login=args.at_login,
+            config_path=args.config,
+            global_args=_service_global_args(args, environment),
+        )
+    except _install.AutostartError as exc:
+        print(f"Could not write the autostart entry: {exc}.", file=sys.stderr)
+        sys.exit(1)
     print(f"Wrote autostart entry: {status.target_path}")
     print(f"Platform: {status.platform}")
     if status.enable_command:

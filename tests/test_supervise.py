@@ -261,6 +261,7 @@ def _context() -> AutostartContext:
         config_path="/home/u/.config/autogpt-local-executor/config.toml",
         stdout_log="/home/u/shim.out.log",
         stderr_log="/home/u/shim.err.log",
+        user_id="S-1-5-21-1004336348-1177238915-682003330-1001",
     )
 
 

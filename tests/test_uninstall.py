@@ -208,9 +208,15 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
+def _whoami(argv: Sequence[str], timeout: float) -> Any:
+    """`whoami /user`, which `install` asks whose the Windows task is."""
+    assert list(argv) == ["whoami", "/user", "/fo", "csv", "/nh"], argv
+    return _result(0, '"desktop\\alice","S-1-5-21-1004336348-1177238915-682003330-1001"\r\n')
+
+
 def _installed(platform_name: str, home: Path) -> Path:
     """Install `platform_name`'s autostart entry under `home`; its file."""
-    status = install_mod.install_autostart(home=home, platform_name=platform_name)
+    status = install_mod.install_autostart(home=home, platform_name=platform_name, run=_whoami)
     assert status.target_path.is_file()
     return status.target_path
 
@@ -698,28 +704,36 @@ def test_a_task_this_prompt_may_not_change_is_reported(
 
 
 @pytest.mark.parametrize("installed", [True, False])
-def test_a_task_another_account_registered_cannot_be_ruled_out_from_a_plain_prompt(
+def test_a_task_another_account_registered_is_not_this_accounts_service(
     home: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     installed: bool,
 ) -> None:
     """schtasks answers for a task this prompt can't see as for one that
-    isn't there. Only an elevated prompt sees every task."""
+    isn't there, and only an elevated prompt sees every task. The task
+    `install` writes is the account's own, which its own prompt sees: one
+    it can't see is another account's, or was registered from an elevated
+    prompt. So seeing none is no failure, and the answer says what a
+    prompt that isn't elevated can't see."""
     monkeypatch.setattr(install_mod, "_is_elevated", lambda: False)
     target = (
         _installed("windows", home) if installed else install_mod.target_path_for("windows", home)
     )
-    manager = _Manager(target, _TaskScheduler(registered=True, running=True, visible=False))
+    scheduler = _TaskScheduler(registered=True, running=True, visible=False)
+    manager = _Manager(target, scheduler)
 
     status = _run_cli(monkeypatch, "windows", manager, "uninstall")
 
     out, err = capsys.readouterr()
-    assert status == (1 if installed else 0)
-    assert f"this prompt isn't elevated and sees no task {TASK}" in err
-    assert "from an elevated prompt" in out + err
-    assert f"schtasks /End /TN {TASK}" in out + err
+    assert status == 0
+    assert err == ""
+    said = " ".join(out.split())
+    assert f"this account has no task {TASK} registered" in said
+    assert "run `autogpt-shim uninstall` from one" in said
     assert manager.ran == [f"schtasks /Query /TN {TASK}"]
+    # The other account's task is as it was.
+    assert scheduler.registered and scheduler.running
     assert not target.exists()
 
 
