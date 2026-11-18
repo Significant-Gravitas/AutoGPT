@@ -826,9 +826,7 @@ def test_sentry_init_cuts_long_values_before_they_are_scrubbed(monkeypatch) -> N
 
 def test_a_large_frame_local_reaches_the_event_truncated(monkeypatch) -> None:
     """A failed virus scan's traceback holds the upload in several frames, and the
-    SDK's full repr of each took seconds and a gigabyte for a 90 MB file.
-
-    sentry_init() sends no frame variables; the bound holds if they come back."""
+    SDK's full repr of each took seconds and a gigabyte for a 90 MB file."""
     calls = _spy_on_sentry_init(monkeypatch)
     monkeypatch.delitem(sys.modules, "pytest")
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
@@ -841,12 +839,7 @@ def test_a_large_frame_local_reaches_the_event_truncated(monkeypatch) -> None:
         write_file(b"x" * 5_000_000)
     except RuntimeError:
         event, _ = event_from_exception(
-            sys.exc_info(),
-            client_options={
-                **DEFAULT_OPTIONS,
-                **calls[0],
-                "include_local_variables": True,
-            },
+            sys.exc_info(), client_options={**DEFAULT_OPTIONS, **calls[0]}
         )
 
     raising_frame = event["exception"]["values"][0]["stacktrace"]["frames"][-1]
@@ -909,7 +902,7 @@ def test_both_event_bounds_hold_through_one_trip_to_before_send(monkeypatch) -> 
     monkeypatch.delitem(sys.modules, "pytest")
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     metrics.sentry_init()
-    options = {**DEFAULT_OPTIONS, **calls[0], "include_local_variables": True}
+    options = {**DEFAULT_OPTIONS, **calls[0]}
 
     def write_file(content: bytes) -> None:
         raise RuntimeError("Virus scanning failed")
@@ -972,7 +965,11 @@ def test_a_failed_email_send_reaches_sentry_without_the_smtp_login(
 
     [event] = sentry.events
     frames = event["exception"]["values"][0]["stacktrace"]["frames"]
-    assert "send_email" in [frame["function"] for frame in frames]
+    [send_email] = [
+        frame["vars"] for frame in frames if frame["function"] == "send_email"
+    ]
+    assert send_email["smtp_server"] == "'smtp.example.com'"
+    assert send_email["smtp_username"] == "[Filtered]"
     assert username not in sentry.payload
     assert password not in sentry.payload
 
