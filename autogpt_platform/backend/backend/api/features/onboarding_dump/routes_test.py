@@ -801,9 +801,17 @@ def test_skipped_finalize_records_the_skip_without_a_transcript(dumps: DumpStore
 def test_a_skip_over_a_closed_interviews_take_is_refused_and_the_take_stays(
     dumps: DumpStore, mocker: MockerFixture
 ):
-    asyncio.run(
-        dumps.start_dump("test-user-id", "interview-earlier", BrainDumpInputMode.typed)
-    )
+    # Not ``asyncio.run``: it clears the thread's event loop, which later
+    # tests in the same process read.
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            dumps.start_dump(
+                "test-user-id", "interview-earlier", BrainDumpInputMode.typed
+            )
+        )
+    finally:
+        loop.close()
     assert dumps.row is not None
     dumps.row.status = BrainDumpStatus.completed
     mocker.patch.object(
