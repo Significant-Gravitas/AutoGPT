@@ -1068,7 +1068,13 @@ an approval argument of the called tool may be named.
 
 The shim refuses, with `FEATURE_NOT_SUPPORTED` and `details.tool`, a tool it
 doesn't offer, and, with `details.argument` too, an argument it never
-accepts: `check_permissions` with `prompt: true`; any tool's approval
+accepts: `check_permissions` with `prompt: true`; a `browser_navigate`
+`url`, in the call or in a `run_steps` step (`details.argument`
+`steps[i].url`), that isn't a web address, which starts with `http://` or
+`https://` in any letter case or is exactly `about:blank`, and holds no
+space and no control or other invisible character (this refusal comes
+before the call waits for the computer; a file or another kind of link is
+opened with `launch_app`'s `urls`, which needs approval); any tool's approval
 argument inside a `run_steps` step, whatever tool the step names, or its
 `observe`; a `run_steps` step that is a `launch_app` (`details.argument`
 `steps[i]`), since only a launch called on its own has its name checked

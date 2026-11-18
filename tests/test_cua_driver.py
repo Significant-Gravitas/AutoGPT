@@ -4561,3 +4561,200 @@ async def test_a_child_session_uses_the_parents_driver(tmp_path, fake_log, monke
     finally:
         await parent._shutdown_children()
         await parent._computer_handler.close()
+
+
+# ── browser_navigate opens web addresses only ────────────────────────────────
+
+WEB_ADDRESSES = [
+    "http://example.com",
+    "https://example.com/path?q=1#part",
+    "HTTPS://EXAMPLE.COM/",
+    "Http://localhost:8000/",
+    "https://user@example.com:8443/",
+    "https://\u4f8b\u3048.jp/\u30d1\u30b9",
+    "about:blank",
+]
+NOT_WEB_ADDRESSES = [
+    # Other schemes: a file, the page's source, a script, inline data.
+    "file:///Users/me/.ssh/id_rsa",
+    "FILE:///etc/passwd",
+    "file://host/share/a.txt",
+    "view-source:https://example.com",
+    "javascript:alert(1)",
+    "data:text/html,<h1>hello</h1>",
+    "blob:https://example.com/5f1e",
+    "ftp://example.com/file",
+    "ws://example.com/",
+    # The browser's own pages, which `about:` also names.
+    "chrome://settings",
+    "edge://settings",
+    "about:version",
+    "about:settings",
+    "about:crash",
+    "about:",
+    "about:blank#part",
+    "about:blank?x=1",
+    "about:BLANK",
+    "ABOUT:BLANK",
+    # No scheme, or not the two slashes a web address starts with.
+    "example.com",
+    "www.example.com/path",
+    "localhost:8000",
+    "//example.com/path",
+    "/etc/passwd",
+    "C:\\Users\\me\\page.html",
+    "http:example.com",
+    "http:/example.com",
+    "https//example.com",
+    "",
+    # A browser strips spaces and control characters from an address's ends
+    # and drops tabs and newlines inside it, so none is taken.
+    " https://example.com",
+    "https://example.com ",
+    "\thttps://example.com",
+    "https://example.com\n",
+    "https://exa\tmple.com",
+    "https://example.com/pa\nth",
+    "https://example.com/pa\rth",
+    "\x00https://example.com",
+    "https://example.com/\x7f",
+    "https://example.com/a b",
+    " file:///etc/passwd",
+    "fi\tle:///etc/passwd",
+    "java\nscript:alert(1)",
+    "\u00a0https://example.com",
+    "https://example.com/\u202epath",
+    "https://example.com/\u200bpath",
+    # Not a string at all.
+    None,
+    7,
+    ["https://example.com"],
+    {"href": "https://example.com"},
+]
+
+
+@pytest.mark.parametrize("address", WEB_ADDRESSES)
+def test_a_web_address_is_taken(address: str) -> None:
+    assert catalog.is_web_address(address) is True
+    catalog.check_arguments(
+        "browser_navigate", {"target_id": "bt1", "tab_id": "tab1", "url": address}
+    )
+
+
+@pytest.mark.parametrize("address", NOT_WEB_ADDRESSES)
+def test_an_address_that_is_not_a_web_address_is_refused(address: Any) -> None:
+    """browser_navigate's url went to the driver unchecked by the shim. The
+    driver's browser loads what it is given, and a page it loads is read
+    back with get_browser_state."""
+    assert catalog.is_web_address(address) is False
+    with pytest.raises(catalog.ArgumentRefused) as refused:
+        catalog.check_arguments(
+            "browser_navigate", {"target_id": "bt1", "tab_id": "tab1", "url": address}
+        )
+
+    assert refused.value.argument == "url"
+    # It says what to do instead: launch_app's urls, which asks the person.
+    assert "launch_app's urls" in refused.value.reason
+
+
+def test_a_browser_navigate_with_no_url_is_the_drivers_to_refuse() -> None:
+    catalog.check_arguments("browser_navigate", {"target_id": "bt1", "tab_id": "tab1"})
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        {"tool": "browser_navigate", "args": {"url": "file:///etc/passwd"}},
+        {"browser_navigate": {"url": "file:///etc/passwd"}},
+        # Whatever tool the step names: the driver reads some step names its
+        # own way.
+        {"tool": "Browser_Navigate", "args": {"url": "about:version"}},
+        {"tool": "click", "args": {"pid": 1, "url": " https://example.com"}},
+    ],
+)
+def test_a_step_is_held_to_a_web_address_too(step: dict) -> None:
+    with pytest.raises(catalog.ArgumentRefused) as refused:
+        catalog.check_arguments(
+            "run_steps", {"steps": [{"tool": "move_cursor", "args": {"x": 1, "y": 1}}, step]}
+        )
+
+    assert refused.value.argument == "steps[1].url"
+    assert "launch_app's urls" in refused.value.reason
+
+
+def test_a_step_with_a_web_address_is_not_refused_for_its_address() -> None:
+    catalog.check_web_addresses(
+        "run_steps",
+        {"steps": [{"tool": "browser_navigate", "args": {"url": "https://example.com"}}]},
+    )
+
+
+async def test_an_address_that_is_not_a_web_address_is_refused_before_the_computer_is_taken(
+    make_handler, fake_log, tmp_path
+) -> None:
+    """Refused and recorded without waiting for the computer, or for the
+    driver: here another call holds the computer for as long as the test
+    runs."""
+    handler = make_handler()
+    await handler._machine_turn.acquire()
+    try:
+        response = await asyncio.wait_for(
+            handler.handle(
+                _call(
+                    "browser_navigate",
+                    {"target_id": "bt1", "tab_id": "tab1", "url": "file:///Users/me/.ssh/id_rsa"},
+                    timeout_seconds=600,
+                )
+            ),
+            timeout=120,
+        )
+    finally:
+        handler._machine_turn.release()
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "browser_navigate", "argument": "url"}
+    assert "launch_app's urls" in response.payload.message
+    # Nothing reached the driver, which wasn't started for it.
+    assert _records(fake_log, "call") == []
+    assert _records(fake_log, "initialize") == []
+    [record] = _audit(tmp_path)
+    assert record["result"]["ok"] is False
+    assert record["result"]["error_code"] == "FEATURE_NOT_SUPPORTED"
+    assert record["details"]["tool"] == "browser_navigate"
+    assert record["details"]["arguments"]["url"] == "file:///Users/me/.ssh/id_rsa"
+
+
+async def test_a_step_that_is_not_a_web_address_is_refused_and_recorded(
+    make_handler, fake_log, tmp_path
+) -> None:
+    handler = make_handler()
+
+    response = await handler.handle(
+        _call(
+            "run_steps",
+            {"steps": [{"tool": "browser_navigate", "args": {"url": "javascript:alert(1)"}}]},
+        )
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "run_steps", "argument": "steps[0].url"}
+    assert _records(fake_log, "call") == []
+    [record] = _audit(tmp_path)
+    assert record["result"]["error_code"] == "FEATURE_NOT_SUPPORTED"
+
+
+async def test_a_web_address_reaches_the_driver(make_handler, fake_log) -> None:
+    handler = make_handler()
+
+    response = await handler.handle(
+        _call(
+            "browser_navigate",
+            {"target_id": "bt1", "tab_id": "tab1", "url": "https://example.com/"},
+        )
+    )
+
+    assert isinstance(response, ComputerToolResultMessage)
+    [call] = _records(fake_log, "call")
+    assert call["arguments"]["url"] == "https://example.com/"

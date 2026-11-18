@@ -52,6 +52,7 @@ from .computer_use import (
     DriverSnapshot,
     DriverUnavailable,
     check_arguments,
+    check_web_addresses,
     offered_tools,
 )
 from .computer_use.catalog import (
@@ -2295,6 +2296,7 @@ class ComputerUseHandler:
         start = time.monotonic()
         details = self._call_details(msg)
         try:
+            self._refuse_other_than_web_addresses(msg)
             looked_up = await self._looked_up(msg, deadline)
             if looked_up.launch is not None:
                 # What the driver is sent, beside the name the call asked for.
@@ -2328,6 +2330,24 @@ class ComputerUseHandler:
         when the shim received it."""
         seconds = float(msg.payload.timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
         return (asyncio.get_running_loop().time() if received_at is None else received_at) + seconds
+
+    @staticmethod
+    def _refuse_other_than_web_addresses(msg: ComputerToolCallMessage) -> None:
+        """Refuse, before the call waits for the computer or the driver, an
+        address for the driver's browser that isn't a web address
+        (catalog.check_web_addresses): a `file:` address, say, which the
+        browser would load from outside the shared folders for
+        get_browser_state to read back. The refusal says where such an
+        address goes: launch_app's `urls`, which the person approves."""
+        tool = msg.payload.tool
+        try:
+            check_web_addresses(tool, msg.payload.arguments)
+        except ArgumentRefused as exc:
+            raise ComputerUseError(
+                ErrorCode.FEATURE_NOT_SUPPORTED,
+                str(exc),
+                details={"tool": tool, "argument": exc.argument},
+            ) from exc
 
     async def _looked_up(self, msg: ComputerToolCallMessage, deadline: float) -> _LookedUp:
         """What the call's check (check_arguments) looks up on disk, by the

@@ -191,6 +191,28 @@ APPROVAL_ARGUMENT_PLATFORMS: dict[tuple[str, str], frozenset[str]] = {
     ("launch_app", "webkit_inspector_port"): frozenset({"darwin", "win32"}),
 }
 
+# Arguments that carry an address the driver's browser loads, per tool. The
+# shim relays a call only when each is a web address (is_web_address): a
+# browser loads a `file:` address too, and its own pages, and what it loads
+# is read back with get_browser_state, outside the shared folders and with
+# no approval card. A file or another kind of link is opened with
+# launch_app's `urls`, which the person approves.
+# tests/test_cua_driver_contract.py checks that every offered tool's
+# argument named for an address is here or needs approval.
+WEB_ADDRESS_ARGUMENTS: dict[str, tuple[str, ...]] = {"browser_navigate": ("url",)}
+# Every such argument. A run_steps step is held to it whatever tool it names,
+# as it is to the approval arguments.
+_STEP_ADDRESS_ARGUMENTS = tuple(
+    dict.fromkeys(
+        argument for arguments in WEB_ADDRESS_ARGUMENTS.values() for argument in arguments
+    )
+)
+_NOT_A_WEB_ADDRESS = (
+    "only a web address (http:// or https://) or about:blank is opened this way; to open "
+    "a file or another kind of link, pass it in launch_app's urls, which the person approves"
+)
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
 # Every argument that needs approval on some tool. A run_steps step may use
 # none of them, whatever tool it names: the driver runs some steps as
 # another tool (a `press` with a target, and a `triple_click`, as a click).
@@ -224,6 +246,49 @@ class ApprovalRequired(Exception):
         self.reason = reason
 
 
+def is_web_address(value: object) -> bool:
+    """Whether `value` is an address the driver's browser may be sent to:
+    one that starts with `http://` or `https://`, in any letter case, or
+    exactly `about:blank`.
+
+    cua-driver 0.38's browser_navigate hands the string to the browser as
+    it is (Page.navigate) once it starts with `http://`, `https://` or
+    `about:`, in any ASCII case, with nothing trimmed. A browser does trim:
+    it strips spaces and control characters from an address's ends and
+    drops tabs and newlines inside it before it reads the scheme. So an
+    address that holds a space or a control or other invisible character
+    anywhere is refused, not trimmed: what the browser would make of it
+    isn't what was checked. `about:` is taken for `about:blank` alone: the
+    browser reads any other `about:` address as one of its own pages
+    (`about:version` is `chrome://version`), which the driver lets
+    through."""
+    if not isinstance(value, str):
+        return False
+    if any(char.isspace() or unicodedata.category(char).startswith("C") for char in value):
+        return False
+    return value == "about:blank" or value[:8].translate(_ASCII_LOWER).startswith(
+        ("http://", "https://")
+    )
+
+
+def check_web_addresses(tool: str, arguments: Mapping[str, Any]) -> None:
+    """Raise ArgumentRefused for an address the driver's browser would load
+    that isn't a web address (is_web_address), in a call's own arguments
+    and in each step of a `run_steps`, whatever tool the step names. An
+    argument left out is the driver's to refuse."""
+    for argument in WEB_ADDRESS_ARGUMENTS.get(tool, ()):
+        if argument in arguments and not is_web_address(arguments[argument]):
+            raise ArgumentRefused(tool, argument, _NOT_A_WEB_ADDRESS)
+    if tool != "run_steps":
+        return
+    steps = arguments.get("steps")
+    for index, step in enumerate(steps if isinstance(steps, list) else []):
+        for _step_tool, step_args in _step_calls(step):
+            for argument in _STEP_ADDRESS_ARGUMENTS:
+                if argument in step_args and not is_web_address(step_args[argument]):
+                    raise ArgumentRefused(tool, f"steps[{index}].{argument}", _NOT_A_WEB_ADDRESS)
+
+
 def approval_arguments(tool: str, arguments: Mapping[str, Any]) -> list[str]:
     """The arguments of this call that need the person's approval."""
     return _given(APPROVAL_ARGUMENTS.get(tool, {}), arguments)
@@ -251,6 +316,8 @@ def check_arguments(
         raise ArgumentRefused(
             tool, sorted(unknown)[0], "only an argument that needs approval can be approved"
         )
+    # Before the approvals: no approval makes an address a web address.
+    check_web_addresses(tool, arguments)
     for argument in approval_arguments(tool, arguments):
         if argument not in approved:
             raise ApprovalRequired(tool, argument, APPROVAL_ARGUMENTS[tool][argument])
@@ -418,9 +485,6 @@ def windows_app_name_matches(name: str, app_names: Iterable[str]) -> bool:
     if not query:
         return False
     return any(app.strip().lower().startswith(query) for app in app_names)
-
-
-_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 
 
 class InstalledApp(NamedTuple):

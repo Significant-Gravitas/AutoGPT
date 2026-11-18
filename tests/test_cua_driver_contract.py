@@ -170,6 +170,48 @@ async def test_every_argument_named_for_a_path_needs_approval(bridge: CuaDriverB
     assert not unreviewed, unreviewed
 
 
+# Words in an argument's name that say it holds an address to open.
+ADDRESS_WORDS = frozenset(
+    {"address", "href", "link", "links", "location", "uri", "uris", "url", "urls"}
+)
+
+
+async def test_every_argument_named_for_an_address_is_checked_or_needs_approval(
+    bridge: CuaDriverBridge,
+) -> None:
+    """An address the driver's browser loads can be a file's, or one of the
+    browser's own pages. browser_navigate's `url` went to the driver with no
+    check of the shim's. Each such argument of an offered tool is now held
+    to a web address (catalog.WEB_ADDRESS_ARGUMENTS) or needs the person's
+    approval (launch_app's `urls`); a driver that adds one fails here until
+    someone reviews it."""
+    snapshot = await bridge.snapshot()
+
+    unreviewed = sorted(
+        f"{tool['name']}.{argument}"
+        for tool in snapshot.tools
+        for argument in (tool.get("inputSchema") or {}).get("properties") or {}
+        if ADDRESS_WORDS & set(argument.split("_"))
+        and argument not in catalog.APPROVAL_ARGUMENTS.get(tool["name"], {})
+        and argument not in catalog.WEB_ADDRESS_ARGUMENTS.get(tool["name"], ())
+    )
+
+    assert not unreviewed, unreviewed
+
+
+async def test_every_web_address_argument_is_one_the_driver_takes(
+    bridge: CuaDriverBridge,
+) -> None:
+    """A check on an argument the driver renamed would stop applying
+    without anyone noticing."""
+    snapshot = await bridge.snapshot()
+    for tool, arguments in catalog.WEB_ADDRESS_ARGUMENTS.items():
+        spec = snapshot.tool(tool)
+        assert spec is not None, tool
+        properties = (spec.get("inputSchema") or {}).get("properties") or {}
+        assert set(arguments) <= set(properties), tool
+
+
 async def test_batches_reach_only_catalog_tools(bridge: CuaDriverBridge) -> None:
     """run_steps and run_script call other tools inside the driver, where
     the shim can't look; the driver limits them to these, all reviewed. None
