@@ -1,11 +1,13 @@
-"""A workflow is read, run and scheduled only in an organization it belongs to,
-end to end: the real routes, the real request-context resolution, and membership
-rows in Postgres. Only the executor's queue and the scheduler service are stubbed.
+"""A workflow is read, run, scheduled and given a trigger only in an organization
+it belongs to, end to end: the real routes, the real request-context resolution,
+and membership rows in Postgres. Only the executor's queue, the scheduler service
+and the webhook registration are stubbed.
 
 Lives outside ``orgs/``, whose conftest stubs the ``server`` fixture; these
 tests need only Postgres, so they connect Prisma themselves.
 """
 
+import datetime
 import uuid
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
@@ -19,6 +21,8 @@ from prisma.enums import SubmissionStatus
 from pydantic import BaseModel
 
 from backend.api.features.graphs.routes import router as graphs_router
+from backend.api.features.library.model import LibraryAgentPreset
+from backend.api.features.library.routes.presets import router as presets_router
 from backend.api.features.schedules.routes import router as schedules_router
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.copilot.rate_limit import enforce_payment_paywall
@@ -91,6 +95,7 @@ async def api(world: World) -> AsyncIterator[httpx.AsyncClient]:
     app = fastapi.FastAPI()
     app.include_router(graphs_router)
     app.include_router(schedules_router)
+    app.include_router(presets_router)
     add_exception_handlers(app)
 
     async def token(request: fastapi.Request) -> dict:
@@ -147,6 +152,28 @@ def scheduler(mocker, world: World) -> AsyncMock:
         "backend.api.features.schedules.routes.complete_onboarding_step", AsyncMock()
     )
     return client.add_execution_schedule
+
+
+@pytest.fixture
+def trigger_setup(mocker, world: World) -> AsyncMock:
+    now = datetime.datetime.now(datetime.timezone.utc)
+    preset = LibraryAgentPreset(
+        id=str(uuid.uuid4()),
+        user_id=world.user,
+        created_at=now,
+        updated_at=now,
+        graph_id=world.graphs["workflow"],
+        graph_version=1,
+        name="On push",
+        description="",
+        inputs={},
+        credentials={},
+        webhook=None,
+    )
+    return mocker.patch(
+        "backend.api.features.library.routes.presets.setup_triggered_preset",
+        AsyncMock(return_value=preset),
+    )
 
 
 ORGS_AND_STATUSES = [("personal", 200), ("work", 404)]
@@ -207,6 +234,32 @@ async def test_a_workflow_is_scheduled_only_in_an_organization_it_belongs_to(
 
     assert response.status_code == status, response.text
     assert scheduler.await_count == (1 if status == 200 else 0)
+
+
+@pytest.mark.parametrize("org, status", ORGS_AND_STATUSES)
+@pytest.mark.parametrize("workflow", WORKFLOWS)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_trigger_is_set_up_only_in_an_organization_its_workflow_belongs_to(
+    api: httpx.AsyncClient,
+    world: World,
+    trigger_setup: AsyncMock,
+    workflow: str,
+    org: str,
+    status: int,
+):
+    response = await api.post(
+        "/presets/setup-trigger",
+        headers={USER_HEADER: world.user, "X-Org-Id": getattr(world, org)},
+        json={
+            "name": "On push",
+            "graph_id": world.graphs[workflow],
+            "graph_version": 1,
+            "trigger_config": {},
+        },
+    )
+
+    assert response.status_code == status, response.text
+    assert trigger_setup.await_count == (1 if status == 200 else 0)
 
 
 async def _workflow(user_id: str, org_id: str) -> graph_db.GraphModel:
