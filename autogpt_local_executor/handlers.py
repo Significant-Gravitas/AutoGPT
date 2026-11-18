@@ -428,9 +428,13 @@ def _resolved_root(config: ShimConfig) -> Path:
 
 
 def _is_link(path: Path) -> bool:
-    """A symlink, or a Windows junction: removing either leaves its target."""
-    isjunction = getattr(os.path, "isjunction", None)  # Python 3.12+
-    return path.is_symlink() or bool(isjunction and isjunction(path))
+    """A symlink, or a Windows junction: removing either leaves its target.
+
+    A junction is told by _is_reparse_point, not by os.path.isjunction,
+    which Python has only from 3.12 on. Asked directly, a junction counted
+    as a folder of its own on 3.11, and a recursive FILE_DELETE called
+    rmtree on it, which refuses a junction."""
+    return path.is_symlink() or _is_reparse_point(path)
 
 
 def _is_own_directory(path: Path) -> bool:
