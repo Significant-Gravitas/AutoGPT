@@ -87,7 +87,12 @@ class FolderChecks:
         one fails at once. `on_abandoned` is called when this call leaves
         its own look running, by its deadline or by being cancelled."""
         loop = asyncio.get_running_loop()
-        key = os.path.normcase(os.fspath(folder))
+        # The path as it is given, which is how its callers name a folder
+        # each time (a grant's root, the picker's resolved path). Not with
+        # its case folded: Windows has folders that differ only in case,
+        # where a folder is marked case-sensitive, and one of them not
+        # answering would have refused the other without a look.
+        key = os.fspath(folder)
         for done in [key for key, earlier in self._looks.items() if earlier.done.done()]:
             del self._looks[done]
         while (earlier := self._looks.get(key)) is not None and not earlier.done.done():

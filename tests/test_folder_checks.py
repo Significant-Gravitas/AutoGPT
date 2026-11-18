@@ -719,3 +719,30 @@ def test_the_shim_can_still_stop_while_a_folder_never_answers(tmp_path: Path) ->
 
     assert ran.stdout.split() == ["DIRECTORY_UNAVAILABLE", "stopped"], ran.stderr
     assert ran.returncode == 0, ran.stderr
+
+
+# ── Review of the looks' own limits ──────────────────────────────────────────
+
+
+async def test_two_folders_whose_names_differ_only_in_case_are_two_folders(
+    away: _Away, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows can have two folders side by side whose names differ only in
+    case (in a folder marked case-sensitive, as WSL makes them). The looks
+    were kept by each path with its case folded the way Windows folds one,
+    so while `Foo` wasn't answering, `foo` was refused with no look at it.
+    Run here with Windows' folding, whatever the OS."""
+    import ntpath
+
+    from autogpt_local_executor import folder_checks
+
+    monkeypatch.setattr(folder_checks.os.path, "normcase", ntpath.normcase)
+    checks = _checks()
+    with pytest.raises(_timeout()):
+        await checks.run(r"C:\Work\Foo", away, deadline=await _by(BOUND))
+
+    assert await checks.run(r"C:\Work\foo", lambda: "there", deadline=await _by(WITHIN)) == "there"
+    # The folder that is away, asked about again by its name, has its one look.
+    with pytest.raises(_timeout(), match="still hasn't answered an earlier request"):
+        await checks.run(r"C:\Work\Foo", away, deadline=await _by(WITHIN))
+    assert away.looks == 1
