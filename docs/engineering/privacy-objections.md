@@ -65,6 +65,8 @@ Say what still applies in the reply (step 5), so it promises only what we did.
    Find the user ID: Admin → Users, paste the full email address. If they ask
    for deletion too, reply to the account's address and wait for them to
    confirm before deleting anything, since a sender address can be forged.
+   The filter (steps 2 and 3) doesn't wait for that confirmation: it only
+   stops recording, and taking the condition out undoes it.
 
 2. **Add the user ID to the event filter** in the production PostHog project:
    [Event ingestion filtering](https://eu.posthog.com/project/117338/event-filtering).
@@ -87,6 +89,11 @@ Say what still applies in the reply (step 5), so it promises only what we did.
    without it; `"mode": "disabled"` with an empty `or` group switches the
    filter off.
 
+   Both the UI and the API save the whole filter, so a second edit made at
+   the same time can drop your condition. One person edits the filter at a
+   time; after each save, load it again and check that every condition from
+   the complaints log (step 6) is still there. Add back any that is missing.
+
 3. **Wait 10 minutes before deleting.** Ingestion picks up a change within
    two minutes: on the dev project, an event sent 10 seconds after the save
    was stored, and one sent 100 seconds after was dropped. Neither a quiet
@@ -108,8 +115,11 @@ Say what still applies in the reply (step 5), so it promises only what we did.
    ```
 
    PostHog answers `202`. Check the body: `persons_found` and
-   `persons_queued_for_deletion` must both be 1 (0 means the ID is wrong and
-   nothing was deleted). Retry if `deletion_errors` lists anything. In the UI instead: Persons,
+   `persons_queued_for_deletion` must both be 1. If both are 0, nothing was
+   deleted: check the user ID against Admin → Users again. If it is right,
+   PostHog holds no person for it (never seen, or already deleted); confirm
+   with a search for the ID in Persons and Activity, and there is nothing to
+   delete. Retry if `deletion_errors` lists anything. In the UI instead: Persons,
    search for the user ID, open the person, Delete person, with events and
    recordings. PostHog deletes the events in a later batch, at off-peak times
    (weekends on PostHog Cloud), so they show in queries for up to a week.
@@ -118,7 +128,11 @@ Say what still applies in the reply (step 5), so it promises only what we did.
    Traces, filter by the user ID and note the session IDs they show. A reply
    rating is usually a score on its trace and goes with it; a few are scores
    on the chat session, so first delete the scores on those sessions, then
-   select all of the user's traces across pages and delete them.
+   select the user's traces across pages and delete them. Traces lists only
+   what the Langfuse plan's data access window covers (Settings → Billing),
+   while older traces stay stored. If the window doesn't reach back to the
+   user's first chat, say in the reply that older traces remain until
+   Langfuse is shut down, and note it in the log.
 
 5. **Reply within one month** of the request, saying what you did: analytics
    and AI monitoring are no longer recorded against their account, and, if
