@@ -9,6 +9,7 @@ to the vendor's answer.
 
 import asyncio
 import json
+import os
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -85,6 +86,16 @@ def _flags(screen: Any, auto_mode: Any = False):
         return (served[flag_key], True) if flag_key in served else (default, False)
 
     return patch("backend.util.feature_flag._evaluate_flag_value", side_effect=vendor)
+
+
+@pytest.fixture(autouse=True)
+def no_flag_overrides(monkeypatch: pytest.MonkeyPatch):
+    """``load_dotenv()`` copies a local ``.env`` into ``os.environ``, where a
+    ``FORCE_FLAG_*`` would beat the vendor's answer ``_flags`` fakes. Tests of
+    an override set it themselves."""
+    for name in list(os.environ):
+        if name.startswith(("FORCE_FLAG_", "NEXT_PUBLIC_FORCE_FLAG_")):
+            monkeypatch.delenv(name)
 
 
 @pytest.fixture
