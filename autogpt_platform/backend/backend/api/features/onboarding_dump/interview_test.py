@@ -7,7 +7,7 @@ three background jobs, not just that a function was called.
 """
 
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -19,6 +19,7 @@ from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import interview, quality, service
 from backend.api.features.onboarding_dump.interview_endings import (
+    UNCONFIRMED_HANDOFF_S,
     InterviewEnding,
     TextPick,
 )
@@ -1457,17 +1458,51 @@ async def test_closing_again_after_the_hand_off_changes_nothing(
 
 
 @pytest.mark.asyncio
-async def test_someone_who_left_a_confirm_screen_is_handed_off_by_the_next_request(
+async def test_someone_who_left_a_confirm_screen_is_handed_off_by_a_request_an_hour_on(
     stored: StoredInterview, dumps: DumpStore, ending: AsyncMock
 ):
     ending.return_value = InterviewEnding.FIRST_TASK.value
     await _close(stored.session.session_id)
     assert dumps.row is None
+    stored.session.updated_at = datetime.now(UTC) - timedelta(
+        seconds=UNCONFIRMED_HANDOFF_S
+    )
 
     await interview.hand_off_closed_interview(USER_ID, stored.session.session_id)
 
     assert stored.stages == [INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF]
     assert dumps.row is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "arm",
+    [
+        InterviewEnding.PROFILE_CARD,
+        InterviewEnding.SUMMARY_CHIPS,
+        InterviewEnding.TRANSCRIPT_HIGHLIGHTS,
+        InterviewEnding.FIRST_TASK,
+    ],
+)
+async def test_a_reload_of_a_confirm_screen_keeps_it_waiting_for_the_confirm(
+    stored: StoredInterview,
+    dumps: DumpStore,
+    ending: AsyncMock,
+    arm: InterviewEnding,
+):
+    ending.return_value = arm.value
+    await _close(stored.session.session_id)
+
+    await interview.hand_off_closed_interview(USER_ID, stored.session.session_id)
+
+    assert stored.stages == [INTERVIEW_STAGE_CLOSED]
+    assert dumps.row is None
+
+    await _finalize(stored.session.session_id, corrections="Also: Etsy orders")
+
+    assert dumps.row is not None
+    assert dumps.row.transcript == f"{SAID}\nAlso: Etsy orders"
+    assert stored.stages == [INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF]
 
 
 @pytest.mark.asyncio

@@ -80,6 +80,11 @@ CONFIRM_ENDINGS: frozenset[str] = frozenset(
     }
 )
 
+# A confirm arm's interview left unconfirmed this long after it closed is
+# handed off as if confirmed: a call's from its transcript, a typed one's
+# from the interview's last change.
+UNCONFIRMED_HANDOFF_S = 3600.0
+
 
 def hands_off_on_close(ending: str | None) -> bool:
     """Whether an interview ending on *ending* is handed off as it closes.

@@ -51,6 +51,7 @@ import logging
 import re
 import time
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import BackgroundTasks, HTTPException
@@ -60,6 +61,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from backend.api.features.onboarding_dump import db as dump_db
 from backend.api.features.onboarding_dump import quality, service
 from backend.api.features.onboarding_dump.interview_endings import (
+    UNCONFIRMED_HANDOFF_S,
     InterviewMode,
     assigned_ending,
     hands_off_on_close,
@@ -957,8 +959,10 @@ async def hand_off_closed_interview(user_id: str, session_id: str) -> None:
 
     One that used up its replies but never closed is closed now, as the cap
     closes it, and its arm decides the hand-off. One closed with its arm
-    stamped is handed off whatever the arm: that covers someone who left an
-    ending screen without confirming, and a hand-off that failed. One closed
+    stamped is handed off by its arm: an automatic arm at once, which covers
+    a hand-off that failed; a confirm arm only once it has gone unconfirmed
+    for ``UNCONFIRMED_HANDOFF_S``, as a call's does, so a reload of its
+    ending screen keeps the person's confirm and corrections. One closed
     with no arm stamped is closed here as its turn's settle closes it
     (:func:`close_after_turn`), so the arm is read and decides the hand-off:
     Otto's end signal closes an interview inside a turn, and a request can
@@ -995,10 +999,20 @@ async def hand_off_closed_interview(user_id: str, session_id: str) -> None:
             # The server's own hand-off, not the person's confirm: an
             # interview a call took is answered superseded, never refused.
             await close_onboarding_interview(
-                user_id, session_id, reason="user", confirmed=True
+                user_id,
+                session_id,
+                reason="user",
+                confirmed=_unconfirmed_too_long(stored),
             )
     elif interview_reached_cap(session):
         await close_onboarding_interview(user_id, session_id, reason="cap")
+
+
+def _unconfirmed_too_long(stored: ChatSessionInfo) -> bool:
+    """Whether a closed interview has waited ``UNCONFIRMED_HANDOFF_S`` since
+    its last change, its close or later, for a confirm that never came."""
+    waited = datetime.now(UTC) - stored.updated_at
+    return waited.total_seconds() >= UNCONFIRMED_HANDOFF_S
 
 
 class InterviewClosure(BaseModel):

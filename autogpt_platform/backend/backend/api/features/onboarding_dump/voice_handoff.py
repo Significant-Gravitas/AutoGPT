@@ -82,7 +82,10 @@ from backend.api.features.onboarding_dump.interview import (
     superseded_take,
     voice_hand_off_closes_interview,
 )
-from backend.api.features.onboarding_dump.interview_endings import hands_off_on_close
+from backend.api.features.onboarding_dump.interview_endings import (
+    UNCONFIRMED_HANDOFF_S,
+    hands_off_on_close,
+)
 from backend.api.features.onboarding_dump.models import FinalizeResponse
 from backend.copilot.onboarding_interview import InterviewEndReason
 from backend.data.onboarding import record_onboarding_voice_interview_call
@@ -122,9 +125,6 @@ HANDOFF_SWEEP_S = 300.0
 # At shutdown, how long the hand-offs still running get to finish, their
 # pipeline jobs included, before they are cancelled.
 HANDOFF_SHUTDOWN_S = 15.0
-# A confirm arm's call left unconfirmed this long after its transcript was
-# made is handed off as if confirmed.
-UNCONFIRMED_HANDOFF_S = 3600.0
 
 # A hand-off's outcomes besides the call statuses it can leave: left for
 # another attempt, given up after its attempts, owed nothing once read under
