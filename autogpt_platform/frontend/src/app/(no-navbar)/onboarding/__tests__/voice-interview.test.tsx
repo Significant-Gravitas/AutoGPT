@@ -1352,6 +1352,24 @@ describe("onboarding interview by voice: the call", () => {
     expect(fakes.sockets).toHaveLength(1);
   });
 
+  it("reports no ended interview when the person types instead while the call is still ringing", async () => {
+    fakes.holdMicrophone();
+    render(<OnboardingPage />);
+    await talkToOtto();
+    const socket = await relaySocketAfter();
+    act(() => socket.accept());
+    expect(screen.getByText("Calling Otto…")).toBeDefined();
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Type instead" }));
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    expect(ends).toEqual([CALL_ID]);
+    expect(tracked("interview_started")).toEqual([]);
+    expect(tracked("interview_ended")).toEqual([]);
+  });
+
   it("ends the call the click started when the microphone is refused, before anything is said to it", async () => {
     const prompt = fakes.holdMicrophone();
     render(<OnboardingPage />);

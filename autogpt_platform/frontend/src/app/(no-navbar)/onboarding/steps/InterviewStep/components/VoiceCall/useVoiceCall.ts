@@ -1038,15 +1038,17 @@ export function useVoiceCall(args: Args) {
     setIsLeaving(false);
     const call = conn.call;
     if (call) {
-      trackInterview("interview_ended", {
-        mode: "voice",
-        reason: "type_instead",
-        elapsed_s: call.startedAt
-          ? secondsBetween(call.startedAt, Date.now())
-          : null,
-        turns: call.turns,
-        ...ottoListeningSummary(call.listening),
-      });
+      if (call.ticket) {
+        trackInterview("interview_ended", {
+          mode: "voice",
+          reason: "type_instead",
+          elapsed_s: call.startedAt
+            ? secondsBetween(call.startedAt, Date.now())
+            : null,
+          turns: call.turns,
+          ...ottoListeningSummary(call.listening),
+        });
+      }
       dropCall();
       forgetTicket();
       setPhase("ending_call");
