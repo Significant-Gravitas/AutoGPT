@@ -170,9 +170,9 @@ def test_aimlapi_effect_map_names_exactly_the_published_tools():
     assert effects.irreversible == []
 
 
-# Every tool the server listed on 2026-11-18 to a caller that sent no key. Its
-# docs name the four lookups, which change nothing. score is undocumented and
-# sends ratings of the results back to AnySearch, so it asks first.
+# Every tool the server listed on 2026-11-18, with a valid key and with none.
+# Its docs name the four lookups, which change nothing. score is undocumented
+# and sends ratings of the results back to AnySearch, so it asks first.
 ANYSEARCH_LOOKUP_TOOLS = ["batch_search", "extract", "get_sub_domains", "search"]
 
 
