@@ -22,11 +22,10 @@ import {
   EXECUTION_REFETCH_THROTTLE_MS,
   useExecutionEvents,
 } from "@/hooks/useExecutionEvents";
-import { useStableCallback } from "@/hooks/useStableCallback";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
+import { useRunsReadAfterReconnect } from "./useRunsReadAfterReconnect";
 
 function parseTab(
   value: string | null,
@@ -72,7 +71,6 @@ export function useSidebarRunsList({
 
   const tabValue = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
   const queryClient = useQueryClient();
-  const api = useBackendAPI();
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(
     graphId,
@@ -156,7 +154,11 @@ export function useSidebarRunsList({
   function refetchRuns() {
     queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
   }
-  const refetchRunsAfterReconnect = useStableCallback(refetchRuns);
+
+  useRunsReadAfterReconnect({
+    queryKey: runsQuery.queryKey,
+    onTasks: tabValue === "runs",
+  });
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
@@ -167,14 +169,6 @@ export function useSidebarRunsList({
     throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
     onExecutionUpdate: refetchRuns,
   });
-
-  // Updates published while the socket was down never arrive. The
-  // subscription above covers only the Tasks tab, so re-read the runs after
-  // a reconnect whichever tab is open.
-  useEffect(
-    () => api.onWebSocketReconnect(refetchRunsAfterReconnect),
-    [api, refetchRunsAfterReconnect],
-  );
 
   // Notify parent about counts and loading state
   useEffect(() => {

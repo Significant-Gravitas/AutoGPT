@@ -82,7 +82,10 @@ describe("WebSocket token issuance recovery", () => {
           data: { graph_exec_id: executionID },
         }),
       );
-      // Up long enough to count as healthy, so the backoff starts over.
+      // Caught up (its ordering ping answered after the refetch spread) and
+      // up long enough to count as healthy, so the backoff starts over.
+      await vi.advanceTimersByTimeAsync(2000);
+      next.pong();
       await vi.advanceTimersByTimeAsync(10_000);
       next.serverClose(1006);
       await vi.advanceTimersByTimeAsync(1000);

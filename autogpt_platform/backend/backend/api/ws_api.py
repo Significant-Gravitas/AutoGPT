@@ -33,6 +33,7 @@ from backend.monitoring.instrumentation import (
 )
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
+from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -474,4 +475,7 @@ class WebsocketServer(AppProcess):
             ws="websockets-sansio",
             ws_max_size=WS_MAX_MESSAGE_BYTES,
             log_config=None,
+            forwarded_allow_ips=uvicorn_forwarded_allow_ips(
+                settings.config.trusted_proxies
+            ),
         )
