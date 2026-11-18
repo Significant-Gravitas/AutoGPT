@@ -1,6 +1,9 @@
-import { getGetV1GetExecutionDetailsQueryOptions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import {
-  getGetV1GetExecutionDetailsMockHandler,
+  getGetV1GetExecutionDetailsQueryOptions,
+  getGetV1ListAllExecutionsQueryKey,
+  getV1GetExecutionDetails,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
   getGetV1GetExecutionDetailsResponseMock,
   getGetV1ListAllExecutionsMockHandler,
   getGetV1ListAllExecutionsResponseMock,
@@ -19,7 +22,13 @@ import {
   AFTER_RECONNECT,
   installLiveSocket,
 } from "@/tests/integrations/live-socket";
-import { act, render, screen, within } from "@/tests/integrations/test-utils";
+import {
+  act,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render as renderWithoutProviders } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -32,6 +41,21 @@ vi.mock("@/lib/auth/actions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
   getWebSocketToken: async () => ({ token: "test-token" }),
 }));
+
+// Activity's reads by ID, so a test can wait until one has been taken.
+vi.mock(
+  "@/app/api/__generated__/endpoints/graphs/graphs",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/app/api/__generated__/endpoints/graphs/graphs")
+      >();
+    return {
+      ...actual,
+      getV1GetExecutionDetails: vi.fn(actual.getV1GetExecutionDetails),
+    };
+  },
+);
 
 vi.mock("next/link", () => ({
   __esModule: true,
@@ -137,6 +161,15 @@ async function findRunLine(
   wait?: typeof AFTER_RECONNECT,
 ) {
   return within(list).findByText(line, undefined, wait);
+}
+
+/** Waits until Activity has taken the answer to its latest read by ID. */
+async function latestReadTaken() {
+  const read = vi.mocked(getV1GetExecutionDetails).mock.results.at(-1);
+  expect(read).toBeDefined();
+  // Activity awaited this promise first, so its handling has run by now.
+  await Promise.resolve(read?.value).catch(() => undefined);
+  await act(async () => {});
 }
 
 /** The Activity row of a workflow's run, found by the workflow's name. */
@@ -263,17 +296,16 @@ test("opening the menu again shows a run that finished while it was closed", asy
   expect(await findRunLine(list, /^Completed /)).toBeDefined();
 });
 
-const OLD_RUN_STARTED = new Date(
-  Date.now() - 2 * 24 * 3_600_000,
-).toISOString();
+const OLD_RUN_STARTED = new Date(Date.now() - 2 * 24 * 3_600_000).toISOString();
 
 /**
  * GET /executions answers with the newest 250 runs only. After the
  * reconnect, the list leaves out an older run Activity shows as going, and
- * the app reads that run by ID: `readOldRun` answers with its status.
+ * the app reads that run by ID: `readOldRun` answers with its status, or
+ * with an HTTP error status.
  */
 async function showOldRunThenReconnect(
-  readOldRun: () => Promise<AgentExecutionStatus>,
+  readOldRun: () => Promise<AgentExecutionStatus | number>,
   {
     queryClient,
     beforeReconnect,
@@ -319,13 +351,22 @@ async function showOldRunThenReconnect(
     },
   );
   server.use(
-    getGetV1GetExecutionDetailsMockHandler(async () => ({
-      ...getGetV1GetExecutionDetailsResponseMock(),
-      ...run("run-old", await readOldRun(), "graph-old"),
-      inputs: {},
-      outputs: {},
-      node_executions: [],
-    })),
+    http.get(
+      "/api/proxy/api/graphs/:graphId/executions/:graphExecId",
+      async () => {
+        const read = await readOldRun();
+        if (typeof read === "number") {
+          return HttpResponse.json({ detail: "Read failed" }, { status: read });
+        }
+        return HttpResponse.json({
+          ...getGetV1GetExecutionDetailsResponseMock(),
+          ...run("run-old", read, "graph-old"),
+          inputs: {},
+          outputs: {},
+          node_executions: [],
+        });
+      },
+    ),
   );
   const live = installLiveSocket();
 
@@ -367,6 +408,45 @@ test("a run a full list leaves out that ended while the live connection was down
   expect(oldRun.queryByText(/running$/)).toBeNull();
 });
 
+test("a full list read without a reconnect reads no left-out run by ID", async () => {
+  // Only a reconnect loses live updates, so only then is a run worth reading.
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const reads = vi.mocked(getV1GetExecutionDetails);
+  await showOldRunThenReconnect(async () => AgentExecutionStatus.RUNNING, {
+    queryClient,
+    async beforeReconnect({ list }) {
+      const readsBefore = reads.mock.calls.length;
+      await act(() =>
+        queryClient.refetchQueries({
+          queryKey: getGetV1ListAllExecutionsQueryKey(),
+        }),
+      );
+      // The list is in once its new run shows; a read would have gone out.
+      expect(await within(list).findByText("New workflow")).toBeDefined();
+      expect(reads.mock.calls.length).toBe(readsBefore);
+    },
+  });
+});
+
+test("a left-out run that is gone by the time it is read leaves Activity", async () => {
+  const { list } = await showOldRunThenReconnect(async () => 404);
+
+  await waitFor(() =>
+    expect(within(list).queryByText("Old workflow")).toBeNull(),
+  );
+});
+
+test("a left-out run whose read fails stays as shown", async () => {
+  const { list } = await showOldRunThenReconnect(async () => 500);
+  await latestReadTaken();
+
+  expect(
+    (await findRunOf(list, "Old workflow")).getByText(/running$/),
+  ).toBeDefined();
+});
+
 test("a live update that lands while a left-out run is read by ID stands", async () => {
   let readStarted = false;
   let releaseRead = () => {};
@@ -389,7 +469,7 @@ test("a live update that lands while a left-out run is read by ID stands", async
   const oldRun = await findRunOf(list, "Old workflow");
   expect(await oldRun.findByText(/^Stopped /)).toBeDefined();
   releaseRead();
-  await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+  await latestReadTaken();
 
   expect(
     (await findRunOf(list, "Old workflow")).getByText(/^Stopped /),
@@ -422,7 +502,7 @@ test("a read by ID doesn't overrule a list fetched after it started", async () =
     await oldRun.findByText(/^Completed /, undefined, AFTER_RECONNECT),
   ).toBeDefined();
   releaseRead();
-  await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+  await latestReadTaken();
 
   expect(
     (await findRunOf(list, "Old workflow")).getByText(/^Completed /),
@@ -441,6 +521,7 @@ test("a left-out run's read by ID doesn't take an answer that was already on its
     releasePoll = resolve;
   });
   releaseHeldList = releasePoll;
+  let poll: Promise<unknown> = Promise.resolve();
   const { list } = await showOldRunThenReconnect(
     async () => {
       reads += 1;
@@ -451,7 +532,7 @@ test("a left-out run's read by ID doesn't take an answer that was already on its
     {
       queryClient,
       async beforeReconnect({ list, live, first }) {
-        void queryClient
+        poll = queryClient
           .fetchQuery(
             getGetV1GetExecutionDetailsQueryOptions("graph-old", "run-old"),
           )
@@ -471,7 +552,9 @@ test("a left-out run's read by ID doesn't take an answer that was already on its
     },
   );
   releasePoll();
-  await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+  // Whatever took the poll's answer has handled it once the poll settles.
+  await poll;
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 
   const oldRun = await findRunOf(list, "Old workflow");
   expect(oldRun.getByText(/^Awaiting approval /)).toBeDefined();

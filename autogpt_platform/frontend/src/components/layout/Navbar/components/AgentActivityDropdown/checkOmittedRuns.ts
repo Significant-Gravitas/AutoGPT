@@ -1,5 +1,7 @@
 import { getV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
+import type { GraphExecutionWithNodes } from "@/app/api/__generated__/models/graphExecutionWithNodes";
 import { okData } from "@/app/api/helpers";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
@@ -19,9 +21,10 @@ interface Args {
 /**
  * A full run list holds only the newest runs, so it can't tell whether an
  * older run shown as going has ended. One that ended while live updates were
- * lost would show as going for good, so each full list reads such runs by
- * ID, the ones read longest ago (or never) first. A live update or a list
- * that comes after a read started is newer than it and stands.
+ * lost would show as going for good, so the full list read after a reconnect
+ * reads such runs by ID, the ones read longest ago (or never) first. A live
+ * update or a list that comes after a read started is newer than it and
+ * stands.
  *
  * Each read is a request of its own: through the query cache it could join
  * one already on its way (the run's view polls the same query), whose answer
@@ -51,7 +54,10 @@ export function createOmittedRunChecker() {
           let read: GraphExecutionMeta | undefined;
           let gone = false;
           try {
-            read = okData(await getV1GetExecutionDetails(run.graph_id, run.id));
+            const details = okData(
+              await getV1GetExecutionDetails(run.graph_id, run.id),
+            );
+            read = details && metaOf(details);
           } catch (error) {
             gone = error instanceof ApiError && error.status === 404;
             // Any other failure keeps the run as shown; a later list reads it.
@@ -65,4 +71,18 @@ export function createOmittedRunChecker() {
       );
     },
   };
+}
+
+// The details endpoint is the only read of a single run. Activity keeps its
+// meta fields, not the run's outputs and node executions.
+function metaOf(
+  details: GraphExecution | GraphExecutionWithNodes,
+): GraphExecutionMeta {
+  const meta: GraphExecutionMeta &
+    Partial<Pick<GraphExecutionWithNodes, "outputs" | "node_executions">> = {
+    ...details,
+  };
+  delete meta.outputs;
+  delete meta.node_executions;
+  return meta;
 }

@@ -16,13 +16,9 @@ import {
   AFTER_RECONNECT,
   installLiveSocket,
 } from "@/tests/integrations/live-socket";
-import {
-  act,
-  render,
-  screen,
-  waitFor,
-} from "@/tests/integrations/test-utils";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { QueryClient } from "@tanstack/react-query";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, expect, test, vi } from "vitest";
 import AgentLibraryPage from "../page";
@@ -172,11 +168,15 @@ test("a run that finished during a disconnect on another tab shows as finished b
   let status: AgentExecutionStatus = AgentExecutionStatus.RUNNING;
   const { runReads } = serveAgentPage({ status: () => status });
   const live = installLiveSocket();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
 
   render(
     <NuqsTestingAdapter hasMemory searchParams="activeTab=scheduled">
       <AgentLibraryPage />
     </NuqsTestingAdapter>,
+    { queryClient },
   );
   const first = await live.acceptNext();
   expect(
@@ -184,14 +184,26 @@ test("a run that finished during a disconnect on another tab shows as finished b
   ).toBeDefined();
   // The runs list reads once on its own, whichever tab is open.
   await waitFor(() => expect(runReads()).toBe(1));
+  const [runs] = queryClient.getQueryCache().findAll({
+    predicate: (query) =>
+      String(query.queryKey[0]).endsWith(`/graphs/${GRAPH_ID}/executions`),
+  });
+  await waitFor(() => expect(runs?.state.fetchStatus).toBe("idle"));
+  const readAt = runs?.state.dataUpdatedAt;
 
   status = AgentExecutionStatus.COMPLETED;
   await live.drop(first);
-  await live.caughtUp(await live.acceptNext());
+  await live.acceptNext();
+  await live.caughtUp();
+  // Let any read the reconnect started get under way.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
   // Scheduled doesn't show the runs, so they wait for Tasks: a failed read
   // here would only put an error in front of the schedules.
-  await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
-  expect(runReads()).toBe(1);
+  expect(runs?.state).toMatchObject({
+    fetchStatus: "idle",
+    isInvalidated: false,
+    dataUpdatedAt: readAt,
+  });
 
   await userEvent.click(screen.getByRole("tab", { name: /^Tasks/ }));
   expect(

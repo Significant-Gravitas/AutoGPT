@@ -70,6 +70,9 @@ export function useAgentActivityDropdown() {
   // came after that list's fetch started.
   const processedListRef = useRef<number | null>(null);
   const [omittedRuns] = useState(createOmittedRunChecker);
+  // Only a reconnect loses live updates, so only the list read after one
+  // reads left-out runs by ID.
+  const listAfterReconnectRef = useRef(false);
   useEffect(() => {
     if (
       !executions ||
@@ -88,6 +91,8 @@ export function useAgentActivityDropdown() {
       ),
     );
     processedListRef.current = dataUpdatedAt;
+    if (!listAfterReconnectRef.current) return;
+    listAfterReconnectRef.current = false;
     void omittedRuns.check({
       runs: activeRunsTheListOmits(notifications, executions),
       log: liveUpdates,
@@ -115,8 +120,10 @@ export function useAgentActivityDropdown() {
     graphIds: graphIds.length > 0 ? graphIds : undefined,
     enabled: graphIds.length > 0,
     onExecutionUpdate: handleExecutionEvent,
-    onReconnect: () =>
-      refetchAfterReconnect(queryClient, getGetV1ListAllExecutionsQueryKey()),
+    onReconnect: () => {
+      listAfterReconnectRef.current = true;
+      refetchAfterReconnect(queryClient, getGetV1ListAllExecutionsQueryKey());
+    },
   });
 
   return {

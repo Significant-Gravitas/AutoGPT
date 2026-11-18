@@ -1,6 +1,7 @@
 import { FakeWebSocket } from "@/lib/autogpt-server-api/__tests__/websocket-fake";
+import BackendAPI from "@/lib/autogpt-server-api/client";
 import { act, waitFor } from "@testing-library/react";
-import { expect, vi } from "vitest";
+import { expect, onTestFinished, vi } from "vitest";
 
 /**
  * How long to wait for a view to change after a reconnect: the app spreads
@@ -15,16 +16,12 @@ export const AFTER_RECONNECT = { timeout: 6000 };
  * reconnect on its own. The test file also mocks `getWebSocketToken` to
  * return a token, or the app never opens a socket.
  */
-function heartbeatsSent(socket: FakeWebSocket) {
-  return socket.send.mock.calls.filter(
-    ([data]) => JSON.parse(data).method === "heartbeat",
-  ).length;
-}
-
 export function installLiveSocket() {
   FakeWebSocket.instances = [];
   vi.stubGlobal("WebSocket", FakeWebSocket);
   let accepted = 0;
+  const notices = countReconnectNotices();
+  let noticesAtDrop = 0;
 
   return {
     /** Accepts the app's next connection and keeps answering its pings. */
@@ -45,16 +42,16 @@ export function installLiveSocket() {
     },
     /** What the server does when it loses its event stream. */
     async drop(socket: FakeWebSocket) {
+      noticesAtDrop = notices.count();
       await act(async () => socket.serverClose(1011));
     },
     /**
-     * Waits until a reconnected socket has sent its ordering ping (the one
-     * after the resubscriptions) and the app has taken the answer, so its
-     * reconnect handlers have run.
+     * Waits until the app has told its views it reconnected after the last
+     * drop, so every reconnect handler has run.
      */
-    async caughtUp(socket: FakeWebSocket) {
+    async caughtUp() {
       await waitFor(
-        () => expect(heartbeatsSent(socket)).toBeGreaterThanOrEqual(2),
+        () => expect(notices.count()).toBeGreaterThan(noticesAtDrop),
         AFTER_RECONNECT,
       );
       await act(async () => {});
@@ -73,4 +70,25 @@ export function installLiveSocket() {
       );
     },
   };
+}
+
+// Each BackendAPI the app registers a reconnect handler on gets one more,
+// first, which counts the reconnect notices.
+function countReconnectNotices() {
+  let notices = 0;
+  const counted = new WeakSet<BackendAPI>();
+  const register = BackendAPI.prototype.onWebSocketReconnect;
+  const spy = vi
+    .spyOn(BackendAPI.prototype, "onWebSocketReconnect")
+    .mockImplementation(function (this: BackendAPI, handler: () => void) {
+      if (!counted.has(this)) {
+        counted.add(this);
+        register.call(this, () => {
+          notices += 1;
+        });
+      }
+      return register.call(this, handler);
+    });
+  onTestFinished(() => spy.mockRestore());
+  return { count: () => notices };
 }

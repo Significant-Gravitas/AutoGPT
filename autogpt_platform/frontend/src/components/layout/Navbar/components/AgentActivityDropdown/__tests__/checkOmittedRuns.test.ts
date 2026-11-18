@@ -23,7 +23,11 @@ test("each full list reads the left-out runs read longest ago first", async () =
   server.use(
     getGetV1GetExecutionDetailsMockHandler(({ params }) => {
       requested.push(String(params.graphExecId));
-      return { ...running(String(params.graphExecId)), inputs: {}, outputs: {} };
+      return {
+        ...running(String(params.graphExecId)),
+        inputs: {},
+        outputs: {},
+      };
     }),
   );
   const checker = createOmittedRunChecker();
