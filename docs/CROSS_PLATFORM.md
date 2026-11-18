@@ -134,10 +134,37 @@ Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/net.autogpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...`) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` reverses it. |
-| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: `AT_LOGON` (Task Scheduler `<LogonTrigger>`) | All require user opt-in. CLI prints the systemctl / launchctl / schtasks commands but never runs them. The macOS `SuccessfulExit=false` flag is load-bearing: launchd starts the daemon again after every nonzero exit, no more often than every 10 seconds (its default throttle). It doesn't watch TCC.db: while computer use is requested and Accessibility or Screen Recording isn't granted, each start runs the preflight, which starts cua-driver to check the grants, and exits 78 again, so the start after consent is granted in System Settings comes up without the user touching launchctl. See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
+| Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/net.autogpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...`) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` undoes both: see [Uninstalling](#uninstalling). |
+| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: `AT_LOGON` (Task Scheduler `<LogonTrigger>`) | All require user opt-in: `install` prints the systemctl / launchctl / schtasks command that starts the service and never runs it. The macOS `SuccessfulExit=false` flag is load-bearing: launchd starts the daemon again after every nonzero exit, no more often than every 10 seconds (its default throttle). It doesn't watch TCC.db: while computer use is requested and Accessibility or Screen Recording isn't granted, each start runs the preflight, which starts cua-driver to check the grants, and exits 78 again, so the start after consent is granted in System Settings comes up without the user touching launchctl. See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
 | Logs | `~/Library/Logs/autogpt-local-executor/*.log` | `journalctl --user -u autogpt-shim` + `$XDG_STATE_HOME/autogpt-local-executor/` | `%LOCALAPPDATA%\autogpt-local-executor\logs\` | Audit log location per row "Audit log" below. |
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
+
+#### Uninstalling
+
+`autogpt-shim uninstall` stops the service, unregisters it and removes the
+autostart file, in that order: the service managers' own commands for it
+(`launchctl unload <plist>`, `systemctl --user disable`) read the file, so
+with the file removed first the shim would run on until the next logout.
+It runs the service manager itself, and waits a bounded time for each step:
+
+| OS | What it runs | It waits |
+|---|---|---|
+| macOS | `launchctl bootout <domain>/net.autogpt.shim`, in the login session (`gui/<uid>`) and the background one (`user/<uid>`, where an agent loaded over SSH is), then asks launchd until the service has gone | 30 s (launchd kills a service that hasn't exited after 20 s) |
+| Linux, WSL2 | `systemctl --user disable --now autogpt-shim.service` while the unit file is there, or `systemctl --user stop` when it is already gone; then `systemctl --user daemon-reload` | 100 s (systemd kills a unit that hasn't stopped after 90 s) |
+| Windows | `schtasks /End` and then `schtasks /Delete` on `\AutoGPT\Shim`. Deleting alone would leave what the task started running | 30 s |
+
+It stops only the service the autostart entry started. A shim started by
+hand in a terminal isn't the service manager's, and keeps running.
+
+When the service can't be stopped, it says what failed, removes the file
+all the same, prints one command that stops the service without the file,
+and exits 1. That happens when the service manager's tool isn't on `PATH`,
+when there is no user session bus to reach systemd through (a shell from
+`su` or `sudo -u`), when the wait runs out, and on Windows when the task was
+registered from an elevated prompt and `uninstall` runs from a plain one.
+There a task that this prompt can't see looks like one that isn't
+registered, so `uninstall` can only rule a task out from an elevated prompt.
+With nothing installed and nothing running it changes nothing and exits 0.
 
 The systemd user unit sets `AUTOGPT_SHIM_SUPERVISOR=systemd`. It starts at
 login, before the desktop exports its display to the user manager. So when

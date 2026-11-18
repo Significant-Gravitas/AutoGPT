@@ -9,8 +9,11 @@ Per docs/CROSS_PLATFORM.md "Autostart / background daemon" row:
 - WSL2   : same path as Linux (systemd user unit). Note `enable-linger` for
            start-without-login.
 
-We never invoke the OS service managers (launchctl, systemctl, schtasks) —
-we only write/remove files and print the commands the user should run.
+`install` only writes the file and prints the command that registers it with
+the OS service manager (launchctl, systemctl, schtasks): starting the shim at
+every login stays the person's own step. `uninstall` does run the service
+manager: it stops the service and unregisters it, and only then removes the
+file (`uninstall_autostart`).
 This module is import-safe on every OS; the OS-specific writers are only
 called via dispatch from `install_autostart()` / `uninstall_autostart()`.
 """
@@ -23,7 +26,8 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from xml.sax.saxutils import escape as _xml_escape
@@ -36,6 +40,9 @@ _TEMPLATES_DIR = Path(__file__).parent / "templates"
 LAUNCHD_LABEL = "net.autogpt.shim"
 SYSTEMD_UNIT_NAME = "autogpt-shim.service"
 TASKSCHED_TASK_NAME = r"\AutoGPT\Shim"
+# What stops the service, unregisters it and removes its autostart entry, on
+# every OS and whether or not the entry's file is still there.
+UNINSTALL_COMMAND = "autogpt-shim uninstall"
 
 
 # ── Rendering ────────────────────────────────────────────────────────────────
@@ -288,7 +295,13 @@ class AutostartStatus:
     platform: str
     target_path: Path
     installed: bool
+    # Registers the entry with the service manager. It names the entry's
+    # file, so it works only while the entry is installed.
     enable_command: str | None
+    # Stops the service and removes the entry: `autogpt-shim uninstall`,
+    # which works with or without the entry's file. The service managers'
+    # own commands mostly don't: `launchctl unload` reads the plist and
+    # `systemctl disable` the unit file.
     disable_command: str | None
     notes: tuple[str, ...] = ()
 
@@ -336,7 +349,7 @@ def status_for(platform_name: str, home: Path | None = None) -> AutostartStatus:
             target_path=target,
             installed=installed,
             enable_command=f"launchctl load {target}",
-            disable_command=f"launchctl unload {target}",
+            disable_command=UNINSTALL_COMMAND,
             notes=(
                 "RunAtLoad + KeepAlive are set; launchd starts the shim at "
                 "login and restarts it if it dies.",
@@ -361,7 +374,7 @@ def status_for(platform_name: str, home: Path | None = None) -> AutostartStatus:
             target_path=target,
             installed=installed,
             enable_command="systemctl --user enable --now autogpt-shim.service",
-            disable_command="systemctl --user disable --now autogpt-shim.service",
+            disable_command=UNINSTALL_COMMAND,
             notes=notes,
         )
     if platform_name == "windows":
@@ -370,7 +383,7 @@ def status_for(platform_name: str, home: Path | None = None) -> AutostartStatus:
             target_path=target,
             installed=installed,
             enable_command=(f'schtasks /Create /TN "{TASKSCHED_TASK_NAME}" /XML "{target}"'),
-            disable_command=f'schtasks /Delete /TN "{TASKSCHED_TASK_NAME}" /F',
+            disable_command=UNINSTALL_COMMAND,
             notes=(
                 "Task Scheduler XML is written but NOT registered. Run the "
                 "schtasks command above (elevated cmd / PowerShell) to "
@@ -428,25 +441,387 @@ def install_autostart(
     return status_for(plat, home)
 
 
+# ── Stopping the service ─────────────────────────────────────────────────────
+
+# How long one question to a service manager may take.
+_ASK_SECONDS = 10.0
+# How long each service manager gets to stop the service: a little longer
+# than it gives the shim itself before it kills it (launchd 20 s, systemd
+# 90 s by default; Task Scheduler ends a task at once).
+_LAUNCHD_STOP_SECONDS = 30.0
+_SYSTEMD_STOP_SECONDS = 100.0
+_TASK_SCHEDULER_STOP_SECONDS = 30.0
+# How often launchd is asked whether the service has gone.
+_LAUNCHD_POLL_SECONDS = 0.2
+# systemd's states for a unit that isn't running and isn't about to.
+_SYSTEMD_NOT_RUNNING = ("inactive", "failed")
+
+_monotonic = time.monotonic
+_sleep = time.sleep
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    """How one service-manager command ended."""
+
+    # Its exit status; None when it didn't run to its end.
+    returncode: int | None
+    # What it wrote, stdout and stderr together.
+    output: str = ""
+    # Why it didn't run to its end: not found, or still running at its
+    # time limit.
+    failure: str | None = None
+
+    @property
+    def succeeded(self) -> bool:
+        return self.returncode == 0
+
+    def said(self) -> str:
+        """Why it didn't succeed, in its own words where it gave any."""
+        if self.failure is not None:
+            return self.failure
+        text = " ".join(self.output.split())
+        return text or f"exit status {self.returncode}"
+
+
+CommandRunner = Callable[[Sequence[str], float], CommandResult]
+
+
+def run_command(argv: Sequence[str], timeout: float) -> CommandResult:
+    """Run one service-manager command to its end, for at most `timeout`
+    seconds, with no input and its output kept."""
+    shown = " ".join(argv)
+    try:
+        done = subprocess.run(
+            list(argv),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError:
+        return CommandResult(None, failure=f"`{argv[0]}` was not found on PATH")
+    except subprocess.TimeoutExpired:
+        return CommandResult(None, failure=f"`{shown}` did not finish within {timeout:g} s")
+    except OSError as exc:
+        return CommandResult(None, failure=f"`{shown}` could not be run: {exc}")
+    # schtasks writes in the console's code page, the others UTF-8.
+    encoding = "oem" if sys.platform == "win32" else "utf-8"
+    return CommandResult(done.returncode, done.stdout.decode(encoding, errors="replace"))
+
+
+@dataclass(frozen=True)
+class ServiceStop:
+    """What the service manager had of the service, and what was done."""
+
+    # Whether the service manager had the service: loaded (launchd), active
+    # (systemd) or registered (Task Scheduler). None when it couldn't be
+    # asked, or couldn't tell.
+    found: bool | None
+    # What was found and done, when all of it went through.
+    said: str = ""
+    # What couldn't be asked or done, else None.
+    problem: str | None = None
+    # The service manager's own command that stops the service by hand. It
+    # needs no autostart file, which `uninstall` removes either way.
+    stop_command: str = ""
+    # Where that command has to be run, when not just anywhere.
+    stop_where: str = ""
+
+
+def _user_id() -> int:
+    return os.getuid()  # type: ignore[attr-defined,unused-ignore]
+
+
+def _is_elevated() -> bool:
+    """Whether this process sees and may change every scheduled task: one
+    run from an administrator's elevated prompt."""
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())  # type: ignore[attr-defined]
+    except (AttributeError, OSError):
+        return False
+
+
+def _stop_launchd(run: CommandRunner, *, label: str, uid: int) -> ServiceStop:
+    """Unload the LaunchAgent from launchd, which stops it.
+
+    `launchctl bootout <domain>/<label>` takes the label, so it needs no
+    plist; `launchctl unload <plist>` reads the file. A LaunchAgent is in
+    the person's login session (gui/<uid>) when it was loaded from a
+    terminal there or at login, and in their background session
+    (user/<uid>) when it was loaded over SSH, so both are looked in.
+
+    Whether it is loaded, before and after, is `launchctl print`'s exit
+    status. bootout's own status isn't the answer: launchd gives a service
+    time to exit before it kills it (20 s by default), and bootout can come
+    back sooner, with a failure of its own for a service still on its way
+    out (36, "Operation now in progress")."""
+    by_hand = f"launchctl bootout gui/$(id -u)/{label}"
+    unloaded: list[str] = []
+    for domain, by_name in ((f"gui/{uid}", "gui/$(id -u)"), (f"user/{uid}", "user/$(id -u)")):
+        target = f"{domain}/{label}"
+        loaded = run(["launchctl", "print", target], _ASK_SECONDS)
+        if loaded.failure is not None:
+            return ServiceStop(
+                found=True if unloaded else None, problem=loaded.failure, stop_command=by_hand
+            )
+        if not loaded.succeeded:
+            continue  # not loaded there, or there is no such session
+        by_hand = f"launchctl bootout {by_name}/{label}"
+        deadline = _monotonic() + _LAUNCHD_STOP_SECONDS
+        bootout = run(["launchctl", "bootout", target], _LAUNCHD_STOP_SECONDS)
+        while True:
+            still = run(["launchctl", "print", target], _ASK_SECONDS)
+            if still.failure is not None:
+                return ServiceStop(found=True, problem=still.failure, stop_command=by_hand)
+            if not still.succeeded:
+                break
+            if _monotonic() >= deadline:
+                refusal = (
+                    "" if bootout.succeeded else f" (`launchctl bootout` said: {bootout.said()})"
+                )
+                return ServiceStop(
+                    found=True,
+                    problem=f"launchd still has {target} loaded {_LAUNCHD_STOP_SECONDS:g} s "
+                    f"after it was told to unload it{refusal}",
+                    stop_command=by_hand,
+                )
+            _sleep(_LAUNCHD_POLL_SECONDS)
+        unloaded.append(domain)
+    if unloaded:
+        return ServiceStop(
+            found=True,
+            said=f"Stopped the service: launchd unloaded {label} from {' and '.join(unloaded)}.",
+            stop_command=by_hand,
+        )
+    return ServiceStop(
+        found=False,
+        said=f"The service wasn't running: launchd has no {label} loaded.",
+        stop_command=by_hand,
+    )
+
+
+def _stop_systemd(run: CommandRunner, *, unit: str, entry_installed: bool) -> ServiceStop:
+    """Stop the user unit and disable it.
+
+    `systemctl disable` reads the unit file: once the file is gone it
+    fails, `--now` stops nothing, and the link that enables the unit stays.
+    So this runs while the file is there. With no unit file (one removed by
+    hand, or by a shim that removed it first), `systemctl stop` still stops
+    a unit that is running, by its name."""
+    by_hand = f"systemctl --user stop {unit}"
+    state = run(["systemctl", "--user", "show", "--property=ActiveState", unit], _ASK_SECONDS)
+    if not state.succeeded:
+        return ServiceStop(
+            found=None,
+            problem=f"systemd's user manager couldn't be asked about {unit}: {state.said()}",
+            stop_command=by_hand,
+        )
+    states = [
+        line.partition("=")[2].strip()
+        for line in state.output.splitlines()
+        if line.startswith("ActiveState=")
+    ]
+    if not states:
+        return ServiceStop(
+            found=None,
+            problem=f"`systemctl --user show` didn't say whether {unit} is running",
+            stop_command=by_hand,
+        )
+    running = states[0] not in _SYSTEMD_NOT_RUNNING
+    if entry_installed:
+        done = run(["systemctl", "--user", "disable", "--now", unit], _SYSTEMD_STOP_SECONDS)
+        said = (
+            f"Stopped the service: systemd stopped and disabled {unit}."
+            if running
+            else f"The service wasn't running; systemd disabled {unit}."
+        )
+    elif running:
+        done = run(["systemctl", "--user", "stop", unit], _SYSTEMD_STOP_SECONDS)
+        said = f"Stopped the service: systemd stopped {unit}."
+    else:
+        return ServiceStop(
+            found=False,
+            said=f"The service wasn't running: systemd has no active {unit}.",
+            stop_command=by_hand,
+        )
+    if not done.succeeded:
+        return ServiceStop(
+            found=running,
+            problem=f"systemd didn't {'stop' if running else 'disable'} {unit}: {done.said()}",
+            stop_command=by_hand,
+        )
+    return ServiceStop(found=running, said=said, stop_command=by_hand)
+
+
+def _stop_scheduled_task(run: CommandRunner, *, task: str, elevated: bool) -> ServiceStop:
+    """End the task's running instance, then delete the task.
+
+    In that order: deleting a task leaves what it started running, and
+    with the task gone nothing can end it by name. So a task that can't be
+    ended is kept, for a prompt that may end it.
+
+    schtasks exits 1 for every failure and words them in the system's
+    language, so a task this prompt can't see looks like one that isn't
+    there. Only an elevated prompt sees every task; registering this one
+    takes such a prompt, and one registered with another account's
+    credentials belongs to that account."""
+    by_hand = f'cmd /c "schtasks /End /TN {task} & schtasks /Delete /TN {task} /F"'
+    where = "" if elevated else "from an elevated prompt"
+
+    def failed(found: bool | None, problem: str) -> ServiceStop:
+        return ServiceStop(found=found, problem=problem, stop_command=by_hand, stop_where=where)
+
+    seen = run(["schtasks", "/Query", "/TN", task], _ASK_SECONDS)
+    if seen.failure is not None:
+        return failed(None, seen.failure)
+    if not seen.succeeded:
+        if elevated:
+            return ServiceStop(
+                found=False,
+                said=f"The service wasn't set to start: no task {task} is registered.",
+                stop_command=by_hand,
+            )
+        return failed(
+            None,
+            f"this prompt isn't elevated and sees no task {task} (`schtasks /Query` said: "
+            f"{seen.said()}). A task registered from an elevated prompt, or with another "
+            "account's credentials, can't be seen or ended from here",
+        )
+    ended = run(["schtasks", "/End", "/TN", task], _TASK_SCHEDULER_STOP_SECONDS)
+    if not ended.succeeded:
+        return failed(True, f"Task Scheduler didn't end the task {task}: {ended.said()}")
+    deleted = run(["schtasks", "/Delete", "/TN", task, "/F"], _ASK_SECONDS)
+    if not deleted.succeeded:
+        return failed(
+            True,
+            f"Task Scheduler ended the task {task} but didn't delete it, so it starts "
+            f"again at the next logon: {deleted.said()}",
+        )
+    return ServiceStop(
+        found=True,
+        said=f"Stopped the service: Task Scheduler ended and deleted the task {task}.",
+        stop_command=by_hand,
+    )
+
+
+def stop_service(
+    platform_name: str, *, entry_installed: bool, run: CommandRunner | None = None
+) -> ServiceStop:
+    """Stop the service this OS's autostart entry starts and unregister it,
+    through the OS's service manager, waiting a bounded time for each step.
+
+    Only that service: a shim someone started by hand in a terminal isn't
+    the service manager's, and isn't touched."""
+    run = run or run_command
+    if platform_name == "darwin":
+        return _stop_launchd(run, label=LAUNCHD_LABEL, uid=_user_id())
+    if platform_name in ("linux", "wsl2"):
+        return _stop_systemd(run, unit=SYSTEMD_UNIT_NAME, entry_installed=entry_installed)
+    if platform_name == "windows":
+        return _stop_scheduled_task(run, task=TASKSCHED_TASK_NAME, elevated=_is_elevated())
+    raise ValueError(f"Unsupported platform for autostart install: {platform_name!r}")
+
+
+def _forget_systemd_unit(
+    target: Path, service: ServiceStop, removed: bool, run: CommandRunner
+) -> tuple[str, ...]:
+    """Finish a systemd uninstall once the unit file is gone: remove the
+    link that enabled the unit if `systemctl disable` couldn't (it would
+    enable a later install unasked), and have systemd read its units
+    again, so that it forgets this one."""
+    wanted = target.parent / "default.target.wants" / target.name
+    # Only a link to a unit file that is no longer there: another unit of
+    # this name, kept elsewhere, is not this entry's.
+    unlinked = wanted.is_symlink() and not wanted.exists()
+    if unlinked:
+        wanted.unlink()
+    if service.found is None or not (removed or unlinked or service.found):
+        return ()
+    reloaded = run(["systemctl", "--user", "daemon-reload"], _ASK_SECONDS)
+    if reloaded.succeeded:
+        return ()
+    return (
+        "systemd was not told to read its units again "
+        f"({reloaded.said()}); it does at the next login.",
+    )
+
+
+@dataclass(frozen=True)
+class Uninstalled:
+    """What `uninstall_autostart` found and did."""
+
+    # The autostart entry as it is now.
+    status: AutostartStatus
+    # Whether the entry's file was there.
+    entry_installed: bool
+    service: ServiceStop
+    # Why the entry's file couldn't be removed, when it couldn't.
+    entry_problem: str | None = None
+    notes: tuple[str, ...] = ()
+
+    @property
+    def may_still_run(self) -> bool:
+        """Whether the service may still be running: it was there and
+        something about stopping it failed, or the service manager couldn't
+        be asked about an entry that was installed. With no entry installed
+        and a service manager that couldn't be asked, there is no sign of a
+        service."""
+        if self.service.problem is None:
+            return False
+        if self.service.found is None:
+            return self.entry_installed
+        return self.service.found
+
+
 def uninstall_autostart(
     *,
     home: Path | None = None,
     platform_name: str | None = None,
-) -> AutostartStatus:
-    """Remove the autostart file for this OS.
+    run: CommandRunner | None = None,
+) -> Uninstalled:
+    """Stop the service this OS's autostart entry starts, unregister it,
+    then remove the entry's file.
 
-    Returns the post-removal status. Idempotent: no-op if already absent.
+    In that order. Removing the file first left nothing for the service
+    manager's own commands to read (`launchctl unload <plist>`, `systemctl
+    disable`), so the shim ran on, connected, until the next logout. The
+    file is removed whatever the stop came to, and the result says what
+    couldn't be done. Safe to run again: with nothing installed and
+    nothing running it changes nothing.
     """
     plat = platform_name or _current_platform_for_install()
     target = target_path_for(plat, home)
-    if target.is_file():
-        target.unlink()
-    return status_for(plat, home)
+    run = run or run_command
+    installed = target.is_file()
+    service = stop_service(plat, entry_installed=installed, run=run)
+    entry_problem = None
+    if installed:
+        try:
+            target.unlink()
+        except OSError as exc:
+            entry_problem = str(exc)
+    notes: tuple[str, ...] = ()
+    if plat in ("linux", "wsl2"):
+        notes = _forget_systemd_unit(target, service, installed and entry_problem is None, run)
+    return Uninstalled(
+        status=status_for(plat, home),
+        entry_installed=installed,
+        service=service,
+        entry_problem=entry_problem,
+        notes=notes,
+    )
 
 
 __all__ = [
     "AutostartContext",
     "AutostartStatus",
+    "CommandResult",
+    "ServiceStop",
+    "Uninstalled",
     "build_context",
     "default_config_path",
     "install_autostart",
@@ -454,7 +829,9 @@ __all__ = [
     "macos_launchagent_path",
     "render_template",
     "resolve_shim_command",
+    "run_command",
     "status_for",
+    "stop_service",
     "target_path_for",
     "uninstall_autostart",
     "windows_task_xml_path",

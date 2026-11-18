@@ -66,9 +66,8 @@ class AutogptLocalExecutor < Formula
         autogpt-shim install     # register the launchd LaunchAgent
         launchctl load ~/Library/LaunchAgents/net.autogpt.shim.plist
 
-      Uninstall the autostart entry with:
+      Stop the service and remove the autostart entry with:
         autogpt-shim uninstall
-        launchctl unload ~/Library/LaunchAgents/net.autogpt.shim.plist
     EOS
   end
 

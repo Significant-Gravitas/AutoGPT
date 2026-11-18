@@ -73,6 +73,9 @@ pages are only ever the default for the hosted backend.
 For autostart, run `autogpt-shim install`, enable the generated per-user service,
 and omit `session_id` from the TOML configuration. The service maintains the
 persistent paired-machine connection; selected roots are isolated per chat.
+`autogpt-shim uninstall` stops that service, unregisters it and removes the
+autostart entry; it exits 1, and prints the command to run, if it couldn't
+stop the service (see [CROSS_PLATFORM.md](docs/CROSS_PLATFORM.md#uninstalling)).
 The service names a config file with `--config` when you passed one or a file
 exists at the default location; otherwise the shim looks at the default
 location itself. `install` refuses a `--config` it can't load, such as one that

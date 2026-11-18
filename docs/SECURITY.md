@@ -257,7 +257,9 @@ valid-length ciphertext corruption. Prefer a supported OS keyring.
 
 If you believe your shim was compromised:
 
-1. Stop the foreground daemon with Ctrl+C, or stop its launchd/systemd/Task Scheduler entry.
+1. Stop the foreground daemon with Ctrl+C. For the autostart service, run
+   `autogpt-shim uninstall`: it stops the service through launchd, systemd or
+   Task Scheduler and removes its entry, and says so if it couldn't.
 2. `autogpt-shim revoke` — revokes the configured deployment's saved OAuth tokens;
    repeat with each deployment's configuration as needed
 3. Review the audit log at the per-OS location (see [AUDIT_LOG.md](AUDIT_LOG.md)) with `autogpt-shim audit tail` / `verify`
