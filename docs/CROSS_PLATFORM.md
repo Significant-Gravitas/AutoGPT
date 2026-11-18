@@ -45,14 +45,14 @@ One row per dimension. `n/a` means "doesn't apply on this OS." `same` means
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Path separator | `/` | `/` | `\` (also accepts `/`) | Shim normalizes incoming wire paths with `pathlib.PurePath`. |
+| Path separator | `/` | `/` | `\` (also accepts `/`) | The shim reads a wire path as the OS's own `pathlib.Path`. On macOS and Linux a `\` is an ordinary character of a name. |
 | Drive letters / UNC | n/a | n/a | `C:\`, `\\server\share` | A path on another drive, relative to another drive's folder (`D:x`), on another share or host (`\\server\share\x`, `//server/share/x`), or in a device namespace (`\\.\`, `\\?\`) is refused by its name, before anything looks at it: resolving one would have Windows connect to the host and sign in with the person's account, or open the device. A root that is itself on a share or a mapped drive takes the paths under it. See [Path Jail Strategy](#path-jail-strategy). |
-| Reserved filenames | none | none | `CON`, `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, `COM1`–`COM9`, `LPT1`–`LPT9`, and `COM`/`LPT` with a superscript `¹`, `²` or `³` (case-insensitive, with or without extension, and with spaces before the extension) | Reject in FILE_WRITE; reject reads if the name is `\\?\`-escaped to a real reserved device. |
-| Invalid path chars | `:` (legacy HFS quirk; modern APFS allows) | none | `< > : " \| ? *` and control chars 0–31 | Reject on FILE_WRITE before opening. |
-| Max path length | 1024 (PATH_MAX) | 4096 (PATH_MAX) | 260 (MAX_PATH) unless `\\?\` prefix → 32767 | Shim transparently uses `\\?\` on Windows for paths > 240 chars. |
-| Alternate data streams | n/a | n/a | `file.txt:hidden` (NTFS ADS) | Path jail strips/rejects any path containing `:` after the drive component. |
-| Case sensitivity (default FS) | **Insensitive** (APFS default) | **Sensitive** (ext4/btrfs/xfs) | **Insensitive** (NTFS default) | Path jail compares case-folded on macOS+Windows; raw-byte on Linux. See [Path Jail Strategy](#path-jail-strategy). |
-| Home dir env var | `$HOME` | `$HOME` | `%USERPROFILE%` (also `%HOMEDRIVE%%HOMEPATH%`) | Shim resolves `~` via `pathlib.Path.home()` which handles all three. |
+| Reserved filenames | none | none | `CON`, `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, `COM1`–`COM9`, `LPT1`–`LPT9`, and `COM`/`LPT` with a superscript `¹`, `²` or `³` (case-insensitive, with or without extension, and with spaces before the extension) | Refused for every request that names a path (each FILE_* message and a command's `cwd`), at any depth of the path, with `PATH_RESERVED_NAME`, before anything looks at the path. |
+| Invalid path chars | NUL (`\0`) | NUL (`\0`) | `< > " \| ? *` and control chars 0–31, after the drive letter; a `:` there is the next row but one | Refused for every request that names a path, with `PATH_INVALID_CHARS`, before anything looks at the path. A `:` in a name on macOS goes to the filesystem as it is. |
+| Max path length | 1024 (PATH_MAX) | 4096 (PATH_MAX) | 32767; a path over 260 (MAX_PATH) is opened only where Windows' long-path setting (`LongPathsEnabled`) is on | The jail refuses a longer path with `PATH_INVALID_CHARS`, counting the characters of the path as sent, with `~` expanded; the OS still applies its own limit to what passes. The shim never adds the `\\?\` prefix, and the jail refuses a path that has one: its `?` is no character of a path. |
+| Alternate data streams | n/a | n/a | `file.txt:hidden` (NTFS ADS) | The jail refuses any path with a `:` after the drive letter, with `PATH_INVALID_CHARS`, for every request that names a path. It never strips one. |
+| Case sensitivity (default FS) | **Insensitive** (APFS default) | **Sensitive** (ext4/btrfs/xfs) | **Insensitive** (NTFS default) | The jail never folds case to let a path in, on any OS. The resolved path must start with the resolved root exactly, or the filesystem itself must say that the root is one of the path's existing ancestors (the same device and inode), which is how another spelling of the root is recognised on a case-insensitive filesystem. Only the early refusal by name sets case aside, and it can only refuse. See [Path Jail Strategy](#path-jail-strategy). |
+| Home dir env var | `$HOME` | `$HOME` | `%USERPROFILE%` (also `%HOMEDRIVE%%HOMEPATH%`) | The jail expands a wire path's leading `~` with `Path.expanduser()`, which reads these. |
 
 ### Symlinks, junctions, and reparse points
 
@@ -60,7 +60,7 @@ One row per dimension. `n/a` means "doesn't apply on this OS." `same` means
 |---|---|---|---|---|
 | Symbolic links | Yes (`ln -s`) | Yes | Yes (NTFS, requires `SeCreateSymbolicLinkPrivilege` or developer mode) | Resolve before jail check. |
 | Junctions | n/a | n/a | Yes (`mklink /J`) | NTFS reparse points; `os.path.realpath` follows them. |
-| Firmlinks | Yes (`/Users`, `/Applications` etc. on APFS) | n/a | n/a | Transparent; `realpath` resolves them. |
+| Firmlinks | Yes (`/Users`, `/Applications` etc. on APFS) | n/a | n/a | Transparent: a firmlink is not a symlink, so `realpath` leaves the path as it is. |
 | Bind mounts | n/a | Yes | n/a | Not resolved by `realpath`; treated as part of the path tree. |
 | Canonicalize call | `os.path.realpath` | `os.path.realpath` | `os.path.realpath` (Python 3.8+ resolves junctions) | Always run realpath before path-jail comparison. |
 
@@ -483,12 +483,14 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
     p = pathlib.Path(requested_path).expanduser()
 
     # 2. Reject obvious bad shapes BEFORE filesystem access.
+    if exceeds_path_max(p):           # 1024, 4096 or 32767 characters
+        return False
     if is_reserved_name(p):           # Windows: CON, PRN, NUL, COM1, ...
         return False
     if has_alternate_data_stream(p):  # Windows: "file.txt:hidden"
         return False
-    if has_invalid_chars(p):          # Windows: < > " | ? * and ctrl chars
-        return False
+    if has_invalid_chars(p):          # Windows: < > " | ? * and ctrl chars;
+        return False                  # elsewhere NUL
 
     # 3. Resolve the root, the folder the person chose, and refuse by its
     #    name a path that is plainly outside it, BEFORE anything looks at the
