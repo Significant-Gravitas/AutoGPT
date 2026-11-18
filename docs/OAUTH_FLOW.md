@@ -252,6 +252,11 @@ config file or audit log each was started with.
   gets 30 seconds in all, and so do a sign-out's revocations. Past that the
   refresh fails as one whose endpoint couldn't be reached does, and is tried
   again.
+- A sign-in or a sign-out stopped part way (Ctrl+C while the keychain asks
+  the person, say) keeps its turn until its keychain call is over, since
+  stopping the wait for that call doesn't stop the call. Let go sooner, the
+  turn went to another process, whose sign-in the late call then replaced
+  or removed.
 - While a process keeps a refreshed pair it couldn't store, it keeps the
   turn too. Until it stores the pair, or stops, another process's refresh
   waits and is tried again, and `auth` and `revoke` stop as above. A sign-in

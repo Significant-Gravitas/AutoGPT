@@ -28,7 +28,7 @@ import pytest
 
 import autogpt_local_executor.auth as auth_module
 from autogpt_local_executor.audit import AuditWriter, _file_lock
-from autogpt_local_executor.auth import KeychainTokenStore, OAuthFlow
+from autogpt_local_executor.auth import KeychainTokenStore, OAuthFlow, SignInBusyError
 from autogpt_local_executor.config import ShimConfig
 from autogpt_local_executor.daemon import (
     KeychainUnavailableError,
@@ -71,12 +71,17 @@ class _Keychain:
     """An in-memory keychain every store in the test shares. `after_read`
     runs once, when a read has its value and before it returns it: where
     another process's change lands unseen. `failures` holds what the next
-    writes raise, one each."""
+    writes raise, one each. With `hold_next_change` set, the next write or
+    delete waits inside the keychain, as one that asks the person does:
+    `held` is set once it is there, and it goes on when `go` is set."""
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.passwords: dict[tuple[str, str], str] = {}
         self.after_read: Callable[[], None] | None = None
         self.failures: list[Exception] = []
+        self.hold_next_change = False
+        self.held = threading.Event()
+        self.go = threading.Event()
         monkeypatch.setattr("autogpt_local_executor.auth.keyring.get_password", self._get)
         monkeypatch.setattr("autogpt_local_executor.auth.keyring.set_password", self._set)
         monkeypatch.setattr("autogpt_local_executor.auth.keyring.delete_password", self._delete)
@@ -88,12 +93,20 @@ class _Keychain:
             after_read()
         return value
 
+    def _wait_if_held(self) -> None:
+        if self.hold_next_change:
+            self.hold_next_change = False
+            self.held.set()
+            assert self.go.wait(120), "the test never let the keychain call go on"
+
     def _set(self, service: str, user: str, value: str) -> None:
+        self._wait_if_held()
         if self.failures:
             raise self.failures.pop(0)
         self.passwords[(service, user)] = value
 
     def _delete(self, service: str, user: str) -> None:
+        self._wait_if_held()
         if self.passwords.pop((service, user), None) is None:
             raise keyring.errors.PasswordDeleteError("not found")
 
@@ -414,6 +427,131 @@ async def test_a_home_whose_lock_file_cannot_be_used_still_signs_in_and_refreshe
     said = [record for record in caplog.records if record.name == "autogpt_local_executor.auth"]
     assert len(said) == 1
     assert str(_lock_file(store)) in said[0].getMessage()
+
+
+@pytest.mark.parametrize("change", ["sign-in", "sign-out", "revoke"])
+async def test_a_change_whose_caller_was_cancelled_keeps_the_turn_until_it_is_over(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    """Cancelling the wait for a worker thread doesn't stop the thread. A
+    sign-in or a sign-out cancelled while its keychain call was under way
+    (Ctrl+C at a keychain prompt) let go of the turn with the call still
+    running. Another process then stored a sign-in, and the call, landing
+    after it, replaced or removed it. The turn is kept until the call is
+    over now, and the cancellation is raised then."""
+    keychain = _Keychain(monkeypatch)
+    _Platform(monkeypatch)
+    config = _config(tmp_path)
+    store = KeychainTokenStore(config)
+    await store.store_tokens("access-0", "refresh-0")
+    monkeypatch.setattr(auth_module, "TURN_WAIT_SECONDS", 0.5)
+
+    def another_sign_in() -> _AnotherProcess:
+        return _AnotherProcess(
+            lambda: KeychainTokenStore(config).store_tokens("access-9", "refresh-9")
+        )
+
+    keychain.hold_next_change = True
+    work = {
+        "sign-in": lambda: store.store_tokens("access-1", "refresh-1"),
+        "sign-out": store.clear_tokens,
+        "revoke": OAuthFlow(config, store).revoke_tokens,
+    }[change]
+    changing = asyncio.ensure_future(work())
+    try:
+        assert await asyncio.to_thread(keychain.held.wait, 60)
+        changing.cancel()
+
+        # The call is still in the keychain: nobody else has the turn.
+        other = another_sign_in()
+        assert await asyncio.to_thread(other.done.wait, 120)
+        with pytest.raises(SignInBusyError):
+            other.result()
+        assert not changing.done()
+    finally:
+        keychain.go.set()
+
+    # Once the call is over, the cancellation is raised and the turn let go.
+    with pytest.raises(asyncio.CancelledError):
+        await changing
+    assert await store.get_refresh_token() == (None if change != "sign-in" else "refresh-1")
+    # Another process's sign-in comes after it, and stays.
+    await asyncio.to_thread(another_sign_in().result)
+    assert await store.get_refresh_token() == "refresh-9"
+
+
+async def test_a_cancelled_change_drops_the_refreshed_pair_it_replaced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A sign-in replaces a refreshed pair this store kept unsaved, and lets
+    go of the turn kept with it. Cancelled during its keychain call, it left
+    the pair, and so the turn, in place, though its own pair was stored."""
+    keychain = _Keychain(monkeypatch)
+    _Platform(monkeypatch)
+    config = _config(tmp_path)
+    store = KeychainTokenStore(config)
+    await store.store_tokens("access-0", "refresh-0")
+    daemon = _daemon(config, store)
+    keychain.failures.append(keyring.errors.PasswordSetError("the keychain is locked"))
+    with pytest.raises(KeychainUnavailableError):
+        await _refresh(daemon)
+    assert store.unsaved_refresh is not None
+
+    keychain.hold_next_change = True
+    signing_in = asyncio.ensure_future(store.store_tokens("access-5", "refresh-5"))
+    try:
+        assert await asyncio.to_thread(keychain.held.wait, 60)
+        signing_in.cancel()
+    finally:
+        keychain.go.set()
+    with pytest.raises(asyncio.CancelledError):
+        await signing_in
+
+    assert await store.get_refresh_token() == "refresh-5"
+    assert store.unsaved_refresh is None
+    # The turn went with it: another process gets it at once.
+    monkeypatch.setattr(auth_module, "TURN_WAIT_SECONDS", 30.0)
+    await asyncio.to_thread(
+        _AnotherProcess(
+            lambda: KeychainTokenStore(config).store_tokens("access-9", "refresh-9")
+        ).result
+    )
+    assert await store.get_refresh_token() == "refresh-9"
+
+
+async def test_a_change_that_fails_after_its_caller_was_cancelled_is_still_cancelled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    keychain = _Keychain(monkeypatch)
+    store = KeychainTokenStore(_config(tmp_path))
+    keychain.hold_next_change = True
+    keychain.failures.append(keyring.errors.PasswordSetError("the keychain is locked"))
+
+    signing_in = asyncio.ensure_future(store.store_tokens("access-1", "refresh-1"))
+    try:
+        assert await asyncio.to_thread(keychain.held.wait, 60)
+        signing_in.cancel()
+    finally:
+        keychain.go.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await signing_in
+    assert await store.get_refresh_token() is None
+
+
+async def test_a_change_nobody_cancels_still_raises_its_own_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    keychain = _Keychain(monkeypatch)
+    store = KeychainTokenStore(_config(tmp_path))
+    keychain.failures.append(keyring.errors.PasswordSetError("the keychain is locked"))
+
+    with pytest.raises(keyring.errors.PasswordSetError):
+        await store.store_tokens("access-1", "refresh-1")
+
+    # The turn was let go: the next sign-in has it.
+    await store.store_tokens("access-2", "refresh-2")
+    assert await store.get_refresh_token() == "refresh-2"
 
 
 # What the platform's setup card has a person run for the hosted platform
