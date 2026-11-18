@@ -398,8 +398,10 @@ def test_before_send_stays_linear_whatever_credentials_the_request_repeats(
 
     started = time.thread_time()
     scrubbed = _before_send(event, {})
-    # CPU time on this thread, so a runner that pauses the test doesn't count.
-    assert time.thread_time() - started < 1
+    # CPU time on this thread, so a runner that pauses the test doesn't count;
+    # about 0.14 s here with branch coverage on, and over 6 s for work growing
+    # with the square of the input.
+    assert time.thread_time() - started < 3
     assert scrubbed is not None and scrubbed["extra"]["run0"] != "a" * 8192
 
 
