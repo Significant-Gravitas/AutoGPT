@@ -4,10 +4,12 @@ on every OS."""
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -225,6 +227,10 @@ async def test_a_launcher_that_wont_start_is_opened_unless_a_space_follows_it(
     opened_meanwhile = opened.exists()
     # The driver's own routing, which the space is there for.
     bare = await bridge.call_tool("launch_app", {"launch_path": str(launcher)}, timeout=60)
+    # The driver gives xdg-open a moment to fail, then answers without it.
+    give_up = time.monotonic() + 60
+    while not opened.exists() and time.monotonic() < give_up:
+        await asyncio.sleep(0.05)
 
     assert as_the_shim_sends_it.get("isError") is True
     assert opened_meanwhile is False

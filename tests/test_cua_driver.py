@@ -717,6 +717,8 @@ async def test_a_home_folder_that_doesnt_answer_cant_hold_the_drivers_start(
         await bridge.snapshot()
         assert len(looks) == 1
         released.set()
+        # The mount answers: nothing here depends on how soon.
+        monkeypatch.setattr(driver, "HOME_FOLDER_SECONDS", 60.0)
         with pytest.raises(DriverUnavailable, match="stopped during the call"):
             await bridge.call_tool("drag", {"pid": -3}, timeout=30)
         await bridge.snapshot()
@@ -2499,12 +2501,15 @@ async def test_a_launch_whose_apps_program_lookup_stalls_never_starts(
     monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
     monkeypatch.setattr(handlers_module, "_program_on_path", stalled)
     handler = make_handler(platform="linux")
+    # The driver is up already, so the launches' deadlines pass in the stalled
+    # lookup, not in the driver's start.
+    await handler.driver.snapshot()
     try:
-        launch = _call("launch_app", {"name": "Zebra Notes"}, timeout_seconds=1)
-        stalled_launch = await asyncio.wait_for(handler.handle(launch), timeout=30)
-        click = await asyncio.wait_for(handler.handle(_call("click", {"pid": 1})), timeout=30)
-        another = _call("launch_app", {"name": "Zebra Notes"}, timeout_seconds=1)
-        waited = await asyncio.wait_for(handler.handle(another), timeout=30)
+        launch = _call("launch_app", {"name": "Zebra Notes"}, timeout_seconds=2)
+        stalled_launch = await asyncio.wait_for(handler.handle(launch), timeout=60)
+        click = await asyncio.wait_for(handler.handle(_call("click", {"pid": 1})), timeout=60)
+        another = _call("launch_app", {"name": "Zebra Notes"}, timeout_seconds=2)
+        waited = await asyncio.wait_for(handler.handle(another), timeout=60)
         # The second waited for the first's lookup before looking anything
         # up of its own: one worker thread held.
         assert looked_up == ["Zebra", "zebra-notes"]

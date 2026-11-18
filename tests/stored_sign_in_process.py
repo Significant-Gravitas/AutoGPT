@@ -71,6 +71,7 @@ class FileKeyring(KeyringBackend):
 
 
 def main(platform_url: str, folder: str, action: str, *arguments: str) -> None:
+    from autogpt_local_executor import auth
     from autogpt_local_executor.audit import AuditWriter
     from autogpt_local_executor.auth import KeychainTokenStore
     from autogpt_local_executor.config import ShimConfig
@@ -78,6 +79,10 @@ def main(platform_url: str, folder: str, action: str, *arguments: str) -> None:
 
     # What the process logs goes to stderr, where the test reads it.
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+    # The test holds the first exchange's answer until the second process is
+    # up, and decides when either has waited too long: a slow start of the
+    # second must not run the first one's exchange, or its wait, out of time.
+    auth.EXCHANGE_SECONDS = auth.TURN_WAIT_SECONDS = 600.0
     config = ShimConfig(
         platform_url=platform_url,
         session_id="session-1",
