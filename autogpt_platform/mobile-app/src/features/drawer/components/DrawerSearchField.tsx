@@ -8,12 +8,14 @@ interface Props {
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
+  autoFocus?: boolean;
 }
 
 export function DrawerSearchField({
   value,
   onChangeText,
   placeholder = "Search chats",
+  autoFocus,
 }: Props) {
   const styles = useStyles();
   const colors = useColors();
@@ -26,6 +28,7 @@ export function DrawerSearchField({
         placeholder={placeholder}
         placeholderTextColor={colors.textTertiary}
         accessibilityLabel={placeholder}
+        autoFocus={autoFocus}
         autoCorrect={false}
         autoCapitalize="none"
         returnKeyType="search"
@@ -41,9 +44,9 @@ const useStyles = createStyles((colors) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    minHeight: 40,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     backgroundColor: colors.surface,
   },
   input: {

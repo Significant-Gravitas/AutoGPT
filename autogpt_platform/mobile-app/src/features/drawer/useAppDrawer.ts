@@ -19,6 +19,7 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
   const pathname = usePathname();
   const session = useSession();
   const [query, setQuery] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: chatKeys.sessions,
     queryFn: () => listSessionsPage({ limit: DRAWER_SESSION_LIMIT }),
@@ -28,6 +29,15 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
   const activeSessionID = pathname.startsWith(CHAT_PATH_PREFIX)
     ? pathname.slice(CHAT_PATH_PREFIX.length)
     : undefined;
+
+  function openSearch() {
+    setIsSearchOpen(true);
+  }
+
+  function closeSearch() {
+    setQuery("");
+    setIsSearchOpen(false);
+  }
 
   function openChat(sessionID: string) {
     router.navigate({
@@ -77,6 +87,9 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
   return {
     query,
     setQuery,
+    isSearchOpen,
+    openSearch,
+    closeSearch,
     isSearching: query.trim().length > 0,
     groups,
     matches: searchChats(groups, query),

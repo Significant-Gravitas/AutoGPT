@@ -6,17 +6,17 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 
 - **Login:** email and password, existing accounts only.
 - **Home:** laid out like the ChatGPT app. A pill at the top picks who you are talking to (Otto or one of your experts); the page stays empty, with a short list just above the composer: what needs you and what is running or next, then starters. The composer's main button dictates until there is something to send.
-- **Chats:** the drawer covers the whole screen, pushing the page aside, and lists one row per expert with their latest chat and has search; "All chats" lists every chat grouped by expert. In a chat you can send, stream, stop, load earlier messages, and pick up a reply that is still running or was dropped.
+- **Chats:** as in the ChatGPT app, the menu slides in over three quarters of the screen and pushes the page aside, rounded and faded; tap what is left of the page to close it. It has search, your team, the Marketplace and "All chats" (every chat grouped by expert), then one row per expert with their latest chat, with a floating "New chat" pill and your avatar (settings, sign out) at its foot. In a chat you can send, stream, stop, load earlier messages, and pick up a reply that is still running or was dropped.
 - **Chat feel:** a sent message moves to the top of the screen and the reply fills in below it at an even pace, without the view chasing it; an arrow brings you back to the end. The thread moves with the keyboard frame by frame, and dragging it down closes the keyboard. Long-press a message to copy or share it. The composer is the same card as on Home.
 - **Opening fast:** the app saves the chat list, your experts and your last few chats on the phone, so they open at once and then catch up with the server. A chat also starts loading as your finger lands on its row.
 - **Steps:** what the expert is doing shows as a live list and folds to one line when the reply lands.
 - **Attach and dictate:** in a chat, attach photos and files; anywhere the composer is, dictate into the field.
 - **Connecting services:** when Otto or an expert needs a service, the chat shows a card with one row per service: sign in, add a key or login, reconnect, or allow an expert to use an account you already have. Once every row is connected, the chat carries on by itself.
-- **Chat panel:** in an expert's chat, their profile with Activity (upcoming routines, recent runs, computer state) and Library (files) tabs; in a chat with Otto, the chat's files. Share the chat from its top bar.
+- **Chat panel:** slides in from the right the same way, pushing the chat aside; tap the chat or the back arrow to close it. In an expert's chat, their profile with Activity (upcoming routines, recent runs, computer state) and Library (files) tabs; in a chat with Otto, the chat's files. Share the chat from its top bar.
 - **Connections:** the expert panel's Connections tab lists the accounts the expert can use (Remove takes away their access, not the account) and what their workflows still need; a chat with Otto lists all your connections under its files. "Add connection" allows an account you have or connects a new service, an MCP server by address included.
 - **Team:** the experts you have hired; tap one to chat. Create a new expert from the header, or hire one from the Marketplace.
 - **Marketplace:** every expert you can hire, with search and areas. Hire from the list or from an expert's page, which shows what they do and their skills; the new expert says hello in their first chat.
-- **Settings:** the web `/settings` page in a WebView, reached from the user row at the foot of the drawer.
+- **Settings:** the web `/settings` page in a WebView, reached from your avatar at the foot of the drawer.
 - **Themes:** light and dark, following the phone's setting.
 
 ## What it does not do

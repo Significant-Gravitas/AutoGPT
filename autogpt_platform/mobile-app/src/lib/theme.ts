@@ -27,6 +27,9 @@ const dark = {
   sky: "#38BDF8",
   avatarBorder: "rgba(255,255,255,0.12)",
   avatarTintBase: "#17171B",
+  // Laid over a page pushed aside by a drawer, in the page's own colour.
+  pageWash: "rgba(11,11,13,0.55)",
+  pageEdge: "rgba(255,255,255,0.10)",
 };
 
 export type Colors = typeof dark;
@@ -57,6 +60,8 @@ const light: Colors = {
   sky: "#0EA5E9",
   avatarBorder: "rgba(20,20,30,0.10)",
   avatarTintBase: "#FFFFFF",
+  pageWash: "rgba(254,254,254,0.55)",
+  pageEdge: "rgba(20,20,30,0.06)",
 };
 
 export const palettes: Record<Scheme, Colors> = { dark, light };
@@ -65,7 +70,8 @@ export const avatarTintPercent: Record<Scheme, number> = { dark: 16, light: 24 }
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 
-export const radius = { sm: 8, md: 12, lg: 18, pill: 999 } as const;
+// `page` matches the phone's own corners, for a page pushed aside by a drawer.
+export const radius = { sm: 8, md: 12, lg: 18, page: 40, pill: 999 } as const;
 
 export const type = {
   title: { fontSize: 28, fontWeight: "600", lineHeight: 34 },
