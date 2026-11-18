@@ -1,7 +1,7 @@
 ---
 description: >-
-  Self-host AutoGPT, the open-source AI agent platform, on your own servers or
-  on-premises: one Docker command, no license fee, your own model API keys.
+  Self-host the AutoGPT AI agent platform on your own servers or on-premises:
+  one Docker command, no license fee, your own model API keys.
 ---
 
 # Getting Started with AutoGPT: Self-Hosting Guide
