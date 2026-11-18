@@ -171,13 +171,14 @@ def test_aimlapi_effect_map_names_exactly_the_published_tools():
 
 
 # Every tool the server listed on 2026-11-18 to a caller with a valid key.
-# search, batch_search and extract each spend a call of the key's quota, and
-# score (the one tool its docs leave out) sends ratings of the results back to
-# AnySearch, so all four ask first. get_sub_domains is a free lookup.
-ANYSEARCH_ASKING_TOOLS = ["batch_search", "extract", "score", "search"]
+# search, batch_search and extract each spend a call of the key's quota, but
+# searching is what the connection is for, so they run without asking, as the
+# AnySearch blocks do on the same key. score (the one tool its docs leave out)
+# sends ratings of the results back to AnySearch, so it asks first.
+ANYSEARCH_LOOKUP_TOOLS = ["batch_search", "extract", "get_sub_domains", "search"]
 
 
-def test_anysearch_takes_an_api_key_and_only_its_free_lookup_runs_unasked():
+def test_anysearch_takes_an_api_key_and_only_its_feedback_tool_asks():
     url = "https://api.anysearch.com/mcp"
     entry = get_mcp_catalog_entry_for_url(url)
 
@@ -194,11 +195,11 @@ def test_anysearch_takes_an_api_key_and_only_its_free_lookup_runs_unasked():
         == "https://www.anysearch.com/docs/mcp-install"
     )
     effects = get_mcp_effect_maps()["mcp_anysearch"]
-    assert effects.read == ["get_sub_domains"]
-    assert sorted(effects.external) == ANYSEARCH_ASKING_TOOLS
+    assert sorted(effects.read) == ANYSEARCH_LOOKUP_TOOLS
+    assert effects.external == ["score"]
     assert effects.irreversible == []
-    assert mcp_tool_effect(url, "get_sub_domains") == "read"
-    assert mcp_tool_effect(url, "search") == "external"
+    assert mcp_tool_effect(url, "search") == "read"
+    assert mcp_tool_effect(url, "score") == "external"
     assert mcp_tool_effect(url, "unlisted_tool") is None
 
 

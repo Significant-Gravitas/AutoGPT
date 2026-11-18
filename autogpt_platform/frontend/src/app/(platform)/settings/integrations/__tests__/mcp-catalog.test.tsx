@@ -119,6 +119,46 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     });
   });
 
+  test("AnySearch is one row under its brand name and saves a token for its server", async () => {
+    server.use(
+      getGetV1ListProvidersMockHandler([
+        {
+          name: "anysearch",
+          description: "AI-native web search",
+          supported_auth_types: ["api_key"],
+          service: "anysearch",
+          service_icon: "anysearch",
+        },
+        shippedCatalogProvider("mcp_anysearch"),
+      ]),
+    );
+
+    render(<SettingsIntegrationsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /^AnySearch/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      await within(dialog).findByRole("button", {
+        name: "Use an AnySearch token instead",
+      }),
+    );
+    const input =
+      await within(dialog).findByLabelText<HTMLInputElement>("Server URL");
+    expect(input.value).toBe("https://api.anysearch.com/mcp");
+    fireEvent.change(within(dialog).getByPlaceholderText("Paste API token"), {
+      target: { value: "anysearch-access-token" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /save token/i }),
+    );
+    await waitFor(() =>
+      expect(tokenRequest).toHaveBeenCalledWith({
+        server_url: "https://api.anysearch.com/mcp",
+        token: "Bearer anysearch-access-token",
+      }),
+    );
+  });
+
   test("lists native providers and branded MCP entries together", async () => {
     render(<SettingsIntegrationsPage />);
     expect(
