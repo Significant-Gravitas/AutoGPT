@@ -2,7 +2,7 @@ import { Text, View } from "react-native";
 
 import { Button } from "@/components/Button";
 import type { CredentialMeta } from "@/lib/api/integrations";
-import { createStyles, spacing, type } from "@/lib/theme";
+import { createStyles, radius, spacing, type } from "@/lib/theme";
 
 import { BottomSheet } from "../BottomSheet";
 import { ProviderTile } from "../ProviderTile";
@@ -48,7 +48,13 @@ export function CredentialForm({ target, onSaved }: FormProps) {
       case "api_key":
         return (
           <>
-            <SheetField label="API key" value={values.secret} onChangeText={change("secret")} isSecret autoFocus />
+            <SheetField
+              label="API key"
+              value={values.secret}
+              onChangeText={change("secret")}
+              isSecret
+              autoFocus
+            />
             <SheetField
               label="Name (optional)"
               value={values.title}
@@ -61,12 +67,26 @@ export function CredentialForm({ target, onSaved }: FormProps) {
       case "user_password":
         return (
           <>
-            <SheetField label="Username" value={values.username} onChangeText={change("username")} autoFocus />
-            <SheetField label="Password" value={values.secret} onChangeText={change("secret")} isSecret />
+            <SheetField
+              label="Username"
+              value={values.username}
+              onChangeText={change("username")}
+              autoFocus
+            />
+            <SheetField
+              label="Password"
+              value={values.secret}
+              onChangeText={change("secret")}
+              isSecret
+            />
             {sheet.schemes ? (
               <>
                 {sheet.schemes.length > 1 ? (
-                  <SchemePicker schemes={sheet.schemes} value={values.scheme} onChange={change("scheme")} />
+                  <SchemePicker
+                    schemes={sheet.schemes}
+                    value={values.scheme}
+                    onChange={change("scheme")}
+                  />
                 ) : null}
                 <SheetField
                   label="Server"
@@ -94,7 +114,11 @@ export function CredentialForm({ target, onSaved }: FormProps) {
               placeholder="api.example.com"
               autoFocus={!target.host}
             />
-            <SheetField label="Header name" value={values.headerName} onChangeText={change("headerName")} />
+            <SheetField
+              label="Header name"
+              value={values.headerName}
+              onChangeText={change("headerName")}
+            />
             <SheetField
               label="Header value"
               value={values.secret}
@@ -106,14 +130,26 @@ export function CredentialForm({ target, onSaved }: FormProps) {
         );
       case "mcp_token":
         return (
-          <SheetField
-            label="Token"
-            value={values.secret}
-            onChangeText={change("secret")}
-            isSecret
-            autoFocus
-            onSubmitEditing={sheet.submit}
-          />
+          <>
+            <View style={styles.server}>
+              <Text style={styles.serverLabel}>Server</Text>
+              <Text style={styles.serverURL} selectable>
+                {target.serverURL}
+              </Text>
+            </View>
+            <Text style={styles.intro}>
+              Only paste a token if you know and trust this server. It will
+              receive the token.
+            </Text>
+            <SheetField
+              label="Token"
+              value={values.secret}
+              onChangeText={change("secret")}
+              isSecret
+              autoFocus
+              onSubmitEditing={sheet.submit}
+            />
+          </>
         );
     }
   }
@@ -144,6 +180,21 @@ const useStyles = createStyles((colors) => ({
   form: { gap: spacing.md },
   heading: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   title: { ...type.heading, color: colors.text, flex: 1 },
-  intro: { ...type.small, fontSize: 14, lineHeight: 20, color: colors.textSecondary },
+  intro: {
+    ...type.small,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textSecondary,
+  },
   error: { ...type.small, color: colors.error },
+  server: {
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.borderBase,
+    backgroundColor: colors.background,
+  },
+  serverLabel: { ...type.small, color: colors.textTertiary },
+  serverURL: { ...type.label, color: colors.text },
 }));
