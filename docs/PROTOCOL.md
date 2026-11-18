@@ -397,9 +397,11 @@ with `details.reason: "not_answering"`:
   its request was answered is dropped: no grant is issued and no chat is
   started for it.
 - While a look at a folder is still waiting, further requests about that
-  folder get the same answer at once, with no look of their own. Requests
-  about other folders, and other chats, are served as usual, and none of
-  them waits behind the folder that is away.
+  folder get the same answer at once, with no look of their own. Control
+  requests about other folders, and other chats, are served as usual, and
+  none of them waits behind the folder that is away. (A chat's own file
+  requests are another matter: see
+  [On a chat's own connection](#on-a-chats-own-connection) below.)
 - A listing or an attach given up on ends every browse under way, as a
   reconnect does: their references then get `DIRECTORY_REFERENCE_INVALID`,
   and the folder picker starts a new browse.
@@ -425,6 +427,52 @@ restored: the auto-retry layer re-sends only an idempotent one (see
 [Idempotency](#idempotency)), and a `COMPUTER_TOOL_CALL`, like every other
 non-idempotent request, goes back to the model, which decides. If the audit
 record can't be written, the child keeps running.
+
+###### On a chat's own connection
+
+None of those limits covers a chat that is already running when its folder
+goes away. A file request (`FILE_READ`, `FILE_WRITE`, `FILE_STAT`,
+`FILE_LIST`, `FILE_DELETE`, `FILE_MOVE`) and a command's check of its `cwd`
+run in a worker thread, and a thread that waits on a share that has stopped
+answering can't be stopped. While it waits, the request holds:
+
+- one of its chat's request slots (`max_concurrent`, 4);
+- one of the machine's request slots, which every chat on the computer
+  shares, and of which there are 4 as well ([Concurrency](#concurrency));
+- one of the event loop's worker threads. There are four more of those than
+  the computer has CPU cores, up to 32: 6 on two cores, 12 on eight.
+
+It holds them until the share answers or the shim's process ends. The 30
+seconds the platform waits for the reply free none of them, and neither does
+the end of the chat's session: its requests are let go after ten seconds,
+and their threads and machine slots stay held. The platform sends a read
+again, once, when its 30 seconds run out, so one read the model asks for
+becomes two requests.
+
+Four requests waiting on such a share therefore hold every machine slot, on
+a computer of any size, and one chat can send all four. From then on:
+
+- that chat's further requests are refused at once with `SHIM_OVERLOADED`
+  (`details.max_concurrent`);
+- every other chat's file and shell requests wait ten seconds for a slot and
+  then get `SHIM_OVERLOADED` with `details.reason: "machine_busy"`, for as
+  long as the share stays away;
+- what takes no machine slot is served as usual: the control connection (the
+  folder picker, attaching and starting chats), `COMPUTER_TOOL_CALL`s and the
+  keepalive. The four held threads leave two of a two-core computer's six
+  free, and the machine's slots keep file and shell work from taking more.
+
+The shim can't stop by itself in that state either. Its process waits for
+the worker thread to return, and an interrupt doesn't end it. A service
+manager's stop does, after its own limit: launchd kills the process after 20
+seconds and systemd after 90, and Task Scheduler ends the task at once.
+
+What the person does is bring the share back, or restart the shim:
+`launchctl kickstart -k gui/$(id -u)/co.agpt.shim`, `systemctl --user
+restart autogpt-shim`, or on Windows `schtasks /End /TN \AutoGPT\Shim` and
+then `schtasks /Run /TN \AutoGPT\Shim`. A shim started in a terminal has
+to be killed. After the restart a chat bound to that folder doesn't start
+until the folder answers, as above, so it holds nothing.
 
 #### `HELLO.platform` enum
 
@@ -1436,7 +1484,9 @@ The chats on a machine also share the control connection's `max_concurrent`
 slots. A request waits up to ten seconds for one, then gets
 `SHIM_OVERLOADED` with `details.reason: "machine_busy"`. A slot stays taken
 until its work ends, including work still running in a thread after its
-session ended.
+session ended. Work that waits on a share that has stopped answering never
+ends, and four such requests hold every slot: see
+[On a chat's own connection](#on-a-chats-own-connection).
 `COMPUTER_TOOL_CALL`s take no machine slot: those from every session on a
 machine take turns, since they share one screen, so calls waiting their turn
 would otherwise hold every slot while a long one ran. They still count
