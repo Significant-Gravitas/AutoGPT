@@ -58,7 +58,7 @@ from backend.util.request_credentials import (
     remember_request_credentials,
     select_credentials,
 )
-from backend.util.request_url_logging_test import serve, serve_app
+from backend.util.serve_app_test import serve, serve_app
 from backend.util.service import AppService
 from backend.util.url_redaction import REDACTED, request_credentials
 
