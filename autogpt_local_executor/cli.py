@@ -52,6 +52,13 @@ def main() -> None:
             sys.exit(exit_code)
         return
 
+    if args.command == "start" and args.supervise:
+        # The daemon runs in a child process, which loads the config itself
+        # and exits by what it finds (supervise).
+        from . import supervise
+
+        sys.exit(supervise.run_supervised(sys.argv[1:]))
+
     config = _config_or_exit(lambda: _build_config(args))
 
     if args.command == "auth":
@@ -177,6 +184,15 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Reserved design-preview flag; currently fails startup closed on every OS.",
+    )
+    start_p.add_argument(
+        "--supervise",
+        action="store_true",
+        default=False,
+        help="Run the daemon as a child process, and start it again after an exit that "
+        "asks for it (75) or a crash; 0, 77 and 78 end it. The Windows task that "
+        "`install` writes uses this, since Task Scheduler doesn't restart a program "
+        "that exited; launchd and systemd do it themselves.",
     )
     sub.add_parser("status", help="Show the configuration and autostart status")
     sub.add_parser("revoke", help="Revoke tokens and disconnect")
@@ -363,7 +379,8 @@ async def _cmd_start(config) -> int:
         if exc.transient:
             # It can clear on its own (audit storage that is full or not
             # mounted yet, a keychain still locked): 75 (EX_TEMPFAIL), which
-            # systemd and launchd both restart.
+            # systemd and launchd both restart, and the shim's own supervisor
+            # under the Windows task (supervise).
             return 75
         if exc.permanent and os.environ.get("AUTOGPT_SHIM_SUPERVISOR") == "launchd":
             # A setting or a missing package fails the same way on every

@@ -183,7 +183,8 @@ class DaemonPreflightError(RuntimeError):
     supervised `start` then stops instead. `transient` marks one that can
     clear on its own (audit storage that is full or not mounted yet, a
     keychain still locked): `start` exits 75 (EX_TEMPFAIL), which systemd and
-    launchd both restart.
+    launchd both restart, and the shim's own supervisor under the Windows
+    task (supervise).
     """
 
     def __init__(self, message: str, *, permanent: bool = False, transient: bool = False) -> None:

@@ -34,6 +34,7 @@ from xml.sax.saxutils import escape as _xml_escape
 
 from . import platform_info
 from .fsops import temporary_sibling
+from .supervise import SUPERVISE_OPTION
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -118,6 +119,10 @@ def _systemd_word(arg: str) -> str:
 
 def _task_scheduler_values(ctx: AutostartContext) -> dict[str, str]:
     program, *arguments = ctx.start_argv
+    # Task Scheduler doesn't start a program again after it exits, so under
+    # the task the shim does that itself (supervise). launchd and systemd
+    # restart it, and get the plain `start`.
+    arguments.append(SUPERVISE_OPTION)
     return {
         "command": _xml_escape(subprocess.list2cmdline([program])),
         "arguments": _xml_escape(subprocess.list2cmdline(arguments)),

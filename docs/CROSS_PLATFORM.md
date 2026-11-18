@@ -163,6 +163,7 @@ Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
 | Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/net.autogpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...`) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` undoes both: see [Uninstalling](#uninstalling). |
 | Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: `AT_LOGON` (Task Scheduler `<LogonTrigger>`) | All require user opt-in: `install` prints the systemctl / launchctl / schtasks command that starts the service and never runs it. The macOS `SuccessfulExit=false` flag is load-bearing: launchd starts the daemon again after every nonzero exit, no more often than every 10 seconds (its default throttle). It doesn't watch TCC.db: while computer use is requested and Accessibility or Screen Recording isn't granted, each start runs the preflight, which starts cua-driver to check the grants, and exits 78 again, so the start after consent is granted in System Settings comes up without the user touching launchctl. See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
 | Logs | `~/Library/Logs/autogpt-local-executor/*.log` | `journalctl --user -u autogpt-shim` + `$XDG_STATE_HOME/autogpt-local-executor/` | `%LOCALAPPDATA%\autogpt-local-executor\logs\` | Audit log location per row "Audit log" below. |
+| Restart after an exit | launchd, on any non-zero exit (`KeepAlive: {SuccessfulExit=false}`), at most every 10 s | systemd, on failure after 5 s (`Restart=on-failure`), except after 77 and 78 | The shim itself: the task runs `autogpt-shim start --supervise` | Task Scheduler doesn't start a program again after it exits. Its restart-on-failure setting applies when the action can't be started at all; a program that starts and then exits, with whatever code, is a run that completed. So under the task the shim runs its daemon as a child process and starts it again after an exit that asks for it (75) or a crash, with a pause of 5 s that doubles up to a minute while the daemon doesn't stay up for a minute. 0, 77 and 78 end it, as under systemd. A plain `autogpt-shim start` in a terminal has no such loop. |
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
 
 #### Uninstalling
@@ -204,7 +205,8 @@ service instead of restarting it, since a restart would only retry the
 rejected credentials. The systemd unit sets `RestartPreventExitStatus=77`.
 launchd's `KeepAlive` restarts any non-zero exit, so the LaunchAgent sets
 `AUTOGPT_SHIM_SUPERVISOR=launchd` and `start` exits 0 for this case.
-Task Scheduler retries three times, a minute apart. Run
+Under the Windows task the shim's own supervisor (`start --supervise`)
+doesn't start the daemon again after 77 either. Run
 `autogpt-shim auth`, then restart the service. Errors the shim won't
 retry, such as a protocol mismatch or a revoked session, already exit 0
 and are logged.
@@ -225,7 +227,8 @@ reason. A missing macOS permission still exits 78, so launchd relaunches
 the shim once it is granted.
 
 A failure at start that can clear on its own exits 75 (`EX_TEMPFAIL`),
-which systemd and launchd both restart: audit storage that is full or
+which systemd and launchd both restart, and the shim's supervisor does
+under the Windows task: audit storage that is full or
 not mounted yet, or a keychain still locked when the audit key is read.
 So does no keychain at all when the audit key or the sign-in is read, as
 with a Secret Service the desktop session starts after the systemd unit:

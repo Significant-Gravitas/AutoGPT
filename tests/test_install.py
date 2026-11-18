@@ -87,7 +87,8 @@ def test_render_task_xml_has_all_placeholders_filled(
     assert "<LogonTrigger>" in out
     assert "<Command>/opt/bin/autogpt-shim</Command>" in out
     assert (
-        "<Arguments>--config /opt/etc/autogpt-local-executor/config.toml start</Arguments>" in out
+        "<Arguments>--config /opt/etc/autogpt-local-executor/config.toml start --supervise"
+        "</Arguments>" in out
     )
 
 
@@ -174,7 +175,8 @@ def test_task_xml_is_utf16_as_declared_and_quotes_the_command_line(tmp_path: Pat
         r'"C:\Program Files\Python\python.exe"'
     )
     assert exec_action.findtext("t:Arguments", namespaces=ns) == (
-        r'-m autogpt_local_executor --config "C:\Users\alice\R&D Files\config.toml" start'
+        r'-m autogpt_local_executor --config "C:\Users\alice\R&D Files\config.toml" start '
+        "--supervise"
     )
 
 
@@ -210,7 +212,7 @@ def test_an_allowed_root_given_to_install_stays_one_argument_in_each_template(
     assert exec_action is not None
     # As Windows splits a command line: the quoted folder is one argument.
     assert exec_action.findtext("t:Arguments", namespaces=ns) == (
-        '--allowed-root "/home/alice/My Docs/100% done" start'
+        '--allowed-root "/home/alice/My Docs/100% done" start --supervise'
     )
 
 
