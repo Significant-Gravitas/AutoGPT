@@ -528,3 +528,42 @@ def test_link_email_html_keeps_ignore_line_button_and_link(send_mock, email_type
     )
     assert body.count(f'<a href="{LINK}"') == 2
     assert f">{LINK}</a>" in body
+
+
+def test_ban_record_lookup_answers_from_the_records(monkeypatch):
+    app.dependency_overrides[auth_email_routes.requires_sign_up_check_service] = (
+        lambda: None
+    )
+
+    async def is_banned(email):
+        return email == "banned@example.com"
+
+    monkeypatch.setattr(auth_email_routes, "is_banned_address", is_banned)
+    try:
+        answers = [
+            client.post("/api/auth/email/ban-record", json={"email": e}).json()
+            for e in ("banned@example.com", "user@example.com")
+        ]
+    finally:
+        app.dependency_overrides.clear()
+
+    assert answers == [{"banned": True}, {"banned": False}]
+
+
+def test_ban_record_lookup_needs_the_frontend_service_token(
+    mocker: MockerFixture, monkeypatch
+):
+    """Without it the route would tell anyone which addresses were banned."""
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks"},
+        clear=False,
+    )
+    mocker.patch.object(auth_config, "_settings", AuthSettings())
+    lookup = mocker.AsyncMock(return_value=True)
+    monkeypatch.setattr(auth_email_routes, "is_banned_address", lookup)
+
+    res = client.post("/api/auth/email/ban-record", json={"email": "a@example.com"})
+
+    assert res.status_code == 401
+    lookup.assert_not_called()

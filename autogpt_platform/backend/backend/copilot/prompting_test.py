@@ -36,6 +36,16 @@ class TestGetSdkSupplementStaticPlaceholder:
         result = prompting.get_sdk_supplement(use_e2b=True)
         assert "<session-id>" not in result
 
+    def test_local_pc_mode_describes_the_real_machine_boundary(self):
+        result = prompting.get_local_pc_sdk_supplement()
+        assert "real local machine" in result
+        assert "not in a cloud or" in result
+        assert "shell is\n  not limited by that file jail" in result
+        assert "<local-pc-allowed-root>" in result
+        assert "Full Linux environment" not in result
+        assert "pre-authenticated" not in result
+        assert "`read_tool_result`" in result
+
     @pytest.mark.parametrize("use_e2b", [False, True])
     def test_sdk_results_use_the_mcp_read_handler(self, use_e2b):
         result = prompting.get_sdk_supplement(use_e2b=use_e2b)
@@ -163,6 +173,16 @@ class TestCredentialsSurfacingGuardrails:
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "own integration is listed first" in result
         assert "only for an action it does not offer" in result
+
+
+class TestReviewCardLocation:
+    def test_supplement_says_where_a_review_card_is(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        step = result[result.index("4. `review_required`") :].split("\n", 1)[0]
+        # The result says where the card is, which depends on the surface.
+        assert "where its approval card is, as the result says" in step
+        assert "never send them to look for it in another chat" in step
+        assert "don't repeat the call to raise it again" in step
 
 
 class TestToolDiscoveryPriorityAntiPattern:
@@ -512,6 +532,13 @@ class TestPlainLanguageRules:
         assert "only when a tool result shows it" in notes
         assert "Don't guess one from a vague error" in notes
         assert "the cause isn't clear yet, and what you'll do next" in notes
+
+    def test_a_claimed_state_comes_from_a_tool_result(self):
+        """Otto called a PR "approved and ready to merge" while its GitHub
+        access was failing (SECRT-2680)."""
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "Every claim about what happened must come from a tool result" in notes
+        assert "Check platform state" in notes
 
     def test_blocking_inputs_are_asked_before_building(self):
         notes = prompting.SHARED_TOOL_NOTES

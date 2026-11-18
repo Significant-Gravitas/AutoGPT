@@ -725,6 +725,10 @@ async def test_create_graph_in_library_tags_the_graph_and_entry_with_the_tenant(
     created_graph = mocker.Mock(id="graph-id", version=1)
     library_agent = mocker.Mock()
     mocker.patch(
+        "backend.api.features.library.db.graph_db.graph_owner_id",
+        new=mocker.AsyncMock(return_value=None),
+    )
+    mocker.patch(
         "backend.api.features.library.db.graph_db.make_graph_model",
         return_value=graph_model,
     )

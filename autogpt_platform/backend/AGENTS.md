@@ -80,6 +80,7 @@ poetry run pytest path/to/test.py --snapshot-update
 - **File length** — keep files under ~300 lines; if a file grows beyond this, split by responsibility (e.g. extract helpers, models, or a sub-module into a new file). Never keep appending to a long file.
 - **Function length** — keep functions under ~40 lines; extract named helpers when a function grows longer. Long functions are a sign of mixed concerns, not complexity.
 - **Top-down ordering** — define the main/public function or class first, then the helpers it uses below. A reader should encounter high-level logic before implementation details.
+- **Rate limits are documented** — a PR that adds, removes or changes a rate limit or usage cap updates `docs/platform/rate-limits.md`, and one that changes how a caller's IP address is found updates `docs/platform/client-ip.md`, in the same PR
 
 ## Testing Approach
 
@@ -97,7 +98,7 @@ poetry run pytest path/to/test.py --snapshot-update
 - **No tight bounds on elapsed time** — assert the outcome, and bound real time only with ~10× margin or through a clock the test advances, because a full garbage collection on a CI runner can take seconds.
 - **Pin the clock for code keyed to a time window** (a rate-limit minute, a daily counter), set mid-window, because a run that crosses the boundary splits the test's calls across two windows.
 - **Never patch `time.sleep`, `asyncio.sleep`, `time.time` or `time.monotonic` on the shared module**, including through `backend.x.y.asyncio.sleep` when `y` does `import asyncio`; patch a name the module bound itself (`from asyncio import sleep`) or inject the clock, because the stub reaches every coroutine in the event loop. `backend/util/architecture_test.py` refuses new ones.
-- **Close what a test opens, and never call `asyncio.run` in a test** — it unsets the thread's event loop, and a client left bound to a closed loop fails a later test with `Event loop is closed`.
+- **Close what a test opens, and never call `asyncio.run` in a test** — it unsets the thread's event loop, and a client left bound to a closed loop fails a later test with `Event loop is closed`. `backend/conftest.py` fails the test that leaves an OpenAI, Anthropic or Groq client open with connections on a loop that has closed: garbage-collected later, such a client runs `aclose()` on another test's loop.
 - **Test a race by forcing the bad order** — to prove two concurrent calls can't both pass a check-then-act (both read "unclaimed", then both claim), patch the call the check makes so each task then waits on a shared `asyncio.Barrier(2)` before acting, with a timeout, since correct code blocks the second task. `asyncio.gather` alone switches tasks only where they await, so one task can check and act before the other checks, and the test passes with the bug still there.
 
 ### Test-Driven Development (TDD)

@@ -8,12 +8,13 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
+from typing import Annotated
 
 import fastapi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .closed_accounts import AccountState, get_account_state, reject_closed_account
-from .jwt_utils import get_jwt_payload, parse_jwt_token_async, verify_user
+from .jwt_utils import get_jwt_payload, verify_user
 from .models import RequestContext, User
 from .permissions import (
     OrgAction,
@@ -112,9 +113,10 @@ async def _settle_heal(user_id: str, jwt_payload: dict) -> None:
 
 
 async def get_optional_user_id(
-    credentials: HTTPAuthorizationCredentials | None = fastapi.Security(
-        optional_bearer
-    ),
+    request: fastapi.Request,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, fastapi.Security(optional_bearer)
+    ] = None,
 ) -> str | None:
     """
     Attempts to extract the user ID ("sub" claim) from a Bearer JWT if provided.
@@ -122,6 +124,9 @@ async def get_optional_user_id(
     This dependency allows for both authenticated and anonymous access. If a valid bearer token is
     supplied, it parses the JWT and extracts the user ID. If the token is missing or invalid, it returns None,
     treating the request as anonymous.
+
+    Authentication-service failures propagate for token-bearing requests; an unavailable
+    verifier is not treated as an invalid token. Requests without a token remain anonymous.
 
     Args:
         credentials: Optional HTTPAuthorizationCredentials object from FastAPI Security dependency.
@@ -134,9 +139,10 @@ async def get_optional_user_id(
         return None
 
     try:
-        # Off the event loop: a JWKS cache miss is a blocking fetch.
-        payload = await parse_jwt_token_async(credentials.credentials)
-    except Exception as e:
+        payload = await get_jwt_payload(request, credentials)
+    except fastapi.HTTPException as e:
+        if e.status_code >= 500:
+            raise
         logger.debug(f"Auth token validation failed (anonymous access): {e}")
         return None
     user_id = payload.get("sub")
@@ -248,11 +254,12 @@ async def get_user_id_allowing_closed(
     """``get_user_id`` that still resolves a closed or a banned account.
 
     Only for the account deletion routes: a repeat request for an account
-    already closed still answers, its owner can see when it will be erased and
-    reopen it, and a banned person can still delete their account (a legal
-    right; the ban stays, so they can never sign in to reopen it). A closed
-    account is never self-healed: that would re-create the User row its
-    erasure removes.
+    already closed still answers, and its owner can see when it will be erased
+    and reopen it. A closed account is never self-healed: that would re-create
+    the User row its erasure removes. A session-bound token for a banned
+    account never reaches this dependency: a ban ends every session, so the
+    session check answers it with 403 ``account_banned`` first, as on every
+    other authenticated route.
     """
     return await _resolve_user_id(request, jwt_payload, allow_closed=True)
 
@@ -650,6 +657,49 @@ def requires_team_permission(
                     status_code=403,
                     detail=f"Missing workspace permission: {action.value}",
                 )
+        return ctx
+
+    return _dependency
+
+
+def requires_resource_permission(
+    org_action: OrgAction,
+    team_action: TeamAction,
+):
+    """Factory returning a FastAPI dependency for routes that read or change
+    an org's workflows, runs, library or marketplace submissions.
+
+    In org-home context the user must hold *org_action*; in a team context,
+    *team_action* in that team as well. The matrix gives billing managers none
+    of the resource actions, so a membership whose only role is billing
+    manager is refused with 403.
+
+    Example::
+
+        @router.get("/executions")
+        async def list_executions(
+            ctx: RequestContext = Security(
+                requires_resource_permission(
+                    OrgAction.VIEW_RESOURCES, TeamAction.VIEW_EXECUTIONS
+                )
+            ),
+        ):
+            ...
+    """
+
+    async def _dependency(
+        ctx: RequestContext = fastapi.Security(get_request_context),
+    ) -> RequestContext:
+        if not check_org_permission(ctx, org_action):
+            raise fastapi.HTTPException(
+                status_code=403,
+                detail="Your role in this organization doesn't allow this.",
+            )
+        if ctx.team_id is not None and not check_team_permission(ctx, team_action):
+            raise fastapi.HTTPException(
+                status_code=403,
+                detail="Your role in this workspace doesn't allow this.",
+            )
         return ctx
 
     return _dependency

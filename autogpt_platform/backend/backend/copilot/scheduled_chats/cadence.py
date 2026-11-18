@@ -8,11 +8,11 @@ at a time the schedule already uses, and never more often on any day than it
 runs now.
 
 Crons are stored as Unix cron, and the scheduler hands them to APScheduler with
-their weekdays renumbered. Two things still differ from Unix cron, and croniter
-is told both, so it counts the fires the scheduler makes: APScheduler fires when
-the day of the month and the day of the week both match, not either, and it
-counts a step over every weekday from Monday. The cadences offered name their
-weekdays (``mon-fri``), which both read the same way.
+their weekdays renumbered. croniter is handed the same weekdays spelled out, so
+it counts the days the scheduler fires on even for the rare forms it reads its
+own way, and is told the one other thing that differs from Unix cron:
+APScheduler fires when the day of the month and the day of the week both match,
+not either.
 
 Fires are counted on the zone's clock as it stands now, at a fixed offset, so
 the week the clocks change has no hour twice or missing: an hourly schedule
@@ -25,6 +25,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 from pydantic import BaseModel
+
+from backend.util.cron import spell_out_cron_day_of_week
 
 # Every rung of the ladder fires well under this many times a week, so a cron
 # counted this far runs more often than all of them: stop there.
@@ -182,7 +184,9 @@ def _fires_from(
             # croniter starts after the time it is given; a cron second is
             # the smallest step it takes.
             schedule = croniter(
-                _as_scheduled(cron), start - timedelta(seconds=1), day_or=False
+                spell_out_cron_day_of_week(cron),
+                start - timedelta(seconds=1),
+                day_or=False,
             )
             for _ in range(limit):
                 fire = schedule.get_next(datetime)
@@ -194,26 +198,6 @@ def _fires_from(
             # croniter only finds out once it steps.
             return []
     return sorted(fires)
-
-
-def _as_scheduled(cron: str) -> str:
-    """*cron* with a step over every weekday spelled out as the days APScheduler
-    fires it on, counting from Monday: ``*/2`` is Monday, Wednesday, Friday and
-    Sunday there, where Unix cron means Sunday, Tuesday, Thursday and Saturday.
-    The scheduler renumbers every other weekday form itself."""
-    parts = cron.split()
-    if len(parts) != 5:
-        return cron
-    parts[4] = ",".join(_scheduled_days(token) for token in parts[4].split(","))
-    return " ".join(parts)
-
-
-def _scheduled_days(token: str) -> str:
-    body, _, step = token.partition("/")
-    if body not in ("*", "?") or not step.isdigit():
-        return token
-    # APScheduler's Monday is 0; Unix cron's Sunday is.
-    return ",".join(str((day + 1) % 7) for day in range(0, 7, int(step)))
 
 
 def _anchor_time(fires: list[datetime]) -> tuple[int, int]:

@@ -20,7 +20,6 @@ import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
 export async function signup(
   email: string,
   password: string,
-  confirmPassword: string,
   marketingOptOut: boolean,
   next?: string | null,
 ) {
@@ -28,7 +27,6 @@ export async function signup(
     const parsed = signupFormSchema.safeParse({
       email,
       password,
-      confirmPassword,
       marketingOptOut,
     });
 

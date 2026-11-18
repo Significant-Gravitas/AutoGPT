@@ -2,6 +2,8 @@
 
 import hashlib
 
+from backend.util.llm.request_too_large import is_request_too_large_text
+
 # Otto is the account's built-in helper — the identity every session
 # without an expert speaks as, and the fixed author of the morning briefing.
 AUTOPILOT_NAME = "Otto"
@@ -177,6 +179,10 @@ FRIENDLY_TRANSIENT_MSG = (
 
 def is_transient_api_error(error_text: str) -> bool:
     """Return True if *error_text* matches a known transient Anthropic API error."""
+    # OpenAI's "Request too large" carries rate_limit_exceeded, but the same
+    # request is refused every time, so it is never worth another attempt.
+    if is_request_too_large_text(error_text):
+        return False
     lower = error_text.lower()
     return any(pat.lower() in lower for pat in _TRANSIENT_ERROR_PATTERNS)
 
@@ -193,4 +199,6 @@ _TRANSIENT_ERROR_CATEGORIES = frozenset({"server_error", "rate_limit"})
 def is_transient_assistant_error(category: str, content: str) -> bool:
     """Return True if an API error the CLI reported in an ``AssistantMessage``
     is transient, by its category or by the text it carries."""
+    if is_request_too_large_text(content):
+        return False
     return category in _TRANSIENT_ERROR_CATEGORIES or is_transient_api_error(content)

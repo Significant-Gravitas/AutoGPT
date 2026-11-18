@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from backend.copilot.graphiti.memory_model import MemoryForgetFailure
 from backend.copilot.tool_image import ImageCarrier
 from backend.copilot.tools.execution_utils import NodeFailureSummary
+from backend.copilot.tools.review_card import preview_input
 from backend.data.feedback_prompts import FeedbackPromptKind
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
@@ -151,6 +152,7 @@ class ResponseType(str, Enum):
     EXPERT_CHAT_LIST = "expert_chat_list"
     EXPERT_CHAT_TRANSCRIPT = "expert_chat_transcript"
     EXPERT_ONBOARDING = "expert_onboarding"
+    UI_BLOCKS = "ui_blocks"
     FEEDBACK_PROMPT = "feedback_prompt"
     TEAM_CONSULT = "team_consult"
     SESSION_LIST = "session_list"
@@ -1114,7 +1116,13 @@ class BlockOutputResponse(ToolResponseBase):
 
 
 class ReviewRequiredResponse(ToolResponseBase):
-    """Response when a block requires human review before execution."""
+    """Response when a block requires human review before execution.
+
+    The chat mounts the approval card from this output, and the card reads the
+    input from the review itself, so ``input_data`` is a preview: long values
+    are replaced by their size, which keeps the output short enough that it is
+    never digested into something the chat cannot recognise.
+    """
 
     type: ResponseType = ResponseType.REVIEW_REQUIRED
     block_id: str
@@ -1123,6 +1131,18 @@ class ReviewRequiredResponse(ToolResponseBase):
     input_data: dict[str, Any] = Field(
         description="The input data that requires review"
     )
+    input_preview: bool | None = Field(
+        default=None,
+        description="Set when long input values are shown as their size; the review holds them whole.",
+    )
+
+    @model_validator(mode="after")
+    def stream_a_preview(self) -> "ReviewRequiredResponse":
+        preview = preview_input(self.input_data)
+        if preview != self.input_data:
+            self.input_data = preview
+            self.input_preview = True
+        return self
 
 
 class ApprovalRequiredResponse(ToolResponseBase):
@@ -1188,6 +1208,7 @@ class BashExecResponse(ToolResponseBase):
     stderr: str
     exit_code: int
     timed_out: bool = False
+    output_truncated: bool = False
 
 
 class DesktopStreamToolResponse(ToolResponseBase):

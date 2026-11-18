@@ -948,7 +948,13 @@ async def _enqueue_next_nodes(
         next_data = parse_execution_output(
             output, next_output_name, next_node_id, next_input_name
         )
-        if next_data is None and output_name != next_output_name:
+        if (
+            next_data is None
+            and output_name != next_output_name
+            and not (
+                output[1] is None and output_name == sanitize_pin_name(next_output_name)
+            )
+        ):
             return enqueued_executions
         next_node = await db_client.get_node(next_node_id)
 
@@ -1518,17 +1524,7 @@ class ExecutionProcessor:
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
             )
-        elif exec_meta.status == ExecutionStatus.REVIEW:
-            exec_meta.status = ExecutionStatus.RUNNING
-            log_metadata.info(
-                f"⚙️ Graph execution #{graph_exec.graph_exec_id} was waiting for review, resuming execution."
-            )
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
-                status=ExecutionStatus.RUNNING,
-            )
-        else:
+        elif exec_meta.status != ExecutionStatus.REVIEW:
             log_metadata.warning(
                 f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution status is `{exec_meta.status}`."
             )
@@ -1551,6 +1547,19 @@ class ExecutionProcessor:
         if not _in_the_runners_org(db_client, graph_exec):
             _stop_outside_its_org(
                 db_client, graph_exec, exec_meta, exec_stats, log_metadata
+            )
+            return
+
+        if exec_meta.status == ExecutionStatus.REVIEW:
+            # Only the answer to its review resumes a run waiting for one: it
+            # moves the run to QUEUED and publishes it again with the run's
+            # current settings. A delivery that finds the run in REVIEW is a
+            # duplicate of one that already took it there (a late original
+            # after an admin requeue, a dead pod's redelivery), and the safe
+            # modes it carries may be stale: resuming from it could let the
+            # waiting step through without the user's answer.
+            log_metadata.info(
+                f"Left graph execution #{graph_exec.graph_exec_id} waiting for review."
             )
             return
 
@@ -2463,7 +2472,11 @@ class ExecutionManager(AppProcess):
             logger.warning(
                 f"[{self.service_name}] Graph {graph_exec_id} already running locally; rejecting duplicate."
             )
-            _ack_message(reject=True, requeue=True)
+            # Kept, not dropped: it may be the resume of a run still finishing
+            # its pass here. Through the delay queue, so a duplicate (an admin
+            # requeue of a run that wasn't lost) doesn't lap the queue for as
+            # long as the run lasts.
+            _ack_message(reject=True, requeue=True, delay=True)
             return
 
         # Try to acquire cluster-wide execution lock

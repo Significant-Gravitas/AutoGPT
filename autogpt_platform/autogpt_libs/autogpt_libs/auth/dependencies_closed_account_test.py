@@ -487,11 +487,12 @@ class TestOptionalAuth:
     @staticmethod
     async def _resolve(user_id: str, mocker: MockerFixture) -> str | None:
         mocker.patch(
-            "autogpt_libs.auth.dependencies.parse_jwt_token_async",
+            "autogpt_libs.auth.jwt_utils.parse_jwt_token_async",
             new=AsyncMock(return_value=_payload(user_id)),
         )
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="t")
-        return await get_optional_user_id(credentials)
+        request = Request({"type": "http", "app": FastAPI(), "headers": []})
+        return await get_optional_user_id(request, credentials)
 
     @pytest.mark.asyncio
     async def test_a_closed_account_reads_as_signed_out(

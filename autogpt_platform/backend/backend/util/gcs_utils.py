@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 
+# A streamed download is bounded per wait on GCS, not as a whole: the whole
+# lasts as long as the client takes to read it.
+_STREAM_FIRST_BYTE_TIMEOUT = 10
+_STREAM_CHUNK_TIMEOUT = 60
+
 
 def parse_gcs_path(path: str) -> tuple[str, str]:
     """
@@ -138,6 +143,43 @@ async def download_range(bucket: str, blob: str, max_bytes: int) -> bytes:
                 await client.close()
             except Exception:
                 pass  # Best-effort cleanup
+        await session.close()
+
+
+async def download_in_chunks(
+    bucket: str, blob: str, chunk_bytes: int
+) -> AsyncIterator[bytes]:
+    """
+    Yield a GCS object's content in chunks of at most ``chunk_bytes``, on a
+    session of its own (see ``download_with_fresh_session``).
+
+    Raises:
+        FileNotFoundError: If the file doesn't exist
+    """
+    session = aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(limit=1, force_close=True)
+    )
+    client = async_gcs_storage.Storage(session=session)
+    try:
+        try:
+            # timeout=0 turns off aiohttp's total timeout, which covers the body.
+            response = await asyncio.wait_for(
+                client.download_stream(bucket, blob, timeout=0),
+                _STREAM_FIRST_BYTE_TIMEOUT,
+            )
+        except aiohttp.ClientResponseError as e:
+            if is_not_found_error(e):
+                raise FileNotFoundError(f"File not found: gcs://{bucket}/{blob}") from e
+            raise
+        while chunk := await asyncio.wait_for(
+            response.read(chunk_bytes), _STREAM_CHUNK_TIMEOUT
+        ):
+            yield chunk
+    finally:
+        try:
+            await client.close()
+        except Exception:
+            pass  # Best-effort cleanup
         await session.close()
 
 

@@ -164,6 +164,7 @@ ToolName = Literal[
     "read_skill",
     "read_workspace_file",
     "remove_expert_workflow",
+    "render_ui",
     "request_credential_grant",
     "request_work_check",
     "resume_capability",
@@ -188,6 +189,12 @@ ToolName = Literal[
     "web_fetch",
     "web_search",
     "write_workspace_file",
+    # Capability-gated Local PC tools
+    "local_pc_computer_tools",
+    "local_pc_computer",
+    "list_recordings",
+    "generate_skill_from_recording",
+    "dry_run_skill",
     # Capability gates (not tools): deny to withhold a whole kind of capability
     "run_block",
     "run_mcp_tool",
@@ -317,9 +324,23 @@ SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
     {"Agent", "Edit", "Glob", "Grep", "Read", "Task", "WebSearch", "Write"}
 )
 
-# Platform tool names — everything that isn't an SDK built-in or a gate.
+CAPABILITY_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "local_pc_computer_tools",
+        "local_pc_computer",
+        "list_recordings",
+        "generate_skill_from_recording",
+        "dry_run_skill",
+    }
+)
+
+# Platform tool names — everything that isn't an SDK built-in, a
+# capability-gated Local PC tool or a gate.
 PLATFORM_TOOL_NAMES: frozenset[str] = (
-    ALL_TOOL_NAMES - SDK_BUILTIN_TOOL_NAMES - CAPABILITY_GATE_NAMES
+    ALL_TOOL_NAMES
+    - SDK_BUILTIN_TOOL_NAMES
+    - CAPABILITY_TOOL_NAMES
+    - CAPABILITY_GATE_NAMES
 )
 
 # Compiled regex patterns for block identifier classification.
@@ -769,6 +790,10 @@ def apply_tool_permissions(
     *,
     use_e2b: bool = False,
     disabled_groups: Iterable[ToolGroup] = (),
+    hidden_tool_names: Iterable[str] = (),
+    use_local_pc_computer: bool = False,
+    local_pc_computer_tool_names: Iterable[str] | None = None,
+    use_recording: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Compute (allowed_tools, extra_disallowed) for :class:`ClaudeAgentOptions`.
 
@@ -796,7 +821,12 @@ def apply_tool_permissions(
     from backend.copilot.tools import TOOL_REGISTRY
 
     base_allowed = get_copilot_tool_names(
-        use_e2b=use_e2b, disabled_groups=disabled_groups
+        use_e2b=use_e2b,
+        disabled_groups=disabled_groups,
+        hidden_tool_names=hidden_tool_names,
+        use_local_pc_computer=use_local_pc_computer,
+        local_pc_computer_tool_names=local_pc_computer_tool_names,
+        use_recording=use_recording,
     )
     base_disallowed = get_sdk_disallowed_tools()
 
@@ -839,6 +869,8 @@ def apply_tool_permissions(
             # matches.
             names.append(short)
         elif short in TOOL_REGISTRY:
+            names.append(f"{MCP_TOOL_PREFIX}{short}")
+        elif short in CAPABILITY_TOOL_NAMES:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
             # Offer BOTH spellings and let the ``base_allowed`` filter below

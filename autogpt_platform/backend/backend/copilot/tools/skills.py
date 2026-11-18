@@ -28,10 +28,10 @@ import logging
 import posixpath
 import re
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Awaitable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -88,7 +88,11 @@ from backend.data.skill_package import (
     package_tree_sha256,
 )
 from backend.data.skill_version_files import SkillVersionFile
-from backend.data.skill_versions import SkillVersionRecord, content_hash
+from backend.data.skill_versions import (
+    SkillHeadRecord,
+    SkillVersionRecord,
+    content_hash,
+)
 from backend.data.workspace_scope import (
     EXPERT_SKILL_SCOPE_DENIED,
     WorkspaceAccessDeniedError,
@@ -3073,22 +3077,21 @@ async def build_skills_update_notice(
     seen = previously_seen_skill_slugs(prior_contents)
     added = sorted(slug for slug in current_slugs if slug not in seen)
     removed = sorted(slug for slug in seen if slug not in current_slugs)
-    updated = [
-        slug
-        for slug in await _consume_updated(user_id, expert_id)
-        if slug in current_slugs and slug not in added
-    ]
-    if session_id:
+    # Both wait for the registry read: a cold one can update a marketplace
+    # copy, which queues its name and records its new version.
+    queued, session_versions = await _side_by_side(
+        _consume_updated(user_id, expert_id),
+        _session_skill_versions(user_id, expert_id, session_id),
+    )
+    updated = [slug for slug in queued if slug in current_slugs and slug not in added]
+    if session_id and session_versions is not None:
+        heads, previous = session_versions
         try:
-            heads = await skill_versions_db().list_heads(
-                user_id, owner_key_for(expert_id)
-            )
             current_versions = {
                 h.skill_name: h.current_version_id
                 for h in heads
                 if h.skill_name in current_slugs
             }
-            previous = await read_seen_index_revision(session_id)
             try:
                 previous_versions = json.loads(previous) if previous else {}
             except ValueError:
@@ -3138,6 +3141,46 @@ async def build_skills_update_notice(
     return (
         f"<{SKILLS_UPDATE_TAG}>\n" + "\n".join(lines) + f"\n</{SKILLS_UPDATE_TAG}>\n\n"
     )
+
+
+async def _session_skill_versions(
+    user_id: str, expert_id: str | None, session_id: str | None
+) -> tuple[list[SkillHeadRecord], str | None] | None:
+    """The owner's skill heads and the versions this chat last saw, or
+    ``None`` without a session or when either can't be read.
+
+    Only after the registry read: heads read while it updates a copy would
+    mark the old version seen, and the next turn would repeat the update.
+    """
+    if not session_id:
+        return None
+    try:
+        return await _side_by_side(
+            skill_versions_db().list_heads(user_id, owner_key_for(expert_id)),
+            read_seen_index_revision(session_id),
+        )
+    except Exception:
+        logger.warning("[skills] could not check session skill versions", exc_info=True)
+        return None
+
+
+_First = TypeVar("_First")
+_Second = TypeVar("_Second")
+
+
+async def _side_by_side(
+    first: Awaitable[_First], second: Awaitable[_Second]
+) -> tuple[_First, _Second]:
+    """Await both at once and return only once both have ended (a cancelled
+    caller cancels both and waits for them too), so neither runs on behind
+    the caller. Then the first one's failure is raised, else the second's:
+    the error the caller got when they ran one after another."""
+    one, two = await asyncio.gather(first, second, return_exceptions=True)
+    if isinstance(one, BaseException):
+        raise one
+    if isinstance(two, BaseException):
+        raise two
+    return one, two
 
 
 # ---------------------------------------------------------------------------

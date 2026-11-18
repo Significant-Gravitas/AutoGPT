@@ -10,6 +10,7 @@ from threading import Thread
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
+import httpx
 import pytest
 import pytest_asyncio
 import sentry_sdk
@@ -17,13 +18,16 @@ from dotenv import load_dotenv
 from sentry_sdk.envelope import Envelope
 from sentry_sdk.transport import Transport
 
-from backend.data import versioned_cache
+from backend.data import redis_client, versioned_cache
 from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
 from backend.util import posthog_client
+from backend.util.httpx_client_guard import HttpxClientGuard, left_open_report
 from backend.util.logging import configure_logging
 from backend.util.platform_payment import settings as platform_payment_settings
+from backend.util.settings import Settings
+from backend.util.testing import unreachable_tcp_endpoints
 from backend.util.tracing import traces_sampler
 
 load_dotenv()
@@ -83,9 +87,43 @@ def _warm_test_forkserver() -> None:
 async def server():
     from backend.util.test import SpinTestServer
 
+    await _require_test_stack()
     async with SpinTestServer() as server:
         async with _track_test_graphs(server):
             yield server
+
+
+async def _require_test_stack() -> None:
+    """Fail every test that needs the server at once, naming the service that
+    is down, instead of leaving the server's clients retrying it forever. A
+    failure, not a skip: a CI job that lost its services must stay red."""
+    database = urlparse(os.environ["DATABASE_URL"])
+    config = Settings().config
+    missing = await unreachable_tcp_endpoints(
+        {
+            "Postgres (DATABASE_URL)": (
+                database.hostname or "localhost",
+                database.port or 5432,
+            ),
+            "Redis (REDIS_CLUSTER_HOST/PORT, else REDIS_HOST/PORT)": (
+                redis_client.HOST,
+                redis_client.PORT,
+            ),
+            "RabbitMQ (RABBITMQ_CLUSTER_HOST/PORT, else RABBITMQ_HOST/PORT)": (
+                config.rabbitmq_host,
+                config.rabbitmq_port,
+            ),
+        },
+        within=30,
+    )
+    if missing:
+        pytest.fail(
+            "The backend test stack is unreachable: "
+            + "; ".join(missing)
+            + ". Start Postgres, Redis and RabbitMQ (backend/TESTING.md) and "
+            "point those variables at them.",
+            pytrace=False,
+        )
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -131,6 +169,43 @@ async def no_leaked_db_transaction(request: pytest.FixtureRequest):
         ),
         pytrace=False,
     )
+
+
+_HTTPX_CLIENTS = HttpxClientGuard()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def record_httpx_clients() -> Iterator[None]:
+    """Shows ``pytest_runtest_teardown`` the LLM SDK clients each test used."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            httpx.AsyncClient, "send", _HTTPX_CLIENTS.wrap(httpx.AsyncClient.send)
+        )
+        yield
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_setup(item: pytest.Item) -> Iterator[None]:
+    _HTTPX_CLIENTS.start()
+    return (yield)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_teardown(item: pytest.Item) -> Iterator[None]:
+    """Fail a test that leaves an OpenAI, Anthropic or Groq client open on its
+    closed event loop, so the test that leaked it fails instead of whichever
+    one runs when the client is garbage-collected (``httpx_client_guard.py``).
+    When teardown
+    itself fails, its error stands, with any such clients noted on it."""
+    try:
+        result = yield
+    except BaseException as error:
+        if left_open := _HTTPX_CLIENTS.stop():
+            error.add_note(left_open_report(item.nodeid, left_open))
+        raise
+    if left_open := _HTTPX_CLIENTS.stop():
+        pytest.fail(left_open_report(item.nodeid, left_open), pytrace=False)
+    return result
 
 
 @pytest.fixture(autouse=True)

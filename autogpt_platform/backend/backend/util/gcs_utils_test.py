@@ -9,6 +9,7 @@ from yarl import URL
 
 from backend.util.gcs_utils import (
     blob_created_at,
+    download_in_chunks,
     download_range,
     download_with_fresh_session,
     generate_iam_signed_url,
@@ -173,6 +174,44 @@ async def test_download_keeps_other_errors_when_url_contains_404(mocker, status)
 
     with pytest.raises(aiohttp.ClientResponseError):
         await download_range("bucket", "blob", 16)
+
+
+@pytest.mark.asyncio
+async def test_download_in_chunks_reads_the_object_as_it_is_consumed(mocker):
+    body = StreamResponseStub(b"abcdefgh")
+    client = _mock_client(mocker, download=AsyncMock(side_effect=AssertionError))
+    client.download_stream = AsyncMock(return_value=body)
+
+    chunks = download_in_chunks("bucket", "blob", 3)
+    first = await anext(chunks)
+
+    assert first == b"abc"
+    assert body.read_sizes == [3]
+    assert [first] + [chunk async for chunk in chunks] == [b"abc", b"def", b"gh"]
+    # timeout=0 is no total timeout in aiohttp, so a long download is not cut off.
+    assert client.download_stream.await_args.kwargs["timeout"] == 0
+
+
+@pytest.mark.asyncio
+async def test_download_in_chunks_maps_404_to_file_not_found(mocker):
+    client = _mock_client(mocker, download=AsyncMock())
+    client.download_stream = AsyncMock(
+        side_effect=_gcs_http_error(404, _URL_CONTAINING_404)
+    )
+
+    with pytest.raises(FileNotFoundError):
+        await anext(download_in_chunks("bucket", "missing", 16))
+
+
+class StreamResponseStub:
+    def __init__(self, content: bytes):
+        self._content = content
+        self.read_sizes: list[int] = []
+
+    async def read(self, size: int) -> bytes:
+        self.read_sizes.append(size)
+        chunk, self._content = self._content[:size], self._content[size:]
+        return chunk
 
 
 @pytest.mark.asyncio
