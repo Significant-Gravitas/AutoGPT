@@ -69,6 +69,29 @@ def _validate_platform_endpoint(value: str, schemes: set[str]) -> str:
     return parsed.geturl()
 
 
+def _canonical_endpoint(value: str) -> str:
+    """`value` spelled one way: the host in lower case, and no port where it
+    is the scheme's own. Two endpoints are the same one when these match."""
+    parsed = urlsplit(_validate_platform_endpoint(value, {"https", "http", "wss", "ws"}))
+    host = parsed.hostname or ""
+    if ":" in host:
+        host = f"[{host}]"
+    default_port = 443 if parsed.scheme in {"https", "wss"} else 80
+    if parsed.port is not None and parsed.port != default_port:
+        host += f":{parsed.port}"
+    return parsed._replace(netloc=host).geturl()
+
+
+# The hosted AutoGPT platform: its backend, and its sign-in pages, which its
+# frontend serves from another host. With nothing configured the shim uses
+# them. They are the two URLs the platform's setup card passes as
+# --platform-url and --platform-oauth-url, and a stored sign-in is tied to
+# both (auth.CredentialScope), so a sign-in made with the card's command and
+# one made with no flags have to come out as the same pair.
+HOSTED_PLATFORM_URL = "https://backend.agpt.co"
+HOSTED_PLATFORM_OAUTH_URL = "https://platform.agpt.co/auth"
+
+
 def _default_config_path() -> Path:
     """Per-OS config file location. Used by `load_config()`."""
     plat = platform_info.detect_platform()
@@ -112,9 +135,10 @@ class ShimConfig(BaseSettings):
 
     # ── Platform / OAuth ───────────────────────────────────────────────────
     platform_url: str = Field(
-        default="wss://platform.autogpt.net",
-        description="Base URL of the AutoGPT platform. WebSocket and OAuth "
-        "endpoints are derived from this.",
+        default=HOSTED_PLATFORM_URL,
+        description="Base URL of the AutoGPT platform's backend: by default the "
+        "hosted platform's. The WebSocket, token and revocation endpoints are "
+        "derived from this, and so is the OAuth base URL unless it is given.",
     )
     platform_ws_url: str | None = Field(
         default=None,
@@ -123,8 +147,10 @@ class ShimConfig(BaseSettings):
     )
     platform_oauth_url: str | None = Field(
         default=None,
-        description="Override for the OAuth base URL. Defaults to "
-        "<platform_url>/auth (with http/https adjusted).",
+        description="Override for the OAuth base URL, where the sign-in pages are. "
+        f"Defaults to {HOSTED_PLATFORM_OAUTH_URL} when platform_url is the hosted "
+        "platform's, whether by default or named, and to <platform_url>/auth "
+        "(with http/https adjusted) for any other platform.",
     )
 
     @field_validator("allowed_root", "audit_log_path", "recording_buffer_dir")
@@ -310,7 +336,16 @@ class ShimConfig(BaseSettings):
     def derived_oauth_url(self) -> str:
         if self.platform_oauth_url:
             return _validate_platform_endpoint(self.platform_oauth_url, {"https", "http"})
-        return self._platform_base() + "/auth"
+        base = self._platform_base()
+        if _canonical_endpoint(base) == HOSTED_PLATFORM_URL:
+            # The hosted platform's sign-in pages aren't under its backend.
+            # This goes by the platform and not by whether its URL was
+            # typed: the hosted URL named explicitly, in any spelling the
+            # stored sign-in counts as the same backend, gets the same
+            # pages as the default. Any other platform keeps its own /auth,
+            # so nobody who names their own is sent to the hosted one's.
+            return HOSTED_PLATFORM_OAUTH_URL
+        return base + "/auth"
 
     @property
     def derived_oauth_token_url(self) -> str:

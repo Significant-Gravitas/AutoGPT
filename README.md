@@ -10,7 +10,7 @@
 
 ## What Is This?
 
-A daemon you install on your local machine that connects it to the [AutoGPT hosted platform](https://platform.autogpt.net) as an execution backend — instead of an E2B cloud sandbox.
+A daemon you install on your local machine that connects it to the [AutoGPT hosted platform](https://platform.agpt.co) as an execution backend — instead of an E2B cloud sandbox.
 
 Once connected, AutoGPT can:
 - Read and write files on your filesystem (jailed to the folder selected for that chat)
@@ -34,7 +34,8 @@ The platform-side code (WebSocket route, `LocalPCShim`, `ShimConnectionManager`,
 ```bash
 pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git
 
-# One-time: OAuth to your platform deployment.
+# One-time: sign in. With no --platform-url this is the hosted AutoGPT
+# platform (see "Which platform" below).
 autogpt-shim auth
 
 # Keep the paired machine online. This opens an outbound control connection;
@@ -54,6 +55,20 @@ autogpt-shim \
 # refuses this flag with EX_CONFIG because capture + interpretation aren't yet
 # safe to expose end to end.
 ```
+
+### Which platform
+
+With nothing configured, the shim connects to the hosted AutoGPT platform:
+its backend at `https://backend.agpt.co`, and its sign-in pages at
+`https://platform.agpt.co/auth`. Those are the two URLs the platform's setup
+card passes as `--platform-url` and `--platform-oauth-url`, so the card's
+commands and the bare ones above use the same sign-in.
+
+For a platform you host yourself, give its backend as `--platform-url` (or
+`platform_url` in the config file) to every command. Its sign-in pages are
+taken to be at `<platform-url>/auth`; where the frontend is on another host,
+give their base as `--platform-oauth-url` too. The hosted platform's sign-in
+pages are only ever the default for the hosted backend.
 
 For autostart, run `autogpt-shim install`, enable the generated per-user service,
 and omit `session_id` from the TOML configuration. The service maintains the

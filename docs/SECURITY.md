@@ -262,7 +262,9 @@ If you believe your shim was compromised:
    repeat with each deployment's configuration as needed
 3. Review the audit log at the per-OS location (see [AUDIT_LOG.md](AUDIT_LOG.md)) with `autogpt-shim audit tail` / `verify`
 4. Change your AutoGPT account password and re-enable 2FA
-5. Report to security@autogpt.net with the audit log
+5. Report it privately, with the audit log: open a
+   [security advisory](https://github.com/Significant-Gravitas/AutoGPT/security/advisories/new)
+   on the AutoGPT repository (preferred), or write to security@agpt.co
 
 ---
 

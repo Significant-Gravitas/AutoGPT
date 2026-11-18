@@ -91,6 +91,8 @@ def _configure_logging(level: str) -> None:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    from .config import HOSTED_PLATFORM_OAUTH_URL, HOSTED_PLATFORM_URL
+
     parser = argparse.ArgumentParser(
         prog="autogpt-shim",
         description="EXPERIMENTAL: AutoGPT Local PC Executor shim",
@@ -111,12 +113,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--platform-url",
         default=None,
-        help="Base URL of the AutoGPT platform (default: https://platform.autogpt.net).",
+        help=f"Base URL of the AutoGPT platform's backend (default: {HOSTED_PLATFORM_URL}, "
+        "the hosted platform).",
     )
     parser.add_argument(
         "--platform-oauth-url",
         default=None,
-        help="Frontend OAuth base URL, including /auth, when separate from the backend platform URL.",
+        help="OAuth base URL, including /auth: where the platform's sign-in pages are "
+        f"(default: {HOSTED_PLATFORM_OAUTH_URL} for the hosted platform, and "
+        "<platform-url>/auth for any other).",
     )
     parser.add_argument(
         "--session-id",

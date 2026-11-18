@@ -411,6 +411,61 @@ async def test_a_home_whose_lock_file_cannot_be_used_still_signs_in_and_refreshe
     assert str(_lock_file(store)) in said[0].getMessage()
 
 
+# What the platform's setup card has a person run for the hosted platform
+# (LocalExecutorSetup/helpers.ts in the AutoGPT repository), as a shell
+# splits it.
+_SETUP_CARD_FLAGS = [
+    "--platform-url",
+    "https://backend.agpt.co",
+    "--platform-oauth-url",
+    "https://platform.agpt.co/auth",
+]
+
+
+def _cli_config(tmp_path: Path, arguments: list[str]) -> ShimConfig:
+    """The config the command line `autogpt-shim <arguments>` runs with,
+    with an empty config file so the person's own stays out."""
+    from autogpt_local_executor import cli
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("", encoding="utf-8")
+    args = cli._build_parser().parse_args(["--config", str(config_file), *arguments])
+    return cli._build_config(args)
+
+
+@pytest.mark.parametrize("signed_in_with_flags", [True, False], ids=["card-first", "bare-first"])
+async def test_the_setup_cards_sign_in_and_a_bare_commands_are_one_stored_sign_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, signed_in_with_flags: bool
+) -> None:
+    """A stored sign-in is tied to the platform URL and the OAuth URL. The
+    setup card names both, so a sign-in made with its command has to be the
+    one `autogpt-shim start` finds with no flags, and the other way round:
+    one deployment, one keychain record, and one lock file for its turn."""
+    for field in ("platform_url", "platform_ws_url", "platform_oauth_url", "oauth_client_id"):
+        monkeypatch.delenv(f"AUTOGPT_SHIM_{field.upper()}", raising=False)
+    keychain = _Keychain(monkeypatch)
+    card = KeychainTokenStore(_cli_config(tmp_path, [*_SETUP_CARD_FLAGS, "auth"]))
+    bare = KeychainTokenStore(_cli_config(tmp_path, ["start"]))
+    signed_in, other = (card, bare) if signed_in_with_flags else (bare, card)
+
+    assert bare.scope == card.scope
+    assert bare.scope.backend_url == "https://backend.agpt.co"
+    assert bare.scope.authorize_url == "https://platform.agpt.co/auth/authorize"
+
+    await signed_in.store_tokens("access-0", "refresh-0")
+
+    assert len(keychain.passwords) == 1
+    assert await other.get_access_token() == "access-0"
+    assert await other.get_refresh_token() == "refresh-0"
+    assert _lock_file(other) == _lock_file(signed_in)
+    assert _lock_file(signed_in).is_file()
+    await other.clear_tokens()
+    assert await signed_in.get_refresh_token() is None
+    assert [path.name for path in _lock_file(signed_in).parent.glob(".oauth_v1_*.lock")] == [
+        _lock_file(signed_in).name
+    ]
+
+
 async def test_a_records_lock_file_is_the_persons_own(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

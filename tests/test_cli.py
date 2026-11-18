@@ -46,6 +46,15 @@ def test_platform_oauth_url_cli_override(tmp_path: Path) -> None:
     assert config.derived_oauth_token_url == "https://api.example.com/api/oauth/token"
 
 
+def test_the_help_names_the_platform_the_shim_uses_by_default() -> None:
+    """--platform-url's help named a default the config didn't have."""
+    help_text = " ".join(cli._build_parser().format_help().split())
+
+    assert ShimConfig.model_fields["platform_url"].default == "https://backend.agpt.co"
+    assert "default: https://backend.agpt.co" in help_text
+    assert "https://platform.agpt.co/auth" in help_text
+
+
 @pytest.mark.parametrize(
     "url",
     [

@@ -5,9 +5,12 @@
 ## Transport
 
 - **Protocol**: WebSocket over TLS (`wss://`)
-- **Control endpoint**: `wss://platform.autogpt.net/ws/local-executor`. Normal
-  `autogpt-shim start` keeps this OAuth-authenticated machine connection alive.
-- **Data endpoint**: `wss://platform.autogpt.net/ws/local-executor/{session_id}`.
+- **Control endpoint**: `/ws/local-executor` on the platform's backend, which is
+  `wss://backend.agpt.co/ws/local-executor` on the hosted platform, the
+  default. Normal `autogpt-shim start` keeps this OAuth-authenticated machine
+  connection alive.
+- **Data endpoint**: `/ws/local-executor/{session_id}` on the same backend
+  (`wss://backend.agpt.co/ws/local-executor/{session_id}`).
   The control channel activates isolated child runtimes on this existing route.
 - **Legacy binding**: explicitly passing `--session-id` skips control mode and
   connects directly to the data endpoint for compatibility.

@@ -37,7 +37,7 @@ import httpx
 import keyring
 
 from .audit import _fallback_path
-from .config import ShimConfig, _validate_platform_endpoint
+from .config import ShimConfig, _canonical_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -139,19 +139,6 @@ class OAuthDenied(ValueError):
     """The sign-in redirect came back with an error instead of a code. Its
     text is the provider's error and reason, kept to printable text: safe to
     show, unlike other failures, whose text can hold a token."""
-
-
-def _canonical_endpoint(value: str) -> str:
-    parsed = urllib.parse.urlsplit(
-        _validate_platform_endpoint(value, {"https", "http", "wss", "ws"})
-    )
-    host = parsed.hostname or ""
-    if ":" in host:
-        host = f"[{host}]"
-    default_port = 443 if parsed.scheme in {"https", "wss"} else 80
-    if parsed.port is not None and parsed.port != default_port:
-        host += f":{parsed.port}"
-    return parsed._replace(netloc=host).geturl()
 
 
 @dataclass(frozen=True)
