@@ -38,9 +38,13 @@ from backend.copilot.sdk.tool_adapter import (
     create_tool_handler,
     set_execution_context,
 )
+from backend.copilot.tools import agent_browser
+from backend.copilot.tools.agent_browser import BrowserNavigateTool
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.find_library_agent import FindLibraryAgentTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
+from backend.copilot.tools.refused_pages_test import _CHALLENGE_PAGE, _SCRIPT_ONLY_PAGE
+from backend.copilot.tools.web_fetch import WebFetchTool
 from backend.copilot.tools.workspace_files import ReadWorkspaceFileTool
 from backend.copilot.trial_cost_context import (
     TrialCostContext,
@@ -1325,6 +1329,73 @@ async def test_the_judge_never_reads_the_models_own_words(rows, tool_name, args)
 
     assert judge.await_args.kwargs["text"] == "ok"
     assert _MARKER not in judge.await_args.kwargs["source"]
+
+
+@pytest.mark.parametrize(
+    "url, status, body, headers",
+    [
+        (
+            "https://www.example.com/pricing",
+            403,
+            _CHALLENGE_PAGE,
+            {"cf-mitigated": "challenge"},
+        ),
+        ("https://www.facebook.com/examplebakery", 200, _SCRIPT_ONLY_PAGE, {}),
+    ],
+    ids=["bot-check", "sign-in-wall"],
+)
+async def test_web_fetchs_refused_page_notice_is_not_judged(
+    rows, url, status, body, headers
+):
+    """The notice tells the model not to retry and to use web_search: the
+    platform's words, which the judge held as the page instructing Otto."""
+    response = SimpleNamespace(
+        headers={"content-type": "text/html; charset=utf-8", **headers},
+        content=body.encode(),
+        url=url,
+        status=status,
+    )
+    client = SimpleNamespace(get=AsyncMock(return_value=response))
+    judge = _judge(_CLEAN)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        _no_action_gate(),
+        patch("backend.copilot.tools.web_fetch.Requests", return_value=client),
+    ):
+        result = await _call(WebFetchTool(), _session(), {"url": url})
+
+    assert "web_search" in json.loads(result.output)["message"]
+    assert judge.await_args.kwargs["text"] == url
+
+
+async def test_browser_navigates_refused_page_notice_is_not_judged(rows):
+    url = "https://www.example.com/pricing"
+
+    async def run(session_name, *args, **kwargs):
+        if args[0] == "eval":
+            return 0, '"bot_check"\n', ""
+        if args[:2] == ("get", "url"):
+            return 0, f"{url}\n", ""
+        return 0, "Just a moment...\n" if args[:2] == ("get", "title") else "", ""
+
+    judge = _judge(_CLEAN)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        _no_action_gate(),
+        patch.object(agent_browser, "validate_url_host", AsyncMock()),
+        patch.object(agent_browser, "_ensure_session", AsyncMock()),
+        patch.object(agent_browser, "_fire_and_forget_save", MagicMock()),
+        patch.object(agent_browser, "_run", side_effect=run),
+        patch.object(
+            agent_browser, "_snapshot", AsyncMock(return_value="- heading [ref=e1]")
+        ),
+    ):
+        result = await _call(BrowserNavigateTool(), _session(), {"url": url})
+
+    assert "web_search" in json.loads(result.output)["message"]
+    judged = judge.await_args.kwargs["text"]
+    assert url in judged and "heading [ref=e1]" in judged
+    assert "web_search" not in judged
 
 
 async def test_a_declared_part_the_cap_cut_is_judged_as_cut(rows):
