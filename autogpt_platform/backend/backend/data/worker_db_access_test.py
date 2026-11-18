@@ -26,6 +26,7 @@ _WORKER_PACKAGES = (
 )
 
 _CONNECTION_NAMES = {
+    "bounded_transaction",
     "connect",
     "execute_raw_with_schema",
     "prisma",
@@ -48,7 +49,7 @@ def _is_test_support(path: pathlib.Path) -> bool:
     return (
         path.name.endswith("_test.py")
         or path.name in ("conftest.py", "_test_data.py")
-        or "test" in path.parts
+        or "test" in path.relative_to(_BACKEND).parts
     )
 
 
@@ -170,13 +171,21 @@ def _violations(module: pathlib.Path) -> list[str]:
     return found
 
 
+def test_query_modules_are_recognised():
+    assert _is_query_module("backend.copilot.db")
+    assert not _is_query_module("backend.data.db_accessors")
+    assert not _is_query_module("backend.copilot.model")
+
+
 def test_database_manager_endpoints_are_found():
     assert "backend.copilot.db.get_chat_session_metadata" in _SERVED
     assert len(_SERVED) > 300
 
 
 def test_worker_packages_do_not_query_the_database_directly():
-    found = [line for module in _modules() for line in _violations(module)]
+    modules = _modules()
+    assert len(modules) > 100
+    found = [line for module in modules for line in _violations(module)]
     if found:
         pytest.fail("\n".join([*found, "", _ADVICE]))
 
@@ -184,9 +193,15 @@ def test_worker_packages_do_not_query_the_database_directly():
 @pytest.mark.parametrize(
     "source, expected",
     [
-        ("from backend.copilot.db import list_recent_chat_sessions\n", "imports"),
+        (
+            "from backend.copilot.db import list_recent_chat_sessions\n",
+            "imports backend.copilot.db.list_recent_chat_sessions",
+        ),
         ("from backend.copilot import db\n", "query module"),
-        ("from backend.data.user import get_user_by_id\n", "imports"),
+        (
+            "from backend.data.user import get_user_by_id\n",
+            "imports backend.data.user.get_user_by_id",
+        ),
         (
             "from backend.data import user\nasync def f():\n"
             "    await user.get_user_by_id('u')\n",
@@ -204,7 +219,10 @@ def test_worker_packages_do_not_query_the_database_directly():
             "    await backend.data.user.get_user_by_id('u')\n",
             "calls backend.data.user.get_user_by_id",
         ),
-        ("from backend.data.db_manager import _spend_credits\n", "imports"),
+        (
+            "from backend.data.db_manager import _spend_credits\n",
+            "imports backend.data.db_manager._spend_credits",
+        ),
     ],
 )
 def test_direct_database_access_is_reported(tmp_path, monkeypatch, source, expected):
