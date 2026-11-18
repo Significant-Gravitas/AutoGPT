@@ -714,3 +714,94 @@ async def test_a_call_held_before_held_calls_knew_their_card_still_runs_on_its_o
     assert delivered.metadata["held_call"]["outcome"] == "approved"
     assert post_tool.runs == [ARGS]
     assert await scene.interleaving.card() is None
+
+
+@pytest.mark.parametrize("gate", [True, False], ids=["gate-on", "gate-off"])
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_held_call_whose_arguments_change_before_its_gate_leaves_no_approval(
+    setup_test_user, test_user_id, gate_on, post_tool, gate
+):
+    """The replayed call reaches its gate under another review id (its tool
+    changed the arguments on the way), so the fold's pass goes unused. With
+    the gate off it runs; with it on it asks under its own card. Either way
+    the card the fold read is dropped, so it never buys an identical call a
+    second run."""
+    scene = await new_scene(test_user_id, post_tool)
+    await scene.approve()
+    named = review_store.review_id_for
+
+    def renamed(*args, **kwargs) -> str:
+        return named(*args, **kwargs) + "-changed"
+
+    with (
+        patch.object(review_store, "review_id_for", renamed),
+        patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=gate)),
+    ):
+        [delivered] = await resolved(test_user_id, scene.session)
+
+    assert delivered.metadata["held_call"]["outcome"] == "closed"
+    assert post_tool.runs == ([] if gate else [ARGS])
+    assert await scene.interleaving.card() is None
+    output = await scene.caller(2)()
+    assert scene.review_id in output
+    assert post_tool.runs == ([] if gate else [ARGS])
+
+
+class _Unreadable:
+    async def get_reviews_by_node_exec_ids(self, node_exec_ids, user_id):
+        raise ConnectionError("database unreachable")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_park_that_cannot_read_its_card_back_keeps_its_call(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The park stored its call and opened its card, then couldn't read the
+    card back. The call is kept: it pairs only with a card of its own
+    generation, so keeping it is safe, and dropping it would leave the card
+    with nothing to run."""
+    scene = await new_scene(test_user_id, post_tool, parked=False)
+
+    with patch.object(held, "review_db", lambda: _Unreadable()):
+        await scene.park()
+
+    assert await _held_under(scene) == ["call-0"]
+    await scene.approve()
+    [delivered] = await resolved(test_user_id, scene.session)
+    assert delivered.metadata["held_call"]["outcome"] == "approved"
+    assert post_tool.runs == [ARGS]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_held_calls_no_card_can_answer_are_dropped_once_stale(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """B, the same call, spends P's card, so P's held call can never be
+    answered; C then waits on a fresh card. A later fold keeps P's while it is
+    younger than an approval lasts (a park may still be opening its card),
+    then drops it. C's, whose card still waits, stays however old."""
+    scene = await new_scene(test_user_id, post_tool)
+    await scene.approve()
+    await scene.caller(2)()
+    await scene.park(tool_call_id="call-C")
+    assert sorted(await _held_under(scene)) == ["call-0", "call-C"]
+
+    await resolved(test_user_id, scene.session)
+    assert sorted(await _held_under(scene)) == ["call-0", "call-C"]
+
+    with patch.object(held, "datetime", AnHourLater):
+        await resolved(test_user_id, scene.session)
+    assert await _held_under(scene) == ["call-C"]
+    assert post_tool.runs == [ARGS]
+
+
+def test_a_cards_rule_comes_from_its_call_not_a_restored_copy():
+    """A restore's copy keeps no rule key; beside the exact call under the
+    same review id, the exact call's rule is the one a rejection sets."""
+    exact = held.HeldCall(
+        review_id="r", tool_name=TOOL, tool_call_id="c", args={}, rule_key="subject"
+    )
+    copy = exact.model_copy(update={"rule_key": None, "generation": "other"})
+    for order in ([exact, copy], [copy, exact]):
+        by_id = held._by_review_id({str(i): call for i, call in enumerate(order)})
+        assert by_id["r"].rule_key == "subject"

@@ -257,7 +257,9 @@ async def kept_for_its_card(user_id: str, session_id: str, call: HeldCall) -> bo
     try:
         rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
     except Exception:
-        logger.warning(f"Gate could not read back review {call.review_id}")
+        logger.warning(
+            f"Gate could not read back review {call.review_id}", exc_info=True
+        )
         return True
     card = rows.get(call.review_id)
     if card is None or _of_card(call, card):
@@ -272,9 +274,14 @@ async def forget(session_id: str, call: HeldCall) -> None:
 
 
 async def answered(user_id: str, session_id: str) -> list[HeldCall]:
-    """Held calls whose card has been answered, oldest first."""
+    """Held calls whose card has been answered, oldest first. On the way it
+    drops the held calls no card can answer any more (see :func:`_answered`)."""
     held = await _held(session_id)
-    return [held[field] for field, _ in await _answered(user_id, session_id, held)]
+    listed, strays = await _answered(user_id, session_id, held)
+    for field in strays:
+        logger.info(f"Held call {held[field].review_id} has no card; dropped")
+        await _claim(session_id, held[field])
+    return [held[field] for field, _ in listed]
 
 
 async def answered_cards(
@@ -282,14 +289,20 @@ async def answered_cards(
 ) -> "list[PendingHumanReviewModel]":
     """The answered cards whose held calls have not run yet, oldest first."""
     held = await _held(session_id)
-    return [row for _, row in await _answered(user_id, session_id, held)]
+    listed, _ = await _answered(user_id, session_id, held)
+    return [row for _, row in listed]
 
 
 async def _answered(
     user_id: str, session_id: str, held: dict[str, HeldCall]
-) -> "list[tuple[str, PendingHumanReviewModel]]":
+) -> "tuple[list[tuple[str, PendingHumanReviewModel]], list[str]]":
+    """The answered held calls with their cards, oldest first, and the held
+    calls no card can answer any more: theirs is gone, or another park's
+    (generations are never reused). Only those held for longer than an
+    approval lasts count, so a park between storing its call and opening its
+    card is never one."""
     if not held:
-        return []
+        return [], []
     try:
         rows = await review_db().get_reviews_by_node_exec_ids(
             list({call.review_id for call in held.values()}), user_id
@@ -298,8 +311,8 @@ async def _answered(
         logger.warning(
             f"Gate could not read held calls for session {session_id}", exc_info=True
         )
-        return []
-    return sorted(
+        return [], []
+    listed = sorted(
         (
             (field, row)
             for field, call in held.items()
@@ -310,6 +323,14 @@ async def _answered(
         ),
         key=lambda answered: held[answered[0]].held_at,
     )
+    stale = datetime.now(UTC) - review_store.APPROVAL_TTL
+    strays = [
+        field
+        for field, call in held.items()
+        if call.held_at < stale
+        and ((row := rows.get(call.review_id)) is None or not _of_card(call, row))
+    ]
+    return listed, strays
 
 
 async def resolve_answered(
@@ -415,7 +436,9 @@ async def wake(
         wake_id = str(
             uuid.uuid5(
                 uuid.NAMESPACE_URL,
-                f"{session_id}:" + ",".join(sorted(c.review_id for c in calls)),
+                # By held call, not review id: a card proposed again under a
+                # spent card's id is a new answer, with a turn of its own.
+                f"{session_id}:" + ",".join(sorted(_field(c) for c in calls)),
             )
         )
         info = await chat_db().get_chat_session_metadata(session_id)
@@ -778,13 +801,30 @@ async def _run(
     row: "PendingHumanReviewModel",
     tool: "BaseTool",
 ) -> tuple[Outcome, str]:
-    fold_pass = FoldPass(row)
-    try:
-        with running(call.review_id, fold_pass), replaying_bound_args(call.args_bound):
+    async def invoke() -> tuple[bool, Callable[[], tuple[Outcome, str]]]:
+        with replaying_bound_args(call.args_bound):
             result = await tool.execute(
                 user_id, session, call.tool_call_id, **call.args
             )
-        return _passed(call, fold_pass, lambda: _tool_outcome(result))
+        return result.success, lambda: _tool_outcome(result)
+
+    return await _with_pass(user_id, call, row, invoke)
+
+
+async def _with_pass(
+    user_id: str,
+    call: HeldCall,
+    row: "PendingHumanReviewModel",
+    invoke: Callable[[], Awaitable[tuple[bool, Callable[[], tuple[Outcome, str]]]]],
+) -> tuple[Outcome, str]:
+    """Run the call with a pass for the card the fold read, which its gate
+    spends just before it runs; then say what it came to by how far the spend
+    got. A failure after the spend may have run the call."""
+    fold_pass = FoldPass(row)
+    try:
+        with running(call.review_id, fold_pass):
+            succeeded, outcome = await invoke()
+        return await _passed(user_id, call, fold_pass, outcome, succeeded)
     except (SpentThenFailed, UnconfirmedSpend):
         raise
     except Exception as failed:
@@ -793,13 +833,16 @@ async def _run(
         raise
 
 
-def _passed(
+async def _passed(
+    user_id: str,
     call: HeldCall,
     fold_pass: FoldPass,
     ran: Callable[[], tuple[Outcome, str]],
+    succeeded: bool,
 ) -> tuple[Outcome, str]:
     """What the held call came to, by how far its gate got with the card. A
-    call refused before its gate spent nothing, so it isn't approved."""
+    call refused before its gate spent nothing, so it isn't approved and its
+    approval stands for the call proposed again."""
     if fold_pass.use == "spent":
         return ran()
     if fold_pass.use == "unconfirmed":
@@ -808,6 +851,15 @@ def _passed(
         return "expired", EXPIRED
     if fold_pass.use == "missed":
         return "closed", SPENT
+    if fold_pass.use == "unmatched" or succeeded:
+        # It reached its gate with other arguments, or ran without reaching
+        # one: either way it may have run without this card, which must not
+        # then buy an identical call a run.
+        logger.warning(
+            f"Held call {call.review_id} may have run without spending its "
+            f"approval ({fold_pass.use}); dropping the card"
+        )
+        await review_store.discard(fold_pass.card, user_id)
     return "closed", ran()[1]
 
 
@@ -830,17 +882,11 @@ async def _run_handler(
     row: "PendingHumanReviewModel",
     handler: McpHandler,
 ) -> tuple[Outcome, str]:
-    fold_pass = FoldPass(row)
-    try:
-        with running(call.review_id, fold_pass):
-            result = await handler(call.args)
-        return _passed(call, fold_pass, lambda: _handler_outcome(result))
-    except (SpentThenFailed, UnconfirmedSpend):
-        raise
-    except Exception as failed:
-        if fold_pass.use == "spent":
-            raise SpentThenFailed(call.review_id) from failed
-        raise
+    async def invoke() -> tuple[bool, Callable[[], tuple[Outcome, str]]]:
+        result = await handler(call.args)
+        return not result.get("isError"), lambda: _handler_outcome(result)
+
+    return await _with_pass(user_id, call, row, invoke)
 
 
 def _handler_outcome(result: dict[str, Any]) -> tuple[Outcome, str]:
@@ -952,9 +998,15 @@ async def _claim(session_id: str, call: HeldCall) -> bool:
 
 
 def _by_review_id(held: dict[str, HeldCall]) -> dict[str, HeldCall]:
-    """Any held call per review id: every call under one id has the same
-    arguments, so the same subject."""
-    return {call.review_id: call for call in held.values()}
+    """One held call per review id: every call under one id has the same
+    arguments, so the same subject, but a restore's copy of the card keeps no
+    rule key, so a call that has one is preferred."""
+    by_id: dict[str, HeldCall] = {}
+    for call in held.values():
+        kept = by_id.get(call.review_id)
+        if kept is None or (kept.rule_key is None and call.rule_key is not None):
+            by_id[call.review_id] = call
+    return by_id
 
 
 def _key(session_id: str) -> str:

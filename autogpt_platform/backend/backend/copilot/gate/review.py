@@ -132,7 +132,8 @@ def review_id_for(
     """
     # As a held call keeps them: its arguments come back from Redis as JSON
     # (a datetime as ISO text, a set as a list), and its replay must name the
-    # same approval. Plain JSON arguments hash exactly as they always have.
+    # same approval. For plain JSON arguments this must stay exactly
+    # json.dumps(args, sort_keys=True), or every open card's id would change.
     canonical = json.dumps(to_jsonable_python(args, fallback=str), sort_keys=True)
     digest = hashlib.sha256(
         "\x00".join((session_id, user_id, tool_name, canonical)).encode()

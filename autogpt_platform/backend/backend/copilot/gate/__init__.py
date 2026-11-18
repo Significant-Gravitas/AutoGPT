@@ -44,16 +44,12 @@ from .policy import (
     strictest_mode,
     verdict_for_effect,
 )
-from .spent_approval import FoldPass, passing, take_pass, use
+from .spent_approval import SPENT, FoldPass, passing, take_pass, unmatched, use
 from .subject import Subject
 
 logger = logging.getLogger(__name__)
 
 _ALREADY_HELD = "This exact call is already waiting for the user's approval."
-_CONSUMED = (
-    "This approval was already used by an identical call, or withdrawn. "
-    "Do not retry; tell the user."
-)
 _REJECTED = (
     "The user declined this action. Do not retry it, do not adjust the "
     "arguments and try again, and do not use a different tool to achieve the "
@@ -208,6 +204,7 @@ async def check_action(
         )
         if fold_pass is not None:
             return await _on_fold_pass(fold_pass, user_id, session)
+        unmatched()
     if not await gate_active(user_id, session):
         return ALLOW
     assert user_id is not None
@@ -228,7 +225,7 @@ async def check_action(
             if review_store.is_spend_card(review):
                 await raise_ceiling(CEILING_UNIT_MICRODOLLARS)
             return Decision(allowed=True, approved=True, decided=True)
-        return Decision(allowed=False, reason=_CONSUMED)
+        return Decision(allowed=False, reason=SPENT)
     if review is not None and review.status == ReviewStatus.REJECTED:
         await review_store.discard(review, user_id)
         await chat_rules.set_ask(

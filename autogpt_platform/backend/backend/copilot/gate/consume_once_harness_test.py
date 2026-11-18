@@ -127,6 +127,9 @@ class Interleaving:
         name = _ACTOR.get()
         if name is None:
             return
+        # A task an actor starts inherits its name; two parked under one name
+        # would lose one of them.
+        assert name not in self._parked, f"{name} is already parked"
         go = asyncio.Event()
         self._parked[name] = (go, label)
         self._moved.set()

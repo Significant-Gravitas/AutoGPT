@@ -32,8 +32,9 @@ UNCONFIRMED = (
 )
 
 # How far a fold's pass got: never reached a gate, spent there, missed (the
-# card was taken or changed), lapsed, or a spend that failed.
-Use = Literal["unused", "spent", "missed", "expired", "unconfirmed"]
+# card was taken or changed), lapsed, a spend that failed, or unmatched (the
+# call reached its gate under another review id: its arguments changed).
+Use = Literal["unused", "spent", "missed", "expired", "unconfirmed", "unmatched"]
 
 # The fold's pass for the call it is running, by review id.
 _passes: ContextVar[dict[str, "FoldPass"] | None] = ContextVar(
@@ -75,6 +76,16 @@ def take_pass(review_id: str) -> FoldPass | None:
     """
     passes = _passes.get()
     return passes.pop(review_id, None) if passes else None
+
+
+def unmatched() -> None:
+    """The call the fold is running reached its gate under another review id
+    than its pass: its arguments changed on the way. The gate rules on it as
+    on any call; the fold then drops the card it read, which must not stand
+    for a later identical call once this one may have run."""
+    for fold_pass in (_passes.get() or {}).values():
+        if fold_pass.use == "unused":
+            fold_pass.use = "unmatched"
 
 
 async def use(fold_pass: FoldPass, user_id: str) -> str | None:

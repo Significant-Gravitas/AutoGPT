@@ -814,6 +814,33 @@ async def test_an_answer_on_an_idle_chat_starts_its_turn(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_an_answer_to_a_call_proposed_again_wakes_its_own_turn(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The same call, proposed again once its first approval was spent, opens
+    a card under the same review id. Its answer is a new one, so it wakes a
+    turn of its own rather than being taken for the first answer's wake."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "twice")
+    dispatch = AsyncMock()
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        await _answer(review_id, ReviewStatus.APPROVED)
+        await held.wake(test_user_id, session.session_id)
+        [ran] = await _resolved(test_user_id, session)
+        assert ran.metadata["held_call"]["outcome"] == "approved"
+        # The woken turn's reply, so only the wake's own id can collapse the next.
+        await append_and_save_message(
+            session.session_id, ChatMessage(role="assistant", content="Posted.")
+        )
+
+        assert await _hold(session, test_user_id, "twice") == review_id
+        await _answer(review_id, ReviewStatus.APPROVED)
+        await held.wake(test_user_id, session.session_id)
+
+    assert dispatch.await_count == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_an_open_question_keeps_the_answered_cards_for_its_answer(
     setup_test_user, test_user_id, gate_on
 ):
