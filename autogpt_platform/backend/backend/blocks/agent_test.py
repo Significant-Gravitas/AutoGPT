@@ -14,6 +14,7 @@ import pytest
 import backend.blocks._sub_agent_wait as sub_agent_wait
 import backend.data.event_bus as event_bus
 import backend.data.redis_client as redis_client
+from backend.blocks import get_output_block_ids
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentOutputBlock
 from backend.data.execution import (
@@ -30,6 +31,13 @@ from backend.util.testing import is_tcp_port_reachable, redis_shard_proxies
 _T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 _USER, _GRAPH, _CHILD = "user-1", "graph-1", "child-exec-1"
 _WITHIN_S = 8.0
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _blocks_loaded() -> None:
+    """Load the block registry, which takes seconds cold, before any test
+    starts its _WITHIN_S bound."""
+    get_output_block_ids()
 
 
 def _output(n: int, value: str) -> NodeExecutionEvent:

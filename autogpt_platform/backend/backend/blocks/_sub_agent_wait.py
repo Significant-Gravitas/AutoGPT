@@ -126,7 +126,8 @@ class SubAgentWait:
             async with asyncio.timeout(wait):
                 event = await self._queue.get()
         except TimeoutError:
-            self._retry_at = None  # a scheduled retry is due
+            # A quiet spell, or a scheduled retry fell due: catch up now.
+            self._retry_at = None
             return None
         self._stale = self._stale or event is None
         return event
@@ -169,7 +170,8 @@ class SubAgentWait:
             return self._release_held()
         except Exception:
             self._on_failed_catch_up()
-            # Given up on the database: still yield what was seen live.
+            # It finishes the wait when it gives up on the database after the
+            # child's end was seen; what was seen live still comes out then.
             return self._release_held() if self.finished else []
         self._stale, self._failures, self._retry_at = False, 0, None
         # In case the database hadn't recorded them yet.
