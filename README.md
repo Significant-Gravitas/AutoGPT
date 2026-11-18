@@ -67,8 +67,9 @@ autogpt-shim \
 # safe to expose end to end.
 ```
 
-Computer use needs an extra, added to the install you have rather than by
-installing again: see [COMPUTER_USE.md](docs/COMPUTER_USE.md#turning-it-on).
+Computer use needs a few more packages, added to the install you have
+rather than by installing again: see
+[COMPUTER_USE.md](docs/COMPUTER_USE.md#turning-it-on).
 
 ### For development
 

@@ -36,28 +36,52 @@ from .mcp_client import McpClosedError, McpError, StdioMcpClient
 logger = logging.getLogger(__name__)
 
 DRIVER_NAME = "cua-driver"
-# How to add computer use to a shim that is installed without it, as the
-# platform's setup card installs it: the extra's packages are added to the
-# install that is there. pip leaves an installed package as it is, whatever
-# it was installed from (a Git revision, an index, a file), and fetches
-# only what the extra asks for. So the shim keeps its revision, which is
-# the one its deployment's platform speaks the protocol of, and a download
-# that fails leaves it as it was.
-#
-# The hint used to be `pipx install --force` on the repository with no
-# revision: that replaced the shim with whatever was on the default
-# branch, and removed the installed one before the new one was built.
-# `pipx install` without --force does nothing for a package pipx already
-# has, extra or not, which is why this runs pip in pipx's environment.
-# docs/COMPUTER_USE.md says the same, and tests/test_install_hint.py runs
-# pip to hold it to this.
-#
-# Double quotes, which cmd.exe, PowerShell and POSIX shells all take (the
-# text has no $, backtick or !); cmd.exe would split single-quoted text at
-# its spaces.
-COMPUTER_USE_INSTALL = (
-    'pipx runpip autogpt-local-executor install "autogpt-local-executor[computer-use]"'
+# What the computer-use extra brings, as pyproject.toml lists it: everywhere,
+# and on macOS as well. tests/test_install_hint.py holds the two together.
+COMPUTER_USE_PACKAGES = (f"{DRIVER_NAME}=={REVIEWED_DRIVER_VERSION}",)
+COMPUTER_USE_PACKAGES_MACOS = (
+    "pyobjc-framework-ApplicationServices>=10.0",
+    "pyobjc-framework-Cocoa>=10.0",
+    "pyobjc-framework-Quartz>=10.0",
 )
+
+
+def computer_use_install(platform: str | None = None) -> str:
+    """How to add computer use to a shim that is installed without it, as
+    the platform's setup card installs it: the extra's packages are added
+    to the install that is there. pip leaves an installed package as it
+    is, whatever it was installed from (a Git revision, an index, a file),
+    and fetches only what it is asked for. So the shim keeps its revision,
+    which is the one its deployment's platform speaks the protocol of, and
+    a download that fails leaves it as it was.
+
+    The packages are named one by one and added with `pipx inject`, which
+    records them as added to the shim's environment and leaves alone what
+    pipx recorded the shim was installed from. pipx installs from that
+    record again at `pipx reinstall` and `pipx upgrade`, and adds the
+    injected packages back after it. Naming the extra instead (`pipx runpip
+    <shim> install "<shim>[computer-use]"`) left the shim's files alone as
+    well, but pipx then took `<shim>[computer-use]` for the shim's source,
+    in place of the revision: the next reinstall or upgrade would have
+    looked for the shim by name on the package index. Before that the hint
+    was `pipx install --force` on the repository with no revision, which
+    replaced the shim with whatever was on the default branch; `pipx
+    install` without --force does nothing for a package pipx already has.
+    docs/COMPUTER_USE.md says the same, and tests/test_install_hint.py
+    holds the hint to it.
+
+    Double quotes, which cmd.exe, PowerShell and POSIX shells all take
+    (the text has no $, backtick or !, and `>` and `=` inside them are
+    text to all three); cmd.exe would split single-quoted text at its
+    spaces."""
+    packages: tuple[str, ...] = COMPUTER_USE_PACKAGES
+    if (sys.platform if platform is None else platform) == "darwin":
+        packages += COMPUTER_USE_PACKAGES_MACOS
+    return "pipx inject autogpt-local-executor " + " ".join(f'"{package}"' for package in packages)
+
+
+# The hint for the computer this runs on.
+COMPUTER_USE_INSTALL = computer_use_install()
 START_TIMEOUT_SECONDS = 30.0
 LIST_TIMEOUT_SECONDS = 30.0
 # A driver that keeps stopping is given up on until the window has passed.
@@ -555,7 +579,7 @@ class CuaDriverBridge:
                 ) from None
             if binary is None:
                 raise DriverUnavailable(
-                    "cua-driver is not installed. Add the computer-use extra to this "
+                    "cua-driver is not installed. Add computer use's packages to this "
                     "install, which leaves the local executor itself as it is: "
                     f"{COMPUTER_USE_INSTALL}",
                     code=ErrorCode.DEPENDENCY_MISSING,
@@ -830,6 +854,9 @@ def _retrieved(task: asyncio.Future[Any]) -> None:
 
 __all__ = [
     "COMPUTER_USE_INSTALL",
+    "COMPUTER_USE_PACKAGES",
+    "COMPUTER_USE_PACKAGES_MACOS",
+    "computer_use_install",
     "DRIVER_NAME",
     "CallNotStarted",
     "CuaDriverBridge",

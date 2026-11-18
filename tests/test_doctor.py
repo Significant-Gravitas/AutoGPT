@@ -150,7 +150,7 @@ def test_doctor_fails_without_cua_driver(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setattr(doctor, "find_driver_binary", lambda _path=None: None)
 
     assert doctor.run_doctor(_config(tmp_path, enable_computer_use=True)) == doctor.EX_CONFIG
-    assert "computer-use]" in capsys.readouterr().out
+    assert "pipx inject autogpt-local-executor" in capsys.readouterr().out
 
 
 def test_the_install_hint_takes_double_quotes(tmp_path, monkeypatch, capsys) -> None:
@@ -162,7 +162,7 @@ def test_the_install_hint_takes_double_quotes(tmp_path, monkeypatch, capsys) -> 
     doctor.run_doctor(_config(tmp_path, enable_computer_use=True))
 
     out = capsys.readouterr().out
-    assert '"autogpt-local-executor[computer-use]"' in out
+    assert 'pipx inject autogpt-local-executor "cua-driver==' in out
     assert "'" not in doctor.COMPUTER_USE_INSTALL
 
 

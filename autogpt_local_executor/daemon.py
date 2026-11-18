@@ -2758,9 +2758,9 @@ class ShimDaemon:
             return
         if found is None:
             await self._fail_preflight(
-                "Computer use is enabled but cua-driver is not installed. Add the "
-                f"computer-use extra to this install with `{COMPUTER_USE_INSTALL}`, then "
-                "run `autogpt-shim doctor`.",
+                "Computer use is enabled but cua-driver is not installed. Add computer "
+                f"use's packages to this install with `{COMPUTER_USE_INSTALL}`, then run "
+                "`autogpt-shim doctor`.",
                 missing_permissions=["cua_driver"],
                 error_code=ErrorCode.DEPENDENCY_MISSING,
                 permanent=True,

@@ -16,23 +16,45 @@ working.
 
 ## Turning it on
 
-Computer use is off by default. It needs the computer-use extra, which
-brings the pinned cua-driver binary. A shim installed from the platform's
-setup card doesn't have it. Add the extra to the install you have:
+Computer use is off by default. It needs the packages of the computer-use
+extra: the pinned cua-driver binary, and on macOS the three pyobjc packages
+the permission checks use. A shim installed from the platform's setup card
+doesn't have them. Add them to the install you have. On Linux and Windows:
 
 ```bash
-pipx runpip autogpt-local-executor install "autogpt-local-executor[computer-use]"
+pipx inject autogpt-local-executor "cua-driver==0.38.0"
 ```
 
-That runs pip in the environment pipx keeps for the shim. pip leaves an
-installed package as it is, whatever it was installed from, and fetches
-only what the extra asks for, so the shim stays at the revision your
-deployment pins. Don't reinstall it from the repository for this: a
-reinstall that names no revision takes the default branch's head, which
-may speak another protocol version than your deployment, and `pipx install`
-without `--force` does nothing for a package pipx already has. In an
-install pipx doesn't manage, run the same `pip install` with the Python
-the shim runs under. The command works as it is in Windows `cmd.exe` and
+On macOS:
+
+```bash
+pipx inject autogpt-local-executor "cua-driver==0.38.0" "pyobjc-framework-ApplicationServices>=10.0" "pyobjc-framework-Cocoa>=10.0" "pyobjc-framework-Quartz>=10.0"
+```
+
+`autogpt-shim doctor` and the shim's own errors print the one for the
+computer they run on. `pipx inject` installs the packages into the
+environment pipx keeps for the shim, and records them as added to it. pip
+leaves an installed package as it is, whatever it was installed from, so
+the shim stays at the revision your deployment pins. What pipx recorded
+the shim was installed from stays too: a later `pipx reinstall` installs
+the shim from that record and adds the same packages back.
+
+Two ways that look simpler change what is installed, now or later:
+
+- Adding the extra by name (`pipx runpip autogpt-local-executor install
+  "autogpt-local-executor[computer-use]"`) leaves the shim's files alone,
+  but pipx then takes `autogpt-local-executor[computer-use]` for what the
+  shim was installed from. Its next `pipx reinstall` or `pipx upgrade`
+  looks for the shim by that name on the package index, not at the
+  revision you installed.
+- Reinstalling from the repository with no revision takes the default
+  branch's head, which may speak another protocol version than your
+  deployment. (`pipx install` without `--force` does nothing for a package
+  pipx already has.)
+
+In an install pipx doesn't manage, install the same packages with the pip
+of the Python the shim runs under (`python -m pip install` and the quoted
+names above). The commands work as they are in Windows `cmd.exe` and
 PowerShell too: both take the double quotes.
 
 Then turn computer use on in the config, `enable_computer_use = true` (or
@@ -211,7 +233,7 @@ Start with `autogpt-shim doctor`. Then:
 |---|---|
 | The platform doesn't offer computer use for this computer | The shim wasn't started with `--enable-computer-use`, cua-driver isn't installed, or it didn't start; the shim log says which (`Not advertising computer_use: ...`). On Linux, no display in the shim's environment. Or looking for the driver stalled (`Looking for cua-driver took longer than ...`): a folder on PATH, or one Python imports from, may be on a mount that isn't answering. |
 | The shim exits with code 78 at start | A macOS permission is missing, or there is no usable cua-driver: none installed, or on macOS one of another release. `doctor` says which. For a permission, launchd starts the shim again on its own. A missing or incompatible driver isn't retried: the LaunchAgent exits 0 instead, and the systemd unit doesn't restart on 78, so restart the service once the driver is fixed (`launchctl kickstart -k gui/$(id -u)/co.agpt.shim`, or `systemctl --user restart autogpt-shim`). |
-| `DEPENDENCY_MISSING` | No cua-driver, or one of another release. Add the computer-use extra to the install ("Turning it on" above). |
+| `DEPENDENCY_MISSING` | No cua-driver, or one of another release. Add computer use's packages to the install ("Turning it on" above). |
 | Windows look empty to the agent (`degraded: true`) on Linux | AT-SPI unreachable: the session bus isn't in the shim's environment, or the app doesn't expose accessibility. |
 | Results arrive without screenshots | The per-minute screenshot budget is spent; the result says so. |
 | `FEATURE_NOT_SUPPORTED` | The agent asked for a tool this computer doesn't offer, or an argument it never accepts, such as `check_permissions` with `prompt: true`. |
