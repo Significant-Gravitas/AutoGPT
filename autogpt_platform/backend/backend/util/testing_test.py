@@ -1,11 +1,17 @@
 import asyncio
+import socket
 from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.util import testing
-from backend.util.testing import Rendezvous, TcpProxy, is_tcp_port_reachable
+from backend.util.testing import (
+    Rendezvous,
+    TcpProxy,
+    is_tcp_port_reachable,
+    unreachable_tcp_endpoints,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -56,6 +62,33 @@ def test_is_tcp_port_reachable_propagates_unexpected_errors() -> None:
     ):
         with pytest.raises(ValueError, match="invalid endpoint"):
             is_tcp_port_reachable("redis.example", 6379)
+
+
+@pytest.mark.asyncio
+async def test_unreachable_tcp_endpoints_names_only_the_one_that_is_down() -> None:
+    """The test server's preflight: a listening service passes, and a closed
+    port is named once the wait runs out, not retried forever. Each is
+    probed on its own, so a slow runner can only slow the listening probe
+    within its long window, never turn it into a miss."""
+    listening = await asyncio.start_server(lambda _r, w: w.close(), "127.0.0.1", 0)
+    up = listening.sockets[0].getsockname()[1]
+    try:
+        reached = await unreachable_tcp_endpoints(
+            {"Postgres": ("127.0.0.1", up)}, within=30
+        )
+    finally:
+        listening.close()
+        await listening.wait_closed()
+    # Bound but never listening: it refuses, and nothing else can take it.
+    with socket.socket() as reserved:
+        reserved.bind(("127.0.0.1", 0))
+        down = reserved.getsockname()[1]
+        missing = await unreachable_tcp_endpoints(
+            {"Redis": ("127.0.0.1", down)}, within=0.2
+        )
+
+    assert reached == []
+    assert missing == [f"Redis at 127.0.0.1:{down}"]
 
 
 @pytest.mark.asyncio

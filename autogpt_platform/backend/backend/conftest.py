@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from sentry_sdk.envelope import Envelope
 from sentry_sdk.transport import Transport
 
-from backend.data import versioned_cache
+from backend.data import redis_client, versioned_cache
 from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
@@ -26,6 +26,8 @@ from backend.util import posthog_client
 from backend.util.httpx_client_guard import HttpxClientGuard, left_open_report
 from backend.util.logging import configure_logging
 from backend.util.platform_payment import settings as platform_payment_settings
+from backend.util.settings import Settings
+from backend.util.testing import unreachable_tcp_endpoints
 from backend.util.tracing import traces_sampler
 
 load_dotenv()
@@ -85,9 +87,43 @@ def _warm_test_forkserver() -> None:
 async def server():
     from backend.util.test import SpinTestServer
 
+    await _require_test_stack()
     async with SpinTestServer() as server:
         async with _track_test_graphs(server):
             yield server
+
+
+async def _require_test_stack() -> None:
+    """Fail every test that needs the server at once, naming the service that
+    is down, instead of leaving the server's clients retrying it forever. A
+    failure, not a skip: a CI job that lost its services must stay red."""
+    database = urlparse(os.environ["DATABASE_URL"])
+    config = Settings().config
+    missing = await unreachable_tcp_endpoints(
+        {
+            "Postgres (DATABASE_URL)": (
+                database.hostname or "localhost",
+                database.port or 5432,
+            ),
+            "Redis (REDIS_CLUSTER_HOST/PORT, else REDIS_HOST/PORT)": (
+                redis_client.HOST,
+                redis_client.PORT,
+            ),
+            "RabbitMQ (RABBITMQ_CLUSTER_HOST/PORT, else RABBITMQ_HOST/PORT)": (
+                config.rabbitmq_host,
+                config.rabbitmq_port,
+            ),
+        },
+        within=30,
+    )
+    if missing:
+        pytest.fail(
+            "The backend test stack is unreachable: "
+            + "; ".join(missing)
+            + ". Start Postgres, Redis and RabbitMQ (backend/TESTING.md) and "
+            "point those variables at them.",
+            pytrace=False,
+        )
 
 
 @pytest_asyncio.fixture(autouse=True)
