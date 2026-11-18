@@ -427,6 +427,13 @@ async def execute_graph(
     preset_id: Optional[str] = None,
     dry_run: Annotated[bool, Body(embed=True)] = False,
 ) -> execution_db.GraphExecutionMeta:
+    # The run is billed to the request's org, so the workflow must be one it can see.
+    graph = await graph_db.get_graph(
+        graph_id, graph_version, user_id=user_id, organization_id=ctx.org_id
+    )
+    if not graph:
+        raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
+
     if not dry_run:
         credit_model = await get_credit_model(user_id, ctx.org_id)
         current_balance = await credit_model.get_credits(user_id)
@@ -442,7 +449,7 @@ async def execute_graph(
             user_id=user_id,
             inputs=inputs,
             preset_id=preset_id,
-            graph_version=graph_version,
+            graph_version=graph.version,
             graph_credentials_inputs=credentials_inputs,
             dry_run=dry_run,
             organization_id=ctx.org_id,
