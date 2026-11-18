@@ -37,10 +37,10 @@ export function useAnotherComputer({
       .filter((machineID) => !knownMachineIDs.includes(machineID));
     // A first computer isn't another one: the dialog announces that itself.
     if (isOpen && joined.length > 0 && knownMachineIDs.length > 0) {
-      const earlier = newcomerIDs.filter(
-        (machineID) => !joined.includes(machineID),
-      );
-      setNewcomerIDs([...earlier, ...joined]);
+      setNewcomerIDs((earlier) => [
+        ...earlier.filter((machineID) => !joined.includes(machineID)),
+        ...joined,
+      ]);
       setSetupOpen(false);
     }
   }
@@ -51,8 +51,10 @@ export function useAnotherComputer({
   }
   // Once chosen, a computer is no longer news, whatever is chosen after it.
   if (selectedMachineID && newcomerIDs.includes(selectedMachineID)) {
-    setNewcomerIDs(
-      newcomerIDs.filter((machineID) => machineID !== selectedMachineID),
+    // From what is pending, not from what this render began with: a computer
+    // that joined in this same render stays in.
+    setNewcomerIDs((pending) =>
+      pending.filter((machineID) => machineID !== selectedMachineID),
     );
   }
 

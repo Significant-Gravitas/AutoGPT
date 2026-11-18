@@ -4,44 +4,18 @@ import {
   getPostExperimentalListLocalExecutorDirectoriesMockHandler200,
 } from "@/app/api/__generated__/endpoints/copilot/copilot.msw";
 import type { DirectoryListRequest } from "@/app/api/__generated__/models/directoryListRequest";
-import type { ExecutorMachine } from "@/app/api/__generated__/models/executorMachine";
 import { server } from "@/mocks/mock-server";
 import { Key, storage } from "@/services/storage/local-storage";
 import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { computerMenu } from "../components/LocalFolderPicker/helpers";
 import { ExecutionTargetPicker } from "../ExecutionTargetPicker";
+import { LAPTOP, STUDIO, WORKSTATION } from "./computers";
 
 const EXECUTORS_URL = "http://localhost:3000/api/proxy/api/copilot/executors";
 const CHECK_INTERVAL_MS = 3_000;
 const LAPTOP_CONNECTED = "Laptop · macOS connected. Choose it under Computer.";
-
-const WORKSTATION: ExecutorMachine = {
-  machine_id: "1c49dced-6256-4f28-03af-f8f1ecf3eded",
-  connection_id: "connection-1",
-  display_name: "Workstation",
-  platform: "windows",
-  arch: "x86_64",
-  shim_version: "0.2.0",
-  capabilities: ["files"],
-};
-const LAPTOP: ExecutorMachine = {
-  ...WORKSTATION,
-  machine_id: "36d78179-05b7-7f11-32dd-34f3999eceeb",
-  connection_id: "connection-2",
-  display_name: "Laptop",
-  platform: "darwin",
-  arch: "arm64",
-};
-
-const STUDIO: ExecutorMachine = {
-  ...LAPTOP,
-  machine_id: "2e6b6f28-358a-8d25-6113-ef09e4dcce45",
-  connection_id: "connection-3",
-  display_name: "Studio",
-};
 
 type User = ReturnType<typeof userEvent.setup>;
 
@@ -465,70 +439,5 @@ describe("the folder dialog with more than one computer", () => {
 
     expect(chosenComputer()).toBe("Workstation · Windows");
     expect(screen.queryByText(/have the same name/)).toBeNull();
-  });
-});
-
-describe("the Computer menu's labels", () => {
-  function labels(machines: ExecutorMachine[]) {
-    return computerMenu(machines).options.map((option) => option.label);
-  }
-
-  test("each computer that shares a name shows the start of its own ID", () => {
-    const twin = { ...WORKSTATION, machine_id: LAPTOP.machine_id };
-
-    expect(labels([WORKSTATION, twin, LAPTOP])).toEqual([
-      "Workstation · Windows · ID 1c49dced",
-      "Workstation · Windows · ID 36d78179",
-      "Laptop · macOS",
-    ]);
-  });
-
-  test("IDs that start alike show as much as tells them apart", () => {
-    const first = { ...WORKSTATION, machine_id: "office-pc-1c49dced" };
-    const second = { ...WORKSTATION, machine_id: "office-pc-36d78179" };
-
-    expect(labels([first, second])).toEqual([
-      "Workstation · Windows · ID office-pc-1",
-      "Workstation · Windows · ID office-pc-3",
-    ]);
-  });
-
-  test("an ID that another one begins with still gets its own label", () => {
-    const short = { ...WORKSTATION, machine_id: "office-pc" };
-    const long = { ...WORKSTATION, machine_id: "office-pc-2" };
-
-    expect(labels([short, long])).toEqual([
-      "Workstation · Windows · ID office-pc",
-      "Workstation · Windows · ID office-pc-",
-    ]);
-  });
-
-  test("a name counts as the same name however its letters are encoded", () => {
-    const composed = { ...WORKSTATION, display_name: "Caf\u00e9" };
-    const decomposed = {
-      ...WORKSTATION,
-      display_name: "Cafe\u0301",
-      machine_id: LAPTOP.machine_id,
-    };
-
-    expect(labels([composed, decomposed])).toEqual([
-      "Caf\u00e9 · Windows · ID 1c49dced",
-      "Caf\u00e9 · Windows · ID 36d78179",
-    ]);
-  });
-
-  test("names that differ only in their spaces count as the same name", () => {
-    const spaced = {
-      ...WORKSTATION,
-      display_name: " Office  PC ",
-      machine_id: LAPTOP.machine_id,
-    };
-
-    expect(
-      labels([{ ...WORKSTATION, display_name: "Office PC" }, spaced]),
-    ).toEqual([
-      "Office PC · Windows · ID 1c49dced",
-      "Office PC · Windows · ID 36d78179",
-    ]);
   });
 });
