@@ -2545,6 +2545,16 @@ def _pipes_open_here() -> int | None:
     return count
 
 
+def _pipe_closed(process_transport: Any, fd: int) -> bool:
+    """Whether the loop has closed its end of one of a process's pipes, and
+    not only been asked to (is_closing): on every loop a pipe is closed a
+    turn after its close() call."""
+    pipe = process_transport.get_pipe_transport(fd).get_extra_info("pipe")
+    # A file on POSIX. On Windows a PipeHandle, whose handle is None once
+    # it is closed.
+    return bool(getattr(pipe, "closed", False)) or getattr(pipe, "handle", True) is None
+
+
 @pytest.mark.asyncio
 async def test_the_output_of_at_most_so_many_programs_commands_left_running_is_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -2609,6 +2619,10 @@ async def test_the_output_of_at_most_so_many_programs_commands_left_running_is_r
             # The shim holds the first two programs' pipes, and no more.
             assert with_two >= before + 4
             assert await _wait_until(lambda: _pipes_open_here() <= with_two, timeout=30)
+        # Asked to close isn't closed yet, and a write that got in before
+        # the loop's next turn would go through. On Windows nothing above
+        # waits for that turn, and once in CI the third program's write did.
+        assert await _wait_until(lambda: all(_pipe_closed(third, fd) for fd in (1, 2)), timeout=30)
 
         (tmp_path / "go").touch()
         assert await _wait_until(lambda: all(wrote(name) for name in names), timeout=60)

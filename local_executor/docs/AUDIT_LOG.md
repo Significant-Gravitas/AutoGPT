@@ -40,7 +40,7 @@ single JSON object with this shape:
 {
   "ts": 1712345678.123,
   "session_id": "session-uuid",
-  "machine_id": "machine-uuid",
+  "machine_id": "6f1c2a9e-4b7d-4e53-9a08-3c5d7e9f1b24",
   "shim_version": "0.1.0",
   "request_id": "msg-uuid",
   "op": "EXECUTE_COMMAND",
@@ -61,7 +61,7 @@ single JSON object with this shape:
 |---|---|---|
 | `ts` | float (unix epoch seconds) | Record timestamp, monotonic-rounded |
 | `session_id` | string | The platform session that issued the op |
-| `machine_id` | string | This shim's stable machine identifier |
+| `machine_id` | string | The shim's own ID for this computer, as HELLO sends it: derived, not the operating system's identifier, and without the hostname ([CROSS_PLATFORM.md](CROSS_PLATFORM.md#machine-id)). One the person set is written as given. `-` in a record written with none |
 | `shim_version` | string | version of the shim writing the line, as `autogpt-shim --version` prints it |
 | `request_id` | string \| null | Wire envelope `id` for traceability (null for shim-internal events) |
 | `op` | string | One of the message types from PROTOCOL.md plus a few shim-internal events (see below) |
@@ -362,6 +362,8 @@ require shipping a CA flow we don't need for v0.
   also locked themselves out of any future verification by the user.
 - **Cross-machine impersonation** — `machine_id` is in every record
   and signed; can't lift a chain from one machine and replay on another.
+  It is the shim's own ID, so a log shown to someone else tells them
+  neither the operating system's identifier nor the hostname.
 
 ## What this does NOT catch
 

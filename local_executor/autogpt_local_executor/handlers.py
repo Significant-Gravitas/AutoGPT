@@ -52,18 +52,19 @@ from .computer_use import (
     DriverSnapshot,
     DriverUnavailable,
     check_arguments,
+    check_web_addresses,
     offered_tools,
 )
 from .computer_use.catalog import (
     InstalledApp,
     LinuxLaunch,
-    is_aumid,
     linux_app_matching,
     linux_apps,
     linux_launch,
     linux_launch_uses_name,
     takes_session,
     windows_app_name_matches,
+    windows_launch_uses_name,
     without_session,
 )
 from .computer_use.concealed import ClipboardState, clipboard_state, marker_in
@@ -631,6 +632,66 @@ def _merge_env(base: dict[str, str], extra: dict[str, str]) -> dict[str, str]:
 
 # ── EXECUTE_COMMAND ──────────────────────────────────────────────────────────
 
+# What every cmd.exe command starts with: UTF-8 as the code page the programs
+# it runs write in.
+_CMD_EXE_UTF8 = "chcp 65001 >NUL & "
+# The most a new process's output stream buffers, as asyncio's own calls set it.
+_STREAM_LIMIT = 2**16
+
+
+def _cmd_exe_command_line(cmd_exe: str, command: str) -> str:
+    r"""The Windows command line that has cmd.exe run `command` as written.
+
+    cmd.exe reads its command line itself, and takes a backslash for no
+    escape. As one argv item the command went through subprocess's quoting
+    for programs that read theirs the way the C runtime does, which writes
+    every `"` as `\"`: `dir "C:\Program Files"` ran as `dir \"C:\Program
+    Files\"`. So the line is made here, the command in it unchanged, and
+    started as it is (_start_with_command_line).
+
+    /s: cmd.exe takes off the quote after /c and the last quote on the
+    line, and runs what is between them as it is, whatever quotes that
+    holds. Without it, a line with just those two quotes around the name of
+    a program is run with them kept (`cmd /?`).
+
+    /d: cmd.exe doesn't run the person's AutoRun commands (the registry's
+    `Command Processor\AutoRun`) first. They run in the command's own
+    cmd.exe, so they can change its folder and its environment, which the
+    shim sets for it, and write into its output. No other shell here reads
+    the person's startup file either: PowerShell gets -NoProfile, and
+    `bash -c` reads none. A command that needs the AutoRun script can call
+    it.
+    """
+    return f'{subprocess.list2cmdline([cmd_exe])} /d /s /c "{_CMD_EXE_UTF8}{command}"'
+
+
+async def _start_with_command_line(
+    command_line: str,
+    *,
+    executable: str,
+    stdin: int,
+    stdout: int,
+    stderr: int,
+    **popen: Any,
+) -> asyncio.subprocess.Process:
+    """Start `executable` on Windows with `command_line` as its whole
+    command line, as written.
+
+    asyncio's public calls can't. create_subprocess_exec takes separate
+    arguments, which subprocess joins and quotes (list2cmdline), and
+    create_subprocess_shell makes `cmd.exe /c "<string>"` itself, with no
+    other switch. subprocess.Popen does pass a string on to CreateProcess
+    unchanged, so this is create_subprocess_exec's own body with the string
+    in place of the arguments: the event loop's transport for a new process,
+    which both public calls go through (the same from Python 3.4 to 3.15),
+    and the Process they return over it."""
+    loop = asyncio.get_running_loop()
+    protocol = asyncio.subprocess.SubprocessStreamProtocol(limit=_STREAM_LIMIT, loop=loop)
+    transport = await loop._make_subprocess_transport(  # type: ignore[attr-defined]
+        protocol, command_line, False, stdin, stdout, stderr, 0, executable=executable, **popen
+    )
+    return asyncio.subprocess.Process(transport, protocol, loop)
+
 
 class _CommandConcurrency:
     def __init__(self, limit: int) -> None:
@@ -821,17 +882,28 @@ class CommandHandler:
                         f"Shell {payload.shell.value!r} is not available on this OS.",
                     )
                 shell_exe, shell_args = resolved
-                # On Windows, ensure UTF-8 codepage for the subprocess.
-                full_command = payload.command or ""
                 if plat == "windows" and shell_exe.lower().endswith("cmd.exe"):
-                    full_command = f"chcp 65001 >NUL & {full_command}"
-                proc = await self._spawn_argv(
-                    [shell_exe, *shell_args, full_command],
-                    cwd=str(cwd),
-                    env=env,
-                    creation_flags=creation_flags,
-                    new_session=new_session,
-                )
+                    # cmd.exe gets one command line, the command in it as
+                    # written, and not an argv for subprocess to quote.
+                    proc = await self._spawn_cmd_exe(
+                        shell_exe,
+                        payload.command or "",
+                        cwd=str(cwd),
+                        env=env,
+                        creation_flags=creation_flags,
+                        new_session=new_session,
+                    )
+                else:
+                    # The other shells read their command line as the C
+                    # runtime does, so the command reaches them whole as
+                    # one argument.
+                    proc = await self._spawn_argv(
+                        [shell_exe, *shell_args, payload.command or ""],
+                        cwd=str(cwd),
+                        env=env,
+                        creation_flags=creation_flags,
+                        new_session=new_session,
+                    )
         except _CancelledOnceStarted as cancelled:
             # Cancelled as its command started: stopped and recorded as one
             # cancelled while it runs is (below).
@@ -1026,11 +1098,56 @@ class CommandHandler:
         creation_flags: int,
         new_session: bool,
     ) -> asyncio.subprocess.Process:
+        return await CommandHandler._spawn(
+            lambda **start: asyncio.create_subprocess_exec(
+                *argv, stdin=asyncio.subprocess.DEVNULL, **start
+            ),
+            cwd=cwd,
+            env=env,
+            creation_flags=creation_flags,
+            new_session=new_session,
+        )
+
+    @staticmethod
+    async def _spawn_cmd_exe(
+        cmd_exe: str,
+        command: str,
+        *,
+        cwd: str,
+        env: dict[str, str],
+        creation_flags: int,
+        new_session: bool,
+    ) -> asyncio.subprocess.Process:
+        """Start cmd.exe on `command`, as any command is started."""
+        command_line = _cmd_exe_command_line(cmd_exe, command)
+        return await CommandHandler._spawn(
+            lambda **start: _start_with_command_line(
+                command_line, executable=cmd_exe, stdin=asyncio.subprocess.DEVNULL, **start
+            ),
+            cwd=cwd,
+            env=env,
+            creation_flags=creation_flags,
+            new_session=new_session,
+        )
+
+    @staticmethod
+    async def _spawn(
+        start: Callable[..., Awaitable[asyncio.subprocess.Process]],
+        *,
+        cwd: str,
+        env: dict[str, str],
+        creation_flags: int,
+        new_session: bool,
+    ) -> asyncio.subprocess.Process:
+        """Start a command through `start`, which gives it no stdin: the
+        null device, on every OS. Left out, its stdin would be the shim's
+        own: a terminal when the shim was started in one, where a command
+        that prompts would wait on a prompt nobody sees, and what the person
+        typed there would go to the command."""
         # On Windows the command starts suspended, and runs once it is in a
         # job of its own, which a stop ends whole (windows_jobs).
         in_job = sys.platform == "win32"
-        starting = asyncio.create_subprocess_exec(
-            *argv,
+        starting = start(
             cwd=cwd,
             env=env,
             stdout=asyncio.subprocess.PIPE,
@@ -2179,6 +2296,7 @@ class ComputerUseHandler:
         start = time.monotonic()
         details = self._call_details(msg)
         try:
+            self._refuse_other_than_web_addresses(msg)
             looked_up = await self._looked_up(msg, deadline)
             if looked_up.launch is not None:
                 # What the driver is sent, beside the name the call asked for.
@@ -2213,6 +2331,24 @@ class ComputerUseHandler:
         seconds = float(msg.payload.timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
         return (asyncio.get_running_loop().time() if received_at is None else received_at) + seconds
 
+    @staticmethod
+    def _refuse_other_than_web_addresses(msg: ComputerToolCallMessage) -> None:
+        """Refuse, before the call waits for the computer or the driver, an
+        address for the driver's browser that isn't a web address
+        (catalog.check_web_addresses): a `file:` address, say, which the
+        browser would load from outside the shared folders for
+        get_browser_state to read back. The refusal says where such an
+        address goes: launch_app's `urls`, which the person approves."""
+        tool = msg.payload.tool
+        try:
+            check_web_addresses(tool, msg.payload.arguments)
+        except ArgumentRefused as exc:
+            raise ComputerUseError(
+                ErrorCode.FEATURE_NOT_SUPPORTED,
+                str(exc),
+                details={"tool": tool, "argument": exc.argument},
+            ) from exc
+
     async def _looked_up(self, msg: ComputerToolCallMessage, deadline: float) -> _LookedUp:
         """What the call's check (check_arguments) looks up on disk, by the
         call's deadline, else TimeoutError: the program a Linux launch's
@@ -2235,7 +2371,13 @@ class ComputerUseHandler:
 
         tool, arguments = msg.payload.tool, msg.payload.arguments
         try:
-            check_arguments(tool, arguments, msg.payload.approved_arguments, on_path=noted)
+            check_arguments(
+                tool,
+                arguments,
+                msg.payload.approved_arguments,
+                platform=self.driver.platform,
+                on_path=noted,
+            )
         except (ApprovalRequired, ArgumentRefused):
             return _LookedUp({})
         programs: dict[str, str | None] = {}
@@ -2407,8 +2549,15 @@ class ComputerUseHandler:
             # On the event loop: the one thing the check looks at on disk,
             # the program a Linux launch's name runs, was looked up on PATH
             # before the call took the computer (_looked_up). A name not
-            # looked up then can't come up here: the check is the same.
-            check_arguments(tool, arguments, approved, on_path=looked_up.programs.__getitem__)
+            # looked up then can't come up here: the check is the same. Both
+            # go by the driver's system, as the launch's name check does.
+            check_arguments(
+                tool,
+                arguments,
+                approved,
+                platform=self.driver.platform,
+                on_path=looked_up.programs.__getitem__,
+            )
         except ApprovalRequired as exc:
             raise ComputerUseError(
                 ErrorCode.APPROVAL_REQUIRED,
@@ -2452,8 +2601,12 @@ class ComputerUseHandler:
         and, when none matches, hands it to ShellExecuteEx, which runs a
         program of that name from PATH, out of sight: `logoff` signs the
         person out. So the name goes ahead only when an installed app would
-        match it. A launch_path, path or AUMID takes precedence over the
-        name in the driver's routing, so those calls aren't checked.
+        match it. The driver takes a launch_path, then a path, then an
+        aumid, then a bundle_id that is an AUMID, before a name, and with
+        one of them never falls back to the name, so those calls aren't
+        checked (windows_launch_uses_name): only a string counts, as the
+        driver reads only strings, and of an aumid only one that is an
+        AUMID, which is the only kind sent.
 
         On Linux the driver runs the name as a command line, looks for an
         installed app when no program has its first word, and, when none
@@ -2475,10 +2628,7 @@ class ComputerUseHandler:
         if not isinstance(name, str):
             return
         if platform == "win32":
-            if any(arguments.get(key) for key in ("launch_path", "path", "aumid")):
-                return
-            bundle_id = arguments.get("bundle_id")
-            if isinstance(bundle_id, str) and is_aumid(bundle_id):
+            if not windows_launch_uses_name(arguments):
                 return
             apps = await self._installed_apps_listed(deadline)
             if not windows_app_name_matches(name, [app.name for app in apps]):
@@ -3620,7 +3770,9 @@ class RecordingHandler:
             )
 
         session = RecordingSession(
-            machine_id=self.config.machine_id,
+            # The daemon sets it before it makes its handlers; `-` as in an
+            # audit record without one.
+            machine_id=self.config.machine_id or "-",
             mode=p.mode,
             interpretation_route=decision.route,
             channels=list(p.channels),

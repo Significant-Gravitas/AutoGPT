@@ -12,6 +12,7 @@ from .catalog import (
     ApprovalRequired,
     ArgumentRefused,
     check_arguments,
+    check_web_addresses,
     offered_tools,
 )
 from .clipboard import WRITEBACK_WINDOW_SECONDS, ClipboardWritebackRegistry
@@ -38,6 +39,7 @@ __all__ = [
     "DriverSnapshot",
     "DriverUnavailable",
     "check_arguments",
+    "check_web_addresses",
     "find_driver_binary",
     "offered_tools",
 ]

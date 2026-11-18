@@ -27,7 +27,7 @@ import threading
 import time
 import urllib.parse
 import webbrowser
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import asdict, dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -37,7 +37,7 @@ import httpx
 import keyring
 
 from .audit import _fallback_path
-from .config import ShimConfig, _validate_platform_endpoint
+from .config import ShimConfig, _canonical_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -139,19 +139,6 @@ class OAuthDenied(ValueError):
     """The sign-in redirect came back with an error instead of a code. Its
     text is the provider's error and reason, kept to printable text: safe to
     show, unlike other failures, whose text can hold a token."""
-
-
-def _canonical_endpoint(value: str) -> str:
-    parsed = urllib.parse.urlsplit(
-        _validate_platform_endpoint(value, {"https", "http", "wss", "ws"})
-    )
-    host = parsed.hostname or ""
-    if ":" in host:
-        host = f"[{host}]"
-    default_port = 443 if parsed.scheme in {"https", "wss"} else 80
-    if parsed.port is not None and parsed.port != default_port:
-        host += f":{parsed.port}"
-    return parsed._replace(netloc=host).geturl()
 
 
 @dataclass(frozen=True)
@@ -414,6 +401,41 @@ async def _let_go(turn: _Turn) -> None:
     await asyncio.shield(asyncio.to_thread(turn.release))
 
 
+async def _to_its_end(change: Callable[[], None], then: Callable[[], None]) -> None:
+    """Make a change to the keychain in a worker thread, call `then` once it
+    has gone through, and return only when it is over, even if the caller is
+    cancelled meanwhile: the cancellation is raised then, and a change that
+    failed raises its own failure otherwise.
+
+    For a caller that holds the record's turn (KeychainTokenStore.turn).
+    Cancelling the wait for a worker thread doesn't stop the thread: a
+    sign-in or a sign-out cancelled during its keychain call (Ctrl+C while
+    the keychain asks the person) let go of the turn with the call still
+    under way. Another process's sign-in then went ahead, and the call,
+    landing after it, replaced or removed it. The process couldn't have
+    exited sooner in any case: asyncio.run waits for the thread."""
+    loop = asyncio.get_running_loop()
+    # Held only here, and waited for only through a shield, so nothing
+    # cancels it: it is done when the thread is.
+    doing = loop.run_in_executor(None, contextvars.copy_context().run, change)
+    cancelled: asyncio.CancelledError | None = None
+    while not doing.done():
+        try:
+            await asyncio.shield(doing)
+        except asyncio.CancelledError as exc:
+            cancelled = exc
+        except Exception:
+            # The change's own failure, read below.
+            break
+    failure = doing.exception()
+    if failure is None:
+        then()
+    if cancelled is not None:
+        raise cancelled
+    if failure is not None:
+        raise failure
+
+
 @contextlib.asynccontextmanager
 async def _within_exchange_time() -> AsyncIterator[None]:
     """Give the block EXCHANGE_SECONDS in all, then ExchangeTimeoutError: the
@@ -508,13 +530,19 @@ class KeychainTokenStore:
         """Persist one versioned, deployment-bound token pair atomically, in
         the record's turn (turn): a sign-in waits for a refresh or a
         sign-out under way in any process, and replaces a refreshed pair
-        this store still keeps unsaved."""
+        this store still keeps unsaved. The turn is held until the keychain
+        call is over, even if the caller is cancelled meanwhile
+        (_to_its_end)."""
         record = self._record(access_token, refresh_token)
         async with self.turn():
-            await asyncio.to_thread(
-                keyring.set_password, KEYCHAIN_SERVICE, self._record_key, record
+            # To its end, cancelled or not: the turn isn't let go under it.
+            await _to_its_end(
+                lambda: keyring.set_password(KEYCHAIN_SERVICE, self._record_key, record),
+                self._forget_unsaved_refresh,
             )
-            self.unsaved_refresh = None
+
+    def _forget_unsaved_refresh(self) -> None:
+        self.unsaved_refresh = None
 
     async def store_refreshed(self, tokens: RefreshedTokens) -> bool:
         """Store a refreshed pair while the keychain still holds the refresh
@@ -558,10 +586,11 @@ class KeychainTokenStore:
 
     async def clear_tokens(self) -> None:
         """Remove only this deployment's record, in the record's turn (turn),
-        and with it a refreshed pair this store still keeps unsaved."""
+        and with it a refreshed pair this store still keeps unsaved. The
+        turn is held until the keychain call is over, even if the caller is
+        cancelled meanwhile (_to_its_end)."""
         async with self.turn():
-            await asyncio.to_thread(self._delete_record)
-            self.unsaved_refresh = None
+            await _to_its_end(self._delete_record, self._forget_unsaved_refresh)
 
     def _delete_record(self) -> None:
         try:

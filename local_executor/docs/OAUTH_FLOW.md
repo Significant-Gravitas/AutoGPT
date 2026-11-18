@@ -252,6 +252,11 @@ config file or audit log each was started with.
   gets 30 seconds in all, and so do a sign-out's revocations. Past that the
   refresh fails as one whose endpoint couldn't be reached does, and is tried
   again.
+- A sign-in or a sign-out stopped part way (Ctrl+C while the keychain asks
+  the person, say) keeps its turn until its keychain call is over, since
+  stopping the wait for that call doesn't stop the call. Let go sooner, the
+  turn went to another process, whose sign-in the late call then replaced
+  or removed.
 - While a process keeps a refreshed pair it couldn't store, it keeps the
   turn too. Until it stores the pair, or stops, another process's refresh
   waits and is tried again, and `auth` and `revoke` stop as above. A sign-in
@@ -281,8 +286,20 @@ equivalent HTTP/WebSocket base schemes, and trailing base slashes do not create
 duplicate identities; different hosts, non-default ports, clients, and endpoint
 paths do. The per-chat session ID is not part of this shared machine credential.
 
+With nothing configured, the deployment is the hosted AutoGPT platform: the
+backend `https://backend.agpt.co`, and the browser authorization base
+`https://platform.agpt.co/auth`. Those are the two URLs the platform's setup
+card passes as `--platform-url` and `--platform-oauth-url`, so a sign-in made
+with the card's command and one made with no flags are the same deployment:
+one keychain record, and one lock file for its turn.
+
 Split frontend/backend deployments are supported: `--platform-oauth-url` selects
 the browser authorization base while `--platform-url` selects the backend.
+Without `--platform-oauth-url`, the authorization base goes by the backend.
+For the hosted backend it is the hosted one above, whether the backend was
+left to the default or named, in any spelling that counts as the same
+backend. For any other backend it is `<platform_url>/auth`, so a platform you
+name yourself is never signed in to through the hosted platform's pages.
 Explicit OAuth or WebSocket overrides are bound when authenticating. Changing
 one does not authorize sending previously saved tokens to the new destination:
 authenticate again with the intended configuration. OAuth requests do not follow

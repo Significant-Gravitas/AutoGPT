@@ -25,9 +25,9 @@
     "  autogpt-shim install",
     "  schtasks /Create /TN \"\\AutoGPT\\Shim\" /XML \"%LOCALAPPDATA%\\autogpt-local-executor\\autogpt-shim.xml\"",
     "",
-    "Uninstall the autostart entry with:",
-    "  autogpt-shim uninstall",
-    "  schtasks /Delete /TN \"\\AutoGPT\\Shim\" /F"
+    "Stop the service and remove the autostart entry, from an elevated prompt",
+    "like the one the task was registered from, with:",
+    "  autogpt-shim uninstall"
   ],
   "depends": [
     "python"

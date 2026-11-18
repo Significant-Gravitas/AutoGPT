@@ -7,8 +7,8 @@
   Register the rendered task with:
     schtasks /Create /TN "AutoGPT\Shim" /XML "%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml"
 
-  Remove it with:
-    schtasks /Delete /TN "AutoGPT\Shim" /F
+  End it and remove it, from an elevated prompt, with:
+    autogpt-shim uninstall
 -->
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>

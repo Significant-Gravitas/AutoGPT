@@ -172,6 +172,14 @@ the card showed. Either way the platform approves the call and tells the
 shim so, and the shim, which can't tell that from your approval of that one
 call, runs it.
 
+The browser tools open web addresses only: pages at `http://` and
+`https://` addresses, and `about:blank`. Otto can't point cua-driver's
+browser at a file on this computer (`file:///...`), at a page's source, or
+at one of the browser's own pages: the shim refuses such an address before
+anything happens, and records the refusal. To open a file or another kind
+of link, Otto uses `launch_app` with links to open, which asks you first,
+as above.
+
 These approvals cover those arguments, not the apps. An app Otto drives
 reads and writes files with your access, outside the shared folders too: a
 terminal or a file manager, say. See

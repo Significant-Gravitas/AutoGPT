@@ -142,6 +142,83 @@ def test_derived_oauth_revoke_url_from_wss() -> None:
     assert cfg.derived_oauth_revoke_url == "https://platform.example.com/api/oauth/revoke"
 
 
+@pytest.fixture
+def no_platform_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Whoever runs the tests may have a deployment of their own exported."""
+    for field in ("platform_url", "platform_ws_url", "platform_oauth_url"):
+        monkeypatch.delenv(config_module.environment_variable(field), raising=False)
+
+
+def test_with_nothing_configured_the_platform_is_the_hosted_one(
+    no_platform_settings: None,
+) -> None:
+    """The default was a host the project doesn't run, so a sign-in with no
+    --platform-url failed, and would have gone to whoever came to own that
+    name. These are the hosted platform's own backend and sign-in pages, the
+    two URLs its setup card passes."""
+    cfg = ShimConfig()
+
+    assert cfg.platform_url == "https://backend.agpt.co"
+    assert cfg.derived_ws_url == "wss://backend.agpt.co/ws/local-executor"
+    assert cfg.derived_oauth_url == "https://platform.agpt.co/auth"
+    assert cfg.derived_oauth_token_url == "https://backend.agpt.co/api/oauth/token"
+    assert cfg.derived_oauth_revoke_url == "https://backend.agpt.co/api/oauth/revoke"
+
+
+@pytest.mark.parametrize(
+    "platform_url",
+    [
+        "https://backend.agpt.co",
+        "https://backend.agpt.co/",
+        "wss://backend.agpt.co",
+        "https://BACKEND.AGPT.CO:443/",
+    ],
+)
+def test_the_hosted_platform_named_without_an_oauth_url_gets_its_own_sign_in_pages(
+    no_platform_settings: None, platform_url: str
+) -> None:
+    """The hosted platform's sign-in pages are on its frontend, another host
+    than its backend, so `<platform_url>/auth` names nothing there. The
+    OAuth default goes with the platform, however its URL is spelled, and
+    not with whether the URL was typed."""
+    cfg = ShimConfig(platform_url=platform_url)
+
+    assert cfg.derived_oauth_url == "https://platform.agpt.co/auth"
+
+
+@pytest.mark.parametrize(
+    ("platform_url", "oauth_url"),
+    [
+        ("https://platform.example.com", "https://platform.example.com/auth"),
+        ("wss://platform.example.com", "https://platform.example.com/auth"),
+        ("http://localhost:8006", "http://localhost:8006/auth"),
+        # Not the hosted platform: another host, port or path.
+        ("https://backend.agpt.co.example.com", "https://backend.agpt.co.example.com/auth"),
+        ("https://backend.agpt.co:8443", "https://backend.agpt.co:8443/auth"),
+        ("https://backend.agpt.co/staging", "https://backend.agpt.co/staging/auth"),
+    ],
+)
+def test_a_persons_own_platform_keeps_its_own_sign_in_pages(
+    no_platform_settings: None, platform_url: str, oauth_url: str
+) -> None:
+    """Someone who names their own platform and no OAuth URL is never sent
+    to the hosted platform's sign-in pages."""
+    cfg = ShimConfig(platform_url=platform_url)
+
+    assert cfg.derived_oauth_url == oauth_url
+
+
+def test_an_oauth_url_given_beside_the_hosted_platform_is_the_one_used(
+    no_platform_settings: None,
+) -> None:
+    cfg = ShimConfig(
+        platform_url="https://backend.agpt.co",
+        platform_oauth_url="https://sign-in.example.com/auth",
+    )
+
+    assert cfg.derived_oauth_url == "https://sign-in.example.com/auth"
+
+
 def test_explicit_overrides_take_priority() -> None:
     cfg = ShimConfig(
         platform_url="https://x",

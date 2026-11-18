@@ -733,6 +733,36 @@ async def test_a_home_folder_that_doesnt_answer_cant_hold_the_drivers_start(
     assert loop_thread not in looks
 
 
+async def test_a_look_at_the_home_folder_cant_hold_the_shim_from_stopping(
+    fake_log: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """asyncio.run waits for the event loop's worker threads before it
+    returns, without limit on Python 3.11, and the interpreter waits for
+    them again as it exits. The look at the home folder ran in one, so a
+    shim told to stop while a home on a dead mount held the look stayed
+    until the mount answered. It runs in a daemon thread of its own now,
+    which neither waits for."""
+    monkeypatch.setattr(driver, "HOME_FOLDER_SECONDS", 0.3)
+    released = threading.Event()
+    threads: list[threading.Thread] = []
+
+    def stalled() -> Path | None:
+        threads.append(threading.current_thread())
+        released.wait(60)
+        return None
+
+    monkeypatch.setattr(driver, "home_folder", stalled)
+    bridge = _bridge(platform="linux")
+    try:
+        await bridge.snapshot()
+        [thread] = threads
+        assert thread.daemon is True
+        assert thread is not threading.main_thread()
+    finally:
+        released.set()
+        await bridge.close()
+
+
 async def test_only_catalog_tools_are_offered(fake_log: Path, monkeypatch) -> None:
     """A driver lists more tools than the shim relays."""
     monkeypatch.setenv("FAKE_CUA_EXTRA_TOOLS", "kill_app,set_config")
@@ -1912,6 +1942,9 @@ async def test_a_launch_name_is_refused_when_the_apps_cannot_be_listed(
     make_handler, fake_log, monkeypatch, platform: str
 ) -> None:
     monkeypatch.setenv("FAKE_CUA_LIST_APPS_ERROR", "the shell did not answer")
+    # No program of the name on PATH, wherever the tests run: on Linux such a
+    # name is refused before the apps are listed.
+    _programs_found(monkeypatch, {})
     handler = make_handler(platform=platform)
 
     response = await handler.handle(_call("launch_app", {"name": "Notepad"}))
@@ -1943,6 +1976,7 @@ async def test_a_launch_the_name_lookup_doesnt_decide_lists_no_apps(
     on Linux links to open and then a launch_path do; macOS looks a name up
     among its apps and goes no further."""
     monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad"]))
+    _programs_found(monkeypatch, {})
     handler = make_handler(platform=platform)
 
     response = await handler.handle(_call("launch_app", arguments, approved_arguments=approved))
@@ -2389,7 +2423,6 @@ async def test_a_launch_by_name_is_looked_up_off_the_event_loop(
     loop_thread = threading.get_ident()
     looked_up: list[str] = []
     looked_up_from: list[int] = []
-    check = handlers_module.check_arguments
 
     def look_up(word: str) -> str | None:
         # A PATH where no program has the name's first word.
@@ -2397,12 +2430,8 @@ async def test_a_launch_by_name_is_looked_up_off_the_event_loop(
         looked_up_from.append(threading.get_ident())
         return "/usr/bin/zebra-notes" if word == "zebra-notes" else None
 
-    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = (), *, on_path) -> None:
-        # Linux's check on every OS.
-        check(tool, arguments, approved, platform="linux", on_path=on_path)
-
-    monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
     monkeypatch.setattr(handlers_module, "_program_on_path", look_up)
+    # Linux's check on every OS: the handler checks by its driver's system.
     handler = make_handler(platform="linux")
 
     response = await handler.handle(_call("launch_app", {"name": "Zebra Notes"}))
@@ -2434,15 +2463,8 @@ async def test_a_launch_whose_name_lookup_stalls_lets_go_of_the_computer_by_its_
         released.wait(timeout=60)
         return {"zebra": "/usr/bin/zebra", **_PROGRAMS}.get(word)
 
-    check = handlers_module.check_arguments
-
-    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = (), *, on_path=None):
-        # Linux's check on every OS. Given no on_path, it looks names up
-        # itself, as it did in its worker thread.
-        check(tool, arguments, approved, platform="linux", on_path=on_path or stalled)
-
-    monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
-    monkeypatch.setattr(handlers_module, "_program_on_path", stalled, raising=False)
+    monkeypatch.setattr(handlers_module, "_program_on_path", stalled)
+    # Linux's check on every OS: the handler checks by its driver's system.
     handler = make_handler(platform="linux")
     try:
         launch = _call("launch_app", {"name": "zebra notes"}, timeout_seconds=1)
@@ -2492,14 +2514,9 @@ async def test_a_launch_whose_apps_program_lookup_stalls_never_starts(
         released.wait(timeout=60)
         return "/usr/bin/zebra-notes"
 
-    check = handlers_module.check_arguments
-
-    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = (), *, on_path) -> None:
-        # Linux's check on every OS, so that the name is looked up too.
-        check(tool, arguments, approved, platform="linux", on_path=on_path)
-
-    monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
     monkeypatch.setattr(handlers_module, "_program_on_path", stalled)
+    # Linux's check on every OS, so that the name is looked up too: the
+    # handler checks by its driver's system.
     handler = make_handler(platform="linux")
     # The driver is up already, so the launches' deadlines pass in the stalled
     # lookup, not in the driver's start.
@@ -4561,3 +4578,345 @@ async def test_a_child_session_uses_the_parents_driver(tmp_path, fake_log, monke
     finally:
         await parent._shutdown_children()
         await parent._computer_handler.close()
+
+
+# ── browser_navigate opens web addresses only ────────────────────────────────
+
+WEB_ADDRESSES = [
+    "http://example.com",
+    "https://example.com/path?q=1#part",
+    "HTTPS://EXAMPLE.COM/",
+    "Http://localhost:8000/",
+    "https://user@example.com:8443/",
+    "https://\u4f8b\u3048.jp/\u30d1\u30b9",
+    "about:blank",
+]
+NOT_WEB_ADDRESSES = [
+    # Other schemes: a file, the page's source, a script, inline data.
+    "file:///Users/me/.ssh/id_rsa",
+    "FILE:///etc/passwd",
+    "file://host/share/a.txt",
+    "view-source:https://example.com",
+    "javascript:alert(1)",
+    "data:text/html,<h1>hello</h1>",
+    "blob:https://example.com/5f1e",
+    "ftp://example.com/file",
+    "ws://example.com/",
+    # The browser's own pages, which `about:` also names.
+    "chrome://settings",
+    "edge://settings",
+    "about:version",
+    "about:settings",
+    "about:crash",
+    "about:",
+    "about:blank#part",
+    "about:blank?x=1",
+    "about:BLANK",
+    "ABOUT:BLANK",
+    # No scheme, or not the two slashes a web address starts with.
+    "example.com",
+    "www.example.com/path",
+    "localhost:8000",
+    "//example.com/path",
+    "/etc/passwd",
+    "C:\\Users\\me\\page.html",
+    "http:example.com",
+    "http:/example.com",
+    "https//example.com",
+    "",
+    # A browser strips spaces and control characters from an address's ends
+    # and drops tabs and newlines inside it, so none is taken.
+    " https://example.com",
+    "https://example.com ",
+    "\thttps://example.com",
+    "https://example.com\n",
+    "https://exa\tmple.com",
+    "https://example.com/pa\nth",
+    "https://example.com/pa\rth",
+    "\x00https://example.com",
+    "https://example.com/\x7f",
+    "https://example.com/a b",
+    " file:///etc/passwd",
+    "fi\tle:///etc/passwd",
+    "java\nscript:alert(1)",
+    "\u00a0https://example.com",
+    "https://example.com/\u202epath",
+    "https://example.com/\u200bpath",
+    # Not a string at all.
+    None,
+    7,
+    ["https://example.com"],
+    {"href": "https://example.com"},
+]
+
+
+@pytest.mark.parametrize("address", WEB_ADDRESSES)
+def test_a_web_address_is_taken(address: str) -> None:
+    assert catalog.is_web_address(address) is True
+    catalog.check_arguments(
+        "browser_navigate", {"target_id": "bt1", "tab_id": "tab1", "url": address}
+    )
+
+
+@pytest.mark.parametrize("address", NOT_WEB_ADDRESSES)
+def test_an_address_that_is_not_a_web_address_is_refused(address: Any) -> None:
+    """browser_navigate's url went to the driver unchecked by the shim. The
+    driver's browser loads what it is given, and a page it loads is read
+    back with get_browser_state."""
+    assert catalog.is_web_address(address) is False
+    with pytest.raises(catalog.ArgumentRefused) as refused:
+        catalog.check_arguments(
+            "browser_navigate", {"target_id": "bt1", "tab_id": "tab1", "url": address}
+        )
+
+    assert refused.value.argument == "url"
+    # It says what to do instead: launch_app's urls, which asks the person.
+    assert "launch_app's urls" in refused.value.reason
+
+
+def test_a_browser_navigate_with_no_url_is_the_drivers_to_refuse() -> None:
+    catalog.check_arguments("browser_navigate", {"target_id": "bt1", "tab_id": "tab1"})
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        {"tool": "browser_navigate", "args": {"url": "file:///etc/passwd"}},
+        {"browser_navigate": {"url": "file:///etc/passwd"}},
+        # Whatever tool the step names: the driver reads some step names its
+        # own way.
+        {"tool": "Browser_Navigate", "args": {"url": "about:version"}},
+        {"tool": "click", "args": {"pid": 1, "url": " https://example.com"}},
+    ],
+)
+def test_a_step_is_held_to_a_web_address_too(step: dict) -> None:
+    with pytest.raises(catalog.ArgumentRefused) as refused:
+        catalog.check_arguments(
+            "run_steps", {"steps": [{"tool": "move_cursor", "args": {"x": 1, "y": 1}}, step]}
+        )
+
+    assert refused.value.argument == "steps[1].url"
+    assert "launch_app's urls" in refused.value.reason
+
+
+def test_a_step_with_a_web_address_is_not_refused_for_its_address() -> None:
+    catalog.check_web_addresses(
+        "run_steps",
+        {"steps": [{"tool": "browser_navigate", "args": {"url": "https://example.com"}}]},
+    )
+
+
+async def test_an_address_that_is_not_a_web_address_is_refused_before_the_computer_is_taken(
+    make_handler, fake_log, tmp_path
+) -> None:
+    """Refused and recorded without waiting for the computer, or for the
+    driver: here another call holds the computer for as long as the test
+    runs."""
+    handler = make_handler()
+    await handler._machine_turn.acquire()
+    try:
+        response = await asyncio.wait_for(
+            handler.handle(
+                _call(
+                    "browser_navigate",
+                    {"target_id": "bt1", "tab_id": "tab1", "url": "file:///Users/me/.ssh/id_rsa"},
+                    timeout_seconds=600,
+                )
+            ),
+            timeout=120,
+        )
+    finally:
+        handler._machine_turn.release()
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "browser_navigate", "argument": "url"}
+    assert "launch_app's urls" in response.payload.message
+    # Nothing reached the driver, which wasn't started for it.
+    assert _records(fake_log, "call") == []
+    assert _records(fake_log, "initialize") == []
+    [record] = _audit(tmp_path)
+    assert record["result"]["ok"] is False
+    assert record["result"]["error_code"] == "FEATURE_NOT_SUPPORTED"
+    assert record["details"]["tool"] == "browser_navigate"
+    assert record["details"]["arguments"]["url"] == "file:///Users/me/.ssh/id_rsa"
+
+
+async def test_a_step_that_is_not_a_web_address_is_refused_and_recorded(
+    make_handler, fake_log, tmp_path
+) -> None:
+    handler = make_handler()
+
+    response = await handler.handle(
+        _call(
+            "run_steps",
+            {"steps": [{"tool": "browser_navigate", "args": {"url": "javascript:alert(1)"}}]},
+        )
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "run_steps", "argument": "steps[0].url"}
+    assert _records(fake_log, "call") == []
+    [record] = _audit(tmp_path)
+    assert record["result"]["error_code"] == "FEATURE_NOT_SUPPORTED"
+
+
+async def test_a_web_address_reaches_the_driver(make_handler, fake_log) -> None:
+    handler = make_handler()
+
+    response = await handler.handle(
+        _call(
+            "browser_navigate",
+            {"target_id": "bt1", "tab_id": "tab1", "url": "https://example.com/"},
+        )
+    )
+
+    assert isinstance(response, ComputerToolResultMessage)
+    [call] = _records(fake_log, "call")
+    assert call["arguments"]["url"] == "https://example.com/"
+
+
+# ── On Windows an aumid must look like one ───────────────────────────────────
+
+NOTEPAD = "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        # cua-driver 0.38's own cases (platform-windows, launch_uwp.rs).
+        ("Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", True),
+        ("Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", True),
+        ("notepad", False),
+        ("notepad.exe", False),
+        ("C:\\Windows\\System32\\notepad.exe", False),
+        ("", False),
+        ("!App", False),
+        ("Pkg!", False),
+        ("a!b!c", False),
+        # One `!`, with text on both sides, whatever the text.
+        ("a!b", True),
+        ("!", False),
+        ("!!", False),
+    ],
+)
+def test_the_shim_takes_for_an_aumid_what_the_driver_does(value: str, expected: bool) -> None:
+    assert catalog.is_aumid(value) is expected
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"aumid": "x", "name": "logoff"},
+        {"aumid": "logoff"},
+        {"aumid": "x"},
+        {"aumid": "notepad.exe", "name": "Notepad"},
+        {"aumid": "a!b!c"},
+        {"aumid": "Pkg!"},
+        # Beside a bundle_id that is one: the driver takes the aumid first.
+        {"aumid": "logoff", "bundle_id": NOTEPAD},
+    ],
+)
+def test_on_windows_an_aumid_that_is_not_one_is_refused(arguments: dict) -> None:
+    """Only bundle_id was held to an AUMID's shape. cua-driver 0.38 takes
+    any `aumid` for a packaged app's and, with one given, never looks at
+    the name: the shim skipped its check of the name for any aumid at all,
+    and sent on a string it had checked for nothing."""
+    with pytest.raises(catalog.ArgumentRefused) as refused:
+        catalog.check_arguments("launch_app", arguments, platform="win32", on_path=lambda _: None)
+
+    assert refused.value.argument == "aumid"
+    assert "AUMID" in refused.value.reason
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [{"aumid": NOTEPAD}, {"aumid": NOTEPAD, "name": "logoff"}, {"aumid": "", "name": "Notepad"}],
+)
+def test_on_windows_a_well_formed_aumid_is_taken(arguments: dict) -> None:
+    catalog.check_arguments("launch_app", arguments, platform="win32", on_path=lambda _: None)
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+@pytest.mark.parametrize("arguments", [{"aumid": "x"}, {"aumid": "x", "name": "Calculator"}])
+def test_an_aumid_means_nothing_off_windows_and_is_left_as_it_was(
+    platform: str, arguments: dict
+) -> None:
+    """The macOS driver launches by bundle_id, else by name, and an app it
+    doesn't find is an error. The Linux one reads launch_path, name and
+    urls. Neither reads an aumid."""
+    catalog.check_arguments("launch_app", arguments, platform=platform, on_path=lambda _: None)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "uses_name"),
+    [
+        ({"name": "Notepad"}, True),
+        ({"name": "Notepad", "bundle_id": "notepad"}, True),
+        ({"name": "Notepad", "aumid": ""}, True),
+        ({"name": "Notepad", "launch_path": ""}, True),
+        ({"name": "Notepad", "path": None}, True),
+        # What the driver takes before a name, in its order: launch_path,
+        # path, aumid, then a bundle_id that is an AUMID.
+        ({"name": "logoff", "launch_path": "C:\\x.exe"}, False),
+        ({"name": "logoff", "path": "C:\\x.exe"}, False),
+        ({"name": "logoff", "aumid": NOTEPAD}, False),
+        ({"name": "logoff", "bundle_id": NOTEPAD}, False),
+        # Not strings, so the driver doesn't read them, and falls to the name.
+        ({"name": "logoff", "launch_path": 5}, True),
+        ({"name": "logoff", "path": ["C:\\x.exe"]}, True),
+        ({"name": "logoff", "aumid": 5}, True),
+        # An aumid that isn't one is refused before this; were it sent, the
+        # name would still be checked.
+        ({"name": "logoff", "aumid": "x"}, True),
+        ({"aumid": NOTEPAD}, False),
+        ({}, False),
+    ],
+)
+def test_the_shim_knows_when_the_windows_driver_acts_on_a_name(
+    arguments: dict, uses_name: bool
+) -> None:
+    assert catalog.windows_launch_uses_name(arguments) is uses_name
+
+
+@pytest.mark.parametrize(
+    "arguments", [{"aumid": "x", "name": "logoff"}, {"aumid": "logoff"}], ids=["with-name", "alone"]
+)
+async def test_on_windows_a_launch_by_an_aumid_that_is_not_one_reaches_no_driver(
+    make_handler, fake_log, monkeypatch, tmp_path, arguments: dict
+) -> None:
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad"]))
+    handler = make_handler(platform="win32")
+
+    response = await handler.handle(_call("launch_app", arguments))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "launch_app", "argument": "aumid"}
+    assert [call["tool"] for call in _records(fake_log, "call")] == []
+    [record] = _audit(tmp_path)
+    assert record["result"]["error_code"] == "FEATURE_NOT_SUPPORTED"
+
+
+async def test_on_windows_a_name_beside_a_path_that_is_no_string_is_still_checked(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """The driver reads a launch_path only when it is a string. One that
+    isn't made the shim skip its check of the name, which the driver then
+    acted on."""
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad"]))
+    handler = make_handler(platform="win32")
+
+    response = await handler.handle(
+        _call(
+            "launch_app",
+            {"name": "logoff", "launch_path": 5},
+            approved_arguments=["launch_path"],
+        )
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "launch_app", "argument": "name"}
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps"]

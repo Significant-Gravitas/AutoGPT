@@ -7,7 +7,7 @@ Commands:
     status     Show connection status
     revoke     Revoke OAuth tokens and disconnect
     install    Register the shim as a per-user autostart entry
-    uninstall  Remove the autostart entry
+    uninstall  Stop the autostart service and remove its entry
     audit      Read/verify/export/rotate/prune the audit log (see subcommands)
 """
 
@@ -47,7 +47,9 @@ def main() -> None:
         _cmd_install(args)
         return
     if args.command == "uninstall":
-        _cmd_uninstall(args)
+        exit_code = _cmd_uninstall(args)
+        if exit_code:
+            sys.exit(exit_code)
         return
 
     config = _config_or_exit(lambda: _build_config(args))
@@ -91,6 +93,8 @@ def _configure_logging(level: str) -> None:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    from .config import HOSTED_PLATFORM_OAUTH_URL, HOSTED_PLATFORM_URL
+
     parser = argparse.ArgumentParser(
         prog="autogpt-shim",
         description="EXPERIMENTAL: AutoGPT Local PC Executor shim",
@@ -111,12 +115,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--platform-url",
         default=None,
-        help="Base URL of the AutoGPT platform (default: https://platform.autogpt.net).",
+        help=f"Base URL of the AutoGPT platform's backend (default: {HOSTED_PLATFORM_URL}, "
+        "the hosted platform).",
     )
     parser.add_argument(
         "--platform-oauth-url",
         default=None,
-        help="Frontend OAuth base URL, including /auth, when separate from the backend platform URL.",
+        help="OAuth base URL, including /auth: where the platform's sign-in pages are "
+        f"(default: {HOSTED_PLATFORM_OAUTH_URL} for the hosted platform, and "
+        "<platform-url>/auth for any other).",
     )
     parser.add_argument(
         "--session-id",
@@ -189,7 +196,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub.add_parser(
         "uninstall",
-        help="Remove the autostart entry written by `autogpt-shim install`",
+        help="Stop the service `autogpt-shim install` set up, and remove its autostart entry",
     )
 
     audit_p = sub.add_parser("audit", help="Inspect / verify the audit log")
@@ -313,17 +320,13 @@ def _cmd_auth(config) -> int:
 
 async def _cmd_start(config) -> int:
     from .auth import KeychainTokenStore
-    from .daemon import DaemonAuthenticationError, DaemonPreflightError, ShimDaemon
+    from .daemon import (
+        DaemonAuthenticationError,
+        DaemonPreflightError,
+        ShimDaemon,
+        resolve_machine_id,
+    )
 
-    print(f"Starting shim daemon (machine_id={config.machine_id})")
-    if config.session_id and config.session_id.strip():
-        print(f"Legacy direct session: {config.session_id.strip()}")
-        print(f"Allowed root: {config.allowed_root}")
-    else:
-        print("Mode: persistent machine control (folders are selected per chat)")
-    if config.enable_shell:
-        print("WARNING: shell is enabled and can access anything your user account can access.")
-    print("Press Ctrl+C to stop.\n")
     daemon = None
     # systemd and launchd stop the service with SIGTERM, whose default action
     # ends the process at once: no stop, no SHIM_STOP record, and a running
@@ -339,6 +342,18 @@ async def _cmd_start(config) -> int:
         except (NotImplementedError, RuntimeError, ValueError):
             pass
     try:
+        # The shim's own ID for this computer, unless the person set one: the
+        # first start makes the value it is derived from (machine_identity).
+        # Of all the commands, only this one does.
+        print(f"Starting shim daemon (machine_id={resolve_machine_id(config)})")
+        if config.session_id and config.session_id.strip():
+            print(f"Legacy direct session: {config.session_id.strip()}")
+            print(f"Allowed root: {config.allowed_root}")
+        else:
+            print("Mode: persistent machine control (folders are selected per chat)")
+        if config.enable_shell:
+            print("WARNING: shell is enabled and can access anything your user account can access.")
+        print("Press Ctrl+C to stop.\n")
         daemon = ShimDaemon(config=config, token_store=KeychainTokenStore(config))
         await daemon.run()
     except DaemonPreflightError as exc:
@@ -495,7 +510,7 @@ def _cmd_install(args) -> None:
         print("\nTo activate, run:")
         print(f"  {status.enable_command}")
     if status.disable_command:
-        print("\nTo deactivate later, run:")
+        print("\nTo stop the service and remove this entry later, run:")
         print(f"  {status.disable_command}")
     for note in status.notes:
         print(f"\nNote: {note}")
@@ -530,18 +545,46 @@ def _service_global_args(args, environment: dict[str, object]) -> tuple[str, ...
     return tuple(out)
 
 
-def _cmd_uninstall(args) -> None:
+def _cmd_uninstall(args) -> int:
+    """Stop the autostart service, unregister it and remove its entry. The
+    exit status is 1 when the service may still be running, or the entry is
+    still there."""
     from . import install as _install
+    from .doctor import _printable
 
-    status = _install.uninstall_autostart()
-    if status.installed:
-        # Shouldn't happen — uninstall_autostart already removed it.
-        print(f"WARNING: autostart entry still present at {status.target_path}")
+    def say(text: str, *, error: bool = False) -> None:
+        # A path, or a service manager's own words, in any language.
+        print(_printable(text), file=sys.stderr if error else sys.stdout)
+
+    done = _install.uninstall_autostart()
+    service, path = done.service, done.status.target_path
+    if service.problem is None:
+        say(service.said)
     else:
-        print(f"Removed autostart entry (or it was already absent): {status.target_path}")
-    if status.disable_command:
-        print("\nIf the OS service manager already registered it, also run:")
-        print(f"  {status.disable_command}")
+        if done.may_still_run:
+            what = "Could not stop the service: "
+        elif service.found is None:
+            what = "Could not check for a running service: "
+        else:
+            what = "The service wasn't running, but "
+        # The service manager's own words may end their sentence or not.
+        say(what + service.problem.rstrip(".") + ".", error=True)
+    if done.entry_problem is not None:
+        say(f"Could not remove the autostart entry {path}: {done.entry_problem}", error=True)
+    elif done.entry_installed:
+        say(f"Removed the autostart entry: {path}")
+    else:
+        say(f"No autostart entry is installed at {path}.")
+    for note in done.notes:
+        say(f"Note: {note}")
+    where = f" {service.stop_where}" if service.stop_where else ""
+    if done.may_still_run:
+        say(f"The service may still be running. To stop it, run{where}:", error=True)
+        say(f"  {service.stop_command}", error=True)
+    elif service.problem is not None and service.found is None:
+        say(f"If one is still running from an earlier install, stop it{where} with:")
+        say(f"  {service.stop_command}")
+    return 1 if done.may_still_run or done.entry_problem is not None else 0
 
 
 def _print_autostart_status() -> None:
@@ -552,6 +595,10 @@ def _print_autostart_status() -> None:
     marker = "installed" if status.installed else "not installed"
     print(f"Autostart entry ({status.platform}): {marker}")
     print(f"  path: {status.target_path}")
+    if not status.installed:
+        # The enable command names the entry's file, and the notes describe it.
+        print("  set up with: autogpt-shim install")
+        return
     if status.enable_command:
         print(f"  enable: {status.enable_command}")
     if status.disable_command:

@@ -5,9 +5,12 @@
 ## Transport
 
 - **Protocol**: WebSocket over TLS (`wss://`)
-- **Control endpoint**: `wss://platform.autogpt.net/ws/local-executor`. Normal
-  `autogpt-shim start` keeps this OAuth-authenticated machine connection alive.
-- **Data endpoint**: `wss://platform.autogpt.net/ws/local-executor/{session_id}`.
+- **Control endpoint**: `/ws/local-executor` on the platform's backend, which is
+  `wss://backend.agpt.co/ws/local-executor` on the hosted platform, the
+  default. Normal `autogpt-shim start` keeps this OAuth-authenticated machine
+  connection alive.
+- **Data endpoint**: `/ws/local-executor/{session_id}` on the same backend
+  (`wss://backend.agpt.co/ws/local-executor/{session_id}`).
   The control channel activates isolated child runtimes on this existing route.
 - **Legacy binding**: explicitly passing `--session-id` skips control mode and
   connects directly to the data endpoint for compatibility.
@@ -112,7 +115,8 @@ on the platform side, the session SHOULD be torn down with code 4426).
   "payload": {
     "shim_version": "0.1.0",
     "protocol_version": "2.0",     // max wire version this shim supports
-    "machine_id": "hostname-uuid4",
+    "machine_id": "6f1c2a9e-4b7d-4e53-9a08-3c5d7e9f1b24",   // the shim's own ID for this computer
+    "display_name": "alices-laptop",   // the hostname, unless the person sets another
     "platform": "darwin",          // "darwin" | "linux" | "windows" | "wsl2"
     "arch": "arm64",               // "x86_64" | "arm64" (normalized; see below)
     "screen_resolution": [2560, 1440],   // main display's logical size; null without computer_use
@@ -137,6 +141,41 @@ on the platform side, the session SHOULD be torn down with code 4426).
   }
 }
 ```
+
+`machine_id` and `display_name` say which computer this is. Both leave the
+computer in every HELLO, on the control connection and on each chat's data
+connection.
+
+- **`machine_id`** is the ID the platform knows the computer by, for the
+  account the shim runs under: a UUID, in lower case. The platform keeps
+  each connected shim under it, binds a chat to it, and lets a second
+  connection under the same ID take the first one's place
+  ([Session ownership](#session-ownership)), so two computers on one
+  account must never share one. On the computer it is also in every audit
+  record and every folder grant.
+  - It isn't the operating system's identifier. With nothing configured the
+    shim derives it, with HMAC-SHA256, from that identifier
+    (`IOPlatformUUID`, `/etc/machine-id`, `MachineGuid`) and a random value
+    that `autogpt-shim start` makes the first time and keeps in the shim's
+    own folder. Neither of the two is sent, logged or printed. With no
+    identifier to read, it comes from the stored value alone. The hostname
+    is never part of it.
+  - The computer keeps its ID from one start to the next, and when the shim
+    is upgraded or reinstalled, for as long as the stored value is kept.
+    [CROSS_PLATFORM.md](CROSS_PLATFORM.md#machine-id) says where it is
+    kept, what changes the ID, and what a new one means for the chats bound
+    to the old one.
+  - One the person sets themselves (`machine_id` in the config file, or
+    `AUTOGPT_SHIM_MACHINE_ID`) is sent as given, 1 to 128 characters. The
+    platform's folder dialog takes letters, digits, `.`, `_`, `:` and `-`
+    in it, starting with a letter or a digit.
+- **`display_name`** is the computer's label, 1 to 128 characters: its
+  hostname unless the person sets another, and a hostname often carries the
+  person's name. The platform shows it, with the operating system, beside
+  each computer in the folder dialog; it is how the person tells two
+  computers apart, and the platform treats it as text to show and nothing
+  else. Set another with `display_name` in the config file or
+  `AUTOGPT_SHIM_DISPLAY_NAME`; `start` has no flag for it.
 
 `recording` message types are reserved design-preview protocol. The shim never
 advertises the `recording` capability, and startup fails closed if its preview
@@ -298,6 +337,35 @@ not encrypted.
 and replies with the standard `ACK`. An active session's root is immutable;
 detach before attaching a different folder.
 
+##### A folder that doesn't answer
+
+Listing a folder, attaching it, and verifying its grant for an activation or
+a restore all look at the folder, and one on a network share that has gone
+away (a laptop that left its network) may never answer. The shim waits five
+seconds in all for a control request's looks at a folder, half of the ten
+the platform waits for the reply, and then answers `DIRECTORY_UNAVAILABLE`
+with `details.reason: "not_answering"`:
+
+- Nothing is changed. The chat keeps its binding and its grant, and the same
+  `RESTORE_SESSION` works once the folder is back. A look that returns after
+  its request was answered is dropped: no grant is issued and no chat is
+  started for it.
+- While a look at a folder is still waiting, further requests about that
+  folder get the same answer at once, with no look of their own. Requests
+  about other folders, and other chats, are served as usual, and none of
+  them waits behind the folder that is away.
+- A listing or an attach given up on ends every browse under way, as a
+  reconnect does: their references then get `DIRECTORY_REFERENCE_INVALID`,
+  and the folder picker starts a new browse.
+- At most eight looks are left waiting at once, whatever their folders. Past
+  that, every request that looks at a folder gets `DIRECTORY_UNAVAILABLE`
+  until one of them returns.
+
+A chat's data session makes its folder as it starts, as a legacy session
+does, within the same five seconds. Past them the chat's session ends
+before it connects, and a legacy `autogpt-shim start` exits 75, which its
+supervisor restarts.
+
 The control daemon also stops a non-recording child after ten minutes without
 a data request, while retaining its signed binding for `RESTORE_SESSION`. This
 prevents abandoned chats from consuming the eight-child safety cap; the
@@ -370,7 +438,8 @@ process can access.
 
 **`command` vs `argv`**: exactly one must be set.
 - `command` (string): passed to a shell selected by `shell`. Subject to shell
-  parsing — the platform is responsible for quoting.
+  parsing — the platform is responsible for quoting. The shell gets the
+  string exactly as sent (see [What each shell is handed](#what-each-shell-is-handed)).
 - `argv` (array of strings): executed directly via `subprocess` with no shell.
   Portable across OSes and immune to shell-quoting bugs. Use this whenever
   shell features (pipes, globs, redirection, env-var expansion) aren't needed.
@@ -390,6 +459,33 @@ process can access.
 Platform code that today calls `bash -c "..."` must switch to either:
 1. Wire `argv` form (preferred), or
 2. `shell: "auto"` and rely on the shim to do the right thing.
+
+##### What each shell is handed
+
+The shim adds no quoting of its own to `command` and takes none away, so
+the platform quotes for the shell it names, by that shell's rules:
+
+| Shell | Started as | What reaches it |
+|---|---|---|
+| `bash`, `sh`, `zsh` | `<shell> -c <command>` | `command`, as one argument. |
+| `pwsh`, `powershell` | `<shell> -NoLogo -NoProfile -Command <command>` | `command`, as one argument, which PowerShell runs as script text. The person's profile isn't loaded. |
+| `cmd` (and `auto` on Windows) | `cmd.exe /d /s /c "chcp 65001 >NUL & <command>"` | `command`, unchanged, on cmd.exe's own command line: cmd.exe takes off the outer pair of quotes (`/s`) and runs what is between them. So a quoted path with a space, `&&`, a pipe, `^` and `%VAR%` mean what they mean when typed at a prompt. `chcp 65001` makes UTF-8 the code page for what the command writes. `/d` skips the person's AutoRun commands, which would run first, in the command's own cmd.exe. |
+
+On Windows a program gets one command line, not a list of arguments. For
+`argv`, and for the `-c` and `-Command` shells above, the shim makes that
+line by the Microsoft C runtime's quoting rules (Python's `list2cmdline`),
+which those shells and most programs undo, so each argument arrives whole.
+cmd.exe and batch files read their command line by other rules: an `argv`
+that names `cmd.exe` or a `.bat` file with an argument holding a `"` is not
+read back as sent. Send such a command as `command`.
+
+**Standard input**: a command has none. Its stdin is the null device
+(`/dev/null`, `NUL`) on every OS, however the shim was started: in a terminal,
+or by launchd, systemd or Task Scheduler. A program that reads its stdin gets
+the end of input at once, so one that prompts (`pip uninstall`, a bare
+`python`) gets no answer and goes on or fails as it does without one; it
+can't wait on a prompt, and nothing typed where the shim runs reaches it.
+Pass what a program needs as arguments, in a file, or in `env`.
 
 **`env` field**: the wire payload uses `env` (a `dict[str, str]`).
 The Python adapter on the platform side (the `LocalPCShim.commands.run`
@@ -446,6 +542,16 @@ A file operation's `path` (`src` and `dst` for a move), like
 from `allowed_root`, as the platform's own tools take it, never from the
 directory the shim happens to run in; `~` is the user's home. Either way it
 must resolve inside `allowed_root`.
+
+A path that is outside `allowed_root` by its name alone is refused with
+`PATH_OUTSIDE_ALLOWED_ROOT` before the shim looks at it on disk: an
+absolute path that isn't under the root, one that climbs above it through
+`..`, and on Windows a path on another drive, share or host or in a device
+namespace (`\\.\`, `\\?\`). So name a path by the root the shim reported
+(HELLO's `allowed_root`, or the folder the chat was given) or by the root
+as it resolves, which is where a command's output puts it; on Windows in
+any letter case and with either separator. A path whose name is inside
+the root is then resolved, links included, and has to resolve inside it.
 
 #### `FILE_READ` (platform → shim)
 ```json
@@ -998,7 +1104,13 @@ an approval argument of the called tool may be named.
 
 The shim refuses, with `FEATURE_NOT_SUPPORTED` and `details.tool`, a tool it
 doesn't offer, and, with `details.argument` too, an argument it never
-accepts: `check_permissions` with `prompt: true`; any tool's approval
+accepts: `check_permissions` with `prompt: true`; a `browser_navigate`
+`url`, in the call or in a `run_steps` step (`details.argument`
+`steps[i].url`), that isn't a web address, which starts with `http://` or
+`https://` in any letter case or is exactly `about:blank`, and holds no
+space and no control or other invisible character (this refusal comes
+before the call waits for the computer; a file or another kind of link is
+opened with `launch_app`'s `urls`, which needs approval); any tool's approval
 argument inside a `run_steps` step, whatever tool the step names, or its
 `observe`; a `run_steps` step that is a `launch_app` (`details.argument`
 `steps[i]`), since only a launch called on its own has its name checked
@@ -1008,8 +1120,12 @@ against the installed apps; and a `launch_app` `name`, `bundle_id` or
 a program's own name included, or, unless `urls` or `launch_path`
 is given, one that matches no installed app in `list_apps`, or more than
 one, or whose app's launch command the shim can't send with its program as
-an absolute path, and on Windows a `bundle_id` that isn't an AUMID or a
-`name` no installed app in `list_apps` would match). On Linux a launch by
+an absolute path, and on Windows a `bundle_id` or an `aumid` that isn't an
+AUMID (`Package!App`: one `!` with text on both sides), or a `name` no
+installed app in `list_apps` would match; the name is checked unless the
+call also carries a `launch_path`, a `path`, or an AUMID as `aumid` or
+`bundle_id`, which the driver takes before a name and never falls back
+from). On Linux a launch by
 `name` reaches cua-driver as the matched app's own launch command, so its
 result names that command ([CUA_DRIVER.md](CUA_DRIVER.md#residual-risk)).
 
@@ -1110,7 +1226,9 @@ Error codes:
 - `DIRECTORY_REFERENCE_INVALID` — browse/reference pair is malformed,
   expired, consumed, or belongs to a prior control connection
 - `DIRECTORY_UNAVAILABLE` — selected directory disappeared, changed into a
-  link/junction, or is no longer accessible
+  link/junction, is no longer accessible, or didn't answer in time
+  (`details.reason: "not_answering"`, see
+  [A folder that doesn't answer](#a-folder-that-doesnt-answer))
 - `ROOT_GRANT_INVALID` — restore/activation grant is malformed, has an invalid
   HMAC or machine/session binding, or its directory fingerprint changed
 - `SESSION_NOT_ATTACHED` — activation was requested before folder attachment
@@ -1197,7 +1315,7 @@ orphaning the prior shim's pending requests with no clean error.
   "version": "2.0",
   "payload": {
     "reason": "another_shim_connected",   // | "user_revoked" | "platform_shutdown"
-    "new_shim_machine_id": "macbook-air-7f3c"   // optional, set when reason is another_shim_connected
+    "new_shim_machine_id": "6f1c2a9e-4b7d-4e53-9a08-3c5d7e9f1b24"   // optional, set when reason is another_shim_connected
   }
 }
 ```

@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .directory_browser import _is_reparse_point
 
@@ -76,30 +77,52 @@ class RootGrantSigner:
             root_grant=grant,
         )
 
+    def folder(self, root_grant: str, expected_session_id: str) -> str:
+        """The folder a grant is for, once its signature and what it claims
+        are checked, with no look at the folder itself: what `verify` goes
+        on to look at, which may not answer."""
+        try:
+            return self._claims(root_grant, expected_session_id)["allowed_root"]
+        except RootGrantError:
+            raise
+        except (KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RootGrantError("Root grant is malformed") from exc
+
+    def _claims(self, root_grant: str, expected_session_id: str) -> dict[str, Any]:
+        """What a grant claims, once its signature and its session, machine
+        and revision are checked. Nothing here looks at the disk."""
+        version, encoded, signature = root_grant.split(".", 2)
+        if version != "v1":
+            raise RootGrantError("Unsupported root grant version")
+        expected = _b64encode(hmac.new(self._key, encoded.encode("ascii"), hashlib.sha256).digest())
+        if not hmac.compare_digest(signature, expected):
+            raise RootGrantError("Root grant signature is invalid")
+        # Signed with this shim's key, so the path it holds is one this
+        # shim wrote into a grant: nothing the platform makes up gets as
+        # far as being looked at (canonical_directory).
+        claims = json.loads(_b64decode(encoded))
+        session_id = claims["session_id"]
+        machine_id = claims["machine_id"]
+        revision = claims["revision"]
+        if not isinstance(session_id, str) or session_id != expected_session_id:
+            raise RootGrantError("Root grant belongs to another session")
+        if not isinstance(machine_id, str) or machine_id != self.machine_id:
+            raise RootGrantError("Root grant belongs to another machine")
+        if not isinstance(revision, int) or revision < 1:
+            raise RootGrantError("Root grant revision is invalid")
+        if not isinstance(claims["allowed_root"], str) or not isinstance(
+            claims["fingerprint"], str
+        ):
+            raise RootGrantError("Root grant claims are invalid")
+        return claims
+
     def verify(self, root_grant: str, expected_session_id: str) -> RootBinding:
         try:
-            version, encoded, signature = root_grant.split(".", 2)
-            if version != "v1":
-                raise RootGrantError("Unsupported root grant version")
-            expected = _b64encode(
-                hmac.new(self._key, encoded.encode("ascii"), hashlib.sha256).digest()
-            )
-            if not hmac.compare_digest(signature, expected):
-                raise RootGrantError("Root grant signature is invalid")
-            claims = json.loads(_b64decode(encoded))
+            claims = self._claims(root_grant, expected_session_id)
             session_id = claims["session_id"]
-            machine_id = claims["machine_id"]
             revision = claims["revision"]
             allowed_root = claims["allowed_root"]
             fingerprint = claims["fingerprint"]
-            if not isinstance(session_id, str) or session_id != expected_session_id:
-                raise RootGrantError("Root grant belongs to another session")
-            if not isinstance(machine_id, str) or machine_id != self.machine_id:
-                raise RootGrantError("Root grant belongs to another machine")
-            if not isinstance(revision, int) or revision < 1:
-                raise RootGrantError("Root grant revision is invalid")
-            if not isinstance(allowed_root, str) or not isinstance(fingerprint, str):
-                raise RootGrantError("Root grant claims are invalid")
             root = canonical_directory(Path(allowed_root))
             birth = claims["birth"]
             # The fingerprint a grant issued now would hold, or the one every

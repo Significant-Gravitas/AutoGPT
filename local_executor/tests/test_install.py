@@ -426,27 +426,37 @@ def test_install_rejects_non_at_login() -> None:
 # ── uninstall_autostart ──────────────────────────────────────────────────────
 
 
+def _nothing_loaded(argv, timeout) -> install_mod.CommandResult:
+    """launchctl, for a label launchd doesn't have loaded."""
+    assert list(argv[:2]) == ["launchctl", "print"]
+    return install_mod.CommandResult(113, "Could not find service")
+
+
 def test_uninstall_removes_rendered_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(install_mod, "default_stdout_log", lambda: tmp_path / "out.log")
     monkeypatch.setattr(install_mod, "default_stderr_log", lambda: tmp_path / "err.log")
     monkeypatch.setattr(
         install_mod, "resolve_shim_command", lambda: ("/usr/local/bin/autogpt-shim",)
     )
+    monkeypatch.setattr(install_mod, "_user_id", lambda: 501)
     with _patch_platform("darwin"):
         install_mod.install_autostart(home=tmp_path)
         target = tmp_path / "Library" / "LaunchAgents" / "net.autogpt.shim.plist"
         assert target.is_file()
-        status = install_mod.uninstall_autostart(home=tmp_path)
+        done = install_mod.uninstall_autostart(home=tmp_path, run=_nothing_loaded)
     assert not target.exists()
-    assert status.installed is False
+    assert done.status.installed is False
+    assert done.entry_installed is True
 
 
 def test_uninstall_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(install_mod, "_user_id", lambda: 501)
     with _patch_platform("darwin"):
-        status1 = install_mod.uninstall_autostart(home=tmp_path)
-        status2 = install_mod.uninstall_autostart(home=tmp_path)
-    assert status1.installed is False
-    assert status2.installed is False
+        done1 = install_mod.uninstall_autostart(home=tmp_path, run=_nothing_loaded)
+        done2 = install_mod.uninstall_autostart(home=tmp_path, run=_nothing_loaded)
+    assert done1.status.installed is False
+    assert done2.status.installed is False
+    assert (done1.entry_installed, done2.entry_installed) == (False, False)
 
 
 # ── status_for ───────────────────────────────────────────────────────────────
@@ -475,8 +485,7 @@ def test_status_linux_includes_systemctl_commands(tmp_path: Path) -> None:
     status = install_mod.status_for("linux", home=tmp_path)
     assert status.enable_command is not None
     assert "systemctl --user enable" in status.enable_command
-    assert status.disable_command is not None
-    assert "systemctl --user disable" in status.disable_command
+    assert status.disable_command == "autogpt-shim uninstall"
 
 
 def test_status_windows_includes_schtasks_commands(
@@ -486,8 +495,7 @@ def test_status_windows_includes_schtasks_commands(
     status = install_mod.status_for("windows", home=tmp_path)
     assert status.enable_command is not None
     assert "schtasks /Create" in status.enable_command
-    assert status.disable_command is not None
-    assert "schtasks /Delete" in status.disable_command
+    assert status.disable_command == "autogpt-shim uninstall"
 
 
 def test_status_wsl2_mentions_enable_linger(tmp_path: Path) -> None:

@@ -191,6 +191,28 @@ APPROVAL_ARGUMENT_PLATFORMS: dict[tuple[str, str], frozenset[str]] = {
     ("launch_app", "webkit_inspector_port"): frozenset({"darwin", "win32"}),
 }
 
+# Arguments that carry an address the driver's browser loads, per tool. The
+# shim relays a call only when each is a web address (is_web_address): a
+# browser loads a `file:` address too, and its own pages, and what it loads
+# is read back with get_browser_state, outside the shared folders and with
+# no approval card. A file or another kind of link is opened with
+# launch_app's `urls`, which the person approves.
+# tests/test_cua_driver_contract.py checks that every offered tool's
+# argument named for an address is here or needs approval.
+WEB_ADDRESS_ARGUMENTS: dict[str, tuple[str, ...]] = {"browser_navigate": ("url",)}
+# Every such argument. A run_steps step is held to it whatever tool it names,
+# as it is to the approval arguments.
+_STEP_ADDRESS_ARGUMENTS = tuple(
+    dict.fromkeys(
+        argument for arguments in WEB_ADDRESS_ARGUMENTS.values() for argument in arguments
+    )
+)
+_NOT_A_WEB_ADDRESS = (
+    "only a web address (http:// or https://) or about:blank is opened this way; to open "
+    "a file or another kind of link, pass it in launch_app's urls, which the person approves"
+)
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
 # Every argument that needs approval on some tool. A run_steps step may use
 # none of them, whatever tool it names: the driver runs some steps as
 # another tool (a `press` with a target, and a `triple_click`, as a click).
@@ -224,6 +246,49 @@ class ApprovalRequired(Exception):
         self.reason = reason
 
 
+def is_web_address(value: object) -> bool:
+    """Whether `value` is an address the driver's browser may be sent to:
+    one that starts with `http://` or `https://`, in any letter case, or
+    exactly `about:blank`.
+
+    cua-driver 0.38's browser_navigate hands the string to the browser as
+    it is (Page.navigate) once it starts with `http://`, `https://` or
+    `about:`, in any ASCII case, with nothing trimmed. A browser does trim:
+    it strips spaces and control characters from an address's ends and
+    drops tabs and newlines inside it before it reads the scheme. So an
+    address that holds a space or a control or other invisible character
+    anywhere is refused, not trimmed: what the browser would make of it
+    isn't what was checked. `about:` is taken for `about:blank` alone: the
+    browser reads any other `about:` address as one of its own pages
+    (`about:version` is `chrome://version`), which the driver lets
+    through."""
+    if not isinstance(value, str):
+        return False
+    if any(char.isspace() or unicodedata.category(char).startswith("C") for char in value):
+        return False
+    return value == "about:blank" or value[:8].translate(_ASCII_LOWER).startswith(
+        ("http://", "https://")
+    )
+
+
+def check_web_addresses(tool: str, arguments: Mapping[str, Any]) -> None:
+    """Raise ArgumentRefused for an address the driver's browser would load
+    that isn't a web address (is_web_address), in a call's own arguments
+    and in each step of a `run_steps`, whatever tool the step names. An
+    argument left out is the driver's to refuse."""
+    for argument in WEB_ADDRESS_ARGUMENTS.get(tool, ()):
+        if argument in arguments and not is_web_address(arguments[argument]):
+            raise ArgumentRefused(tool, argument, _NOT_A_WEB_ADDRESS)
+    if tool != "run_steps":
+        return
+    steps = arguments.get("steps")
+    for index, step in enumerate(steps if isinstance(steps, list) else []):
+        for _step_tool, step_args in _step_calls(step):
+            for argument in _STEP_ADDRESS_ARGUMENTS:
+                if argument in step_args and not is_web_address(step_args[argument]):
+                    raise ArgumentRefused(tool, f"steps[{index}].{argument}", _NOT_A_WEB_ADDRESS)
+
+
 def approval_arguments(tool: str, arguments: Mapping[str, Any]) -> list[str]:
     """The arguments of this call that need the person's approval."""
     return _given(APPROVAL_ARGUMENTS.get(tool, {}), arguments)
@@ -251,6 +316,8 @@ def check_arguments(
         raise ArgumentRefused(
             tool, sorted(unknown)[0], "only an argument that needs approval can be approved"
         )
+    # Before the approvals: no approval makes an address a web address.
+    check_web_addresses(tool, arguments)
     for argument in approval_arguments(tool, arguments):
         if argument not in approved:
             raise ApprovalRequired(tool, argument, APPROVAL_ARGUMENTS[tool][argument])
@@ -375,19 +442,36 @@ def _check_app_identity(
     # reaching the driver. An app's display name, as list_apps gives it
     # ("Google Chrome", "Firefox"), starts with no program's name (PATH
     # lookups are case-sensitive).
-    # On Windows the driver launches a bundle_id that is an AUMID as a
-    # packaged app and hands any other to ShellExecuteEx as a program name,
-    # without looking for an installed app first: `logoff` signs the person
-    # out. (A launch by `name` is checked against the installed apps, which
-    # takes the driver: ComputerUseHandler._check_launch_name.)
-    bundle_id = arguments.get("bundle_id")
-    if platform == "win32" and isinstance(bundle_id, str) and not is_aumid(bundle_id):
-        raise ArgumentRefused(
-            "launch_app",
-            "bundle_id",
-            "on Windows a bundle_id is a packaged app's AUMID (`Package!App`); name the "
-            "app in name, as list_apps shows it, or pass its AUMID as aumid",
-        )
+    # On Windows cua-driver 0.38 takes what to launch in this order
+    # (platform-windows, launch_app): a `launch_path`, then a `path`, each
+    # handed to ShellExecuteEx as it is; then an `aumid`, any string at all,
+    # activated as a packaged app with no look at the name or the installed
+    # apps (one that names no packaged app fails the call: it isn't run as a
+    # program, and the name isn't tried instead); then a `bundle_id` that is
+    # an AUMID, the same way; then the `name`, looked up among the installed
+    # apps and, when none matches, handed to ShellExecuteEx as a program
+    # name, as a `bundle_id` that isn't an AUMID is when there is no name:
+    # `logoff` signs the person out.
+    # So a bundle_id has to be an AUMID, and so does an aumid: nothing the
+    # driver takes without a look at the installed apps goes to it
+    # unchecked, and its own handling of a string that is no AUMID isn't
+    # what stands between a call and a program. (A launch by `name` is
+    # checked against the installed apps, which takes the driver:
+    # ComputerUseHandler._check_launch_name.)
+    if platform == "win32":
+        for argument, instead in (
+            ("bundle_id", "or pass its AUMID as aumid"),
+            ("aumid", "or leave aumid out"),
+        ):
+            value = arguments.get(argument)
+            if isinstance(value, str) and value and not is_aumid(value):
+                raise ArgumentRefused(
+                    "launch_app",
+                    argument,
+                    f"on Windows {'a' if argument == 'bundle_id' else 'an'} {argument} is a "
+                    "packaged app's AUMID (`Package!App`); name the app in name, as "
+                    f"list_apps shows it, {instead}",
+                )
     name = arguments.get("name")
     words = name.split() if platform.startswith("linux") and isinstance(name, str) else []
     if words and on_path(words[0]):
@@ -408,6 +492,27 @@ def is_aumid(value: str) -> bool:
     return bool(separator and family and app) and "!" not in app
 
 
+def windows_launch_uses_name(arguments: Mapping[str, Any]) -> bool:
+    """Whether cua-driver 0.38 on Windows may act on a launch_app's `name`.
+    It reads each argument only when it is a string, and takes a
+    `launch_path`, a `path`, an `aumid` and a `bundle_id` that is an AUMID
+    before a name, in that order, never falling back to the name once it
+    has one of them. An `aumid` counts here only when it is an AUMID: any
+    other is refused before the call is sent (check_arguments), and were
+    one sent, the name would still be checked."""
+    if not isinstance(arguments.get("name"), str):
+        return False
+    for argument in ("launch_path", "path"):
+        value = arguments.get(argument)
+        if isinstance(value, str) and value:
+            return False
+    for argument in ("aumid", "bundle_id"):
+        value = arguments.get(argument)
+        if isinstance(value, str) and is_aumid(value):
+            return False
+    return True
+
+
 def windows_app_name_matches(name: str, app_names: Iterable[str]) -> bool:
     """Whether cua-driver 0.38's `shell:AppsFolder` lookup on Windows would
     find an installed app for a launch_app `name`: the exact name, ignoring
@@ -418,9 +523,6 @@ def windows_app_name_matches(name: str, app_names: Iterable[str]) -> bool:
     if not query:
         return False
     return any(app.strip().lower().startswith(query) for app in app_names)
-
-
-_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 
 
 class InstalledApp(NamedTuple):

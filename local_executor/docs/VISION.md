@@ -177,7 +177,7 @@ above is not met. See [PRIVACY_MODE.md](PRIVACY_MODE.md).
 - `session_id → [shim_id]` mapping in Redis: one session can have multiple shims
 - `LocalPCRouter`: given a tool call, routes to the right shim based on `target_machine` hint in the tool call or a routing policy
 - Claude tool augmentation: expose a `list_machines()` tool that returns shim capability advertisements
-- `PROTOCOL.md`: Shims must register with a `machine_id` (hostname + UUID); platform maps `session → {machine_id: shim_ws_connection}`
+- `PROTOCOL.md`: Shims must register with a `machine_id` (the shim's own UUID for the computer, which holds neither the hostname nor the operating system's identifier; HELLO's `display_name` is the label a person sees); platform maps `session → {machine_id: shim_ws_connection}`
 
 **Shim changes needed**:
 - No changes to individual shims — they just need stable `machine_id` in `HELLO`

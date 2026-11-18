@@ -46,8 +46,8 @@ One row per dimension. `n/a` means "doesn't apply on this OS." `same` means
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
 | Path separator | `/` | `/` | `\` (also accepts `/`) | Shim normalizes incoming wire paths with `pathlib.PurePath`. |
-| Drive letters / UNC | n/a | n/a | `C:\`, `\\server\share` | Path jail must compare on the same drive; cross-drive paths reject. |
-| Reserved filenames | none | none | `CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9` (case-insensitive, with or without extension) | Reject in FILE_WRITE; reject reads if the name is `\\?\`-escaped to a real reserved device. |
+| Drive letters / UNC | n/a | n/a | `C:\`, `\\server\share` | A path on another drive, relative to another drive's folder (`D:x`), on another share or host (`\\server\share\x`, `//server/share/x`), or in a device namespace (`\\.\`, `\\?\`) is refused by its name, before anything looks at it: resolving one would have Windows connect to the host and sign in with the person's account, or open the device. A root that is itself on a share or a mapped drive takes the paths under it. See [Path Jail Strategy](#path-jail-strategy). |
+| Reserved filenames | none | none | `CON`, `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, `COM1`–`COM9`, `LPT1`–`LPT9`, and `COM`/`LPT` with a superscript `¹`, `²` or `³` (case-insensitive, with or without extension, and with spaces before the extension) | Reject in FILE_WRITE; reject reads if the name is `\\?\`-escaped to a real reserved device. |
 | Invalid path chars | `:` (legacy HFS quirk; modern APFS allows) | none | `< > : " \| ? *` and control chars 0–31 | Reject on FILE_WRITE before opening. |
 | Max path length | 1024 (PATH_MAX) | 4096 (PATH_MAX) | 260 (MAX_PATH) unless `\\?\` prefix → 32767 | Shim transparently uses `\\?\` on Windows for paths > 240 chars. |
 | Alternate data streams | n/a | n/a | `file.txt:hidden` (NTFS ADS) | Path jail strips/rejects any path containing `:` after the drive component. |
@@ -88,7 +88,7 @@ paths only; navigation and selection use short-lived opaque references.
 | `shell: "auto"` runs | `bash` if on `PATH`, else `sh` | `bash` if on `PATH`, else `sh` | `cmd.exe` | Shim's default for `EXECUTE_COMMAND`. It ignores the user's login shell, so on macOS `auto` runs `bash`, not the default `zsh`. |
 | Explicit `shell` values | `bash`, `sh`, `zsh`, `pwsh` | `bash`, `sh`, `zsh`, `pwsh` | `cmd`, `powershell`, `pwsh`, `bash` (Git Bash / WSL) | Each needs its binary on `PATH`; otherwise `SHELL_NOT_AVAILABLE`. See PROTOCOL.md. |
 | POSIX `bash -c "..."` shape | Works | Works | Not available unless Git Bash / WSL installed | Platform must not assume bash on Windows — use `argv` array or `shell: "auto"`. |
-| Argument quoting | `shlex.quote` | `shlex.quote` | `subprocess.list2cmdline` | Shim uses the right quoter per OS when given `argv` form. |
+| Argument quoting | none: `argv` is executed as given | none: `argv` is executed as given | `subprocess.list2cmdline` joins `argv` into the one command line a Windows program gets | The shim adds no quoting to `command`: a shell gets it as sent. `cmd.exe` gets it on a command line the shim builds, `cmd.exe /d /s /c "..."`, since cmd.exe doesn't undo `list2cmdline`'s quoting. See [PROTOCOL.md](PROTOCOL.md#what-each-shell-is-handed). |
 
 ### Process control & signals
 
@@ -115,7 +115,7 @@ paths only; navigation and selection use short-lived opaque references.
 |---|---|---|---|---|
 | Default text encoding | UTF-8 | UTF-8 | UTF-8 on disk; CP1252/locale on console | Shim always reads/writes files as bytes internally. |
 | Line ending on disk | `\n` | `\n` | `\r\n` (when an app writes "text" mode) | Shim does NOT auto-translate. See [PROTOCOL.md FILE_READ semantics](PROTOCOL.md). |
-| Console / subprocess encoding | UTF-8 | UTF-8 (depends on `LC_*`) | OEM code page (e.g., CP437) or UTF-8 if `PYTHONIOENCODING=utf-8` | Shim sets `PYTHONIOENCODING=utf-8` and `chcp 65001` on Windows before subprocess. |
+| Console / subprocess encoding | UTF-8 | UTF-8 (depends on `LC_*`) | OEM code page (e.g., CP437) or UTF-8 if `PYTHONIOENCODING=utf-8` | Shim sets `PYTHONIOENCODING=utf-8` for every command, and runs `chcp 65001` first in a `cmd.exe` command. |
 
 ### Computer use
 
@@ -134,10 +134,37 @@ Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/net.autogpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...`) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` reverses it. |
-| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: `AT_LOGON` (Task Scheduler `<LogonTrigger>`) | All require user opt-in. CLI prints the systemctl / launchctl / schtasks commands but never runs them. The macOS `SuccessfulExit=false` flag is load-bearing: launchd starts the daemon again after every nonzero exit, no more often than every 10 seconds (its default throttle). It doesn't watch TCC.db: while computer use is requested and Accessibility or Screen Recording isn't granted, each start runs the preflight, which starts cua-driver to check the grants, and exits 78 again, so the start after consent is granted in System Settings comes up without the user touching launchctl. See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
+| Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/net.autogpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...`) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` undoes both: see [Uninstalling](#uninstalling). |
+| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: `AT_LOGON` (Task Scheduler `<LogonTrigger>`) | All require user opt-in: `install` prints the systemctl / launchctl / schtasks command that starts the service and never runs it. The macOS `SuccessfulExit=false` flag is load-bearing: launchd starts the daemon again after every nonzero exit, no more often than every 10 seconds (its default throttle). It doesn't watch TCC.db: while computer use is requested and Accessibility or Screen Recording isn't granted, each start runs the preflight, which starts cua-driver to check the grants, and exits 78 again, so the start after consent is granted in System Settings comes up without the user touching launchctl. See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
 | Logs | `~/Library/Logs/autogpt-local-executor/*.log` | `journalctl --user -u autogpt-shim` + `$XDG_STATE_HOME/autogpt-local-executor/` | `%LOCALAPPDATA%\autogpt-local-executor\logs\` | Audit log location per row "Audit log" below. |
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
+
+#### Uninstalling
+
+`autogpt-shim uninstall` stops the service, unregisters it and removes the
+autostart file, in that order: the service managers' own commands for it
+(`launchctl unload <plist>`, `systemctl --user disable`) read the file, so
+with the file removed first the shim would run on until the next logout.
+It runs the service manager itself, and waits a bounded time for each step:
+
+| OS | What it runs | It waits |
+|---|---|---|
+| macOS | `launchctl bootout <domain>/net.autogpt.shim`, in the login session (`gui/<uid>`) and the background one (`user/<uid>`, where an agent loaded over SSH is), then asks launchd until the service has gone | 30 s (launchd kills a service that hasn't exited after 20 s) |
+| Linux, WSL2 | `systemctl --user disable --now autogpt-shim.service` while the unit file is there, or `systemctl --user stop` when it is already gone; then `systemctl --user daemon-reload` | 100 s (systemd kills a unit that hasn't stopped after 90 s) |
+| Windows | `schtasks /End` and then `schtasks /Delete` on `\AutoGPT\Shim`. Deleting alone would leave what the task started running | 30 s |
+
+It stops only the service the autostart entry started. A shim started by
+hand in a terminal isn't the service manager's, and keeps running.
+
+When the service can't be stopped, it says what failed, removes the file
+all the same, prints one command that stops the service without the file,
+and exits 1. That happens when the service manager's tool isn't on `PATH`,
+when there is no user session bus to reach systemd through (a shell from
+`su` or `sudo -u`), when the wait runs out, and on Windows when the task was
+registered from an elevated prompt and `uninstall` runs from a plain one.
+There a task that this prompt can't see looks like one that isn't
+registered, so `uninstall` can only rule a task out from an elevated prompt.
+With nothing installed and nothing running it changes nothing and exits 0.
 
 The systemd user unit sets `AUTOGPT_SHIM_SUPERVISOR=systemd`. It starts at
 login, before the desktop exports its display to the user manager. So when
@@ -211,14 +238,109 @@ not open yet on macOS (Files and Folders), a missing permission that exits
 | Headless fallback | Requires usable keyring | **`keyring` fails** if no D-Bus / no keyring daemon | Requires usable keyring | OAuth tokens have no file fallback. Configure a supported keyring before pairing. The legacy audit-key fallback does not store OAuth tokens. |
 | WSL2 | n/a | Use a supported Linux keyring; none is configured by default in many distros | n/a | Pairing requires working keyring storage. |
 
-### Machine ID source
+### Machine ID
+
+HELLO's `machine_id` is the shim's own ID for the computer: the platform
+knows the computer by it, and every audit record and folder grant carries
+it. The shim derives it (HMAC-SHA256, written as a UUID) from two things
+together, and sends, logs and prints neither:
+
+- **The operating system's identifier**, in the table below. Other software
+  on the computer reads the same value, and `machine-id(5)` asks
+  applications not to send it over a network, so it is only an input.
+- **A random value the shim makes itself** and keeps in its own folder:
+  `~/.autogpt-local-executor/machine-id-seed`
+  (`%USERPROFILE%\.autogpt-local-executor\machine-id-seed` on Windows; the
+  folder is `AUTOGPT_SHIM_FALLBACK_DIR` when that is set).
+
+With no identifier to read, the ID comes from the stored value alone. The
+hostname is never part of it.
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
-| Source | `ioreg -rd1 -c IOPlatformExpertDevice` → `IOPlatformUUID` | `/etc/machine-id` (fallback `/var/lib/dbus/machine-id`) | Registry `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid` | All stable across reboots. |
-| Rotates on | Logic-board replacement or fresh macOS install | `systemd-machine-id-setup --commit` (rare) | OS reinstall | Document as "stable identifier; rotates on reinstall." |
-| WSL2 | n/a | Has its own `/etc/machine-id` — distinct from host Windows | n/a | A user's Windows host + WSL2 distro are two distinct shims, by design. |
-| Wire format | UUID string, lowercase, dashes | same | same | Normalize in shim. |
+| The operating system's identifier | `ioreg -rd1 -c IOPlatformExpertDevice` → `IOPlatformUUID` | `/etc/machine-id` (fallback `/var/lib/dbus/machine-id`) | Registry `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid` | An input of the ID only: never sent, logged, printed or stored by the shim. |
+| It changes on | Logic-board replacement or fresh macOS install | `systemd-machine-id-setup --commit` (rare) | OS reinstall | The machine ID changes with it. |
+| WSL2 | n/a | Has its own `/etc/machine-id`, distinct from the Windows host's, and its own home folder | n/a | A Windows host and a WSL2 distribution on it are two computers, by design. |
+| Form the derivation takes | 32 hex digits, lower case | same | same | The shim drops the space around the identifier, braces and dashes and lowers its case first, so one computer can't get two IDs from how its identifier is written. Anything that isn't 32 hex digits (an empty file, systemd's `uninitialized`) counts as no identifier. |
+| Wire format of the machine ID | UUID string, lowercase, dashes | same | same | |
+
+The derivation is fixed: a change would give every computer a new ID.
+`tests/test_machine_identity.py` pins it with known inputs and outputs.
+
+**What counts as one computer.** One account's shim on one installation of
+an operating system. Each account's shim keeps its own stored value, so two
+accounts on one computer have two IDs, and one person's several computers
+each have their own:
+
+- two computers whose operating systems hold the same identifier (made
+  from one image) differ by their stored values;
+- two computers that share a home folder (an NFS home, a roaming Windows
+  profile) share the stored value and differ by their identifiers;
+- two computers that share a home folder *and* hold the same identifier
+  get the same ID, and the second to connect takes the first one's place.
+  Give one of them a folder of its own with `AUTOGPT_SHIM_FALLBACK_DIR`
+  (every command of that computer's shim needs the same value), or a
+  `machine_id` of its own.
+
+**Where the stored value is kept, and why there.** The folder is the one
+every shim of an account uses whatever its config file and audit log: it
+holds the lock a new audit key is made under, the stored sign-in's locks,
+and the audit key itself where there is no keychain. So an account's shims
+share one ID however they are set up, which the platform's one connection
+for each computer goes by. Beside the audit log the value would follow
+`audit_log_path`, and a second config would look like a second computer.
+It isn't in the keychain: Windows' credential store can follow an account
+between a domain's computers, and a locked keychain would hold up the ID.
+
+**How it is made.** Once, by the first `autogpt-shim start` that needs an
+ID (so by the autostart service too). No other command reads the
+operating system's identifier or makes the value: `--help`, `status`,
+`doctor`, `auth`, `revoke`, `install`, `uninstall` and the `audit`
+commands leave the folder as it was. The value is written whole to a file
+of its own, readable by its owner only, and then given its name in a way
+that fails when the name is taken, so two starts at once end with one
+value and one ID, and a file under that name is never half a value. A file
+there that isn't a whole value stops `start` (exit 78) rather than be
+replaced. So does a folder the value can't be kept in (exit 78, or 75 when
+a restart can fix it, such as a full disk): the shim doesn't run under an
+ID made for one start, which the platform would see as a new computer each
+time. The message names the file and the two ways out: point
+`AUTOGPT_SHIM_FALLBACK_DIR` at a folder that can hold it (the folder a
+first start needs for the audit key's lock as well), or set a `machine_id`.
+No file locks are needed for it, so a home without them keeps the value
+like any other.
+
+**What keeps the ID, and what changes it.** The computer has the same ID
+at every start, and after the shim is upgraded or reinstalled, for as long
+as the stored value is kept and the operating system's identifier stays
+the same. Deleting `machine-id-seed`, or the folder it is in, gives the
+computer a new ID at the next start:
+
+- The platform shows a new computer. It lists the shims that are
+  connected, so the old one is simply no longer there.
+- Each chat bound to the old ID asks for its computer and folder again.
+  Nothing on the computer is lost: its files and its audit log stay.
+- Those chats couldn't be restored in any case once the audit key is gone
+  as well. A chat's folder comes back from a grant this shim signed with a
+  key made from its audit key, and the grant names the machine ID. Where
+  there is no keychain the audit key is a file in the same folder, so
+  deleting the folder takes both; no grant verifies under a new key,
+  whatever the ID. Where the key is in the keychain and only the stored
+  value is deleted, the key still verifies the grants' signatures, and
+  the grants are refused all the same, for naming another machine; the
+  platform doesn't find the chat's computer among the connected ones
+  either.
+
+A `machine_id` set in the config file, or with `AUTOGPT_SHIM_MACHINE_ID`,
+is sent as given, and nothing above runs.
+
+**Telling two computers apart.** The platform's folder dialog lists each
+connected computer by its `display_name` and its operating system. The
+display name is the hostname unless you set another, so two computers with
+the same hostname look the same there until one of them gets its own: put
+`display_name = "Work laptop"` in the config file, or set
+`AUTOGPT_SHIM_DISPLAY_NAME`, and start the shim again. `autogpt-shim
+start` prints the machine ID it runs under.
 
 ### Audit log location
 
@@ -311,7 +433,21 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
     if has_invalid_chars(p):          # Windows: < > " | ? * and ctrl chars
         return False
 
-    # 3. Resolve symlinks, junctions, firmlinks, reparse points.
+    # 3. Resolve the root, the folder the person chose, and refuse by its
+    #    name a path that is plainly outside it, BEFORE anything looks at the
+    #    path. Resolving `\\host\share\x` has Windows connect to the host and
+    #    sign in with the person's account, `\\.\pipe\x` opens a device, and
+    #    on macOS `/net/<host>/x` has autofs contact the host. A relative
+    #    path is taken from the root, and `.` and `..` are worked out on the
+    #    names. The names a path inside the root can start with are the root
+    #    as configured, the root as resolved, and the root by the home
+    #    folder's own name (what `~` expands to); case, the form of an
+    #    accented letter and, on Windows, the separator are set aside.
+    root_resolved = os.path.realpath(allowed_root, strict=True)
+    if plainly_outside(p, root_spellings(allowed_root, root_resolved)):
+        return False
+
+    # 4. Resolve symlinks, junctions, firmlinks, reparse points.
     #    Use os.path.realpath, NOT pathlib.Path.resolve() — realpath handles
     #    junctions correctly on Windows since Python 3.8; resolve() can hang
     #    on broken symlinks on some FS. A relative path is taken from the
@@ -322,15 +458,13 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
     except OSError:
         return False
 
-    root_resolved = os.path.realpath(allowed_root, strict=True)
-
-    # 4. Exact prefix with a path separator boundary.
+    # 5. Exact prefix with a path separator boundary.
     #    Append os.sep to prevent /foo matching /foobar.
     root_prefix = root_resolved.rstrip(os.sep) + os.sep
     if resolved == root_resolved or resolved.startswith(root_prefix):
         return True
 
-    # 5. Same directory, different spelling. A case-insensitive filesystem
+    # 6. Same directory, different spelling. A case-insensitive filesystem
     #    accepts any case, and macOS realpath keeps the spelling it was given.
     #    Never fold case to compare: `WS` beside a root `Ws` is a different
     #    directory wherever a directory on the way is case-sensitive (case-
@@ -352,13 +486,34 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
 
 Key invariants:
 
+- **Look at nothing the name rules out.** A path that is outside the root by
+  its name is refused before `realpath`, `stat` or `open` is called on it:
+  another drive, share, host or device namespace on Windows, and on every
+  OS an absolute path that isn't under the root or one that climbs above
+  it through `..`. Step 3 only ever lets a path through to be resolved; it
+  never lets one in. It compares names more loosely than the filesystem
+  may (any case), so what passes is still decided by steps 4 to 6.
+- **The root's names are the ones the shim gave out.** The platform sends
+  paths under the root the shim reported, already normalized, and a
+  command's output names the resolved root. A path that reaches the root
+  through some other link outside it (`/var/folders/...` for a root chosen
+  as `/private/var/folders/...`, say) is refused: name it by the root. On
+  Windows an 8.3 name counts where the root was configured with it
+  (`C:\Users\RUNNER~1\ws`): a root given by its long name isn't reached by
+  8.3 names.
+- **A link inside the root is still followed.** Its name is inside, so it
+  is resolved, which is how the jail learns where it points. One that
+  points at a network path (`\\host\share`, `/net/<host>`) has the system
+  contact that host before the request is refused. Only someone who can
+  already write in the shared folder can put such a link there.
 - **Always realpath both sides.** Never compare a not-yet-resolved path against
   a resolved root.
 - **Always check with a separator boundary.** `/foo` must not match `/foobar`.
-- **Never fold case.** Case sensitivity varies per volume and, on NTFS, per
-  directory, so neither a hardcoded "macOS = insensitive" nor a probe of one
-  directory is safe. Compare the exact spelling, then filesystem identity.
-  The check never writes anything.
+- **Never fold case to let a path in.** Case sensitivity varies per volume
+  and, on NTFS, per directory, so neither a hardcoded "macOS = insensitive"
+  nor a probe of one directory is safe. Compare the exact spelling, then
+  filesystem identity. (Step 3 sets case aside only to choose what is
+  looked at.) The check never writes anything.
 - **Validate complete destinations before creation.** FILE_WRITE may create
   a new file under an existing in-root parent; `create_parents: true` also
   allows missing in-root parents. FILE_MOVE may target a new in-root name.
@@ -390,14 +545,19 @@ operation can act on the root itself.
 
 | Attack | Caught at step |
 |---|---|
-| `../../../etc/passwd` | 1 (normalize) → 3 (realpath) → 4 (prefix mismatch) → 5 (root is no ancestor) |
-| `/workspace/symlink-to-etc` | 3 (realpath resolves outside) → 4 → 5 |
-| `/WORKSPACE/foo` on case-insensitive FS | 4 (spelling differs) → 5 (the root is an ancestor) → allowed (correct) |
-| `/WS/foo` beside root `/Ws` in a case-sensitive directory | 4 → 5 (`/WS` is another directory) |
-| `/workspace2/foo` (root is `/workspace`) | 4 (boundary check) → 5 |
+| `../../../etc/passwd` | 1 (normalize) → 3 (outside by its name; nothing is looked at) |
+| `/etc/passwd`, `/workspace/../etc/passwd` | 3 (outside by its name) |
+| `\\host\share\x`, `//host/share/x` (Windows) | 3 (another share: no connection is made) |
+| `\\.\pipe\x`, `\\.\C:\workspace\x` (Windows) | 3 (a device namespace) |
+| `D:\x`, `D:x` (root on `C:`) | 3 (another drive) |
+| `/net/<host>/x` (macOS autofs) | 3 (outside by its name: the host isn't contacted) |
+| `/workspace/symlink-to-etc` | 4 (realpath resolves outside) → 5 → 6 |
+| `/WORKSPACE/foo` on case-insensitive FS | 3 (passes: case is set aside) → 5 (spelling differs) → 6 (the root is an ancestor) → allowed (correct) |
+| `/WS/foo` beside root `/Ws` in a case-sensitive directory | 3 (passes) → 5 → 6 (`/WS` is another directory) |
+| `/workspace2/foo` (root is `/workspace`) | 3 (the name only starts like the root's) |
 | `C:\workspace\file.txt:hidden` | 2 (ADS check) |
 | `C:\workspace\CON` | 2 (reserved name) |
-| `\\?\C:\workspace\..\..\etc` | 1 → 3 → 4 → 5 |
+| `\\?\C:\workspace\..\..\etc` | 2 (`?` is no character of a path) |
 
 ---
 
@@ -442,7 +602,9 @@ working `/proc/sys/kernel/osrelease` containing `WSL2`.
    storage has no file fallback.
 6. **`machine_id` is per-distro, not per-host.** A user with Ubuntu WSL2 and
    Debian WSL2 has two separate shims to the platform — that's intentional;
-   they have separate filesystems.
+   they have separate filesystems, and each has its own `/etc/machine-id`
+   and its own home folder for the shim's stored value
+   ([Machine ID](#machine-id)).
 
 ### What the platform should NOT assume about WSL2
 

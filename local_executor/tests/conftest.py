@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from autogpt_local_executor import install
 from autogpt_local_executor.computer_use import concealed
 
 
@@ -26,3 +27,16 @@ def _away_from_the_real_file_keys(
     tests list. A test that needs either variable sets it."""
     monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path_factory.mktemp("fallback")))
     monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _away_from_the_real_service_manager(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep every test from launchd, systemd and Task Scheduler. `autogpt-shim
+    uninstall` stops the autostart service through them, and here that would
+    be the service of whoever runs the tests. A test that means to reach one,
+    for a service of its own, passes the real runner itself."""
+
+    def reached(argv: object, timeout: float) -> None:
+        raise AssertionError(f"a test reached the real service manager: {argv}")
+
+    monkeypatch.setattr(install, "run_command", reached)

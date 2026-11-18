@@ -194,6 +194,23 @@ sixteen tools; all of them are in the catalog, which
   own; cua-driver 0.38 batches no launch anyway. A batch the shim can't
   look inside is refused: `steps` that isn't a list, or a step that isn't
   an object.
+- An address for the driver's browser has to be a web address.
+  `browser_navigate`'s `url` must start with `http://` or `https://`, in
+  any letter case, or be exactly `about:blank`, and hold no space and no
+  control or other invisible character anywhere (a browser strips those
+  from an address's ends and drops tabs and newlines inside it, so the
+  shim refuses them, and doesn't trim). Anything else is refused with
+  `FEATURE_NOT_SUPPORTED` before the call waits for the computer, and
+  recorded: a `file:` address, which the browser would load from outside
+  the shared folders for `get_browser_state` to read back; `view-source:`,
+  `javascript:`, `data:`, `blob:` and `ftp:`; the browser's own pages
+  (`chrome:`, `edge:`, and every `about:` page but `about:blank`); and an
+  address with no scheme. A `run_steps` step is held to the same rule,
+  whatever tool it names. The refusal names the way to open a file or
+  another kind of link: `launch_app`'s `urls`, which asks the person.
+  cua-driver 0.38 has a check of its own, which takes `http://`,
+  `https://` and any `about:` address; the shim's doesn't rely on it, and
+  `about:` there includes the browser's own pages (`about:version`).
 - `prompt: true` on `check_permissions` is refused: permission prompts are
   raised by the person, with `autogpt-shim doctor`.
 - `session` is set to the shim session's label on every call that takes it,
@@ -249,8 +266,11 @@ Known gaps:
   and `urls` start any program and open any file, and on Linux its `name`
   is run as a command line, or, when it matches no installed app, opened
   with `xdg-open` if a file of that name is in the driver's working folder,
-  the person's home folder. The one thing the shim checks for a script is
-  that the call was approved.
+  the person's home folder. A script can also call `browser_navigate`
+  there, where the shim doesn't see the address: the driver's own rule
+  applies (`http://`, `https://` and any `about:` address, so not a
+  file's). The one thing the shim checks for a script is that the call
+  was approved.
   cua-driver 0.38's policy can allow a tool but can't forbid one of its
   arguments, and the shim can't see into scripts, so every script needs
   approval instead: a card that shows it, unless the chat runs Unsupervised
@@ -329,7 +349,15 @@ Known gaps:
   way the driver matches: the exact name, ignoring case and a trailing
   `.exe`, or one that starts with it. There it lists the installed apps
   for each launch it checks, just before the launch, so an app removed
-  since an earlier listing doesn't let its name through. On every OS it refuses a `name`,
+  since an earlier listing doesn't let its name through. An `aumid` the
+  driver (0.38) activates as a packaged app whatever its text, with no look
+  at the name or the installed apps; one that names no packaged app fails
+  the call there, and isn't run as a program. The shim refuses an `aumid`
+  that isn't an AUMID all the same, as it does a `bundle_id`, so that
+  nothing rests on how the driver treats one. The name's check is left out
+  only for a call that carries what the driver takes before a name and
+  never falls back from: a `launch_path` or a `path`, which the person
+  approves, or an AUMID as `aumid` or `bundle_id`. On every OS it refuses a `name`,
   `bundle_id` or `aumid` with a path, a URL scheme or a leading `-`. A plain launch, an app by its name or
   id, asks nothing, and a launched app can do whatever it does.
 - `set_value` writes a field's value directly, without visible keystrokes.
@@ -451,7 +479,10 @@ prompt for the shim's app (the driver leaves prompting to its host).
    Linux list. The contract tests fail on any tool the catalog doesn't
    name, offered or in `NOT_OFFERED_TOOLS`, and, on the OS they run on, on
    an offered tool's argument named for a path (a `path`, `file`, `dir` or
-   `out` word) that isn't an approval argument.
+   `out` word) that isn't an approval argument, and on one named for an
+   address (a `url`, `uri`, `href` or `link` word) that is neither an
+   approval argument nor held to a web address
+   (`catalog.WEB_ADDRESS_ARGUMENTS`).
 3. Check the new release's script and batch allowlists, its policy format,
    and its permission modes. If its policy can forbid an argument, forbid
    `screenshot_out_file` and `debug_image_out` inside scripts, and, once

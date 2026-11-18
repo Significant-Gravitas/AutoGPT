@@ -249,6 +249,7 @@ def _driver_doctor(binary: Path) -> list[CheckResult]:
     try:
         completed = subprocess.run(
             [str(binary), "doctor", "--json"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             # The report is UTF-8; Windows would decode the ANSI code page.
             encoding="utf-8",

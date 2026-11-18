@@ -105,8 +105,11 @@ use copied configuration and immutable session-bound audit contexts.
 | OS | Attack vector | Defense |
 |---|---|---|
 | Windows | NTFS Alternate Data Streams: `workspace\file.txt:hidden` writes to a hidden stream that doesn't show in Explorer | Reject any path containing `:` after the drive component (`C:`). |
-| Windows | Reserved device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`) — case-insensitive, with or without extension. `workspace\CON.txt` opens the console device. | Reject by case-folded basename match against the reserved list, BEFORE checking extension. |
-| Windows | `\\?\` path-length prefix bypass — `\\?\C:\workspace\..\..\etc` lets a long path skip normalization in some APIs | Always pass through `os.path.realpath` which resolves these. |
+| Windows | Reserved device names (`CON`, `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, `COM1`–`COM9`, `LPT1`–`LPT9`, and `COM`/`LPT` with a superscript digit) — case-insensitive, with or without extension. `workspace\CON.txt` opens the console device. | Reject by case-folded basename match against the reserved list, BEFORE checking extension. |
+| Windows | `\\?\` path-length prefix bypass — `\\?\C:\workspace\..\..\etc` lets a long path skip normalization in some APIs | Every `\\?\` and `\\.\` path is refused by its name, before anything looks at it. |
+| Windows | A path on another share or host (`\\host\share\x`, `//host/share/x`): resolving it has Windows connect to that host over SMB and sign in with the person's Windows account, before the path could be refused. `\\.\pipe\x` opens a device the same way. | Refused by name, before `realpath`, `stat` or `open` is called on it: a path has to be under the root as configured or as resolved, on the root's own drive or share. |
+| macOS | `/net/<host>/x`: looking at it has autofs contact the host | Refused by name, like any absolute path that isn't under the root. |
+| All | A link inside the shared folder that points at a network path | **Followed.** Its name is inside the root, so it is resolved, which is how the jail learns where it points; the request is then refused, but the system has contacted that host. Only someone who can already write in the shared folder can make such a link. |
 | Windows | NTFS junctions and reparse points pointing outside the jail | `os.path.realpath` (Python 3.8+) follows them; compare resolved paths. |
 | macOS | APFS firmlinks (`/Users`, `/Applications`, `/Library`) — invisible to most APIs but `realpath` reveals them | Always `realpath` both the requested path and `allowed_root`. |
 | macOS | Case-insensitive default FS: `/Workspace/foo` references the same inode as `/workspace/foo` — naive string `startswith` lets `/workspaceother/foo` through if `allowed_root = /workspace` | Always compare with `os.path.normcase` after `realpath`, AND with a `os.sep` boundary appended. |
@@ -188,10 +191,33 @@ normal network access. OS isolation and destination approval are future work.
 | Take screenshots | ❌ | Local `enable_computer_use` configuration plus platform capability grant |
 | Inject mouse/keyboard | ❌ | Local `enable_computer_use` configuration plus platform capability grant |
 | Launch programs with arguments | ❌ | Part of computer use (same configuration and grant). Like `--enable-shell`, this is user-account-level access: a launched program, or a terminal driven by keyboard input, runs whatever it is given. A launch with a command line, a program's path, extra arguments, links or an inspector port waits for the person's approval in the chat, unless the chat runs Unsupervised or the person set a standing rule on an earlier approval card ("from now on"), which approves later launches of that kind whatever their arguments. A launch by an app's name alone needs no approval and starts only an installed app: on Linux, where cua-driver would run a name as a command line or open a file of that name, the shim sends it the matched app's own launch command instead, and no name ([CUA_DRIVER.md](CUA_DRIVER.md#residual-risk)). The computer-use handler audits each launch it takes with its arguments kept whole, as a command's record keeps its command line, so an `audit export` holds them too ([AUDIT_LOG.md](AUDIT_LOG.md#reading-and-exporting)); best effort (a launch goes ahead if its record can't be written). |
+| Open an address in the driver's browser | ❌ | Part of computer use (same configuration and grant). Web addresses only: `browser_navigate` takes an `http://` or `https://` address, or `about:blank`. A `file:` address, which would load a file from outside the shared folders for `get_browser_state` to read back, the browser's own pages and every other scheme are refused before the call runs, and the refusal is recorded. A file or another kind of link is opened with `launch_app`'s `urls`, which waits for the person's approval. A script (`run_script`), which runs only with the person's approval, calls the driver's browser tools where the shim can't see the address; there cua-driver's own rule applies, which takes no `file:` address either ([CUA_DRIVER.md](CUA_DRIVER.md#enforcement)). |
 | Access serial/USB/GPIO | ❌ | Operation dispatch is not implemented |
 | Run elevated operations | Uses executor user's privileges | No privilege-dropping or elevation sandbox |
 | Background tasks when user absent | Available while daemon is running | No separate background-work permission |
 | Access the internet via commands | ❌ (shell is off) | Shell commands may use the network after `--enable-shell` |
+
+### What identifies this computer to the platform
+
+Two fields of HELLO, sent on every connection
+([PROTOCOL.md](PROTOCOL.md#hello-shim--platform-on-connect)):
+
+- `machine_id`, the ID the platform knows the computer by. It is the
+  shim's own: derived from the operating system's identifier
+  (`IOPlatformUUID`, `/etc/machine-id`, `MachineGuid`) and a random value
+  the shim keeps in `~/.autogpt-local-executor/machine-id-seed`, readable
+  by its owner only. Neither of those leaves the computer or is written to
+  the audit log, a folder grant or the terminal, and the ID can't be
+  turned back into either. It holds no hostname.
+- `display_name`, the label shown beside the computer in the platform's
+  folder dialog. By default it is the hostname, which often carries the
+  person's name; set another with `display_name` in the config file or
+  `AUTOGPT_SHIM_DISPLAY_NAME`.
+
+HELLO also carries the operating system, the CPU architecture, the shim's
+version and the capabilities it offers. See
+[CROSS_PLATFORM.md](CROSS_PLATFORM.md#machine-id) for how the ID is made
+and what gives a computer a new one.
 
 ---
 
@@ -257,12 +283,16 @@ valid-length ciphertext corruption. Prefer a supported OS keyring.
 
 If you believe your shim was compromised:
 
-1. Stop the foreground daemon with Ctrl+C, or stop its launchd/systemd/Task Scheduler entry.
+1. Stop the foreground daemon with Ctrl+C. For the autostart service, run
+   `autogpt-shim uninstall`: it stops the service through launchd, systemd or
+   Task Scheduler and removes its entry, and says so if it couldn't.
 2. `autogpt-shim revoke` — revokes the configured deployment's saved OAuth tokens;
    repeat with each deployment's configuration as needed
 3. Review the audit log at the per-OS location (see [AUDIT_LOG.md](AUDIT_LOG.md)) with `autogpt-shim audit tail` / `verify`
 4. Change your AutoGPT account password and re-enable 2FA
-5. Report to security@autogpt.net with the audit log
+5. Report it privately, with the audit log: open a
+   [security advisory](https://github.com/Significant-Gravitas/AutoGPT/security/advisories/new)
+   on the AutoGPT repository (preferred), or write to security@agpt.co
 
 ---
 
