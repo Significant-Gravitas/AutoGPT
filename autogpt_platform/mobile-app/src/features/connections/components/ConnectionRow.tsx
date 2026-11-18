@@ -16,16 +16,17 @@ interface Action {
 interface Props {
   name: string;
   detail: string | null;
+  logoID?: string | null;
   error?: string | null;
   action?: Action | null;
 }
 
 /** A service in a list: its tile, name, a line under it, and one button. */
-export function ConnectionRow({ name, detail, error, action }: Props) {
+export function ConnectionRow({ name, detail, logoID, error, action }: Props) {
   const styles = useStyles();
   return (
     <View style={styles.row}>
-      <ProviderTile name={name} />
+      <ProviderTile name={name} logoID={logoID} />
       <View style={styles.text}>
         <Text style={styles.name} numberOfLines={1}>
           {name}

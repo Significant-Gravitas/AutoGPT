@@ -76,16 +76,21 @@ export function SetupCard(props: Props) {
         <Text accessibilityRole="header" style={styles.title}>
           Connect to continue
         </Text>
-        {props.setup.message ? <Text style={styles.message}>{props.setup.message}</Text> : null}
+        {card.intro ? <Text style={styles.intro}>{card.intro}</Text> : null}
       </View>
-      {card.rows.map(({ request, name, status }, index) => (
+      {card.rows.map(({ request, name, logoID, status }, index) => (
         <SetupRow
           key={request.key}
           name={name}
+          logoID={logoID}
           hint={rowHint(request, status, props.setup)}
           error={connect.errors[request.key] ?? null}
           isConnected={status.kind === "connected"}
-          actionLabel={actionLabel(status)}
+          actionLabel={
+            status.kind === "connect" && connect.tokenRows[request.key]
+              ? "Add token"
+              : actionLabel(status)
+          }
           isBusy={connect.busyKey === request.key}
           isLoading={card.isLoading && !run.picks[request.key]}
           isLocked={card.isAnyBusy || run.followUp !== "idle"}
@@ -118,7 +123,7 @@ const useStyles = createStyles((colors) => ({
   },
   header: { gap: 2, paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.sm },
   title: { ...type.label, color: colors.text },
-  message: { ...type.small, color: colors.textSecondary },
+  intro: { ...type.small, color: colors.textSecondary },
   footer: {
     gap: spacing.sm,
     paddingHorizontal: spacing.md,

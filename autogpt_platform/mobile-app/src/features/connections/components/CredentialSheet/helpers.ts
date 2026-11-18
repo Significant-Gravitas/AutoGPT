@@ -14,6 +14,8 @@ export interface SheetTarget {
   host: string | null;
   /** The MCP server a token is for. */
   serverURL: string | null;
+  /** Said instead of the usual intro, e.g. why a sign-in became a token. */
+  notice?: string;
 }
 
 /** Exactly what was typed in each field. */

@@ -8,6 +8,7 @@ import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 interface Props {
   name: string;
+  logoID: string | null;
   hint: string | null;
   error: string | null;
   isConnected: boolean;
@@ -23,6 +24,7 @@ interface Props {
 
 export function SetupRow({
   name,
+  logoID,
   hint,
   error,
   isConnected,
@@ -61,7 +63,7 @@ export function SetupRow({
 
   return (
     <View style={styles.row}>
-      <ProviderTile name={name} />
+      <ProviderTile name={name} logoID={logoID} />
       <View style={styles.text}>
         <Text style={styles.name} numberOfLines={1}>
           {name}

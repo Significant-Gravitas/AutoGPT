@@ -1,8 +1,11 @@
 import type { CredentialMeta } from "@/lib/api/integrations";
+import { FRONTEND_URL } from "@/lib/env";
 
 import {
   connectMethod,
   credentialFits,
+  logoID,
+  logoURL,
   parseCredentialRequests,
   requestHost,
   tileLetters,
@@ -144,5 +147,30 @@ describe("tileLetters", () => {
     ["", "?"],
   ])("%s → %s", (name, letters) => {
     expect(tileLetters(name)).toBe(letters);
+  });
+});
+
+describe("logoID", () => {
+  it("is the provider, lowercased", () => {
+    expect(logoID("GitHub")).toBe("github");
+    expect(logoID("google", "https://ignored.example.com")).toBe("google");
+  });
+
+  it("takes an MCP server's name from its host", () => {
+    expect(logoID("mcp", "https://mcp.linear.app/mcp")).toBe("linear");
+    expect(logoID("mcp", "https://Notion.com/sse")).toBe("notion");
+  });
+
+  it("is null for an MCP server without a host", () => {
+    expect(logoID("mcp")).toBeNull();
+    expect(logoID("mcp", null)).toBeNull();
+    expect(logoID("mcp", "")).toBeNull();
+  });
+});
+
+describe("logoURL", () => {
+  it("points at the web's integration logos", () => {
+    expect(logoURL("github")).toBe(`${FRONTEND_URL}/integrations/github.png`);
+    expect(logoURL("../x")).toBe(`${FRONTEND_URL}/integrations/..%2Fx.png`);
   });
 });

@@ -33,7 +33,7 @@ export function YourConnections({ sessionID, isOpen }: Props) {
     return (
       <ActivitySection title="Your connections" isLoading={section.isLoading}>
         {section.accounts.map((account) => (
-          <ConnectionRow key={account.id} name={account.name} detail={account.detail} />
+          <ConnectionRow key={account.id} name={account.name} detail={account.detail} logoID={account.logoID} />
         ))}
       </ActivitySection>
     );

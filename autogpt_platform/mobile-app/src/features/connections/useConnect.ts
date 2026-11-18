@@ -21,6 +21,25 @@ function toPicked(credential: CredentialMeta): PickedCredential {
   return { id: credential.id, title: credentialLabel(credential) };
 }
 
+function tokenNotice(providerName: string, hasOAuth: boolean) {
+  return hasOAuth
+    ? `Signing in to ${providerName} didn't work. You can paste a token from ${providerName} instead.`
+    : `${providerName} doesn't offer a sign-in. Paste a token from ${providerName} instead.`;
+}
+
+function noticesByRow(tokens: Record<string, TokenRow>) {
+  const notices: Record<string, string> = {};
+  for (const [rowKey, token] of Object.entries(tokens)) notices[rowKey] = token.notice;
+  return notices;
+}
+
+type MCPTarget = Extract<OAuthTarget, { kind: "mcp" }>;
+
+interface TokenRow {
+  notice: string;
+  serverURL: string;
+}
+
 /**
  * Everything a list of services to connect needs: sign-ins in the system
  * browser, the key/login sheet, picking among existing accounts, and the
@@ -32,6 +51,8 @@ export function useConnect({ origin, onConnected }: Args) {
   const [needsPlan, setNeedsPlan] = useState(false);
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
   const [choice, setChoice] = useState<AccountChoice | null>(null);
+  // Rows whose MCP sign-in failed: they go straight to the token sheet.
+  const [tokens, setTokens] = useState<Record<string, TokenRow>>({});
   // Only one system sign-in sheet can be open at a time.
   const isSigningIn = useRef(false);
 
@@ -44,7 +65,26 @@ export function useConnect({ origin, onConnected }: Args) {
     });
   }
 
+  function openTokenSheet(rowKey: string, target: MCPTarget, notice: string) {
+    setError(rowKey, null);
+    setSheet({
+      rowKey,
+      kind: "mcp_token",
+      provider: MCP_PROVIDER,
+      providerName: target.providerName,
+      host: null,
+      serverURL: target.serverURL,
+      notice,
+    });
+  }
+
   async function signIn(rowKey: string, target: OAuthTarget) {
+    const token = tokens[rowKey];
+    // The same row can be handed another address (the "MCP server" step), which gets a fresh try.
+    if (target.kind === "mcp" && token?.serverURL === target.serverURL) {
+      openTokenSheet(rowKey, target, token.notice);
+      return;
+    }
     if (isSigningIn.current) return;
     isSigningIn.current = true;
     setBusyKey(rowKey);
@@ -62,16 +102,11 @@ export function useConnect({ origin, onConnected }: Args) {
       onConnected(rowKey, toPicked(outcome.credential));
     } else if (outcome.status === "paywall") {
       setNeedsPlan(true);
-    } else if (outcome.status === "no_oauth" && target.kind === "mcp") {
-      setSheet({
-        rowKey,
-        kind: "mcp_token",
-        provider: "mcp",
-        providerName: target.providerName,
-        host: null,
-        serverURL: target.serverURL,
-      });
-    } else if (outcome.status === "failed" || outcome.status === "no_oauth") {
+    } else if (outcome.status === "use_token" && target.kind === "mcp") {
+      const notice = tokenNotice(target.providerName, outcome.hasOAuth);
+      setTokens((previous) => ({ ...previous, [rowKey]: { notice, serverURL: target.serverURL } }));
+      openTokenSheet(rowKey, target, notice);
+    } else if (outcome.status === "failed") {
       setError(rowKey, outcome.message);
     }
   }
@@ -138,6 +173,8 @@ export function useConnect({ origin, onConnected }: Args) {
   return {
     busyKey,
     errors,
+    /** Rows whose MCP sign-in failed, with what their token sheet says. */
+    tokenRows: noticesByRow(tokens),
     needsPlan,
     signIn,
     sheet,

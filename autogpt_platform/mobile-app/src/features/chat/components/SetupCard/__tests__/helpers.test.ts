@@ -3,10 +3,12 @@ import type { CredentialMeta } from "@/lib/api/integrations";
 import {
   actionLabel,
   buildSelections,
+  cardIntro,
   followUpMessage,
   parseSetupRequirements,
   rowStatus,
   type RowContext,
+  type RowStatus,
   type SetupRequest,
 } from "../helpers";
 
@@ -225,5 +227,51 @@ describe("followUpMessage", () => {
     expect(followUpMessage(setup, [])).toBe(
       'I\'ve configured the required credentials. Run with these inputs: {\n  "repo": "a/b"\n}',
     );
+  });
+});
+
+describe("cardIntro", () => {
+  const accounts = [{ id: "a", title: "octocat" }];
+
+  function introFor(status: RowStatus) {
+    return cardIntro([{ name: "GitHub", status }]);
+  }
+
+  it("says nothing once every row is connected", () => {
+    expect(cardIntro([])).toBeNull();
+    expect(introFor({ kind: "connected", credentialID: "a", label: null })).toBeNull();
+  });
+
+  it("asks for all of them when more than one is open", () => {
+    expect(
+      cardIntro([
+        { name: "GitHub", status: { kind: "connect", method: "oauth" } },
+        { name: "Linear", status: { kind: "reconnect", credentialID: "b" } },
+        { name: "Notion", status: { kind: "connected", credentialID: "c", label: null } },
+      ]),
+    ).toBe("Connect these services to continue.");
+  });
+
+  it("names the one open row and what it needs", () => {
+    expect(introFor({ kind: "allow", accounts })).toBe(
+      "Allow access to your GitHub account to continue.",
+    );
+    expect(introFor({ kind: "choose", accounts })).toBe("Choose which GitHub account to use.");
+    expect(introFor({ kind: "reconnect", credentialID: "a" })).toBe("Reconnect GitHub to continue.");
+  });
+
+  it("matches the way a service gets connected", () => {
+    expect(introFor({ kind: "connect", method: "oauth" })).toBe("Sign in to GitHub to continue.");
+    expect(introFor({ kind: "connect", method: "mcp" })).toBe("Sign in to GitHub to continue.");
+    expect(introFor({ kind: "connect", method: "api_key" })).toBe(
+      "Add your GitHub key to continue.",
+    );
+    expect(introFor({ kind: "connect", method: "user_password" })).toBe(
+      "Add your GitHub login to continue.",
+    );
+    expect(introFor({ kind: "connect", method: "web" })).toBe(
+      "Finish connecting GitHub on the web.",
+    );
+    expect(introFor({ kind: "connect", method: "host_scoped" })).toBe("Connect GitHub to continue.");
   });
 });

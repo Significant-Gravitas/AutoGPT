@@ -5,28 +5,30 @@ import { Text, View } from "react-native";
 import { palette } from "@/lib/expertPalette";
 import { createStyles } from "@/lib/theme";
 
-import { pickByName, tileLetters } from "../helpers";
+import { logoURL, pickByName, tileLetters } from "../helpers";
 
 interface Props {
   name: string;
-  /** A logo URL, when the backend has one (`service_icon`). */
-  iconURL?: string | null;
+  /** The logo's name on the web (`logoID`); without one the tile shows initials. */
+  logoID?: string | null;
   size?: number;
 }
 
 const TILE_COLOURS = Object.values(palette).map((entry) => entry.hex);
 
 /** A service's logo, or its initials on a colour picked from its name. */
-export function ProviderTile({ name, iconURL, size = 32 }: Props) {
+export function ProviderTile({ name, logoID, size = 32 }: Props) {
   const styles = useStyles();
-  const [hasFailed, setHasFailed] = useState(false);
+  // Kept per URL, so a tile handed another service tries its logo afresh.
+  const [failedURL, setFailedURL] = useState<string | null>(null);
   const frame = { width: size, height: size, borderRadius: size / 4 };
+  const iconURL = logoID ? logoURL(logoID) : null;
 
   function handleError() {
-    setHasFailed(true);
+    setFailedURL(iconURL);
   }
 
-  if (iconURL && !hasFailed) {
+  if (iconURL && iconURL !== failedURL) {
     return (
       <View
         accessibilityElementsHidden
@@ -34,6 +36,7 @@ export function ProviderTile({ name, iconURL, size = 32 }: Props) {
         style={[styles.tile, styles.logoTile, frame]}
       >
         <Image
+          key={iconURL}
           source={{ uri: iconURL }}
           style={{ width: size * 0.7, height: size * 0.7 }}
           contentFit="contain"

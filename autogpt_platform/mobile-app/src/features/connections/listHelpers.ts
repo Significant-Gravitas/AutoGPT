@@ -6,7 +6,7 @@ import type {
   ProviderInfo,
 } from "@/lib/api/integrations";
 
-import { connectMethod, MCP_PROVIDER } from "./helpers";
+import { connectMethod, logoID, MCP_PROVIDER } from "./helpers";
 
 /** What connecting a service from a list does. */
 export type ServiceAction =
@@ -32,6 +32,7 @@ export interface AccountRow {
   id: string;
   name: string;
   detail: string | null;
+  logoID: string | null;
 }
 
 /** Something an expert's workflows still need, one row per service or account. */
@@ -103,6 +104,7 @@ export function accountRows(credentials: CredentialMeta[]): AccountRow[] {
       id: credential.id,
       name: credential.serviceName ?? providerDisplayName(credential.provider),
       detail: accountDetail(credential),
+      logoID: credential.serviceIcon ?? logoID(credential.provider, credential.host),
     }))
     .sort(byName);
 }
@@ -113,6 +115,7 @@ export function grantedRows(granted: ExpertCredential[]): AccountRow[] {
       id: item.credentialID,
       name: item.serviceName ?? providerDisplayName(item.provider),
       detail: item.title ? stripServicePrefix(item.title, item.provider) : null,
+      logoID: item.serviceIcon ?? logoID(item.provider),
     }))
     .sort(byName);
 }

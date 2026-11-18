@@ -68,8 +68,8 @@ describe("accountRows", () => {
       credential({ id: "d", provider: "github", title: null, username: "octocat" }),
     ]);
     expect(rows).toEqual([
-      { id: "d", name: "GitHub", detail: "octocat" },
-      { id: "a", name: "Notion", detail: "Team space" },
+      { id: "d", name: "GitHub", detail: "octocat", logoID: "github" },
+      { id: "a", name: "Notion", detail: "Team space", logoID: "notion" },
     ]);
   });
 
@@ -78,6 +78,15 @@ describe("accountRows", () => {
       credential({ provider: "mcp", serviceName: "Linear", title: "MCP: mcp.linear.app" }),
     ]);
     expect(row).toMatchObject({ name: "Linear", detail: "mcp.linear.app" });
+  });
+
+  it("uses the backend's logo, else the provider or the MCP server's host", () => {
+    const rows = accountRows([
+      credential({ id: "a", provider: "gmail", serviceIcon: "google", serviceName: "Gmail" }),
+      credential({ id: "b", provider: "mcp", host: "https://mcp.linear.app/mcp", serviceName: "Linear" }),
+      credential({ id: "c", provider: "github" }),
+    ]);
+    expect(rows.map((row) => row.logoID)).toEqual(["github", "google", "linear"]);
   });
 });
 
@@ -90,9 +99,16 @@ describe("grantableRows and grantedRows", () => {
   it("reads the expert's accounts", () => {
     expect(
       grantedRows([
-        { credentialID: "x", provider: "slack", title: "Slack: Acme", type: "oauth2", serviceName: null },
+        {
+          credentialID: "x",
+          provider: "slack",
+          title: "Slack: Acme",
+          type: "oauth2",
+          serviceName: null,
+          serviceIcon: null,
+        },
       ]),
-    ).toEqual([{ id: "x", name: "Slack", detail: "Acme" }]);
+    ).toEqual([{ id: "x", name: "Slack", detail: "Acme", logoID: "slack" }]);
   });
 });
 

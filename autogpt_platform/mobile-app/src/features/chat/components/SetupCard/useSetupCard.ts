@@ -6,7 +6,12 @@ import {
   settleFollowUp,
   useCardRun,
 } from "@/features/connections/connectedThisRun";
-import { requestHost, requestServerURL, type CredentialRequest } from "@/features/connections/helpers";
+import {
+  logoID,
+  requestHost,
+  requestServerURL,
+  type CredentialRequest,
+} from "@/features/connections/helpers";
 import { useConnect } from "@/features/connections/useConnect";
 import { ApiError } from "@/lib/api/client";
 import {
@@ -20,6 +25,7 @@ import { queryClient } from "@/lib/session";
 
 import {
   buildSelections,
+  cardIntro,
   displayName,
   followUpMessage,
   isMCPSetup,
@@ -71,7 +77,12 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
       grantedIDs,
       rejection: setup.rejection,
     });
-    return { request, name: displayName(request, setup), status };
+    return {
+      request,
+      name: displayName(request, setup),
+      logoID: logoID(request.provider, requestServerURL(request, setup.serverURL)),
+      status,
+    };
   });
   const connectedRows: ConnectedRow[] = rows.flatMap(({ request, status }) =>
     status.kind === "connected" ? [{ request, credentialID: status.credentialID }] : [],
@@ -143,13 +154,19 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
   }
 
   function handleRow(index: number) {
-    const { request, name, status } = rows[index];
+    const { request, name, logoID: rowLogoID, status } = rows[index];
     if (status.kind === "allow" || status.kind === "choose") {
       if (status.kind === "allow" && status.accounts.length === 1) {
         markConnected(cardKey, request.key, status.accounts[0]);
         return;
       }
-      connect.openChoice({ rowKey: request.key, providerName: name, mode: status.kind, accounts: status.accounts });
+      connect.openChoice({
+        rowKey: request.key,
+        providerName: name,
+        logoID: rowLogoID,
+        mode: status.kind,
+        accounts: status.accounts,
+      });
       return;
     }
     if (status.kind === "reconnect") {
@@ -178,6 +195,7 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
 
   return {
     rows,
+    intro: cardIntro(rows),
     isLoading,
     run,
     connect,

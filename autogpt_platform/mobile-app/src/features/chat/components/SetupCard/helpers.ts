@@ -25,7 +25,6 @@ const PREVIEW_TOOLS = ["run_agent", "schedule_agent", TRIGGER_TOOL];
 /** A `setup_requirements` tool result that asks for at least one service. */
 export interface SetupRequest {
   toolName: string;
-  message: string | null;
   /** `setup_info.agent_name`: the service, for MCP and connect cards. */
   serviceName: string | null;
   /** `setup_info.agent_id`: the server URL on an MCP card. */
@@ -94,7 +93,6 @@ export function parseSetupRequirements(output: unknown, toolName: string): Setup
   if (requests.length === 0) return null;
   return {
     toolName,
-    message: text(record.message),
     serviceName: text(setupInfo?.agent_name),
     serverURL: text(setupInfo?.agent_id),
     requests,
@@ -198,6 +196,37 @@ export function actionLabel(status: RowStatus) {
       return "Reconnect";
     case "connect":
       return CONNECT_LABELS[status.method];
+  }
+}
+
+const CONNECT_INTROS: Partial<Record<ConnectMethod, (name: string) => string>> = {
+  oauth: (name) => `Sign in to ${name} to continue.`,
+  mcp: (name) => `Sign in to ${name} to continue.`,
+  api_key: (name) => `Add your ${name} key to continue.`,
+  user_password: (name) => `Add your ${name} login to continue.`,
+  web: (name) => `Finish connecting ${name} on the web.`,
+};
+
+/**
+ * The line under the card's title, from its rows. The tool's own `message`
+ * is written for Otto, so it is never shown.
+ */
+export function cardIntro(rows: { name: string; status: RowStatus }[]) {
+  const open = rows.filter((row) => row.status.kind !== "connected");
+  if (open.length === 0) return null;
+  if (open.length > 1) return "Connect these services to continue.";
+  const [{ name, status }] = open;
+  switch (status.kind) {
+    case "allow":
+      return `Allow access to your ${name} account to continue.`;
+    case "choose":
+      return `Choose which ${name} account to use.`;
+    case "reconnect":
+      return `Reconnect ${name} to continue.`;
+    case "connect":
+      return CONNECT_INTROS[status.method]?.(name) ?? `Connect ${name} to continue.`;
+    case "connected":
+      return null;
   }
 }
 

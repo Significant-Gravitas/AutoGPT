@@ -26,8 +26,11 @@ import { clearPendingFlow, readPendingFlow, savePendingFlow } from "./pendingFlo
 export type OAuthOutcome =
   | { status: "connected"; credential: CredentialMeta }
   | { status: "cancelled" }
-  /** An MCP server with no sign-in: it takes a token instead. */
-  | { status: "no_oauth"; message: string }
+  /**
+   * An MCP server's sign-in can't start, so it takes a token instead.
+   * `hasOAuth` is false when the server offers no sign-in at all.
+   */
+  | { status: "use_token"; hasOAuth: boolean }
   /** The account needs a plan, which only the web sells. */
   | { status: "paywall" }
   | { status: "failed"; message: string };
@@ -122,10 +125,9 @@ function isMissingUpgradeTarget(error: unknown) {
 
 function loginFailure(error: unknown, target: OAuthTarget): OAuthOutcome {
   if (error instanceof ApiError && error.status === 402) return { status: "paywall" };
+  // The backend's 400 text is written for developers, so it is never shown.
   if (target.kind === "mcp" && error instanceof ApiError && error.status === 400) {
-    return error.code === MCP_NO_OAUTH
-      ? { status: "no_oauth", message: error.message }
-      : failed(error.message);
+    return { status: "use_token", hasOAuth: error.code !== MCP_NO_OAUTH };
   }
   return failed(`Couldn't start signing in to ${target.providerName}. Try again.`);
 }

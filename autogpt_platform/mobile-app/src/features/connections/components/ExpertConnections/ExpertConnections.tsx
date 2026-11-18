@@ -37,9 +37,9 @@ export function ExpertConnections({ sessionID, expertID, expertName, isOpen }: P
       return (
         <PanelEmptyState
           tiles={[
-            <ProviderTile key="slack" name="Slack" size={36} />,
-            <ProviderTile key="notion" name="Notion" size={36} />,
-            <ProviderTile key="google" name="Google" size={36} />,
+            <ProviderTile key="slack" name="Slack" logoID="slack" size={36} />,
+            <ProviderTile key="notion" name="Notion" logoID="notion" size={36} />,
+            <ProviderTile key="google" name="Google" logoID="google" size={36} />,
           ]}
           title="No connections yet"
           description={`Connect a service and ${expertName} can use it for you.`}
@@ -57,6 +57,7 @@ export function ExpertConnections({ sessionID, expertID, expertName, isOpen }: P
                 key={account.id}
                 name={account.name}
                 detail={account.detail}
+                logoID={account.logoID}
                 error={tab.removeError(account)}
                 action={{
                   label: "Remove",
@@ -76,12 +77,13 @@ export function ExpertConnections({ sessionID, expertID, expertName, isOpen }: P
                 key={need.key}
                 name={need.name}
                 detail={need.detail}
+                logoID={need.logoID}
                 error={connect.errors[need.key]}
                 action={
                   need.label
                     ? {
-                        label: need.label,
-                        variant: need.label === "Sign in" ? "primary" : "outline",
+                        label: connect.tokenRows[need.key] ? "Add token" : need.label,
+                        variant: need.label === "Sign in" && !connect.tokenRows[need.key] ? "primary" : "outline",
                         onPress: () => tab.handleNeed(need),
                         isBusy: tab.isNeedBusy(need),
                         isDisabled: tab.isBusy,

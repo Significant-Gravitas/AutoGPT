@@ -1,3 +1,4 @@
+import { logoID } from "../../helpers";
 import {
   actionLabel,
   providerDisplayName,
@@ -16,6 +17,7 @@ export interface NeedRow {
   key: string;
   name: string;
   detail: string;
+  logoID: string | null;
   /** Null while the list of services is still loading. */
   label: string | null;
   action: NeedAction | null;
@@ -44,7 +46,12 @@ export function needRows({ needs, services, grantedIDs }: Args): NeedRow[] {
     if (need.credentialID && grantedIDs.includes(need.credentialID)) return [];
     const service = services ? serviceFor(services, need.providers) : null;
     const name = service?.name ?? providerDisplayName(need.providers[0] ?? "");
-    const base = { key: need.key, name: name || "A service", detail: needDetail(need) };
+    const base = {
+      key: need.key,
+      name: name || "A service",
+      detail: needDetail(need),
+      logoID: logoID(service?.key ?? need.providers[0] ?? ""),
+    };
     if (need.resolution === "allow" && need.credentialID) {
       return [{ ...base, label: "Allow", action: { kind: "allow", credentialID: need.credentialID } }];
     }

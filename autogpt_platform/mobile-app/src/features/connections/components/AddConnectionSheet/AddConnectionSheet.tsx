@@ -5,6 +5,7 @@ import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
+import { logoID } from "../../helpers";
 import { actionLabel } from "../../listHelpers";
 import { BottomSheet } from "../BottomSheet";
 import { ConnectionRow } from "../ConnectionRow";
@@ -88,9 +89,10 @@ function SheetBody({ sessionID, expertID, onDone }: BodyProps) {
             key={service.key}
             name={service.name}
             detail={service.action.kind === "web" ? "Finish this on the web" : service.description}
+            logoID={logoID(service.key)}
             error={connect.errors[service.key]}
             action={{
-              label: actionLabel(service.action),
+              label: connect.tokenRows[service.key] ? "Add token" : actionLabel(service.action),
               variant: service.action.kind === "web" ? "ghost" : "outline",
               onPress: () => sheet.connectService(service),
               isBusy: sheet.isRowBusy(service.key),
@@ -142,6 +144,7 @@ function SheetBody({ sessionID, expertID, onDone }: BodyProps) {
                   key={account.id}
                   name={account.name}
                   detail={account.detail}
+                  logoID={account.logoID}
                   error={connect.errors[rowKey]}
                   action={{
                     label: "Allow",

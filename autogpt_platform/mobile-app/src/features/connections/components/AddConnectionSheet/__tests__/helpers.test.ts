@@ -17,7 +17,7 @@ const services: ConnectableService[] = [
     action: { kind: "oauth", provider: "google" },
   },
 ];
-const accounts = [{ id: "a", name: "Linear", detail: "AutoGPT" }];
+const accounts = [{ id: "a", name: "Linear", detail: "AutoGPT", logoID: "linear" }];
 
 describe("sheetLists", () => {
   it("lists everything with no query", () => {

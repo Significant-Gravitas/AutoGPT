@@ -222,6 +222,24 @@ export function webChatURL(sessionID: string | null) {
     : `${FRONTEND_URL}/copilot`;
 }
 
+/**
+ * The name of a service's logo in the web's `public/integrations/`, as the web
+ * picks it: the provider, or for MCP the server's host ("mcp.linear.app" →
+ * "linear"). Null when there is nothing to go on.
+ */
+export function logoID(provider: string, serverURL?: string | null) {
+  if (provider === MCP_PROVIDER) {
+    const host = serverURL ? hostFromURL(serverURL) : null;
+    const label = host?.replace(/^mcp\./, "").split(".")[0];
+    return label ? label.toLowerCase() : null;
+  }
+  return provider.trim().toLowerCase() || null;
+}
+
+export function logoURL(id: string) {
+  return `${FRONTEND_URL}/integrations/${encodeURIComponent(id)}.png`;
+}
+
 /** One or two letters for a service's tile: "GitHub" → "GH", "Google Calendar" → "GC". */
 export function tileLetters(name: string) {
   const words = name.trim().split(/\s+/).filter(Boolean);

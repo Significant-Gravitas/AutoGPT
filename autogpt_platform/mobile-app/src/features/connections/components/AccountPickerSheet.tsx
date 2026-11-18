@@ -8,6 +8,7 @@ import { ProviderTile } from "./ProviderTile";
 export interface AccountChoice {
   rowKey: string;
   providerName: string;
+  logoID: string | null;
   /** "allow" lets an expert use an account; "choose" picks one of several. */
   mode: "allow" | "choose";
   accounts: { id: string; title: string }[];
@@ -46,7 +47,7 @@ export function AccountPickerSheet({ choice, onPick, onClose }: Props) {
                   pressed && styles.pressed,
                 ]}
               >
-                <ProviderTile name={choice.providerName} />
+                <ProviderTile name={choice.providerName} logoID={choice.logoID} />
                 <Text style={styles.account} numberOfLines={1}>
                   {account.title}
                 </Text>

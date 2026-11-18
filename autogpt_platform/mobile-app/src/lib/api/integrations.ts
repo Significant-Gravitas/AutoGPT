@@ -32,6 +32,8 @@ export interface ExpertCredential {
   title: string;
   type: string;
   serviceName: string | null;
+  /** The logo's name in the web's `public/integrations/`. */
+  serviceIcon: string | null;
 }
 
 /** An official MCP server from the catalog (`MCPServerMetadata`). */
@@ -257,6 +259,7 @@ function parseExpertCredentials(value: unknown): ExpertCredential[] {
         title: text(record.title) ?? "",
         type: text(record.type) ?? "",
         serviceName: text(record.service_name),
+        serviceIcon: text(record.service_icon),
       },
     ];
   });

@@ -4,6 +4,7 @@ import { Button } from "@/components/Button";
 import type { CredentialMeta } from "@/lib/api/integrations";
 import { createStyles, radius, spacing, type } from "@/lib/theme";
 
+import { logoID } from "../../helpers";
 import { BottomSheet } from "../BottomSheet";
 import { ProviderTile } from "../ProviderTile";
 import { SchemePicker } from "./components/SchemePicker";
@@ -157,12 +158,12 @@ export function CredentialForm({ target, onSaved }: FormProps) {
   return (
     <View style={styles.form}>
       <View style={styles.heading}>
-        <ProviderTile name={target.providerName} />
+        <ProviderTile name={target.providerName} logoID={logoID(target.provider, target.serverURL)} />
         <Text accessibilityRole="header" style={styles.title} numberOfLines={1}>
           {target.providerName}
         </Text>
       </View>
-      <Text style={styles.intro}>{sheetIntro(target.kind)}</Text>
+      <Text style={styles.intro}>{target.notice ?? sheetIntro(target.kind)}</Text>
       {renderFields()}
       {sheet.error ? <Text style={styles.error}>{sheet.error}</Text> : null}
       <Button
