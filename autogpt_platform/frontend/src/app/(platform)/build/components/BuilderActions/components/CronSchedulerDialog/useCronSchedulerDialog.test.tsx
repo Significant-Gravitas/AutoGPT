@@ -144,28 +144,37 @@ describe("useCronSchedulerDialog", () => {
     expect(next).not.toBe(key);
   });
 
-  test("a refused create's toast gives the server's reason", async () => {
-    server.use(
-      http.post("/api/proxy/api/graphs/:graphId/schedules", () =>
-        HttpResponse.json(
-          { detail: "Check your schedules before trying again." },
-          { status: 409 },
+  test.each([
+    {
+      status: 409,
+      detail: "Check your schedules before trying again.",
+      shown: "Check your schedules before trying again.",
+    },
+    {
+      status: 503,
+      detail: "Service Unavailable",
+      shown:
+        "We couldn't confirm the schedule was saved. Try again; it won't be created twice.",
+    },
+  ])(
+    "a $status answer's toast says $shown",
+    async ({ status, detail, shown }) => {
+      server.use(
+        http.post("/api/proxy/api/graphs/:graphId/schedules", () =>
+          HttpResponse.json({ detail }, { status }),
         ),
-      ),
-    );
-    const { result } = renderFilledDialog();
+      );
+      const { result } = renderFilledDialog();
 
-    await act(async () => {
-      await result.current.handleCreateSchedule().catch(() => undefined);
-    });
+      await act(async () => {
+        await result.current.handleCreateSchedule().catch(() => undefined);
+      });
 
-    expect(toastMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        variant: "destructive",
-        description: "Check your schedules before trying again.",
-      }),
-    );
-  });
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ variant: "destructive", description: shown }),
+      );
+    },
+  );
 
   test("empty cron expression shows destructive toast and skips the mutation", async () => {
     const createScheduleMock = vi.fn();

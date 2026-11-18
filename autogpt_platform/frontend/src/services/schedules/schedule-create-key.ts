@@ -44,6 +44,16 @@ export function forgetScheduleCreateKey(
   if (storage.get(slot) === create.data.schedule_id) storage.clean(slot);
 }
 
+// What a failed create's toast says. With no answer, or a server error, the
+// create may have been made, and trying again is safe; the server's reason
+// otherwise says what to change.
+export function describeScheduleCreateError(error: unknown) {
+  if (!(error instanceof ApiError) || error.status >= 500) {
+    return "We couldn't confirm the schedule was saved. Try again; it won't be created twice.";
+  }
+  return error.message || "An unexpected error occurred.";
+}
+
 function isFinalRefusal(error: unknown) {
   return error instanceof ApiError && FINAL_REFUSALS.has(error.status);
 }

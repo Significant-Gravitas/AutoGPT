@@ -28,6 +28,7 @@ from apscheduler.job import Job as JobObj
 from apscheduler.jobstores.base import ConflictingIdError, JobLookupError
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.base import BaseTrigger
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -2888,6 +2889,19 @@ def _as_json(args: dict[str, Any]) -> str:
     return json.dumps(args, sort_keys=True)
 
 
+def _fires_alike(stored: BaseTrigger, built: BaseTrigger) -> bool:
+    """Whether two cron triggers fire at the same times. Triggers have no
+    equality of their own, but a cron trigger's fields compare by value."""
+    return (
+        isinstance(stored, CronTrigger)
+        and isinstance(built, CronTrigger)
+        and stored.fields == built.fields
+        and str(stored.timezone) == str(built.timezone)
+        and (stored.start_date, stored.end_date, stored.jitter)
+        == (built.start_date, built.end_date, built.jitter)
+    )
+
+
 def _resolve_timezone(user_timezone: str | None, user_id: str) -> str:
     if user_timezone:
         return user_timezone
@@ -3659,6 +3673,10 @@ class Scheduler(AppService):
         is ever replaced; any other create under that id is refused with a
         ``ConflictError``.
         """
+        if schedule_id is not None:
+            # A UUID, so it can't take the id of a system job sharing the
+            # jobstore (``ValueError`` otherwise).
+            schedule_id = str(uuid.UUID(schedule_id))
         name = normalize_schedule_name(name)
 
         if expert_id is not None:
@@ -3755,9 +3773,7 @@ class Scheduler(AppService):
                 )
             )
             == _as_json(job_args.model_dump(mode="json"))
-            # Triggers don't compare by value; a cron trigger's repr names
-            # each of its fields, its dates, jitter and timezone.
-            and repr(job.trigger) == repr(trigger)
+            and _fires_alike(job.trigger, trigger)
         ):
             raise ConflictError(_SCHEDULE_KEY_TAKEN)
         logger.info(f"Create of schedule {job.id} was sent again; answered with it")

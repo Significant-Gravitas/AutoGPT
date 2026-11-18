@@ -1,5 +1,6 @@
 import { getPostV1CreateExecutionScheduleResponseMock } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
@@ -23,8 +24,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// Answers the creates with these statuses in turn, then with success, and
-// collects the key each one carried.
+const NO_ANSWER = 0;
+
+// Answers the creates with these statuses in turn (NO_ANSWER drops the
+// connection), then with success, and collects the key each one carried.
 function answerCreates(statuses: number[]) {
   const keys: unknown[] = [];
   server.use(
@@ -34,6 +37,7 @@ function answerCreates(statuses: number[]) {
         const body = (await request.json()) as { schedule_id?: unknown };
         keys.push(body.schedule_id);
         const status = statuses[keys.length - 1] ?? 200;
+        if (status === NO_ANSWER) return HttpResponse.error();
         if (status !== 200) {
           return HttpResponse.json({ detail: `HTTP ${status}` }, { status });
         }
@@ -50,13 +54,16 @@ function answerCreates(statuses: number[]) {
 
 function renderModal() {
   return render(
-    <ScheduleAgentModal
-      isOpen
-      onClose={vi.fn()}
-      agent={agent}
-      inputValues={{ topic: "news" }}
-      inputCredentials={{}}
-    />,
+    <>
+      <ScheduleAgentModal
+        isOpen
+        onClose={vi.fn()}
+        agent={agent}
+        inputValues={{ topic: "news" }}
+        inputCredentials={{}}
+      />
+      <Toaster />
+    </>,
   );
 }
 
@@ -134,5 +141,21 @@ describe("ScheduleAgentModal retried creates (#16901)", () => {
     await clickSchedule(user, keys);
 
     expect(keys[0]).toMatch(UUID_V4);
+  });
+
+  test("a create that got no answer at all says trying again is safe, and keeps its key", async () => {
+    const user = userEvent.setup();
+    const keys = answerCreates([NO_ANSWER]);
+    renderModal();
+
+    await clickSchedule(user, keys);
+
+    expect(
+      await screen.findByText(
+        "We couldn't confirm the schedule was saved. Try again; it won't be created twice.",
+      ),
+    ).toBeDefined();
+    await clickSchedule(user, keys);
+    expect(keys[1]).toBe(keys[0]);
   });
 });

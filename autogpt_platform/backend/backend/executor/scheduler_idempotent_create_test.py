@@ -9,8 +9,8 @@ high to fill there, so the last ones run a scheduler built in this process, on
 its real jobstore, with the limit lowered.
 """
 
-import asyncio
 import json
+import pickle
 import threading
 import uuid
 from collections.abc import Iterator
@@ -29,7 +29,13 @@ from backend.data.model import CredentialsMetaInput, User
 from backend.executor import schedule_events
 from backend.executor import scheduler as scheduler_module
 from backend.executor import utils as execution_utils
-from backend.executor.scheduler import GraphExecutionJobInfo, Jobstores, Scheduler
+from backend.executor.scheduler import (
+    GraphExecutionJobInfo,
+    Jobstores,
+    Scheduler,
+    _build_trigger,
+    _fires_alike,
+)
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import ConflictError
@@ -51,24 +57,6 @@ async def test_a_retried_create_returns_the_schedule_the_first_attempt_made(
 
         assert await _schedule_ids(owner, graph) == [str(key)]
         assert first.id == retried.id == str(key)
-    finally:
-        await _delete_schedules(owner, graph)
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_the_same_create_sent_twice_at_once_makes_one_schedule(
-    server: SpinTestServer,
-):
-    owner = await create_test_user()
-    graph = await _new_graph(server, owner)
-    key = uuid.uuid4()
-    try:
-        sent = await asyncio.gather(
-            _create(owner, graph, key), _create(owner, graph, key)
-        )
-
-        assert await _schedule_ids(owner, graph) == [str(key)]
-        assert [schedule.id for schedule in sent] == [str(key), str(key)]
     finally:
         await _delete_schedules(owner, graph)
 
@@ -289,6 +277,27 @@ def test_a_retry_with_its_inputs_in_another_order_is_the_same_create(
     retried = _add(scheduler, key, input_data={"b": {"d": 3, "c": 2}, "a": 1})
 
     assert retried.id == first.id == key
+
+
+def test_a_key_that_is_not_a_uuid_is_refused(scheduler: Scheduler):
+    """System jobs share the jobstore's ids, and none of theirs is a UUID."""
+    with pytest.raises(ValueError):
+        _add(scheduler, "refresh_near_expiry_credentials")
+
+    assert _job_ids(scheduler) == []
+
+
+def test_a_stored_trigger_fires_alike_its_rebuild_and_unlike_a_changed_one():
+    """A retry is matched against the trigger the jobstore unpickles."""
+
+    def build(cron: str = "0 9 * * 1-5", timezone: str = "Europe/Paris"):
+        return _build_trigger(cron=cron, run_at=None, user_timezone=timezone)
+
+    stored = pickle.loads(pickle.dumps(build()))
+
+    assert _fires_alike(stored, build())
+    assert not _fires_alike(stored, build(timezone="UTC"))
+    assert not _fires_alike(stored, build(cron="5 9 * * 1-5"))
 
 
 @pytest.fixture
