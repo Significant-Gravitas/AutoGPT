@@ -35,10 +35,12 @@ export function getExecutionDuration(
 
   const durationMs = end.getTime() - start.getTime();
 
-  // Handle negative durations (shouldn't happen but just in case)
-  if (durationMs < 0) return "Unknown";
+  // Live: useNowSecond is floored, so now can lag started_at mid-second.
+  if (durationMs < 0 && !isLive) return "Unknown";
 
-  const durationSec = Math.floor(durationMs / MILLISECONDS_PER_SECOND);
+  const durationSec = Math.floor(
+    Math.max(0, durationMs) / MILLISECONDS_PER_SECOND,
+  );
 
   // For short durations (< 5 seconds), show "a few seconds"
   if (durationSec < SHORT_DURATION_THRESHOLD_SECONDS) {

@@ -82,6 +82,26 @@ describe("ActivityItem", () => {
     }
   });
 
+  it("shows 0s, not Unknown, when a running execution started after the floored now", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-21T12:00:00.400Z"));
+    try {
+      render(
+        <ActivityItem
+          execution={makeExecution({
+            status: AgentExecutionStatus.RUNNING,
+            started_at: new Date("2026-07-21T12:00:00.400Z"),
+            ended_at: null,
+          })}
+        />,
+      );
+      expect(screen.queryByText(/Unknown/)).toBeNull();
+      expect(screen.getByText(/, a few seconds running$/)).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("says a completed run with a failed step completed with errors", () => {
     render(
       <ActivityItem
