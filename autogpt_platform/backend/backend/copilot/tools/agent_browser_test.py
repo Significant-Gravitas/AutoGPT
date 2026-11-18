@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,6 +17,8 @@ import pytest
 from backend.copilot.executor.processor import _CANCEL_GRACE_SECONDS
 from backend.copilot.model import ChatSession
 from backend.data.workspace import WorkspaceFile
+from backend.util.link_checkout import broker_commands
+from backend.util.link_checkout import engine as private_browser
 from backend.util.workspace import WorkspaceManager
 
 from .agent_browser import (
@@ -1261,6 +1264,90 @@ class TestSaveBrowserState:
         ):
             # Should not raise
             await _save_browser_state("err-sess", "user1", session)
+
+
+class TestPrivateBrowserStateStaysInTheBrowser:
+    """A payment may happen in a private browser, so its cookies and storage
+    are never copied into the workspace or restored from it."""
+
+    @pytest.mark.asyncio
+    async def test_save_reads_and_writes_nothing(self):
+        session = make_session("private-sess")
+        with (
+            patch(
+                "backend.copilot.tools.agent_browser._run", new_callable=AsyncMock
+            ) as run,
+            patch(_GET_MANAGER, new_callable=AsyncMock) as get_manager,
+            private_browser.caller("user1", "private-sess", "user1"),
+        ):
+            await _save_browser_state("private-sess", "user1", session)
+
+        run.assert_not_awaited()
+        get_manager.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_restore_reads_nothing(self):
+        session = make_session("private-sess")
+        with (
+            patch(
+                "backend.copilot.tools.agent_browser._run", new_callable=AsyncMock
+            ) as run,
+            patch(_GET_MANAGER, new_callable=AsyncMock) as get_manager,
+            private_browser.caller("user1", "private-sess", "user1"),
+        ):
+            assert await _restore_browser_state("private-sess", "user1", session)
+
+        run.assert_not_awaited()
+        get_manager.assert_not_awaited()
+
+
+class TestPrivateBrowserNavigation:
+    """The private browser evaluates no script, so a page there is reached
+    without the page check instead of the navigation failing."""
+
+    @pytest.mark.asyncio
+    async def test_navigating_skips_the_page_check(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("CHECKOUT_BROKER_URL", raising=False)
+        monkeypatch.delenv("CHECKOUT_BROKER_ROUTES_FILE", raising=False)
+        outputs = {
+            ("get", "title"): "Example Domain",
+            ("get", "url"): "https://a.test/",
+        }
+        sent: list[tuple[str, ...]] = []
+
+        @asynccontextmanager
+        async def operation(_key):
+            yield tmp_path
+
+        async def command(_directory, *args):
+            sent.append(args)
+            return 0, outputs.get(args, ""), ""
+
+        monkeypatch.setattr(broker_commands, "browser_operation", operation)
+        monkeypatch.setattr(broker_commands, "browser_command", command)
+        with (
+            patch(
+                _VALIDATE_URL,
+                new_callable=AsyncMock,
+                return_value=(object(), False, ["1.2.3.4"]),
+            ),
+            patch(
+                "backend.copilot.tools.agent_browser._snapshot",
+                new_callable=AsyncMock,
+                return_value="[snapshot]",
+            ),
+            private_browser.caller("user1", "private-sess", "user1"),
+        ):
+            result = await BrowserNavigateTool()._execute(
+                user_id="user1",
+                session=make_session("private-sess"),
+                url="https://a.test/",
+            )
+
+        assert isinstance(result, BrowserNavigateResponse)
+        assert result.title == "Example Domain"
+        assert ("open", "https://a.test/") in sent
+        assert all(args[0] != "eval" for args in sent)
 
 
 # ---------------------------------------------------------------------------

@@ -32,6 +32,9 @@ SERVERS = {
     "backend/api/rest_api.py": "RequestBodyLimitMiddleware on the app",
     "backend/api/ws_api.py": "websockets only; no route takes a body",
     "backend/util/service.py": "internal; the service key is checked first",
+    "backend/util/link_checkout/broker_main.py": (
+        "internal; a client certificate is required at the TLS handshake"
+    ),
 }
 
 

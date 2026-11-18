@@ -80,6 +80,7 @@
 
 * [Managing LLM Models](contributing/managing-llm-models.md)
 * [Agent Collaboration Architecture](contributing/agent-collaboration-architecture.md)
+* [Link Private Checkout](contributing/link-private-checkout.md)
 * [Local PC Executor Security Boundaries](local-pc-executor-security.md)
 
 ## Changelog

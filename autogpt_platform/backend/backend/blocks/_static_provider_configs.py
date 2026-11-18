@@ -17,6 +17,9 @@ auth and webhook config.
 """
 
 from backend.data.model import CredentialsType
+from backend.integrations.oauth.stripe_link_hosted import (
+    STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
+)
 from backend.sdk import ProviderBuilder
 
 _STATIC_PROVIDER_CONFIGS: dict[str, tuple[str, tuple[CredentialsType, ...]]] = {
@@ -48,7 +51,12 @@ _STATIC_PROVIDER_CONFIGS: dict[str, tuple[str, tuple[CredentialsType, ...]]] = {
     "revid": ("AI-generated short-form video", ("api_key",)),
     "screenshotone": ("Automated website screenshots", ("api_key",)),
     "smtp": ("Send email via SMTP", ("user_password",)),
-    "stripe_link": ("Stripe Link wallet for agent payments", ("device_code",)),
+    "stripe_link": (
+        "Stripe Link wallet for agent payments",
+        # The OAuth redirect needs a registered confidential client; without
+        # one, Link's public client connects by device code.
+        ("oauth2",) if STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED else ("device_code",),
+    ),
     "unreal_speech": ("Low-cost text-to-speech", ("api_key",)),
     "webshare_proxy": ("Rotating proxies for scraping", ("api_key",)),
 }

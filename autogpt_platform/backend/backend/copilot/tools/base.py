@@ -3,6 +3,7 @@
 import json
 import logging
 from collections import deque
+from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any, Literal, Sequence
 
 from openai.types.chat import ChatCompletionToolParam
@@ -27,6 +28,7 @@ from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
 from backend.data.workspace_internal import TOOL_OUTPUT_PURPOSE
 from backend.util import tracing
+from backend.util.link_checkout import engine as private_browser
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
@@ -687,7 +689,15 @@ class BaseTool:
         # the tool returned Google data still redacts what the judge traces.
         google_data = False
         try:
-            result = await self._execute(user_id, session, **run_kwargs)
+            # Private-checkout browsers belong to the authenticated caller;
+            # the engine reads it from here, never from tool arguments.
+            with (
+                private_browser.caller(user_id, session.session_id, session.user_id)
+                if self.name.startswith("browser_")
+                and private_browser.active_for(user_id)
+                else nullcontext()
+            ):
+                result = await self._execute(user_id, session, **run_kwargs)
             google_data, outside = result.holds_google_data, result.outside
             if result.type == ResponseType.ERROR:
                 mark_tool_failed()
