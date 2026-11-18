@@ -45,9 +45,8 @@ from .schemas import (
 
 _SCOPE = MemoryScope.for_user("u1")
 _LOCK_KEY = _SCOPE.redis_key("dream_lock")
-# Each wait below only stops a hung test, and the bound on the old pass
-# only catches a renewal that never timed out: a passing run goes on as
-# each is met, and a CI runner can stall a test for seconds.
+# Each wait below only stops a hung test; a passing run goes on as soon
+# as it is met, and a CI runner can stall a test for seconds.
 _HANG_SECONDS = 10
 _PHASE_MODELS = {
     "consolidate": "claude-sonnet-5",
@@ -222,7 +221,9 @@ class TestTheBatchRoute:
         await asyncio.wait_for(old, _HANG_SECONDS)
 
         if failure == "timeout":
-            assert 1.9 < loop.time() - started < _HANG_SECONDS
+            # The renewal waited out its real 2 s timeout; a renewal that
+            # never timed out would have tripped the hang guard above.
+            assert loop.time() - started > 1.9
         assert newer.error is None and not newer.skipped
         assert [call.args[1] for call in apply.await_args_list] == [newer.pass_id]
         error = "expired: forced"

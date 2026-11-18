@@ -46,9 +46,8 @@ from .schemas import (
 
 _SCOPE = MemoryScope.for_user("u1")
 _LOCK_KEY = _SCOPE.redis_key("dream_lock")
-# Each wait below only stops a hung test, and the bound on the old pass
-# only catches a renewal that never timed out: a passing run goes on as
-# each is met, and a CI runner can stall a test for seconds.
+# Each wait below only stops a hung test; a passing run goes on as soon
+# as it is met, and a CI runner can stall a test for seconds.
 _HANG_SECONDS = 10
 # Cites the one episode each pass read (``_input``): a write citing nothing
 # the pass read is dropped before it is written.
@@ -167,7 +166,9 @@ class TestTheSyncRoute:
         result = await asyncio.wait_for(old, _HANG_SECONDS)
 
         if failure == "timeout":
-            assert 1.9 < loop.time() - started < _HANG_SECONDS
+            # The renewal waited out its real 2 s timeout; a renewal that
+            # never timed out would have tripped the hang guard above.
+            assert loop.time() - started > 1.9
         assert newer.error is None and not newer.skipped
         assert graph.writes == [newer.pass_id]
         assert result.error == "expired: forced"

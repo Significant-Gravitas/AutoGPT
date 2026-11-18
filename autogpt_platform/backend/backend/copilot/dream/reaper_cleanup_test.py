@@ -413,10 +413,13 @@ class TestTheBudget:
 
         with caplog.at_level(logging.WARNING):
             reaping = asyncio.create_task(reap_expired_passes())
-            await asyncio.wait({reaping}, timeout=_HANG_SECONDS)
-
-        # A run held by either hang never ends.
-        assert reaping.done(), "the run outlasted its budget"
+            try:
+                await asyncio.wait({reaping}, timeout=_HANG_SECONDS)
+                # A run held by either hang never ends.
+                assert reaping.done(), "the run outlasted its budget"
+            finally:
+                reaping.cancel()
+                await asyncio.gather(reaping, return_exceptions=True)
         assert reaping.result().outcomes == {"out_of_budget": 1}
         assert fake_dream_redis.store[_LOCK_KEY].startswith("reaper:")
         assert "could not give back scope" in caplog.text

@@ -36,8 +36,10 @@ from .pass_run import DreamPassRun, PassEnded
 from .schemas import PhaseUsage
 
 _NOW = datetime.now(timezone.utc)
-# Only stops a hung test; a passing run ends at the store's deadline.
-_HANG_SECONDS = 10
+# Only stops a store that missed its deadline: a passing run ends at the
+# 0.05 s one the test sets. Half the store's own 10 s default, so a store
+# that ignored the set deadline still fails.
+_BOUND = 5.0
 _SCOPE = MemoryScope.for_user("u1")
 _BATCH_PASS = BatchPass(
     user_id="u1", expert_id=None, pass_id="p1", job_id="j1", phase_models={}
@@ -208,7 +210,7 @@ class TestCancelDreamPass:
 
         # The store's deadline raises inside; this test's own guard would
         # raise out of the `async with` instead, past `pytest.raises`.
-        async with asyncio.timeout(_HANG_SECONDS):
+        async with asyncio.timeout(_BOUND):
             with pytest.raises(TimeoutError):
                 await cancel_dream_pass("p1", user_id="u1", reason="testing")
 

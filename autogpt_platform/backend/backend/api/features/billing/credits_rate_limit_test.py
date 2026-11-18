@@ -16,9 +16,9 @@ from backend.api.features.billing import credits_rate_limit as rate_limit
 # Windows are aligned to the epoch, so every whole minute starts one.
 WINDOW_START = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
-# The wall-clock bound below only catches a missed deadline: a passing run
-# ends at its short deadline whatever this is, and a CI runner can stall a
-# test for seconds.
+# Only stops a call that missed its deadline: a passing run ends at its
+# short deadline whatever this is, and a CI runner can stall a test for
+# seconds.
 _HANG_SECONDS = 10
 
 
@@ -233,12 +233,10 @@ async def test_fails_open_and_fast_when_redis_hangs(mocker):
     mocker.patch.object(rate_limit, "_incr_window", new=never_returns)
     mocker.patch.object(rate_limit, "SUBSCRIPTION_STATUS_REDIS_TIMEOUT_SECONDS", 0.05)
 
-    loop = asyncio.get_running_loop()
-    started = loop.time()
-    await rate_limit.enforce_subscription_status_rate_limit("u1")
     # Two hundred times the 50 ms deadline, still well short of the 60 s a
     # dropped deadline would wait.
-    assert loop.time() - started < _HANG_SECONDS
+    async with asyncio.timeout(_HANG_SECONDS):
+        await rate_limit.enforce_subscription_status_rate_limit("u1")
 
 
 @pytest.mark.asyncio

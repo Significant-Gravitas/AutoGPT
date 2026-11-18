@@ -243,9 +243,9 @@ class TestRefreshTimeoutIsApplied:
 
 
 _BLOCK = "<temporal_context>fresh</temporal_context>"
-# Each wait below only stops a hung test, and the bound on a join only
-# catches one that waited for its 60 s refresh: a passing join returns at
-# its grace, and a CI runner can stall a test for seconds.
+# Each guard below only stops a hung test or a join that waited for its 60 s
+# refresh: a passing join returns at its grace, and a CI runner can stall a
+# test for seconds.
 _HANG_SECONDS = 10
 
 
@@ -303,13 +303,17 @@ class TestJoinGrace:
             assert pending is not None
             loop = asyncio.get_running_loop()
             joined = loop.time()
-            out = await join_refresh(pending)
-            waited = loop.time() - joined
-            with pytest.raises(asyncio.CancelledError):
-                await asyncio.wait_for(pending.task, timeout=_HANG_SECONDS)
+            try:
+                async with asyncio.timeout(_HANG_SECONDS):
+                    out = await join_refresh(pending)
+                waited = loop.time() - joined
+                with pytest.raises(asyncio.CancelledError):
+                    await asyncio.wait_for(pending.task, timeout=_HANG_SECONDS)
+            finally:
+                pending.task.cancel()
 
         assert out is None
-        assert 0.05 <= waited < _HANG_SECONDS
+        assert waited >= 0.05
         late = [r for r in caplog.records if "refresh late, skipped" in r.message]
         assert len(late) == 1 and late[0].levelno == logging.INFO
         assert "join grace 100 ms" in late[0].message

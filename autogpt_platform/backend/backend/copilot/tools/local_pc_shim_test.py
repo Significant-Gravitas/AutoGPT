@@ -32,9 +32,9 @@ from .local_pc_shim import (
     _RpcAttemptFailed,
 )
 
-# Each wait below only stops a hung test, and each wall-clock bound only
-# catches a wait that ignored its budget: a passing run ends at its short
-# timeout, and a CI runner can stall a test for seconds.
+# Each guard below only stops a hung test or a wait that ignored its budget:
+# a passing run ends at its short timeout, and a CI runner can stall a test
+# for seconds.
 _HANG_SECONDS = 10
 
 
@@ -445,13 +445,24 @@ class TestShimConnectionManager:
 
     @pytest.mark.asyncio
     async def test_wait_for_uses_one_timeout_budget(self):
-        manager = ShimConnectionManager(relay=self.NoPresenceRelay())
-        started = asyncio.get_running_loop().time()
-        with pytest.raises(TimeoutError, match="did not connect within"):
-            await manager.wait_for("missing", timeout=0.03)
-        elapsed = asyncio.get_running_loop().time() - started
+        class RecordingRelay(TestShimConnectionManager.NoPresenceRelay):
+            def __init__(self):
+                super().__init__()
+                self.budgets: list[float] = []
 
-        assert elapsed < _HANG_SECONDS
+            async def wait_for_presence(self, session_id: str, *, timeout: float):
+                self.budgets.append(timeout)
+                return await super().wait_for_presence(session_id, timeout=timeout)
+
+        relay = RecordingRelay()
+        manager = ShimConnectionManager(relay=relay)
+        async with asyncio.timeout(_HANG_SECONDS):
+            with pytest.raises(TimeoutError, match="did not connect within"):
+                await manager.wait_for("missing", timeout=0.03)
+
+        # The relay is given what is left of the caller's 30 ms, not a budget
+        # of its own.
+        assert relay.budgets and max(relay.budgets) <= 0.03
 
     @pytest.mark.asyncio
     async def test_cached_presence_lookup_cannot_miss_direct_registration(self):
@@ -489,13 +500,10 @@ class TestShimConnectionManager:
         manager = ShimConnectionManager(relay=SlowCachedRelay())
         manager._relay_transports["stale"] = MagicMock()
         manager._relay_connection_ids["stale"] = "old-connection"
-        started = asyncio.get_running_loop().time()
 
-        with pytest.raises(TimeoutError):
-            await manager.wait_for("stale", timeout=0.03)
-
-        elapsed = asyncio.get_running_loop().time() - started
-        assert elapsed < _HANG_SECONDS
+        async with asyncio.timeout(_HANG_SECONDS):
+            with pytest.raises(TimeoutError):
+                await manager.wait_for("stale", timeout=0.03)
 
     @pytest.mark.asyncio
     async def test_transport_open_uses_original_timeout_budget(self):
@@ -514,13 +522,10 @@ class TestShimConnectionManager:
                 raise AssertionError("open should be cancelled by the timeout")
 
         manager = ShimConnectionManager(relay=SlowOpenRelay())
-        started = asyncio.get_running_loop().time()
 
-        with pytest.raises(TimeoutError):
-            await manager.wait_for("slow-open", timeout=0.03)
-
-        elapsed = asyncio.get_running_loop().time() - started
-        assert elapsed < _HANG_SECONDS
+        async with asyncio.timeout(_HANG_SECONDS):
+            with pytest.raises(TimeoutError):
+                await manager.wait_for("slow-open", timeout=0.03)
 
     @pytest.mark.asyncio
     async def test_duplicate_session_revokes_old_connection_without_losing_new(self):

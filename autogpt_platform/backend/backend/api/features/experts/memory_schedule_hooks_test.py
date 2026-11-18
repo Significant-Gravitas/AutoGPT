@@ -6,7 +6,6 @@ API request past the registry deadline. Pause and resume themselves are
 pinned in ``scheduling_test.py``; the registry in ``copilot/dream/``."""
 
 import asyncio
-import time
 from collections.abc import Callable, Coroutine, Iterator
 from types import SimpleNamespace
 from typing import Any
@@ -257,11 +256,9 @@ async def test_a_lifecycle_request_is_not_held_up_by_a_hanging_scheduler(
         "resume": lambda: scheduling.resume_expert_schedules(USER, "expert-1"),
         "archive": lambda: experts_db.archive_expert(USER, "expert-1"),
     }
-    started = time.monotonic()
+    async with asyncio.timeout(PROMPT):
+        await hooks[hook]()
 
-    await hooks[hook]()
-
-    assert time.monotonic() - started < PROMPT
     expert_table.update_many.assert_awaited()  # the lifecycle write landed
     assert hang.started >= 1
     assert hang.cancelled == hang.started
