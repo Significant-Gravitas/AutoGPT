@@ -274,6 +274,7 @@ async def test_download_in_chunks_retries_a_refused_resume_without_logging_crede
 
     assert content == _CONTENT
     assert len(gcs.ranges) == 3
+    assert gcs.authorizations[1] == "bearer test-token"
     assert "ClientResponseError" in caplog.text
     assert "test-token" not in caplog.text
 
@@ -332,6 +333,7 @@ class DroppingGCS:
         self.honour_range = honour_range
         self.refuse = refuse
         self.ranges: list[str | None] = []
+        self.authorizations: list[str | None] = []
         self.drop = asyncio.Event()
 
     async def serve(
@@ -343,6 +345,7 @@ class DroppingGCS:
         )
         range_header = headers.get("range")
         self.ranges.append(range_header)
+        self.authorizations.append(headers.get("authorization"))
         if 1 < len(self.ranges) <= 1 + self.refuse:
             writer.write(
                 b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n"

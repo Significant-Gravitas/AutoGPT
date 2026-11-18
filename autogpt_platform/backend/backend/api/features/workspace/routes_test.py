@@ -1153,6 +1153,7 @@ class TestCreateFileDownloadResponse:
                 (),
                 status=503,
             ),
+            PermissionError(13, "Permission denied", "/srv/workspaces/ws/file.txt"),
         ],
     )
     async def test_persistent_storage_error_returns_502_and_logs(
@@ -1182,6 +1183,7 @@ class TestCreateFileDownloadResponse:
         assert errors[0].exc_info is not None
         assert type(error).__name__ in errors[0].getMessage()
         assert "test-token" not in caplog.text
+        assert not [r for r in caplog.records if "/srv/" in r.getMessage()]
 
 
 def test_download_file_missing_content_returns_404(mocker):
