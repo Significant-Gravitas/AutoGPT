@@ -13,13 +13,22 @@ import { server } from "@/mocks/mock-server";
 import { QueryClient } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from "@/tests/integrations/test-utils";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from "vitest";
 import FollowupsPage from "../page";
 
 const pushMock = vi.fn();
@@ -93,6 +102,30 @@ function makeGraphSchedule(
 // page now fetches BOTH on mount (unified Scheduled view).
 function defaultGraphSchedulesHandler() {
   return getGetV1ListExecutionSchedulesForAUserMockHandler([]);
+}
+
+const SCHEDULES_UNAVAILABLE =
+  "Schedules are temporarily unavailable — your schedules are safe and will run once it's back.";
+
+// What the backend answers while the scheduler restarts on a deploy.
+function serveSchedulerOutage() {
+  function schedulerOut() {
+    return HttpResponse.json(
+      {
+        message: "Failed to process GET /api/schedules",
+        detail: "Schedules are temporarily unavailable. Try again in a moment.",
+        hint: "Retry in 15 seconds.",
+      },
+      { status: 503, headers: { "Retry-After": "15" } },
+    );
+  }
+  server.use(
+    http.get(
+      "http://localhost:3000/api/proxy/api/schedules/followups",
+      schedulerOut,
+    ),
+    http.get("http://localhost:3000/api/proxy/api/schedules", schedulerOut),
+  );
 }
 
 describe("FollowupsPage", () => {
@@ -503,25 +536,7 @@ describe("FollowupsPage", () => {
   });
 
   test("a scheduler outage reads as temporarily unavailable, not an error or an empty list", async () => {
-    // What the backend answers while the scheduler restarts on a deploy.
-    function schedulerOut() {
-      return HttpResponse.json(
-        {
-          message: "Failed to process GET /api/schedules",
-          detail:
-            "Schedules are temporarily unavailable. Try again in a moment.",
-          hint: "Retry in 15 seconds.",
-        },
-        { status: 503, headers: { "Retry-After": "15" } },
-      );
-    }
-    server.use(
-      http.get(
-        "http://localhost:3000/api/proxy/api/schedules/followups",
-        schedulerOut,
-      ),
-      http.get("http://localhost:3000/api/proxy/api/schedules", schedulerOut),
-    );
+    serveSchedulerOutage();
 
     render(<FollowupsPage />);
     // The polite live region is there before the reads settle, so the text
@@ -530,9 +545,7 @@ describe("FollowupsPage", () => {
     expect(region.getAttribute("role")).toBe("status");
 
     expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
-    expect(
-      within(region).getByText(/Scheduled items are temporarily unavailable/),
-    ).toBeDefined();
+    expect(within(region).getByText(SCHEDULES_UNAVAILABLE)).toBeDefined();
     expect(screen.queryByText("Something went wrong")).toBeNull();
     expect(screen.queryByTestId("followups-empty")).toBeNull();
 
@@ -549,6 +562,31 @@ describe("FollowupsPage", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("schedules-unavailable")).toBeNull(),
     );
+  });
+
+  test("an outage rechecks on its own once the scheduler's Retry-After has passed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    serveSchedulerOutage();
+
+    render(<FollowupsPage />);
+    expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
+
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([
+        makeFollowup({ id: "f1", message: "Back after the restart" }),
+      ]),
+      defaultGraphSchedulesHandler(),
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+    });
+
+    const list = await screen.findByTestId("followups-list");
+    expect(within(list).getByText("Back after the restart")).toBeDefined();
+    expect(screen.queryByTestId("schedules-unavailable")).toBeNull();
   });
 
   test("a real failure outranks the outage notice when nothing loaded", async () => {

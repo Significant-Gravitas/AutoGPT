@@ -26,6 +26,10 @@ import type { AgentStatusFilter } from "../../types";
 import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { isAgentScheduled } from "../../hooks/executionHelpers";
+import {
+  hasUnknownSchedules,
+  recheckWhileSchedulesUnknown,
+} from "@/services/schedules/scheduler-availability";
 
 const FILTER_EXHAUST_THRESHOLD = 3;
 
@@ -66,6 +70,7 @@ export function useLibraryAgentList({
     data: agentsQueryData,
     fetchNextPage,
     hasNextPage,
+    isFetching,
     isFetchingNextPage,
     isLoading: allAgentsLoading,
   } = useGetV2ListLibraryAgentsInfinite(
@@ -81,6 +86,12 @@ export function useLibraryAgentList({
     {
       query: {
         getNextPageParam: getPaginationNextPageNumber,
+        // Without the scheduler the agents load with their schedules
+        // unknown; recheck after its Retry-After until they are known.
+        refetchInterval: (query) =>
+          recheckWhileSchedulesUnknown(
+            query.state.data ? unpaginate(query.state.data, "agents") : [],
+          ),
       },
     },
   );
@@ -295,6 +306,13 @@ export function useLibraryAgentList({
   const displayedCount =
     statusFilter === "all" ? allAgentsCount : filteredAgents.length;
 
+  function retrySchedules() {
+    void queryClient.invalidateQueries({
+      predicate: (query) =>
+        String(query.queryKey[0]).startsWith("/api/library/agents"),
+    });
+  }
+
   function handleFolderDeleted() {
     if (selectedFolderId === deletingFolder?.id) {
       onFolderSelect(null);
@@ -309,6 +327,9 @@ export function useLibraryAgentList({
     displayedCount,
     favoritesCount: favoriteAgentsData.agentCount,
     agents: filteredAgents,
+    schedulesUnknown: hasUnknownSchedules(agents),
+    retrySchedules,
+    retryingSchedules: isFetching && !isFetchingNextPage,
     hasNextPage: agentsHasNextPage && !filteredExhausted,
     isFetchingNextPage: agentsIsFetchingNextPage,
     fetchNextPage: agentsFetchNextPage,

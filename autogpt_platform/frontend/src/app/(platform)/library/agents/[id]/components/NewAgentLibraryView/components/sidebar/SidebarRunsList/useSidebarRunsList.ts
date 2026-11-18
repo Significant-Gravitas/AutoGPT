@@ -23,6 +23,8 @@ import {
   useExecutionEvents,
 } from "@/hooks/useExecutionEvents";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { isSchedulerUnavailableError } from "@/services/schedules/scheduler-availability";
+import { useSchedulerQueryOptions } from "@/services/schedules/useSchedulerQueryOptions";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useRunsReadAfterReconnect } from "./useRunsReadAfterReconnect";
@@ -84,10 +86,12 @@ export function useSidebarRunsList({
     },
   );
 
+  const schedulerQueryOptions = useSchedulerQueryOptions();
   const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(graphId, {
     query: {
       enabled: !!graphId,
       select: okData,
+      ...schedulerQueryOptions,
     },
   });
 
@@ -130,13 +134,18 @@ export function useSidebarRunsList({
   // Combined count: webhook triggers + trigger agents (both shown
   // under the "Triggers" tab as separate sections).
   const triggersCount = triggers.length + triggerAgents.length;
+  // While the scheduler restarts its schedules are unknown, and the runs,
+  // templates and triggers still list.
+  const schedulesUnavailable = isSchedulerUnavailableError(
+    schedulesQuery.error,
+  );
   const loading =
     !runsQuery.isSuccess ||
-    !schedulesQuery.isSuccess ||
+    (!schedulesQuery.isSuccess && !schedulesUnavailable) ||
     !presetsQuery.presetsSettled ||
     (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
   const error =
-    schedulesQuery.error ||
+    (schedulesUnavailable ? null : schedulesQuery.error) ||
     runsQuery.error ||
     presetsQuery.error ||
     (triggerAgentsEnabled ? triggerAgentsQuery.error : null);
@@ -148,6 +157,10 @@ export function useSidebarRunsList({
     if (triggerAgentsEnabled && triggerAgentsQuery.isError) {
       void triggerAgentsQuery.refetch();
     }
+  }
+
+  function retrySchedules() {
+    void schedulesQuery.refetch();
   }
 
   // The key includes the graph ID, so this refetches only this graph's runs.
@@ -229,6 +242,9 @@ export function useSidebarRunsList({
   return {
     runs,
     schedules,
+    schedulesUnavailable,
+    retrySchedules,
+    retryingSchedules: schedulesQuery.isFetching,
     templates,
     triggers,
     triggerAgents,

@@ -1,0 +1,135 @@
+import { act, within } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { afterEach, expect, test, vi } from "vitest";
+import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
+import { server } from "@/mocks/mock-server";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
+import { HomeRecap } from "../components/HomeRecap/HomeRecap";
+import { ada, makeDashboard, NOW } from "./heldItems";
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
+  const actual =
+    await importActual<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useFlagStatus: () => ({ enabled: true, ready: true }),
+    useGetFlag: () => false,
+  };
+});
+
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { user_metadata: { preferred_name: "Sam" } } }),
+}));
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+const NOTICE =
+  "Schedules are temporarily unavailable — your schedules are safe and will run once it's back.";
+
+// Home's dashboard while the scheduler is out: every other tile loads, and the
+// upcoming runs are unknown rather than absent.
+const duringOutage: HomeDashboardResponse = {
+  ...makeDashboard([]),
+  active_tasks: [
+    {
+      id: "active-1",
+      title: "Checking recurring subscriptions",
+      status: "running",
+      expert: ada,
+      started_at: new Date(NOW.getTime() - 8 * 60_000),
+      link: "/library",
+    },
+  ],
+  team: { total: 1, ready: 0, working: 1, needs_attention: 0 },
+  agents: [
+    {
+      expert: ada,
+      status: "working",
+      detail: "Checking recurring subscriptions",
+    },
+  ],
+  upcoming_tasks: [],
+  schedules_unavailable: true,
+};
+
+const afterRecovery: HomeDashboardResponse = {
+  ...duringOutage,
+  upcoming_tasks: [
+    {
+      id: "upcoming-1",
+      title: "Spanish practice plan",
+      kind: "agent",
+      expert: ada,
+      next_run_time: new Date(NOW.getTime() + 80 * 60_000),
+    },
+  ],
+  schedules_unavailable: false,
+};
+
+function serveDashboard(current: () => HomeDashboardResponse) {
+  let reads = 0;
+  server.use(
+    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () => {
+      reads += 1;
+      return HttpResponse.json(current());
+    }),
+  );
+  return () => reads;
+}
+
+test("Now & next says schedules are unavailable while the rest of Home loads, and recovers on Try again", async () => {
+  let dashboard = duringOutage;
+  serveDashboard(() => dashboard);
+
+  render(<HomeRecap />);
+
+  const tile = await screen.findByRole("region", { name: "Now & next" });
+  expect(await within(tile).findByText(NOTICE)).toBeDefined();
+  // Unknown, not empty: no "nothing scheduled" and no page error.
+  expect(within(tile).queryByText("Nothing is scheduled")).toBeNull();
+  expect(
+    screen.queryByText("Your Home briefing could not be loaded"),
+  ).toBeNull();
+  // The rest of Home still works.
+  expect(
+    within(tile).getByText("Checking recurring subscriptions"),
+  ).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Your team" })).toBeDefined();
+  expect(screen.getByRole("heading", { name: "Recent work" })).toBeDefined();
+
+  dashboard = afterRecovery;
+  fireEvent.click(within(tile).getByRole("button", { name: "Try again" }));
+
+  expect(await within(tile).findByText("Spanish practice plan")).toBeDefined();
+  await waitFor(() => expect(within(tile).queryByText(NOTICE)).toBeNull());
+});
+
+test("Home rechecks on its own once the scheduler's Retry-After has passed", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  let dashboard = duringOutage;
+  const reads = serveDashboard(() => dashboard);
+
+  render(<HomeRecap />);
+  const tile = await screen.findByRole("region", { name: "Now & next" });
+  expect(await within(tile).findByText(NOTICE)).toBeDefined();
+
+  dashboard = afterRecovery;
+  const before = reads();
+  // Sooner than Home's usual one-minute refresh.
+  await act(async () => {
+    vi.advanceTimersByTime(15_000);
+  });
+
+  await waitFor(() => expect(reads()).toBeGreaterThan(before));
+  expect(await within(tile).findByText("Spanish practice plan")).toBeDefined();
+  expect(within(tile).queryByText(NOTICE)).toBeNull();
+});

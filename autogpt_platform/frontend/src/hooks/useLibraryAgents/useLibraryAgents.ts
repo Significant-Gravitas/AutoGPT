@@ -1,5 +1,6 @@
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
+import { recheckWhileSchedulesUnknown } from "@/services/schedules/scheduler-availability";
 import { useEffect, useMemo } from "react";
 import { buildAgentInfoMap } from "./store";
 
@@ -30,6 +31,12 @@ export function useLibraryAgents() {
         refetchOnMount: false,
         refetchOnWindowFocus: false,
         staleTime: 5 * 60 * 1000, // 5 minutes
+        // The briefing's Scheduled and Idle counts stay unknown until the
+        // scheduler answers; recheck after its Retry-After.
+        refetchInterval: (query) =>
+          recheckWhileSchedulesUnknown(
+            query.state.data ? unpaginate(query.state.data, "agents") : [],
+          ),
       },
     },
   );

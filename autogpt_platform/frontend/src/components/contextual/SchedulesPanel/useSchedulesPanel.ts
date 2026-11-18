@@ -6,17 +6,12 @@ import {
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { okData } from "@/app/api/helpers";
-import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { isSchedulerUnavailableError } from "@/services/schedules/scheduler-availability";
+import { useSchedulerQueryOptions } from "@/services/schedules/useSchedulerQueryOptions";
 
 export type ScheduleItem =
   | { kind: "copilot_turn"; item: CopilotTurnJobInfo }
   | { kind: "graph"; item: GraphExecutionJobInfo };
-
-// The scheduler restarts on every deploy and answers 503 while it is out: the
-// schedules are unknown for a moment, neither missing nor broken.
-function isSchedulerUnavailable(error: unknown) {
-  return error instanceof ApiError && error.status === 503;
-}
 
 function nextRunMs(item: { next_run_time?: string | null }): number {
   if (!item.next_run_time) return Number.POSITIVE_INFINITY;
@@ -25,17 +20,19 @@ function nextRunMs(item: { next_run_time?: string | null }): number {
 }
 
 export function useSchedulesPanel() {
+  // A 503 means the scheduler is restarting: recheck after its Retry-After.
+  const schedulerQueryOptions = useSchedulerQueryOptions();
   // Followups (copilot_turn) — the scheduled-message side of the
   // feature.  Stored via ``schedule_followup`` MCP tool.
   const copilotQuery = useListCopilotFollowupSchedules({
-    query: { select: (res) => okData(res) ?? [] },
+    query: { select: (res) => okData(res) ?? [], ...schedulerQueryOptions },
   });
   // Graph schedules — recurring agent runs created via the agent
   // builder.  Same scheduler, different ``kind`` discriminator.  This
   // page now unifies both so users see ALL their pending automated
   // work in one place (briefing pill, this list, single Delete flow).
   const graphQuery = useGetV1ListExecutionSchedulesForAUser({
-    query: { select: (res) => okData(res) ?? [] },
+    query: { select: (res) => okData(res) ?? [], ...schedulerQueryOptions },
   });
   // Scheduled chats paused after failing the same way: their jobs drop out
   // of the followups list, so they are listed apart, with Resume.
@@ -64,10 +61,11 @@ export function useSchedulesPanel() {
     copilotQuery.isLoading || graphQuery.isLoading || pausedQuery.isLoading;
   const hasContent = schedules.length > 0 || paused.length > 0;
   const schedulerErrors = [copilotQuery.error, graphQuery.error];
-  const outage = schedulerErrors.find(isSchedulerUnavailable) ?? null;
+  const outage = schedulerErrors.find(isSchedulerUnavailableError) ?? null;
   const fetchError =
-    schedulerErrors.find((error) => error && !isSchedulerUnavailable(error)) ??
-    pausedQuery.error;
+    schedulerErrors.find(
+      (error) => error && !isSchedulerUnavailableError(error),
+    ) ?? pausedQuery.error;
   const settled = !isLoading;
 
   function retryUnavailable() {
