@@ -1721,6 +1721,7 @@ _ANSWERED_AT_ONCE_SHARED_ERRORS = {
     "RaisedExpertLifetimeLimitExceededError",
     "RoutineNotFoundError",
     "RoutineUnansweredAsksError",
+    "ScheduleLimitError",
     "SchedulerUnavailableError",
     "SharedCredentialsRefusedError",
     "UserBannedError",

@@ -1,6 +1,7 @@
 import type { ScheduleCreationRequest } from "@/app/api/__generated__/models/scheduleCreationRequest";
 import { usePostV1CreateExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
@@ -28,6 +29,7 @@ export function useCronSchedulerDialog({
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const userId = useAuthStore((state) => state.user?.id);
   const [cronExpression, setCronExpression] = useState<string>("");
   const [scheduleName, setScheduleName] = useState<string>("");
   const [scheduleNameError, setScheduleNameError] = useState<string>("");
@@ -45,7 +47,7 @@ export function useCronSchedulerDialog({
     usePostV1CreateExecutionSchedule({
       mutation: {
         onSuccess: (response, create) => {
-          forgetScheduleCreateKey(create);
+          forgetScheduleCreateKey({ userId, create });
           if (response.status === 200) {
             setOpen(false);
             toast({
@@ -56,7 +58,7 @@ export function useCronSchedulerDialog({
           }
         },
         onError: (error, create) => {
-          forgetScheduleCreateKey(create, error);
+          forgetScheduleCreateKey({ userId, create, error });
           toast({
             variant: "destructive",
             title: "Failed to create schedule",
@@ -108,13 +110,16 @@ export function useCronSchedulerDialog({
 
     await createSchedule(
       withScheduleCreateKey({
-        graphId: flowID || "",
-        data: {
-          name: scheduleName.trim(),
-          graph_version: flowID ? flowVersion : undefined,
-          cron: cronExpression,
-          inputs: inputs,
-          credentials: credentials,
+        userId,
+        create: {
+          graphId: flowID || "",
+          data: {
+            name: scheduleName.trim(),
+            graph_version: flowID ? flowVersion : undefined,
+            cron: cronExpression,
+            inputs: inputs,
+            credentials: credentials,
+          },
         },
       }),
     );

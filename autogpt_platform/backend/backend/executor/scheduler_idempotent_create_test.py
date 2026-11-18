@@ -13,19 +13,23 @@ import json
 import pickle
 import threading
 import uuid
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from autogpt_libs.auth.models import RequestContext
+from pydantic import SecretStr
 
 from backend.api.features.schedules.model import ScheduleCreationRequest
 from backend.api.features.schedules.routes import create_graph_execution_schedule
 from backend.api.model import CreateGraph
-from backend.data.graph import GraphModel
-from backend.data.model import CredentialsMetaInput, User
+from backend.blocks.allquiet.incidents import AllQuietCreateIncidentBlock
+from backend.blocks.io import AgentInputBlock
+from backend.data.graph import Graph, GraphModel, Link, Node
+from backend.data.model import APIKeyCredentials, CredentialsMetaInput, User
 from backend.executor import schedule_events
 from backend.executor import scheduler as scheduler_module
 from backend.executor import utils as execution_utils
@@ -36,6 +40,7 @@ from backend.executor.scheduler import (
     _build_trigger,
     _fires_alike,
 )
+from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import ConflictError
@@ -59,6 +64,38 @@ async def test_a_retried_create_returns_the_schedule_the_first_attempt_made(
         assert first.id == retried.id == str(key)
     finally:
         await _delete_schedules(owner, graph)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_retried_create_with_credentials_returns_the_first_schedule(
+    server: SpinTestServer,
+):
+    """Most schedules carry credentials, which the scheduler stores and reads
+    back before comparing them with the retry's."""
+    owner = await create_test_user()
+    async with _an_api_key(owner) as api_key:
+        graph = await _new_graph(server, owner, _graph_needing_a_key())
+        [field] = graph.credentials_input_schema["properties"]
+        sent: dict[str, Any] = {
+            "inputs": {"title": "Checkout is down"},
+            "credentials": {
+                field: {
+                    "id": api_key.id,
+                    "provider": api_key.provider,
+                    "type": api_key.type,
+                    "title": api_key.title,
+                }
+            },
+        }
+        key = uuid.uuid4()
+        try:
+            first = await _create(owner, graph, key, **sent)
+            retried = await _create(owner, graph, key, **sent)
+
+            assert await _schedule_ids(owner, graph) == [str(key)]
+            assert first.id == retried.id == str(key)
+        finally:
+            await _delete_schedules(owner, graph)
 
 
 @pytest.mark.parametrize(
@@ -245,6 +282,66 @@ def test_a_copy_that_takes_the_last_slot_mid_check_answers_the_other(
     assert recorded.call_count == 2
 
 
+def test_a_different_create_that_loses_the_insert_race_gets_a_conflict(
+    scheduler: Scheduler, recorded: MagicMock
+):
+    """Two different creates under one key both find it free; the one the
+    jobstore turns away is refused, not answered with the other's schedule."""
+    key = str(uuid.uuid4())
+    both_checked = threading.Barrier(2, timeout=30)
+    check_capacity = scheduler._check_schedule_capacity
+
+    def check_then_wait(*args: Any, **kwargs: Any) -> None:
+        check_capacity(*args, **kwargs)
+        both_checked.wait()
+
+    def send(cron: str) -> GraphExecutionJobInfo | ConflictError:
+        try:
+            return _add(scheduler, key, cron=cron)
+        except ConflictError as refused:
+            return refused
+
+    with (
+        patch.object(scheduler, "_check_schedule_capacity", check_then_wait),
+        ThreadPoolExecutor(max_workers=2) as pool,
+    ):
+        outcomes = list(pool.map(send, ["0 9 * * *", "30 18 * * *"]))
+
+    [made] = [o for o in outcomes if isinstance(o, GraphExecutionJobInfo)]
+    assert sum(isinstance(o, ConflictError) for o in outcomes) == 1
+    [job] = scheduler.scheduler.get_jobs(Jobstores.EXECUTION.value)
+    assert (job.id, job.kwargs["cron"]) == (key, made.cron)
+    recorded.assert_called_once()
+
+
+def test_a_limit_refusal_under_a_key_another_create_took_is_a_conflict(
+    scheduler: Scheduler,
+):
+    """A different create under this key takes the account's last slot
+    between this one's lookup and its count: that's a conflict, not the
+    limit, and its schedule is left alone."""
+    held = _add(scheduler, str(uuid.uuid4()))
+    key = str(uuid.uuid4())
+    count = scheduler._schedule_count
+    other_create_sent = False
+
+    def count_once_another_create_is_in(*args: Any, **kwargs: Any) -> int:
+        nonlocal other_create_sent
+        if not other_create_sent:
+            other_create_sent = True
+            _add(scheduler, key, cron="30 18 * * *")
+        return count(*args, **kwargs)
+
+    with (
+        patch.object(scheduler, "_schedule_count", count_once_another_create_is_in),
+        pytest.raises(ConflictError),
+    ):
+        _add(scheduler, key)
+
+    assert _job_ids(scheduler) == sorted([held.id, key])
+    assert scheduler.scheduler.get_job(key).kwargs["cron"] == "30 18 * * *"
+
+
 @pytest.mark.parametrize(
     "stored, sent",
     [
@@ -363,10 +460,47 @@ def _job_ids(scheduler: Scheduler) -> list[str]:
     )
 
 
-async def _new_graph(server: SpinTestServer, user: User) -> GraphModel:
+async def _new_graph(
+    server: SpinTestServer, user: User, graph: Graph | None = None
+) -> GraphModel:
     return await server.agent_server.test_create_graph(
-        create_graph=CreateGraph(graph=create_test_graph()), user_id=user.id
+        create_graph=CreateGraph(graph=graph or create_test_graph()), user_id=user.id
     )
+
+
+def _graph_needing_a_key() -> Graph:
+    """A title input feeding a block that runs on an All Quiet key."""
+    nodes = [
+        Node(block_id=AgentInputBlock().id, input_default={"name": "title"}),
+        Node(block_id=AllQuietCreateIncidentBlock().id),
+    ]
+    links = [
+        Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[1].id,
+            source_name="result",
+            sink_name="title",
+        )
+    ]
+    return Graph(name="IncidentGraph", description="", nodes=nodes, links=links)
+
+
+@asynccontextmanager
+async def _an_api_key(user: User) -> AsyncIterator[APIKeyCredentials]:
+    """An All Quiet key the user holds for the test only; nothing runs on it."""
+    api_key = APIKeyCredentials(
+        id=str(uuid.uuid4()),
+        provider="allquiet",
+        api_key=SecretStr("not-a-real-key"),
+        title="All Quiet",
+        expires_at=None,
+    )
+    store = IntegrationCredentialsStore()
+    await store.add_creds(user.id, api_key)
+    try:
+        yield api_key
+    finally:
+        await store.delete_creds_by_id(user.id, api_key.id)
 
 
 async def _create(

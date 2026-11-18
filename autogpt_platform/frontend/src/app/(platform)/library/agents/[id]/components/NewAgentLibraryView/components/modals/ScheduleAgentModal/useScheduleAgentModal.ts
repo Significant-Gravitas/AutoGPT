@@ -2,6 +2,7 @@ import { usePostV1CreateExecutionSchedule as useCreateSchedule } from "@/app/api
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { scheduleCreateErrorToast } from "@/services/schedules/schedule-create-error";
 import {
@@ -24,6 +25,7 @@ export function useScheduleAgentModal(
 ) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const userId = useAuthStore((state) => state.user?.id);
 
   const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
   const [scheduleName, setScheduleName] = useState(defaultScheduleName);
@@ -34,7 +36,7 @@ export function useScheduleAgentModal(
   const createScheduleMutation = useCreateSchedule({
     mutation: {
       onSuccess: (response, create) => {
-        forgetScheduleCreateKey(create);
+        forgetScheduleCreateKey({ userId, create });
         if (response.status === 200) {
           toast({
             title: "Schedule created",
@@ -48,7 +50,7 @@ export function useScheduleAgentModal(
         }
       },
       onError: (error: unknown, create) => {
-        forgetScheduleCreateKey(create, error);
+        forgetScheduleCreateKey({ userId, create, error });
         toast({
           title: "❌ Failed to create schedule",
           variant: "destructive",
@@ -72,13 +74,16 @@ export function useScheduleAgentModal(
       return new Promise<void>((resolve, reject) => {
         createScheduleMutation.mutate(
           withScheduleCreateKey({
-            graphId: agent.graph_id,
-            data: {
-              name: scheduleName,
-              cron: cronExpression,
-              inputs: inputValues,
-              graph_version: agent.graph_version,
-              credentials: inputCredentials,
+            userId,
+            create: {
+              graphId: agent.graph_id,
+              data: {
+                name: scheduleName,
+                cron: cronExpression,
+                inputs: inputValues,
+                graph_version: agent.graph_version,
+                credentials: inputCredentials,
+              },
             },
           }),
           {

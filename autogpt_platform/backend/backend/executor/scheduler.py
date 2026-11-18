@@ -153,6 +153,7 @@ from backend.util.exceptions import (
     GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
+    ScheduleLimitError,
     UserBannedError,
     UserPaywalledError,
 )
@@ -3618,7 +3619,7 @@ class Scheduler(AppService):
         limit = config.max_schedules_per_user
         held = self._schedule_count(job_args.user_id, replaces=replaces)
         if held >= limit:
-            raise ValueError(
+            raise ScheduleLimitError(
                 f"You already have {held} schedules, the most one account "
                 f"can have ({limit}). Delete one to add another."
             )
@@ -3734,7 +3735,7 @@ class Scheduler(AppService):
             if replayed is None:  # And deleted again since.
                 raise ConflictError(_SCHEDULE_KEY_TAKEN) from None
             return replayed
-        except ValueError:
+        except ScheduleLimitError:
             # The account's limit, perhaps filled by that other copy getting
             # in between this one's lookup of its key and its count.
             replayed = self._replayed_graph_schedule(job_args, trigger)

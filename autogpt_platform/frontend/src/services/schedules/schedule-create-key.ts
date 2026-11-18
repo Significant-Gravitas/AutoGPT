@@ -8,8 +8,9 @@ import { v4 as uuidv4 } from "uuid";
 // applied but its answer was lost, the server answers with that schedule
 // instead of adding a second one that would run, and charge, again.
 //
-// The key is kept in sessionStorage under a hash of the create, so a retry
-// after a reload still sends it, and a changed create gets a key of its own.
+// The key is kept in sessionStorage under a hash of the create and the user,
+// so a retry after a reload still sends it, a changed create gets a key of its
+// own, and another account signed in to the same tab never inherits it.
 // Where the browser blocks storage it lives in memory, so only until a reload.
 
 type StorageKey = `schedule-create:${string}`;
@@ -25,8 +26,16 @@ interface ScheduleCreate {
   data: ScheduleCreationRequest;
 }
 
-export function withScheduleCreateKey(create: ScheduleCreate): ScheduleCreate {
-  const slot = slotFor(create);
+interface Args {
+  userId: string | undefined;
+  create: ScheduleCreate;
+}
+
+export function withScheduleCreateKey({
+  userId,
+  create,
+}: Args): ScheduleCreate {
+  const slot = slotFor({ userId, create });
   // uuidv4({}) rather than crypto.randomUUID, which is missing on plain HTTP.
   const key = storage.get(slot) ?? uuidv4({});
   storage.set(slot, key);
@@ -36,12 +45,13 @@ export function withScheduleCreateKey(create: ScheduleCreate): ScheduleCreate {
 // Called with the create's answer. Success or a final refusal drops the key;
 // anything else (a 503, a timeout, a lost connection) keeps it for the retry.
 // A late answer leaves alone a key a newer attempt has taken since.
-export function forgetScheduleCreateKey(
-  create: ScheduleCreate,
-  error?: unknown,
-) {
+export function forgetScheduleCreateKey({
+  userId,
+  create,
+  error,
+}: Args & { error?: unknown }) {
   if (error !== undefined && !isFinalRefusal(error)) return;
-  const slot = slotFor(create);
+  const slot = slotFor({ userId, create });
   if (storage.get(slot) === create.data.schedule_id) storage.clean(slot);
 }
 
@@ -49,9 +59,10 @@ function isFinalRefusal(error: unknown) {
   return error instanceof ApiError && FINAL_REFUSALS.has(error.status);
 }
 
-function slotFor({ graphId, data }: ScheduleCreate): StorageKey {
-  const { schedule_id: _key, ...request } = data;
-  return `schedule-create:${hash(sortedJSON({ graphId, request }))}`;
+function slotFor({ userId, create }: Args): StorageKey {
+  const { schedule_id: _key, ...request } = create.data;
+  const graphId = create.graphId;
+  return `schedule-create:${hash(sortedJSON({ userId, graphId, request }))}`;
 }
 
 // Object keys sorted, so the same create hashes alike however its form state
