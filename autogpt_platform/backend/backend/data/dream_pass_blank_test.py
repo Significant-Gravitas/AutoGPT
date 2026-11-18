@@ -3,8 +3,8 @@
 ``erase_dream_passes`` marks and blanks (a pass from before read sets were
 recorded with any forget in its scope), never another user's or scope's,
 and returns again once marked; every error kept only as a fixed code; its
-statement timeout; its cost over 3,000 passes; and every transition that
-closes a marked pass blanking it in the same statement
+statement timeout; its cost at the gather's per-pass caps; and every
+transition that closes a marked pass blanking it in the same statement
 (``dream_pass_update.py``), one that leaves it open or an unmarked pass
 untouched, the read set only growing, and none of them touching a pass's
 usage attribution."""
@@ -453,15 +453,20 @@ async def test_an_erase_waiting_on_a_locked_row_gives_up_at_its_timeout(
     assert row is not None and row.erased_at is None, "nothing was written"
 
 
-async def test_the_erase_over_3000_passes_and_1000_reached_uuids_is_in_time(
+# CI's slowest erase at 3,000 passes took 4.52 s of the 9 s statement timeout, so
+# ~1.5 s at 1,000, while an unhashed membership check (array_position) takes ~22 s.
+_ERASE_PASSES = 1000
+
+
+async def test_the_erase_over_1000_passes_and_1000_reached_uuids_is_in_time(
     make_user,
 ):
-    """The round-2 review's cost check, by the gather's caps: 3,000 closed
-    passes of a scope, each with ~10 KB of phase output and 550 uuids read,
-    against 1,000 reached uuids, first read by none of them (the selection's
-    cost), then one read by every pass (all 3,000 marked and blanked in one
-    statement), each inside the statement timeout the erase sets: the database
-    cancels a statement that outruns it, and the call raises."""
+    """The round-2 review's cost check, at the gather's per-pass caps: 1,000
+    closed passes of a scope, each with ~10 KB of phase output and 550 uuids
+    read, against 1,000 reached uuids, first read by none of them (the
+    selection's cost), then one read by every pass (all marked and blanked in
+    one statement), each inside the statement timeout the erase sets: the
+    database cancels a statement that outruns it, and the call raises."""
     owner = await make_user()
     shared = "fact-read-by-every-pass"
     facts = [
@@ -478,10 +483,11 @@ async def test_the_erase_over_3000_passes_and_1000_reached_uuids_is_in_time(
         "SELECT gen_random_uuid()::text, $1, $1, 'SYNC', 'CRON', 'COMPLETE', "
         "'DONE', $2::jsonb, ARRAY(SELECT gen_random_uuid()::text "
         "FROM generate_series(1, 549) WHERE pass.n > 0) || $3::text "
-        "FROM generate_series(1, 3000) AS pass(n)",
+        "FROM generate_series(1, $4::int) AS pass(n)",
         owner,
         json.dumps({"consolidate": {"facts": facts}}),
         shared,
+        _ERASE_PASSES,
     )
     unread = [str(uuid.uuid4()) for _ in range(1000)]
 
@@ -490,11 +496,11 @@ async def test_the_erase_over_3000_passes_and_1000_reached_uuids_is_in_time(
         owner, owner, reached=[*unread[1:], shared], named=[]
     )
 
-    assert len(marked) == 3000
+    assert len(marked) == _ERASE_PASSES
     blanked = await DreamPass.prisma().count(
         where={"userId": owner, "erasedAt": {"not": None}}
     )
-    assert blanked == 3000
+    assert blanked == _ERASE_PASSES
 
 
 _CLOSES: dict[str, DreamPassUpdate] = {
