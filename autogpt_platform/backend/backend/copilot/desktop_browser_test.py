@@ -624,3 +624,15 @@ class TestTheBox:
         assert '[["dialog", "status"]]' == fake.ran[-1][1]["envs"]["OTTO_BATCH"]
         fake.answers["batch"] = json.dumps([_ok({"hasDialog": False})])
         assert await driver.open_dialog(fake, "otto-0123456789ab") is None
+
+
+def test_a_page_that_was_not_stamped_leaves_its_refs_unchecked():
+    core = [
+        _ok({"url": "https://a.example/"}),
+        _ok({"title": "A"}),
+        _ok({"snapshot": "- button [ref=e1]", "refs": {"e1": {}}}),
+    ]
+    stamped = observation_from([*core, _ok()])
+    unstamped = observation_from([*core, _fail("Execution context was destroyed")])
+    assert stamped is not None and stamped.stamped
+    assert unstamped is not None and not unstamped.stamped and unstamped.refs == ["e1"]

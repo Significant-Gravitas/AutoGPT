@@ -212,6 +212,8 @@ class Observation(BaseModel):
     title: str = ""
     snapshot: str = ""
     refs: list[str] = Field(default_factory=list)
+    # The document was stamped: the next call's ref actions can check it.
+    stamped: bool = False
 
 
 # ---------------------------------------------------------------- validation
@@ -580,8 +582,8 @@ def observation_from(
 ) -> Optional[Observation]:
     """The closing ``get url``, ``get title`` and ``snapshot`` entries, after
     the settle wait when there was one (whose own failure does not count)."""
-    core = entries[1:] if settled else entries
-    core = core[: len(OBSERVE)]
+    rest = entries[1:] if settled else entries
+    core, stamp = rest[: len(OBSERVE)], rest[len(OBSERVE) : len(OBSERVE) + 1]
     if len(core) != len(OBSERVE) or not all(e.get("success") for e in core):
         return None
     url, title, snap = (e.get("result") or {} for e in core)
@@ -593,6 +595,7 @@ def observation_from(
         title=str(title.get("title", "")),
         snapshot=text,
         refs=sorted((snap.get("refs") or {}).keys()),
+        stamped=bool(stamp) and bool(stamp[0].get("success")),
     )
 
 

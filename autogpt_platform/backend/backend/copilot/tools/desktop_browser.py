@@ -213,7 +213,9 @@ class DesktopBrowserTool(BaseTool):
         token = await driver.issue_scope(
             sandbox.sandbox_id,
             observation.refs if observation else [],
-            stamp if observation else None,
+            # Unstamped, the snapshot's refs stand on ref_scope alone: a
+            # check against a stamp the page never got would refuse them all.
+            stamp if observation and observation.stamped else None,
         )
         file_id = await self._save_look(
             user_id, session, sandbox, actions, receipts, look_path

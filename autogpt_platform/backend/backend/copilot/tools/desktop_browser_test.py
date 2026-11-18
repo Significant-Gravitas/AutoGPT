@@ -431,3 +431,18 @@ async def test_a_call_that_only_reads_runs_like_a_read(actions, reads):
         assert subject is not None and subject.effect is Effect.READ
     else:
         assert subject is None
+
+
+@pytest.mark.asyncio
+async def test_an_unstamped_page_issues_a_scope_without_a_stamp():
+    unstamped = [*_OBSERVED[:3], {"success": False, "error": "context destroyed"}]
+    patches, _ = _patched(batches=[[_ok()], unstamped])
+    issue = AsyncMock(return_value="new-scope")
+    patches.append(patch(f"{_D}.issue_scope", issue))
+    result = await _call(
+        patches, actions=[{"action": "goto", "url": "https://a.example"}]
+    )
+    assert (
+        isinstance(result, DesktopBrowserResponse) and result.ref_scope == "new-scope"
+    )
+    assert issue.await_args.args == ("sb-1", ["e1"], None)
