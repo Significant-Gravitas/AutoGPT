@@ -1,6 +1,7 @@
 import io
 import json
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -8,7 +9,7 @@ from PIL import Image
 from prisma.enums import ReviewStatus
 
 from backend.copilot import pending_message_helpers, pending_message_reconciliation
-from backend.copilot.gate import held
+from backend.copilot.gate import held, spent_approval
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads import trusted_read
 from backend.copilot.gate.reads_test import _Fetch, _session, rows
@@ -64,14 +65,30 @@ async def test_approved_action_keeps_image_with_non_json_metadata(monkeypatch, i
         args={"file_id": "f"},
     )
     tool = AsyncMock(spec=BaseTool)
-    tool.execute.return_value = StreamToolOutputAvailable(
+    output = StreamToolOutputAvailable(
         toolCallId=call.tool_call_id,
         output={"created_at": datetime(2026, 1, 1, tzinfo=UTC), "pages": 1},
     ).with_image(image)
+
+    async def reaches_its_gate(*_args, **_kwargs):
+        # A real tool's gate spends the fold's card before the call runs.
+        fold_pass = spent_approval.take_pass(call.review_id)
+        assert fold_pass is not None
+        assert await spent_approval.use(fold_pass, "user-1") is None
+        return output
+
+    tool.execute.side_effect = reaches_its_gate
     consume = AsyncMock(return_value=True)
     monkeypatch.setattr(held.review_store, "consume", consume)
+    row = SimpleNamespace(
+        node_exec_id=call.review_id,
+        status=ReviewStatus.APPROVED,
+        created_at=datetime.now(UTC),
+        updated_at=None,
+        reviewed_at=datetime.now(UTC),
+    )
 
-    outcome, output = await held._run("user-1", session, call, tool)
+    outcome, output = await held._run("user-1", session, call, row, tool)
 
     assert outcome == "approved"
     released = HeldImage.model_validate_json(output)
@@ -83,7 +100,7 @@ async def test_approved_action_keeps_image_with_non_json_metadata(monkeypatch, i
     tool.execute.assert_awaited_once_with(
         "user-1", session, call.tool_call_id, file_id="f"
     )
-    consume.assert_awaited_once_with(call.review_id, "user-1")
+    consume.assert_awaited_once_with(row, "user-1")
 
 
 @pytest.mark.parametrize("engine", ["sdk", "baseline"])
