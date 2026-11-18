@@ -30,7 +30,7 @@ from autogpt_local_executor import install as install_mod
 # for it: only the tests at the end, on services of their own, may use it.
 _REAL_RUN_COMMAND = getattr(install_mod, "run_command", None)
 
-LABEL = "net.autogpt.shim"
+LABEL = "co.agpt.shim"
 UNIT = "autogpt-shim.service"
 TASK = r"\AutoGPT\Shim"
 PLATFORMS = ("darwin", "linux", "wsl2", "windows")
@@ -52,6 +52,11 @@ class _Manager:
 
     def __call__(self, argv: Sequence[str], timeout: float) -> Any:
         assert timeout > 0
+        if argv[-1].endswith(f"/{install_mod.FORMER_LAUNCHD_LABEL}"):
+            # What `uninstall` asks launchd about the LaunchAgent's earlier
+            # label is tests/test_launchd_label.py's: here there is none.
+            assert list(argv[:2]) == ["launchctl", "print"], argv
+            return _result(113, "Could not find service\n")
         self.calls.append((" ".join(argv), self.target.exists()))
         return self.answer(list(argv))
 
@@ -209,7 +214,13 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _whoami(argv: Sequence[str], timeout: float) -> Any:
-    """`whoami /user`, which `install` asks whose the Windows task is."""
+    """What `install` asks before it writes an entry: `whoami /user`, for
+    whose the Windows task is, and launchd, for a LaunchAgent under the
+    earlier label, of which there is none here."""
+    if argv[0] == "launchctl":
+        assert list(argv[:2]) == ["launchctl", "print"], argv
+        assert argv[-1].endswith(f"/{install_mod.FORMER_LAUNCHD_LABEL}"), argv
+        return _result(113, "Could not find service\n")
     assert list(argv) == ["whoami", "/user", "/fo", "csv", "/nh"], argv
     return _result(0, '"desktop\\alice","S-1-5-21-1004336348-1177238915-682003330-1001"\r\n')
 
@@ -842,6 +853,7 @@ def test_install_says_uninstall_is_how_to_stop_the_service(
     config = home / "config.toml"
     config.write_text("", encoding="utf-8")
     monkeypatch.setattr(install_mod, "_current_platform_for_install", lambda: "darwin")
+    monkeypatch.setattr(install_mod, "run_command", _whoami)
     monkeypatch.setattr(sys, "argv", ["autogpt-shim", "--config", str(config), "install"])
     for field in ("platform_url", "platform_ws_url", "platform_oauth_url", "oauth_client_id"):
         monkeypatch.delenv(f"AUTOGPT_SHIM_{field.upper()}", raising=False)
@@ -999,7 +1011,7 @@ def test_real_launchd_stops_a_loaded_agent_by_its_label_alone(
     asks: bootout may answer before then."""
     assert _REAL_RUN_COMMAND is not None
     uid = os.getuid()
-    label = f"net.autogpt.shim.test-{uuid.uuid4().hex[:12]}"
+    label = f"co.agpt.shim.test-{uuid.uuid4().hex[:12]}"
     domain = next(
         (
             domain

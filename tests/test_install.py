@@ -54,7 +54,7 @@ def test_render_macos_plist_has_all_placeholders_filled(
     # Spec keys per CROSS_PLATFORM.md "Autostart" row.
     assert "<key>RunAtLoad</key>" in out
     assert "<key>KeepAlive</key>" in out
-    assert "net.autogpt.shim" in out
+    assert "co.agpt.shim" in out
     assert "/opt/bin/autogpt-shim" in out
     assert "/opt/etc/autogpt-local-executor/config.toml" in out
     # KeepAlive restarts any non-zero exit; the marker lets `start` exit 0
@@ -291,7 +291,7 @@ def test_the_python_fallback_starts_the_cli(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_target_path_macos(tmp_path: Path) -> None:
     p = install_mod.target_path_for("darwin", home=tmp_path)
-    assert p == tmp_path / "Library" / "LaunchAgents" / "net.autogpt.shim.plist"
+    assert p == tmp_path / "Library" / "LaunchAgents" / "co.agpt.shim.plist"
 
 
 def test_target_path_linux(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -340,16 +340,18 @@ def test_install_macos_writes_plist(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(
         install_mod, "resolve_shim_command", lambda: ("/usr/local/bin/autogpt-shim",)
     )
+    monkeypatch.setattr(install_mod, "_user_id", lambda: 501)
     with _patch_platform("darwin"):
         status = install_mod.install_autostart(
             config_path=tmp_path / "cfg.toml",
             home=tmp_path,
+            run=_nothing_loaded,
         )
-    expected = tmp_path / "Library" / "LaunchAgents" / "net.autogpt.shim.plist"
+    expected = tmp_path / "Library" / "LaunchAgents" / "co.agpt.shim.plist"
     assert status.target_path == expected
     assert expected.is_file()
     content = expected.read_text(encoding="utf-8")
-    assert "net.autogpt.shim" in content
+    assert "co.agpt.shim" in content
     assert "<key>RunAtLoad</key>" in content
     assert "<key>KeepAlive</key>" in content
     assert str(tmp_path / "cfg.toml") in content
@@ -438,7 +440,8 @@ def test_install_rejects_non_at_login() -> None:
 
 
 def _nothing_loaded(argv, timeout) -> install_mod.CommandResult:
-    """launchctl, for a label launchd doesn't have loaded."""
+    """launchctl, for a label launchd doesn't have loaded: this one's, and
+    the earlier one `install` and `uninstall` look for too."""
     assert list(argv[:2]) == ["launchctl", "print"]
     return install_mod.CommandResult(113, "Could not find service")
 
@@ -451,8 +454,8 @@ def test_uninstall_removes_rendered_file(tmp_path: Path, monkeypatch: pytest.Mon
     )
     monkeypatch.setattr(install_mod, "_user_id", lambda: 501)
     with _patch_platform("darwin"):
-        install_mod.install_autostart(home=tmp_path)
-        target = tmp_path / "Library" / "LaunchAgents" / "net.autogpt.shim.plist"
+        install_mod.install_autostart(home=tmp_path, run=_nothing_loaded)
+        target = tmp_path / "Library" / "LaunchAgents" / "co.agpt.shim.plist"
         assert target.is_file()
         done = install_mod.uninstall_autostart(home=tmp_path, run=_nothing_loaded)
     assert not target.exists()
@@ -476,7 +479,7 @@ def test_uninstall_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 def test_status_when_absent(tmp_path: Path) -> None:
     status = install_mod.status_for("darwin", home=tmp_path)
     assert status.installed is False
-    assert status.target_path == (tmp_path / "Library" / "LaunchAgents" / "net.autogpt.shim.plist")
+    assert status.target_path == (tmp_path / "Library" / "LaunchAgents" / "co.agpt.shim.plist")
     assert status.enable_command and "launchctl load" in status.enable_command
 
 
@@ -486,8 +489,9 @@ def test_status_when_present_macos(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(
         install_mod, "resolve_shim_command", lambda: ("/usr/local/bin/autogpt-shim",)
     )
+    monkeypatch.setattr(install_mod, "_user_id", lambda: 501)
     with _patch_platform("darwin"):
-        install_mod.install_autostart(home=tmp_path)
+        install_mod.install_autostart(home=tmp_path, run=_nothing_loaded)
     status = install_mod.status_for("darwin", home=tmp_path)
     assert status.installed is True
 

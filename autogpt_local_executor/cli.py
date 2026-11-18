@@ -262,9 +262,11 @@ def _config_error_exit_code() -> int:
 
 
 def _print_launchagent_stopped(fix: str) -> None:
+    from .install import LAUNCHD_LABEL
+
     print(
         f"The LaunchAgent will not restart on its own. {fix}, then run "
-        "`launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`.",
+        f"`launchctl kickstart -k gui/$(id -u)/{LAUNCHD_LABEL}`.",
         file=sys.stderr,
         flush=True,
     )
@@ -398,12 +400,7 @@ async def _cmd_start(config) -> int:
             # The LaunchAgent's KeepAlive restarts any non-zero exit, so 77
             # would retry the rejected credentials every few seconds. Signing
             # in again is the fix, so stop here until the user has done it.
-            print(
-                "The LaunchAgent will not restart on its own. Run `autogpt-shim auth`, "
-                "then `launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`.",
-                file=sys.stderr,
-                flush=True,
-            )
+            _print_launchagent_stopped("Run `autogpt-shim auth`")
             return 0
         return 77
     except (KeyboardInterrupt, asyncio.CancelledError):

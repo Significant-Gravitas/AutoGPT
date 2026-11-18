@@ -199,7 +199,10 @@ def test_install_writes_no_task_when_the_account_cannot_be_read(home: Path, whoa
 @pytest.mark.parametrize("platform_name", ["darwin", "linux", "wsl2"])
 def test_only_the_windows_task_asks_for_the_account(home: Path, platform_name: str) -> None:
     def no_question(argv: Sequence[str], timeout: float) -> Any:
-        raise AssertionError(f"{platform_name} asked {argv}")
+        # macOS asks launchd one thing, of its own: whether a LaunchAgent is
+        # left under the earlier label (tests/test_launchd_label.py).
+        assert argv[0] == "launchctl" and platform_name == "darwin", f"{platform_name}: {argv}"
+        return _result(113, "Could not find service\n")
 
     status = install_mod.install_autostart(home=home, platform_name=platform_name, run=no_question)
 

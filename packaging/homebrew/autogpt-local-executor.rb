@@ -63,10 +63,12 @@ class AutogptLocalExecutor < Formula
 
       One-time setup:
         autogpt-shim auth
-        autogpt-shim install     # register the launchd LaunchAgent
-        launchctl load ~/Library/LaunchAgents/net.autogpt.shim.plist
+        autogpt-shim install
 
-      Stop the service and remove the autostart entry with:
+      `install` writes the LaunchAgent and prints the command that loads it.
+      Run the command it prints: it starts the shim now and at each login.
+
+      `uninstall` stops the service, unloads it and removes the LaunchAgent:
         autogpt-shim uninstall
     EOS
   end

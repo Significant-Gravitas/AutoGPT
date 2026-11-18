@@ -437,7 +437,7 @@ With computer use on, the daemon checks before it connects that a usable
 cua-driver is installed. If not, the failure is permanent: the shim exits 78,
 which the systemd unit doesn't restart, and under the LaunchAgent it exits 0
 so launchd doesn't restart it either. Once the driver is installed, restart
-the service (`launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`, or
+the service (`launchctl kickstart -k gui/$(id -u)/co.agpt.shim`, or
 `systemctl --user restart autogpt-shim`). The look for the driver gets 5
 seconds (a chat's session, 2): a folder on PATH, or one Python imports from,
 on a mount that isn't answering holds it, and the shim wouldn't connect at

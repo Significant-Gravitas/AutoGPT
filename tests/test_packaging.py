@@ -118,20 +118,62 @@ def _package_files() -> list[Path]:
     return files
 
 
+# The one line that may spell that domain, back to front as a launchd label
+# is written: the LaunchAgent's earlier label, kept so that `install` and
+# `uninstall` can find a service left under it and remove it.
+_FORMER_LABEL_FILE = "autogpt_local_executor/install.py"
+_FORMER_LABEL_LINE = b"FORMER_LAUNCHD_LABEL = " + b'"net.' + b'autogpt.shim"'
+
+
+def _names_the_other_domain(path: Path, line: bytes) -> bool:
+    """Whether `line` of `path` names the domain that isn't the project's,
+    either way round, in any letter case."""
+    lowered = line.lower()
+    if b"autogpt" + b".net" in lowered:
+        return True
+    if b"net." + b"autogpt" not in lowered:
+        return False
+    return (path.relative_to(ROOT).as_posix(), line.strip()) != (
+        _FORMER_LABEL_FILE,
+        _FORMER_LABEL_LINE,
+    )
+
+
+def test_the_check_for_the_other_domain_sees_it_either_way_round() -> None:
+    """A launchd label is a domain's name back to front, which the check
+    didn't look for: the LaunchAgent's label named that domain until it
+    became co.agpt.shim."""
+    docs = ROOT / "docs" / "CROSS_PLATFORM.md"
+    install = ROOT / _FORMER_LABEL_FILE
+    label = b"net." + b"autogpt.shim"
+
+    assert _names_the_other_domain(docs, b"https://backend." + b"autogpt" + b".net/api")
+    assert _names_the_other_domain(docs, b"`launchctl kickstart -k gui/501/" + label + b"`")
+    assert _names_the_other_domain(docs, b"~/Library/LaunchAgents/NET." + b"AutoGPT.shim.plist")
+    assert not _names_the_other_domain(docs, b"`launchctl kickstart -k gui/501/co.agpt.shim`")
+    # Only the line that keeps the earlier label, and only as it stands.
+    assert not _names_the_other_domain(install, b"    " + _FORMER_LABEL_LINE)
+    assert _names_the_other_domain(install, b'LAUNCHD_LABEL = "' + label + b'"')
+    assert _names_the_other_domain(docs, _FORMER_LABEL_LINE)
+    assert _FORMER_LABEL_LINE.decode() in install.read_text(encoding="utf-8").splitlines()
+
+
 def test_nothing_names_a_host_the_project_does_not_run() -> None:
     """The default platform, the docs' endpoints and the security contact
     named a domain that isn't the project's: a sign-in with no
     --platform-url went to whoever holds it. The hosted platform is
     backend.agpt.co and platform.agpt.co; nothing here may name the other
-    domain again, in any letter case."""
+    domain again, in any letter case, or back to front as a launchd label
+    names one."""
     not_ours = b"autogpt" + b".net"
     files = _package_files()
     named = [
         f"{path.relative_to(ROOT).as_posix()}:{number}"
         for path in files
         for number, line in enumerate(path.read_bytes().splitlines(), start=1)
-        if not_ours in line.lower()
+        if _names_the_other_domain(path, line)
     ]
+    assert not_ours not in _FORMER_LABEL_LINE
 
     # The walk reaches the code, the docs and the packaging.
     reached = {path.relative_to(ROOT).as_posix() for path in files}

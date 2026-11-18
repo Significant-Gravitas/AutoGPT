@@ -2,7 +2,7 @@
 Install / uninstall the autostart entry for the shim daemon.
 
 Per docs/CROSS_PLATFORM.md "Autostart / background daemon" row:
-- macOS  : ~/Library/LaunchAgents/net.autogpt.shim.plist  (launchd LaunchAgent)
+- macOS  : ~/Library/LaunchAgents/co.agpt.shim.plist  (launchd LaunchAgent)
 - Linux  : ~/.config/systemd/user/autogpt-shim.service    (systemd user unit)
 - Windows: %LOCALAPPDATA%\\autogpt-local-executor\\autogpt-shim.xml
            (Task Scheduler XML; registered via `schtasks /Create /XML ...`)
@@ -13,7 +13,8 @@ Per docs/CROSS_PLATFORM.md "Autostart / background daemon" row:
 the OS service manager (launchctl, systemctl, schtasks): starting the shim at
 every login stays the person's own step. `uninstall` does run the service
 manager: it stops the service and unregisters it, and only then removes the
-file (`uninstall_autostart`).
+file (`uninstall_autostart`). On macOS both also remove a service left under
+the label the LaunchAgent had before (`_forget_former_launchagent`).
 
 Each entry is one account's own: the LaunchAgent and the systemd unit are in
 the account's home folder, and the Windows task names the account that ran
@@ -33,7 +34,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from xml.sax.saxutils import escape as _xml_escape
 
@@ -43,7 +44,8 @@ from .supervise import SUPERVISE_OPTION
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
-LAUNCHD_LABEL = "net.autogpt.shim"
+# A launchd label is the reversed name of a domain its author owns: agpt.co.
+LAUNCHD_LABEL = "co.agpt.shim"
 SYSTEMD_UNIT_NAME = "autogpt-shim.service"
 TASKSCHED_TASK_NAME = r"\AutoGPT\Shim"
 # What stops the service, unregisters it and removes its autostart entry, on
@@ -101,6 +103,7 @@ _SYSTEMD_PLAIN = re.compile(r"[\w@+=:,./-]+")
 
 def _launchd_values(ctx: AutostartContext) -> dict[str, str]:
     return {
+        "label": _xml_escape(LAUNCHD_LABEL),
         "program_arguments": "\n".join(
             f"        <string>{_xml_escape(arg)}</string>" for arg in ctx.start_argv
         ),
@@ -467,10 +470,20 @@ def install_autostart(
     user_id = _windows_account_sid(run or run_command) if plat == "windows" else None
     ctx = build_context(config_path, global_args=global_args, user_id=user_id)
     target = target_path_for(plat, home)
+    former_notes: tuple[str, ...] = ()
+    if plat == "darwin":
+        former_notes, stuck = _forget_former_launchagent(home, run or run_command)
+        if stuck is not None:
+            former_notes += (
+                f"A service under this one's earlier label may still be running: {stuck.problem}. "
+                "Stop it before you load this one, or two shims start for this computer: "
+                f"{stuck.stop_command}",
+            )
     # Ensure parent log dirs exist; templates reference them.
     Path(ctx.stdout_log).parent.mkdir(parents=True, exist_ok=True)
     writer(ctx, target)
-    return status_for(plat, home)
+    status = status_for(plat, home)
+    return replace(status, notes=status.notes + former_notes)
 
 
 # ── Stopping the service ─────────────────────────────────────────────────────
@@ -825,6 +838,49 @@ def _forget_systemd_unit(
     )
 
 
+# ── The LaunchAgent's earlier label ──────────────────────────────────────────
+# REMOVE this section, the lines that call it in install_autostart and
+# uninstall_autostart, and the tests of it in tests/test_launchd_label.py,
+# once no Mac has a service under the earlier label.
+
+# The label the LaunchAgent had before it was named for a domain the project
+# owns. This line is the one place the package spells it
+# (tests/test_packaging.py).
+FORMER_LAUNCHD_LABEL = "net.autogpt.shim"
+
+
+def _forget_former_launchagent(
+    home: Path | None, run: CommandRunner
+) -> tuple[tuple[str, ...], ServiceStop | None]:
+    """Stop, unload and remove a LaunchAgent left under the earlier label.
+
+    Left alone it would start a second shim for the same computer at every
+    login, beside the one under LAUNCHD_LABEL, and the platform lets one
+    connection per computer stand.
+
+    Returns what to tell the person, which is nothing when there was no
+    such service, and the stop that failed when one may still be running:
+    a loaded one that didn't unload, or an entry whose service launchd
+    couldn't be asked about."""
+    plist = (home or Path.home()) / "Library" / "LaunchAgents" / f"{FORMER_LAUNCHD_LABEL}.plist"
+    entry_installed = plist.is_file()
+    service = _stop_launchd(run, label=FORMER_LAUNCHD_LABEL, uid=_user_id())
+    notes: list[str] = []
+    if service.found and service.problem is None:
+        notes.append(f"A service under this one's earlier label was loaded. {service.said}")
+    if entry_installed:
+        try:
+            plist.unlink()
+        except OSError as exc:
+            notes.append(f"The earlier autostart entry {plist} could not be removed: {exc}")
+        else:
+            notes.append(f"Removed the earlier autostart entry: {plist}")
+    may_still_run = service.problem is not None and (
+        service.found or (service.found is None and entry_installed)
+    )
+    return tuple(notes), service if may_still_run else None
+
+
 @dataclass(frozen=True)
 class Uninstalled:
     """What `uninstall_autostart` found and did."""
@@ -882,6 +938,18 @@ def uninstall_autostart(
     notes: tuple[str, ...] = ()
     if plat in ("linux", "wsl2"):
         notes = _forget_systemd_unit(target, service, installed and entry_problem is None, run)
+    if plat == "darwin":
+        notes, stuck = _forget_former_launchagent(home, run)
+        if stuck is not None and service.problem is None:
+            # The exit status and the command to stop it by hand are the
+            # earlier service's, and what went through is still said.
+            notes += (service.said,)
+            service = stuck
+        elif stuck is not None:
+            notes += (
+                f"A service under this one's earlier label may still be running too: "
+                f"{stuck.problem}. Stop it with: {stuck.stop_command}",
+            )
     return Uninstalled(
         status=status_for(plat, home),
         entry_installed=installed,
@@ -892,6 +960,8 @@ def uninstall_autostart(
 
 
 __all__ = [
+    "FORMER_LAUNCHD_LABEL",
+    "LAUNCHD_LABEL",
     "AutostartContext",
     "AutostartError",
     "AutostartStatus",
