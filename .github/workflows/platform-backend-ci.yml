@@ -694,13 +694,11 @@ jobs:
           override_pr: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || '' }}
           files: ./autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
 
+      # The warning step checks for this file every 5 s and ends, so the job,
+      # which waits for its background steps, doesn't wait out the 28 minutes.
       - name: Stop the time-limit warning
         if: ${{ always() }}
         run: touch "$RUNNER_TEMP/backend-test-job-done"
-
-      - name: Wait for the time-limit warning
-        if: ${{ always() }}
-        wait: time-limit-warning
 
     env:
       CI: true
