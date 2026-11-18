@@ -181,6 +181,31 @@ async def test_sentry_gets_no_credentials_from_request_urls(
     }
 
 
+async def test_serve_cancels_a_server_whose_startup_never_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """uvicorn reads ``should_exit`` only once it has started, so a server
+    stuck starting up is cancelled on the way out, not awaited forever."""
+    stalled = asyncio.Event()
+
+    async def startup(self: uvicorn.Server, sockets: object = None) -> None:
+        stalled.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(uvicorn.Server, "startup", startup)
+
+    async def enter() -> None:
+        async with serve(ws_api.WebsocketServer(), monkeypatch):
+            pass
+
+    entering = asyncio.create_task(enter())
+    await stalled.wait()
+    entering.cancel()
+    # Far longer than the cleanup takes; only a cleanup that hangs reaches it.
+    done, _ = await asyncio.wait({entering}, timeout=30)
+    assert entering in done and entering.cancelled()
+
+
 @asynccontextmanager
 async def serve(
     process: AppProcess, monkeypatch: pytest.MonkeyPatch
@@ -212,8 +237,14 @@ async def serve(
         port = server.servers[0].sockets[0].getsockname()[1]
         yield f"127.0.0.1:{port}"
     finally:
-        server.should_exit = True
-        await serving
+        if server.started:
+            server.should_exit = True
+        else:
+            # uvicorn reads should_exit only once it has started.
+            serving.cancel()
+        await asyncio.wait({serving})
+        if not serving.cancelled():
+            serving.result()
 
 
 @asynccontextmanager

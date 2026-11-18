@@ -25,13 +25,14 @@ REDACTED = "[REDACTED]"
 # them, so it alone is kept, and so is a route's template, such as
 # {share_token}, which names a credential without being one; /chats is matched
 # possessively, so a template after it doesn't make "chats" the credential.
-# Telegram's segment is "bot" and the token. The match is zero-width so that
+# Telegram's segment is "bot" and the token, under its host in any case and
+# with or without its default port. The match is zero-width so that
 # overlapping prefixes, which a crafted path or Host header can stack, are all
 # found.
 _CREDENTIAL_PATH_SEGMENT = re.compile(
     r"(?=(?:/api/(?:integrations/(?:[^/?\s]+/)?webhooks|platform-linking/(?:user-)?tokens"
     r"|public/shared(?:/chats)?+|invitations(?!/pending(?:[/?\s\"']|$)))/"
-    r"|api\.telegram\.org/(?:file/)?bot)"
+    r"|(?i:api\.telegram\.org)(?::443)?/(?:file/)?bot)"
     r"(?!\{\w+\}(?:[/?\s\"']|$))([^/?\s]+))"
 )
 # A query in a longer message starts at a "?" right after a path: from a "/",
@@ -42,12 +43,13 @@ _CREDENTIAL_PATH_SEGMENT = re.compile(
 # even a raw # in the query.
 _QUERY_IN_TEXT = re.compile(r"(/[\w\-.~%!$&*+,;=:@/]*)\?(\S+)")
 _QUERY_VALUE = re.compile(r"=[^&]*")
-# The user and password in a URL's authority. They end at the authority's "@",
-# before any "/", "?" or "#", so an "@" in a path or query isn't taken for one.
-_USERINFO = re.compile(r"(?<=://)[^/?#\s@]+@")
+# The user and password in a URL's authority. They end at its last "@", as a
+# URL parser reads a password that holds one, and the authority ends before any
+# "/", "?" or "#", so an "@" in a path or query isn't taken for one.
+_USERINFO = re.compile(r"(?<=://)[^/?#\s]+@")
 # Every URL redact_urls_in_text masks holds one of these, so a string without
 # any is left as it is: Sentry's scrubber runs it on every string of an event.
-_MENTIONS_URL = re.compile(r"\?|/api/|api\.telegram\.org/|://[^/?#\s@]*@")
+_MENTIONS_URL = re.compile(r"\?|/api/|(?i:api\.telegram\.org)(?::443)?/|://[^/?#\s@]*@")
 # A query parameter's name, wherever a "?" or "&" starts one: a "?" in a value,
 # or in the Host header Sentry builds a URL from, starts another as a server
 # would read it.

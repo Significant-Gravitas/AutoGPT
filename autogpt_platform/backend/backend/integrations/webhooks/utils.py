@@ -1,11 +1,12 @@
 import logging
+import re
 from typing import TYPE_CHECKING, Optional, cast
 
 from pydantic import JsonValue
 
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.settings import Config
-from backend.util.url_redaction import mask_credential
+from backend.util.url_redaction import mask_credential, redact_urls_in_text
 
 from . import get_webhook_manager, supports_webhooks
 
@@ -21,6 +22,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 app_config = Config()
 credentials_manager = IntegrationCredentialsManager()
+# An event type as providers name them (push, order.SHIPPED,
+# customer.subscription.updated), or a channel's wildcard: at most 64 word
+# characters, dots, colons, slashes, dashes and stars.
+_EVENT_TYPE_SHAPE = re.compile(r"[\w.:/*-]{1,64}")
+
+
+def loggable_event_type(event_type: str) -> str:
+    """An event type as the logs show it. Most come from the delivery, such as
+    a Slant3D order's status, so text not shaped like an event type is shown as
+    ``[unlisted]``; the event and its trigger matching keep the type itself."""
+    return event_type if _EVENT_TYPE_SHAPE.fullmatch(event_type) else "[unlisted]"
 
 
 # TODO: add test to assert this matches the actual API route
@@ -104,7 +116,8 @@ async def setup_webhook_for_block(
                 f"Cannot auto-setup {provider.value} webhook without resource: "
                 f"missing input for '{missing_key}'"
             )
-        logger.debug("Constructed resource string %s", resource)
+        # A resource is built from the trigger's inputs, such as a repo URL.
+        logger.debug("Constructed resource string %s", redact_urls_in_text(resource))
 
         creds_field_name = next(
             # presence of this field is enforced in Block.__init__

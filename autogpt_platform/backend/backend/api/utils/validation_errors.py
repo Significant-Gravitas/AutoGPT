@@ -6,6 +6,7 @@ line; ``backend/util/architecture_validation_errors_test.py`` enforces that.
 """
 
 import functools
+import itertools
 import sys
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
@@ -42,12 +43,21 @@ def loggable_validation_errors(
 ) -> list[dict[str, Any]]:
     """``bounded_validation_errors`` for a log line, which the caller's own data
     stays out of. A location part that no loaded pydantic model declares, such
-    as a mapping's key, is ``*``, and text of the refused value that a message
-    quotes, such as a union's rejected tag, is masked; field names, indices and
-    the reasons are kept."""
+    as a mapping's key, is ``*``, and so is a key a model refused as extra,
+    whatever another model calls its fields; text of the refused value that a
+    message quotes, such as a union's rejected tag, is masked. Field names,
+    indices and the reasons are kept."""
     names = _declared_names(len(sys.modules))
+    errors = [
+        (
+            {**error, "loc": (*error.get("loc", ())[:-1], "*")}
+            if error.get("type") == "extra_forbidden"
+            else error
+        )
+        for error in exc.errors()
+    ]
     return _bounded(
-        exc.errors(),
+        errors,
         lambda part: part if isinstance(part, int) or part in names else "*",
         _message_without_input,
     )
@@ -102,18 +112,24 @@ def _texts_in(value: Any) -> set[str]:
     read breadth-first and no further than ``_MAX_INPUT_NODES`` values."""
     found: set[str] = set()
     pending: deque[Any] = deque([value])
-    for _ in range(_MAX_INPUT_NODES):
-        if not pending:
-            break
+    # Children are queued only while the budget has room, so a large refused
+    # mapping costs no more than the values it is read for.
+    room = _MAX_INPUT_NODES - 1
+    while pending:
         item = pending.popleft()
         if isinstance(item, str):
             if len(item) >= _MIN_MASKED_INPUT:
                 found.add(item)
-        elif isinstance(item, Mapping):
-            pending.extend(item.keys())
-            pending.extend(item.values())
+            continue
+        if isinstance(item, Mapping):
+            children = itertools.chain.from_iterable(item.items())
         elif isinstance(item, (list, tuple)):
-            pending.extend(item)
+            children = iter(item)
+        else:
+            continue
+        taken = list(itertools.islice(children, room))
+        room -= len(taken)
+        pending.extend(taken)
     return found
 
 

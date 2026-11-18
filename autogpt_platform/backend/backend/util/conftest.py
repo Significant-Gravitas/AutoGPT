@@ -38,8 +38,10 @@ def service_output(
     """Everything a service process writes to stdout and stderr at
     ``log_level``. ``cloud`` is the structured JSON Cloud Logging collects."""
     monkeypatch.setenv("LOG_LEVEL", log_level)
-    # Read by the configuration itself as well, so each case gets its format.
+    # Read by the configuration itself as well, so each case gets its format,
+    # and only the console's: a log file's handler would write here too.
     monkeypatch.setenv("ENABLE_CLOUD_LOGGING", str(request.param).lower())
+    monkeypatch.setenv("ENABLE_FILE_LOGGING", "false")
     monkeypatch.setattr(
         service_logging, "is_structured_logging_enabled", lambda: request.param
     )

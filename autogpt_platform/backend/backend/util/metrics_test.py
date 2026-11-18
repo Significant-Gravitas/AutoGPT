@@ -34,6 +34,7 @@ from backend.util.metrics import (
     _before_send,
 )
 from backend.util.settings import AppEnvironment, BehaveAs, Config
+from backend.util.url_redaction import REDACTED
 
 
 def _log_event(logger: str, message: str) -> dict:
@@ -296,7 +297,27 @@ def test_before_send_keeps_a_repr_whose_secret_fields_are_unset(unset: str) -> N
 
 
 @pytest.mark.parametrize(
-    "message", ["password=None.", "secret=None-example", "password=null-abc123"]
+    "message",
+    ['{"password": null, "name": "x"}', "Login(password=None, name='x')"],
+)
+def test_before_send_keeps_a_secret_left_unset_before_the_next_field(
+    message: str,
+) -> None:
+    scrubbed = _before_send(_log_event("backend.api.rest_api", message), {})
+    assert scrubbed is not None
+    assert scrubbed["logentry"]["formatted"] == message
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "password=None.",
+        "secret=None-example",
+        "password=null-abc123",
+        # In free text a comma can be part of the value.
+        "password=None,hunter22",
+        "login failed: password=None, hunter22 rejected",
+    ],
 )
 def test_before_send_filters_a_secret_that_only_starts_like_an_unset_one(
     message: str,
@@ -402,11 +423,22 @@ def test_before_send_transaction_keeps_every_span_id_past_its_budget() -> None:
     ]
     # A name that leaves less of the budget than one span ID would take.
     name = "x" * (metrics._SENTRY_SCRUB_BUDGET - len("transaction") - 8)
-    event = {"type": "transaction", "transaction": name, "spans": spans}
+    event_id = "c" * 32
+    event = {
+        "type": "transaction",
+        "transaction": name,
+        # The event's own, after the name: read once the budget is spent.
+        "event_id": event_id,
+        "start_timestamp": started,
+        "timestamp": started,
+        "spans": spans,
+    }
 
     scrubbed = metrics._before_send_transaction(event, {})
 
     assert scrubbed["transaction"] == name
+    assert scrubbed["event_id"] == event_id
+    assert scrubbed["start_timestamp"] == scrubbed["timestamp"] == started
     assert [span["span_id"] for span in scrubbed["spans"]] == ids
     assert {span["parent_span_id"] for span in scrubbed["spans"]} == {"b" * 16}
     assert {span["start_timestamp"] for span in scrubbed["spans"]} == {started}
@@ -686,6 +718,55 @@ def test_a_large_frame_local_reaches_the_event_truncated(monkeypatch) -> None:
 
     raising_frame = event["exception"]["values"][0]["stacktrace"]["frames"][-1]
     assert len(raising_frame["vars"]["content"]) < 2_000
+
+
+def test_a_long_local_is_masked_in_one_window_however_its_credentials_repeat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A credential repeated through a long value shortens it wherever it is
+    masked, and the longest kept credential sets how far a cut one can reach.
+    One window of the value is read all the same: the head is shorter instead."""
+    longest = "L0ng-" * 80
+    repeated = "r3peated-Credential-0123456789"
+    monkeypatch.setattr(metrics, "request_credentials", lambda: (longest, repeated))
+    read: list[int] = []
+    mask_known = metrics._mask_known
+
+    def counted(text: str, credentials: tuple[str, ...]) -> str:
+        read.append(len(text))
+        return mask_known(text, credentials)
+
+    monkeypatch.setattr(metrics, "_mask_known", counted)
+
+    for value in (repeated * 100_000, (repeated * 100_000).encode()):
+        preview = metrics._bounded_repr(value)
+        assert preview is not None and f"{len(value):,} long" in preview
+        assert repeated[:8] not in preview and REDACTED in preview
+    assert read == [metrics._MAX_LOCAL_REPR + 2 * len(longest)] * 2
+
+
+@pytest.mark.parametrize("inside", range(8, 31, 5))
+def test_a_local_cut_inside_a_credential_keeps_none_of_it(
+    monkeypatch: pytest.MonkeyPatch, inside: int
+) -> None:
+    """The credentials masked before it shorten the window, which can bring
+    one that the window cuts, `inside` characters in, into the head."""
+    credential = "cUt-Credential-0123456789abcdef"
+    monkeypatch.setattr(metrics, "request_credentials", lambda: (credential,))
+    window = metrics._MAX_LOCAL_REPR + 2 * len(credential)
+    before = credential * 20
+    filler = "x" * (window - len(before) - inside)
+    value = before + filler + credential + "y" * 5_000
+
+    preview = metrics._bounded_repr(value)
+
+    assert preview is not None and f"{REDACTED}x" in preview
+    assert not any(credential[i : i + 8] in preview for i in range(len(credential) - 7))
+
+
+def test_a_long_bytearray_local_keeps_its_type() -> None:
+    preview = metrics._bounded_repr(bytearray(b"z" * 5_000))
+    assert preview is not None and preview.startswith("bytearray(b'zzz")
 
 
 def test_both_event_bounds_hold_through_one_trip_to_before_send(monkeypatch) -> None:

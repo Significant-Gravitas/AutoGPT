@@ -16,8 +16,11 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from backend.util.url_redaction import credentials_in_headers, credentials_in_url
 
-# Each is searched for in every string of an event, so their number is capped.
+# Each is searched for in every string of an event, so their number is capped,
+# and so is their length: no credential the app issues comes near it, and a
+# frame variable is read as far as twice the longest (metrics._masked_head).
 MAX_REQUEST_CREDENTIALS = 16
+MAX_CREDENTIAL_LENGTH = 4096
 
 _request_credentials: ContextVar[tuple[str, ...]] = ContextVar(
     "request_credentials", default=()
@@ -35,14 +38,23 @@ def request_credentials() -> tuple[str, ...]:
 
 
 def select_credentials(*groups: set[str]) -> tuple[str, ...]:
-    """At most ``MAX_REQUEST_CREDENTIALS``, taken from ``groups`` in order, so
-    that values of a later group, such as a URL's, never crowd out an earlier
-    one's, such as the headers'. Returned longest first, so that one holding
-    another is masked whole."""
+    """At most ``MAX_REQUEST_CREDENTIALS``, none longer than
+    ``MAX_CREDENTIAL_LENGTH``, taken from ``groups`` in order, so that values of
+    a later group, such as a URL's, never crowd out an earlier one's, such as
+    the headers'. Returned longest first, so that one holding another is masked
+    whole."""
     chosen: list[str] = []
     for group in groups:
         room = MAX_REQUEST_CREDENTIALS - len(chosen)
-        fresh = sorted(group.difference(chosen), key=len, reverse=True)
+        fresh = sorted(
+            (
+                value
+                for value in group.difference(chosen)
+                if len(value) <= MAX_CREDENTIAL_LENGTH
+            ),
+            key=len,
+            reverse=True,
+        )
         chosen += fresh[:room]
     return tuple(sorted(chosen, key=len, reverse=True))
 

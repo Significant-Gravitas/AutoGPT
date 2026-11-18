@@ -24,7 +24,7 @@ import sentry_sdk
 from fastapi import FastAPI, Request
 from prisma.errors import ClientNotConnectedError
 from prisma.models import AgentGraphExecution, IntegrationWebhook
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from websockets.asyncio.client import connect
 
 from backend.api import rest_api, ws_api
@@ -37,16 +37,24 @@ from backend.blocks.generic_webhook._webhook import (
     GenericWebhookType,
 )
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
+from backend.blocks.github.triggers import GithubPullRequestTriggerBlock
 from backend.data import integrations as integrations_db
 from backend.data import redis_client
 from backend.data.model import APIKeyCredentials
 from backend.integrations.webhooks import _base as webhooks_base
 from backend.integrations.webhooks import utils as webhooks_utils
 from backend.integrations.webhooks.github import GithubWebhooksManager
-from backend.integrations.webhooks.utils import setup_webhook_for_block
+from backend.integrations.webhooks.utils import (
+    loggable_event_type,
+    setup_webhook_for_block,
+)
 from backend.util import metrics
 from backend.util.logging_test_helpers import CapturingTransport
-from backend.util.request_credentials import RequestCredentialsMiddleware
+from backend.util.request_credentials import (
+    MAX_CREDENTIAL_LENGTH,
+    RequestCredentialsMiddleware,
+    select_credentials,
+)
 from backend.util.request_url_logging_test import serve
 from backend.util.service import AppService
 from backend.util.url_redaction import REDACTED
@@ -84,6 +92,15 @@ class _Note(BaseModel):
 
 class Filed(BaseModel):
     item: Annotated[_Secret | _Note, Field(discriminator="type")]
+
+
+class Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str
+
+
+class LookupFailedLoudly(RuntimeError):
+    pass
 
 
 # --- 1. Frame locals ---------------------------------------------------------
@@ -178,6 +195,14 @@ async def test_a_credential_header_copied_into_any_variable_is_masked(
         assert variables[name].endswith(f"... ({len(long_body):,} long)")
         assert not _leaks(API_KEY, variables[name])
         assert f"key: {REDACTED}" in variables[name]
+
+
+def test_a_value_longer_than_any_credential_is_not_kept() -> None:
+    """Every kept credential is searched for in each string of an event, and
+    sets how far a long frame variable is read."""
+    too_long = "t" * (MAX_CREDENTIAL_LENGTH + 1)
+    longest = "l" * MAX_CREDENTIAL_LENGTH
+    assert select_credentials({too_long, API_KEY}, {longest}) == (longest, API_KEY)
 
 
 def test_every_service_app_keeps_its_requests_credentials() -> None:
@@ -326,6 +351,30 @@ async def test_a_rejected_tag_stays_out_of_the_log(service_output: io.StringIO) 
     assert "'loc': ['body', 'item']" in logs
 
 
+async def test_a_key_refused_as_extra_stays_out_of_the_log(
+    service_output: io.StringIO,
+) -> None:
+    """A key a model refuses is the client's own, even one that another model
+    declares as a field, as `Limits` does `per_key`."""
+    app = FastAPI()
+
+    @app.post("/strict")
+    async def strict(body: Strict) -> None:
+        return None
+
+    add_exception_handlers(app)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://backend"
+    ) as client:
+        response = await client.post("/strict", json={"name": "n", "per_key": 1})
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", "per_key"]
+
+    logs = service_output.getvalue()
+    assert "'loc': ['body', '*']" in logs
+    assert "per_key" not in logs
+
+
 # --- 3. Webhook logs ---------------------------------------------------------
 
 
@@ -347,15 +396,18 @@ async def test_webhook_ingress_logs_its_webhook_ids_only_by_prefix(
     monkeypatch.setattr(
         GithubWebhooksManager,
         "verify_signature",
-        AsyncMock(side_effect=RuntimeError("malformed signature")),
+        # The first delivery's signature is malformed, and the next one's good.
+        AsyncMock(side_effect=[RuntimeError("malformed signature"), None]),
     )
+
     # A delivery that gets through is published on a channel of its webhook's,
-    # which the event bus logs when Redis is down.
-    monkeypatch.setattr(
-        redis_client,
-        "get_redis_async",
-        AsyncMock(side_effect=ConnectionError("Redis is down")),
-    )
+    # which the event bus logs when Redis is down. Each attempt fails afresh, as
+    # a connection does: an exception raised again keeps the frames, and so the
+    # variables, of every request that raised it before.
+    async def redis_down() -> None:
+        raise ConnectionError("Redis is down")
+
+    monkeypatch.setattr(redis_client, "get_redis_async", redis_down)
     async with (
         serve(rest_api.AgentServer(), monkeypatch) as host,
         httpx.AsyncClient(base_url=f"http://{host}") as client,
@@ -368,20 +420,33 @@ async def test_webhook_ingress_logs_its_webhook_ids_only_by_prefix(
             f"/api/integrations/compass/webhooks/{COMPASS_WEBHOOK_ID}/ingress",
             json={"transcript": "hello"},
         )
+        # GitHub's event type ends with the delivery's action, whatever it says.
+        described = await client.post(
+            f"/api/integrations/github/webhooks/{WEBHOOK_ID}/ingress",
+            headers={"X-GitHub-Event": "issues"},
+            json={"action": "left at the door, code 4417"},
+        )
 
     logs = service_output.getvalue()
+    # Both failures reach Sentry, so what it is sent can be checked too.
+    for reported in (
+        f"Signature verification failed for webhook #{WEBHOOK_ID[:8]}... (github)",
+        f"Failed to publish event to Redis channel {COMPASS_WEBHOOK_ID[:8]}.../",
+    ):
+        assert reported in sentry.payload
     for credential in (UNKNOWN_WEBHOOK_ID, COMPASS_WEBHOOK_ID, WEBHOOK_ID):
         # Logs show a webhook's ID by its first 8 characters.
         assert not _leaks(credential[8:], logs)
         assert not _leaks(credential[8:], sentry.payload)
     assert not _leaks(SIGNING_SECRET, logs)
+    assert "left at the door" not in logs
     # A webhook registered for another provider reads as one that doesn't exist.
     assert [response.json() for response in rejected] == [
         {"detail": f"Webhook #{UNKNOWN_WEBHOOK_ID[:8]}... not found"},
         {"detail": f"Webhook #{COMPASS_WEBHOOK_ID[:8]}... not found"},
         {"detail": "Invalid webhook signature"},
     ]
-    assert delivered.status_code == 200
+    assert delivered.status_code == described.status_code == 200
     for line in (
         f"Received github webhook ingress for ID {WEBHOOK_ID[:8]}...",
         f"unknown webhook #{UNKNOWN_WEBHOOK_ID[:8]}...",
@@ -389,7 +454,10 @@ async def test_webhook_ingress_logs_its_webhook_ids_only_by_prefix(
         f"Webhook #{WEBHOOK_ID[:8]}...: {{'user_id': 'user-1', 'provider'",
         f"Signature verification failed for webhook #{WEBHOOK_ID[:8]}... (github)",
         f"Failed to publish event to Redis channel {COMPASS_WEBHOOK_ID[:8]}.../",
-        f"Published transcription event for webhook #{COMPASS_WEBHOOK_ID[:8]}...",
+        f"Publishing transcription event for webhook #{COMPASS_WEBHOOK_ID[:8]}...",
+        "Validated github repo [unlisted] event",
+        f"Publishing [unlisted] event for webhook #{WEBHOOK_ID[:8]}...",
+        f"Redis channel {WEBHOOK_ID[:8]}.../[unlisted]",
     ):
         assert line in logs
 
@@ -440,8 +508,21 @@ async def test_setting_up_a_webhook_logs_no_secret_or_ingress_credential(
         webhook.secret,
     )
 
+    # A resource is built from the trigger's inputs, such as a GitHub repo,
+    # which can be given as a URL with a token in it.
+    repo = f"https://x-access-token:{API_KEY}@github.com/owner/repo"
+    unset, reason = await setup_webhook_for_block(
+        "user-1",
+        GithubPullRequestTriggerBlock(),
+        {"repo": repo, "events": {"opened": True}},
+        for_graph_id="graph-1",
+    )
+    assert (
+        unset is None and reason == "Cannot set up github webhook without credentials"
+    )
+
     logs = service_output.getvalue()
-    for secret in (TRIGGER_SECRET, webhook.secret, webhook.id[8:]):
+    for secret in (TRIGGER_SECRET, webhook.secret, webhook.id[8:], API_KEY):
         assert not _leaks(secret, logs)
     for line in (
         "Setting up webhook for block #8fa8c167-2002-47ce-aba8-97572fc5d387 with "
@@ -449,6 +530,7 @@ async def test_setting_up_a_webhook_logs_no_secret_or_ingress_credential(
         f"Acquired webhook #{webhook.id[:8]}... (generic_webhook plain)",
         "Manual webhook registered with ingress URL: "
         + webhook.url.replace(webhook.id, REDACTED),
+        f"Constructed resource string https://{REDACTED}@github.com/owner/repo",
     ):
         assert line in logs
 
@@ -486,6 +568,30 @@ def test_the_event_bus_logs_an_events_size_not_the_event(
         "'loc': ['payload', 'event_type']",
     ):
         assert line in logs
+
+
+@pytest.mark.parametrize(
+    "event_type, shown",
+    [
+        ("push", "push"),
+        ("pull_request.opened", "pull_request.opened"),
+        ("order.SHIPPED", "order.SHIPPED"),
+        ("*", "*"),
+        ("order.left at the door, code 4417", "[unlisted]"),
+        ("order.x\nERROR a forged line", "[unlisted]"),
+        ("order." + "x" * 64, "[unlisted]"),
+    ],
+)
+def test_webhook_logs_show_an_event_type_only_if_shaped_like_one(
+    event_type: str, shown: str
+) -> None:
+    """Most event types come from the delivery, such as a Slant3D order's
+    status, and the logs show only those that read as one."""
+    assert loggable_event_type(event_type) == shown
+    channel = f"{WEBHOOK_ID}/{event_type}"
+    assert integrations_db.WebhookEventBus()._loggable_key(channel) == (
+        f"{WEBHOOK_ID[:8]}.../{shown}"
+    )
 
 
 async def test_a_wildcard_channel_names_its_webhook_only_by_prefix() -> None:
@@ -585,20 +691,32 @@ async def test_a_value_naming_the_event_is_not_taken_for_a_credential(
     """Any caller can send any value as a token; masking the event's own names
     with it would move their errors out of the alerts and issues they belong to."""
     environment = metrics._sentry_environment()
+    user_id = "user-7a2c9e41b3d5f608"
 
     async def lookup_that_fails_loudly(request: Request) -> None:
-        raise RuntimeError("No match")
+        sentry_sdk.set_user({"id": user_id})
+        sent = request.query_params["token"]
+        raise LookupFailedLoudly(f"No match for a {len(sent)}-character token")
 
     async with _behind_the_rest_middleware("/lookup", lookup_that_fails_loudly) as c:
         await c.get(
             "/lookup",
-            params={"token": environment, "key": "lookup_that_fails_loudly"},
+            params={
+                "token": environment,
+                "key": "lookup_that_fails_loudly",
+                "code": "LookupFailedLoudly",
+                "state": user_id,
+            },
             headers={"X-API-Key": API_KEY},
         )
 
     [error] = [event for event in sentry.events if event.get("exception")]
     assert error["environment"] == environment
-    assert "lookup_that_fails_loudly" in _frame_variables([error])
+    assert error["user"]["id"] == user_id
+    assert error["exception"]["values"][-1]["type"] == "LookupFailedLoudly"
+    variables = _frame_variables([error])
+    # Where else the value appears, it is masked as the credential it was sent as.
+    assert variables["lookup_that_fails_loudly"]["sent"] == f"'{REDACTED}'"
     # A credential the same request carries is still masked.
     assert not _leaks(API_KEY, sentry.payload)
 

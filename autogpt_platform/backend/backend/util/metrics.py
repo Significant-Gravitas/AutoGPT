@@ -168,9 +168,11 @@ _EMBEDDED_SECRET_ASSIGNMENT = re.compile(
     + "(?i:"
     + "|".join(name.replace("_", "[_-]?") for name in _SECRET_NAMES)
     + ")"
-    # An unset one, as a model's repr shows each of its fields, holds nothing:
-    # None, null or empty, and then the field ends.
-    + r"(?:\\?[\"']?)\s*[:=](?!\s*(?:None|null|''|\"\")\s*(?:[,)}\]]|$))"
+    # An unset one, as a model's repr or a JSON object shows each of its fields,
+    # holds nothing: None, null or empty, and then a closing bracket, the end,
+    # or the next field's name. Free text that only starts like one is kept.
+    + r"(?:\\?[\"']?)\s*[:=](?!\s*(?:None|null|''|\"\")\s*"
+    + r"(?:[)}\]]|$|,\s*(?:\w+\s*=|[\"'])))"
 )
 _TOKEN_SHAPED_VALUE = re.compile(
     r"(?i)(?:\b(?:bearer|basic)\s+[a-z0-9._~+/=-]{8,}|"
@@ -212,17 +214,15 @@ _SDK_FIELDS = frozenset(
 _SDK_FIELD_VALUE = re.compile(
     r"[0-9a-f]{16}|[0-9a-f]{32}|\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d)?"
 )
-# Fields that name the event itself rather than carry what it reports. A value
-# a request presents as a credential that is part of one isn't a credential.
-_EVENT_NAMES = (
-    "environment",
-    "release",
-    "dist",
-    "server_name",
-    "transaction",
-    "logger",
+# Fields that name the event itself rather than carry what it reports. They are
+# never masked for a value the request carried: a caller can present any value
+# as a credential, and masking one of these would move their errors out of the
+# alerts and issues they belong to. Everywhere else the value is still masked.
+_EVENT_NAMES = frozenset(
+    {"environment", "release", "dist", "server_name", "transaction", "logger"}
 )
-_CODE_LOCATION_NAMES = ("function", "module", "filename", "abs_path")
+_EXCEPTION_NAMES = frozenset({"type", "module"})
+_CODE_LOCATION_NAMES = frozenset({"function", "module", "filename", "abs_path"})
 
 
 class _Search(BaseModel):
@@ -233,6 +233,8 @@ class _Search(BaseModel):
     credentials: tuple[str, ...] = ()
     secret_shapes: bool = True
     sdk_records: frozenset[int] = frozenset()
+    # The mappings holding the event's names, by identity, and their name keys.
+    name_fields: dict[int, frozenset[str]] = {}
 
 
 def _scrub_sentry_event(event: dict, *, secret_shapes: bool = True) -> None:
@@ -255,16 +257,22 @@ def _scrub_sentry_event(event: dict, *, secret_shapes: bool = True) -> None:
     credentials in any URL the event quotes. ``secret_shapes=False`` skips the
     search for secret-shaped values, the costliest part.
     """
-    # Read from the request's URL before it is masked, and checked against the
-    # event's own names after.
-    candidates = _known_credentials(event)
+    # Read from the request's URL before it is masked.
+    credentials = _known_credentials(event)
     _redact_request_urls(event)
-    search = _Search(
-        credentials=_not_naming_the_event(candidates, event),
+    # Built from what was just read here, so there is nothing to validate.
+    search = _Search.model_construct(
+        credentials=credentials,
         secret_shapes=secret_shapes,
         sdk_records=_sdk_records(event),
+        name_fields=_name_fields(event),
     )
-    keys = [key for key in event if key not in ("_meta", "breadcrumbs")]
+    keys = [
+        key
+        for key in event
+        if key not in ("_meta", "breadcrumbs")
+        and not _is_sdk_field(search, event, key, event[key])
+    ]
     budget = _scrub_breadth_first(
         [(event, key) for key in keys], _SENTRY_SCRUB_BUDGET, search
     )
@@ -285,19 +293,13 @@ def _scrub_breadth_first(
         _mask_headers(key, value)
         if isinstance(value, dict):
             value, budget = _scrub_keys(parent, key, budget, search)
-            sdk_record = id(value) in search.sdk_records
             for nested_key, nested in value.items():
                 if (
                     isinstance(nested_key, str)
                     and nested_key.lower() in _SENTRY_SENSITIVE_KEYS
                 ):
                     value[nested_key] = _FILTERED_VALUE
-                elif not (
-                    sdk_record
-                    and nested_key in _SDK_FIELDS
-                    and isinstance(nested, str)
-                    and _SDK_FIELD_VALUE.fullmatch(nested)
-                ):
+                elif not _is_sdk_field(search, value, nested_key, nested):
                     queue.append((value, nested_key))
         elif isinstance(value, list):
             indices = range(len(value))
@@ -311,18 +313,22 @@ def _scrub_breadth_first(
                 parent[key] = _FILTERED_VALUE
                 continue
             budget -= len(value)
-            parent[key] = _scrub_text(value, search)
+            names_event = key in search.name_fields.get(id(parent), ())
+            parent[key] = _scrub_text(value, search, known=not names_event)
     return budget
 
 
-def _scrub_text(text: str, search: _Search) -> str:
-    """``text``, or ``[Filtered]`` if it holds a secret-shaped value, with each
-    known credential and the credentials in any URL in it masked."""
+def _scrub_text(text: str, search: _Search, known: bool = True) -> str:
+    """``text``, or ``[Filtered]`` if it holds a secret-shaped value, with the
+    request's credentials, unless not ``known``, and the credentials in any URL
+    in it masked."""
     if search.secret_shapes and (
         _EMBEDDED_SECRET_ASSIGNMENT.search(text) or _TOKEN_SHAPED_VALUE.search(text)
     ):
         return _FILTERED_VALUE
-    return redact_urls_in_text(_mask_known(text, search.credentials))
+    if known:
+        text = _mask_known(text, search.credentials)
+    return redact_urls_in_text(text)
 
 
 def _mask_known(text: str, credentials: tuple[str, ...]) -> str:
@@ -405,27 +411,27 @@ def _known_credentials(event: dict) -> tuple[str, ...]:
     return select_credentials(set(request_credentials()), reported)
 
 
-def _not_naming_the_event(credentials: tuple[str, ...], event: dict) -> tuple[str, ...]:
-    """``credentials`` less any that is part of a name the event goes by: its
-    environment, release, route or user, or its exceptions' types and code
-    locations. A caller can present any value as a credential, and masking one
-    of these would move their errors out of the alerts and issues they belong
-    to."""
-    if not credentials:
-        return credentials
-    names = [event.get(field) for field in _EVENT_NAMES]
+def _name_fields(event: dict) -> dict[int, frozenset[str]]:
+    """The mappings, by identity, whose fields name the event: the event itself,
+    its user, its exceptions (their types) and their frames (code locations)."""
+    fields: dict[int, frozenset[str]] = {id(event): _EVENT_NAMES}
     user = event.get("user")
     if isinstance(user, dict):
-        names.append(user.get("id"))
+        fields[id(user)] = frozenset({"id"})
     for exception in _listed(event.get("exception")):
-        names += [exception.get("type"), exception.get("module")]
+        fields[id(exception)] = _EXCEPTION_NAMES
         for frame in _listed(exception.get("stacktrace"), "frames"):
-            names += [frame.get(field) for field in _CODE_LOCATION_NAMES]
-    texts = [name for name in names if isinstance(name, str)]
-    return tuple(
-        credential
-        for credential in credentials
-        if not any(credential in text for text in texts)
+            fields[id(frame)] = _CODE_LOCATION_NAMES
+    return fields
+
+
+def _is_sdk_field(search: _Search, record: object, key: object, value: object) -> bool:
+    """Whether ``record[key]`` is one of the SDK's IDs or timestamps."""
+    return (
+        id(record) in search.sdk_records
+        and key in _SDK_FIELDS
+        and isinstance(value, str)
+        and _SDK_FIELD_VALUE.fullmatch(value) is not None
     )
 
 
@@ -723,25 +729,27 @@ def _bounded_repr(value: object) -> str | None:
         # Latin-1 maps each byte to one character and back, so the bytes are
         # kept as they were, the credentials apart.
         head = _masked_head(value, request_credentials()).encode("latin-1")
+        if isinstance(value, bytearray):
+            head = bytearray(head)
     else:
         return None
     return f"{head!r}... ({len(value):,} long)"
 
 
 def _masked_head(value: str | bytes | bytearray, credentials: tuple[str, ...]) -> str:
-    """The first ``_MAX_LOCAL_REPR`` characters of ``value``, bytes read as
-    Latin-1, with ``credentials`` masked, so none is cut in two and half of it
-    kept. Only as much of ``value`` is read as the masked head needs."""
-    # Longest first: a credential that starts in the head ends within this.
-    needed = _MAX_LOCAL_REPR + (len(credentials[0]) if credentials else 0)
-    end = needed
-    while True:
-        part = value[:end]
-        text = part if isinstance(part, str) else bytes(part).decode("latin-1")
-        head = _mask_known(text, credentials)
-        if len(head) >= needed or end >= len(value):
-            return head[:_MAX_LOCAL_REPR]
-        end += needed - len(head)
+    """At most the first ``_MAX_LOCAL_REPR`` characters of ``value``, bytes read
+    as Latin-1, with ``credentials`` masked, so none is cut in two and half of
+    it kept. One window is read, the head and twice the longest credential
+    (longest first), so the work is bounded however long ``value`` is and
+    however much masking shortens it; the head is shorter when it does."""
+    longest = len(credentials[0]) if credentials else 0
+    window = value[: _MAX_LOCAL_REPR + 2 * longest]
+    text = window if isinstance(window, str) else bytes(window).decode("latin-1")
+    head = _mask_known(text, credentials)
+    if longest and len(window) < len(value):
+        # A credential the window cuts is left in its last characters.
+        head = head[:-longest]
+    return head[:_MAX_LOCAL_REPR]
 
 
 def _running_under_pytest() -> bool:

@@ -1,4 +1,5 @@
 import ast
+from collections.abc import Iterator
 
 import pytest
 
@@ -9,18 +10,13 @@ from backend.util.architecture_test import BACKEND_ROOT, _iter_backend_py_files
 # ---------------------------------------------------------------------------
 #
 # Motivation: a webhook's ID is the credential in its ingress URL; whoever holds
-# it can post deliveries to it. Logs and error messages show it through
-# `mask_credential`, whose prefix still finds the record.
+# it can post deliveries to it. A logging call's or a raised exception's
+# arguments show it through `mask_credential`, whose prefix still finds the
+# record. Elsewhere, such as in the ingress URL or an event bus channel, the
+# ID itself is the point, so no file or function is exempt. The rule knows the
+# ID as `webhook_id`, `x.webhook_id` and `webhook.id`, however an argument
+# builds its text from it; another name for it is not recognised.
 
-# Where the ID itself is the point: the ingress URL and the event bus channels
-# hold it. Airtable's API names Airtable's own webhook IDs.
-_ALLOWED = frozenset(
-    {
-        "integrations/webhooks/utils.py",
-        "data/integrations.py",
-        "blocks/airtable/_api.py",
-    }
-)
 _LOG_METHODS = frozenset(
     {"debug", "info", "warning", "error", "exception", "critical", "log"}
 )
@@ -28,44 +24,56 @@ _LOG_METHODS = frozenset(
 
 def test_webhook_ids_are_logged_and_raised_only_masked():
     offenders = [
-        f"  backend/{rel}:{lineno}"
+        f"  backend/{py.relative_to(BACKEND_ROOT).as_posix()}:{lineno}"
         for py in _iter_backend_py_files()
         if not py.name.endswith("_test.py")
-        and (rel := py.relative_to(BACKEND_ROOT).as_posix()) not in _ALLOWED
         for lineno in _unmasked_webhook_ids(ast.parse(py.read_text(encoding="utf-8")))
     ]
 
     assert not offenders, (
-        "A webhook's ID is the credential in its ingress URL. Show it in a log "
+        "A webhook's ID is the credential in its ingress URL. Pass it to a log "
         "line or an error message as `mask_credential(webhook_id)` "
         "(backend.util.url_redaction):\n" + "\n".join(sorted(offenders))
     )
 
 
 def _unmasked_webhook_ids(tree: ast.Module) -> list[int]:
-    """Lines that put a webhook's ID, unmasked, into an f-string or a logging
-    call's arguments."""
-    found = [
-        part.lineno
-        for node in ast.walk(tree)
-        if isinstance(node, ast.JoinedStr)
-        for part in node.values
-        if isinstance(part, ast.FormattedValue) and _is_webhook_id(part.value)
-    ]
-    found += [
-        argument.lineno
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr in _LOG_METHODS
-        for argument in node.args
-        if _is_webhook_id(argument)
-    ]
+    """Lines where a logging call's or a raised exception's arguments carry a
+    webhook's ID unmasked, as an argument or inside an f-string."""
+    found: list[int] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in _LOG_METHODS
+        ):
+            call = node
+        elif isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call):
+            call = node.exc
+        else:
+            continue
+        arguments = [*call.args, *(keyword.value for keyword in call.keywords)]
+        found += [hit.lineno for argument in arguments for hit in _raw_ids(argument)]
     return found
 
 
+def _raw_ids(node: ast.AST) -> Iterator[ast.expr]:
+    """The webhook-ID expressions in `node`, outside any `mask_credential` call."""
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "mask_credential"
+    ):
+        return
+    if isinstance(node, ast.expr) and _is_webhook_id(node):
+        yield node
+        return
+    for child in ast.iter_child_nodes(node):
+        yield from _raw_ids(child)
+
+
 def _is_webhook_id(node: ast.expr) -> bool:
-    """`webhook_id`, `x.webhook_id` or `webhook.id`."""
+    """`webhook_id`, `x.webhook_id` or `webhook.id`, the names the backend uses."""
     if isinstance(node, ast.Name):
         return node.id == "webhook_id"
     if isinstance(node, ast.Attribute):
@@ -80,13 +88,39 @@ def _is_webhook_id(node: ast.expr) -> bool:
 @pytest.mark.parametrize(
     "source, flagged",
     [
-        ('log(f"Webhook #{webhook_id} not found")', True),
+        ('logger.info(f"Webhook #{webhook_id} not found")', True),
         ('raise NotFoundError(f"Webhook #{webhook.id} not found")', True),
+        ("raise ValueError(webhook_id)", True),
+        ('raise HTTPException(404, detail=f"#{webhook_id}")', True),
         ('logger.info("Pruned %s", event.webhook_id)', True),
-        ('log(f"Webhook #{mask_credential(webhook_id)} not found")', False),
+        ('logger.info("Webhook #%s" % webhook_id)', True),
+        ('logger.info("Webhook #" + webhook.id)', True),
+        ('logger.info("Webhook #{}".format(webhook_id))', True),
+        ('logger.info(f"Webhook #{mask_credential(webhook_id)} not found")', False),
         ('logger.info("Pruned %s", mask_credential(webhook.id))', False),
-        ('log(f"Provider webhook #{webhook.provider_webhook_id}")', False),
+        ("raise ValueError(mask_credential(webhook_id))", False),
+        ('logger.debug(f"Provider webhook #{webhook.provider_webhook_id}")', False),
+        # Where the ID itself is the point, such as the ingress URL.
+        ('return f"{base}/webhooks/{webhook_id}/ingress"', False),
+        ('channel = f"{webhook_id}/{event_type}"', False),
     ],
 )
 def test_the_webhook_id_scan_reads_each_form(source: str, flagged: bool):
     assert bool(_unmasked_webhook_ids(ast.parse(source))) is flagged
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "integrations/webhooks/utils.py",
+        "data/integrations.py",
+        "blocks/airtable/_api.py",
+    ],
+)
+def test_a_module_that_builds_with_a_webhook_id_is_still_scanned(module: str):
+    """The ingress URL, the event bus's channels and Airtable's own URLs are
+    built from a webhook's ID and pass; a log line beside them does not."""
+    source = (BACKEND_ROOT / module).read_text(encoding="utf-8")
+    assert not _unmasked_webhook_ids(ast.parse(source))
+    added = source + '\n\ndef added(webhook_id):\n    logger.info(f"#{webhook_id}")\n'
+    assert _unmasked_webhook_ids(ast.parse(added)) == [len(added.splitlines())]

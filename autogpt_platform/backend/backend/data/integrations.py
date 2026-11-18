@@ -18,7 +18,7 @@ from backend.data.includes import (
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
-from backend.integrations.webhooks.utils import webhook_ingress_url
+from backend.integrations.webhooks.utils import loggable_event_type, webhook_ingress_url
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
 from backend.util.url_redaction import mask_credential
@@ -419,7 +419,7 @@ class WebhookEventBus(AsyncRedisEventBus[WebhookEvent]):
         # A channel is named for its webhook, whose ID is the credential in its
         # ingress URL.
         webhook_id, _, event_type = channel_key.partition("/")
-        return f"{mask_credential(webhook_id)}/{event_type}"
+        return f"{mask_credential(webhook_id)}/{loggable_event_type(event_type)}"
 
 
 _webhook_event_bus = WebhookEventBus()

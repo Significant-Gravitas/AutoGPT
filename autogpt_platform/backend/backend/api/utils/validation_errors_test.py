@@ -2,6 +2,7 @@
 and the mounted apps that must answer through it."""
 
 import logging
+from collections.abc import Iterator, Mapping
 
 import fastapi
 import fastapi.testclient
@@ -13,10 +14,12 @@ from fastapi.exceptions import RequestValidationError
 from backend.api.external.v2.errors import add_v2_exception_handlers
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.api.utils.validation_errors import (
+    _MAX_INPUT_NODES,
     MAX_REPORTED_VALIDATION_ERRORS,
     MAX_VALIDATION_ERROR_CHARS,
     MAX_VALIDATION_ERROR_LOC_PARTS,
     bounded_validation_errors,
+    loggable_validation_errors,
 )
 
 OVER_CAP = "x" * (MAX_VALIDATION_ERROR_CHARS + 100)
@@ -52,6 +55,36 @@ def test_the_rejected_value_is_not_reported() -> None:
     assert [error["loc"] for error in reported] == [["ids"], ["name"]]
     assert all(set(error) == {"type", "loc", "msg"} for error in reported)
     assert OVER_CAP not in str(reported)
+
+
+class _CountedReads(Mapping[str, str]):
+    """A large mapping that counts how many of its keys were read."""
+
+    def __init__(self, size: int) -> None:
+        self.size = size
+        self.read = 0
+
+    def __getitem__(self, key: str) -> str:
+        return "a value as long as a credential"
+
+    def __len__(self) -> int:
+        return self.size
+
+    def __iter__(self) -> Iterator[str]:
+        for index in range(self.size):
+            self.read += 1
+            yield f"key-{index}"
+
+
+def test_a_large_refused_mapping_is_read_only_as_far_as_the_log_needs() -> None:
+    """A missing field's error keeps the whole mapping it was missing from."""
+    refused = _CountedReads(100_000)
+    error = pydantic.ValidationError.from_exception_data(
+        "_Ids", [{"type": "missing", "loc": ("ids",), "input": refused}]
+    )
+
+    assert loggable_validation_errors(error)[0]["loc"] == ["ids"]
+    assert refused.read <= _MAX_INPUT_NODES
 
 
 def test_a_list_field_reports_a_bounded_number_of_errors() -> None:

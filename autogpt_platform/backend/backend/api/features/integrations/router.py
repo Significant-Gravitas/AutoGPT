@@ -103,6 +103,7 @@ from backend.integrations.service_identity import (
     service_for_provider,
 )
 from backend.integrations.webhooks import get_webhook_manager, supports_webhooks
+from backend.integrations.webhooks.utils import loggable_event_type
 from backend.util import product_analytics
 from backend.util.exceptions import (
     ExpertRunPausedError,
@@ -1457,7 +1458,10 @@ async def webhook_ingress_generic(
     )
     # The payload is the provider's event data, so only its type is logged.
     logger.debug(
-        "Validated %s %s %s event", provider.value, webhook.webhook_type, event_type
+        "Validated %s %s %s event",
+        provider.value,
+        webhook.webhook_type,
+        loggable_event_type(event_type),
     )
 
     webhook_event = WebhookEvent(
@@ -1471,10 +1475,12 @@ async def webhook_ingress_generic(
     # the reward, so a retried delivery after a failed lookup repeats neither.
     if has_triggers and await is_user_paywalled(user_id):
         return
-    await publish_webhook_event(webhook_event)
     logger.debug(
-        "Published %s event for webhook #%s", event_type, mask_credential(webhook_id)
+        "Publishing %s event for webhook #%s",
+        loggable_event_type(event_type),
+        mask_credential(webhook_id),
     )
+    await publish_webhook_event(webhook_event)
 
     if not has_triggers:
         return
@@ -1542,7 +1548,10 @@ async def _execute_webhook_node_trigger(
     """Execute a webhook-triggered node."""
     logger.debug("Webhook-attached node: #%s", node.id)
     if not node.is_triggered_by_event_type(event_type):
-        logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
+        logger.debug(
+            f"Node #{node.id} doesn't trigger on event "
+            f"{loggable_event_type(event_type)}"
+        )
         return
     logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
     try:
@@ -1658,7 +1667,10 @@ async def _execute_webhook_preset_trigger(
     # The event filter lives in the trigger config, so check it against the
     # unwrapped mask rather than the full preset inputs.
     if not trigger_node.block.is_triggered_by_event_type(trigger_inputs, event_type):
-        logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
+        logger.debug(
+            f"Preset #{preset.id} doesn't trigger on event "
+            f"{loggable_event_type(event_type)}"
+        )
         return
     logger.debug(
         f"Executing preset #{preset.id} for webhook #{mask_credential(webhook.id)}"

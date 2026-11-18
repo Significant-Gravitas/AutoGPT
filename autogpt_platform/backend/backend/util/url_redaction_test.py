@@ -106,10 +106,24 @@ from backend.util.url_redaction import (
             "https://api.telegram.org/file/bot123:AA/photos/p.jpg",
             f"https://api.telegram.org/file/bot{REDACTED}/photos/p.jpg",
         ),
+        # Its host in any case, and with its default port.
+        (
+            "https://API.TELEGRAM.ORG/bot123:AA-b_c/getMe",
+            f"https://API.TELEGRAM.ORG/bot{REDACTED}/getMe",
+        ),
+        (
+            "https://api.telegram.org:443/bot123:AA-b_c/getMe",
+            f"https://api.telegram.org:443/bot{REDACTED}/getMe",
+        ),
         # A user and password in the authority, but not an @ in a path or query.
         (
             "https://bot:pa55w0rd@proxy.example:8080/v1/x",
             f"https://{REDACTED}@proxy.example:8080/v1/x",
+        ),
+        # A password can hold an @, so the authority's last one ends it.
+        (
+            "https://user:pass@word@example.com/path",
+            f"https://{REDACTED}@example.com/path",
         ),
         ("https://host/u/@me", "https://host/u/@me"),
         # A route's template names a credential without being one.
@@ -169,6 +183,14 @@ def test_redact_url(url: str, expected: str) -> None:
         (
             "POST https://api.telegram.org/bot123:AA-b_c/getMe",
             f"POST https://api.telegram.org/bot{REDACTED}/getMe",
+        ),
+        (
+            "POST https://Api.Telegram.Org:443/bot123:AA-b_c/getMe",
+            f"POST https://Api.Telegram.Org:443/bot{REDACTED}/getMe",
+        ),
+        (
+            "proxy https://user:pass@word@proxy.example:8080 refused",
+            f"proxy https://{REDACTED}@proxy.example:8080 refused",
         ),
         ("Did it work? Yes.", "Did it work? Yes."),
         # Code that only looks like a query, as a traceback's source lines and
@@ -358,9 +380,10 @@ def test_masking_stays_linear_in_a_url_stacked_with_prefixes() -> None:
     """A client can send a URL made of thousands of prefixes, and the filter
     masks it on the event loop; quadratic work took seconds here."""
     url = "/api/invitations/x" * 50_000
-    started = time.monotonic()
+    started = time.thread_time()
     assert redact_url(url) == f"/api/invitations/{REDACTED}" * 50_000
-    assert time.monotonic() - started < 2
+    # CPU time on this thread, so a runner that pauses the test doesn't count.
+    assert time.thread_time() - started < 2
 
 
 def test_reading_a_urls_credentials_stays_linear() -> None:
@@ -368,9 +391,10 @@ def test_reading_a_urls_credentials_stays_linear() -> None:
     to an "&" far behind. Read whole for each, the work grows with the square of
     the query: about 10 s and gigabytes of copies on this one."""
     url = "/x" + "?key=" * 50_000 + "&a=b" * 50_000
-    started = time.monotonic()
+    started = time.thread_time()
     assert credentials_in_url(url)
-    assert time.monotonic() - started < 2
+    # CPU time on this thread, so a runner that pauses the test doesn't count.
+    assert time.thread_time() - started < 2
 
 
 _PATH_PARAM = re.compile(r"{(\w+)(?::\w+)?}")
@@ -401,6 +425,7 @@ _CREDENTIAL_PATHS = [
     "/api/invitations/{}",
     "//api.telegram.org/bot{}/getMe",
     "//api.telegram.org/file/bot{}/photos/p.jpg",
+    "//API.Telegram.org:443/bot{}/getMe",
 ]
 
 
