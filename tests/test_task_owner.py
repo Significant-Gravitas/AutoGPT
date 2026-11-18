@@ -447,7 +447,10 @@ def test_real_task_scheduler_registers_the_task_for_the_account_that_installed_i
         for account in accounts:
             assert account.lower() in (sid.lower(), name.lower()), shown.stdout
         assert "<LogonTrigger>" in shown.stdout
-        assert "<RunLevel>LeastPrivilege</RunLevel>" in shown.stdout
+        assert "<LogonType>InteractiveToken</LogonType>" in shown.stdout
+        # Task Scheduler leaves out what is at its default, the run level
+        # among them: only a task that runs elevated has one written.
+        assert "HighestAvailable" not in shown.stdout
         # The supervising `start` is what it runs.
         assert "--supervise</Arguments>" in shown.stdout
 
