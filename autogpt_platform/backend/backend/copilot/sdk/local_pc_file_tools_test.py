@@ -440,8 +440,8 @@ class TestLocalPCEditsTakeTurns:
         assert stored["/Users/test/ws/notes.txt"] == b"1 2"
 
 
-# The lock map once kept this many files' locks, dropping the oldest for a new
-# file even while an edit held it or waited for it.
+# Edits of more files than this must not cost a file its lock while an edit
+# holds it or waits for it, as a map that keeps only its newest thousand would.
 _LOCKS_THE_MAP_KEPT = 1_000
 
 

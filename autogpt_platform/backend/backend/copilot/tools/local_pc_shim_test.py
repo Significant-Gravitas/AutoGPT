@@ -389,9 +389,9 @@ class TestShimConnectionManager:
         )
 
         with pytest.raises(RuntimeError, match="session revocation"):
-            # Only a guard against a hang. A tight one raced the 10 ms
-            # operation timer: after a pause past both, its TimeoutError
-            # replaced the revocation's error.
+            # Only a guard against a hang. It stays far above the 10 ms
+            # operation timer: were a pause to pass both, its TimeoutError
+            # would replace the revocation's error.
             await asyncio.wait_for(
                 manager.revoke_user_shims(
                     "user-1", "autogpt-local-executor", reason="user_revoked"
@@ -544,7 +544,9 @@ class TestShimConnectionManager:
             call = asyncio.create_task(manager.wait_for("slow-open", timeout=3600))
             try:
                 await open_started.wait()
-                (budget,) = budgets
+                # The tests share one event loop, so another task may have
+                # started a timeout of its own meanwhile: take the call's.
+                (budget,) = [started for delay, started in budgets if delay == 3600]
                 budget.reschedule(asyncio.get_running_loop().time())
                 with pytest.raises(TimeoutError, match="did not connect within"):
                     await call
@@ -617,15 +619,19 @@ def _hang_guard() -> asyncio.Timeout:
     return asyncio.timeout(30)
 
 
-def _budgets_started(monkeypatch: pytest.MonkeyPatch) -> list[asyncio.Timeout]:
-    """Every `asyncio.timeout` started from here on, each working as before,
-    so a test can run one out when it chooses rather than wait for it."""
-    started: list[asyncio.Timeout] = []
+def _budgets_started(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[tuple[float | None, asyncio.Timeout]]:
+    """Every `asyncio.timeout` started from here on, beside the delay it was
+    given. Each works as before; a test can run one out when it chooses
+    rather than wait for it."""
+    started: list[tuple[float | None, asyncio.Timeout]] = []
     start = asyncio.timeout
 
     def recorded(delay: float | None) -> asyncio.Timeout:
-        started.append(start(delay))
-        return started[-1]
+        budget = start(delay)
+        started.append((delay, budget))
+        return budget
 
     monkeypatch.setattr(asyncio, "timeout", recorded)
     return started
