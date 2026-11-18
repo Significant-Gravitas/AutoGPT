@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 SAFE_MODE_OFF_MESSAGE = "Auto-approved (safe mode disabled)"
 
 
+class ReviewReadError(RuntimeError):
+    """The review saved for a step could not be read, so the step stopped
+    before running."""
+
+
 class ReviewDecision(BaseModel):
     """Result of a review decision."""
 
@@ -69,10 +74,9 @@ class HITLReviewHelper:
         except Exception as e:
             logger.warning(
                 f"Could not read the review saved for step {node_exec_id}; "
-                "it does not run",
-                exc_info=True,
+                f"it does not run: {e!r}"
             )
-            raise RuntimeError(
+            raise ReviewReadError(
                 f"Could not read the review saved for step {node_exec_id}, "
                 "so it did not run"
             ) from e
