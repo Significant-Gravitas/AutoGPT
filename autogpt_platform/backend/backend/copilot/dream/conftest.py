@@ -55,9 +55,10 @@ async def server():
     return None
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup():
-    """No-op graph cleanup stub."""
+@pytest.fixture(scope="session", autouse=True)
+def graph_cleanup():
+    """No-op graph cleanup stub. Not async: setting it up must not run the
+    event loop between billing_e2e's database manager fake and dream's."""
     yield
 
 

@@ -84,6 +84,10 @@ def fake_database_manager_clients() -> Iterator[None]:
     It holds for the whole folder, not per test: a background task a test left
     running (a chat title, a cost log) reaches for the client between tests.
 
+    A test that needs a real client, such as dream's deadline tests with
+    their own transports, imports ``get_service_client`` by name, which this
+    patch does not reach.
+
     The getters cache a client per thread, and only this thread's cache is
     cleared: a worker thread that cached a real client before the folder's
     first test keeps it.
