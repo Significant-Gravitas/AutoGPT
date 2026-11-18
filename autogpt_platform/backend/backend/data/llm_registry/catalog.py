@@ -2051,6 +2051,28 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="gpt-6.2-sol",
+                display_name="GPT-6.2 Sol",
+                provider="openai",
+                creator="openai",
+                # Capped at the 272K base-price tier: OpenAI bills prompts
+                # above 272K at $4/$15 and the catalog has no tiered
+                # billing, so a larger window would under-bill.
+                context_window=272000,
+                max_output_tokens=128000,
+                # $2/1M in, $10/1M out, $0.10/1M cache read -- live
+                # OpenRouter rate as of 2026-11-18, same list price as
+                # gpt-6.1-sol (which stays listed and remains the default
+                # until Codex advertises this model). Tier 2 like gpt-6.1-sol.
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=15.0,
+                ),
+            ),
+            CatalogModel(
                 slug="gpt-6.1-terra",
                 display_name="GPT-6.1 Terra",
                 provider="openai",
