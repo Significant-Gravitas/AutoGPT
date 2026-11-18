@@ -277,6 +277,7 @@ async function showOldRunThenReconnect(
   {
     queryClient,
     beforeReconnect,
+    listedAgainFrom,
   }: {
     queryClient?: QueryClient;
     beforeReconnect?: (shown: {
@@ -284,6 +285,8 @@ async function showOldRunThenReconnect(
       live: ReturnType<typeof installLiveSocket>;
       first: FakeWebSocket;
     }) => Promise<void>;
+    /** From this list request on, the old run is in the list, completed. */
+    listedAgainFrom?: number;
   } = {},
 ) {
   const newer = Array.from({ length: 250 }, (_, i) =>
@@ -294,9 +297,19 @@ async function showOldRunThenReconnect(
     async () => {
       requests += 1;
       if (requests === 1) return newer;
-      return [
+      const recent = [
         run("run-new", AgentExecutionStatus.RUNNING, "graph-new"),
         ...newer.slice(0, 249),
+      ];
+      if (listedAgainFrom === undefined || requests < listedAgainFrom) {
+        return recent;
+      }
+      return [
+        {
+          ...run("run-old", AgentExecutionStatus.COMPLETED, "graph-old"),
+          started_at: new Date(OLD_RUN_STARTED),
+        },
+        ...recent.slice(0, 249),
       ];
     },
     {
@@ -380,6 +393,39 @@ test("a live update that lands while a left-out run is read by ID stands", async
 
   expect(
     (await findRunOf(list, "Old workflow")).getByText(/^Stopped /),
+  ).toBeDefined();
+});
+
+test("a read by ID doesn't overrule a list fetched after it started", async () => {
+  let readStarted = false;
+  let releaseRead = () => {};
+  const readHeld = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  releaseHeldList = releaseRead;
+  const { list, live, second } = await showOldRunThenReconnect(
+    async () => {
+      readStarted = true;
+      // Read while the run was going, answered after a newer list.
+      await readHeld;
+      return AgentExecutionStatus.RUNNING;
+    },
+    { listedAgainFrom: 3 },
+  );
+  await vi.waitFor(() => expect(readStarted).toBe(true));
+
+  // The next list is fetched after the read started, and has the run done.
+  await live.drop(second);
+  await live.acceptNext();
+  const oldRun = await findRunOf(list, "Old workflow");
+  expect(
+    await oldRun.findByText(/^Completed /, undefined, AFTER_RECONNECT),
+  ).toBeDefined();
+  releaseRead();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+  expect(
+    (await findRunOf(list, "Old workflow")).getByText(/^Completed /),
   ).toBeDefined();
 });
 

@@ -132,7 +132,8 @@ test("runs still loading when the live connection drops are read again once it r
 
   render(<LibraryPage />);
   const first = await live.acceptNext();
-  // The summary's reconnect handler is in place once it has subscribed.
+  // The summary's reconnect handler is in place once it has subscribed, and
+  // its first read is out.
   await waitFor(() =>
     expect(
       first.send.mock.calls.some(
@@ -140,7 +141,7 @@ test("runs still loading when the live connection drops are read again once it r
       ),
     ).toBe(true),
   );
-  expect(requests).toBe(1);
+  await waitFor(() => expect(requests).toBe(1));
 
   status = AgentExecutionStatus.COMPLETED;
   await live.drop(first);

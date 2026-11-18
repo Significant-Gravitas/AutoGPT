@@ -9,10 +9,9 @@ const MAX_CHECKS_PER_LIST = 10;
 interface Args {
   runs: GraphExecutionMeta[];
   log: {
-    mark(): number;
-    updatedSince(runID: string, mark: number): boolean;
+    startRead(runID: string): void;
+    finishRead(runID: string, read?: GraphExecutionMeta): boolean;
   };
-  checking: Set<string>;
   onRead: (run: GraphExecutionMeta) => void;
   onGone: (runID: string) => void;
 }
@@ -20,39 +19,50 @@ interface Args {
 /**
  * A full run list holds only the newest runs, so it can't tell whether an
  * older run shown as going has ended. One that ended while live updates were
- * lost would show as going for good, so read each such run by ID. A live
- * update that arrives during the read is newer than it and stands.
+ * lost would show as going for good, so each full list reads such runs by
+ * ID, the ones read longest ago (or never) first. A live update or a list
+ * that comes after a read started is newer than it and stands.
  *
  * Each read is a request of its own: through the query cache it could join
  * one already on its way (the run's view polls the same query), whose answer
- * may predate a live update this read must not overrule.
+ * may predate news this read must not overrule.
  */
-export async function checkOmittedRuns({
-  runs,
-  log,
-  checking,
-  onRead,
-  onGone,
-}: Args) {
-  const due = runs
-    .filter((run) => !checking.has(run.id))
-    .slice(0, MAX_CHECKS_PER_LIST);
-  await Promise.all(
-    due.map(async (run) => {
-      checking.add(run.id);
-      const mark = log.mark();
-      try {
-        const read = okData(
-          await getV1GetExecutionDetails(run.graph_id, run.id),
-        );
-        if (read && !log.updatedSince(run.id, mark)) onRead(read);
-      } catch (error) {
-        const gone = error instanceof ApiError && error.status === 404;
-        if (gone && !log.updatedSince(run.id, mark)) onGone(run.id);
-        // Any other failure keeps the run as shown; the next list reads it.
-      } finally {
-        checking.delete(run.id);
+export function createOmittedRunChecker() {
+  const reading = new Set<string>();
+  // run id -> when it was last read, as a count of reads
+  const lastRead = new Map<string, number>();
+  let reads = 0;
+
+  return {
+    async check({ runs, log, onRead, onGone }: Args) {
+      const leftOut = new Set(runs.map((run) => run.id));
+      for (const id of Array.from(lastRead.keys())) {
+        if (!leftOut.has(id)) lastRead.delete(id);
       }
-    }),
-  );
+      const due = runs
+        .filter((run) => !reading.has(run.id))
+        .sort((a, b) => (lastRead.get(a.id) ?? 0) - (lastRead.get(b.id) ?? 0))
+        .slice(0, MAX_CHECKS_PER_LIST);
+      await Promise.all(
+        due.map(async (run) => {
+          reading.add(run.id);
+          lastRead.set(run.id, ++reads);
+          log.startRead(run.id);
+          let read: GraphExecutionMeta | undefined;
+          let gone = false;
+          try {
+            read = okData(await getV1GetExecutionDetails(run.graph_id, run.id));
+          } catch (error) {
+            gone = error instanceof ApiError && error.status === 404;
+            // Any other failure keeps the run as shown; a later list reads it.
+          } finally {
+            reading.delete(run.id);
+          }
+          if (!log.finishRead(run.id, read)) return;
+          if (read) onRead(read);
+          else if (gone) onGone(run.id);
+        }),
+      );
+    },
+  };
 }

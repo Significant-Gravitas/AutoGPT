@@ -1,22 +1,25 @@
 import { getGetV1ListAllExecutionsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 const MAX_TRACKED_LISTS = 10;
-const MAX_TRACKED_RUNS = 1000;
 // A retry starts no earlier than the failure before it ("failed"), and a
 // fetch paused while offline starts when it continues; neither dispatches
 // another "fetch".
 const ATTEMPT_STARTS = new Set(["fetch", "failed", "continue"]);
 
+type RunStatus = GraphExecution | GraphExecutionMeta;
+
 /**
- * Orders live run updates against fetches of the run list, so rebuilding
- * from a list keeps what it can't know yet. The backend writes a change
- * before it publishes it, so a fetch that started after an update arrived
- * has read that change or a newer one, while an update that arrived after a
- * fetch started may be newer than what the fetch read. Each update and each
- * fetch start takes the next number in one sequence, which tells them apart.
+ * Orders what Activity learns about runs, so rebuilding from a list keeps
+ * what it can't know yet. The backend writes a change before it publishes
+ * it, so a fetch that started after an update arrived has read that change
+ * or a newer one, while an update that arrived after a fetch started may be
+ * newer than what the fetch read. Each update, each fetch start and each
+ * read of a single run takes the next number in one sequence, which tells
+ * them apart.
  */
 export function useLiveUpdateLog() {
   const queryClient = useQueryClient();
@@ -37,38 +40,43 @@ export function useLiveUpdateLog() {
   return log;
 }
 
-function createLiveUpdateLog() {
+export function createLiveUpdateLog() {
   let sequence = 0;
   let fetchStartSequence = 0;
-  const updates = new Map<
-    string,
-    { execution: GraphExecution; sequence: number }
-  >();
+  const updates = new Map<string, { execution: RunStatus; sequence: number }>();
   // dataUpdatedAt of a list -> sequence when the fetch behind it started
   const listSequences = new Map<number, number>();
-  // run id -> sequence of its latest update; outlives the list rebuilds,
-  // which forget `updates`, for the checks of single runs
-  const latest = new Map<string, number>();
+  // run id -> its read by ID under way: when it started, and whether newer
+  // news of the run has come since (a live update, or a list fetched later)
+  const reads = new Map<string, { started: number; superseded: boolean }>();
 
   return {
     recordUpdate(execution: GraphExecution) {
       sequence += 1;
       updates.delete(execution.id);
       updates.set(execution.id, { execution, sequence });
-      latest.delete(execution.id);
-      latest.set(execution.id, sequence);
-      if (latest.size > MAX_TRACKED_RUNS) {
-        const oldest = latest.keys().next().value;
-        if (oldest !== undefined) latest.delete(oldest);
+      const read = reads.get(execution.id);
+      if (read) read.superseded = true;
+    },
+    /** A read of one run by ID starts now. */
+    startRead(runID: string) {
+      sequence += 1;
+      reads.set(runID, { started: sequence, superseded: false });
+    },
+    /**
+     * A read by ID has settled. True if nothing newer about the run came
+     * meanwhile. Its answer then stands for the moment the read started, so
+     * a list fetched before that moment replays it.
+     */
+    finishRead(runID: string, read?: RunStatus) {
+      const pending = reads.get(runID);
+      reads.delete(runID);
+      if (!pending || pending.superseded) return false;
+      if (read) {
+        updates.delete(runID);
+        updates.set(runID, { execution: read, sequence: pending.started });
       }
-    },
-    /** Where the sequence stands, for a read of a single run starting now. */
-    mark() {
-      return sequence;
-    },
-    /** Whether a live update for the run arrived after `mark`. */
-    updatedSince(runID: string, mark: number) {
-      return (latest.get(runID) ?? 0) > mark;
+      return true;
     },
     recordFetchStart() {
       sequence += 1;
@@ -82,13 +90,18 @@ function createLiveUpdateLog() {
       }
     },
     /**
-     * The updates the list fetched at `dataUpdatedAt` may predate, in
-     * arrival order. Forgets the rest, which every later list includes. A
-     * list whose fetch start went unseen counts as older than every update.
+     * What the list fetched at `dataUpdatedAt` may predate, in arrival
+     * order. Forgets the rest, which every later list includes, and makes a
+     * read by ID of a run in the list give way if the list started later. A
+     * list whose fetch start went unseen counts as older than everything.
      */
-    updatesNewerThan(dataUpdatedAt: number) {
+    updatesNewerThan(dataUpdatedAt: number, listed: { id: string }[]) {
       const since = listSequences.get(dataUpdatedAt) ?? 0;
-      const newer: GraphExecution[] = [];
+      for (const { id } of listed) {
+        const read = reads.get(id);
+        if (read && since > read.started) read.superseded = true;
+      }
+      const newer: RunStatus[] = [];
       updates.forEach((update, id) => {
         if (update.sequence > since) newer.push(update.execution);
         else updates.delete(id);

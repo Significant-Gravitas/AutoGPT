@@ -602,6 +602,10 @@ class _ShardStream:
                 continue
             if msg_type != "smessage":
                 continue
+            # Published before an unanswered SUNSUBSCRIBE: it belongs to the
+            # subscription being dropped, not to one made since.
+            if self._unsubscribing[channel] > 0:
+                continue
             handler = self.handlers.get(channel) if channel else None
             if handler is None:
                 continue

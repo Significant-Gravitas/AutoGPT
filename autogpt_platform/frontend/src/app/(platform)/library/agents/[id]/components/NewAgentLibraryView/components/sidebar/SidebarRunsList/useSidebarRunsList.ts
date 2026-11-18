@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 
 import {
   okData,
@@ -22,11 +22,10 @@ import {
   EXECUTION_REFETCH_THROTTLE_MS,
   useExecutionEvents,
 } from "@/hooks/useExecutionEvents";
-import { useStableCallback } from "@/hooks/useStableCallback";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
+import { useRunsReadAfterReconnect } from "./useRunsReadAfterReconnect";
 
 function parseTab(
   value: string | null,
@@ -72,7 +71,6 @@ export function useSidebarRunsList({
 
   const tabValue = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
   const queryClient = useQueryClient();
-  const api = useBackendAPI();
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(
     graphId,
@@ -157,13 +155,9 @@ export function useSidebarRunsList({
     queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
   }
 
-  // Updates published while the socket was down never arrive, so re-read
-  // the runs after a reconnect: at once on Tasks, or else once Tasks opens.
-  const runsMissedUpdatesRef = useRef(false);
-  const readRunsIfMissed = useStableCallback(() => {
-    if (tabValue !== "runs" || !runsMissedUpdatesRef.current) return;
-    runsMissedUpdatesRef.current = false;
-    refetchRuns();
+  useRunsReadAfterReconnect({
+    queryKey: runsQuery.queryKey,
+    onTasks: tabValue === "runs",
   });
 
   // Update query cache when execution events arrive via websocket
@@ -175,16 +169,6 @@ export function useSidebarRunsList({
     throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
     onExecutionUpdate: refetchRuns,
   });
-
-  useEffect(
-    () =>
-      api.onWebSocketReconnect(() => {
-        runsMissedUpdatesRef.current = true;
-        readRunsIfMissed();
-      }),
-    [api, readRunsIfMissed],
-  );
-  useEffect(() => readRunsIfMissed(), [tabValue, readRunsIfMissed]);
 
   // Notify parent about counts and loading state
   useEffect(() => {

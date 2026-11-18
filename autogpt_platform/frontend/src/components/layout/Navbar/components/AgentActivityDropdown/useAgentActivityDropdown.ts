@@ -12,7 +12,7 @@ import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { checkOmittedRuns } from "./checkOmittedRuns";
+import { createOmittedRunChecker } from "./checkOmittedRuns";
 import {
   NotificationState,
   activeRunsTheListOmits,
@@ -66,10 +66,10 @@ export function useAgentActivityDropdown() {
     [agentInfoMap, liveUpdates],
   );
 
-  // Rebuild from each fetched list (keyed on dataUpdatedAt), then replay the
-  // live updates that arrived after that list's fetch started.
+  // Rebuild from each fetched list (keyed on dataUpdatedAt), then replay what
+  // came after that list's fetch started.
   const processedListRef = useRef<number | null>(null);
-  const checkingRef = useRef(new Set<string>());
+  const [omittedRuns] = useState(createOmittedRunChecker);
   useEffect(() => {
     if (
       !executions ||
@@ -79,7 +79,7 @@ export function useAgentActivityDropdown() {
     )
       return;
     const fromList = categorizeExecutions(executions, agentInfoMap);
-    const newer = liveUpdates.updatesNewerThan(dataUpdatedAt);
+    const newer = liveUpdates.updatesNewerThan(dataUpdatedAt, executions);
     setNotifications((shown) =>
       newer.reduce(
         (state, execution) =>
@@ -88,10 +88,9 @@ export function useAgentActivityDropdown() {
       ),
     );
     processedListRef.current = dataUpdatedAt;
-    void checkOmittedRuns({
+    void omittedRuns.check({
       runs: activeRunsTheListOmits(notifications, executions),
       log: liveUpdates,
-      checking: checkingRef.current,
       onRead: (run) =>
         setNotifications((state) =>
           handleExecutionUpdate(state, run, agentInfoMap),
@@ -108,6 +107,7 @@ export function useAgentActivityDropdown() {
     agentInfoMap,
     liveUpdates,
     notifications,
+    omittedRuns,
   ]);
 
   // Subscribe to execution events for all graphs

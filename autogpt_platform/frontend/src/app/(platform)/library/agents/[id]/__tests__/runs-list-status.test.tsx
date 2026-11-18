@@ -16,7 +16,12 @@ import {
   AFTER_RECONNECT,
   installLiveSocket,
 } from "@/tests/integrations/live-socket";
-import { act, render, screen } from "@/tests/integrations/test-utils";
+import {
+  act,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, expect, test, vi } from "vitest";
@@ -51,7 +56,12 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
   useFlagStatus: () => ({ enabled: false, ready: true }),
 }));
 
+let releaseHeldRuns: (() => void) | undefined;
+
 afterEach(() => {
+  // Settle a held response even when the test failed before releasing it.
+  releaseHeldRuns?.();
+  releaseHeldRuns = undefined;
   vi.unstubAllGlobals();
 });
 
@@ -60,9 +70,16 @@ const GRAPH_ID = "graph-1";
 interface Served {
   status: () => AgentExecutionStatus;
   dryRun?: boolean;
+  /** Holds the answer to the first read of the runs list until it settles. */
+  holdFirstRuns?: Promise<void>;
 }
 
-function serveAgentPage({ status: runStatus, dryRun = false }: Served) {
+function serveAgentPage({
+  status: runStatus,
+  dryRun = false,
+  holdFirstRuns,
+}: Served) {
+  let runReads = 0;
   function run() {
     const status = runStatus();
     return {
@@ -85,21 +102,26 @@ function serveAgentPage({ status: runStatus, dryRun = false }: Served) {
         name: "Reconnect workflow",
       }),
     ),
-    getGetV1ListGraphExecutionsMockHandler(() => ({
-      ...getGetV1ListGraphExecutionsResponseMock(),
-      executions: [
-        {
-          ...getGetV1ListGraphExecutionsResponseMock().executions[0],
-          ...run(),
+    getGetV1ListGraphExecutionsMockHandler(async () => {
+      runReads += 1;
+      const read = run();
+      if (runReads === 1 && holdFirstRuns) await holdFirstRuns;
+      return {
+        ...getGetV1ListGraphExecutionsResponseMock(),
+        executions: [
+          {
+            ...getGetV1ListGraphExecutionsResponseMock().executions[0],
+            ...read,
+          },
+        ],
+        pagination: {
+          total_items: 1,
+          total_pages: 1,
+          current_page: 1,
+          page_size: 20,
         },
-      ],
-      pagination: {
-        total_items: 1,
-        total_pages: 1,
-        current_page: 1,
-        page_size: 20,
-      },
-    })),
+      };
+    }),
     getGetV1GetExecutionDetailsMockHandler(() => ({
       ...getGetV1GetExecutionDetailsResponseMock(),
       ...run(),
@@ -118,6 +140,7 @@ function serveAgentPage({ status: runStatus, dryRun = false }: Served) {
       },
     }),
   );
+  return { runReads: () => runReads };
 }
 
 test("a run that finished while the live connection was down shows as finished in the runs list once it reconnects", async () => {
@@ -147,7 +170,7 @@ test("a run that finished while the live connection was down shows as finished i
 
 test("a run that finished during a disconnect on another tab shows as finished back on Tasks", async () => {
   let status: AgentExecutionStatus = AgentExecutionStatus.RUNNING;
-  serveAgentPage({ status: () => status });
+  const { runReads } = serveAgentPage({ status: () => status });
   const live = installLiveSocket();
 
   render(
@@ -159,30 +182,50 @@ test("a run that finished during a disconnect on another tab shows as finished b
   expect(
     await screen.findByRole("tab", { name: /^Scheduled/, selected: true }),
   ).toBeDefined();
+  // The runs list reads once on its own, whichever tab is open.
+  await waitFor(() => expect(runReads()).toBe(1));
 
-  let runReads = 0;
-  function countRunReads({ request }: { request: Request }) {
-    const { pathname } = new URL(request.url);
-    if (pathname.endsWith(`/graphs/${GRAPH_ID}/executions`)) runReads += 1;
-  }
-  server.events.on("request:start", countRunReads);
-  try {
-    status = AgentExecutionStatus.COMPLETED;
-    await live.drop(first);
-    await live.caughtUp(await live.acceptNext());
-    // Scheduled doesn't show the runs, so they wait for Tasks: a failed read
-    // here would only put an error in front of the schedules.
-    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
-    expect(runReads).toBe(0);
+  status = AgentExecutionStatus.COMPLETED;
+  await live.drop(first);
+  await live.caughtUp(await live.acceptNext());
+  // Scheduled doesn't show the runs, so they wait for Tasks: a failed read
+  // here would only put an error in front of the schedules.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+  expect(runReads()).toBe(1);
 
-    await userEvent.click(screen.getByRole("tab", { name: /^Tasks/ }));
-    expect(
-      await screen.findByRole("img", { name: "Task completed" }),
-    ).toBeDefined();
-    expect(runReads).toBeGreaterThan(0);
-  } finally {
-    server.events.removeListener("request:start", countRunReads);
-  }
+  await userEvent.click(screen.getByRole("tab", { name: /^Tasks/ }));
+  expect(
+    await screen.findByRole("img", { name: "Task completed" }),
+  ).toBeDefined();
+  expect(runReads()).toBeGreaterThan(1);
+});
+
+test("runs still loading on Tasks when the live connection drops are read again once it reconnects", async () => {
+  let status: AgentExecutionStatus = AgentExecutionStatus.RUNNING;
+  const { runReads } = serveAgentPage({
+    status: () => status,
+    holdFirstRuns: new Promise<void>((resolve) => {
+      releaseHeldRuns = resolve;
+    }),
+  });
+  const live = installLiveSocket();
+
+  render(
+    <NuqsTestingAdapter hasMemory searchParams="activeTab=runs">
+      <AgentLibraryPage />
+    </NuqsTestingAdapter>,
+  );
+  const first = await live.acceptNext();
+  // The first read went out while the run was going; its answer is held.
+  await waitFor(() => expect(runReads()).toBe(1));
+
+  status = AgentExecutionStatus.COMPLETED;
+  await live.drop(first);
+  await live.acceptNext();
+
+  expect(
+    await screen.findByRole("img", { name: "Task completed" }, AFTER_RECONNECT),
+  ).toBeDefined();
 });
 
 test("a simulated run's icon names its status", async () => {

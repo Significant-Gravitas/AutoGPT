@@ -639,7 +639,7 @@ async def test_a_subscribe_that_times_out_takes_its_channel_back(
     stream sends SUNSUBSCRIBE, so the channel doesn't stay subscribed with no
     handler, and its late confirmation and events change nothing."""
     monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.1)
-    on_a, on_lost = AsyncMock(), AsyncMock()
+    on_a, on_b, on_lost = AsyncMock(), AsyncMock(), AsyncMock()
     stream = _ShardStream(on_lost=on_lost)
     try:
         await stream.add("{u/g}/exec/a", on_a)
@@ -647,7 +647,7 @@ async def test_a_subscribe_that_times_out_takes_its_channel_back(
         pubsub.ssubscribe.side_effect = None
 
         with pytest.raises(TimeoutError):
-            await stream.add("{u/g}/exec/b", AsyncMock())
+            await stream.add("{u/g}/exec/b", on_b)
         pubsub.sunsubscribe.assert_awaited_once_with("{u/g}/exec/b")
 
         # What Redis sends next, in order: the late confirmation, an event,
@@ -661,9 +661,52 @@ async def test_a_subscribe_that_times_out_takes_its_channel_back(
             pubsub.inbox.put_nowait(message)
         await _until(lambda: on_a.await_count == 1)
         on_a.assert_awaited_once_with("for-a")
+        on_b.assert_not_awaited()
         on_lost.assert_not_awaited()
         assert stream._unsubscribing == {}
     finally:
+        await stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_events_of_a_channel_being_taken_back_reach_no_handler(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The timed-out subscription's handler stays registered until its take
+    back is written; an event Redis sent it meanwhile must not get through."""
+    monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.1)
+    monkeypatch.setattr("backend.api.conn_manager._TAKE_BACK_TIMEOUT_S", 60.0)
+    on_a, on_b = AsyncMock(), AsyncMock()
+    stream = _ShardStream(on_lost=AsyncMock())
+    written = asyncio.Event()
+    adding: asyncio.Task[None] | None = None
+    try:
+        await stream.add("{u/g}/exec/a", on_a)
+        pubsub = fake_redis.pubsubs[0]
+        pubsub.ssubscribe.side_effect = None
+
+        async def write_slowly(channel: str) -> None:
+            await written.wait()
+
+        pubsub.sunsubscribe.side_effect = write_slowly
+        adding = asyncio.create_task(stream.add("{u/g}/exec/b", on_b))
+        await _until(lambda: pubsub.sunsubscribe.await_count == 1)
+        pubsub.inbox.put_nowait(
+            {"type": "smessage", "channel": "{u/g}/exec/b", "data": "late"}
+        )
+        pubsub.inbox.put_nowait(
+            {"type": "smessage", "channel": "{u/g}/exec/a", "data": "marker"}
+        )
+        await _until(lambda: on_a.await_count == 1)
+        on_b.assert_not_awaited()
+
+        written.set()
+        done, _ = await asyncio.wait([adding], timeout=5)
+        assert adding in done
+        assert isinstance(adding.exception(), TimeoutError)
+    finally:
+        written.set()
+        await _join(adding)
         await stream.stop()
 
 
@@ -683,18 +726,22 @@ async def test_a_retry_after_a_take_back_waits_for_its_own_confirmation(
         pubsub.ssubscribe.side_effect = None
         with pytest.raises(TimeoutError):
             await stream.add("{u/g}/exec/b", AsyncMock())
-        monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 5.0)
+        # Ten times the waits below, so only a missing confirmation ends it.
+        monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 60.0)
         retrying = asyncio.create_task(stream.add("{u/g}/exec/b", AsyncMock()))
         await _until(lambda: pubsub.ssubscribe.await_count == 3)
 
-        pubsub.inbox.put_nowait({"type": "ssubscribe", "channel": "{u/g}/exec/b"})
-        pubsub.inbox.put_nowait(
-            {"type": "smessage", "channel": "{u/g}/exec/a", "data": "marker"}
-        )
-        await _until(lambda: on_a.await_count == 1)
-        assert not retrying.done()
+        for message, markers in (
+            ({"type": "ssubscribe", "channel": "{u/g}/exec/b"}, 1),
+            ({"type": "sunsubscribe", "channel": "{u/g}/exec/b"}, 2),
+        ):
+            pubsub.inbox.put_nowait(message)
+            pubsub.inbox.put_nowait(
+                {"type": "smessage", "channel": "{u/g}/exec/a", "data": "marker"}
+            )
+            await _until(lambda n=markers: on_a.await_count == n)
+            assert not retrying.done()
 
-        pubsub.inbox.put_nowait({"type": "sunsubscribe", "channel": "{u/g}/exec/b"})
         pubsub.inbox.put_nowait({"type": "ssubscribe", "channel": "{u/g}/exec/b"})
         await asyncio.wait_for(retrying, timeout=5)
     finally:
@@ -722,6 +769,33 @@ async def test_a_take_back_that_fails_retires_the_stream(
         on_lost.assert_awaited_once()
         fake_redis.clients[0].aclose.assert_awaited_once()
         assert stream._unsubscribing == {}
+    finally:
+        await stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_take_back_that_never_finishes_retires_the_stream(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.1)
+    monkeypatch.setattr("backend.api.conn_manager._TAKE_BACK_TIMEOUT_S", 0.1)
+    on_lost = AsyncMock()
+    stream = _ShardStream(on_lost=on_lost)
+    try:
+        await stream.add("{u/g}/exec/a", AsyncMock())
+        pubsub = fake_redis.pubsubs[0]
+        pubsub.ssubscribe.side_effect = None
+
+        async def never_written(channel: str) -> None:
+            await asyncio.Event().wait()
+
+        pubsub.sunsubscribe.side_effect = never_written
+        # The outer bound turns a missing take-back deadline into a failure.
+        async with asyncio.timeout(5):
+            with pytest.raises(TimeoutError):
+                await stream.add("{u/g}/exec/b", AsyncMock())
+        on_lost.assert_awaited_once()
+        fake_redis.clients[0].aclose.assert_awaited_once()
     finally:
         await stream.stop()
 

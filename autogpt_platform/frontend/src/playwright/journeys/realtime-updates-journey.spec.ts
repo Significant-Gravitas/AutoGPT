@@ -76,7 +76,7 @@ test.describe("realtime updates journey", () => {
           timeout: 30_000,
         })
         .toBeGreaterThan(connections);
-      const reopenedAt = live.lastOpenedAt();
+      const reopenedAt = live.reopenedAt();
       await expect
         .poll(() => reads.runsSince(reopenedAt), {
           message: "the runs list should be read again after the reconnect",
@@ -118,13 +118,15 @@ test.describe("realtime updates journey", () => {
 async function routeLiveConnection(page: Page) {
   const connections: Connection[] = [];
   let closedUpTo = 0;
+  let outage = false;
 
   await page.routeWebSocket(/\/ws(\?|$)/, (client) => {
     const connection: Connection = {
       client,
       server: client.connectToServer(),
       openedAt: Date.now(),
-      streamLost: false,
+      // One the page opens during the outage gets no updates either.
+      streamLost: outage,
       dropped: [],
       forwarded: [],
     };
@@ -142,7 +144,8 @@ async function routeLiveConnection(page: Page) {
 
   return {
     opened: () => connections.length,
-    lastOpenedAt: () => connections.at(-1)?.openedAt ?? 0,
+    /** When the first connection after the last close opened. */
+    reopenedAt: () => connections[closedUpTo]?.openedAt ?? Infinity,
     droppedStatuses: (runID: string) =>
       statusesOf(
         connections.flatMap((connection) => connection.dropped),
@@ -154,13 +157,15 @@ async function routeLiveConnection(page: Page) {
         connections.slice(closedUpTo).flatMap((c) => c.forwarded),
         runID,
       ),
-    /** For the connections open now: they stay without updates until closed. */
+    /** Until the server closes them, connections get no run updates. */
     loseEventStream() {
+      outage = true;
       for (const connection of connections) connection.streamLost = true;
     },
     async closeLikeTheServer() {
       const closing = connections.slice(closedUpTo);
       closedUpTo = connections.length;
+      outage = false;
       // The page's side first, so it sees 1011 rather than a normal close
       // forwarded from the server's side.
       for (const { client, server } of closing) {
