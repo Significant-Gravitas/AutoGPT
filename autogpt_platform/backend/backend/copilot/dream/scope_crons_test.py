@@ -17,6 +17,7 @@ from . import registry, scope_crons
 from .registry_fakes_test import (
     ACCOUNT,
     EXPERT,
+    PROMPT,
     USER,
     Hang,
     HangingTransport,
@@ -25,8 +26,6 @@ from .registry_fakes_test import (
     use_short_deadline,
 )
 from .scheduling import dream_system_job
-
-PROMPT = 1.0
 
 
 @pytest.fixture

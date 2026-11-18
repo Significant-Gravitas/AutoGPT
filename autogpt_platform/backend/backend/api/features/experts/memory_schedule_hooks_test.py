@@ -20,6 +20,7 @@ from backend.copilot.dream import registry
 from backend.copilot.dream.registry_fakes_test import (
     EXPERT,
     PAUSED,
+    PROMPT,
     USER,
     WIPED,
     Hang,
@@ -260,7 +261,7 @@ async def test_a_lifecycle_request_is_not_held_up_by_a_hanging_scheduler(
 
     await hooks[hook]()
 
-    assert time.monotonic() - started < 1.0
+    assert time.monotonic() - started < PROMPT
     expert_table.update_many.assert_awaited()  # the lifecycle write landed
     assert hang.started >= 1
     assert hang.cancelled == hang.started

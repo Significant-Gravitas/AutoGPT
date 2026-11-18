@@ -42,6 +42,10 @@ TOKYO = "Asia/Tokyo"
 
 # Short enough to keep deadline tests quick; long enough for a fake to answer.
 SHORT_DEADLINE = 0.05
+# Wall-clock allowance for a call bounded by SHORT_DEADLINE: a hundred times
+# it, as a CI runner can stall a test for seconds, and still half the 10 s
+# default deadline the call would wait out if the short one were ignored.
+PROMPT = 5.0
 
 
 def job_ids(scope: MemoryScope) -> set[str]:

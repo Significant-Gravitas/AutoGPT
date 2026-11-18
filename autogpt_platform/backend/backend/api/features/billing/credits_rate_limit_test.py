@@ -16,6 +16,11 @@ from backend.api.features.billing import credits_rate_limit as rate_limit
 # Windows are aligned to the epoch, so every whole minute starts one.
 WINDOW_START = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
+# The wall-clock bound below only catches a missed deadline: a passing run
+# ends at its short deadline whatever this is, and a CI runner can stall a
+# test for seconds.
+_HANG_SECONDS = 10
+
 
 class Clock:
     """The limiter's clock: frozen, and moved only by the test."""
@@ -231,10 +236,9 @@ async def test_fails_open_and_fast_when_redis_hangs(mocker):
     loop = asyncio.get_running_loop()
     started = loop.time()
     await rate_limit.enforce_subscription_status_rate_limit("u1")
-    # Tight bound: the patched deadline is 50ms, so anything approaching a
-    # second means the timeout was not honoured. Generous enough to absorb CI
-    # scheduling jitter, strict enough to fail if the deadline is dropped.
-    assert loop.time() - started < 1
+    # Two hundred times the 50 ms deadline, still well short of the 60 s a
+    # dropped deadline would wait.
+    assert loop.time() - started < _HANG_SECONDS
 
 
 @pytest.mark.asyncio

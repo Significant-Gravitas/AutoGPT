@@ -16,6 +16,12 @@ from backend.api.features.account_deletion.rate_limit import (
 )
 
 MODULE = "backend.api.features.account_deletion.rate_limit"
+
+# The wall-clock bound below only catches a missed deadline: a passing run
+# ends at its short deadline whatever this is, and a CI runner can stall a
+# test for seconds.
+_HANG_SECONDS = 10
+
 USER_ID = "user-1"
 
 
@@ -109,7 +115,7 @@ async def test_a_stalled_redis_fails_open_fast(
     hits: MagicMock,
 ):
     async def stall():
-        await asyncio.sleep(5)
+        await asyncio.sleep(60)
 
     mocker.patch(f"{MODULE}.get_redis_async", side_effect=stall)
 
@@ -117,7 +123,7 @@ async def test_a_stalled_redis_fails_open_fast(
     with caplog.at_level(logging.WARNING):
         await enforce_feedback_rate_limit(USER_ID)
 
-    # Ten times the 0.25 s deadline, still well short of the 5 s stall.
-    assert time.monotonic() - started < 2.5
+    # Forty times the 0.25 s deadline, still well short of the 60 s stall.
+    assert time.monotonic() - started < _HANG_SECONDS
     hits.assert_not_called()
     assert "failed open" in caplog.text

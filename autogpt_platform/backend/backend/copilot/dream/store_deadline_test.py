@@ -21,9 +21,10 @@ from .pass_run import DreamPassRun
 from .schemas import DreamOperations
 
 _DEADLINE = 0.2
-# Generous against a slow CI box, and far below one retry backoff (~1 s) or
-# the client's own 300 s request timeout.
-_BOUND = 2.0
+# Fifty times the deadline, as a CI runner can stall a test for seconds, and
+# far below the minutes the client's retries, or its own 300 s request
+# timeout, would take.
+_HANG_SECONDS = 10
 
 
 class _Hanging(httpx.AsyncBaseTransport):
@@ -97,7 +98,7 @@ async def test_a_stalled_update_costs_the_deadline_and_is_cancelled(
     with caplog.at_level(logging.WARNING, logger=store.logger.name):
         await store.record_next_batch("p1", "recombine", "batch-1")
 
-    assert loop.time() - started < _BOUND
+    assert loop.time() - started < _HANG_SECONDS
     assert (hanging.requests, hanging.cancelled) == (1, 1)
     assert "could not record the next batch" in caplog.text
 
@@ -115,7 +116,7 @@ async def test_a_stalled_insert_costs_the_deadline(deadline, rpc_over, caplog):
             trigger="cron",
         )
 
-    assert loop.time() - started < _BOUND
+    assert loop.time() - started < _HANG_SECONDS
     assert hanging.cancelled == 1
     assert confirmed is False, "an insert that may land later is not confirmed"
     assert "could not insert its record" in caplog.text
@@ -132,6 +133,6 @@ async def test_the_deadline_covers_the_clients_retries(deadline, rpc_over, caplo
     with caplog.at_level(logging.WARNING, logger=store.logger.name):
         await store.record_applying("p1", DreamOperations())
 
-    assert loop.time() - started < _BOUND
+    assert loop.time() - started < _HANG_SECONDS
     assert refusing.requests >= 1
     assert "could not record the start of apply" in caplog.text

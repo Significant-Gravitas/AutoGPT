@@ -166,9 +166,9 @@ def test_masking_stays_linear_in_a_url_stacked_with_prefixes() -> None:
     """A client can send a URL made of thousands of prefixes, and the filter
     masks it on the event loop; quadratic work took seconds here."""
     url = "/api/invitations/x" * 50_000
-    started = time.monotonic()
+    started = time.thread_time()
     assert redact_url(url) == f"/api/invitations/{REDACTED}" * 50_000
-    assert time.monotonic() - started < 2
+    assert time.thread_time() - started < 2
 
 
 _PATH_PARAM = re.compile(r"{(\w+)(?::\w+)?}")
