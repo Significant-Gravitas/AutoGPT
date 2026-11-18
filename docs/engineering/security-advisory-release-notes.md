@@ -54,10 +54,10 @@ diff; neither logs nor artifacts contain the raw response.
 The reader uses standard-library HTTPS with no authentication, credentials,
 proxy inheritance, redirects or authenticated retry. Pagination stays on this
 repository's public endpoint, with page, response-size and timeout limits.
-API failure, schema failure, incomplete pagination or ambiguous package
-attribution stops the run. There is no fallback to stale snapshots.
+API failure, schema failure or incomplete pagination stops the run. There is
+no fallback to stale snapshots.
 Known failures log only a fixed, enumerated reason, such as a changed public
-snapshot or an ambiguous release mapping. Exception text, chained errors and
+snapshot. Exception text, chained errors and
 response bodies are never printed; unexpected failures keep a generic message.
 
 The jobs have separate permissions and no shared report artifacts:
@@ -113,7 +113,7 @@ as the GitBook sync uses), and its CI runs like any other PR's. The job's own
 credential is used.
 
 Public release sections contain advisory links, CVEs and accepted credits, not
-arbitrary report text or titles. When a mapping or published advisory is removed,
+arbitrary report text or titles. When a release link or published advisory is removed,
 the next reconciliation removes its generated entry. If no entries remain, the
 managed section says none are currently linked. Historical snapshots and release
 history remain public history; withdrawal cannot erase previously published data.
@@ -229,25 +229,15 @@ in both the package metadata and the description.
 A published advisory is listed under a release when its description links that
 release's exact tag URL and one of its package rows gives that release's version
 as the patched version. Both are needed, so a release linked only for context,
-such as where a bug was introduced or validated, isn't credited with the fix.
+such as where a bug was introduced or validated, isn't credited with the fix. The
+link also names the product line, since Classic and Platform share version numbers.
 Withdrawn advisories are excluded, and a CVE is not required for a link.
 
-When an advisory's package rows agree on the fixed version, such as the Platform
-source and its Docker image both patched in 0.9.0, the release link and that
-version are enough. When the rows report different patched versions, for
-example a Classic row and a Platform row fixed in different releases, the
-description needs an explicit package-to-release mapping. Add one comment for
-each patched package, using the ecosystem and name exactly as the API reads that
-row back,
-alongside the human-readable release link:
-
-```html
-<!-- security-release: {"tag": "autogpt-platform-beta-v0.9.0", "package": {"ecosystem": "docker", "name": "significantgravitas/autogpt"}} -->
-```
-
-The helper then requires the mapped row's patched version to match the release.
-Without a mapping, an advisory whose rows disagree stops generation so a
-maintainer can clarify it; it is not silently omitted.
+Each row pairs a package with its patched version, so a release is credited with
+the rows patched in it. When the rows report different patched versions, such as a
+Docker row patched one release after its Platform row because the first release has
+no image, link each release in the description, and each is listed with the rows it
+fixed. A row whose release isn't linked is credited to no release.
 
 `security_public_sync.public_release_notes` owns the `security-advisories` block
 in each release. Each reconciliation replaces that block with advisory links,

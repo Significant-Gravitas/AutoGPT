@@ -159,7 +159,11 @@ export function refetchAfterReconnect(
   if (hashes.has(hash)) return;
   hashes.add(hash);
   queueMicrotask(() => hashes.delete(hash));
-  void queryClient.invalidateQueries({ queryKey });
+  // A fetch already under way may have read before the reconnect, and with
+  // nothing cached yet invalidating would wait for it instead of reading again.
+  void queryClient
+    .cancelQueries({ queryKey })
+    .then(() => queryClient.invalidateQueries({ queryKey }));
 }
 
 function createThrottle<T>(fn: (value: T) => void, waitMs?: number) {

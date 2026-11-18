@@ -105,6 +105,7 @@ from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.process import freeze_startup_heap
 from backend.util.request_credentials import remember_request_credentials
 from backend.util.service import UnhealthyServiceError
+from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
@@ -713,6 +714,9 @@ class AgentServer(backend.util.service.AppProcess):
             # Only use uvloop on Unix-like systems (not supported on Windows)
             loop="uvloop" if platform.system() != "Windows" else "auto",
             ws="websockets-sansio",
+            forwarded_allow_ips=uvicorn_forwarded_allow_ips(
+                settings.config.trusted_proxies
+            ),
         )
 
     @staticmethod
