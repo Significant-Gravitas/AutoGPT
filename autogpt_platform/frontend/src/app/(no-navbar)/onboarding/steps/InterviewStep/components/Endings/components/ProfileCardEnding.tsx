@@ -1,5 +1,6 @@
 "use client";
 
+import { isKey } from "@/lib/keyboard";
 import { HIDDEN_FROM_REPLAY } from "@/lib/replay-privacy";
 import { cn } from "@/lib/utils";
 
@@ -46,12 +47,12 @@ export function ProfileCardEnding({
     index: number,
     event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
-    if (event.key === "Enter") {
+    if (isKey(event, "Enter")) {
       event.preventDefault();
       setEditing(null);
       return;
     }
-    if (event.key === "Escape") {
+    if (isKey(event, "Escape")) {
       event.preventDefault();
       if (before !== null) handleChange(index, before);
       setEditing(null);
