@@ -9,20 +9,24 @@ the path two writes to one path race on.
 import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
+from prisma.actions import UserWorkspaceFileActions
 from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspaceFile
 
 from backend.data import workspace as workspace_db
 from backend.data.user import get_or_create_user
 from backend.data.workspace import (
+    FileAttributeTooLongError,
     create_workspace_file,
     get_or_create_workspace,
     get_workspace_file_by_path,
     get_workspace_size_breakdown,
     get_workspace_total_size,
     list_workspace_files,
+    rename_workspace_file,
     soft_delete_workspace_file,
 )
 from backend.util.test import SpinTestServer
@@ -196,6 +200,21 @@ async def test_usage_sums_live_files_and_their_internal_part(server: SpinTestSer
         )
     await soft_delete_workspace_file(await _write(workspace, "/gone.txt"), workspace)
 
-    assert await get_workspace_size_breakdown(workspace) == (15, 7)
-    assert await get_workspace_total_size(workspace) == 15
+    with patch.object(
+        UserWorkspaceFileActions, "find_many", side_effect=AssertionError("row read")
+    ):
+        assert await get_workspace_size_breakdown(workspace) == (15, 7)
+        assert await get_workspace_total_size(workspace) == 15
     assert await get_workspace_size_breakdown(await _workspace()) == (0, 0)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_rename_past_the_path_limit_is_refused(server: SpinTestServer):
+    workspace = await _workspace()
+    folder = "/" + "d" * 900
+    file_id = await _write(workspace, f"{folder}/a.txt")
+
+    with pytest.raises(FileAttributeTooLongError):
+        await rename_workspace_file(file_id, workspace, "n" * 200)
+
+    assert await get_workspace_file_by_path(workspace, f"{folder}/a.txt") is not None

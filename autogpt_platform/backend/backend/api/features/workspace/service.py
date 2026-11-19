@@ -11,7 +11,11 @@ import fastapi
 from fastapi import UploadFile
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
-from backend.data.workspace import WorkspaceFile, get_or_create_workspace
+from backend.data.workspace import (
+    FileAttributeTooLongError,
+    WorkspaceFile,
+    get_or_create_workspace,
+)
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager
 
@@ -28,7 +32,7 @@ async def store_workspace_upload(
     """Write an uploaded file into the user's persistent workspace.
 
     Raises `fastapi.HTTPException` with the status each failure earns: 400 for
-    a virus, 409 for a name conflict, 413 for size or quota, 500 for a scanner
+    a virus or an over-long name, 409 for a name conflict, 413 for size or quota, 500 for a scanner
     outage or a storage failure, whose details stay out of the response.
     """
     filename = _sanitized_filename(file)
@@ -49,6 +53,8 @@ async def store_workspace_upload(
         raise fastapi.HTTPException(
             status_code=500, detail="Unable to store file. Please try again."
         ) from e
+    except FileAttributeTooLongError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
         # write_file raises ValueError for path-conflict, size-limit, and
         # storage-quota cases; map each to its correct HTTP status.

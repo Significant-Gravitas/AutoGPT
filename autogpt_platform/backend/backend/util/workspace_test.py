@@ -635,3 +635,28 @@ async def test_write_file_refuses_an_over_long_attribute_before_storing(
 
     mock_storage.store.assert_not_called()
     mock_db.create_workspace_file.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_write_file_stores_attributes_at_their_limit(
+    manager, mock_storage, mock_db
+):
+    mock_db.get_workspace_file_by_path.return_value = None
+    mock_db.create_workspace_file.return_value = _make_workspace_file()
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage",
+            return_value=mock_storage,
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=250 * 1024 * 1024,
+        ),
+    ):
+        await manager.write_file(
+            content=b"x", filename="a" * 251 + ".txt", mime_type="text/" + "x" * 250
+        )
+
+    mock_db.create_workspace_file.assert_awaited_once()
