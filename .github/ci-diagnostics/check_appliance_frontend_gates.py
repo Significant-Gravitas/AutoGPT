@@ -55,13 +55,13 @@ def main():
         page.write_text(
             '/* eslint no-debugger: "error" */\nexport default function Page() { debugger; return null; }\n'
         )
-        run("invalid-lint", ["pnpm", "exec", "next", "lint"], rejects=True)
+        run("invalid-lint", ["pnpm", "exec", "next", "lint", "--quiet"], rejects=True)
         shutil.rmtree(probe)
         run(
             "restored-types",
             [sys.executable, "../../.github/scripts/frontend_typecheck.py"],
         )
-        run("restored-lint", ["pnpm", "exec", "next", "lint"])
+        run("restored-lint", ["pnpm", "exec", "next", "lint", "--quiet"])
         assert (
             subprocess.check_output(["git", "diff", "--binary", "--", "."]) == baseline
         )

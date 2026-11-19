@@ -1,8 +1,11 @@
 name: Compare parallel appliance frontend validation
-"on":
-  push:
-    branches:
-      - codex/ci-appliance-frontend-20261119
+'on':
+  workflow_dispatch:
+    inputs:
+      frontend_only:
+        description: Run only the frontend gate probes
+        type: boolean
+        default: false
 permissions:
   contents: read
 cache-mode: none
@@ -21,249 +24,240 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: linux/amd64
-            runner: ubuntu-24.04
-            suffix: amd64
-            checks: embedded
-            skip_checks: "false"
-          - platform: linux/amd64
-            runner: ubuntu-24.04
-            suffix: amd64
-            checks: parallel
-            skip_checks: "true"
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            suffix: arm64
-            checks: embedded
-            skip_checks: "false"
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            suffix: arm64
-            checks: parallel
-            skip_checks: "true"
+        - platform: linux/amd64
+          runner: ubuntu-24.04
+          suffix: amd64
+          checks: embedded
+          skip_checks: 'false'
+        - platform: linux/amd64
+          runner: ubuntu-24.04
+          suffix: amd64
+          checks: parallel
+          skip_checks: 'true'
+        - platform: linux/arm64
+          runner: ubuntu-24.04-arm
+          suffix: arm64
+          checks: embedded
+          skip_checks: 'false'
+        - platform: linux/arm64
+          runner: ubuntu-24.04-arm
+          suffix: arm64
+          checks: parallel
+          skip_checks: 'true'
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: "/*
+    - name: Check out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        filter: blob:none
+        sparse-checkout-cone-mode: false
+        sparse-checkout: '/*
 
-            !/docs/platform/.gitbook/assets/*.png
+          !/docs/platform/.gitbook/assets/*.png
 
-            !/docs/platform/.gitbook/assets/*.gif
-
-            "
-      - name: Verify application source and test fixtures are present
-        run: python3 .github/scripts/validate_ci_checkout.py
-      - name: Initialize validation reports
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-        run:
-          "mkdir -p \"$REPORT_DIR\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n  --arg platform \"${{\
-          \ matrix.platform }}\" \\\n  '{sha: $sha, platform: $platform, validated: false}' \\\n  > \"$REPORT_DIR/status.json\"\
-          \n"
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
-        with:
-          version: v0.36.0
-          cleanup: false
-          driver-opts:
-            "image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
-
-            "
-      - name: Authenticate to GHCR build cache
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Configure registry build cache
-        id: cache
-        shell: bash
-        env:
-          BUILD_CACHE_ARCH: ${{ matrix.suffix }}
-          BENCHMARK_PHASE: cold
-          BENCHMARK_VARIANT: ${{ matrix.checks }}
-        run:
-          "python3 - <<'PY'\nimport os, sys\nsys.path.insert(0, '.github/scripts')\nfrom single_container_cache\
-          \ import cache_settings\nimage = os.environ['BUILD_CACHE_IMAGE']\narch = os.environ['BUILD_CACHE_ARCH']\n\
-          variant = os.environ['BENCHMARK_VARIANT']\nphase = os.environ['BENCHMARK_PHASE']\nref = f\"{image}:bench-next-checks-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}-{variant}-{arch}\"\
-          \nsettings = cache_settings('pull_request', '', image, arch, head_ref='codex/ci-throughput-20261030')\n\
-          assert not any('.cache-to=' in item for item in settings)\nif phase == 'warm':\n    settings.insert(0,\
-          \ f'single-container.cache-from=type=registry,ref={ref}')\nelse:\n    settings.append(f'single-container.cache-to=type=registry,ref={ref},mode=max,oci-mediatypes=true,image-manifest=false')\n\
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:\n    stream.write('set<<CACHE_EOF\\n' +\
-          \ '\\n'.join(settings) + '\\nCACHE_EOF\\n')\nPY\n"
-      - name: Set the daily OS package refresh
-        id: apt-refresh
-        shell: bash
-        run: echo "date=2026-11-19" >> "$GITHUB_OUTPUT"
-      - name: Test appliance runtime helpers
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-        run:
-          python3 .github/scripts/run_unittest_junit.py --start-directory autogpt_platform/single-container/tests
-          --pattern 'test_*.py' --allow-skip test_documented_operations.DocumentedOperationsTest.test_restored_launch_supports_bash_3_when_available
-          --output "$REPORT_DIR/runtime-helpers.xml"
-      - name: Test publication helpers
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-        run:
-          python3 .github/scripts/run_command_junit.py --name publication-policy --classname single-container.publication
-          --output "$REPORT_DIR/publication-policy.xml" -- bash .github/scripts/platform-single-container-publish.sh
-          self-test
-      - name: Give each Bake target a distinct source mount
-        id: source-contexts
-        shell: bash
-        run:
-          "{\n  echo 'set<<CONTEXT_EOF'\n  for target in backend-server-base backend-server single-container;\
-          \ do\n    path=\"$RUNNER_TEMP/context-$target\"\n    ln -s \"$GITHUB_WORKSPACE\" \"$path\"\n \
-          \   [[ \"$(readlink -f \"$path\")\" == \"$(readlink -f \"$GITHUB_WORKSPACE\")\" ]]\n    printf\
-          \ '%s.context=%s\\n' \"$target\" \"$path\"\n  done\n  echo CONTEXT_EOF\n} >> \"$GITHUB_OUTPUT\"\
-          \ngit diff --exit-code\n"
-      - name: Build image without publishing
-        id: build-image
-        background: true
-        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e
-        with:
-          source: .
-          files: autogpt_platform/single-container/docker-bake.hcl
-          targets: single-container
-          set: "*.platform=${{ matrix.platform }}
-
-            *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
-
-            single-container.args.NEXT_SKIP_BUILD_CHECKS=${{ matrix.skip_checks }}
-
-            single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
-
-            single-container.args.VCS_REF=${{ github.sha }}
-
-            single-container.output=type=docker,compression=uncompressed
-
-            single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
-
-            ${{ steps.cache.outputs.set }}
-
-            ${{ steps.source-contexts.outputs.set }}
-
-
-            single-container.dockerfile=.github/ci-diagnostics/frontend-checks.Dockerfile
-
-            single-container.args.CI_FRONTEND_CHECKS_NONCE=${{ github.run_id }}-${{ github.run_attempt }}
-
-            "
-      - name: Wait for image build
-        wait: build-image
-      - name: Verify image source revision
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-        run:
-          "actual_revision=\"$(docker image inspect --format '{{ index .Config.Labels \"org.opencontainers.image.revision\"\
-          \ }}' \"$SMOKE_IMAGE\")\"\nif [[ \"$actual_revision\" != \"$GITHUB_SHA\" ]]; then\n  echo \"expected\
-          \ image revision $GITHUB_SHA, got $actual_revision\" >&2\n  exit 1\nfi\nimage_id=\"$(docker image\
-          \ inspect --format '{{ .Id }}' \"$SMOKE_IMAGE\")\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n\
-          \  --arg platform \"${{ matrix.platform }}\" \\\n  --arg image \"$SMOKE_IMAGE\" \\\n  --arg image_id\
-          \ \"$image_id\" \\\n  '{sha: $sha, platform: $platform, image: $image, image_id: $image_id, validated:\
-          \ false}' \\\n  > \"$REPORT_DIR/status.json\"\n"
-      - name: Smoke-test the complete image
-        id: complete-image-smoke
-        background: true
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-          SMOKE_PLATFORM: ${{ matrix.platform }}
-          SMOKE_SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
-        run:
-          python3 .github/scripts/run_command_junit.py --name complete-image-smoke --classname single-container.smoke
-          --output "$REPORT_DIR/smoke.xml" -- bash .github/scripts/platform-single-container-smoke.sh
-      - name: Install Trivy
-        continue-on-error: true
-        shell: bash
-        run: bash .github/scripts/install-trivy.sh
-      - name: Scan for fixable critical vulnerabilities
-        id: vulnerability_scan
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        with:
-          skip-setup-trivy: true
-          cache: false
-          image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-          scanners: vuln
-          format: json
-          output: ${{ runner.temp }}/platform-single-container-results/trivy-critical.json
-          ignore-unfixed: true
-          severity: CRITICAL
-          exit-code: "1"
-          timeout: 30m
-          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
-      - name: Scan image filesystem for embedded secrets
-        id: secret_scan
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        with:
-          skip-setup-trivy: true
-          cache: false
-          image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-          scanners: secret
-          format: json
-          output: ${{ runner.temp }}/platform-single-container-results/trivy-secrets.json
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-          timeout: 30m
-          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
-      - name: Signal concurrent scans complete
-        if: ${{ !cancelled() }}
-        shell: bash
-        env:
-          SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
-        run: touch "$SCAN_COMPLETION_FILE"
-      - name: Wait for complete-image smoke test
-        wait: complete-image-smoke
-      - name: Verify machine-readable reports
-        if: ${{ !cancelled() }}
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-          SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
-          VULNERABILITY_SCAN_OUTCOME: ${{ steps.vulnerability_scan.outcome }}
-        run:
-          "scan_failed=0\nif [[ \"$VULNERABILITY_SCAN_OUTCOME\" != \"success\" ]]; then\n  echo \"vulnerability\
-          \ scan action concluded $VULNERABILITY_SCAN_OUTCOME\" >&2\n  scan_failed=1\nfi\nif [[ \"$SECRET_SCAN_OUTCOME\"\
-          \ != \"success\" ]]; then\n  echo \"secret scan action concluded $SECRET_SCAN_OUTCOME\" >&2\n\
-          \  scan_failed=1\nfi\nreports=(\n  runtime-helpers.xml\n  publication-policy.xml\n  smoke.xml\n\
-          \  trivy-critical.json\n  trivy-secrets.json\n)\nfor report in \"${reports[@]}\"; do\n  if [[\
-          \ ! -s \"$REPORT_DIR/$report\" ]]; then\n    echo \"missing machine-readable report: $report\"\
-          \ >&2\n    exit 1\n  fi\ndone\npython3 .github/scripts/verify_single_container_reports.py \\\n\
-          \  --report-dir \"$REPORT_DIR\" \\\n  --expected-image \"$SMOKE_IMAGE\"\n((scan_failed == 0))\n"
-      - name: Mark validation complete
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-        run:
-          'jq ''.validated = true'' "$REPORT_DIR/status.json" > "$REPORT_DIR/status.complete.json"
-
-          mv "$REPORT_DIR/status.complete.json" "$REPORT_DIR/status.json"
+          !/docs/platform/.gitbook/assets/*.gif
 
           '
-      - name: Upload single-container reports
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: platform-single-container-ci-${{ matrix.suffix }}-cold-${{ matrix.checks }}
-          path: ${{ runner.temp }}/platform-single-container-results
-          if-no-files-found: error
-          retention-days: 7
+    - name: Verify application source and test fixtures are present
+      run: python3 .github/scripts/validate_ci_checkout.py
+    - name: Initialize validation reports
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: "mkdir -p \"$REPORT_DIR\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n  --arg platform \"${{\
+        \ matrix.platform }}\" \\\n  '{sha: $sha, platform: $platform, validated: false}' \\\n  > \"$REPORT_DIR/status.json\"\
+        \n"
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+      with:
+        version: v0.36.0
+        cleanup: false
+        driver-opts: 'image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
+
+          '
+    - name: Authenticate to GHCR build cache
+      continue-on-error: ${{ github.event_name == 'pull_request' }}
+      uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Configure registry build cache
+      id: cache
+      shell: bash
+      env:
+        BUILD_CACHE_ARCH: ${{ matrix.suffix }}
+        BENCHMARK_PHASE: cold
+        BENCHMARK_VARIANT: ${{ matrix.checks }}
+      run: "python3 - <<'PY'\nimport os, sys\nsys.path.insert(0, '.github/scripts')\nfrom single_container_cache\
+        \ import cache_settings\nimage = os.environ['BUILD_CACHE_IMAGE']\narch = os.environ['BUILD_CACHE_ARCH']\n\
+        variant = os.environ['BENCHMARK_VARIANT']\nphase = os.environ['BENCHMARK_PHASE']\nref = f\"{image}:bench-next-checks-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}-{variant}-{arch}\"\
+        \nsettings = cache_settings('pull_request', '', image, arch, head_ref='codex/ci-throughput-20261030')\n\
+        assert not any('.cache-to=' in item for item in settings)\nif phase == 'warm':\n    settings.insert(0,\
+        \ f'single-container.cache-from=type=registry,ref={ref}')\nelse:\n    settings.append(f'single-container.cache-to=type=registry,ref={ref},mode=max,oci-mediatypes=true,image-manifest=false')\n\
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:\n    stream.write('set<<CACHE_EOF\\n' +\
+        \ '\\n'.join(settings) + '\\nCACHE_EOF\\n')\nPY\n"
+    - name: Set the daily OS package refresh
+      id: apt-refresh
+      shell: bash
+      run: echo "date=2026-11-19" >> "$GITHUB_OUTPUT"
+    - name: Test appliance runtime helpers
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: python3 .github/scripts/run_unittest_junit.py --start-directory autogpt_platform/single-container/tests
+        --pattern 'test_*.py' --allow-skip test_documented_operations.DocumentedOperationsTest.test_restored_launch_supports_bash_3_when_available
+        --output "$REPORT_DIR/runtime-helpers.xml"
+    - name: Test publication helpers
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: python3 .github/scripts/run_command_junit.py --name publication-policy --classname single-container.publication
+        --output "$REPORT_DIR/publication-policy.xml" -- bash .github/scripts/platform-single-container-publish.sh
+        self-test
+    - name: Give each Bake target a distinct source mount
+      id: source-contexts
+      shell: bash
+      run: "{\n  echo 'set<<CONTEXT_EOF'\n  for target in backend-server-base backend-server single-container;\
+        \ do\n    path=\"$RUNNER_TEMP/context-$target\"\n    ln -s \"$GITHUB_WORKSPACE\" \"$path\"\n \
+        \   [[ \"$(readlink -f \"$path\")\" == \"$(readlink -f \"$GITHUB_WORKSPACE\")\" ]]\n    printf\
+        \ '%s.context=%s\\n' \"$target\" \"$path\"\n  done\n  echo CONTEXT_EOF\n} >> \"$GITHUB_OUTPUT\"\
+        \ngit diff --exit-code\n"
+    - name: Build image without publishing
+      id: build-image
+      background: true
+      uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e
+      with:
+        source: .
+        files: autogpt_platform/single-container/docker-bake.hcl
+        targets: single-container
+        set: '*.platform=${{ matrix.platform }}
+
+          *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
+
+          single-container.args.NEXT_SKIP_BUILD_CHECKS=${{ matrix.skip_checks }}
+
+          single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
+
+          single-container.args.VCS_REF=${{ github.sha }}
+
+          single-container.output=type=docker,compression=uncompressed
+
+          single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
+
+          ${{ steps.cache.outputs.set }}
+
+          ${{ steps.source-contexts.outputs.set }}
+
+
+          single-container.dockerfile=.github/ci-diagnostics/frontend-checks.Dockerfile
+
+          single-container.args.CI_FRONTEND_CHECKS_NONCE=${{ github.run_id }}-${{ github.run_attempt }}
+
+          '
+    - name: Wait for image build
+      wait: build-image
+    - name: Verify image source revision
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+      run: "actual_revision=\"$(docker image inspect --format '{{ index .Config.Labels \"org.opencontainers.image.revision\"\
+        \ }}' \"$SMOKE_IMAGE\")\"\nif [[ \"$actual_revision\" != \"$GITHUB_SHA\" ]]; then\n  echo \"expected\
+        \ image revision $GITHUB_SHA, got $actual_revision\" >&2\n  exit 1\nfi\nimage_id=\"$(docker image\
+        \ inspect --format '{{ .Id }}' \"$SMOKE_IMAGE\")\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n\
+        \  --arg platform \"${{ matrix.platform }}\" \\\n  --arg image \"$SMOKE_IMAGE\" \\\n  --arg image_id\
+        \ \"$image_id\" \\\n  '{sha: $sha, platform: $platform, image: $image, image_id: $image_id, validated:\
+        \ false}' \\\n  > \"$REPORT_DIR/status.json\"\n"
+    - name: Smoke-test the complete image
+      id: complete-image-smoke
+      background: true
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        SMOKE_PLATFORM: ${{ matrix.platform }}
+        SMOKE_SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
+      run: python3 .github/scripts/run_command_junit.py --name complete-image-smoke --classname single-container.smoke
+        --output "$REPORT_DIR/smoke.xml" -- bash .github/scripts/platform-single-container-smoke.sh
+    - name: Install Trivy
+      continue-on-error: true
+      shell: bash
+      run: bash .github/scripts/install-trivy.sh
+    - name: Scan for fixable critical vulnerabilities
+      id: vulnerability_scan
+      continue-on-error: true
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+      with:
+        skip-setup-trivy: true
+        cache: false
+        image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        scanners: vuln
+        format: json
+        output: ${{ runner.temp }}/platform-single-container-results/trivy-critical.json
+        ignore-unfixed: true
+        severity: CRITICAL
+        exit-code: '1'
+        timeout: 30m
+        trivyignores: autogpt_platform/single-container/.trivyignore.yaml
+    - name: Scan image filesystem for embedded secrets
+      id: secret_scan
+      continue-on-error: true
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+      with:
+        skip-setup-trivy: true
+        cache: false
+        image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        scanners: secret
+        format: json
+        output: ${{ runner.temp }}/platform-single-container-results/trivy-secrets.json
+        severity: HIGH,CRITICAL
+        exit-code: '1'
+        timeout: 30m
+        trivyignores: autogpt_platform/single-container/.trivyignore.yaml
+    - name: Signal concurrent scans complete
+      if: ${{ !cancelled() }}
+      shell: bash
+      env:
+        SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
+      run: touch "$SCAN_COMPLETION_FILE"
+    - name: Wait for complete-image smoke test
+      wait: complete-image-smoke
+    - name: Verify machine-readable reports
+      if: ${{ !cancelled() }}
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
+        VULNERABILITY_SCAN_OUTCOME: ${{ steps.vulnerability_scan.outcome }}
+      run: "scan_failed=0\nif [[ \"$VULNERABILITY_SCAN_OUTCOME\" != \"success\" ]]; then\n  echo \"vulnerability\
+        \ scan action concluded $VULNERABILITY_SCAN_OUTCOME\" >&2\n  scan_failed=1\nfi\nif [[ \"$SECRET_SCAN_OUTCOME\"\
+        \ != \"success\" ]]; then\n  echo \"secret scan action concluded $SECRET_SCAN_OUTCOME\" >&2\n\
+        \  scan_failed=1\nfi\nreports=(\n  runtime-helpers.xml\n  publication-policy.xml\n  smoke.xml\n\
+        \  trivy-critical.json\n  trivy-secrets.json\n)\nfor report in \"${reports[@]}\"; do\n  if [[\
+        \ ! -s \"$REPORT_DIR/$report\" ]]; then\n    echo \"missing machine-readable report: $report\"\
+        \ >&2\n    exit 1\n  fi\ndone\npython3 .github/scripts/verify_single_container_reports.py \\\n\
+        \  --report-dir \"$REPORT_DIR\" \\\n  --expected-image \"$SMOKE_IMAGE\"\n((scan_failed == 0))\n"
+    - name: Mark validation complete
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: 'jq ''.validated = true'' "$REPORT_DIR/status.json" > "$REPORT_DIR/status.complete.json"
+
+        mv "$REPORT_DIR/status.complete.json" "$REPORT_DIR/status.json"
+
+        '
+    - name: Upload single-container reports
+      if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: platform-single-container-ci-${{ matrix.suffix }}-cold-${{ matrix.checks }}
+        path: ${{ runner.temp }}/platform-single-container-results
+        if-no-files-found: error
+        retention-days: 7
+    if: '!inputs.frontend_only'
   appliance-warm:
     name: Frontend warm (${{ matrix.platform }}, ${{ matrix.checks }})
     permissions:
@@ -275,251 +269,241 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: linux/amd64
-            runner: ubuntu-24.04
-            suffix: amd64
-            checks: embedded
-            skip_checks: "false"
-          - platform: linux/amd64
-            runner: ubuntu-24.04
-            suffix: amd64
-            checks: parallel
-            skip_checks: "true"
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            suffix: arm64
-            checks: embedded
-            skip_checks: "false"
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            suffix: arm64
-            checks: parallel
-            skip_checks: "true"
+        - platform: linux/amd64
+          runner: ubuntu-24.04
+          suffix: amd64
+          checks: embedded
+          skip_checks: 'false'
+        - platform: linux/amd64
+          runner: ubuntu-24.04
+          suffix: amd64
+          checks: parallel
+          skip_checks: 'true'
+        - platform: linux/arm64
+          runner: ubuntu-24.04-arm
+          suffix: arm64
+          checks: embedded
+          skip_checks: 'false'
+        - platform: linux/arm64
+          runner: ubuntu-24.04-arm
+          suffix: arm64
+          checks: parallel
+          skip_checks: 'true'
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: "/*
+    - name: Check out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        filter: blob:none
+        sparse-checkout-cone-mode: false
+        sparse-checkout: '/*
 
-            !/docs/platform/.gitbook/assets/*.png
+          !/docs/platform/.gitbook/assets/*.png
 
-            !/docs/platform/.gitbook/assets/*.gif
-
-            "
-      - name: Verify application source and test fixtures are present
-        run: python3 .github/scripts/validate_ci_checkout.py
-      - name: Initialize validation reports
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-        run:
-          "mkdir -p \"$REPORT_DIR\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n  --arg platform \"${{\
-          \ matrix.platform }}\" \\\n  '{sha: $sha, platform: $platform, validated: false}' \\\n  > \"$REPORT_DIR/status.json\"\
-          \n"
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
-        with:
-          version: v0.36.0
-          cleanup: false
-          driver-opts:
-            "image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
-
-            "
-      - name: Authenticate to GHCR build cache
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Configure registry build cache
-        id: cache
-        shell: bash
-        env:
-          BUILD_CACHE_ARCH: ${{ matrix.suffix }}
-          BENCHMARK_PHASE: warm
-          BENCHMARK_VARIANT: ${{ matrix.checks }}
-        run:
-          "python3 - <<'PY'\nimport os, sys\nsys.path.insert(0, '.github/scripts')\nfrom single_container_cache\
-          \ import cache_settings\nimage = os.environ['BUILD_CACHE_IMAGE']\narch = os.environ['BUILD_CACHE_ARCH']\n\
-          variant = os.environ['BENCHMARK_VARIANT']\nphase = os.environ['BENCHMARK_PHASE']\nref = f\"{image}:bench-next-checks-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}-{variant}-{arch}\"\
-          \nsettings = cache_settings('pull_request', '', image, arch, head_ref='codex/ci-throughput-20261030')\n\
-          assert not any('.cache-to=' in item for item in settings)\nif phase == 'warm':\n    settings.insert(0,\
-          \ f'single-container.cache-from=type=registry,ref={ref}')\nelse:\n    settings.append(f'single-container.cache-to=type=registry,ref={ref},mode=max,oci-mediatypes=true,image-manifest=false')\n\
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:\n    stream.write('set<<CACHE_EOF\\n' +\
-          \ '\\n'.join(settings) + '\\nCACHE_EOF\\n')\nPY\n"
-      - name: Set the daily OS package refresh
-        id: apt-refresh
-        shell: bash
-        run: echo "date=2026-11-19" >> "$GITHUB_OUTPUT"
-      - name: Test appliance runtime helpers
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-        run:
-          python3 .github/scripts/run_unittest_junit.py --start-directory autogpt_platform/single-container/tests
-          --pattern 'test_*.py' --allow-skip test_documented_operations.DocumentedOperationsTest.test_restored_launch_supports_bash_3_when_available
-          --output "$REPORT_DIR/runtime-helpers.xml"
-      - name: Test publication helpers
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-        run:
-          python3 .github/scripts/run_command_junit.py --name publication-policy --classname single-container.publication
-          --output "$REPORT_DIR/publication-policy.xml" -- bash .github/scripts/platform-single-container-publish.sh
-          self-test
-      - name: Give each Bake target a distinct source mount
-        id: source-contexts
-        shell: bash
-        run:
-          "{\n  echo 'set<<CONTEXT_EOF'\n  for target in backend-server-base backend-server single-container;\
-          \ do\n    path=\"$RUNNER_TEMP/context-$target\"\n    ln -s \"$GITHUB_WORKSPACE\" \"$path\"\n \
-          \   [[ \"$(readlink -f \"$path\")\" == \"$(readlink -f \"$GITHUB_WORKSPACE\")\" ]]\n    printf\
-          \ '%s.context=%s\\n' \"$target\" \"$path\"\n  done\n  echo CONTEXT_EOF\n} >> \"$GITHUB_OUTPUT\"\
-          \ngit diff --exit-code\n"
-      - name: Build image without publishing
-        id: build-image
-        background: true
-        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e
-        with:
-          source: .
-          files: autogpt_platform/single-container/docker-bake.hcl
-          targets: single-container
-          set: "*.platform=${{ matrix.platform }}
-
-            *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
-
-            single-container.args.NEXT_SKIP_BUILD_CHECKS=${{ matrix.skip_checks }}
-
-            single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
-
-            single-container.args.VCS_REF=${{ github.sha }}
-
-            single-container.output=type=docker,compression=uncompressed
-
-            single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
-
-            ${{ steps.cache.outputs.set }}
-
-            ${{ steps.source-contexts.outputs.set }}
-
-
-            single-container.dockerfile=.github/ci-diagnostics/frontend-checks.Dockerfile
-
-            single-container.args.CI_FRONTEND_CHECKS_NONCE=${{ github.run_id }}-${{ github.run_attempt }}
-
-            "
-      - name: Wait for image build
-        wait: build-image
-      - name: Verify image source revision
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-        run:
-          "actual_revision=\"$(docker image inspect --format '{{ index .Config.Labels \"org.opencontainers.image.revision\"\
-          \ }}' \"$SMOKE_IMAGE\")\"\nif [[ \"$actual_revision\" != \"$GITHUB_SHA\" ]]; then\n  echo \"expected\
-          \ image revision $GITHUB_SHA, got $actual_revision\" >&2\n  exit 1\nfi\nimage_id=\"$(docker image\
-          \ inspect --format '{{ .Id }}' \"$SMOKE_IMAGE\")\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n\
-          \  --arg platform \"${{ matrix.platform }}\" \\\n  --arg image \"$SMOKE_IMAGE\" \\\n  --arg image_id\
-          \ \"$image_id\" \\\n  '{sha: $sha, platform: $platform, image: $image, image_id: $image_id, validated:\
-          \ false}' \\\n  > \"$REPORT_DIR/status.json\"\n"
-      - name: Smoke-test the complete image
-        id: complete-image-smoke
-        background: true
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-          SMOKE_PLATFORM: ${{ matrix.platform }}
-          SMOKE_SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
-        run:
-          python3 .github/scripts/run_command_junit.py --name complete-image-smoke --classname single-container.smoke
-          --output "$REPORT_DIR/smoke.xml" -- bash .github/scripts/platform-single-container-smoke.sh
-      - name: Install Trivy
-        continue-on-error: true
-        shell: bash
-        run: bash .github/scripts/install-trivy.sh
-      - name: Scan for fixable critical vulnerabilities
-        id: vulnerability_scan
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        with:
-          skip-setup-trivy: true
-          cache: false
-          image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-          scanners: vuln
-          format: json
-          output: ${{ runner.temp }}/platform-single-container-results/trivy-critical.json
-          ignore-unfixed: true
-          severity: CRITICAL
-          exit-code: "1"
-          timeout: 30m
-          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
-      - name: Scan image filesystem for embedded secrets
-        id: secret_scan
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        with:
-          skip-setup-trivy: true
-          cache: false
-          image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-          scanners: secret
-          format: json
-          output: ${{ runner.temp }}/platform-single-container-results/trivy-secrets.json
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-          timeout: 30m
-          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
-      - name: Signal concurrent scans complete
-        if: ${{ !cancelled() }}
-        shell: bash
-        env:
-          SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
-        run: touch "$SCAN_COMPLETION_FILE"
-      - name: Wait for complete-image smoke test
-        wait: complete-image-smoke
-      - name: Verify machine-readable reports
-        if: ${{ !cancelled() }}
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
-          SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
-          VULNERABILITY_SCAN_OUTCOME: ${{ steps.vulnerability_scan.outcome }}
-        run:
-          "scan_failed=0\nif [[ \"$VULNERABILITY_SCAN_OUTCOME\" != \"success\" ]]; then\n  echo \"vulnerability\
-          \ scan action concluded $VULNERABILITY_SCAN_OUTCOME\" >&2\n  scan_failed=1\nfi\nif [[ \"$SECRET_SCAN_OUTCOME\"\
-          \ != \"success\" ]]; then\n  echo \"secret scan action concluded $SECRET_SCAN_OUTCOME\" >&2\n\
-          \  scan_failed=1\nfi\nreports=(\n  runtime-helpers.xml\n  publication-policy.xml\n  smoke.xml\n\
-          \  trivy-critical.json\n  trivy-secrets.json\n)\nfor report in \"${reports[@]}\"; do\n  if [[\
-          \ ! -s \"$REPORT_DIR/$report\" ]]; then\n    echo \"missing machine-readable report: $report\"\
-          \ >&2\n    exit 1\n  fi\ndone\npython3 .github/scripts/verify_single_container_reports.py \\\n\
-          \  --report-dir \"$REPORT_DIR\" \\\n  --expected-image \"$SMOKE_IMAGE\"\n((scan_failed == 0))\n"
-      - name: Mark validation complete
-        shell: bash
-        env:
-          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
-        run:
-          'jq ''.validated = true'' "$REPORT_DIR/status.json" > "$REPORT_DIR/status.complete.json"
-
-          mv "$REPORT_DIR/status.complete.json" "$REPORT_DIR/status.json"
+          !/docs/platform/.gitbook/assets/*.gif
 
           '
-      - name: Upload single-container reports
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: platform-single-container-ci-${{ matrix.suffix }}-warm-${{ matrix.checks }}
-          path: ${{ runner.temp }}/platform-single-container-results
-          if-no-files-found: error
-          retention-days: 7
+    - name: Verify application source and test fixtures are present
+      run: python3 .github/scripts/validate_ci_checkout.py
+    - name: Initialize validation reports
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: "mkdir -p \"$REPORT_DIR\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n  --arg platform \"${{\
+        \ matrix.platform }}\" \\\n  '{sha: $sha, platform: $platform, validated: false}' \\\n  > \"$REPORT_DIR/status.json\"\
+        \n"
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+      with:
+        version: v0.36.0
+        cleanup: false
+        driver-opts: 'image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
+
+          '
+    - name: Authenticate to GHCR build cache
+      continue-on-error: ${{ github.event_name == 'pull_request' }}
+      uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Configure registry build cache
+      id: cache
+      shell: bash
+      env:
+        BUILD_CACHE_ARCH: ${{ matrix.suffix }}
+        BENCHMARK_PHASE: warm
+        BENCHMARK_VARIANT: ${{ matrix.checks }}
+      run: "python3 - <<'PY'\nimport os, sys\nsys.path.insert(0, '.github/scripts')\nfrom single_container_cache\
+        \ import cache_settings\nimage = os.environ['BUILD_CACHE_IMAGE']\narch = os.environ['BUILD_CACHE_ARCH']\n\
+        variant = os.environ['BENCHMARK_VARIANT']\nphase = os.environ['BENCHMARK_PHASE']\nref = f\"{image}:bench-next-checks-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}-{variant}-{arch}\"\
+        \nsettings = cache_settings('pull_request', '', image, arch, head_ref='codex/ci-throughput-20261030')\n\
+        assert not any('.cache-to=' in item for item in settings)\nif phase == 'warm':\n    settings.insert(0,\
+        \ f'single-container.cache-from=type=registry,ref={ref}')\nelse:\n    settings.append(f'single-container.cache-to=type=registry,ref={ref},mode=max,oci-mediatypes=true,image-manifest=false')\n\
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:\n    stream.write('set<<CACHE_EOF\\n' +\
+        \ '\\n'.join(settings) + '\\nCACHE_EOF\\n')\nPY\n"
+    - name: Set the daily OS package refresh
+      id: apt-refresh
+      shell: bash
+      run: echo "date=2026-11-19" >> "$GITHUB_OUTPUT"
+    - name: Test appliance runtime helpers
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: python3 .github/scripts/run_unittest_junit.py --start-directory autogpt_platform/single-container/tests
+        --pattern 'test_*.py' --allow-skip test_documented_operations.DocumentedOperationsTest.test_restored_launch_supports_bash_3_when_available
+        --output "$REPORT_DIR/runtime-helpers.xml"
+    - name: Test publication helpers
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: python3 .github/scripts/run_command_junit.py --name publication-policy --classname single-container.publication
+        --output "$REPORT_DIR/publication-policy.xml" -- bash .github/scripts/platform-single-container-publish.sh
+        self-test
+    - name: Give each Bake target a distinct source mount
+      id: source-contexts
+      shell: bash
+      run: "{\n  echo 'set<<CONTEXT_EOF'\n  for target in backend-server-base backend-server single-container;\
+        \ do\n    path=\"$RUNNER_TEMP/context-$target\"\n    ln -s \"$GITHUB_WORKSPACE\" \"$path\"\n \
+        \   [[ \"$(readlink -f \"$path\")\" == \"$(readlink -f \"$GITHUB_WORKSPACE\")\" ]]\n    printf\
+        \ '%s.context=%s\\n' \"$target\" \"$path\"\n  done\n  echo CONTEXT_EOF\n} >> \"$GITHUB_OUTPUT\"\
+        \ngit diff --exit-code\n"
+    - name: Build image without publishing
+      id: build-image
+      background: true
+      uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e
+      with:
+        source: .
+        files: autogpt_platform/single-container/docker-bake.hcl
+        targets: single-container
+        set: '*.platform=${{ matrix.platform }}
+
+          *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
+
+          single-container.args.NEXT_SKIP_BUILD_CHECKS=${{ matrix.skip_checks }}
+
+          single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
+
+          single-container.args.VCS_REF=${{ github.sha }}
+
+          single-container.output=type=docker,compression=uncompressed
+
+          single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
+
+          ${{ steps.cache.outputs.set }}
+
+          ${{ steps.source-contexts.outputs.set }}
+
+
+          single-container.dockerfile=.github/ci-diagnostics/frontend-checks.Dockerfile
+
+          single-container.args.CI_FRONTEND_CHECKS_NONCE=${{ github.run_id }}-${{ github.run_attempt }}
+
+          '
+    - name: Wait for image build
+      wait: build-image
+    - name: Verify image source revision
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+      run: "actual_revision=\"$(docker image inspect --format '{{ index .Config.Labels \"org.opencontainers.image.revision\"\
+        \ }}' \"$SMOKE_IMAGE\")\"\nif [[ \"$actual_revision\" != \"$GITHUB_SHA\" ]]; then\n  echo \"expected\
+        \ image revision $GITHUB_SHA, got $actual_revision\" >&2\n  exit 1\nfi\nimage_id=\"$(docker image\
+        \ inspect --format '{{ .Id }}' \"$SMOKE_IMAGE\")\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n\
+        \  --arg platform \"${{ matrix.platform }}\" \\\n  --arg image \"$SMOKE_IMAGE\" \\\n  --arg image_id\
+        \ \"$image_id\" \\\n  '{sha: $sha, platform: $platform, image: $image, image_id: $image_id, validated:\
+        \ false}' \\\n  > \"$REPORT_DIR/status.json\"\n"
+    - name: Smoke-test the complete image
+      id: complete-image-smoke
+      background: true
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        SMOKE_PLATFORM: ${{ matrix.platform }}
+        SMOKE_SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
+      run: python3 .github/scripts/run_command_junit.py --name complete-image-smoke --classname single-container.smoke
+        --output "$REPORT_DIR/smoke.xml" -- bash .github/scripts/platform-single-container-smoke.sh
+    - name: Install Trivy
+      continue-on-error: true
+      shell: bash
+      run: bash .github/scripts/install-trivy.sh
+    - name: Scan for fixable critical vulnerabilities
+      id: vulnerability_scan
+      continue-on-error: true
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+      with:
+        skip-setup-trivy: true
+        cache: false
+        image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        scanners: vuln
+        format: json
+        output: ${{ runner.temp }}/platform-single-container-results/trivy-critical.json
+        ignore-unfixed: true
+        severity: CRITICAL
+        exit-code: '1'
+        timeout: 30m
+        trivyignores: autogpt_platform/single-container/.trivyignore.yaml
+    - name: Scan image filesystem for embedded secrets
+      id: secret_scan
+      continue-on-error: true
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+      with:
+        skip-setup-trivy: true
+        cache: false
+        image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        scanners: secret
+        format: json
+        output: ${{ runner.temp }}/platform-single-container-results/trivy-secrets.json
+        severity: HIGH,CRITICAL
+        exit-code: '1'
+        timeout: 30m
+        trivyignores: autogpt_platform/single-container/.trivyignore.yaml
+    - name: Signal concurrent scans complete
+      if: ${{ !cancelled() }}
+      shell: bash
+      env:
+        SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
+      run: touch "$SCAN_COMPLETION_FILE"
+    - name: Wait for complete-image smoke test
+      wait: complete-image-smoke
+    - name: Verify machine-readable reports
+      if: ${{ !cancelled() }}
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
+        VULNERABILITY_SCAN_OUTCOME: ${{ steps.vulnerability_scan.outcome }}
+      run: "scan_failed=0\nif [[ \"$VULNERABILITY_SCAN_OUTCOME\" != \"success\" ]]; then\n  echo \"vulnerability\
+        \ scan action concluded $VULNERABILITY_SCAN_OUTCOME\" >&2\n  scan_failed=1\nfi\nif [[ \"$SECRET_SCAN_OUTCOME\"\
+        \ != \"success\" ]]; then\n  echo \"secret scan action concluded $SECRET_SCAN_OUTCOME\" >&2\n\
+        \  scan_failed=1\nfi\nreports=(\n  runtime-helpers.xml\n  publication-policy.xml\n  smoke.xml\n\
+        \  trivy-critical.json\n  trivy-secrets.json\n)\nfor report in \"${reports[@]}\"; do\n  if [[\
+        \ ! -s \"$REPORT_DIR/$report\" ]]; then\n    echo \"missing machine-readable report: $report\"\
+        \ >&2\n    exit 1\n  fi\ndone\npython3 .github/scripts/verify_single_container_reports.py \\\n\
+        \  --report-dir \"$REPORT_DIR\" \\\n  --expected-image \"$SMOKE_IMAGE\"\n((scan_failed == 0))\n"
+    - name: Mark validation complete
+      shell: bash
+      env:
+        REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+      run: 'jq ''.validated = true'' "$REPORT_DIR/status.json" > "$REPORT_DIR/status.complete.json"
+
+        mv "$REPORT_DIR/status.complete.json" "$REPORT_DIR/status.json"
+
+        '
+    - name: Upload single-container reports
+      if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: platform-single-container-ci-${{ matrix.suffix }}-warm-${{ matrix.checks }}
+        path: ${{ runner.temp }}/platform-single-container-results
+        if-no-files-found: error
+        retention-days: 7
     needs:
-      - appliance-cold
+    - appliance-cold
   frontend-checks:
     name: Validate appliance frontend
     if: github.event_name != 'release'
@@ -530,58 +514,58 @@ jobs:
         shell: bash
         working-directory: autogpt_platform/frontend
     env:
-      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_TELEMETRY_DISABLED: '1'
       NODE_OPTIONS: --max-old-space-size=8192
       NEXT_PUBLIC_AGPT_SERVER_URL: /_agpt/api
       NEXT_PUBLIC_AGPT_WS_SERVER_URL: /_agpt/ws
-      NEXT_PUBLIC_FRONTEND_BASE_URL: ""
+      NEXT_PUBLIC_FRONTEND_BASE_URL: ''
       NEXT_PUBLIC_APP_ENV: local
       NEXT_PUBLIC_BEHAVE_AS: LOCAL
-      NEXT_PUBLIC_SOURCEMAPS: "false"
+      NEXT_PUBLIC_SOURCEMAPS: 'false'
       NEXT_PUBLIC_TURNSTILE: disabled
-      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ""
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ''
       DATABASE_URL: postgresql:///postgres?host=%2Frun%2Fpostgresql&user=autogpt_frontend
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-          filter: blob:none
-          sparse-checkout: ".github
+    - name: Check out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        filter: blob:none
+        sparse-checkout: '.github
 
-            autogpt_platform/frontend
+          autogpt_platform/frontend
 
-            "
-      - name: Set up pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
-        with:
-          package_json_file: autogpt_platform/frontend/package.json
-      - name: Set up Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with:
-          node-version: 24.22.1
-          package-manager-cache: false
-      - name: Set up Bun type checker
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          bun-version: 1.4.4
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Generate build-only auth secret
-        run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
-      - name: Generate API client
-        run: pnpm generate:api
-      - name: Generate Next route types and check TypeScript
-        run: python3 ../../.github/scripts/frontend_typecheck.py
-      - name: Lint frontend
-        run: pnpm exec next lint
-      - name: Require type and lint failures to be rejected
-        run: python3 ../../.github/ci-diagnostics/check_appliance_frontend_gates.py
-      - name: Upload frontend gate probes
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: appliance-frontend-gate-canaries
-          path: ${{ runner.temp }}/frontend-gate-canaries
-          if-no-files-found: error
+          '
+    - name: Set up pnpm
+      uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+      with:
+        package_json_file: autogpt_platform/frontend/package.json
+    - name: Set up Node
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      with:
+        node-version: 24.22.1
+        package-manager-cache: false
+    - name: Set up Bun type checker
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      with:
+        bun-version: 1.4.4
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+    - name: Generate build-only auth secret
+      run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+    - name: Generate API client
+      run: pnpm generate:api
+    - name: Generate Next route types and check TypeScript
+      run: python3 ../../.github/scripts/frontend_typecheck.py
+    - name: Lint frontend
+      run: pnpm exec next lint
+    - name: Require type and lint failures to be rejected
+      run: python3 ../../.github/ci-diagnostics/check_appliance_frontend_gates.py
+    - name: Upload frontend gate probes
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: appliance-frontend-gate-canaries
+        path: ${{ runner.temp }}/frontend-gate-canaries
+        if-no-files-found: error
