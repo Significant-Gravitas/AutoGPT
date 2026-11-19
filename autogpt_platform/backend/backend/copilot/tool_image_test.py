@@ -58,7 +58,7 @@ def test_large_dimensions_are_rejected():
     "format,parser",
     [
         ("BMP", "PIL.BmpImagePlugin.BmpImageFile._open"),
-        ("AVIF", "PIL.AvifImagePlugin.AvifImageFile._open"),
+        ("TIFF", "PIL.TiffImagePlugin.TiffImageFile._open"),
     ],
 )
 def test_unsupported_image_format_is_rejected_without_parsing(format, parser, mocker):

@@ -139,7 +139,7 @@ async def test_logo_in_another_format_is_rejected_without_parsing(monkeypatch):
     monkeypatch.setattr(settings.config, "public_site_media_bucket", "public-media")
     app = SimpleNamespace(id="app-123", owner_id="owner", logo_url=None)
     content = io.BytesIO()
-    Image.new("RGB", (512, 512)).save(content, format="AVIF")
+    Image.new("RGB", (512, 512)).save(content, format="TIFF")
     content.seek(0)
     file = UploadFile(
         filename="logo.png",
@@ -149,7 +149,7 @@ async def test_logo_in_another_format_is_rejected_without_parsing(monkeypatch):
 
     with (
         patch.object(oauth, "get_oauth_application_by_id", AsyncMock(return_value=app)),
-        patch("PIL.AvifImagePlugin.AvifImageFile._open") as parse,
+        patch("PIL.TiffImagePlugin.TiffImageFile._open") as parse,
         pytest.raises(HTTPException) as rejection,
     ):
         await oauth.upload_app_logo("app-123", file, user_id="owner")
