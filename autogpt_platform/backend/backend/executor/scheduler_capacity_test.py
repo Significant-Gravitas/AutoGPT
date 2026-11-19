@@ -205,8 +205,91 @@ def test_a_job_name_is_stored_no_longer_than_a_schedule_name(
     assert stored == "n" * MAX_SCHEDULE_NAME_LENGTH
 
 
-def _args(schedule_id: str, user_id: str) -> GraphExecutionJobArgs:
-    return GraphExecutionJobArgs(**_graph_job_kwargs(schedule_id, user_id, "g1"))
+@pytest.mark.parametrize(
+    "teammate_org, topic, stored",
+    [
+        (None, "x" * 50_000, True),
+        ("org-a", "x" * 50_000, False),
+        ("org-b", "x" * 50_000, True),
+        (None, "x" * 50_000 + "\U0001f600", False),
+        (None, [[]] * 2_500, False),
+    ],
+    ids=["alone", "teammate", "other-org", "wide-text", "many-values"],
+)
+def test_a_schedule_is_stored_only_within_the_storage_budget(
+    full_scheduler: Scheduler,
+    monkeypatch: pytest.MonkeyPatch,
+    teammate_org: str | None,
+    topic: str | list,
+    stored: bool,
+):
+    monkeypatch.setattr(scheduler_module.config, "max_schedules_per_user", 10)
+    monkeypatch.setattr(scheduler_module.config, "max_schedule_storage_bytes", 150_000)
+    if teammate_org:
+        _store(full_scheduler, "theirs", "u3", teammate_org, "x" * 100_000)
+    args = _args("new", "u1", organization_id="org-a", topic=topic)
+
+    if stored:
+        _persist(full_scheduler, args)
+        full_scheduler.scheduler.add_job.assert_called_once()
+    else:
+        with pytest.raises(ValueError, match="can store 150,000 bytes together"):
+            _persist(full_scheduler, args)
+        full_scheduler.scheduler.add_job.assert_not_called()
+
+
+def test_a_teammates_schedules_count_when_the_index_is_not_ready(
+    full_scheduler: Scheduler, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(scheduler_module.config, "max_schedules_per_user", 10)
+    monkeypatch.setattr(scheduler_module.config, "max_schedule_storage_bytes", 150_000)
+    _store(full_scheduler, "theirs", "u3", "org-a", "x" * 100_000)
+    full_scheduler._schedule_index_ready = False
+
+    with pytest.raises(ValueError, match="can store 150,000 bytes together"):
+        _persist(full_scheduler, _args("new", "u1", "org-a", "x" * 50_000))
+    full_scheduler.scheduler.add_job.assert_not_called()
+
+
+@pytest.mark.parametrize("length, stored", [(100_000, True), (160_000, False)])
+def test_an_edit_is_held_to_the_storage_budget_without_the_copy_it_replaces(
+    full_scheduler: Scheduler,
+    monkeypatch: pytest.MonkeyPatch,
+    length: int,
+    stored: bool,
+):
+    monkeypatch.setattr(scheduler_module.config, "max_schedule_storage_bytes", 150_000)
+    monkeypatch.setattr(scheduler_module, "run_async", MagicMock())
+    _store(full_scheduler, "big", "u1", "", "x" * 100_000)
+    full_scheduler.scheduler.modify_job.side_effect = lambda job_id, **changes: (
+        _mock_job(changes["kwargs"])
+    )
+
+    def edit() -> None:
+        full_scheduler.update_graph_execution_schedule(
+            schedule_id="big", user_id="u1", input_data={"topic": "y" * length}
+        )
+
+    if stored:
+        edit()
+        full_scheduler.scheduler.modify_job.assert_called_once()
+    else:
+        with pytest.raises(ValueError, match="can store 150,000 bytes together"):
+            edit()
+        full_scheduler.scheduler.modify_job.assert_not_called()
+
+
+def _args(
+    schedule_id: str,
+    user_id: str,
+    organization_id: str = "",
+    topic: str | list | None = None,
+) -> GraphExecutionJobArgs:
+    inputs = {} if topic is None else {"topic": topic}
+    return GraphExecutionJobArgs(
+        **_graph_job_kwargs(schedule_id, user_id, "g1")
+        | {"organization_id": organization_id, "input_data": inputs}
+    )
 
 
 def _persist(
@@ -226,3 +309,17 @@ def _persist(
 def _held(scheduler: Scheduler) -> list[MagicMock]:
     """u1's jobs, as the fixture's stubbed full scan returns them."""
     return scheduler.scheduler.get_jobs.return_value
+
+
+def _store(
+    scheduler: Scheduler, job_id: str, user_id: str, organization_id: str, topic: str
+) -> None:
+    """Add a stored schedule to the jobstore stub and the index."""
+    args = _args(job_id, user_id, organization_id, topic)
+    _held(scheduler).append(_mock_job(args.model_dump(mode="json")))
+    assert scheduler._schedule_index is not None
+    scheduler._schedule_index.upsert(_index_entry(job_id, args))
+    jobs = {job.id: job for job in _held(scheduler)}
+    scheduler.scheduler.get_job.side_effect = lambda job_id, jobstore=None: jobs.get(
+        job_id
+    )
