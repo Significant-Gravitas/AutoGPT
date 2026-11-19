@@ -50,7 +50,8 @@ class ModerationConfig(BaseModel):
     )
     fail_open: bool = Field(
         default=False,
-        description="If True, allow execution to continue if moderation fails",
+        description="If True, allow execution to continue if moderation fails or "
+        "times out",
     )
     moderate_inputs: bool = Field(
         default=True, description="Whether to moderate block inputs"

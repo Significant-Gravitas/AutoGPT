@@ -24,7 +24,11 @@ from backend.util.timezone_utils import get_user_timezone_or_utc
 from .library.helpers import assert_inputs_match
 from .models import AgentRunSchedule, AgentRunScheduleCreateRequest
 from .pagination import Page, PageRequest, page_request
-from .tenancy import TenantContext, require_paid_permission, require_permission
+from .tenancy import (
+    TenantContext,
+    require_paid_resource_permission,
+    require_resource_permission,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +48,9 @@ schedules_router = APIRouter(tags=["schedules"])
 async def list_all_schedules(
     graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
     page: PageRequest = Depends(page_request),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_SCHEDULE)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_SCHEDULE)
+    ),
 ) -> Page[AgentRunSchedule]:
     """List schedules for the authenticated user.
 
@@ -66,7 +72,9 @@ async def list_all_schedules(
 )
 async def delete_schedule(
     schedule_id: str,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_SCHEDULE)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.WRITE_SCHEDULE)
+    ),
 ) -> None:
     """Delete an execution schedule."""
     # The scheduler deletes by user id alone, so the org is checked here: a
@@ -94,7 +102,7 @@ async def delete_schedule(
 async def create_schedule(
     request: AgentRunScheduleCreateRequest,
     auth: TenantContext = Security(
-        require_paid_permission(
+        require_paid_resource_permission(
             APIKeyPermission.WRITE_SCHEDULE, APIKeyPermission.RUN_AGENT
         )
     ),

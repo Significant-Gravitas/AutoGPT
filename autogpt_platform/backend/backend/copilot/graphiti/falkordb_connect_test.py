@@ -106,17 +106,19 @@ class TestDeferredFalkorDB:
 
     @staticmethod
     def _abandoned_build(
-        release: threading.Event, real: MagicMock | None = None
+        release: threading.Event,
+        real: MagicMock | None = None,
+        failure: Exception | None = None,
     ) -> tuple[Any, list[int]]:
-        """A build whose first attempt waits for ``release`` and then fails;
-        any later attempt returns ``real``."""
+        """A build whose first attempt waits for ``release`` and then fails,
+        with ``failure`` if given; any later attempt returns ``real``."""
         attempts: list[int] = []
 
         def build() -> MagicMock:
             attempts.append(1)
             if len(attempts) == 1:
                 release.wait(5)
-                raise ConnectionError("the server stopped answering")
+                raise failure or ConnectionError("the server stopped answering")
             assert real is not None
             return real
 
@@ -133,10 +135,21 @@ class TestDeferredFalkorDB:
         retrieved")."""
         loop = asyncio.get_running_loop()
         reported: list[dict[str, Any]] = []
+        failure = ConnectionError("the server stopped answering")
+
+        def hear(running: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
+            # The gc.collect() below also finalizes whatever earlier tests
+            # left behind, and their reports land here too: only this build's
+            # failure is this test's.
+            if context.get("exception") is failure:
+                reported.append(context)
+            else:
+                running.default_exception_handler(context)
+
         previous = loop.get_exception_handler()
-        loop.set_exception_handler(lambda _loop, context: reported.append(context))
+        loop.set_exception_handler(hear)
         release = threading.Event()
-        build, _ = self._abandoned_build(release)
+        build, _ = self._abandoned_build(release, failure=failure)
         try:
             client = falkordb_connect.DeferredFalkorDB(build)
             with pytest.raises(TimeoutError):

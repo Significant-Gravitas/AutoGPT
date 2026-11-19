@@ -42,6 +42,37 @@ def neutralize_forged_labels(body: str) -> str:
     return _FORGED_LINE_RE.sub(r"\1\\[", body)
 
 
+# The section lines the bot writes around quoted thread history and the
+# conversations a message points at.
+SECTION_PREFIXES = (
+    "Current message]",
+    "From ",
+    "Recent ",
+    "Content of #",
+    *(f"The {label} channel" for label in PLATFORM_LABELS),
+)
+
+# A line that reads as one the bot writes: its header, a label or a section.
+_BRIDGE_LINE_RE = re.compile(
+    r"^[^\S\n]*\[(?:"
+    + "|".join(
+        [
+            *PLATFORM_LABELS,
+            *(re.escape(p) for p in _LABEL_PREFIXES),
+            *(re.escape(p) for p in SECTION_PREFIXES),
+        ]
+    )
+    + r")[^\n]*",
+    re.MULTILINE,
+)
+
+
+def bridge_lines(message: str) -> list[str]:
+    """Every line of ``message`` that reads as the bot's header, a label or a
+    section, in order."""
+    return _BRIDGE_LINE_RE.findall(message)
+
+
 def split_chat_platform_header(message: str) -> tuple[str, str]:
     """``(header line with its newline, rest)``; the header is "" when absent."""
     header = _HEADER_RE.match(message)
@@ -62,6 +93,14 @@ def label_covering(body: str, position: int) -> tuple[str, int]:
         return "", 0
     text = covering.group(0)
     return (text if text.endswith("\n") else text + "\n"), covering.end()
+
+
+def label_starting_within(body: str, start: int, end: int) -> int | None:
+    """Where the first per-message label in ``body`` that starts at or after
+    ``start``, and before ``end``, begins; None when there is none."""
+    for label in _LABEL_LINE_RE.finditer(body, start):
+        return label.start() if label.start() < end else None
+    return None
 
 
 def strip_chat_platform_header(message: str, *, bridge_origin: bool = False) -> str:

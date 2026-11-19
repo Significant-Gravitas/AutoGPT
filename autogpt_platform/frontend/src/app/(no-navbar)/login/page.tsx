@@ -9,6 +9,7 @@ import AuthFeedback from "@/components/auth/AuthFeedback";
 import { CheckYourInbox } from "@/components/auth/CheckYourInbox/CheckYourInbox";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
+import { MicrosoftOAuthButton } from "@/components/auth/MicrosoftOAuthButton";
 import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
@@ -17,6 +18,7 @@ import { environment } from "@/services/environment";
 import { useSearchParams } from "next/navigation";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { LoginMarketingPanel } from "./components/LoginMarketingPanel";
+import { SignInCode } from "./components/SignInCode/SignInCode";
 import {
   ACCOUNT_BANNED_NOTICE_COPY,
   EMAIL_VERIFICATION_NOTICE_COPY,
@@ -35,24 +37,38 @@ export default function LoginPage() {
   const {
     user,
     form,
+    formRef,
     feedback,
     nextUrl: safeNextUrl,
     verificationEmail,
     verificationNotice,
+    isWaitingOnCode,
     showBannedNotice,
     isLoading,
     isGoogleLoading,
+    isMicrosoftLoading,
+    isMicrosoftEnabled,
     isCloudEnv,
-    isUserLoading,
+    isCheckingSession,
+    isHydrated,
     showNotAllowedModal,
     handleSubmit,
     handleProviderLogin,
     handleCloseNotAllowedModal,
     handleBackToLogin,
+    handleLeaveSignInCode,
   } = useLoginPage();
 
-  if (isUserLoading || user) {
+  if (isCheckingSession || user) {
     return <LoadingLogin />;
+  }
+
+  if (isWaitingOnCode) {
+    return (
+      <AuthSplitLayout marketing={<LoginMarketingPanel />}>
+        <SignInCode next={safeNextUrl} onBack={handleLeaveSignInCode} />
+      </AuthSplitLayout>
+    );
   }
 
   if (verificationEmail) {
@@ -91,7 +107,11 @@ export default function LoginPage() {
       ) : null}
 
       <FormProvider {...form}>
-        <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
+        <form
+          ref={formRef}
+          onSubmit={handleSubmit}
+          className="flex w-full flex-col gap-1"
+        >
           <FormField
             control={form.control}
             name="email"
@@ -132,7 +152,7 @@ export default function LoginPage() {
           <Button
             variant="primary"
             loading={isLoading}
-            disabled={isGoogleLoading}
+            disabled={!isHydrated || isGoogleLoading || isMicrosoftLoading}
             type="submit"
             className="mt-6 w-full"
           >
@@ -140,14 +160,25 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        {isCloudEnv ? (
+        {isCloudEnv || isMicrosoftEnabled ? (
           <>
             <AuthDivider />
-            <GoogleOAuthButton
-              onClick={() => handleProviderLogin("google")}
-              isLoading={isGoogleLoading}
-              disabled={isLoading}
-            />
+            <div className="flex w-full flex-col gap-3">
+              {isCloudEnv ? (
+                <GoogleOAuthButton
+                  onClick={() => handleProviderLogin("google")}
+                  isLoading={isGoogleLoading}
+                  disabled={!isHydrated || isLoading || isMicrosoftLoading}
+                />
+              ) : null}
+              {isMicrosoftEnabled ? (
+                <MicrosoftOAuthButton
+                  onClick={() => handleProviderLogin("microsoft")}
+                  isLoading={isMicrosoftLoading}
+                  disabled={!isHydrated || isLoading || isGoogleLoading}
+                />
+              ) : null}
+            </div>
           </>
         ) : null}
 

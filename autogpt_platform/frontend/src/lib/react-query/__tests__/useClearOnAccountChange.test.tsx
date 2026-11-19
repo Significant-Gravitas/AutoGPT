@@ -1,8 +1,10 @@
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import type { User } from "@/lib/auth/types";
 import {
+  MutationObserver,
   QueryClient,
   QueryClientProvider,
+  useMutationState,
   useQuery,
 } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -92,5 +94,45 @@ describe("useClearOnAccountChange", () => {
     expect(
       queryClient.getQueryData(["copilot", "session-list"]),
     ).toBeUndefined();
+  });
+
+  it("drops the last account's mutations when another account signs in on the tab", async () => {
+    // useMutationState lists mutations from the cache (the chats being
+    // deleted, for one), so they belong to the account that made them.
+    const queryClient = new QueryClient();
+    signIn("user-1");
+    const { result } = renderHook(
+      () => {
+        useClearOnAccountChange(queryClient);
+        return useMutationState({
+          filters: { mutationKey: ["delete-chat"] },
+          select: (mutation) => mutation.state.variables,
+        });
+      },
+      {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        ),
+      },
+    );
+    await act(async () => {
+      await new MutationObserver(queryClient, {
+        mutationKey: ["delete-chat"],
+        mutationFn: async (chatID: string) => chatID,
+      }).mutate("user-1's chat");
+    });
+    await waitFor(() => expect(result.current).toEqual(["user-1's chat"]));
+    const chatDeletions = () =>
+      queryClient.getMutationCache().findAll({ mutationKey: ["delete-chat"] });
+
+    signIn(null);
+    signIn("user-1");
+    expect(chatDeletions()).toHaveLength(1);
+
+    signIn("user-2");
+    expect(chatDeletions()).toHaveLength(0);
+    await waitFor(() => expect(result.current).toEqual([]));
   });
 });

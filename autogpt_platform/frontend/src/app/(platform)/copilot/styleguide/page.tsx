@@ -28,11 +28,16 @@ import { FindBlocksTool } from "../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../tools/RunBlock/RunBlock";
 import { SearchDocsTool } from "../tools/SearchDocs/SearchDocs";
-import { DrawnLineLoader } from "../components/DrawnLineLoader/DrawnLineLoader";
+import { StoneStackLoader } from "../components/StoneStackLoader/StoneStackLoader";
+import {
+  AUTOPILOT_HEX,
+  getCategoryHex,
+} from "@/components/molecules/ExpertAvatar/colors";
 import { ThinkingIndicator } from "../components/ChatMessagesContainer/components/ThinkingIndicator";
 import { ReasoningCollapse } from "../components/ChatMessagesContainer/components/ReasoningCollapse";
 import { GenericTool } from "../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../tools/ViewAgentOutput/ViewAgentOutput";
+import { RenderUISamples } from "./RenderUISamples";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,6 +62,7 @@ const SECTIONS = [
   "Tool: Schedule Agent",
   "Tool: Create Agent",
   "Tool: Edit Agent",
+  "Tool: Visual answers",
   "Tool: View Agent Output",
   "Tool: Search Feature Requests",
   "Tool: Create Feature Request",
@@ -255,10 +261,19 @@ export default function StyleguidePage() {
               <SubSection label="Thinking indicator">
                 <div className="flex flex-col gap-6">
                   <ThinkingIndicator active />
-                  <DrawnLineLoader
-                    size={64}
-                    className="text-foreground-secondary"
-                  />
+                  <ThinkingIndicator active color={AUTOPILOT_HEX} />
+                  <div className="flex gap-6 text-foreground-secondary">
+                    <StoneStackLoader size={64} />
+                    <StoneStackLoader size={64} color={AUTOPILOT_HEX} />
+                    <StoneStackLoader
+                      size={64}
+                      color={getCategoryHex("marketing")}
+                    />
+                    <StoneStackLoader
+                      size={64}
+                      color={getCategoryHex("operations")}
+                    />
+                  </div>
                 </div>
               </SubSection>
 
@@ -1349,6 +1364,12 @@ export default function StyleguidePage() {
             {/* ============================================================= */}
             {/* VIEW AGENT OUTPUT                                              */}
             {/* ============================================================= */}
+
+            <Section title="Tool: Visual answers">
+              <SubSection label="Every block type">
+                <RenderUISamples />
+              </SubSection>
+            </Section>
 
             <Section title="Tool: View Agent Output">
               <SubSection label="Input streaming">
