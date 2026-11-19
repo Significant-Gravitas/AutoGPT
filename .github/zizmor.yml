@@ -41,8 +41,9 @@ rules:
 
   artipacked:
     ignore:
-      # Classic: editing this workflow runs Classic Forge CI, whose live
-      # test_dalle fails while OpenAI answers that gpt-image-1 does not exist.
+      # Classic: editing this workflow runs Classic Forge CI, which can't pass
+      # at the moment (its live OpenAI image test, test_dalle, fails). Set
+      # persist-credentials: false there and drop this entry once it passes.
       - classic-forge-ci.yml
 
   obfuscation:
