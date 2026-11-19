@@ -1664,21 +1664,6 @@ async def list_graphs_paginated(
     )
 
 
-def _active_else_newest_order(
-    version: int | None,
-) -> AgentGraphOrderByInput | list[AgentGraphOrderByInput]:
-    """`order` for an owner/admin `AgentGraph` lookup by id.
-
-    With no version pinned this resolves to the active version, else the
-    newest one, so a graph with no active version still resolves rather
-    than 404ing. The non-owner library path deliberately picks the newest
-    submitted version instead (see `get_graph()`).
-    """
-    if version is None:
-        return [{"isActive": "desc"}, {"version": "desc"}]
-    return {"version": "desc"}
-
-
 async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph | None:
     where_clause: AgentGraphWhereInput = {
         "id": graph_id,
@@ -1957,6 +1942,21 @@ async def get_graph_as_admin(
         )
 
     return GraphModel.from_db(graph, for_export)
+
+
+def _active_else_newest_order(
+    version: int | None,
+) -> AgentGraphOrderByInput | list[AgentGraphOrderByInput]:
+    """`order` for an owner/admin `AgentGraph` lookup by id.
+
+    With no version pinned this resolves to the active version, else the
+    newest one, so a graph with no active version still resolves rather
+    than 404ing. The non-owner library path deliberately picks the newest
+    submitted version instead (see `get_graph()`).
+    """
+    if version is None:
+        return [{"isActive": "desc"}, {"version": "desc"}]
+    return {"version": "desc"}
 
 
 async def get_sub_graphs(
@@ -2267,7 +2267,8 @@ async def get_graph_all_versions(
 async def get_active_graph_version(
     graph_id: str, user_id: str, organization_id: str | None = None
 ) -> int | None:
-    """The version marked active. `get_graph(version=None)` returns the newest."""
+    """The version marked active, or None. `get_graph(version=None)` falls back
+    to the newest version when none is active."""
     graph = await AgentGraph.prisma().find_first(
         where={
             **await _graph_versions_where(graph_id, user_id, None, organization_id),
