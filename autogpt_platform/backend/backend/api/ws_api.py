@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Protocol
@@ -318,6 +319,9 @@ async def websocket_router(
     try:
         while True:
             data = await websocket.receive_text()
+            # A read of an already-buffered frame doesn't suspend, and neither does
+            # anything below, so without this one socket's backlog runs to the end.
+            await asyncio.sleep(0)
             # The socket outlives its token, so a ban or a closed account ends
             # it at the next message. A ban was ruled out first, so a refusal
             # here is a closed account.
@@ -330,10 +334,9 @@ async def websocket_router(
             try:
                 message = WSMessage.model_validate_json(data)
             except pydantic.ValidationError as e:
-                logger.error(
-                    "Invalid WebSocket message from user #%s: %s",
-                    user_id,
-                    loggable_validation_errors(e),
+                logger.warning(
+                    f"Invalid WebSocket message from user #{user_id}: "
+                    f"{loggable_validation_errors(e)}"
                 )
                 await websocket.send_text(
                     WSMessage(
@@ -354,11 +357,9 @@ async def websocket_router(
                     )
                     continue
             except pydantic.ValidationError as e:
-                logger.error(
-                    "Validation error while handling '%s' for user #%s: %s",
-                    message.method.value,
-                    user_id,
-                    loggable_validation_errors(e),
+                logger.warning(
+                    f"Validation error while handling '{message.method.value}' "
+                    f"for user #{user_id}: {loggable_validation_errors(e)}"
                 )
                 await websocket.send_text(
                     WSMessage(

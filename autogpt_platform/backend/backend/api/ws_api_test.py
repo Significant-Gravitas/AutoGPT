@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import json
 from typing import cast, get_args
 from unittest.mock import AsyncMock
@@ -801,6 +803,43 @@ async def test_an_unreadable_ban_keeps_an_open_socket(
 
     mock_websocket.close.assert_not_called()
     mock_manager.subscribe_graph_exec.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_other_sockets_get_a_turn_between_two_buffered_messages(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
+) -> None:
+    """Reading a buffered frame and replying both return without suspending."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    heartbeat = WSMessage(method=WSMethod.HEARTBEAT).model_dump_json()
+    mock_websocket.receive_text.side_effect = [heartbeat] * 5 + [WebSocketDisconnect()]
+    other_socket_turns = 0
+    turns_at_each_reply: list[int] = []
+
+    async def other_socket() -> None:
+        nonlocal other_socket_turns
+        while True:
+            await asyncio.sleep(0)
+            other_socket_turns += 1
+
+    async def reply(_: dict) -> None:
+        turns_at_each_reply.append(other_socket_turns)
+
+    mock_websocket.send_json.side_effect = reply
+    other = asyncio.create_task(other_socket())
+    try:
+        await websocket_router(
+            cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+        )
+    finally:
+        other.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await other
+
+    assert len(set(turns_at_each_reply)) == 5
 
 
 # ---------- get_connection_manager singleton ----------
