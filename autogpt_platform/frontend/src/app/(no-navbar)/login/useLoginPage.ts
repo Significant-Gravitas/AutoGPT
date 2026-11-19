@@ -28,6 +28,7 @@ import { SIGN_IN_CODE_SENT } from "@/lib/auth/sign-in-code";
 import { clearImpersonationEverywhere } from "@/lib/impersonation";
 import { rememberConnectAttempt } from "@/lib/auth/connect-attempt";
 import { useConnectFallback } from "@/components/auth/useConnectFallback";
+import { usePageRestored } from "@/components/auth/usePageRestored";
 
 export function useLoginPage() {
   useCaptureMarketingPrompt();
@@ -43,6 +44,12 @@ export function useLoginPage() {
   const [loadingProvider, setLoadingProvider] = useState<LoginProvider | null>(
     null,
   );
+  // Back from the provider can bring the page back as it was left, still
+  // starting that sign-in.
+  usePageRestored(() => {
+    setLoadingProvider(null);
+    setIsLoggingIn(false);
+  });
   // A social sign-in that fails returns here with Better Auth's error code.
   // Microsoft's own copy (microsoft-login.ts) is for a Microsoft sign-in only,
   // which the with-provider route marks with `provider=microsoft`.

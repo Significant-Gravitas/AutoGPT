@@ -23,6 +23,7 @@ import { isTeamEmail } from "@/lib/auth/team-email";
 import { clearImpersonationEverywhere } from "@/lib/impersonation";
 import { rememberConnectAttempt } from "@/lib/auth/connect-attempt";
 import { useConnectFallback } from "@/components/auth/useConnectFallback";
+import { usePageRestored } from "@/components/auth/usePageRestored";
 
 export function useSignupPage() {
   useCaptureMarketingPrompt();
@@ -40,6 +41,12 @@ export function useSignupPage() {
   const [loadingProvider, setLoadingProvider] = useState<LoginProvider | null>(
     null,
   );
+  // Back from the provider can bring the page back as it was left, still
+  // starting that sign-up.
+  usePageRestored(() => {
+    setLoadingProvider(null);
+    setIsSigningUp(false);
+  });
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(
     null,

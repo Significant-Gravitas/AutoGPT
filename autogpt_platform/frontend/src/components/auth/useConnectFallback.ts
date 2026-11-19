@@ -5,6 +5,14 @@ import {
   isConnectingProvider,
   takeConnectAttempt,
 } from "@/lib/auth/connect-attempt";
+import { usePageRestored } from "./usePageRestored";
+
+// Reading the note removes it, so a second read finds nothing and keeps the
+// first one's answer: React runs effects twice in development.
+function takeAbandoned(setAbandoned: (provider: ConnectingProvider) => void) {
+  const attempt = takeConnectAttempt();
+  if (attempt) setAbandoned(attempt);
+}
 
 /**
  * The provider to offer signing in with, without connecting: one whose
@@ -13,13 +21,13 @@ import {
  */
 export function useConnectFallback() {
   const refused = useSearchParams().get("connect");
-  const [provider, setProvider] = useState<ConnectingProvider | null>(null);
+  const [abandoned, setAbandoned] = useState<ConnectingProvider | null>(null);
 
-  // Session storage exists only in the browser, so it's read after mount.
-  useEffect(() => {
-    const abandoned = takeConnectAttempt();
-    setProvider(isConnectingProvider(refused) ? refused : abandoned);
-  }, [refused]);
+  // Session storage exists only in the browser, so the note is read after
+  // mount. Back from the provider can instead bring the page back as it was
+  // before the sign-in started, so it is read again then.
+  useEffect(() => takeAbandoned(setAbandoned), []);
+  usePageRestored(() => takeAbandoned(setAbandoned));
 
-  return provider;
+  return isConnectingProvider(refused) ? refused : abandoned;
 }

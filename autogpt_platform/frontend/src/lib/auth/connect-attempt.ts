@@ -30,6 +30,18 @@ export function rememberConnectAttempt(provider: LoginProvider) {
   }
 }
 
+/**
+ * The tab is signed in, so a sign-in it started finished: it mustn't be
+ * offered again after a sign-out.
+ */
+export function forgetConnectAttempt() {
+  try {
+    window.sessionStorage.removeItem(KEY);
+  } catch {
+    // No storage: nothing was noted.
+  }
+}
+
 /** A connecting sign-in this tab started recently and never finished, once. */
 export function takeConnectAttempt(): ConnectingProvider | null {
   try {

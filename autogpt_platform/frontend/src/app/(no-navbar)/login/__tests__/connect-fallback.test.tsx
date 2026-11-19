@@ -7,6 +7,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { rememberConnectAttempt } from "@/lib/auth/connect-attempt";
+import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 import LoginPage from "../page";
 
 let mockSearchParams = new URLSearchParams();
@@ -54,6 +55,9 @@ afterEach(() => {
 
 const WITHOUT_GOOGLE = "Continue with Google without connecting";
 
+// What Back fires when the browser brings the page back from its cache, as
+// it was left.
+
 describe("Signing in without connecting", () => {
   test("is offered after a connecting sign-in comes back refused", async () => {
     mockSearchParams = new URLSearchParams(
@@ -81,6 +85,27 @@ describe("Signing in without connecting", () => {
         name: "Continue with Microsoft without connecting",
       }),
     ).toBeDefined();
+  });
+
+  test("is offered when Back brings the page back as the sign-in left it", async () => {
+    providerRequests({ url: "", connecting: true });
+    render(<LoginPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Continue with Google" }),
+    );
+    await waitFor(() =>
+      expect(
+        window.sessionStorage.getItem("autogpt:connect-attempt"),
+      ).not.toBeNull(),
+    );
+
+    restoreFromBackForwardCache();
+
+    // Offered, and not held back by the sign-in the page was still starting.
+    const fallback = await screen.findByRole("button", {
+      name: WITHOUT_GOOGLE,
+    });
+    await waitFor(() => expect(fallback).toHaveProperty("disabled", false));
   });
 
   test("isn't offered on an ordinary visit", async () => {
