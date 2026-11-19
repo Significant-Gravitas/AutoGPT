@@ -37,6 +37,18 @@ _USER = "test-user-trigger"
 _PATH = "backend.copilot.tools.setup_agent_webhook_trigger"
 
 
+@pytest.fixture(autouse=True)
+def _no_default_team(mocker):
+    """A chat without an org reads the user's default one; these tests have none,
+    and without a database the lookup waits on the database manager."""
+    mocker.patch(
+        "backend.copilot.tools.utils.orgs_db",
+        return_value=MagicMock(
+            get_user_default_team=AsyncMock(return_value=(None, None))
+        ),
+    )
+
+
 @pytest.fixture
 def tool():
     return SetupAgentWebhookTriggerTool()

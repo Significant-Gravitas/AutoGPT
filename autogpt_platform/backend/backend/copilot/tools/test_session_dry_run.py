@@ -204,7 +204,7 @@ class TestRunAgentToolSessionDryRun:
                 new_callable=AsyncMock,
             ),
             patch(
-                "backend.copilot.tools.run_agent.orgs_db",
+                "backend.copilot.tools.utils.orgs_db",
                 return_value=MagicMock(
                     get_user_default_team=AsyncMock(return_value=(None, None))
                 ),

@@ -14,7 +14,11 @@ import pytest_asyncio
 from pydantic import BaseModel
 
 from backend.api.features.library import db as library_db
-from backend.api.features.library.model import LibraryAgent, LibraryAgentPresetCreatable
+from backend.api.features.library.model import (
+    LibraryAgent,
+    LibraryAgentPreset,
+    LibraryAgentPresetCreatable,
+)
 from backend.api.features.orgs.db import get_user_default_team
 from backend.blocks.basic import StoreValueBlock
 from backend.copilot.gate.subject import NO_OP
@@ -58,20 +62,29 @@ async def world(mocker) -> AsyncIterator[World]:
             data={"orgId": work.id, "userId": user.id, "status": "ACTIVE"}
         )
         graph, library_agent = await _workflow(user.id, *personal)
-        preset = await library_db.create_preset(
-            user.id,
-            LibraryAgentPresetCreatable(
-                graph_id=graph.id,
-                graph_version=graph.version,
-                inputs={},
-                credentials={},
-                name="Weekly",
-                description="",
-            ),
-        )
+        preset = await _preset(user.id, graph)
         listed, _ = await _workflow(user.id, *personal)
         others, _ = await _workflow(
             creator.id, *await get_user_default_team(creator.id)
+        )
+        others_slug = await _slug(creator, others)
+        await library_db.create_library_agent(
+            others,
+            user.id,
+            create_library_agents_for_sub_graphs=False,
+            organization_id=personal[0],
+            team_id=personal[1],
+        )
+        # Its own org check alone refuses this one: the lookup finds a
+        # marketplace workflow in the library from any org.
+        marketplace_preset = await _preset(user.id, others)
+        # The org-scoped lookup alone refuses this one: untagged, it passes the
+        # preset's own org check.
+        untagged_preset = await _preset(user.id, graph)
+        await prisma.execute_raw(
+            'UPDATE "AgentPreset" SET "organizationId" = NULL, "teamId" = NULL '
+            'WHERE "id" = $1',
+            untagged_preset.id,
         )
         calls = {
             "library agent": {"library_agent_id": library_agent.id},
@@ -80,9 +93,9 @@ async def world(mocker) -> AsyncIterator[World]:
             "own marketplace listing": {
                 "username_agent_slug": await _slug(user, listed)
             },
-            "someone else's marketplace listing": {
-                "username_agent_slug": await _slug(creator, others)
-            },
+            "someone else's marketplace listing": {"username_agent_slug": others_slug},
+            "preset on a marketplace workflow": {"preset_id": marketplace_preset.id},
+            "untagged preset": {"preset_id": untagged_preset.id},
         }
         yield World(
             user=user.id,
@@ -125,6 +138,10 @@ def queue(mocker) -> AsyncMock:
         ("own marketplace listing", "personal", True),
         ("own marketplace listing", "work", False),
         ("someone else's marketplace listing", "work", True),
+        ("preset on a marketplace workflow", "personal", True),
+        ("preset on a marketplace workflow", "work", False),
+        ("untagged preset", "personal", True),
+        ("untagged preset", "work", False),
     ],
 )
 @pytest.mark.asyncio(loop_scope="session")
@@ -153,7 +170,15 @@ async def test_otto_runs_a_workflow_only_from_its_organization(
 
 
 @pytest.mark.parametrize(
-    "call", ["library agent", "graph id", "preset", "own marketplace listing"]
+    "call",
+    [
+        "library agent",
+        "graph id",
+        "preset",
+        "own marketplace listing",
+        "preset on a marketplace workflow",
+        "untagged preset",
+    ],
 )
 @pytest.mark.asyncio(loop_scope="session")
 async def test_the_gate_asks_nothing_for_a_workflow_the_run_refuses(
@@ -214,6 +239,20 @@ async def _workflow(
         user_id,
         organization_id=org_id,
         team_id=team_id,
+    )
+
+
+async def _preset(user_id: str, graph: graph_db.GraphModel) -> LibraryAgentPreset:
+    return await library_db.create_preset(
+        user_id,
+        LibraryAgentPresetCreatable(
+            graph_id=graph.id,
+            graph_version=graph.version,
+            inputs={},
+            credentials={},
+            name="Weekly",
+            description="",
+        ),
     )
 
 

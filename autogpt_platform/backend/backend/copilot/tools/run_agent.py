@@ -1652,6 +1652,11 @@ async def _preset_graph(
         include_subgraphs=True,  # needed for full credentials aggregation
         organization_id=org_id,
     )
+    # An untagged preset on the user's own workflow in another org.
+    if graph is None and await graph_db().get_graph(
+        preset.graph_id, preset.graph_version, user_id=user_id
+    ):
+        raise InAnotherOrganizationError()
     return preset, graph
 
 

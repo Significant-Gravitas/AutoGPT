@@ -79,6 +79,8 @@ async def world() -> AsyncIterator[World]:
         subs = {
             "work workflow": await _workflow(user, work.id),
             "personal workflow": await _workflow(user, personal),
+            # From before org tagging, or a web-app copy, which isn't tagged.
+            "untagged workflow": await _workflow(user, None),
             "marketplace workflow": await _workflow(creator, orgs[1]),
         }
         await _publish(creator, subs["marketplace workflow"])
@@ -154,6 +156,7 @@ def queue(mocker) -> AsyncMock:
     [
         ("work workflow", True),
         ("personal workflow", False),
+        ("untagged workflow", True),
         ("marketplace workflow", True),
     ],
 )
@@ -204,7 +207,7 @@ async def _no_outputs(self, **kwargs):
     yield
 
 
-async def _workflow(user_id: str, org_id: str) -> graph_db.GraphModel:
+async def _workflow(user_id: str, org_id: str | None) -> graph_db.GraphModel:
     return await graph_db.create_graph(
         graph_db.make_graph_model(
             graph_db.Graph(

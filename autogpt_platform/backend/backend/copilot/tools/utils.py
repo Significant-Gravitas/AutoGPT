@@ -808,8 +808,8 @@ async def chat_tenancy(
 def workflow_in_another_organization(session_id: str | None) -> ErrorResponse:
     return ErrorResponse(
         message=(
-            "That workflow is in another of your organizations, so it can't run "
-            "here. Switch to that organization to run it."
+            "That workflow belongs to another of your organizations and runs only "
+            "from there."
         ),
         error="workflow_in_another_organization",
         session_id=session_id,
