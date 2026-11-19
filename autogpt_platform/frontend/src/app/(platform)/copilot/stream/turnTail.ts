@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import { v5 as uuidv5 } from "uuid";
 
 import { CANCELLED_MARKER } from "../useCopilotStop";
 import {
@@ -26,6 +27,9 @@ export interface UserSegment {
   origin: "sent" | "chip";
   rawId: string | null;
   createdAt: string | null;
+  /** The id of the row the backend writes for a send: null for a chip, a
+   *  kickoff, or a send before any view named the session's user. */
+  persistedId: string | null;
 }
 
 export interface TurnSegment {
@@ -37,11 +41,15 @@ export interface TurnSegment {
   /** Two drift events on one turn: the persisted view is shown instead. */
   frozen: boolean;
   reconciled: boolean;
+  recoveredError: LogRow | null;
   /** Fields that never stream, adopted at the reconcile. */
   durationMs: number | null;
   createdAt: string | null;
   /** When each persisted row was written, by row key. */
   rowCreatedAt: Readonly<Record<string, string>>;
+  /** The last saved reply row of a turn that started before the session
+   *  window and so never reconciles: its reply can still be rated. */
+  lastReplySequence: number | null;
   /** Where an attached turn's rows begin before it names a checkpoint. */
   startHint: number | null;
 }
@@ -78,9 +86,11 @@ export function newTurnSegment(
     stopped: false,
     frozen: false,
     reconciled: false,
+    recoveredError: null,
     durationMs: null,
     createdAt: null,
     rowCreatedAt: {},
+    lastReplySequence: null,
     startHint,
   };
 }
@@ -88,6 +98,7 @@ export function newTurnSegment(
 export function userSegment(
   message: UIMessage,
   origin: UserSegment["origin"],
+  persistedId: string | null = null,
 ): UserSegment {
   return {
     kind: "user",
@@ -97,7 +108,23 @@ export function userSegment(
     origin,
     rawId: null,
     createdAt: null,
+    persistedId,
   };
+}
+
+// `_CLIENT_MESSAGE_NAMESPACE` in backend/copilot/expert_kickoff.py.
+const CLIENT_MESSAGE_NAMESPACE = "d70473da-722b-55cb-963f-4729e64d7b06";
+
+/** The row id `scoped_client_message_id` gives a send: the prompt's identity in the session. */
+export function persistedPromptId(
+  userId: string,
+  sessionId: string,
+  clientMessageId: string,
+) {
+  return uuidv5(
+    `${userId}:${sessionId}:${clientMessageId}`,
+    CLIENT_MESSAGE_NAMESPACE,
+  );
 }
 
 /** Where a turn's rows start: its first checkpoint, its seed, or the row after its prompt. */
@@ -162,12 +189,17 @@ export function reconcileTurn(
 ): TurnSegment {
   const rows = seg.frozen
     ? [...persisted.rows]
-    : mergeRows(seg.log.rows, persisted.rows);
+    : mergeRows(
+        seg.log.rows.filter((row) => row.key !== seg.recoveredError?.key),
+        persisted.rows,
+      );
   const rowCreatedAt: Record<string, string> = {};
   rows.forEach((row, i) => {
     const at = createdAtOf(persisted.raw[i]);
     if (at) rowCreatedAt[row.key] = at;
   });
+  if (seg.recoveredError && (!rows.length || !isMarker(rows[rows.length - 1])))
+    rows.push(seg.recoveredError);
   const durations = persisted.raw
     .map((r) => (r as { duration_ms?: unknown }).duration_ms)
     .filter((d): d is number => typeof d === "number");
@@ -183,16 +215,38 @@ export function reconcileTurn(
   };
 }
 
+const REPLY_ROLES = new Set(["assistant", "reasoning"]);
+
+/**
+ * The last row of a turn's persisted rows a reply rating can name, only if it
+ * answers the turn's latest user row: one before it belongs to an earlier
+ * bubble, not the last one this id is put on. A user row the turn didn't
+ * send (another tab's turn in the same window) leaves the owner unclear, so
+ * nothing is named.
+ */
+export function lastReplySequence(
+  raw: readonly PersistedRow[],
+  ownUserTexts: ReadonlySet<string>,
+): number | null {
+  const isForeign = (r: PersistedRow) =>
+    r.role === "user" && !ownUserTexts.has(String(r.content ?? ""));
+  if (raw.some(isForeign)) return null;
+  const lastUser = raw.findLastIndex((r) => r.role === "user");
+  const row = raw
+    .slice(lastUser + 1)
+    .findLast((r) => typeof r.sequence === "number" && REPLY_ROLES.has(r.role));
+  return row?.sequence ?? null;
+}
+
 /** A local prompt takes its persisted row's place: sequence, id and timestamp. */
 export function withPromptRow(
   seg: UserSegment,
   row: PersistedRow,
 ): UserSegment {
-  const rawId = (row as { id?: unknown }).id;
   return {
     ...seg,
     sequence: row.sequence ?? null,
-    rawId: typeof rawId === "string" ? rawId : null,
+    rawId: typeof row.id === "string" ? row.id : null,
     createdAt: createdAtOf(row),
   };
 }
@@ -219,7 +273,10 @@ export function tailEndSequence(segments: readonly Segment[]) {
   if (last.kind === "rows")
     return last.rows[last.rows.length - 1]?.sequence ?? null;
   if (last.kind === "user") return last.sequence;
-  return last.log.rows[last.log.rows.length - 1]?.sequence ?? null;
+  const rows = last.log.rows.filter(
+    (row) => row.key !== last.recoveredError?.key,
+  );
+  return rows[rows.length - 1]?.sequence ?? null;
 }
 
 /** Rows equal to the ones on screen keep their object and key; others take the persisted content under the on-screen key. */
@@ -308,14 +365,18 @@ export function persistedRows(
 }
 
 /**
- * The prompt's row: the first user row in the tail whose text it carries
- * (the backend appends an attached-files block after it).
+ * The prompt's row: a send's is the row with its persisted id, wherever it
+ * is, since another tab's prompt can carry the same words. Without that id,
+ * the first user row in the tail whose text it carries (the backend appends
+ * an attached-files block after it).
  */
 export function locatePrompt(
   seg: UserSegment,
   rows: readonly PersistedRow[],
   from: number | null,
 ) {
+  if (seg.persistedId)
+    return rows.find((r) => r.id === seg.persistedId) ?? null;
   const text = seg.message.parts
     .map((p) => (p.type === "text" ? p.text : ""))
     .join("");

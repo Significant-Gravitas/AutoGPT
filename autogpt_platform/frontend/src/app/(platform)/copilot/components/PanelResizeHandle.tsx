@@ -157,18 +157,15 @@ export function PanelResizeHandle({
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize panel"
-      className="group absolute left-0 top-0 z-10 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-stretch justify-center"
+      className="group absolute top-0 left-0 z-10 flex h-full w-3 -translate-x-1/2 cursor-col-resize touch-none items-stretch justify-center"
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
-      style={{ touchAction: "none" }}
     >
       <div
         className={cn(
-          // TODO(tokens): no exact role for group-hover:bg-violet-400
-          "h-full w-px bg-transparent transition-colors group-hover:w-0.5 group-hover:bg-violet-400",
-          // TODO(tokens): no exact role for bg-violet-500
-          isDragging && "w-0.5 bg-violet-500",
+          "h-full w-px bg-transparent transition-colors group-hover:w-0.5 group-hover:bg-brand/60",
+          isDragging && "w-0.5 bg-brand",
         )}
       />
     </div>

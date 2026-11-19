@@ -24,20 +24,20 @@ export function AgentInputsReadOnly({
     getAgentCredentialsFields(agent),
   );
 
+  // Legacy runs store flat trigger config as run inputs, which no graph input
+  // schema describes, so only declared inputs are shown.
   const inputEntries =
     inputs &&
-    Object.entries(inputs).map(([key, value]) => ({
-      key,
-      schema: inputFields[key],
-      value,
-    }));
+    Object.entries(inputs)
+      .map(([key, value]) => ({ key, schema: inputFields[key], value }))
+      .filter(({ schema }) => Boolean(schema));
 
   const hasInputs = inputEntries && inputEntries.length > 0;
   const hasCredentials = credentialInputs && credentialFieldEntries.length > 0;
 
   if (!hasInputs && !hasCredentials) {
     return (
-      <Text variant="body" className="text-foreground-body">
+      <Text variant="body" tone="body">
         No input for this run.
       </Text>
     );
@@ -49,8 +49,6 @@ export function AgentInputsReadOnly({
       {hasInputs && (
         <div className="flex flex-col gap-4">
           {inputEntries.map(({ key, schema, value }) => {
-            if (!schema) return null;
-
             return (
               <RunAgentInputs
                 key={key}
@@ -68,12 +66,7 @@ export function AgentInputsReadOnly({
       {/* Credentials */}
       {hasCredentials && (
         <div className="flex flex-col gap-6">
-          {hasInputs && (
-            <div
-              // TODO(tokens): no exact role for border-neutral-200 (#E5E5E5)
-              className="border-t border-neutral-200 pt-4"
-            />
-          )}
+          {hasInputs && <div className="border-t border-border-base pt-4" />}
           {credentialFieldEntries.map(([key, inputSubSchema]) => {
             const credential = credentialInputs![key];
             if (!credential) return null;

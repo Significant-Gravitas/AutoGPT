@@ -63,3 +63,44 @@ describe("journey activation lookup contract", () => {
     },
   );
 });
+
+describe("a response the journey fakes itself", () => {
+  const schedulesURL = "http://localhost:3000/api/proxy/api/schedules";
+  const injected = { name: "x-journey-injected", value: "scheduler-outage" };
+
+  async function collectFaked(headers: Record<string, string>) {
+    let listener: ((response: Response) => void) | undefined;
+    const context = {
+      on(event: string, handler: (response: Response) => void) {
+        if (event === "response") listener = handler;
+      },
+    } as unknown as BrowserContext;
+    const guard = watchForUnexpectedErrors(context, [
+      { status: 503, method: "GET", url: "/api/schedules", header: injected },
+    ]);
+    listener?.({
+      url: () => schedulesURL,
+      status: () => 503,
+      headers: () => headers,
+      request: () => ({ method: () => "GET" }),
+      json: async () => ({}),
+      text: async () => "{}",
+    } as unknown as Response);
+    return guard.collect();
+  }
+
+  it("is exempt when it carries the journey's header", async () => {
+    expect(
+      await collectFaked({
+        [injected.name]: injected.value,
+        "retry-after": "15",
+      }),
+    ).toEqual([]);
+  });
+
+  it("keeps a real failure on the same URL visible", async () => {
+    const errors = await collectFaked({ "retry-after": "15" });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(`503 GET ${schedulesURL}`);
+  });
+});

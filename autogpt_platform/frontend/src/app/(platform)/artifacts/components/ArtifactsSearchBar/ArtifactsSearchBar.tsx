@@ -18,13 +18,13 @@ export function ArtifactsSearchBar({ searchTerm, setSearchTerm }: Props) {
   return (
     <div
       data-testid="artifacts-search-bar"
-      className="relative flex w-full items-center md:w-auto"
+      className="relative flex w-full items-center text-foreground-tertiary md:w-auto"
     >
       <Icon
         icon={Search01Icon}
         width={16}
         height={16}
-        className="pointer-events-none absolute left-4 top-1/2 z-20 -translate-y-1/2 text-foreground-tertiary"
+        className="pointer-events-none absolute top-1/2 left-4 z-20 -translate-y-1/2"
       />
       <Input
         label="Search files"
@@ -35,6 +35,7 @@ export function ArtifactsSearchBar({ searchTerm, setSearchTerm }: Props) {
         value={searchTerm}
         onChange={handleChange}
         placeholder="Search"
+        // oxlint-disable-next-line design-system/no-restyle -- a pill search field with a leading icon; SearchInput is rounded-xl, a shape change
         className="min-w-[16rem] rounded-full pl-10 lg:min-w-[20rem]"
         wrapperClassName="!mb-0"
         data-testid="artifacts-search-input"

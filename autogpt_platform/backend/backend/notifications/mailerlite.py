@@ -205,12 +205,12 @@ async def record_signup(email: str, fields: Fields | None = None) -> None:
 
 
 async def record_onboarding_profile(email: str, fields: Fields | None = None) -> None:
-    """The onboarding answers. On cloud the paywall comes first, so they are
-    given once the person is a checkout opener: they fill in someone MailerLite
-    already has and never create a subscriber, since only checkout openers
-    belong in MailerLite. Anyone who answers before opening checkout gets their
-    role with the checkout event instead (`checkout_audience`), and
-    onboarding-role-backfill fills in anyone missed."""
+    """The onboarding answers, for someone who already opened checkout: they
+    fill in someone MailerLite already has and never create a subscriber,
+    since only checkout openers belong in MailerLite. The role is answered
+    before the paywall, so most people get it with the checkout event instead
+    (`checkout_audience`), and onboarding-role-backfill fills in anyone
+    missed."""
     if not fields:
         return
     _require_token()
@@ -307,6 +307,35 @@ async def unsubscribe(email: str, fields: Fields | None = None) -> None:
             f"{response.status}"
         )
     logger.info(f"Unsubscribed {pseudonym(email)} in MailerLite")
+
+
+async def find_subscriber_id(email: str) -> str | None:
+    """The subscriber's MailerLite ID, None when MailerLite has nobody by it."""
+    _require_token()
+    return await _find_subscriber_id(email, _erasure_client())
+
+
+async def forget_subscriber(email: str) -> bool:
+    """The account was deleted: have MailerLite forget the subscriber
+    (`POST /subscribers/{id}/forget`), which removes them at once and erases
+    their data within 30 days. A plain `DELETE` would keep their data in case
+    they re-subscribe. Consent and country gates do not apply to a deletion.
+    Returns whether anyone was forgotten; someone MailerLite does not have is
+    already gone."""
+    subscriber_id = await find_subscriber_id(email)
+    if subscriber_id is None:
+        return False
+    response = await _erasure_client().post(
+        f"{API_BASE}/subscribers/{subscriber_id}/forget", headers=_headers()
+    )
+    # 404: removed since the lookup, which is the state we want.
+    if response.status not in _OK_STATUSES and response.status != 404:
+        raise MailerLiteError(
+            f"Forgetting MailerLite subscriber {pseudonym(email)} failed with "
+            f"{response.status}"
+        )
+    logger.info(f"Asked MailerLite to forget {pseudonym(email)}")
+    return response.status != 404
 
 
 async def ensure_fields() -> list[SubscriberField]:
@@ -427,12 +456,12 @@ def _payload(fields: Fields) -> dict[str, str | None]:
     return {SubscriberField(key).value: value for key, value in fields.items()}
 
 
-async def _find_subscriber_id(email: str) -> str | None:
-    return (await _find_subscriber(email) or {}).get("id")
+async def _find_subscriber_id(email: str, client: Requests | None = None) -> str | None:
+    return (await _find_subscriber(email, client) or {}).get("id")
 
 
-async def _find_subscriber(email: str) -> dict | None:
-    response = await _client().get(
+async def _find_subscriber(email: str, client: Requests | None = None) -> dict | None:
+    response = await (client or _client()).get(
         f"{API_BASE}/subscribers/{email}", headers=_headers()
     )
     if response.status == 404:
@@ -449,6 +478,15 @@ def _client() -> Requests:
     # Statuses are inspected rather than raised on, because "already gone" is a
     # success for a removal.
     return Requests(trusted_origins=[API_BASE], raise_for_status=False)
+
+
+def _erasure_client() -> Requests:
+    # Account erasure bounds its retries so an outage answering 5xx fails the
+    # step instead of holding the erasure. Everything else keeps the shared
+    # client, which waits out rate limits.
+    return Requests(
+        trusted_origins=[API_BASE], raise_for_status=False, retry_max_attempts=3
+    )
 
 
 def _headers() -> dict[str, str]:

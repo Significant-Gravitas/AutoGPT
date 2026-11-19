@@ -58,6 +58,7 @@ async def test_a_failed_marketplace_update_preserves_baseline_and_retries(
         )
         invalidate.assert_not_awaited()
         remember.assert_not_awaited()
+        invalidate.reset_mock()
 
         monkeypatch.setattr(manager, "write_file", write)
         [recovered] = await skills.list_user_skills("user-1")

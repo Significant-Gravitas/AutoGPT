@@ -220,7 +220,11 @@ class TestGetCredentialReturnsMetaOnly:
 
 
 class TestSdkDefaultCredentialsNotAccessible:
-    """SDK default credentials (ID ending in '-default') must be hidden."""
+    """A refused SDK default credential stays hidden.
+
+    ``openai-default`` is the SDK key of a provider whose shared key may not
+    run (not in ``RUNNABLE_SDK_DEFAULT_PROVIDERS``), so nothing may offer it.
+    """
 
     def test_get_sdk_default_returns_404(self):
         with patch(
@@ -275,6 +279,61 @@ class TestSdkDefaultCredentialsNotAccessible:
         mock_mgr.store.get_creds_by_id.assert_not_called()
 
 
+class TestRunnableSdkDefaultIsAPlatformKey:
+    """A runnable SDK default (``firecrawl-default``) is one of the platform's
+    keys, listed and protected exactly like a built-in system credential, so
+    every view can offer it the way it offers "Use Credits for OpenAI"
+    (SECRT-3207)."""
+
+    def test_list_includes_it_marked_as_system(self):
+        user_cred = _make_api_key_cred()
+        platform_key = _make_sdk_default_cred("firecrawl")
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.store.get_all_creds = AsyncMock(
+                return_value=[user_cred, platform_key]
+            )
+            resp = client.get("/credentials")
+
+        assert resp.status_code == 200
+        by_id = {c["id"]: c for c in resp.json()}
+        assert by_id["firecrawl-default"]["is_system"] is True
+        assert by_id["cred-123"]["is_system"] is False
+        assert "sk-platform-secret-key" not in resp.text
+
+    def test_get_returns_its_metadata(self):
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=_make_sdk_default_cred("firecrawl"))
+            resp = client.get("/firecrawl/credentials/firecrawl-default")
+
+        assert resp.status_code == 200
+        assert resp.json()["is_system"] is True
+        assert "sk-platform-secret-key" not in resp.text
+
+    def test_delete_is_refused_like_a_system_credential(self):
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.store.get_creds_by_id = AsyncMock()
+            resp = client.request("DELETE", "/firecrawl/credentials/firecrawl-default")
+
+        assert resp.status_code == 403
+        mock_mgr.store.get_creds_by_id.assert_not_called()
+
+    def test_system_providers_include_it(self):
+        with patch(
+            "backend.sdk.registry.AutoRegistry.get_all_credentials",
+            return_value=[_make_sdk_default_cred("firecrawl")],
+        ):
+            resp = client.get("/providers/system")
+
+        assert resp.status_code == 200
+        assert "firecrawl" in resp.json()
+
+
 class TestCreateCredentialNoSecretInResponse:
     """POST /{provider}/credentials must not return secrets."""
 
@@ -318,6 +377,73 @@ class TestCreateCredentialNoSecretInResponse:
 
         assert resp.status_code == 403
         mock_mgr.create.assert_not_called()
+
+
+class TestCreateScopedUserPasswordCredential:
+    """smtp and database logins are created with a valid scope for their
+    provider; other logins take none."""
+
+    @staticmethod
+    def _create(provider: str, **extra: str):
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.create = AsyncMock()
+            resp = client.post(
+                f"/{provider}/credentials",
+                json={
+                    "provider": provider,
+                    "type": "user_password",
+                    "title": "My login",
+                    "username": "user",
+                    "password": "pass",
+                    **extra,
+                },
+            )
+        return resp, mock_mgr.create
+
+    @pytest.mark.parametrize(
+        "provider,extra",
+        [
+            ("smtp", {}),
+            ("database", {}),
+            ("smtp", {"scope": ""}),
+            ("smtp", {"scope": "smtp.example.com:587"}),
+            ("database", {"scope": "smtp://db.example.com"}),
+            ("smtp", {"scope": "smtp://*.example.com"}),
+            ("webshare_proxy", {"scope": "smtp://smtp.example.com"}),
+        ],
+    )
+    def test_missing_empty_or_malformed_scope_rejected(
+        self, provider: str, extra: dict[str, str]
+    ):
+        resp, create = self._create(provider, **extra)
+        assert resp.status_code == 400
+        create.assert_not_called()
+
+    def test_out_of_range_port_refused_in_terms_of_the_server(self):
+        resp, create = self._create("smtp", scope="smtp://smtp.example.com:99999")
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == (
+            "Enter a valid server, like smtp.example.com or smtp.example.com:587 "
+            "(port 1-65535)"
+        )
+        create.assert_not_called()
+
+    def test_login_with_scope_stored_and_returned(self):
+        resp, create = self._create("database", scope="mysql://db.example.com:3306")
+
+        assert resp.status_code == 201
+        assert resp.json()["scope"] == "mysql://db.example.com:3306"
+        assert resp.json()["host"] is None
+        assert create.call_args.args[1].scope == "mysql://db.example.com:3306"
+
+    def test_fixed_host_provider_login_needs_no_scope(self):
+        resp, _ = self._create("webshare_proxy")
+
+        assert resp.status_code == 201
+        assert resp.json()["scope"] is None
 
 
 class TestManagedCredentials:
@@ -918,7 +1044,7 @@ class TestOAuthHandlerResolutionForDeviceProviders:
             ),
             pytest.raises(fastapi.HTTPException) as exc,
         ):
-            _get_provider_oauth_handler(MagicMock(), self.DEVICE_ONLY_PROVIDER)
+            _get_provider_oauth_handler(self.DEVICE_ONLY_PROVIDER)
 
         assert exc.value.status_code == 400
         assert "device code" in exc.value.detail
@@ -943,7 +1069,7 @@ class TestOAuthHandlerResolutionForDeviceProviders:
             ),
             pytest.raises(fastapi.HTTPException) as exc,
         ):
-            _get_provider_oauth_handler(MagicMock(), self.UNREGISTERED_PROVIDER)
+            _get_provider_oauth_handler(self.UNREGISTERED_PROVIDER)
 
         assert exc.value.status_code == 404
         assert "does not support OAuth" in exc.value.detail
@@ -1056,6 +1182,49 @@ class TestDeviceAuthEndpoints:
         kwargs = mock_mgr.store.store_state_token.await_args.kwargs
         assert kwargs["expires_in_seconds"] > 600
         assert kwargs["state_metadata"]["device_code"] == "dev-code-secret"
+
+    def test_initiate_binds_the_code_to_the_connection_it_upgrades(self):
+        """A code that adds permissions to a connection must come back to it.
+
+        Without the binding, whoever signs in on the code's page becomes a
+        separate connection, which the panel then switches to.
+        """
+        handler = MagicMock()
+        handler.handle_default_scopes.side_effect = lambda scopes: scopes
+        handler.initiate_device_auth = AsyncMock(return_value=self._initiation())
+        mock_mgr = MagicMock()
+        mock_mgr.store.store_state_token = AsyncMock(
+            return_value=("state-token", "verifier")
+        )
+        upgrade = AsyncMock(return_value=["userinfo:read", "already:granted"])
+
+        p1, p2, p3, p4 = self._patched(handler, mock_mgr)
+        with (
+            p1,
+            p2,
+            p3,
+            p4,
+            patch(
+                "backend.api.features.integrations.router._prepare_scope_upgrade",
+                upgrade,
+            ),
+        ):
+            response = client.post(
+                f"/{self.PROVIDER}/device-auth/initiate"
+                "?scopes=userinfo:read&credential_id=cred-1"
+            )
+
+        assert response.status_code == 200
+        assert upgrade.await_args.args[1:] == (
+            ProviderName(self.PROVIDER),
+            "cred-1",
+            ["userinfo:read"],
+        )
+        handler.initiate_device_auth.assert_awaited_once_with(
+            ["userinfo:read", "already:granted"]
+        )
+        kwargs = mock_mgr.store.store_state_token.await_args.kwargs
+        assert kwargs["credential_id"] == "cred-1"
 
     def test_initiate_does_not_leak_upstream_error_text(self):
         handler = MagicMock()

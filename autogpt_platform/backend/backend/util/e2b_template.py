@@ -105,8 +105,9 @@ _EXTEND_SCRIPT = (
 # Templates this process has already confirmed ready, keyed by alias and
 # team: one round of API calls per alias per team per process lifetime.
 _ready: set[str] = set()
-# Checks in flight in this process, so concurrent first turns share one.
-_inflight: dict[str, "asyncio.Future[None]"] = {}
+# Checks in flight, so concurrent first turns share one.  Shared within an event
+# loop only: the executor runs one per worker, and another loop can't await a task.
+_inflight: dict[tuple[asyncio.AbstractEventLoop, str], "asyncio.Future[None]"] = {}
 
 
 class TemplateState(enum.Enum):
@@ -127,15 +128,16 @@ async def ensure_template(template: str, api_key: str) -> None:
     cache_key = _scoped_key(spec, api_key)
     if cache_key in _ready:
         return
-    check = _inflight.get(cache_key)
+    inflight_key = (asyncio.get_running_loop(), cache_key)
+    check = _inflight.get(inflight_key)
     if check is None:
-        check = _inflight[cache_key] = asyncio.ensure_future(
+        check = _inflight[inflight_key] = asyncio.ensure_future(
             _check_or_provision(spec, api_key, cache_key)
         )
         try:
             await asyncio.shield(check)
         finally:
-            _inflight.pop(cache_key, None)
+            _inflight.pop(inflight_key, None)
     else:
         await asyncio.shield(check)
 

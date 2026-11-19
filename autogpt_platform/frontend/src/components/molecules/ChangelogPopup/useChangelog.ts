@@ -2,15 +2,11 @@
 
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useEffect, useRef, useState } from "react";
-import {
-  AUTO_DISMISS_MS,
-  CHANGELOG_INDEX_MD_URL,
-  STORAGE_KEY,
-} from "./changelog-constants";
+import { AUTO_DISMISS_MS, STORAGE_KEY } from "./changelog-constants";
 import {
   ChangelogEntry,
+  fetchChangelogEntries,
   isReleaseBeforeAccount,
-  parseChangelogIndex,
 } from "./helpers";
 
 export function useChangelog() {
@@ -90,13 +86,9 @@ export function useChangelog() {
   useEffect(() => {
     let cancelled = false;
 
-    fetch(CHANGELOG_INDEX_MD_URL)
-      .then((res) => (res.ok ? res.text() : ""))
-      .then((md) => {
-        if (cancelled || !md) return;
-
-        const entries = parseChangelogIndex(md);
-        if (entries.length === 0) return;
+    fetchChangelogEntries()
+      .then((entries) => {
+        if (cancelled || entries.length === 0) return;
 
         setLatestEntry(entries[0]);
 

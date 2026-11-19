@@ -51,7 +51,6 @@ const streamPath = vi.hoisted(() => ({ runtime: false }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
-    ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
     COPILOT_STREAM_RUNTIME: "copilot-stream-runtime",
   },
   useGetFlag: (flag: string) =>

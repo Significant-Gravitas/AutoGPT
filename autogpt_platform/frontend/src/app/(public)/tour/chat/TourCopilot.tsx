@@ -102,8 +102,8 @@ export function TourCopilot() {
       className="h-dvh min-h-0"
     >
       <TourSidebar />
-      <SidebarInset className="min-h-0 overflow-hidden bg-[#fafafa]">
-        <div className="relative flex h-full min-h-0 w-full">
+      <SidebarInset className="min-h-0 overflow-hidden">
+        <div className="relative flex h-full min-h-0 w-full bg-surface-muted">
           {chatColumn}
           {artifactPanels}
         </div>

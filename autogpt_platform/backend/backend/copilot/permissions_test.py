@@ -7,6 +7,7 @@ import pytest
 from backend.copilot.permissions import (
     ALL_TOOL_NAMES,
     CAPABILITY_GATE_NAMES,
+    CAPABILITY_TOOL_NAMES,
     DREAM_PERMISSIONS,
     PLATFORM_TOOL_NAMES,
     SDK_BUILTIN_TOOL_NAMES,
@@ -358,6 +359,69 @@ class TestValidateBlockIdentifiers:
         assert result == []
 
 
+def _mock_registry(mocker, count: int) -> list[str]:
+    registry = {}
+    for i in range(count):
+        block_cls = mocker.MagicMock()
+        block_cls.return_value.name = f"Block {i}"
+        registry[f"{i:08x}-0000-4000-8000-000000000000"] = block_cls
+    mocker.patch("backend.blocks.get_blocks", return_value=registry)
+    return list(registry)
+
+
+@pytest.mark.asyncio
+class TestValidateBlockIdentifiersLimits:
+    async def test_refuses_more_than_1000_identifiers(self, mocker):
+        _mock_registry(mocker, 3)
+        with pytest.raises(ValueError, match="At most 1000"):
+            await validate_block_identifiers(["Block 0"] * 1_001)
+
+    async def test_accepts_1000_identifiers(self, mocker):
+        _mock_registry(mocker, 3)
+        assert await validate_block_identifiers(["block 1"] * 1_000) == []
+
+    async def test_resolves_each_identifier_by_lookup(self, mocker):
+        _mock_registry(mocker, 300)
+        matcher = mocker.patch(
+            "backend.copilot.permissions._block_matches", wraps=_block_matches
+        )
+        identifiers = [f"Block {i}" for i in range(250)]
+        identifiers += [f"missing {i}" for i in range(250)]
+
+        result = await validate_block_identifiers(identifiers)
+
+        assert result == identifiers[250:]
+        assert matcher.call_count <= len(identifiers)
+
+    async def test_resolves_like_the_per_block_rule(self, mocker):
+        block_ids = _mock_registry(mocker, 20)
+        identifiers = [
+            block_ids[3],
+            block_ids[4].upper(),
+            f"  {block_ids[5]} ",
+            block_ids[6][:8],
+            block_ids[7][:8].upper(),
+            "  BLOCK 8 ",
+            "block 9",
+            "deadbeef",
+            "Unknown",
+            block_ids[10][:7],
+            f"{block_ids[11]}x",
+            "00000013",
+            "",
+        ]
+        expected = [
+            ident
+            for ident in identifiers
+            if not any(
+                _block_matches(ident, bid, f"Block {i}")
+                for i, bid in enumerate(block_ids)
+            )
+        ]
+
+        assert await validate_block_identifiers(identifiers) == expected
+
+
 # ---------------------------------------------------------------------------
 # apply_tool_permissions
 # ---------------------------------------------------------------------------
@@ -620,6 +684,39 @@ class TestApplyToolPermissions:
         # mcp__copilot__read_tool_result is always preserved for SDK internals
         assert "mcp__copilot__read_tool_result" in allowed
 
+    def test_local_pc_tools_honor_permission_whitelist(self):
+        perms = CopilotPermissions(
+            tools=["local_pc_computer_tools"], tools_exclude=False
+        )
+
+        allowed, _ = apply_tool_permissions(
+            perms,
+            use_local_pc_computer=True,
+            use_recording=True,
+        )
+
+        assert "mcp__copilot__local_pc_computer_tools" in allowed
+        assert "mcp__copilot__local_pc_computer" not in allowed
+        assert "mcp__copilot__list_recordings" not in allowed
+
+    def test_recording_tools_honor_permission_blacklist(self):
+        perms = CopilotPermissions(tools=["list_recordings"], tools_exclude=True)
+
+        allowed, _ = apply_tool_permissions(perms, use_recording=True)
+
+        assert "mcp__copilot__list_recordings" not in allowed
+        assert "mcp__copilot__generate_skill_from_recording" in allowed
+
+    def test_hidden_local_tools_are_removed_from_empty_permissions(self):
+        allowed, _ = apply_tool_permissions(
+            CopilotPermissions(),
+            use_e2b=True,
+            hidden_tool_names={"bash_exec", "grep"},
+        )
+
+        assert "mcp__copilot__bash_exec" not in allowed
+        assert "mcp__copilot__grep" not in allowed
+
 
 # ---------------------------------------------------------------------------
 # SDK_BUILTIN_TOOL_NAMES sanity check
@@ -656,10 +753,12 @@ class TestSdkBuiltinToolNames:
         )
 
     def test_all_tool_names_is_union(self):
-        """ALL_TOOL_NAMES must equal PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES."""
-        assert (
-            ALL_TOOL_NAMES
-            == PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES | CAPABILITY_GATE_NAMES
+        """ALL_TOOL_NAMES includes registry, SDK, capability-gated tools and gates."""
+        assert ALL_TOOL_NAMES == (
+            PLATFORM_TOOL_NAMES
+            | SDK_BUILTIN_TOOL_NAMES
+            | CAPABILITY_TOOL_NAMES
+            | CAPABILITY_GATE_NAMES
         )
 
     def test_no_overlap_between_platform_and_sdk(self):

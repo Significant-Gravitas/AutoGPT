@@ -24,13 +24,11 @@ export function EmptyState({ content, compact = false }: Props) {
 
   if (compact) {
     return (
-      <Text
-        variant="body"
-        className="px-2 py-6 text-foreground-tertiary"
-        data-testid="artifacts-empty"
-      >
-        {content.title}
-      </Text>
+      <div className="px-2 py-6">
+        <Text variant="body" tone="muted" data-testid="artifacts-empty">
+          {content.title}
+        </Text>
+      </div>
     );
   }
 
@@ -62,12 +60,12 @@ export function EmptyState({ content, compact = false }: Props) {
 
       <div className="flex max-w-md flex-col items-center gap-2">
         <motion.div {...fadeUp(0.28)}>
-          <Text variant="h3" className="text-foreground-strong">
+          <Text variant="h3" tone="primary">
             {content.title}
           </Text>
         </motion.div>
         <motion.div {...fadeUp(0.36)}>
-          <Text variant="body" className="text-foreground-tertiary">
+          <Text variant="body" tone="muted">
             {content.description}
           </Text>
         </motion.div>
@@ -156,6 +154,7 @@ function StackedFilesIllustration() {
             ease: EASE_OUT_QUINT,
             delay: shouldReduceMotion ? 0 : i * 0.08,
           }}
+          // oxlint-disable-next-line design-system/no-inline-styles -- framer-motion writes the SVG transform origin inline, so a class would be overridden
           style={{ transformOrigin: "160px 96px", transformBox: "fill-box" }}
         >
           <Sheet x={sheet.x} rotate={sheet.rotate} />
@@ -174,17 +173,16 @@ function Sheet({ x, rotate }: { x: number; rotate: number }) {
   const cx = x + width / 2;
   const cy = y + height / 2;
 
-  // TODO(tokens): no fitting role for the skeleton-line fill #E4E4E7; #E4E4E7 is border, a border colour
   return (
     <g transform={`rotate(${rotate} ${cx} ${cy})`}>
       <path
         d={`M${x + 12} ${y}H${x + width - fold}L${x + width} ${y + fold}V${y + height - 12}a12 12 0 0 1-12 12H${x + 12}a12 12 0 0 1-12-12V${y + 12}a12 12 0 0 1 12-12Z`}
-        className="fill-card stroke-border"
+        className="fill-surface stroke-border-base"
         strokeWidth={1}
       />
       <path
         d={`M${x + width - fold} ${y}V${y + fold}H${x + width}`}
-        className="fill-muted stroke-border"
+        className="fill-surface-hover stroke-border-base"
         strokeWidth={1}
       />
       {[0, 1, 2, 3].map((line) => (
@@ -195,7 +193,7 @@ function Sheet({ x, rotate }: { x: number; rotate: number }) {
           width={line === 3 ? width * 0.4 : width - padding * 2}
           height={6}
           rx={3}
-          fill="#E4E4E7"
+          className="fill-border-base"
         />
       ))}
     </g>

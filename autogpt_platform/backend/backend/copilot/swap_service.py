@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class SwapCredentialService(AppService):
-    # Nothing on the swap path reads a flag; no second LaunchDarkly client.
+    # Nothing on the swap path reads a flag; no second flag client.
     reads_feature_flags = False
 
     @classmethod

@@ -41,6 +41,9 @@ test("first run: a new user is walked through the real UI and can replay it", as
     timeout: 30000,
   });
   await expect(page.getByTestId("first-run-tour")).toHaveCount(0);
+  await expect(
+    page.getByRole("textbox", { name: "Chat message input" }),
+  ).toBeFocused();
 
   await page.getByTestId("profile-popout-menu-trigger").click();
   await page.getByRole("button", { name: "Show me around" }).click();

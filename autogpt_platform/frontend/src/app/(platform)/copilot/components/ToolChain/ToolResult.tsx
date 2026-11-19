@@ -72,6 +72,7 @@ import {
   Terminal,
   TodoList,
 } from "./ToolResultViews";
+import { Text } from "@/components/atoms/Text/Text";
 
 const BOOLEAN_LABELS: Record<string, string> = {
   ok: "Done",
@@ -101,7 +102,9 @@ function shapeCard(obj: Record<string, unknown>) {
   if (key === "status" && typeof value === "string")
     return (
       <div className={`${CARD} ${HALF} flex items-center gap-2 p-2.5`}>
-        <span className="text-xs text-foreground-subtle">Status</span>
+        <Text variant="small-tight" as="span" tone="subtle">
+          Status
+        </Text>
         <span className="ml-auto">
           <StatusPill status={value} />
         </span>
@@ -343,6 +346,11 @@ function toolCard(
           <ExecutionCard
             name={name}
             status={str(output, "status") ?? undefined}
+            run={
+              row.tool === "run_agent" && graphID && executionID
+                ? { graphID, executionID }
+                : undefined
+            }
             href={
               str(output, "library_agent_link") ??
               (graphID && executionID

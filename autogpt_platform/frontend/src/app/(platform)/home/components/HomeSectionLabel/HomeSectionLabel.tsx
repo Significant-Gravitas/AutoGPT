@@ -8,8 +8,10 @@ interface Props {
  *  header row. */
 export function HomeSectionLabel({ children }: Props) {
   return (
-    <Text variant="eyebrow" className="block px-4 pb-1 pt-3">
-      {children}
-    </Text>
+    <span className="block px-4 pt-3 pb-1">
+      <Text variant="eyebrow" className="block">
+        {children}
+      </Text>
+    </span>
   );
 }

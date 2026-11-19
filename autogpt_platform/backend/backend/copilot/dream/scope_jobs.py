@@ -31,6 +31,10 @@ from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob, jobs_for
 
 logger = logging.getLogger(__name__)
 
+# The result entry of the scope's own row when it could not be read or
+# claimed: without a row the community sweep never rebuilds the scope.
+REGISTRY_ROW = "registry_row"
+
 
 async def flag_gate(scope: MemoryScope) -> tuple[dict[str, Any], list[DreamSystemJob]]:
     """Split the scope's crons (``jobs_for``) on the owner's flags: skip
@@ -73,7 +77,7 @@ async def register_scope_jobs(
     if row is None:
         row = await _claim(scope, user_timezone)
         if row is None:
-            return skip_all(enabled, "registry_unavailable")
+            return not_claimed(enabled, "registry_unavailable")
         if row.state != MemoryScopeScheduleState.ACTIVE:
             return skip_all(enabled, state_reason(row))
     stale = force_refresh or row.timezone != user_timezone
@@ -101,7 +105,6 @@ async def _record_timezone(
                 scope.owner_user_id,
                 scope.scope_key,
                 user_timezone=user_timezone,
-                community_job_id=row.community_job_id,
                 nightly_job_id=row.nightly_job_id,
                 learning_job_id=row.learning_job_id,
             )
@@ -135,6 +138,12 @@ def skipped(reason: str) -> dict[str, Any]:
 
 def skip_all(jobs: Iterable[DreamSystemJob], reason: str) -> dict[str, Any]:
     return {job.job_id_prefix: skipped(reason) for job in jobs}
+
+
+def not_claimed(jobs: Iterable[DreamSystemJob], reason: str) -> dict[str, Any]:
+    """``skip_all`` plus the row's own entry, so a failure shows with every
+    cron's flag off too."""
+    return {REGISTRY_ROW: skipped(reason)} | skip_all(jobs, reason)
 
 
 def state_reason(row: MemoryScopeSchedule) -> str:
@@ -213,7 +222,6 @@ async def _record(
                 scope.owner_user_id,
                 scope.scope_key,
                 user_timezone=user_timezone,
-                community_job_id=ids["community_job_id"],
                 nightly_job_id=ids["nightly_job_id"],
                 learning_job_id=ids["learning_job_id"],
             )
@@ -262,8 +270,6 @@ def _next_job_id(
 def recorded_job_id(row: MemoryScopeSchedule, job: DreamSystemJob) -> str | None:
     """The job id ``row`` records for ``job``, None when it records none."""
     match job.row_field:
-        case "community_job_id":
-            return row.community_job_id
         case "nightly_job_id":
             return row.nightly_job_id
         case "learning_job_id":

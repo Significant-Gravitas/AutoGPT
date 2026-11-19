@@ -129,6 +129,7 @@ ToolName = Literal[
     "find_library_agent",
     "find_session",
     "fix_agent_graph",
+    "flag_mistake",
     "get_agent_building_guide",
     "get_doc_page",
     "get_platform_info",
@@ -163,7 +164,9 @@ ToolName = Literal[
     "read_skill",
     "read_workspace_file",
     "remove_expert_workflow",
+    "render_ui",
     "request_credential_grant",
+    "request_work_check",
     "resume_capability",
     "resume_schedule",
     "revoke_expert_credential",
@@ -186,6 +189,12 @@ ToolName = Literal[
     "web_fetch",
     "web_search",
     "write_workspace_file",
+    # Capability-gated Local PC tools
+    "local_pc_computer_tools",
+    "local_pc_computer",
+    "list_recordings",
+    "generate_skill_from_recording",
+    "dry_run_skill",
     # Capability gates (not tools): deny to withhold a whole kind of capability
     "run_block",
     "run_mcp_tool",
@@ -315,9 +324,23 @@ SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
     {"Agent", "Edit", "Glob", "Grep", "Read", "Task", "WebSearch", "Write"}
 )
 
-# Platform tool names — everything that isn't an SDK built-in or a gate.
+CAPABILITY_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "local_pc_computer_tools",
+        "local_pc_computer",
+        "list_recordings",
+        "generate_skill_from_recording",
+        "dry_run_skill",
+    }
+)
+
+# Platform tool names — everything that isn't an SDK built-in, a
+# capability-gated Local PC tool or a gate.
 PLATFORM_TOOL_NAMES: frozenset[str] = (
-    ALL_TOOL_NAMES - SDK_BUILTIN_TOOL_NAMES - CAPABILITY_GATE_NAMES
+    ALL_TOOL_NAMES
+    - SDK_BUILTIN_TOOL_NAMES
+    - CAPABILITY_TOOL_NAMES
+    - CAPABILITY_GATE_NAMES
 )
 
 # Compiled regex patterns for block identifier classification.
@@ -326,6 +349,9 @@ _FULL_UUID_RE = re.compile(
     re.IGNORECASE,
 )
 _PARTIAL_UUID_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
+
+# Most entries an allow- or deny-list of blocks may hold.
+MAX_BLOCK_IDENTIFIERS = 1_000
 
 
 # Tools that a blacklist entry must deny alongside the capability named.
@@ -715,20 +741,43 @@ async def validate_block_identifiers(
 
     Returns:
         List of identifiers that matched no known block.
+
+    Raises:
+        ValueError: More than ``MAX_BLOCK_IDENTIFIERS`` identifiers were given.
     """
     from backend.blocks import get_blocks
 
+    if len(identifiers) > MAX_BLOCK_IDENTIFIERS:
+        raise ValueError(
+            f"At most {MAX_BLOCK_IDENTIFIERS} block identifiers are allowed, "
+            f"got {len(identifiers)}."
+        )
+
     # get_blocks() returns dict[block_id_str, BlockClass]; instantiate once to get names.
     block_registry = get_blocks()
-    block_info = {bid: cls().name for bid, cls in block_registry.items()}
-    invalid: list[str] = []
-    for ident in identifiers:
-        matched = any(
-            _block_matches(ident, bid, bname) for bid, bname in block_info.items()
-        )
-        if not matched:
-            invalid.append(ident)
-    return invalid
+    block_ids = {bid.lower() for bid in block_registry}
+    id_prefixes = {bid[:8] for bid in block_ids}
+    block_names = {cls().name.lower() for cls in block_registry.values()}
+    return [
+        ident
+        for ident in identifiers
+        if not _resolves_to_known_block(ident, block_ids, id_prefixes, block_names)
+    ]
+
+
+def _resolves_to_known_block(
+    identifier: str,
+    block_ids: set[str],
+    id_prefixes: set[str],
+    block_names: set[str],
+) -> bool:
+    """Set-lookup form of :func:`_block_matches` over the whole registry."""
+    ident = identifier.strip().lower()
+    if _FULL_UUID_RE.match(ident):
+        return ident in block_ids
+    if _PARTIAL_UUID_RE.match(ident):
+        return ident in id_prefixes
+    return ident in block_names
 
 
 # ---------------------------------------------------------------------------
@@ -741,6 +790,10 @@ def apply_tool_permissions(
     *,
     use_e2b: bool = False,
     disabled_groups: Iterable[ToolGroup] = (),
+    hidden_tool_names: Iterable[str] = (),
+    use_local_pc_computer: bool = False,
+    local_pc_computer_tool_names: Iterable[str] | None = None,
+    use_recording: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Compute (allowed_tools, extra_disallowed) for :class:`ClaudeAgentOptions`.
 
@@ -768,9 +821,14 @@ def apply_tool_permissions(
     from backend.copilot.tools import TOOL_REGISTRY
 
     base_allowed = get_copilot_tool_names(
-        use_e2b=use_e2b, disabled_groups=disabled_groups
+        use_e2b=use_e2b,
+        disabled_groups=disabled_groups,
+        hidden_tool_names=hidden_tool_names,
+        use_local_pc_computer=use_local_pc_computer,
+        local_pc_computer_tool_names=local_pc_computer_tool_names,
+        use_recording=use_recording,
     )
-    base_disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+    base_disallowed = get_sdk_disallowed_tools()
 
     if permissions.is_empty():
         return base_allowed, base_disallowed
@@ -811,6 +869,8 @@ def apply_tool_permissions(
             # matches.
             names.append(short)
         elif short in TOOL_REGISTRY:
+            names.append(f"{MCP_TOOL_PREFIX}{short}")
+        elif short in CAPABILITY_TOOL_NAMES:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
             # Offer BOTH spellings and let the ``base_allowed`` filter below

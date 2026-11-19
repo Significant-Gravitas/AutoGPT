@@ -35,6 +35,7 @@ from openai.types.chat import ChatCompletion
 from prisma.enums import APIKeyPermission
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.credit_billing import tool_spend_refusal
 from backend.copilot.model import ChatSession
 from backend.copilot.token_tracking import persist_and_record_usage
 
@@ -172,6 +173,14 @@ class WebSearchTool(BaseTool):
                     "OpenRouter credentials configured."
                 ),
                 error="web_search_not_configured",
+                session_id=session_id,
+            ).from_outside()
+
+        # Billed to the platform's key whoever pays for the turn's model.
+        if refusal := await tool_spend_refusal(user_id):
+            return ErrorResponse(
+                message=f"Web search is unavailable: {refusal}",
+                error="usage_limit",
                 session_id=session_id,
             ).from_outside()
 

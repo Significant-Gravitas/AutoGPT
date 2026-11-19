@@ -7,17 +7,14 @@
 --   Tracks real API spend at the call level: provider, model,
 --   token counts (including Anthropic cache tokens), cost in
 --   microdollars, and the block/execution that incurred the cost.
---   Joins the User table to provide email for per-user breakdowns.
 --
 -- SOURCE TABLES
 --   platform.PlatformCostLog  — Per-call cost records
---   platform.User             — User email
 --
 -- OUTPUT COLUMNS
 --   id                      TEXT         Log entry UUID
 --   createdAt               TIMESTAMPTZ  When the cost was recorded
 --   userId                  TEXT         User who incurred the cost (nullable)
---   email                   TEXT         User email (nullable)
 --   graphExecId             TEXT         Graph execution UUID (nullable)
 --   nodeExecId              TEXT         Node execution UUID (nullable)
 --   blockName               TEXT         Block that made the API call (nullable)
@@ -51,10 +48,10 @@
 --   GROUP BY 1, 2 ORDER BY total_usd DESC;
 --
 --   -- Top 20 users by spend
---   SELECT "userId", email, SUM("costUsd") AS total_usd, COUNT(*) AS calls
+--   SELECT "userId", SUM("costUsd") AS total_usd, COUNT(*) AS calls
 --   FROM analytics.platform_cost_log
 --   WHERE "userId" IS NOT NULL
---   GROUP BY 1, 2 ORDER BY total_usd DESC LIMIT 20;
+--   GROUP BY 1 ORDER BY total_usd DESC LIMIT 20;
 --
 --   -- Daily spend trend
 --   SELECT DATE_TRUNC('day', "createdAt") AS day,
@@ -76,7 +73,6 @@ SELECT
     p."id"                                                        AS id,
     p."createdAt"                                                 AS createdAt,
     p."userId"                                                    AS userId,
-    u."email"                                                     AS email,
     p."graphExecId"                                               AS graphExecId,
     p."nodeExecId"                                                AS nodeExecId,
     p."blockName"                                                 AS blockName,
@@ -96,5 +92,4 @@ SELECT
     END                                                           AS totalTokens,
     p."duration"                                                  AS duration
 FROM platform."PlatformCostLog" p
-LEFT JOIN platform."User" u ON u."id" = p."userId"
 WHERE p."createdAt" > CURRENT_DATE - INTERVAL '90 days'

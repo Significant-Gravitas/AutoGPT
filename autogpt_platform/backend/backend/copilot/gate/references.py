@@ -393,7 +393,11 @@ async def _team_change(confirmation_id: str, call: _Call) -> _Found | None:
     # names it: otherwise its card reads like the plain hire.
     task = proposal.handoff if proposal.hand_off else None
     return _Found(
-        kind="New hire with a first task" if task else _TEAM_CHANGE_KINDS[preview.kind],
+        kind=(
+            f"{_TEAM_CHANGE_KINDS[preview.kind]} with a first task"
+            if task
+            else _TEAM_CHANGE_KINDS[preview.kind]
+        ),
         name=f"{preview.name} to take on {task.title}" if task else preview.name,
         href=_team_href(proposal.expert_id) if proposal.expert_id else None,
         description=preview.tagline or preview.about,

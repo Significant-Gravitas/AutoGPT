@@ -50,9 +50,9 @@ const meta: Meta<typeof ArtifactPanel> = {
   decorators: [
     (Story) => (
       <TooltipProvider>
-        <div className="flex h-[800px] w-full bg-sidebar">
+        <div className="flex h-[800px] w-full bg-surface-muted">
           <div className="flex-1 bg-surface-muted p-8">
-            <p className="text-sm text-foreground-tertiary">Chat area</p>
+            <p className="text-body text-foreground-tertiary">Chat area</p>
           </div>
           <Story />
         </div>
@@ -107,7 +107,7 @@ export const OpenWithHTMLArtifact: Story = {
       handlers: [
         http.get(`${PROXY_BASE}/html-panel/download`, () => {
           return HttpResponse.text(
-            `<!DOCTYPE html><html><body class="p-8 font-sans"><h1 class="text-2xl font-bold text-indigo-600">Dashboard</h1><p class="mt-2 text-gray-600">HTML artifact in the panel.</p></body></html>`,
+            `<!DOCTYPE html><html><body class="p-8 font-sans"><h1 class="text-heading-md font-bold text-indigo-600">Dashboard</h1><p class="mt-2 text-gray-600">HTML artifact in the panel.</p></body></html>`,
           );
         }),
       ],

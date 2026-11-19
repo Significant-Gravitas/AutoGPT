@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import type { Tone } from "@/components/styles/tones";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import type { CardStatus } from "@/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalCard/ApprovalCard";
 import { HeadlineText } from "@/app/(platform)/copilot/components/ApprovalQueue/components/ApprovalHeadline";
@@ -66,38 +67,33 @@ export function HeldCallRow({
               id={headlineButtonId(item.id)}
               aria-haspopup="dialog"
               onClick={onOpen}
-              className="line-clamp-2 min-w-0 rounded-md text-left text-foreground-strong [overflow-wrap:anywhere] hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+              className="line-clamp-2 min-w-0 rounded-md text-left [overflow-wrap:anywhere] text-foreground-strong hover:opacity-80 focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
             >
               <Text variant="body-medium" as="span" className="text-pretty">
                 <HeadlineText item={approval} />
               </Text>
             </button>
             {approval.subject.irreversible && (
-              <Tag className="bg-error-surface text-error-foreground">
+              <Tag tone="error-strong" className="bg-error-surface">
                 Can&apos;t be undone
               </Tag>
             )}
             {mode && (
-              <Tag className="bg-surface-hover text-foreground-secondary">
+              <Tag tone="secondary" className="bg-surface-hover">
                 {mode}
               </Tag>
             )}
             {item.priority === "high" && (
               <Tag
-                // TODO(tokens): no exact role (ring-amber-600/10 #D97706)
-                className="bg-warning-surface text-warning-foreground ring-1 ring-inset ring-amber-600/10"
+                tone="warning"
+                className="bg-warning-surface ring-1 ring-warning-foreground/10 ring-inset"
               >
                 Waiting
               </Tag>
             )}
           </div>
           {failed ? (
-            <Text
-              // TODO(tokens): no fitting role for !text-red-600 #D93636; #D93636 is error-hover, a hover fill
-              variant="body"
-              role="alert"
-              className="!text-red-600"
-            >
+            <Text variant="body" role="alert" tone="error-strong">
               Couldn&apos;t send your answer. Nothing ran. Try again.
             </Text>
           ) : reason ? (
@@ -124,7 +120,8 @@ export function HeldCallRow({
             variant="small"
             as="span"
             tone="secondary"
-            className="mr-1 hidden tabular-nums sm:inline"
+            tabular
+            className="mr-1 hidden sm:inline"
           >
             <time dateTime={new Date(item.created_at).toISOString()}>
               {shortAge(item.created_at)}
@@ -144,8 +141,7 @@ export function HeldCallRow({
         ) : (
           <Button
             variant="secondary"
-            size="small"
-            className="h-8 min-w-0 px-3"
+            size="row"
             disabled={busy}
             aria-label={`Review: ${item.title}`}
             onClick={onOpen}
@@ -174,19 +170,19 @@ export function HeldCallRow({
 }
 
 function Tag({
+  tone,
   className,
   children,
 }: {
+  tone: Tone;
   className: string;
   children: React.ReactNode;
 }) {
   return (
-    <Text
-      variant="small-medium"
-      as="span"
-      className={`shrink-0 rounded px-1.5 py-px ${className}`}
-    >
-      {children}
-    </Text>
+    <span className={`shrink-0 rounded px-1.5 py-px ${className}`}>
+      <Text variant="small-medium" as="span" tone={tone} className="block">
+        {children}
+      </Text>
+    </span>
   );
 }

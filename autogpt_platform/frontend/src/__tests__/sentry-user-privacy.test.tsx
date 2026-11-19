@@ -41,7 +41,7 @@ type SentPayload = Sentry.Event & {
 };
 
 interface SentSpan {
-  data?: Record<string, unknown>;
+  attributes: Record<string, { value: unknown }>;
 }
 
 interface SentLog {
@@ -66,7 +66,7 @@ beforeAll(async () => {
           sent.push(payload as SentPayload);
         }
         if (header.type === "span") {
-          sentSpans.push(payload as SentSpan);
+          sentSpans.push(...(payload as { items: SentSpan[] }).items);
         }
         if (header.type === "log") {
           sentLogs.push(...(payload as { items: SentLog[] }).items);
@@ -192,10 +192,8 @@ describe("a signed-in user in Sentry", () => {
 
     expect(sentSpans).toHaveLength(1);
     const [span] = sentSpans;
-    expect(span.data).toMatchObject({
-      "user.id": "user-1",
-      "sentry.exclusive_time": 120,
-    });
+    expect(span.attributes["user.id"]?.value).toBe("user-1");
+    expect(span.attributes["sentry.exclusive_time"]?.value).toBe(120);
     expect(JSON.stringify(span)).not.toContain(IP);
     expect(JSON.stringify(span)).not.toContain(EMAIL);
   });
