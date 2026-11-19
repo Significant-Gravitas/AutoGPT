@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock
 
+import pytest
 from prisma.enums import AgentExecutionStatus, ResourceVisibility
 from prisma.models import (
     AgentGraphExecution,
@@ -37,8 +38,10 @@ OUTPUTS: list[tuple[str, Any]] = [
 ]
 
 
+# Keeps the rate limiter's request counter in memory instead of Redis.
+@pytest.mark.usefixtures("v1_counter")
 async def test_a_completed_runs_outputs_keep_their_json_types(
-    mocker, v1_client, v1_counter, v1_generated_keys, v1_key_rows
+    mocker, v1_client, v1_generated_keys, v1_key_rows
 ):
     owner = v1_key_rows[0].user_id
     owners_query = {"id": RUN_ID, "isDeleted": False, "userId": owner}
