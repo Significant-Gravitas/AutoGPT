@@ -281,8 +281,29 @@ class TestMakeHashable:
         assert _make_hashable(True) == ("bool", True)
 
     def test_float(self):
-        result = _make_hashable(3.14)
-        assert result == 3.14
+        assert _make_hashable(3.14) == _make_hashable(3.14)
+        assert _make_hashable(3.14) != _make_hashable(3.15)
+
+    def test_equal_numbers_share_a_key(self):
+        assert _make_hashable(1) == _make_hashable(1.0)
+        assert _make_hashable(0) == _make_hashable(-0.0)
+        assert _make_hashable(2**62) == _make_hashable(float(2**62))
+        assert _make_hashable(2**62) != _make_hashable(2**62 + 1)
+
+    def test_numbers_with_one_hash_get_distinct_keys(self):
+        # Every multiple of 2**61 - 1 hashes to 0, so as set keys they'd collide.
+        step = 2**61 - 1
+        keys = {hash(_make_hashable(k * step)) for k in range(1, 1001)}
+        assert len(keys) == 1000
+
+    def test_deduplicates_numbers_with_one_hash(self):
+        step = 2**61 - 1
+        items = [k * step for k in range(1, 6)]
+        # 2**62 is a float exactly, so its float form is a duplicate too.
+        assert _deduplicate_list(items + [2 * step, 2**62, float(2**62)]) == [
+            *items,
+            2**62,
+        ]
 
 
 class TestFilterNoneValues:
@@ -362,6 +383,22 @@ class TestInterleaveListsHelper:
     def test_all_none_lists(self):
         """All-None inputs should return empty list, not crash."""
         assert _interleave_lists([None, None, None]) == []  # type: ignore[arg-type]
+
+    def test_empty_lists_are_not_visited_per_position(self):
+        lengths_read = 0
+
+        class CountingList(list):
+            def __len__(self):
+                nonlocal lengths_read
+                lengths_read += 1
+                return super().__len__()
+
+        empties = [CountingList() for _ in range(1000)]
+        result = _interleave_lists([list(range(1000)), *empties])
+
+        assert result == list(range(1000))
+        # One read per empty list; visiting each at every position is 1,000,000.
+        assert lengths_read <= 2 * len(empties)
 
 
 class TestComputeNestingDepthEdgeCases:

@@ -1,4 +1,6 @@
 import json
+import math
+import sys
 from typing import Any, List
 
 from fastapi.encoders import jsonable_encoder
@@ -835,8 +837,8 @@ def _make_hashable(item: Any):
     Converts unhashable types (dicts, lists) into deterministic tuple structures.
     Dicts, lists and bools are tagged with their kind, so values of different
     kinds never share a key, whatever they contain (e.g. ``{}`` vs ``[]``,
-    ``True`` vs ``1``, ``{}`` vs ``["dict", []]``). Numbers aren't tagged, so
-    ``1`` and ``1.0`` still match.
+    ``True`` vs ``1``, ``{}`` vs ``["dict", []]``). Equal numbers share a key,
+    so ``1`` and ``1.0`` still match.
     """
     if isinstance(item, dict):
         return (
@@ -854,6 +856,13 @@ def _make_hashable(item: Any):
         return frozenset(_make_hashable(i) for i in item)
     if isinstance(item, bool):
         return ("bool", item)
+    if isinstance(item, float) and not math.isnan(item):
+        if not item.is_integer():
+            return ("number", repr(item))
+        item = int(item)
+    # Ints hash modulo sys.hash_info.modulus, so larger ones get a key of their own.
+    if isinstance(item, int) and abs(item) >= sys.hash_info.modulus:
+        return ("number", hex(item))
     return item
 
 
@@ -906,15 +915,14 @@ def _interleave_lists(lists: List[List[Any]]) -> List[Any]:
     """
     if not lists:
         return []
-    filtered = [lst for lst in lists if lst is not None]
-    if not filtered:
-        return []
+    # Visits only lists with an item left at position i; empty ones cost nothing.
+    remaining = [lst for lst in lists if lst]
     result: List[Any] = []
-    max_len = max(len(lst) for lst in filtered)
-    for i in range(max_len):
-        for lst in filtered:
-            if i < len(lst):
-                result.append(lst[i])
+    i = 0
+    while remaining:
+        result.extend(lst[i] for lst in remaining)
+        i += 1
+        remaining = [lst for lst in remaining if i < len(lst)]
     return result
 
 
