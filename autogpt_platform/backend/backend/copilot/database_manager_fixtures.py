@@ -90,7 +90,8 @@ def fake_database_manager_clients() -> Iterator[None]:
 
     The getters cache a client per thread, and only this thread's cache is
     cleared: a worker thread that cached a real client before the folder's
-    first test keeps it.
+    first test keeps it, and one that cached the fake keeps that after the
+    folder's last test.
     """
 
     real_get_service_client = service.get_service_client

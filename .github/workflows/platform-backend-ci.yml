@@ -699,6 +699,8 @@ jobs:
       # which waits for its background steps, doesn't wait out the 28 minutes.
       - name: Stop the time-limit warning
         if: ${{ always() }}
+        # /tmp, like the warning step: the default folder doesn't exist when checkout failed.
+        working-directory: /tmp
         run: touch "$RUNNER_TEMP/backend-test-job-done"
 
     env:
