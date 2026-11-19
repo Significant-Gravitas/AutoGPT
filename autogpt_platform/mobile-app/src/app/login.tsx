@@ -1,15 +1,13 @@
 import { Image } from "expo-image";
-import {
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { router } from "expo-router";
+import { Text, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button } from "@/components/Button";
+import { AuthField } from "@/features/auth/components/AuthField";
+import { AuthFooter } from "@/features/auth/components/AuthFooter";
 import { useLoginScreen } from "@/features/auth/useLoginScreen";
-import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
+import { createStyles, spacing, type } from "@/lib/theme";
 
 const appIcon = require("../../assets/images/icon.png");
 
@@ -25,7 +23,10 @@ export default function LoginScreen() {
     submit,
   } = useLoginScreen();
   const styles = useStyles();
-  const colors = useColors();
+
+  function goToSignup() {
+    router.push("/signup");
+  }
 
   return (
     <KeyboardAvoidingView
@@ -39,11 +40,9 @@ export default function LoginScreen() {
           accessibilityIgnoresInvertColors
         />
         <Text style={styles.title}>Sign in to AutoGPT</Text>
-        <TextInput
+        <AuthField
           accessibilityLabel="Email"
           placeholder="Email"
-          placeholderTextColor={colors.textTertiary}
-          selectionColor={colors.brand}
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -52,20 +51,16 @@ export default function LoginScreen() {
           autoComplete="email"
           textContentType="username"
           editable={!isSubmitting}
-          style={styles.input}
         />
-        <TextInput
+        <AuthField
           accessibilityLabel="Password"
           placeholder="Password"
-          placeholderTextColor={colors.textTertiary}
-          selectionColor={colors.brand}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
           autoComplete="current-password"
           textContentType="password"
           editable={!isSubmitting}
-          style={styles.input}
         />
         {error ? (
           <Text accessibilityLiveRegion="polite" style={styles.error}>
@@ -79,9 +74,11 @@ export default function LoginScreen() {
           disabled={!canSubmit && !isSubmitting}
           fullWidth
         />
-        <Text style={styles.footer}>
-          New here? Create your account at platform.agpt.co first.
-        </Text>
+        <AuthFooter
+          prompt="New here? "
+          linkLabel="Create an account"
+          onPress={goToSignup}
+        />
       </View>
     </KeyboardAvoidingView>
   );
@@ -110,26 +107,9 @@ const useStyles = createStyles((colors) => ({
     textAlign: "center",
     marginBottom: spacing.md,
   },
-  input: {
-    ...type.body,
-    alignSelf: "stretch",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    color: colors.text,
-  },
   error: {
     ...type.small,
     alignSelf: "stretch",
     color: colors.error,
-  },
-  footer: {
-    ...type.small,
-    color: colors.textSecondary,
-    textAlign: "center",
-    marginTop: spacing.lg,
   },
 }));
