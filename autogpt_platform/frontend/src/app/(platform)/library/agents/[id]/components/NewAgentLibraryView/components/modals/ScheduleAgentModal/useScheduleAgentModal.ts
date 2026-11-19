@@ -4,7 +4,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
-import { scheduleCreateErrorToast } from "@/services/schedules/schedule-create-error";
+import { describeScheduleCreateError } from "@/services/schedules/schedule-create-error";
 import {
   forgetScheduleCreateKey,
   withScheduleCreateKey,
@@ -51,10 +51,15 @@ export function useScheduleAgentModal(
       },
       onError: (error: unknown, create) => {
         forgetScheduleCreateKey({ userId, create, error });
+        const { shouldRefresh, toast: errorToast } =
+          describeScheduleCreateError(error);
+        if (shouldRefresh) {
+          invalidateAllScheduleQueries(queryClient, create.graphId);
+        }
         toast({
           title: "❌ Failed to create schedule",
           variant: "destructive",
-          ...scheduleCreateErrorToast(error),
+          ...errorToast,
         });
       },
     },

@@ -5,7 +5,7 @@ import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
-import { scheduleCreateErrorToast } from "@/services/schedules/schedule-create-error";
+import { describeScheduleCreateError } from "@/services/schedules/schedule-create-error";
 import {
   forgetScheduleCreateKey,
   withScheduleCreateKey,
@@ -59,10 +59,15 @@ export function useCronSchedulerDialog({
         },
         onError: (error, create) => {
           forgetScheduleCreateKey({ userId, create, error });
+          const { shouldRefresh, toast: errorToast } =
+            describeScheduleCreateError(error);
+          if (shouldRefresh) {
+            invalidateAllScheduleQueries(queryClient, create.graphId);
+          }
           toast({
             variant: "destructive",
             title: "Failed to create schedule",
-            ...scheduleCreateErrorToast(error),
+            ...errorToast,
           });
         },
       },
