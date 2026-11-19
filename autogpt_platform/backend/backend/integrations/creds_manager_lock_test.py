@@ -23,7 +23,7 @@ from backend.integrations.oauth.github import GitHubOAuthHandler
 _HANG_SECONDS = 10
 
 
-@pytest.fixture
+@pytest.fixture(params=range(10))
 async def scenario(mocker):
     try:
         socket.create_connection((redis_client.HOST, redis_client.PORT), 1).close()
@@ -34,16 +34,21 @@ async def scenario(mocker):
         port=redis_client.PORT,
         password=redis_client.PASSWORD,
         address_remap=redis_client._address_remap,
-        socket_connect_timeout=1,
-        socket_timeout=1,
+        socket_connect_timeout=_HANG_SECONDS,
+        socket_timeout=_HANG_SECONDS,
     )
-    test = _RefreshScenario(mocker, redis)
+    test = None
     try:
+        await asyncio.wait_for(redis.initialize(), timeout=_HANG_SECONDS)
+        test = _RefreshScenario(mocker, redis)
         yield test
     finally:
-        await test.mutex.release_all_locks()
-        await redis.delete(*test.lock_keys)
-        await redis.aclose()
+        try:
+            if test is not None:
+                await test.mutex.release_all_locks()
+                await redis.delete(*test.lock_keys)
+        finally:
+            await redis.aclose()
 
 
 @pytest.mark.parametrize("sweep_waiting", [False, True])
