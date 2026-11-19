@@ -129,8 +129,7 @@ PublicExecutionTargetMetadata = Annotated[
 ]
 
 
-# Kept in ``metadata``, which every chat listing loads per row, and only ever
-# shown as a preview; cut whatever a writer passes.
+# Shown only as a preview; cut whatever a writer passes.
 PENDING_QUESTION_MAX_LENGTH = 2_000
 
 

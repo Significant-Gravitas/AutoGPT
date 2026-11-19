@@ -14,8 +14,6 @@ logger = logging.getLogger(__name__)
 
 # The model can be steered by untrusted page content (agent_browser, MCP tools),
 # and every option is replayed into context on each subsequent turn.
-# Any string argument can be a whole file (``@@agptfile:``), so the question
-# and its keyword are bounded like the options.
 MAX_QUESTIONS = 10
 MAX_QUESTION_LENGTH = 2_000
 MAX_KEYWORD_LENGTH = 100
