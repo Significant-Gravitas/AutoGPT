@@ -16,11 +16,13 @@ import {
   expectEachTurnOnce,
   type ModelScript,
   readJournal,
+  releaseHeldReply,
   requireScriptedModel,
   scriptedRun,
 } from "./scripted-model";
 
-// One answer, streamed a word at a time over a few seconds.
+// One answer, streamed a word at a time. The model holds it after its first
+// words until the journey has cut the connection.
 const SCRIPT: ModelScript = slowAnswerScript;
 const ANSWER = SCRIPT.turns[0].text ?? "";
 
@@ -93,6 +95,9 @@ async function loseConnectionMidAnswer({
   const reconnected = page.waitForRequest(isChatStream("GET"));
   if (offline) await context.setOffline(true);
   await cutChatStreams(page);
+  // Only now does the model write the rest, while the connection is down: the
+  // cut can't miss an answer that finished before the first words showed.
+  await releaseHeldReply(run.nonce);
   if (offline) {
     await expect(
       page.getByText("You're offline", { exact: true }),

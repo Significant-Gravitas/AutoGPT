@@ -25,9 +25,10 @@ from graphiti_core.prompts.extract_edges import ExtractedEdges
 from graphiti_core.prompts.extract_nodes import ExtractedEntities
 from graphiti_core.prompts.models import Message
 from pydantic import BaseModel, Field
+from scripted_model import server as scripted_server
 from scripted_model.responses import ResponseError
 from scripted_model.responses import response as structured_response
-from scripted_model.scripts import parse_script
+from scripted_model.scripts import ScriptError, parse_script
 
 from backend.copilot.graphiti.llm_client import GraphitiOpenAIClient
 
@@ -72,6 +73,16 @@ CHAT_TOOLS = [
         "function": {"name": "find_library_agent", "parameters": {"type": "object"}},
     }
 ]
+HELD_TEXT = "One two three four five six"
+HELD = {
+    "turns": [
+        {
+            "text": HELD_TEXT,
+            "usage": {"input_tokens": 100, "output_tokens": 6},
+            "stream": {"chunk_words": 1, "delay_ms": 0, "hold_after_words": 2},
+        }
+    ]
+}
 
 
 class StructuredSummary(BaseModel):
@@ -625,6 +636,66 @@ def test_concurrent_runs_of_one_script_each_get_their_own_turns(scripted_model):
         assert entries[1]["tool_results"][0]["content"] == f"No agents for run-{i}."
 
 
+@pytest.mark.parametrize("dialect", ["anthropic", "openai"])
+def test_a_held_reply_waits_until_the_journey_releases_it(scripted_model, dialect):
+    scripted_model.add_script("held", HELD)
+    nonce = f"held-{dialect}"
+    received: list[str] = []
+    two_words = threading.Event()
+    finished = threading.Event()
+
+    def read() -> None:
+        for piece in _texts_as_streamed(
+            scripted_model, dialect, f"[[script:held#{nonce}]]"
+        ):
+            received.append(piece)
+            if len(received) == 2:
+                two_words.set()
+        finished.set()
+
+    threading.Thread(target=read, daemon=True).start()
+    assert two_words.wait(timeout=10)
+    assert not finished.wait(timeout=0.5), "the reply should wait for its release"
+    assert received == ["One", " two"]
+
+    _release(scripted_model, nonce)
+    assert finished.wait(timeout=10)
+    assert "".join(received) == HELD_TEXT
+    (entry,) = scripted_model.journal(nonce=nonce)
+    assert entry["checks"] == [{"what": "held reply", "ok": True, "detail": "released"}]
+
+
+def test_a_release_sent_before_the_hold_lets_the_reply_through(scripted_model):
+    scripted_model.add_script("held", HELD)
+    _release(scripted_model, "early")
+    messages = [{"role": "user", "content": "[[script:held#early]]"}]
+    assert _stream(_anthropic(scripted_model), messages).content[0].text == HELD_TEXT
+
+
+def test_a_reply_nobody_releases_finishes_and_fails_its_check(
+    scripted_model, monkeypatch
+):
+    monkeypatch.setattr(scripted_server, "HOLD_TIMEOUT_S", 0.2)
+    scripted_model.add_script("held", HELD)
+    messages = [{"role": "user", "content": "[[script:held#forgotten]]"}]
+    assert _stream(_anthropic(scripted_model), messages).content[0].text == HELD_TEXT
+    (entry,) = scripted_model.journal(nonce="forgotten")
+    assert entry["checks"] == [
+        {"what": "held reply", "ok": False, "detail": "not released in 0.2s"}
+    ]
+
+
+def test_a_held_reply_needs_a_nonce_and_text_to_hold(scripted_model):
+    scripted_model.add_script("held", HELD)
+    with pytest.raises(anthropic.BadRequestError, match="names by nonce"):
+        _stream(
+            _anthropic(scripted_model), [{"role": "user", "content": "[[script:held]]"}]
+        )
+    too_short = {**HELD["turns"][0], "text": "One two"}
+    with pytest.raises(ScriptError, match="would never hold"):
+        parse_script("held", {"turns": [too_short]})
+
+
 @pytest.mark.parametrize(
     "path", sorted(JOURNEY_SCRIPTS.glob("*.json")), ids=lambda path: path.stem
 )
@@ -687,6 +758,32 @@ def _stream(client: anthropic.Anthropic, messages: list[dict], system=None):
         model=SONNET, max_tokens=1024, messages=messages, tools=SDK_TOOLS, **extra
     ) as stream:
         return stream.get_final_message()
+
+
+def _texts_as_streamed(server, dialect: str, content: str):
+    """The reply's text pieces, each as soon as it arrives."""
+    messages = [{"role": "user", "content": content}]
+    if dialect == "anthropic":
+        with _anthropic(server).messages.stream(
+            model=SONNET, max_tokens=1024, messages=messages, tools=SDK_TOOLS
+        ) as stream:
+            yield from stream.text_stream
+        return
+    chunks = _openai(server).chat.completions.create(
+        model=SONNET, messages=messages, tools=CHAT_TOOLS, stream=True
+    )
+    for chunk in chunks:
+        for choice in chunk.choices:
+            if choice.delta.content:
+                yield choice.delta.content
+
+
+def _release(server, nonce: str) -> None:
+    release = urllib.request.Request(
+        f"{server.url}/__scripted__/release?nonce={nonce}", data=b"", method="POST"
+    )
+    with urllib.request.urlopen(release, timeout=5) as response:
+        assert json.loads(response.read()) == {"released": nonce}
 
 
 def _stream_chat(client: openai.OpenAI, messages: list[dict]):
