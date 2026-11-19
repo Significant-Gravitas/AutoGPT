@@ -382,17 +382,23 @@ def _retire_unless_stopped(
     started: list[asyncio.Task[CompletedBlockOutput]] | None = None,
 ) -> None:
     """Replace *worker* in the pool if its timed-out run is still running,
-    and stop the run if it is computing rather than awaiting (*started* holds
-    its task once it has one)."""
+    then interrupt that run if it is the one executing (*started* holds its
+    task once it has one)."""
     if stopped.is_set():
         return
-    # Only the timed-out run's own step may be interrupted, never another run's.
+    _retire(worker)
+    # After the retirement, so no waiting run can start on the freed worker.
+    # Only the timed-out run's own step is interrupted, never another run's.
     if started and asyncio.current_task(worker.loop) is started[0]:
         worker.interrupt()
         logger.warning(
             f"Interrupted a direct block run on {worker.name}, still executing "
             f"{DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS}s past its time budget"
         )
+
+
+def _retire(worker: _WorkerLoop) -> None:
+    """Replace *worker* in the pool and move its waiting runs to the replacement."""
     replacement: _WorkerLoop | None = None
     moved: list[_Run] = []
     with _workers_lock:

@@ -295,8 +295,14 @@ class _BlocksItsThread:
 
     async def outputs(self):
         self.threads.append(threading.current_thread())
-        # Synchronous wait: cancelling the run cannot interrupt it.
-        self.release.wait(timeout=30)
+        # Synchronous wait that outlasts the cancel and the interrupt, like a
+        # block stuck in a C call.
+        while True:
+            try:
+                if self.release.wait(timeout=30):
+                    break
+            except direct_block_execution.DirectBlockExecutionInterrupted:
+                continue
         yield "done", True
 
     @property
@@ -615,8 +621,10 @@ async def test_a_run_computing_past_its_budget_is_stopped():
             pass
         yield "done", True
 
-    with claim_direct_block_execution_slot("user-a") as slot:
+    with claim_direct_block_execution_slot("user-computes") as slot:
         with pytest.raises(DirectBlockExecutionTimeoutError):
             await asyncio.wait_for(run_block_off_loop(computes(), slot), timeout=10)
 
-    await _eventually(lambda: "user-a" not in direct_block_execution._runs_per_user)
+    await _eventually(
+        lambda: "user-computes" not in direct_block_execution._runs_per_user
+    )
