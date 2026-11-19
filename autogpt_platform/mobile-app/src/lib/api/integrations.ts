@@ -1,3 +1,5 @@
+import { assertSameSession, sessionMark } from "@/lib/auth/token";
+
 import { ApiError, apiRequest } from "./client";
 
 export const CREDENTIAL_TYPES = [
@@ -199,10 +201,13 @@ export async function finishMCPLogin(code: string, state: string, iss: string | 
 
 /** Tries the token on the server first, so a refused one is never saved. */
 export async function storeMCPToken(serverURL: string, token: string) {
+  const mark = sessionMark();
   await apiRequest<unknown>("/api/mcp/discover-tools", {
     method: "POST",
     body: { server_url: serverURL, auth_token: token },
   });
+  // Never save it to an account that signed in while it was being tried.
+  assertSameSession(mark);
   const data = await apiRequest<unknown>("/api/mcp/token", {
     method: "POST",
     body: { server_url: serverURL, token },

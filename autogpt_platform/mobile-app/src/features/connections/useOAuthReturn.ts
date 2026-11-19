@@ -7,7 +7,7 @@ import { useMountEffect } from "@/lib/useMountEffect";
 import { markConnected } from "./connectedThisRun";
 import { allowForExpert } from "./expertAccess";
 import { credentialLabel } from "./helpers";
-import { completeOAuthReturn } from "./oauth";
+import { claimOAuthResult, completeOAuthReturn } from "./oauth";
 import { oauthReturnFromParams } from "./oauthHelpers";
 
 const PAYWALL_MESSAGE =
@@ -35,18 +35,20 @@ export function useOAuthReturn(params: Record<string, unknown>) {
       return;
     }
     let isMounted = true;
+    // A repeat of a link already handled only goes back to the chat.
+    const isFirst = claimOAuthResult(returned.state);
     void completeOAuthReturn(returned).then(({ outcome, flow }) => {
+      const isNew = isFirst && outcome.status === "connected";
       // The card and the expert's access are not this screen's: they are
       // settled even when it was left before the swap finished.
-      if (outcome.status === "connected" && flow?.cardKey && flow.rowKey) {
+      if (isNew && flow?.cardKey && flow.rowKey) {
         markConnected(flow.cardKey, flow.rowKey, {
           id: outcome.credential.id,
           title: credentialLabel(outcome.credential),
         });
       }
       // Started from an expert's chat panel: the new account is for them.
-      // The panel grants it too when it is still open; a second grant is a no-op.
-      if (outcome.status === "connected" && flow && !flow.cardKey && flow.expertID) {
+      if (isNew && flow && !flow.cardKey && flow.expertID) {
         void allowForExpert(flow.expertID, [outcome.credential.id]).catch(() => undefined);
       }
       if (!isMounted) return;

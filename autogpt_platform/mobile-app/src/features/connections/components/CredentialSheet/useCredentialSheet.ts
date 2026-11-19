@@ -6,6 +6,7 @@ import {
   storeMCPToken,
   type CredentialMeta,
 } from "@/lib/api/integrations";
+import { sessionGeneration } from "@/lib/session";
 
 import { rememberCredential } from "../../oauth";
 import {
@@ -27,6 +28,9 @@ export function useCredentialSheet({ target, onSaved }: Args) {
   const [values, setValues] = useState(() => initialValues(target));
 
   const save = useMutation({
+    onMutate() {
+      return sessionGeneration();
+    },
     mutationFn() {
       if (target.kind === "mcp_token") {
         return storeMCPToken(target.serverURL ?? "", values.secret.trim());
@@ -35,7 +39,9 @@ export function useCredentialSheet({ target, onSaved }: Args) {
       if (!body) throw new Error("Nothing to save");
       return createCredential(target.provider, body);
     },
-    onSuccess(credential) {
+    onSuccess(credential, _variables, startedIn) {
+      // Saved for an account that has since signed out: not this one's to show.
+      if (startedIn !== sessionGeneration()) return;
       rememberCredential(credential);
       onSaved(target.rowKey, credential);
     },

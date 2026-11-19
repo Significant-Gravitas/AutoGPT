@@ -45,6 +45,8 @@ export interface FinishedFlow {
 const liveFlows = new Map<string, PendingFlow>();
 // One code swap per state, whoever asks first: the session or the route.
 const finishing = new Map<string, Promise<FinishedFlow>>();
+// Sign-ins whose result someone already acted on.
+const claimed = new Set<string>();
 
 function failed(message: string): OAuthOutcome {
   return { status: "failed", message };
@@ -72,6 +74,8 @@ export async function startOAuth(
     void clearPendingFlow(flow.state);
     return failed("Couldn't open the sign-in page. Try again.");
   }
+  // From here this session acts on the result; a later link for it is a repeat.
+  claimed.add(flow.state);
   const returned = result.type === "success" ? parseOAuthReturn(result.url) : null;
   if (!returned) {
     const elsewhere = finishing.get(flow.state);
@@ -93,6 +97,16 @@ export function completeOAuthReturn(returned: OAuthReturn) {
   const promise = finish(returned);
   finishing.set(returned.state, promise);
   return promise;
+}
+
+/**
+ * True for the first caller to act on this sign-in's result. A link the
+ * system delivers twice must not grant access again after the user took it away.
+ */
+export function claimOAuthResult(state: string) {
+  if (claimed.has(state)) return false;
+  claimed.add(state);
+  return true;
 }
 
 /** Puts a new account in the cached list at once, then checks with the server. */
@@ -141,14 +155,20 @@ async function finish(returned: OAuthReturn): Promise<FinishedFlow> {
       outcome: failed("This sign-in has expired. Start it again from the chat."),
     };
   }
+  const outcome = await exchange(returned, flow.target);
+  // Kept until the swap ends, so an app killed during it can still finish
+  // from the same link.
   void clearPendingFlow(flow.state);
-  const { target } = flow;
+  return { flow, outcome };
+}
+
+async function exchange(returned: OAuthReturn, target: OAuthTarget): Promise<OAuthOutcome> {
   if (returned.error || !returned.code) {
     const message = providerErrorMessage(
       returned.error ?? "missing_code",
       target.providerName,
     );
-    return { flow, outcome: message ? failed(message) : { status: "cancelled" } };
+    return message ? failed(message) : { status: "cancelled" };
   }
   try {
     const credential =
@@ -156,14 +176,9 @@ async function finish(returned: OAuthReturn): Promise<FinishedFlow> {
         ? await finishMCPLogin(returned.code, returned.state, returned.iss)
         : await finishProviderLogin(target.provider, returned.code, returned.state);
     rememberCredential(credential);
-    return { flow, outcome: { status: "connected", credential } };
+    return { status: "connected", credential };
   } catch (error) {
-    if (error instanceof ApiError && error.status === 402) {
-      return { flow, outcome: { status: "paywall" } };
-    }
-    return {
-      flow,
-      outcome: failed(`Couldn't connect ${target.providerName}. Try again.`),
-    };
+    if (error instanceof ApiError && error.status === 402) return { status: "paywall" };
+    return failed(`Couldn't connect ${target.providerName}. Try again.`);
   }
 }
