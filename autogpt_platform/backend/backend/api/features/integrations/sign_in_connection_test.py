@@ -198,6 +198,23 @@ def test_a_sign_in_widens_the_accounts_connection_it_covers(store, google):
     store.create.assert_not_called()
 
 
+def test_a_google_check_that_cant_resolve_google_is_refused(store, google, monkeypatch):
+    class DNSFails:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def post(self, url, *args, **kwargs):
+            # What Requests raises before sending when DNS fails.
+            raise ValueError("Unable to resolve IP address for hostname")
+
+    monkeypatch.setattr(google_oauth, "Requests", DNSFails)
+
+    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+
+    assert res.status_code == 422
+    store.create.assert_not_called()
+
+
 def test_a_sign_in_never_widens_a_managed_or_system_connection(
     store, google, monkeypatch
 ):

@@ -174,7 +174,9 @@ class GoogleOAuthHandler(BaseOAuthHandler):
                 ),
                 timeout=TOKEN_INFO_TIMEOUT_SECONDS,
             )
-        except (asyncio.TimeoutError, aiohttp.ClientError):
+        # ValueError: Requests' own refusal, such as a hostname DNS can't
+        # resolve, before anything is sent.
+        except (asyncio.TimeoutError, aiohttp.ClientError, ValueError):
             raise SignInConnectionError(
                 "Google didn't answer the sign-in's token check."
             ) from None
