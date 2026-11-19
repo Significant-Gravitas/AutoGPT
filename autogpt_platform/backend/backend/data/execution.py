@@ -738,6 +738,42 @@ async def get_graph_executions(
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
 
 
+async def get_graph_execution_ids(
+    user_id: str,
+    organization_id: str,
+    statuses: list[ExecutionStatus],
+    deleted: bool = False,
+) -> list[str]:
+    """
+    The IDs of a user's graph executions in an org, newest first.
+
+    Reads the `id` column alone, for a caller that needs nothing else from
+    what may be many rows.
+
+    Args:
+        organization_id: Only executions stored in this org (an exact match)
+        statuses: Only executions in one of these statuses
+        deleted: List the executions deleted from history instead of the
+            visible ones
+    """
+    rows = await query_raw_with_schema(
+        """
+        SELECT "id"
+        FROM {schema_prefix}"AgentGraphExecution"
+        WHERE "userId" = $1
+          AND "organizationId" = $2
+          AND "isDeleted" = $3
+          AND "executionStatus"::text = ANY($4::text[])
+        ORDER BY "createdAt" DESC
+        """,
+        user_id,
+        organization_id,
+        deleted,
+        [status.value for status in statuses],
+    )
+    return [row["id"] for row in rows]
+
+
 async def get_graph_executions_count(
     user_id: Optional[str] = None,
     graph_id: Optional[str] = None,

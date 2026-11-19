@@ -1,5 +1,6 @@
 """A member removed from an org has the runs they started there stopped."""
 
+import asyncio
 import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -38,12 +39,9 @@ def steps(mocker):
     org_db.remove_org_member = AsyncMock(
         side_effect=lambda *_, **__: order.append("removed")
     )
-    runs = {
-        False: [SimpleNamespace(id="run-1"), SimpleNamespace(id="run-2")],
-        True: [SimpleNamespace(id="deleted-run")],
-    }
+    runs = {False: ["run-1", "run-2"], True: ["deleted-run"]}
     execution_db = mocker.patch("backend.api.features.orgs.member_runs.execution_db")
-    execution_db.get_graph_executions = AsyncMock(
+    execution_db.get_graph_execution_ids = AsyncMock(
         side_effect=lambda **kwargs: order.append("looked up")
         or runs[kwargs["deleted"]]
     )
@@ -54,7 +52,7 @@ def steps(mocker):
     return SimpleNamespace(
         order=order,
         remove=org_db.remove_org_member,
-        lookup=execution_db.get_graph_executions,
+        lookup=execution_db.get_graph_execution_ids,
         stop=stop,
     )
 
@@ -95,6 +93,28 @@ async def test_a_run_deleted_from_history_is_stopped_too(steps):
         True,
     }
     assert _waits(steps.stop)["deleted-run"] == 0
+
+
+@pytest.mark.asyncio
+async def test_the_runs_are_stopped_a_few_at_a_time(steps):
+    runs = [f"run-{n}" for n in range(3 * member_runs.STOP_CONCURRENCY)]
+    steps.lookup.side_effect = lambda **kwargs: [] if kwargs["deleted"] else runs
+    stopping = 0
+    most_at_once = 0
+
+    async def stop(user_id: str, graph_exec_id: str, wait_timeout: float) -> None:
+        nonlocal stopping, most_at_once
+        stopping += 1
+        most_at_once = max(most_at_once, stopping)
+        await asyncio.sleep(0)
+        stopping -= 1
+
+    steps.stop.side_effect = stop
+
+    await routes.remove_member(org_id=ORG_ID, uid=MEMBER_ID, ctx=_admin_ctx())
+
+    assert set(_waits(steps.stop)) == set(runs)
+    assert most_at_once == member_runs.STOP_CONCURRENCY
 
 
 @pytest.mark.asyncio
