@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/auth/actions", () => ({ getWebSocketToken: vi.fn() }));
 
 import { getWebSocketToken } from "@/lib/auth/actions";
+import { subscribeTimedOutFrame } from "@/tests/integrations/subscribe-failure-frame";
 import BackendAPI from "../client";
 import type { GraphID } from "../types";
 import { SubscribeRetries } from "../websocket-retry";
@@ -71,7 +72,8 @@ function failingFor(graphID: string, times: number) {
 }
 
 // Answers each message as the server does: in order, so the pong to a ping
-// comes after the answer to every subscribe sent before it.
+// comes after the answer to every subscribe sent before it. A string answer
+// is sent exactly as it is.
 function serve(socket: FakeWebSocket, answer: (request: Request) => unknown) {
   socket.send.mockImplementation((data: string) => {
     const request: Request = JSON.parse(data);
@@ -79,7 +81,11 @@ function serve(socket: FakeWebSocket, answer: (request: Request) => unknown) {
       request.method === "heartbeat"
         ? { method: "heartbeat", data: "pong" }
         : answer(request);
-    queueMicrotask(() => socket.receive(reply));
+    queueMicrotask(() =>
+      typeof reply === "string"
+        ? socket.onmessage?.(new MessageEvent("message", { data: reply }))
+        : socket.receive(reply),
+    );
   });
 }
 
@@ -217,6 +223,18 @@ describe("a subscribe the server could not complete", () => {
     await vi.advanceTimersByTimeAsync(500);
     expect(subscribes(socket)).toHaveLength(8);
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("is sent again after the exact frame the realtime journey injects", async () => {
+    viewSubscribes();
+    let answers = 0;
+    const socket = await accept(0, (request) =>
+      answers++ === 0 ? subscribeTimedOutFrame("graph-1") : confirmed(request),
+    );
+    expect(subscribes(socket)).toEqual([GRAPH_1]);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(subscribes(socket)).toEqual([GRAPH_1, GRAPH_1]);
   });
 
   it("is not sent again once the server refuses it, and says why", async () => {

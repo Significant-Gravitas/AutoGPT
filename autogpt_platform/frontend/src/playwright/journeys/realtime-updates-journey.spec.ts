@@ -1,4 +1,5 @@
 import type { Locator, Page, Request, WebSocketRoute } from "@playwright/test";
+import { subscribeTimedOutFrame } from "../../tests/integrations/subscribe-failure-frame";
 import {
   clickRunButton,
   getActiveItemId,
@@ -22,14 +23,24 @@ test.describe("realtime updates journey", () => {
     const live = await routeLiveConnection(page);
     const agent = await createCountdownAgent(page);
     const reads = trackListReads(page, agent.graphID);
-    // The server can't complete the page's first subscribe to the workflow's
-    // runs, as when Redis doesn't confirm it in time (#16922).
-    live.failFirstSubscribe(agent.graphID);
 
     await page.goto(`/library/agents/${agent.libraryAgentID}`);
     await waitForAgentPageLoad(page);
-    // Until Activity opens, only the runs list subscribes to the workflow, so
-    // nothing delivers its updates unless the page sends that subscribe again.
+    // A workflow with no runs has no live view on its page, so open the
+    // account menu: its Activity row subscribes to every workflow. The server
+    // can't complete that subscribe, as when Redis doesn't confirm it in time
+    // (#16922), and nothing else subscribes to the workflow before the run.
+    live.failNextSubscribe(agent.graphID);
+    await page.getByTestId("profile-popout-menu-trigger").click();
+    const menu = page.getByTestId("account-menu-popover");
+    await expect(menu).toBeVisible();
+    await expect
+      .poll(() => live.subscribeFailed(), {
+        message:
+          "the page should subscribe to the workflow, and the server fail that",
+        timeout: 15_000,
+      })
+      .toBe(true);
     await expect
       .poll(() => live.failedSubscribeConfirmedAgain(), {
         message:
@@ -38,6 +49,8 @@ test.describe("realtime updates journey", () => {
         timeout: 15_000,
       })
       .toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
     await clickRunButton(page);
     await expect
       .poll(() => getActiveItemId(page), {
@@ -138,13 +151,7 @@ async function routeLiveConnection(page: Page) {
   const connections: Connection[] = [];
   let closedUpTo = 0;
   let outage = false;
-  const failure = {
-    graphID: "",
-    // Only a connection the page opens once this is armed.
-    fromConnection: Infinity,
-    failed: false,
-    confirmedAgain: false,
-  };
+  const failure = { graphID: "", failed: false, confirmedAgain: false };
 
   // What the journey breaks must not reach the real Sentry, whose tunnel is
   // on the app's own origin.
@@ -171,11 +178,10 @@ async function routeLiveConnection(page: Page) {
       if (
         subscribe?.graphID === failure.graphID &&
         subscribe.method === "subscribe_graph_executions" &&
-        connections.indexOf(connection) >= failure.fromConnection &&
         !failure.failed
       ) {
         failure.failed = true;
-        client.send(couldNotComplete(subscribe.graphID));
+        client.send(subscribeTimedOutFrame(subscribe.graphID));
         return;
       }
       if (subscribe) connection.subscribing.push(subscribe.graphID);
@@ -202,10 +208,11 @@ async function routeLiveConnection(page: Page) {
 
   return {
     /** Fails the page's next subscribe to the graph's runs, once. */
-    failFirstSubscribe(graphID: string) {
+    failNextSubscribe(graphID: string) {
       failure.graphID = graphID;
-      failure.fromConnection = connections.length;
     },
+    /** The page sent that subscribe, and the server's failure went back. */
+    subscribeFailed: () => failure.failed,
     /** The server confirmed a later subscribe to the graph that failed. */
     failedSubscribeConfirmedAgain: () => failure.confirmedAgain,
     opened: () => connections.length,
@@ -324,22 +331,6 @@ function subscribeAnswer(message: string | Buffer) {
   if (parsed?.method === "error") return "failed";
   if (parsed?.method?.startsWith("subscribe_")) return "ok";
   return null;
-}
-
-// ws_api.py's answer to a subscribe Redis didn't confirm in time.
-function couldNotComplete(graphID: string) {
-  return JSON.stringify({
-    method: "error",
-    data: null,
-    success: false,
-    channel: null,
-    error: "Could not handle 'subscribe_graph_executions'; retry",
-    request: {
-      method: "subscribe_graph_executions",
-      data: { graph_id: graphID },
-    },
-    retryable: true,
-  });
 }
 
 function parseMessage(message: string | Buffer) {
