@@ -792,6 +792,9 @@ async def _get_graph_impl(
     driver = open_driver(memory_scope)
     nodes: list[GraphNode] = []
     edges: list[GraphEdge] = []
+    # FalkorDB scans membership lists linearly. Bucket by internal node ID
+    # to keep each lookup small, but compare UUIDs because IDs can be reused.
+    node_uuid_buckets: list[list[str]] = [[] for _ in range(256)]
     truncated = False
 
     try:
@@ -802,6 +805,7 @@ async def _get_graph_impl(
                 f"""
                 MATCH (n:{label} {{group_id: $g}})
                 RETURN n.uuid AS uuid,
+                       id(n) AS node_id,
                        n.name AS name,
                        n.summary AS summary,
                        toString(n.hard_deleted_at) AS hard_deleted_at,
@@ -826,9 +830,11 @@ async def _get_graph_impl(
                     if lbl not in {"Entity", "Episodic", "Community", "Node"}:
                         custom_type = lbl
                         break
+                uuid = str(r.get("uuid", ""))
+                node_uuid_buckets[r["node_id"] % len(node_uuid_buckets)].append(uuid)
                 nodes.append(
                     GraphNode(
-                        uuid=str(r.get("uuid", "")),
+                        uuid=uuid,
                         label=label,
                         type=custom_type,
                         name=r.get("name"),
@@ -857,6 +863,8 @@ async def _get_graph_impl(
         result = await driver.execute_query(
             f"""
             MATCH (src)-[e:{edge_label_filter} {{group_id: $g}}]->(tgt)
+            WHERE src.uuid IN $node_uuid_buckets[id(src) % size($node_uuid_buckets)]
+              AND tgt.uuid IN $node_uuid_buckets[id(tgt) % size($node_uuid_buckets)]
             RETURN e.uuid AS uuid,
                    type(e) AS label,
                    src.uuid AS source,
@@ -869,6 +877,7 @@ async def _get_graph_impl(
             """,
             g=group_id,
             limit=edge_limit + 1,
+            node_uuid_buckets=node_uuid_buckets,
         )
         rows = result[0] if result else []
         for r in rows:
