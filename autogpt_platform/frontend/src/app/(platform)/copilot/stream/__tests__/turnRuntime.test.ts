@@ -17,6 +17,7 @@ import {
   LIVENESS_MS,
   MessageTooLongError,
   ROTATE_AFTER_MS,
+  SendInFlightError,
   SendRefusedError,
   TurnRuntime,
   type RuntimeDeps,
@@ -735,11 +736,13 @@ describe("refusals no retry can change", () => {
     );
   });
 
-  it("a second send while a send waits out its token retry opens no second request", async () => {
+  it("a second send while a send waits out its token retry is refused and opens no second request", async () => {
     tokenFailsFirst(1);
     void runtime.send({ text: PROMPT }, undefined);
     await advance(500);
-    void runtime.send({ text: "And example.org?" }, undefined);
+    await expect(
+      runtime.send({ text: "And example.org?" }, undefined),
+    ).rejects.toThrow(SendInFlightError);
     await advance(1_000);
     backend.publish(FIRST_BLOCK_DONE);
     await advance(100);
@@ -748,6 +751,15 @@ describe("refusals no retry can change", () => {
     expect(backend.connections.some((c) => c.aborted)).toBe(false);
     expect(snapshot().error).toBeNull();
     expect(snapshot().phase).toBe("live");
+  });
+
+  it("a send reads as in flight in the snapshot that first shows its prompt", () => {
+    void runtime.send({ text: PROMPT }, undefined);
+
+    // The page routes a send made now by this snapshot: an idle one sends it
+    // past the request still open, and the runtime refuses it.
+    expect(snapshot().phase).toBe("connecting");
+    expect(textsOf(render())).toEqual([PROMPT]);
   });
 
   it("a stop while a send waits out its token retry sends nothing after", async () => {
