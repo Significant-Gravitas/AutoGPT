@@ -584,6 +584,34 @@ def test_a_billing_manager_role_is_refused_listing_and_running_from_the_library(
     preset.assert_not_awaited()
 
 
+@pytest.mark.parametrize("billing_role", ["org", "team"])
+def test_a_billing_manager_role_cannot_fork_into_the_organization(
+    mocker: pytest_mock.MockFixture, billing_role: str
+) -> None:
+    """A fork creates a workflow there, which a billing-only role can't."""
+    app.dependency_overrides[enforce_payment_paywall] = lambda: None
+    app.dependency_overrides[get_request_context] = lambda: RequestContext(
+        user_id="test-user-id",
+        org_id="test-org",
+        team_id="test-team",
+        is_org_owner=False,
+        is_org_admin=False,
+        is_org_billing_manager=billing_role == "org",
+        is_team_admin=False,
+        is_team_billing_manager=billing_role == "team",
+        seat_status="ACTIVE",
+    )
+    fork = mocker.patch(
+        "backend.api.features.library.routes.agents.library_db.fork_library_agent",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/agents/la-1/fork")
+
+    assert response.status_code == 403
+    fork.assert_not_awaited()
+
+
 def test_a_fork_lands_in_the_organization_and_team_it_is_made_in(
     mocker: pytest_mock.MockFixture,
 ) -> None:

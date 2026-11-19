@@ -1078,7 +1078,7 @@ async def create_store_submission(
                     "recommendedScheduleCron": recommended_schedule_cron,
                     "organizationId": (
                         existing_listing.owningOrgId
-                        if existing_listing
+                        if existing_listing and existing_listing.owningOrgId
                         else new_listing_org_id
                     ),
                     "StoreListing": {
@@ -1616,6 +1616,9 @@ async def review_store_submission(
                     f"{_format_graph_refs(foreign_refs)}, so it can't be approved."
                 )
             sub_graphs = await get_sub_graphs(submission.AgentGraph)
+            submission_org_id, _ = await tenancy_for_new_row(
+                creator_user_id, submission.organizationId
+            )
             async with transaction() as tx:
                 # Handle sub-agent approvals in transaction
                 await asyncio.gather(
@@ -1626,7 +1629,7 @@ async def review_store_submission(
                             submission.name,
                             submission.agentGraphVersion,
                             creator_user_id,
-                            submission.organizationId,
+                            submission_org_id,
                         )
                         for sub_graph in sub_graphs
                     ]
@@ -2000,7 +2003,10 @@ async def _approve_sub_agent(
     await prisma.models.StoreListingVersion.prisma(tx).create(
         data={
             **_create_sub_agent_version_data(
-                sub_graph, heading, main_agent_name, listing.owningOrgId
+                sub_graph,
+                heading,
+                main_agent_name,
+                listing.owningOrgId or main_agent_organization_id,
             ),
             "version": next_version,
             "storeListingId": listing.id,
