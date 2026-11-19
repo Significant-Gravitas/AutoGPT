@@ -25,10 +25,12 @@ from graphiti_core.prompts.extract_edges import ExtractedEdges
 from graphiti_core.prompts.extract_nodes import ExtractedEntities
 from graphiti_core.prompts.models import Message
 from pydantic import BaseModel, Field
+from scripted_model import messages as messages_dialect
 from scripted_model import server as scripted_server
+from scripted_model.planner import Reply
 from scripted_model.responses import ResponseError
 from scripted_model.responses import response as structured_response
-from scripted_model.scripts import ScriptError, parse_script
+from scripted_model.scripts import ScriptError, Usage, parse_script
 
 from backend.copilot.graphiti.llm_client import GraphitiOpenAIClient
 
@@ -666,6 +668,24 @@ def test_a_reply_nobody_releases_finishes_and_fails_its_check(
     assert entry["checks"] == [
         {"what": "held reply", "ok": False, "detail": "not released in 0.2s"}
     ]
+
+
+def test_a_hold_lets_out_the_whole_chunk_its_words_end_in():
+    """With 3 words a chunk, a hold after 2 words still sends the first chunk
+    whole, then waits before the next."""
+    reply = Reply(
+        text=HELD_TEXT,
+        tool_calls=(),
+        usage=Usage(input_tokens=1, output_tokens=1),
+        chunk_words=3,
+        hold_after_words=2,
+    )
+    deltas = [
+        (event.data["delta"]["text"], event.hold)
+        for event in messages_dialect.events(reply, SONNET)
+        if event.name == "content_block_delta"
+    ]
+    assert deltas == [("One two three", False), (" four five six", True)]
 
 
 def test_a_held_reply_needs_a_nonce_and_text_to_hold(scripted_model):

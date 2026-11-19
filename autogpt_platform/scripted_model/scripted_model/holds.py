@@ -16,17 +16,24 @@ import threading
 
 class Holds:
     def __init__(self) -> None:
-        self._releases: dict[str, threading.Semaphore] = {}
-        self._lock = threading.Lock()
+        # Releases sent for each run and not yet used; a run with none left
+        # has no entry.
+        self._banked: dict[str, int] = {}
+        self._changed = threading.Condition()
 
     def release(self, nonce: str) -> None:
-        self._run(nonce).release()
+        with self._changed:
+            self._banked[nonce] = self._banked.get(nonce, 0) + 1
+            self._changed.notify_all()
 
     def wait(self, nonce: str, timeout_s: float) -> bool:
-        """Whether a release for the run came within ``timeout_s``; it is
-        used up by this reply."""
-        return self._run(nonce).acquire(timeout=timeout_s)
-
-    def _run(self, nonce: str) -> threading.Semaphore:
-        with self._lock:
-            return self._releases.setdefault(nonce, threading.Semaphore(0))
+        """Whether a release for the run came within ``timeout_s``; this reply
+        uses it up."""
+        with self._changed:
+            if not self._changed.wait_for(lambda: nonce in self._banked, timeout_s):
+                return False
+            if self._banked[nonce] > 1:
+                self._banked[nonce] -= 1
+            else:
+                del self._banked[nonce]
+            return True

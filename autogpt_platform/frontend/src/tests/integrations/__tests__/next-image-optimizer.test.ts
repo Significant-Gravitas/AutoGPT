@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { Socket } from "node:net";
-import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
 type Handler = (req: unknown, res: unknown) => Promise<void>;
@@ -34,7 +34,9 @@ test("an image request whose browser has gone still reads its source file", asyn
   // request for the same image URL then waits on it (#16987).
   const socket = new Socket();
   socket.destroy();
-  const file = path.resolve("public", SOURCE.slice(1));
+  const file = fileURLToPath(
+    new URL(`../../../../public${SOURCE}`, import.meta.url),
+  );
 
   const upstream = fetchInternalImage(
     SOURCE,

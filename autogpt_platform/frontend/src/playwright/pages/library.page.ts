@@ -1069,7 +1069,9 @@ export async function importAgentFromFile(
     const visibleUploadingButton = uploadingButton
       .filter({ visible: true })
       .first();
-    let uploadingState = "unread";
+    let uploadingState:
+      | Awaited<ReturnType<typeof readUploadingState>>
+      | undefined;
     await expect(async () => {
       uploadingState = await readUploadingState(page, visibleUploadingButton);
     }, 'the "Uploading..." button should be readable').toPass({
