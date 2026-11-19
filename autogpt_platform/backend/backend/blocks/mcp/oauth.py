@@ -14,6 +14,7 @@ from typing import ClassVar, Literal, Optional
 
 from pydantic import SecretStr
 
+from backend.blocks.mcp.client import MAX_REPLY_BYTES
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scopes
 from backend.integrations.providers import ProviderName
@@ -243,9 +244,9 @@ async def _post_client_form(
     re-sends the body on every hop, so a redirect would hand them to a host
     outside the endpoints checked for the server's pre-registered app.
     """
-    response = await Requests(raise_for_status=True).post(
-        url, data=data, headers=headers, allow_redirects=False
-    )
+    response = await Requests(
+        raise_for_status=True, max_response_bytes=MAX_REPLY_BYTES
+    ).post(url, data=data, headers=headers, allow_redirects=False)
     if response.status in (301, 302, 303, 307, 308):
         raise RuntimeError(
             f"OAuth endpoint {url} answered with a redirect (HTTP "

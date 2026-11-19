@@ -4,15 +4,23 @@ dual-era behaviour (era detection, version negotiation, header mirroring,
 MRTR handling).  No network: HTTP replies are faked at ``MCPClient._post``.
 """
 
+import ast
 import base64
 import json
 import logging
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.blocks.mcp.client import MAX_TOOLS_PER_SERVER, MCPClient, MCPClientError
+from backend.blocks.mcp.client import (
+    MAX_REPLY_BYTES,
+    MAX_TOOL_RESULT_BYTES,
+    MAX_TOOLS_PER_SERVER,
+    MCPClient,
+    MCPClientError,
+)
 from backend.blocks.mcp.protocol import (
     ERROR_HEADER_MISMATCH,
     ERROR_METHOD_NOT_FOUND,
@@ -44,7 +52,12 @@ from backend.blocks.mcp.protocol import (
     name_header_for,
     negotiate_version,
 )
-from backend.util.request import HTTPClientError, HTTPServerError, Response
+from backend.util.request import (
+    HTTPClientError,
+    HTTPServerError,
+    Response,
+    ResponseTooLargeError,
+)
 
 SERVER_URL = "https://mcp.example.com/mcp"
 
@@ -211,6 +224,15 @@ class TestHeaderParams:
         with pytest.raises(InvalidHeaderAnnotation):
             collect_header_params(schema)
 
+    def test_a_tool_may_have_as_many_annotations_as_the_limit(self):
+        schema = {
+            "properties": {
+                f"p{n}": {"type": "string", "x-mcp-header": f"P{n}"}
+                for n in range(MAX_HEADER_PARAMS)
+            }
+        }
+        assert len(collect_header_params(schema)) == MAX_HEADER_PARAMS
+
     def test_schema_without_annotations(self):
         assert collect_header_params({"type": "object", "properties": {}}) == []
         assert collect_header_params(None) == []
@@ -374,6 +396,14 @@ def _client(transport: _Transport, **kwargs) -> MCPClient:
     patch.object(client, "_post", side_effect=transport).start()
     patch.object(client, "_send_notification").start()
     return client
+
+
+def _client_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "backend.blocks.mcp.client" and r.levelno >= logging.WARNING
+    ]
 
 
 @pytest.fixture(autouse=True)
@@ -759,9 +789,7 @@ class TestSloppyServerPayloads:
         with caplog.at_level(logging.WARNING, logger="backend.blocks.mcp.client"):
             result = await _client(transport).call_tool("echo", {})
         assert len(result.content) == 3
-        assert [
-            r.getMessage() for r in caplog.records if "not objects" in r.getMessage()
-        ] == [
+        assert _client_warnings(caplog) == [
             f"MCP server {SERVER_URL} returned 3 content item(s) that are not "
             "objects; treating them as text"
         ]
@@ -807,9 +835,7 @@ class TestSloppyServerPayloads:
         with caplog.at_level(logging.WARNING, logger="backend.blocks.mcp.client"):
             tools = await _client(transport).list_tools()
         assert [t.name for t in tools] == ["good"]
-        assert [
-            r.getMessage() for r in caplog.records if "Dropped" in r.getMessage()
-        ] == [
+        assert _client_warnings(caplog) == [
             f"Dropped 2 MCP tool(s) from {SERVER_URL} with an invalid x-mcp-header, "
             "first 'bad1'"
         ]
@@ -830,6 +856,56 @@ class TestHttpRetries:
             )
             await client._post({"jsonrpc": "2.0", "id": 1, "method": method}, {})
         assert MockRequests.call_args.kwargs["retry_max_attempts"] == attempts
+
+
+class TestReplySize:
+    """Every reply is read up to a size that fits what is done with it."""
+
+    @pytest.mark.parametrize(
+        ("method", "limit"),
+        [
+            ("tools/call", MAX_TOOL_RESULT_BYTES),
+            ("tools/list", MAX_REPLY_BYTES),
+            ("server/discover", MAX_REPLY_BYTES),
+        ],
+    )
+    async def test_reply_size_per_method(self, method: str, limit: int):
+        client = MCPClient(SERVER_URL)
+        with patch("backend.blocks.mcp.client.Requests") as MockRequests:
+            MockRequests.return_value.post = AsyncMock(
+                return_value=_FakeResponse(200, _rpc_result({}))
+            )
+            await client._post({"jsonrpc": "2.0", "id": 1, "method": method}, {})
+        assert MockRequests.call_args.kwargs["max_response_bytes"] == limit
+
+    async def test_a_reply_over_the_limit_is_a_client_error(self):
+        client = MCPClient(SERVER_URL)
+        with patch("backend.blocks.mcp.client.Requests") as MockRequests:
+            MockRequests.return_value.post = AsyncMock(
+                side_effect=ResponseTooLargeError(MAX_REPLY_BYTES)
+            )
+            with pytest.raises(MCPClientError, match="too large"):
+                await client._post(
+                    {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, {}
+                )
+
+    @pytest.mark.parametrize(
+        "module",
+        ["blocks/mcp/client.py", "blocks/mcp/oauth.py", "api/features/mcp/routes.py"],
+    )
+    def test_every_request_to_an_mcp_server_sets_a_size_limit(self, module: str):
+        source = Path(__file__).parents[2].joinpath(module).read_text()
+        calls = [
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "Requests"
+        ]
+        assert calls
+        assert all(
+            any(k.arg == "max_response_bytes" for k in call.keywords) for call in calls
+        )
 
 
 # ───────────────────────── legacy requests ─────────────────────────

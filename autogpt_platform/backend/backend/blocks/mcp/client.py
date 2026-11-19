@@ -52,7 +52,12 @@ from backend.blocks.mcp.protocol import (
     name_header_for,
     negotiate_version,
 )
-from backend.util.request import HTTPClientError, Requests, Response
+from backend.util.request import (
+    HTTPClientError,
+    Requests,
+    Response,
+    ResponseTooLargeError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +72,10 @@ MAX_TOOLS_PER_SERVER = 1000
 # ``Requests`` retries throttled/5xx responses forever unless told otherwise.
 # MCP calls run inside graph executions and chat turns, so keep them bounded.
 _HTTP_RETRY_ATTEMPTS = 3
+# Replies are parsed whole, and parsed JSON can take many times its size.
+MAX_REPLY_BYTES = 2 * 1024 * 1024
+# ``tools/call`` results carry images and embedded resources as base64.
+MAX_TOOL_RESULT_BYTES = 8 * 1024 * 1024
 _SUPPORTED_AUTH_SCHEMES = {
     "basic": "Basic",
     "bearer": "Bearer",
@@ -276,16 +285,21 @@ class MCPClient:
         effect before the server answered with a retryable status, and the
         spec gives no idempotency guarantee for re-sending it.
         """
+        is_tool_call = payload.get("method") == "tools/call"
         requests = Requests(
             raise_for_status=False,
-            retry_max_attempts=(
-                1 if payload.get("method") == "tools/call" else _HTTP_RETRY_ATTEMPTS
-            ),
+            retry_max_attempts=1 if is_tool_call else _HTTP_RETRY_ATTEMPTS,
             extra_headers=headers,
+            max_response_bytes=(
+                MAX_TOOL_RESULT_BYTES if is_tool_call else MAX_REPLY_BYTES
+            ),
         )
-        return await requests.post(
-            self.server_url, json=payload, allow_redirects=self.follow_redirects
-        )
+        try:
+            return await requests.post(
+                self.server_url, json=payload, allow_redirects=self.follow_redirects
+            )
+        except ResponseTooLargeError as e:
+            raise MCPClientError(f"MCP server reply is too large: {e}") from e
 
     def _decode_reply(self, response: Response, *, strict: bool) -> _Reply:
         """Decode a reply body as JSON or SSE.
@@ -358,6 +372,7 @@ class MCPClient:
             raise_for_status=False,
             retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
             extra_headers=headers,
+            max_response_bytes=MAX_REPLY_BYTES,
         )
         await requests.post(
             self.server_url, json=notification, allow_redirects=self.follow_redirects
@@ -717,6 +732,7 @@ class MCPClient:
         requests = Requests(
             raise_for_status=False,
             retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
+            max_response_bytes=MAX_REPLY_BYTES,
         )
         for url in candidates:
             try:
@@ -776,6 +792,7 @@ class MCPClient:
         requests = Requests(
             raise_for_status=False,
             retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
+            max_response_bytes=MAX_REPLY_BYTES,
         )
         for url, expected_issuer in candidates:
             try:
@@ -806,6 +823,7 @@ class MCPClient:
                 raise_for_status=False,
                 retry_max_attempts=_HTTP_RETRY_ATTEMPTS,
                 extra_headers=headers,
+                max_response_bytes=MAX_REPLY_BYTES,
             )
             await requests.delete(
                 self.server_url, allow_redirects=self.follow_redirects
