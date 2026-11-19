@@ -500,6 +500,7 @@ def _block_with_credentials(
 def _node(block: MagicMock | MCPToolBlock) -> MagicMock:
     node = MagicMock()
     node.block = block
+    node.new_block.return_value = block
     node.input_default = {}
     return node
 

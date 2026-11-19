@@ -48,7 +48,7 @@ async def _run_failing_with(error: Exception) -> tuple[ExecutionStatus, MagicMoc
     )
     with (
         patch(
-            "backend.data.graph.get_block",
+            "backend.data.graph.get_block_definition",
             return_value=SimpleNamespace(execution_timeout_seconds=None),
         ),
         patch("backend.executor.manager.execute_node", new=failing_node),

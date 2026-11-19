@@ -523,7 +523,8 @@ async def execute_node(
     graph_version = data.graph_version
     node_exec_id = data.node_exec_id
     node_id = data.node_id
-    node_block = node.block
+    # A run keeps its stats on the instance, so it gets one of its own.
+    node_block = node.new_block()
     execution_context = data.execution_context
     creds_manager = execution_processor.creds_manager
 

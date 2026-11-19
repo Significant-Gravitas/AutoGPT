@@ -171,6 +171,15 @@ async def no_leaked_db_transaction(request: pytest.FixtureRequest):
     )
 
 
+@pytest.fixture(autouse=True)
+def fresh_block_definitions() -> None:
+    """Give each test new shared block instances: a constructor can read
+    settings a test patches, and the instance keeps what it read."""
+    # Unit-only runs never load the blocks, so there is nothing to clear.
+    if blocks := sys.modules.get("backend.blocks"):
+        blocks._block_definitions.clear()
+
+
 _HTTPX_CLIENTS = HttpxClientGuard()
 
 

@@ -246,7 +246,7 @@ async def test_routing_an_output_is_a_child_of_the_node_run(sentry_transactions)
     queue: ExecutionQueue[NodeExecutionEntry] = ExecutionQueue()
 
     with (
-        patch("backend.data.graph.get_block", return_value=_AI_BLOCK),
+        patch("backend.data.graph.get_block_definition", return_value=_AI_BLOCK),
         patch("backend.executor.manager.get_db_async_client"),
         patch(
             "backend.executor.manager._enqueue_next_nodes",
@@ -309,7 +309,7 @@ async def test_a_high_fanout_node_traces_a_bounded_number_of_routings(
     untimed_block = SimpleNamespace(execution_timeout_seconds=None)
 
     with (
-        patch("backend.data.graph.get_block", return_value=untimed_block),
+        patch("backend.data.graph.get_block_definition", return_value=untimed_block),
         patch("backend.executor.manager.execute_node", new=yield_items),
         patch(
             "backend.executor.manager.async_update_node_execution_status",

@@ -802,12 +802,23 @@ def test_picked_files_of_a_removed_block_are_still_found():
     pickers, so any value embedding a `_credentials_id` counts as a picked
     file: exports strip it and a save keeps it only for its owner.
     """
-    node = Node(
-        id="gone",
-        block_id="00000000-0000-0000-0000-0000000dead00",
-        input_default={"file": _picked_file("cred-1"), "note": "plain"},
+    # Built as a stored graph is loaded: a save refuses a block that is gone.
+    graph = GraphModel(
+        id="test-graph",
+        name="Test",
+        description="Test",
+        user_id="test-user",
+        created_at=datetime.now(timezone.utc),
+        nodes=[
+            NodeModel(
+                id="gone",
+                block_id="00000000-0000-0000-0000-0000000dead00",
+                input_default={"file": _picked_file("cred-1"), "note": "plain"},
+                graph_id="test-graph",
+                graph_version=1,
+            )
+        ],
     )
-    graph = _graph_of(node)
 
     stripped = graph.nodes[0].stripped_for_export()
     cleared = graph.clear_auto_credentials(keep_ids={"own-cred"})
@@ -815,6 +826,31 @@ def test_picked_files_of_a_removed_block_are_still_found():
     assert stripped.input_default == {"file": None, "note": "plain"}
     assert [(n.id, field_name) for n, field_name, _ in cleared] == [("gone", "file")]
     assert graph.nodes[0].input_default == {"file": None, "note": "plain"}
+
+
+@pytest.mark.parametrize("in_sub_graph", [False, True])
+def test_a_save_naming_a_missing_block_is_refused_before_its_nodes_are_read(
+    in_sub_graph: bool, caplog: pytest.LogCaptureFixture
+):
+    missing = Node(id="missing", block_id="00000000-0000-0000-0000-0000000dead00")
+
+    with pytest.raises(ValueError, match="Invalid block .* for node #missing"):
+        if in_sub_graph:
+            _graph_of(sub_graph_nodes=[missing])
+        else:
+            _graph_of(missing)
+
+    assert "does not exist for Node" not in caplog.text
+
+
+def test_nodes_read_one_shared_block_and_run_their_own():
+    first, second = (
+        Node(id=node_id, block_id=StoreValueBlock().id) for node_id in ("a", "b")
+    )
+
+    assert first.block is second.block
+    assert first.new_block() is not first.block
+    assert first.new_block() is not first.new_block()
 
 
 def _sub_agent_node(user_id: str) -> Node:
