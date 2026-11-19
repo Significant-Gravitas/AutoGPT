@@ -83,10 +83,14 @@ _FILE_REF_RE = re.compile(
 
 # Maximum characters returned for a single file reference expansion.
 _MAX_EXPAND_CHARS = 200_000
-# Maximum total characters across all @@agptfile: expansions in one string.
+# Maximum total characters across all @@agptfile: expansions in one tool call.
 _MAX_TOTAL_EXPAND_CHARS = 1_000_000
 # Maximum raw byte size for bare ref structured parsing (10 MB).
 _MAX_BARE_REF_BYTES = 10_000_000
+# Most references one tool call may read.
+_MAX_REFS_PER_CALL = 20
+# Total size of the bare references one tool call may expand.
+_MAX_TOTAL_BARE_REF_SIZE = 2 * _MAX_BARE_REF_BYTES
 
 
 @dataclass
@@ -249,6 +253,7 @@ async def expand_file_refs_in_string(
     session: ChatSession,
     *,
     raise_on_error: bool = False,
+    budget: "_CallBudget | None" = None,
 ) -> str:
     """Expand all ``@@agptfile:...`` tokens in *text*, returning the substituted string.
 
@@ -261,13 +266,16 @@ async def expand_file_refs_in_string(
     If *raise_on_error* is ``True``, any resolution failure raises
     :class:`FileRefExpansionError` immediately so the caller can block the
     operation and surface a clean error to the model.
+
+    *budget* is shared by every string of one tool call; without it, *text*
+    gets a budget of its own.
     """
     if FILE_REF_PREFIX not in text:
         return text
 
+    budget = budget or _CallBudget()
     result: list[str] = []
     last_end = 0
-    total_chars = 0
     for m in _FILE_REF_RE.finditer(text):
         result.append(text[last_end : m.start()])
         start = int(m.group(2)) if m.group(2) else None
@@ -286,20 +294,21 @@ async def expand_file_refs_in_string(
             result.append(f"[file-ref error: {msg}]")
             last_end = m.end()
             continue
+        if budget.inline_chars <= 0:
+            result.append("[file-ref budget exhausted: total expansion limit reached]")
+            last_end = m.end()
+            continue
         ref = FileRef(uri=m.group(1), start_line=start, end_line=end)
         try:
+            budget.take_ref()
             content = await resolve_file_ref(ref, user_id, session)
             if len(content) > _MAX_EXPAND_CHARS:
                 content = content[:_MAX_EXPAND_CHARS] + "\n... [truncated]"
-            remaining = _MAX_TOTAL_EXPAND_CHARS - total_chars
-            # remaining == 0 means the budget was exactly exhausted by the
-            # previous ref.  The elif below (len > remaining) won't catch
-            # this since 0 > 0 is false, so we need the <= 0 check.
-            if remaining <= 0:
-                content = "[file-ref budget exhausted: total expansion limit reached]"
-            elif len(content) > remaining:
-                content = content[:remaining] + "\n... [total budget exhausted]"
-            total_chars += len(content)
+            if len(content) > budget.inline_chars:
+                content = (
+                    content[: budget.inline_chars] + "\n... [total budget exhausted]"
+                )
+            budget.inline_chars -= len(content)
             result.append(content)
         except ValueError as exc:
             logger.warning("file-ref expansion failed for %r: %s", m.group(0), exc)
@@ -349,6 +358,7 @@ async def expand_file_refs_in_args(
         return args
 
     properties = (input_schema or {}).get("properties", {})
+    budget = _CallBudget()
 
     async def _expand(
         value: Any,
@@ -378,11 +388,13 @@ async def expand_file_refs_in_args(
                 # workspace file manager's metadata for format detection.
                 if fmt is None and ref.uri.startswith("workspace://"):
                     fmt = await _infer_format_from_workspace(ref.uri, user_id, session)
-                return await _expand_bare_ref(ref, fmt, user_id, session, prop_schema)
+                return await _expand_bare_ref(
+                    ref, fmt, user_id, session, prop_schema, budget
+                )
 
             # Not a bare ref — do normal inline expansion.
             return await expand_file_refs_in_string(
-                value, user_id, session, raise_on_error=True
+                value, user_id, session, raise_on_error=True, budget=budget
             )
         if isinstance(value, dict):
             # When the schema says this is (or can be) an object but doesn't
@@ -423,6 +435,31 @@ async def expand_file_refs_in_args(
 # ---------------------------------------------------------------------------
 # Private helpers  (used by the public functions above)
 # ---------------------------------------------------------------------------
+
+
+class _CallBudget:
+    """What one tool call's file references may still expand."""
+
+    def __init__(self) -> None:
+        self.refs = _MAX_REFS_PER_CALL
+        self.inline_chars = _MAX_TOTAL_EXPAND_CHARS
+        self.bare_size = _MAX_TOTAL_BARE_REF_SIZE
+
+    def take_ref(self) -> None:
+        if self.refs <= 0:
+            raise ValueError(
+                f"Too many file references in one call (limit {_MAX_REFS_PER_CALL});"
+                " split the work across calls"
+            )
+        self.refs -= 1
+
+    def take_bare(self, size: int) -> None:
+        if size > self.bare_size:
+            raise ValueError(
+                "File references in one call are too large in total "
+                f"(limit {_MAX_TOTAL_BARE_REF_SIZE} bytes); split the work across calls"
+            )
+        self.bare_size -= size
 
 
 def _apply_line_range(text: str, start: int | None, end: int | None) -> str:
@@ -544,6 +581,7 @@ async def _expand_bare_ref(
     user_id: str | None,
     session: ChatSession,
     prop_schema: dict[str, Any] | None,
+    budget: "_CallBudget",
 ) -> Any:
     """Resolve and parse a bare ``@@agptfile:`` reference.
 
@@ -556,6 +594,7 @@ async def _expand_bare_ref(
     ``_expand`` to avoid unnecessary format inference and file I/O.
     """
     try:
+        budget.take_ref()
         if fmt is not None and fmt in BINARY_FORMATS:
             # Binary formats need raw bytes, not UTF-8 text.
             # Line ranges are meaningless for binary formats (parquet/xlsx)
@@ -583,6 +622,7 @@ async def _expand_bare_ref(
     # resolution errors above.
     try:
         _check_content_size(content)
+        budget.take_bare(len(content))
     except ValueError as exc:
         raise FileRefExpansionError(str(exc)) from exc
 
