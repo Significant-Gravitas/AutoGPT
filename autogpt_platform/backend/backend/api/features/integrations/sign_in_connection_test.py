@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
+import httpx
 import jwt
 import pytest
 from cryptography.fernet import Fernet
@@ -385,11 +386,22 @@ def test_a_sign_ups_connection_waits_for_the_account_to_be_set_up(store, google,
         assert secret not in held.values[key]
 
 
-def test_setting_the_account_up_keeps_its_held_connection_once(store, google, held):
-    store.has_org.return_value = False
-    client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+def _api() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    )
 
-    result = asyncio.run(sign_in_connection.keep_held_sign_in_connection("user-1"))
+
+# The tests that await run on pytest's own loop: asyncio.run() would leave the
+# thread without a current loop for the sync tests after them.
+async def test_setting_the_account_up_keeps_its_held_connection_once(
+    store, google, held
+):
+    store.has_org.return_value = False
+    async with _api() as api:
+        await api.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+
+    result = await sign_in_connection.keep_held_sign_in_connection("user-1")
 
     assert result == "created"
     (user_id, created), _ = store.create.call_args
@@ -400,24 +412,25 @@ def test_setting_the_account_up_keeps_its_held_connection_once(store, google, he
     assert created.refresh_token.get_secret_value() == "1//sign-in-refresh"
     # Taken, so the account's next sign-in finds nothing waiting.
     assert held.values == {}
-    assert (
-        asyncio.run(sign_in_connection.keep_held_sign_in_connection("user-1")) is None
-    )
+    assert await sign_in_connection.keep_held_sign_in_connection("user-1") is None
     assert store.create.call_count == 1
 
 
-def test_a_held_connection_that_cant_be_read_is_dropped_quietly(store, held, caplog):
+async def test_a_held_connection_that_cant_be_read_is_dropped_quietly(
+    store, held, caplog
+):
     held.values["sign-in-connection:user-1"] = "ya29.not-sealed"
 
     with caplog.at_level(logging.WARNING):
-        result = asyncio.run(sign_in_connection.keep_held_sign_in_connection("user-1"))
+        result = await sign_in_connection.keep_held_sign_in_connection("user-1")
 
     assert result is None
     store.create.assert_not_called()
+    assert "A held sign-in connection couldn't be read" in caplog.text
     assert "ya29.not-sealed" not in caplog.text
 
 
-def test_an_unreachable_redis_never_holds_up_a_sign_in(store, monkeypatch):
+async def test_an_unreachable_redis_never_holds_up_a_sign_in(store, monkeypatch):
     async def never_connects():
         await asyncio.sleep(3600)
 
@@ -425,7 +438,7 @@ def test_an_unreachable_redis_never_holds_up_a_sign_in(store, monkeypatch):
     monkeypatch.setattr(sign_in_connection, "HELD_LOOKUP_TIMEOUT_SECONDS", 0.05)
     started = time.monotonic()
 
-    result = asyncio.run(sign_in_connection.keep_held_sign_in_connection("user-1"))
+    result = await sign_in_connection.keep_held_sign_in_connection("user-1")
 
     assert result is None
     assert time.monotonic() - started < 2

@@ -222,11 +222,9 @@ async def keep_held_sign_in_connection(
         return None
     try:
         credentials = OAuth2Credentials.model_validate(JSONCryptor().decrypt(sealed))
-    except Exception as error:
-        # Only the type: a validation error quotes its input, the tokens.
-        logger.warning(
-            "A held sign-in connection couldn't be read: %s", type(error).__name__
-        )
+    except Exception:
+        # Never the error: a validation error quotes its input, the tokens.
+        logger.warning("A held sign-in connection couldn't be read")
         return None
     try:
         result = await keep_sign_in_connection(user_id, credentials)
