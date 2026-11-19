@@ -40,7 +40,7 @@ ROUTINE_INPUT = {
     "prompt": "Summarise this week's sales and send it to me.",
     "crons": ["0 9 * * 1"],
 }
-SET_IT_UP_IN_CHAT = "the next time the user chats with you"
+SET_IT_UP_IN_CHAT = "can be set up from a chat with the user"
 DID_NOT_HAPPEN = "Tell the user it did not happen"
 
 

@@ -67,7 +67,7 @@ def tool_refused_message(name: str) -> str:
     if name in ROUTINE_SELF_ESCALATION_TOOLS and is_unattended_turn():
         message += (
             " A run nobody is watching, such as a routine's, cannot schedule "
-            "more work. Offer to set it up the next time the user chats with "
-            "you, where it is available."
+            "more work. Say that it can be set up from a chat with the user, "
+            "where it is available."
         )
     return message
