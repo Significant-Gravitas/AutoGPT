@@ -1,25 +1,15 @@
-name: Next build type equivalence
-
-on:
-  push:
-    branches: [codex/ci-next-route-types-20261119]
-
+name: Verify standalone Next type generation against production build
 permissions:
   contents: read
-
+  actions: read
 concurrency:
   group: next-route-types-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   route-types:
-    name: Next build types (${{ matrix.first }} first)
+    name: Verify identical production route validators
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        first: [tsc, bun]
+    timeout-minutes: 12
     defaults:
       run:
         shell: bash
@@ -38,36 +28,48 @@ jobs:
       NEXT_PUBLIC_TURNSTILE: disabled
       NEXT_PUBLIC_VAPID_PUBLIC_KEY: ""
       BETTER_AUTH_SECRET: build-only-placeholder-not-used-at-runtime
-      DATABASE_URL: "postgresql:///postgres?host=%2Frun%2Fpostgresql&user=autogpt_frontend"
+      DATABASE_URL: postgresql:///postgres?host=%2Frun%2Fpostgresql&user=autogpt_frontend
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
         with:
           package_json_file: autogpt_platform/frontend/package.json
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          node-version: "24.22.1"
+          node-version: 24.22.1
           cache: pnpm
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "1.4.4"
+          bun-version: 1.4.4
       - name: Install dependencies and generate the API client
-        run: |
-          pnpm install --frozen-lockfile --prefer-offline
+        run: "pnpm install --frozen-lockfile --prefer-offline
+
           pnpm generate:api
-      - name: Compare original build types and reject an invalid page
-        run: >-
-          python3 ../../.github/ci-diagnostics/benchmark_next_build_types.py
-          --first "${{ matrix.first }}"
+
+          "
+      - name: Download exact completed build validation reports
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: 44462773414
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: next-build-types-*-first
+          path: ${{ runner.temp }}/next-build-reports
+      - name: Require exact production types and valid-invalid-restored checks
+        run:
+          python3 ../../.github/ci-diagnostics/verify_next_typegen_equivalence.py --build-reports "$RUNNER_TEMP/next-build-reports"
           --output "$RUNNER_TEMP/next-route-types-report"
       - name: Upload timings and positive and negative checks
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: next-build-types-${{ matrix.first }}-first
+          name: next-typegen-equivalence
           path: ${{ runner.temp }}/next-route-types-report
           if-no-files-found: error
+"on":
+  push:
+    branches:
+      - codex/ci-next-route-types-20261119
