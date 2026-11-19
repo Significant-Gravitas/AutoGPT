@@ -9,6 +9,7 @@ Covers:
 """
 
 import asyncio
+import os
 from collections.abc import AsyncGenerator, AsyncIterable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -414,6 +415,20 @@ async def test_sdk_mode_sends_slash_prompt_as_text() -> None:
     assert prompt == " /compact"
     cli_check.assert_called_once_with(None)
     assert options.cli_path == "/opt/claude/claude"
+
+
+@pytest.mark.asyncio
+async def test_sdk_mode_keeps_the_clis_files_in_the_working_directory() -> None:
+    """The CLI's config and cache dirs, where it writes the step's transcript
+    and logs, are inside the working directory the step removes."""
+    _, seen = await _run_sdk_mode("hello", MagicMock(return_value="/opt/claude"))
+
+    options = seen[0]
+    assert isinstance(options, ClaudeAgentOptions)
+    cwd = str(options.cwd)
+    for name in ("CLAUDE_CONFIG_DIR", "XDG_CACHE_HOME"):
+        assert os.path.dirname(options.env[name]) == cwd
+    assert not os.path.exists(cwd)
 
 
 @pytest.mark.asyncio
