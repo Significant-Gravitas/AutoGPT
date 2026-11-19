@@ -25,10 +25,10 @@ importers:
     dependencies:
       '@ai-sdk/react':
         specifier: 4.0.170
-        version: 4.0.170(react@19.3.1)(zod@3.25.76)
+        version: 4.0.170(react@19.3.1)(zod@4.6.6)
       '@better-auth/core':
         specifier: 1.7.16
-        version: 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
+        version: 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
       '@faker-js/faker':
         specifier: 10.6.0
         version: 10.6.0
@@ -37,7 +37,7 @@ importers:
         version: 0.1.2(@babel/core@7.29.7)(@babel/template@7.29.7)(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(tailwindcss@4.3.3)
       '@hookform/resolvers':
         specifier: 5.9.2
-        version: 5.9.2(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.17.1))(ajv@8.17.1)(react-hook-form@7.90.0(@types/react@19.3.0)(react@19.3.1))(zod@3.25.76)
+        version: 5.9.2(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.17.1))(ajv@8.17.1)(react-hook-form@7.90.0(@types/react@19.3.0)(react@19.3.1))(zod@4.6.6)
       '@hugeicons/core-free-icons':
         specifier: ^4.3.5
         version: 4.3.5
@@ -145,7 +145,7 @@ importers:
         version: 12.12.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.1.21)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       ai:
         specifier: 7.0.143
-        version: 7.0.143(zod@3.25.76)
+        version: 7.0.143(zod@4.6.6)
       bcryptjs:
         specifier: 3.0.3
         version: 3.0.3
@@ -324,8 +324,8 @@ importers:
         specifier: 1.1.2
         version: 1.1.2(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.6.6
+        version: 4.6.6
       zustand:
         specifier: 5.0.15
         version: 5.0.15(@types/react@19.3.0)(immer@11.1.21)(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1))
@@ -424,8 +424,8 @@ importers:
         specifier: 10.6.3
         version: 10.6.3(eslint@8.57.1)(typescript@5.9.3)
       happy-dom:
-        specifier: 20.8.9
-        version: 20.8.9
+        specifier: 21.0.4
+        version: 21.0.4
       import-in-the-middle:
         specifier: 2.0.2
         version: 2.0.2
@@ -448,11 +448,11 @@ importers:
         specifier: 1.83.0
         version: 1.83.0
       postcss:
-        specifier: 8.5.24
-        version: 8.5.24
+        specifier: 8.5.25
+        version: 8.5.25
       postcss-nested:
         specifier: 6.2.0
-        version: 6.2.0(postcss@8.5.24)
+        version: 6.2.0(postcss@8.5.25)
       prettier:
         specifier: 3.6.2
         version: 3.6.2
@@ -482,12 +482,12 @@ importers:
         version: 6.0.4(typescript@5.9.3)(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
       vitest:
         specifier: 4.1.11
-        version: 4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@20.8.9)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
+        version: 4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@21.0.4)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
 
 packages:
 
-  '@acemir/cssom@0.9.32':
-    resolution: {integrity: sha512-OijrAUu7rrJhSIoHNg6LMPS5e344nwUHA+1EFYYjrh64D+GmytUsfBQjci45TjT+rd5Spsp8B5xsZDT+TgyXXQ==}
+  '@acemir/cssom@0.9.33':
+    resolution: {integrity: sha512-52IMmrBsIsDZLp/KFM+KmaMLJ8GTj113K+iFGFCoOjstZSZbsAxMJE8KYtwao7bz1LsEG810ts1m5wvkVEqPlg==}
 
   '@adobe/css-tools@4.5.0':
     resolution: {integrity: sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q==}
@@ -1291,40 +1291,40 @@ packages:
     peerDependencies:
       commander: ~15.0.0
 
-  '@csstools/color-helpers@6.1.2':
-    resolution: {integrity: sha512-grhRy3OKmniaAEKXMjua5z/EODX0MSqBGjunw8+j/3HQjOnahs2AGhvEOIYVUWcU6ScApbhLhVrQTX8XqrMrow==}
+  '@csstools/color-helpers@6.1.3':
+    resolution: {integrity: sha512-c6CpX5G1pvuOKTXiRFJ54Lzc8zQrZ3qUjp44QC5DJNt1OmA1vmfUxOMCcKdDqsvffVDG0/MHnY63J+Mn0nmdUg==}
     engines: {node: '>=20.19.0'}
 
-  '@csstools/css-calc@3.4.3':
-    resolution: {integrity: sha512-iex20d8CHVkyvg6B7UKV7uHnI2Bqo9g+EFfT9E0y+GvTvhZ/DwONJ+9aKb1dlqm0ZiGsL5RXjp0fCoJYnkeDjA==}
-    engines: {node: '>=20.19.0'}
-    peerDependencies:
-      '@csstools/css-parser-algorithms': ^4.0.2
-      '@csstools/css-tokenizer': ^4.0.2
-
-  '@csstools/css-color-parser@4.2.7':
-    resolution: {integrity: sha512-zgm9yjQz5iJB4VL8RyVwd71TWB8Q89FSxt/NzXoWqPSkEBOVtn9L6vAPtSc9hpKfB0Awo/AL2VKFHjYetBLFHQ==}
+  '@csstools/css-calc@3.4.4':
+    resolution: {integrity: sha512-Jwo1Z8DUsZ8xVOLBdLMfhjJFvWD6pqaUTlBNQZ+qIB2i9g7yG8kd/UBJj2c9J9Twr+u87cjy9BjkmfvMbyOk3Q==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
-      '@csstools/css-parser-algorithms': ^4.0.2
-      '@csstools/css-tokenizer': ^4.0.2
+      '@csstools/css-parser-algorithms': ^4.0.3
+      '@csstools/css-tokenizer': ^4.0.3
 
-  '@csstools/css-parser-algorithms@4.0.2':
-    resolution: {integrity: sha512-40cSKyMvK+tq4qz6Awrlye2WGuOKt3FwPgtGg6KTfbHOWNw+Rk1rzbAtZnZ6IBhsY491HLRnDXwoyBAijmmILA==}
+  '@csstools/css-color-parser@4.2.8':
+    resolution: {integrity: sha512-JLsKBee9dmnA3L+H+vYK4lQ6n5CoY3yEnh33zdlMutRfrTxtqt+hFeoZ1maHRt5vLw67huDLpOkDb3rl9A51MQ==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
-      '@csstools/css-tokenizer': ^4.0.2
+      '@csstools/css-parser-algorithms': ^4.0.3
+      '@csstools/css-tokenizer': ^4.0.3
 
-  '@csstools/css-syntax-patches-for-csstree@1.1.16':
-    resolution: {integrity: sha512-LsDbJPP/B8cPasUJyTA5S99F7C4G93ngW8hUluXz8CFeOaaRnBPtBiIlvgcPYU0HmHNz8CXg+1vwFrIB4F6Dgw==}
+  '@csstools/css-parser-algorithms@4.0.3':
+    resolution: {integrity: sha512-EpCfUDaJtwohPHC7egoXxPGT/R1/WyyAhw87MKB/7BPPZvZU+IcEqo4er5FpLnby2Gvwt9Lpxy+WNEDyFjoXtA==}
+    engines: {node: '>=20.19.0'}
+    peerDependencies:
+      '@csstools/css-tokenizer': ^4.0.3
+
+  '@csstools/css-syntax-patches-for-csstree@1.1.17':
+    resolution: {integrity: sha512-IPx9W33+t0Yt5TVb+Y7oICrThOIry0TY6GuXfSHOatxA0uiHqbzi98Gai905lpBAX1m/LH7iI96e9jcI7Dkvxw==}
     peerDependencies:
       css-tree: ^3.2.1
     peerDependenciesMeta:
       css-tree:
         optional: true
 
-  '@csstools/css-tokenizer@4.0.2':
-    resolution: {integrity: sha512-OoKoR0f76dCY666JlcbhmVTs2drYj1GUXZTYTcbUgJjh9Nv41aFfZ21bPQTERm5+L5cBDo466NltB2lplS5GBw==}
+  '@csstools/css-tokenizer@4.0.3':
+    resolution: {integrity: sha512-gdkFe/Z4KU1q8Y5S3GYScXGcOnO56dgWwIs5+97Ij1VIKISItOIUlCXUq4VLbdnRclF+SSQ49sLsn3KeV111AA==}
     engines: {node: '>=20.19.0'}
 
   '@date-fns/tz@1.5.0':
@@ -4376,8 +4376,8 @@ packages:
   '@types/whatwg-mimetype@3.0.2':
     resolution: {integrity: sha512-c2AKvDT8ToxLIOUlN51gTiHXflsfIFisS4pO7pDPoKouJCESkhZnEy623gwP9laCy5lnLDAw1vAzu2vM2YLOrA==}
 
-  '@types/ws@8.18.1':
-    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
 
   '@typescript-eslint/eslint-plugin@8.52.0':
     resolution: {integrity: sha512-okqtOgqu2qmZJ5iN4TWlgfF171dZmx2FzdOv2K/ixL2LZWDStL8+JgQerI2sa8eAEfoydG9+0V96m7V+P8yE1Q==}
@@ -5168,6 +5168,10 @@ packages:
 
   buffer-from@1.1.2:
     resolution: {integrity: sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ==}
+
+  buffer-image-size@0.6.4:
+    resolution: {integrity: sha512-nEh+kZOPY1w+gcCMobZ6ETUp9WfibndnosbpwB1iJk/8Gt5ZF2bhS6+B6bPYz424KtwsR6Rflc3tCz1/ghX2dQ==}
+    engines: {node: '>=4.0'}
 
   buffer-xor@1.0.3:
     resolution: {integrity: sha512-571s0T7nZWK6vB67HI5dyUF7wXiNcfaPPPTl6zYCNApANjIvYJTg7hlud/+cJpdAhS7dVzqMLmfhfHR3rAcOjQ==}
@@ -6469,8 +6473,8 @@ packages:
   hachure-fill@0.5.2:
     resolution: {integrity: sha512-3GKBOn+m2LX9iq+JC1064cSFprJY4jL1jCXTcpnfER5HYE2l/4EfWSGzkPa/ZDBmYI0ZOEj5VHV/eKnPGkHuOg==}
 
-  happy-dom@20.8.9:
-    resolution: {integrity: sha512-Tz23LR9T9jOGVZm2x1EPdXqwA37G/owYMxRwU0E4miurAtFsPMQ1d2Jc2okUaSjZqAFz2oEn3FLXC5a0a+siyA==}
+  happy-dom@21.0.4:
+    resolution: {integrity: sha512-tFm+GaLBgo6o0awHnvHaNoraVo27qJ+2tZEtZ+cIa08hXbeitrxAJajLI05hsUy/2/YTKcUjQYzHe5mCcraLBw==}
     engines: {node: '>=20.0.0'}
 
   has-bigints@1.1.0:
@@ -8136,8 +8140,8 @@ packages:
     resolution: {integrity: sha512-PS08Iboia9mts/2ygV3eLpY5ghnUcfLV/EXTOW1E2qYxJKGGBUtNjN76FYHnMs36RmARn41bC0AZmn+rR0OVpQ==}
     engines: {node: ^10 || ^12 || >=14}
 
-  postcss@8.5.24:
-    resolution: {integrity: sha512-8RyVklq0owXUTa4xlpzu4l9AaVKIdQvAcOHZWaMh98HgySsUtxRVf/chRe3dsSLqb6i40BzGRzEUddRaI+9TSw==}
+  postcss@8.5.25:
+    resolution: {integrity: sha512-DTPx3RWSSnWyzLxQnlH0rJP+EW5ekl16ZU4/psbIhA0e53kJfdgaN5vKM+xP7yJtXVu+nfdVFmlgFDEKAe4Pyw==}
     engines: {node: ^10 || ^12 || >=14}
 
   postgres-array@2.0.0:
@@ -8839,9 +8843,9 @@ packages:
       '@types/react':
         optional: true
 
-  source-map-js@1.2.2:
-    resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
-    engines: {node: '>=0.10.0'}
+  source-map-js@1.2.4:
+    resolution: {integrity: sha512-J7ZjMvHd9O1fcT/5V09QWaaSl2BbWx3F6O08spde82Namf9UB0GxRVIPiNbVsdKkoizHiSpTodo3vp2bAy91MA==}
+    engines: {node: '>=6.0.0'}
 
   source-map-support@0.5.21:
     resolution: {integrity: sha512-uBHU3L3czsIyYXKX88fdrGovxdSCoTGDRZ6SYXtSRxLZUzHg5P/66Ht6uoUlHu9EZod+inXhKo3qQgwXUT/y1w==}
@@ -9147,15 +9151,15 @@ packages:
   tldts-core@7.4.18:
     resolution: {integrity: sha512-KI2PKvCmvQI/xD6ypPqkU0i7oxNXR/O58RLRaHR4svsgVUQ2JE/XC8BtMbG6PSehD27I8sZJRcC1ASnCy6lp3g==}
 
-  tldts-core@7.4.19:
-    resolution: {integrity: sha512-goNXV6Ho9TIOfpJZanTd6CKG5DyYgYAL+k+22T0SLh8l6+KHIfBUPFuePuSZv05UttIaaLmI9tb7TmGIdK5AkQ==}
+  tldts-core@7.5.5:
+    resolution: {integrity: sha512-rEJz/8cJFY/bdF354gl14yxavbrIbvM+FcbkYVQ6CSCMQTJdUFUIm39TTWSiGPvcpQh7/F6qHrD3SkwwdgtDCw==}
 
   tldts@7.4.18:
     resolution: {integrity: sha512-somxA8xKAUzlAxl0TX/jMSYIbRNFIVGnI96pVGJPeMc5BsHmfVXn6mOJT6U++ELnl04eGfzpfcEuZe8WiASkXg==}
     hasBin: true
 
-  tldts@7.4.19:
-    resolution: {integrity: sha512-48dH6aSpQnpbzDUc4vIQZ1VjB8tkK+e8c1yx05/SZK+rkssgjEOlxDd/yU8/a4vGYQ9vRgJr9dwMq9TJ0b3X2Q==}
+  tldts@7.5.5:
+    resolution: {integrity: sha512-Hy6IImaWALzJOgCIss4gIFi4G0M9lqk95pFKCUVxQPZw+biZ1Pv6f28JpYgahpJB+BufA0HYsIU/aP/WIx3KRg==}
     hasBin: true
 
   to-buffer@1.2.2:
@@ -9781,14 +9785,8 @@ packages:
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
-  zod@4.4.3:
-    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
-
-  zod@4.6.5:
-    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
 
   zustand@4.5.7:
     resolution: {integrity: sha512-CHOUy7mu3lbD6o6LJLfllpjkzhHXSBlX8B9+qPddUsIfeF5S/UZ5q0kmCsnRqT1UHFQZchNFDDzMbQsuesHWlw==}
@@ -9828,50 +9826,50 @@ packages:
 
 snapshots:
 
-  '@acemir/cssom@0.9.32':
+  '@acemir/cssom@0.9.33':
     optional: true
 
   '@adobe/css-tools@4.5.0': {}
 
-  '@ai-sdk/gateway@4.0.116(zod@3.25.76)':
+  '@ai-sdk/gateway@4.0.116(zod@4.6.6)':
     dependencies:
       '@ai-sdk/provider': 4.0.29
-      '@ai-sdk/provider-utils': 5.0.62(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.62(zod@4.6.6)
       '@vercel/oidc': 3.2.0
-      zod: 3.25.76
+      zod: 4.6.6
 
-  '@ai-sdk/gateway@4.0.139(zod@3.25.76)':
+  '@ai-sdk/gateway@4.0.139(zod@4.6.6)':
     dependencies:
       '@ai-sdk/provider': 4.0.37
-      '@ai-sdk/provider-utils': 5.0.76(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.76(zod@4.6.6)
       '@vercel/oidc': 3.2.0
-      zod: 3.25.76
+      zod: 4.6.6
 
-  '@ai-sdk/mcp@2.0.93(zod@3.25.76)':
+  '@ai-sdk/mcp@2.0.93(zod@4.6.6)':
     dependencies:
       '@ai-sdk/provider': 4.0.37
-      '@ai-sdk/provider-utils': 5.0.76(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.76(zod@4.6.6)
       cross-spawn: 7.0.6
       pkce-challenge: 5.0.1
-      zod: 3.25.76
+      zod: 4.6.6
 
-  '@ai-sdk/provider-utils@5.0.62(zod@3.25.76)':
+  '@ai-sdk/provider-utils@5.0.62(zod@4.6.6)':
     dependencies:
       '@ai-sdk/provider': 4.0.29
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.1
       undici: 7.30.1
-      zod: 3.25.76
+      zod: 4.6.6
 
-  '@ai-sdk/provider-utils@5.0.76(zod@3.25.76)':
+  '@ai-sdk/provider-utils@5.0.76(zod@4.6.6)':
     dependencies:
       '@ai-sdk/provider': 4.0.37
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.1
       undici: 7.30.2
-      zod: 3.25.76
+      zod: 4.6.6
 
   '@ai-sdk/provider@4.0.29':
     dependencies:
@@ -9881,12 +9879,12 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
-  '@ai-sdk/react@4.0.170(react@19.3.1)(zod@3.25.76)':
+  '@ai-sdk/react@4.0.170(react@19.3.1)(zod@4.6.6)':
     dependencies:
-      '@ai-sdk/mcp': 2.0.93(zod@3.25.76)
+      '@ai-sdk/mcp': 2.0.93(zod@4.6.6)
       '@ai-sdk/provider': 4.0.37
-      '@ai-sdk/provider-utils': 5.0.76(zod@3.25.76)
-      ai: 7.0.166(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.76(zod@4.6.6)
+      ai: 7.0.166(zod@4.6.6)
       react: 19.3.1
       swr: 2.5.1(react@19.3.1)
       throttleit: 2.1.0
@@ -9902,10 +9900,10 @@ snapshots:
 
   '@asamuzakjp/css-color@4.1.2':
     dependencies:
-      '@csstools/css-calc': 3.4.3(@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2))(@csstools/css-tokenizer@4.0.2)
-      '@csstools/css-color-parser': 4.2.7(@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2))(@csstools/css-tokenizer@4.0.2)
-      '@csstools/css-parser-algorithms': 4.0.2(@csstools/css-tokenizer@4.0.2)
-      '@csstools/css-tokenizer': 4.0.2
+      '@csstools/css-calc': 3.4.4(@csstools/css-parser-algorithms@4.0.3(@csstools/css-tokenizer@4.0.3))(@csstools/css-tokenizer@4.0.3)
+      '@csstools/css-color-parser': 4.2.8(@csstools/css-parser-algorithms@4.0.3(@csstools/css-tokenizer@4.0.3))(@csstools/css-tokenizer@4.0.3)
+      '@csstools/css-parser-algorithms': 4.0.3(@csstools/css-tokenizer@4.0.3)
+      '@csstools/css-tokenizer': 4.0.3
       lru-cache: 11.5.3
     optional: true
 
@@ -10793,49 +10791,49 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)':
+  '@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)':
     dependencies:
       '@better-auth/utils': 0.5.1
       '@better-fetch/fetch': 1.3.3
       '@standard-schema/spec': 1.1.0
-      better-call: 1.4.5(zod@3.25.76)
+      better-call: 1.4.5(zod@4.6.6)
       jose: 6.2.13
       kysely: 0.28.17
       nanostores: 1.5.5
-      zod: 4.6.5
+      zod: 4.6.6
     optionalDependencies:
       '@opentelemetry/api': 1.10.0
 
-  '@better-auth/drizzle-adapter@1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)':
+  '@better-auth/drizzle-adapter@1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)':
     dependencies:
-      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
+      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
       '@better-auth/utils': 0.5.1
 
-  '@better-auth/kysely-adapter@1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)(kysely@0.28.17)':
+  '@better-auth/kysely-adapter@1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)(kysely@0.28.17)':
     dependencies:
-      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
+      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
       '@better-auth/utils': 0.5.1
     optionalDependencies:
       kysely: 0.28.17
 
-  '@better-auth/memory-adapter@1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)':
+  '@better-auth/memory-adapter@1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)':
     dependencies:
-      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
+      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
       '@better-auth/utils': 0.5.1
 
-  '@better-auth/mongo-adapter@1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)':
+  '@better-auth/mongo-adapter@1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)':
     dependencies:
-      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
+      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
       '@better-auth/utils': 0.5.1
 
-  '@better-auth/prisma-adapter@1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)':
+  '@better-auth/prisma-adapter@1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)':
     dependencies:
-      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
+      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
       '@better-auth/utils': 0.5.1
 
-  '@better-auth/telemetry@1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)':
+  '@better-auth/telemetry@1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)':
     dependencies:
-      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
+      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
       '@better-auth/utils': 0.5.1
       '@better-fetch/fetch': 1.3.3
 
@@ -10853,34 +10851,34 @@ snapshots:
     dependencies:
       commander: 15.0.0
 
-  '@csstools/color-helpers@6.1.2':
+  '@csstools/color-helpers@6.1.3':
     optional: true
 
-  '@csstools/css-calc@3.4.3(@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2))(@csstools/css-tokenizer@4.0.2)':
+  '@csstools/css-calc@3.4.4(@csstools/css-parser-algorithms@4.0.3(@csstools/css-tokenizer@4.0.3))(@csstools/css-tokenizer@4.0.3)':
     dependencies:
-      '@csstools/css-parser-algorithms': 4.0.2(@csstools/css-tokenizer@4.0.2)
-      '@csstools/css-tokenizer': 4.0.2
+      '@csstools/css-parser-algorithms': 4.0.3(@csstools/css-tokenizer@4.0.3)
+      '@csstools/css-tokenizer': 4.0.3
     optional: true
 
-  '@csstools/css-color-parser@4.2.7(@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2))(@csstools/css-tokenizer@4.0.2)':
+  '@csstools/css-color-parser@4.2.8(@csstools/css-parser-algorithms@4.0.3(@csstools/css-tokenizer@4.0.3))(@csstools/css-tokenizer@4.0.3)':
     dependencies:
-      '@csstools/color-helpers': 6.1.2
-      '@csstools/css-calc': 3.4.3(@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2))(@csstools/css-tokenizer@4.0.2)
-      '@csstools/css-parser-algorithms': 4.0.2(@csstools/css-tokenizer@4.0.2)
-      '@csstools/css-tokenizer': 4.0.2
+      '@csstools/color-helpers': 6.1.3
+      '@csstools/css-calc': 3.4.4(@csstools/css-parser-algorithms@4.0.3(@csstools/css-tokenizer@4.0.3))(@csstools/css-tokenizer@4.0.3)
+      '@csstools/css-parser-algorithms': 4.0.3(@csstools/css-tokenizer@4.0.3)
+      '@csstools/css-tokenizer': 4.0.3
     optional: true
 
-  '@csstools/css-parser-algorithms@4.0.2(@csstools/css-tokenizer@4.0.2)':
+  '@csstools/css-parser-algorithms@4.0.3(@csstools/css-tokenizer@4.0.3)':
     dependencies:
-      '@csstools/css-tokenizer': 4.0.2
+      '@csstools/css-tokenizer': 4.0.3
     optional: true
 
-  '@csstools/css-syntax-patches-for-csstree@1.1.16(css-tree@3.2.1)':
+  '@csstools/css-syntax-patches-for-csstree@1.1.17(css-tree@3.2.1)':
     optionalDependencies:
       css-tree: 3.2.1
     optional: true
 
-  '@csstools/css-tokenizer@4.0.2':
+  '@csstools/css-tokenizer@4.0.3':
     optional: true
 
   '@date-fns/tz@1.5.0': {}
@@ -11155,7 +11153,7 @@ snapshots:
       '@shikijs/types': 3.23.0
       '@shikijs/vscode-textmate': 10.0.2
 
-  '@hookform/resolvers@5.9.2(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.17.1))(ajv@8.17.1)(react-hook-form@7.90.0(@types/react@19.3.0)(react@19.3.1))(zod@3.25.76)':
+  '@hookform/resolvers@5.9.2(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.17.1))(ajv@8.17.1)(react-hook-form@7.90.0(@types/react@19.3.0)(react@19.3.1))(zod@4.6.6)':
     dependencies:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.90.0(@types/react@19.3.0)(react@19.3.1)
@@ -11163,7 +11161,7 @@ snapshots:
       '@standard-schema/spec': 1.1.0
       ajv: 8.17.1
       ajv-formats: 2.1.1(ajv@8.17.1)
-      zod: 3.25.76
+      zod: 4.6.6
 
   '@hugeicons/core-free-icons@4.3.5': {}
 
@@ -12987,8 +12985,8 @@ snapshots:
       loader-utils: 3.3.1
       next: 15.5.28(patch_hash=53d0cf0124e347d0dd149aca4c65f5f8ab5cd87d7dbeae551ae442289c62b15a)(@babel/core@7.29.7)(@opentelemetry/api@1.10.0)(@playwright/test@1.56.1)(@types/node@26.6.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       node-polyfill-webpack-plugin: 2.0.1(webpack@5.104.1(esbuild@0.25.12))
-      postcss: 8.5.24
-      postcss-loader: 8.2.0(postcss@8.5.24)(typescript@5.9.3)(webpack@5.104.1(esbuild@0.25.12))
+      postcss: 8.5.25
+      postcss-loader: 8.2.0(postcss@8.5.25)(typescript@5.9.3)(webpack@5.104.1(esbuild@0.25.12))
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
       react-refresh: 0.14.2
@@ -13114,7 +13112,7 @@ snapshots:
       jiti: 2.7.0
       lightningcss: 1.32.0
       magic-string: 0.30.21
-      source-map-js: 1.2.2
+      source-map-js: 1.2.4
       tailwindcss: 4.3.3
 
   '@tailwindcss/oxide-android-arm64@4.3.3':
@@ -13173,7 +13171,7 @@ snapshots:
       '@alloc/quick-lru': 5.2.0
       '@tailwindcss/node': 4.3.3
       '@tailwindcss/oxide': 4.3.3
-      postcss: 8.5.24
+      postcss: 8.5.25
       tailwindcss: 4.3.3
 
   '@tanstack/eslint-plugin-query@5.91.2(eslint@8.57.1)(typescript@5.9.3)':
@@ -13507,7 +13505,7 @@ snapshots:
 
   '@types/whatwg-mimetype@3.0.2': {}
 
-  '@types/ws@8.18.1':
+  '@types/ws@8.18.2':
     dependencies:
       '@types/node': 26.6.2
 
@@ -13750,7 +13748,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.2.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@20.8.9)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
+      vitest: 4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@21.0.4)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
 
   '@vitest/expect@3.2.4':
     dependencies:
@@ -13977,19 +13975,19 @@ snapshots:
   agent-base@7.1.4:
     optional: true
 
-  ai@7.0.143(zod@3.25.76):
+  ai@7.0.143(zod@4.6.6):
     dependencies:
-      '@ai-sdk/gateway': 4.0.116(zod@3.25.76)
+      '@ai-sdk/gateway': 4.0.116(zod@4.6.6)
       '@ai-sdk/provider': 4.0.29
-      '@ai-sdk/provider-utils': 5.0.62(zod@3.25.76)
-      zod: 3.25.76
+      '@ai-sdk/provider-utils': 5.0.62(zod@4.6.6)
+      zod: 4.6.6
 
-  ai@7.0.166(zod@3.25.76):
+  ai@7.0.166(zod@4.6.6):
     dependencies:
-      '@ai-sdk/gateway': 4.0.139(zod@3.25.76)
+      '@ai-sdk/gateway': 4.0.139(zod@4.6.6)
       '@ai-sdk/provider': 4.0.37
-      '@ai-sdk/provider-utils': 5.0.76(zod@3.25.76)
-      zod: 3.25.76
+      '@ai-sdk/provider-utils': 5.0.76(zod@4.6.6)
+      zod: 4.6.6
 
   ajv-draft-04@1.0.0(ajv@8.17.1):
     optionalDependencies:
@@ -14215,49 +14213,40 @@ snapshots:
 
   better-auth@1.7.16(@opentelemetry/api@1.10.0)(next@15.5.28(patch_hash=53d0cf0124e347d0dd149aca4c65f5f8ab5cd87d7dbeae551ae442289c62b15a)(@babel/core@7.29.7)(@opentelemetry/api@1.10.0)(@playwright/test@1.56.1)(@types/node@26.6.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(pg@8.23.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(vitest@4.1.11):
     dependencies:
-      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
-      '@better-auth/drizzle-adapter': 1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)
-      '@better-auth/kysely-adapter': 1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)(kysely@0.28.17)
-      '@better-auth/memory-adapter': 1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)
-      '@better-auth/mongo-adapter': 1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)
-      '@better-auth/prisma-adapter': 1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)
-      '@better-auth/telemetry': 1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@3.25.76))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)
+      '@better-auth/core': 1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5)
+      '@better-auth/drizzle-adapter': 1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)
+      '@better-auth/kysely-adapter': 1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)(kysely@0.28.17)
+      '@better-auth/memory-adapter': 1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)
+      '@better-auth/mongo-adapter': 1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)
+      '@better-auth/prisma-adapter': 1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)
+      '@better-auth/telemetry': 1.7.16(@better-auth/core@1.7.16(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)(@opentelemetry/api@1.10.0)(better-call@1.4.5(zod@4.6.6))(jose@6.2.13)(kysely@0.28.17)(nanostores@1.5.5))(@better-auth/utils@0.5.1)(@better-fetch/fetch@1.3.3)
       '@better-auth/utils': 0.5.1
       '@better-fetch/fetch': 1.3.3
       '@noble/ciphers': 2.4.0
       '@noble/hashes': 2.4.0
-      better-call: 1.4.5(zod@4.6.5)
+      better-call: 1.4.5(zod@4.6.6)
       defu: 6.1.7
       jose: 6.2.13
       kysely: 0.28.17
       nanostores: 1.5.5
-      zod: 4.6.5
+      zod: 4.6.6
     optionalDependencies:
       next: 15.5.28(patch_hash=53d0cf0124e347d0dd149aca4c65f5f8ab5cd87d7dbeae551ae442289c62b15a)(@babel/core@7.29.7)(@opentelemetry/api@1.10.0)(@playwright/test@1.56.1)(@types/node@26.6.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       pg: 8.23.1
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
-      vitest: 4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@20.8.9)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
+      vitest: 4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@21.0.4)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
-  better-call@1.4.5(zod@3.25.76):
+  better-call@1.4.5(zod@4.6.6):
     dependencies:
       '@better-auth/utils': 0.5.1
       '@better-fetch/fetch': 1.3.3
       rou3: 0.9.2
       set-cookie-parser: 3.1.2
     optionalDependencies:
-      zod: 3.25.76
-
-  better-call@1.4.5(zod@4.6.5):
-    dependencies:
-      '@better-auth/utils': 0.5.1
-      '@better-fetch/fetch': 1.3.3
-      rou3: 0.9.2
-      set-cookie-parser: 3.1.2
-    optionalDependencies:
-      zod: 4.6.5
+      zod: 4.6.6
 
   better-opn@3.0.2:
     dependencies:
@@ -14365,6 +14354,10 @@ snapshots:
       update-browserslist-db: 1.3.4(browserslist@4.29.3)
 
   buffer-from@1.1.2: {}
+
+  buffer-image-size@0.6.4:
+    dependencies:
+      '@types/node': 26.6.2
 
   buffer-xor@1.0.3: {}
 
@@ -14653,12 +14646,12 @@ snapshots:
 
   css-loader@6.11.0(webpack@5.104.1(esbuild@0.25.12)):
     dependencies:
-      icss-utils: 5.1.0(postcss@8.5.24)
-      postcss: 8.5.24
-      postcss-modules-extract-imports: 3.1.0(postcss@8.5.24)
-      postcss-modules-local-by-default: 4.2.0(postcss@8.5.24)
-      postcss-modules-scope: 3.2.1(postcss@8.5.24)
-      postcss-modules-values: 4.0.0(postcss@8.5.24)
+      icss-utils: 5.1.0(postcss@8.5.25)
+      postcss: 8.5.25
+      postcss-modules-extract-imports: 3.1.0(postcss@8.5.25)
+      postcss-modules-local-by-default: 4.2.0(postcss@8.5.25)
+      postcss-modules-scope: 3.2.1(postcss@8.5.25)
+      postcss-modules-values: 4.0.0(postcss@8.5.25)
       postcss-value-parser: 4.2.0
       semver: 7.7.3
     optionalDependencies:
@@ -14675,7 +14668,7 @@ snapshots:
   css-tree@3.2.1:
     dependencies:
       mdn-data: 2.27.1
-      source-map-js: 1.2.2
+      source-map-js: 1.2.4
     optional: true
 
   css-what@6.2.2: {}
@@ -14687,7 +14680,7 @@ snapshots:
   cssstyle@5.3.7:
     dependencies:
       '@asamuzakjp/css-color': 4.1.2
-      '@csstools/css-syntax-patches-for-csstree': 1.1.16(css-tree@3.2.1)
+      '@csstools/css-syntax-patches-for-csstree': 1.1.17(css-tree@3.2.1)
       css-tree: 3.2.1
       lru-cache: 11.5.3
     optional: true
@@ -15426,8 +15419,8 @@ snapshots:
       '@babel/parser': 7.29.2
       eslint: 8.57.1
       hermes-parser: 0.25.1
-      zod: 3.25.76
-      zod-validation-error: 4.0.2(zod@3.25.76)
+      zod: 4.6.6
+      zod-validation-error: 4.0.2(zod@4.6.6)
     transitivePeerDependencies:
       - supports-color
 
@@ -15918,11 +15911,12 @@ snapshots:
 
   hachure-fill@0.5.2: {}
 
-  happy-dom@20.8.9:
+  happy-dom@21.0.4:
     dependencies:
       '@types/node': 26.6.2
       '@types/whatwg-mimetype': 3.0.2
-      '@types/ws': 8.18.1
+      '@types/ws': 8.18.2
+      buffer-image-size: 0.6.4
       entities: 7.0.1
       whatwg-mimetype: 3.0.0
       ws: 8.21.1
@@ -16213,9 +16207,9 @@ snapshots:
     dependencies:
       safer-buffer: 2.1.2
 
-  icss-utils@5.1.0(postcss@8.5.24):
+  icss-utils@5.1.0(postcss@8.5.25):
     dependencies:
-      postcss: 8.5.24
+      postcss: 8.5.25
 
   ieee754@1.2.1: {}
 
@@ -16497,7 +16491,7 @@ snapshots:
 
   jsdom@27.4.0(@noble/hashes@2.4.0):
     dependencies:
-      '@acemir/cssom': 0.9.32
+      '@acemir/cssom': 0.9.33
       '@asamuzakjp/dom-selector': 6.8.1
       '@exodus/bytes': 1.16.0(@noble/hashes@2.4.0)
       cssstyle: 5.3.7
@@ -16608,7 +16602,7 @@ snapshots:
       tinyglobby: 0.2.17
       unbash: 4.0.10
       yaml: 2.9.0
-      zod: 4.4.3
+      zod: 4.6.6
 
   koa-compose@4.1.0: {}
 
@@ -16797,7 +16791,7 @@ snapshots:
     dependencies:
       '@babel/parser': 7.29.2
       '@babel/types': 7.29.0
-      source-map-js: 1.2.2
+      source-map-js: 1.2.4
 
   make-dir@3.1.0:
     dependencies:
@@ -18074,41 +18068,41 @@ snapshots:
 
   possible-typed-array-names@1.1.0: {}
 
-  postcss-loader@8.2.0(postcss@8.5.24)(typescript@5.9.3)(webpack@5.104.1(esbuild@0.25.12)):
+  postcss-loader@8.2.0(postcss@8.5.25)(typescript@5.9.3)(webpack@5.104.1(esbuild@0.25.12)):
     dependencies:
       cosmiconfig: 9.0.0(typescript@5.9.3)
       jiti: 2.6.1
-      postcss: 8.5.24
+      postcss: 8.5.25
       semver: 7.7.3
     optionalDependencies:
       webpack: 5.104.1(esbuild@0.25.12)
     transitivePeerDependencies:
       - typescript
 
-  postcss-modules-extract-imports@3.1.0(postcss@8.5.24):
+  postcss-modules-extract-imports@3.1.0(postcss@8.5.25):
     dependencies:
-      postcss: 8.5.24
+      postcss: 8.5.25
 
-  postcss-modules-local-by-default@4.2.0(postcss@8.5.24):
+  postcss-modules-local-by-default@4.2.0(postcss@8.5.25):
     dependencies:
-      icss-utils: 5.1.0(postcss@8.5.24)
-      postcss: 8.5.24
+      icss-utils: 5.1.0(postcss@8.5.25)
+      postcss: 8.5.25
       postcss-selector-parser: 7.1.1
       postcss-value-parser: 4.2.0
 
-  postcss-modules-scope@3.2.1(postcss@8.5.24):
+  postcss-modules-scope@3.2.1(postcss@8.5.25):
     dependencies:
-      postcss: 8.5.24
+      postcss: 8.5.25
       postcss-selector-parser: 7.1.1
 
-  postcss-modules-values@4.0.0(postcss@8.5.24):
+  postcss-modules-values@4.0.0(postcss@8.5.25):
     dependencies:
-      icss-utils: 5.1.0(postcss@8.5.24)
-      postcss: 8.5.24
+      icss-utils: 5.1.0(postcss@8.5.25)
+      postcss: 8.5.25
 
-  postcss-nested@6.2.0(postcss@8.5.24):
+  postcss-nested@6.2.0(postcss@8.5.25):
     dependencies:
-      postcss: 8.5.24
+      postcss: 8.5.25
       postcss-selector-parser: 6.1.4
 
   postcss-selector-parser@6.1.4:
@@ -18127,13 +18121,13 @@ snapshots:
     dependencies:
       nanoid: 3.3.20
       picocolors: 1.1.1
-      source-map-js: 1.2.2
+      source-map-js: 1.2.4
 
-  postcss@8.5.24:
+  postcss@8.5.25:
     dependencies:
       nanoid: 3.3.20
       picocolors: 1.1.1
-      source-map-js: 1.2.2
+      source-map-js: 1.2.4
 
   postgres-array@2.0.0: {}
 
@@ -18656,7 +18650,7 @@ snapshots:
       adjust-sourcemap-loader: 4.0.0
       convert-source-map: 1.9.0
       loader-utils: 2.0.4
-      postcss: 8.5.24
+      postcss: 8.5.25
       source-map: 0.6.1
 
   resolve@1.22.11:
@@ -18938,7 +18932,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.3.0
 
-  source-map-js@1.2.2: {}
+  source-map-js@1.2.4: {}
 
   source-map-support@0.5.21:
     dependencies:
@@ -19245,16 +19239,16 @@ snapshots:
 
   tldts-core@7.4.18: {}
 
-  tldts-core@7.4.19:
+  tldts-core@7.5.5:
     optional: true
 
   tldts@7.4.18:
     dependencies:
       tldts-core: 7.4.18
 
-  tldts@7.4.19:
+  tldts@7.5.5:
     dependencies:
-      tldts-core: 7.4.19
+      tldts-core: 7.5.5
     optional: true
 
   to-buffer@1.2.2:
@@ -19275,7 +19269,7 @@ snapshots:
 
   tough-cookie@6.1.0:
     dependencies:
-      tldts: 7.4.19
+      tldts: 7.5.5
     optional: true
 
   tr46@6.0.0:
@@ -19658,7 +19652,7 @@ snapshots:
       esbuild: 0.28.2
       fdir: 6.5.0(picomatch@4.0.7)
       picomatch: 4.0.7
-      postcss: 8.5.24
+      postcss: 8.5.25
       rollup: 4.67.4
       tinyglobby: 0.2.17
     optionalDependencies:
@@ -19670,7 +19664,7 @@ snapshots:
       tsx: 4.23.15
       yaml: 2.9.0
 
-  vitest@4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@20.8.9)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0)):
+  vitest@4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@21.0.4)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.11
       '@vitest/mocker': 4.1.11(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
@@ -19696,7 +19690,7 @@ snapshots:
       '@opentelemetry/api': 1.10.0
       '@types/node': 26.6.2
       '@vitest/coverage-v8': 4.1.11(vitest@4.1.11)
-      happy-dom: 20.8.9
+      happy-dom: 21.0.4
       jsdom: 27.4.0(@noble/hashes@2.4.0)
     transitivePeerDependencies:
       - msw
@@ -19903,15 +19897,11 @@ snapshots:
 
   yoctocolors@2.2.0: {}
 
-  zod-validation-error@4.0.2(zod@3.25.76):
+  zod-validation-error@4.0.2(zod@4.6.6):
     dependencies:
-      zod: 3.25.76
+      zod: 4.6.6
 
-  zod@3.25.76: {}
-
-  zod@4.4.3: {}
-
-  zod@4.6.5: {}
+  zod@4.6.6: {}
 
   zustand@4.5.7(@types/react@19.3.0)(immer@11.1.21)(react@19.3.1):
     dependencies:
