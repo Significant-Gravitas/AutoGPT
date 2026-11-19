@@ -3,6 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
+import { LoadingSetup } from "./components/LoadingSetup/LoadingSetup";
 import { ProgressBar } from "./components/ProgressBar";
 import { ProgressError } from "./components/ProgressError";
 import { StepIndicator } from "./components/StepIndicator";
@@ -69,10 +70,7 @@ export default function OnboardingPage() {
         retry={retryProgress}
       />
     ) : (
-      <WizardPlaceholder
-        message="Loading your setup…"
-        totalSteps={totalSteps}
-      />
+      <LoadingSetup totalSteps={totalSteps} />
     );
 
   // ProgressBar + StepIndicator track only the user-interactive steps.

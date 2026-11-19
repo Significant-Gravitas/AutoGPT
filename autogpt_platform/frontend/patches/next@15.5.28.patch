@@ -1,0 +1,34 @@
+diff --git a/dist/client/components/app-router-instance.js b/dist/client/components/app-router-instance.js
+index 9742dfaec8d4a4250b0634e2c7683cd04b59b281..6693142e4ea346a718b6524bbce89f5d4da3c808 100644
+--- a/dist/client/components/app-router-instance.js
++++ b/dist/client/components/app-router-instance.js
+@@ -135,6 +135,12 @@ function dispatchAction(actionQueue, payload, setState) {
+         // The rest of the current queue should still execute after this navigation.
+         // (Note that it can't contain any earlier navigations, because we always put those into `actionQueue.pending` by calling `runAction`)
+         newAction.next = actionQueue.pending.next;
++        // Backported from vercel/next.js#95391 (AutoGPT #16965): an action queued
++        // while this navigation runs must follow it, not the action it discards,
++        // or it never runs and its caller waits forever.
++        if (actionQueue.last === actionQueue.pending) {
++            actionQueue.last = newAction;
++        }
+         // if the pending action was a server action, mark the queue as needing a refresh once events are processed
+         if (actionQueue.pending.payload.type === _routerreducertypes.ACTION_SERVER_ACTION) {
+             actionQueue.needsRefresh = true;
+diff --git a/dist/esm/client/components/app-router-instance.js b/dist/esm/client/components/app-router-instance.js
+index c6e1ee7ffcbea1a31215929ad56917849791c196..445bc79a8e31a7ec939e6bc58bfd6ad01bae7755 100644
+--- a/dist/esm/client/components/app-router-instance.js
++++ b/dist/esm/client/components/app-router-instance.js
+@@ -101,6 +101,12 @@ function dispatchAction(actionQueue, payload, setState) {
+         // The rest of the current queue should still execute after this navigation.
+         // (Note that it can't contain any earlier navigations, because we always put those into `actionQueue.pending` by calling `runAction`)
+         newAction.next = actionQueue.pending.next;
++        // Backported from vercel/next.js#95391 (AutoGPT #16965): an action queued
++        // while this navigation runs must follow it, not the action it discards,
++        // or it never runs and its caller waits forever.
++        if (actionQueue.last === actionQueue.pending) {
++            actionQueue.last = newAction;
++        }
+         // if the pending action was a server action, mark the queue as needing a refresh once events are processed
+         if (actionQueue.pending.payload.type === ACTION_SERVER_ACTION) {
+             actionQueue.needsRefresh = true;

@@ -16,6 +16,7 @@ import {
   installGtagShim,
   removeGtagShim,
 } from "@/tests/integrations/gtag-shim";
+import { SETUP_LOAD_DEADLINE_MS } from "../components/LoadingSetup/useLoadingSetup";
 import OnboardingPage from "../page";
 import { useOnboardingWizardStore } from "../store";
 import { progressStorageKey } from "../progress";
@@ -975,4 +976,49 @@ it("lets a new account finish while the previous account's profile save is outst
   await act(async () => release?.({ status: 200 }));
   expect(completeStep).toHaveBeenCalledOnce();
   expect(screen.queryByText(/couldn't save your profile/i)).toBeNull();
+});
+
+describe("a setup that never finishes loading (#16965)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("ends in an error with a retry instead of loading forever", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // The page's sign-in check never reports the account.
+    user = null;
+    render(<OnboardingPage />);
+    expect(screen.getByRole("status").textContent).toBe("Loading your setup…");
+
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS - 1));
+    expect(screen.queryByRole("button", { name: "Try Again" })).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+
+    const reload = vi
+      .spyOn(window.location, "reload")
+      .mockImplementation(() => {});
+    fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+    expect(reload).toHaveBeenCalledOnce();
+    reload.mockRestore();
+  });
+
+  it("still opens the wizard when the account arrives after the error", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    user = null;
+    const view = render(<OnboardingPage />);
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS));
+    expect(screen.getByRole("button", { name: "Try Again" })).toBeDefined();
+
+    user = {
+      id: "u1",
+      email: "reinier@example.com",
+      user_metadata: { name: "Reinier Bot" },
+    };
+    view.rerender(<OnboardingPage />);
+
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("step-team")).toBeDefined(),
+    );
+    expect(screen.queryByRole("button", { name: "Try Again" })).toBeNull();
+  });
 });
