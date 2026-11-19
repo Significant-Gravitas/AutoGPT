@@ -1,5 +1,7 @@
 """Unit tests for AgentValidator."""
 
+import time
+
 import pytest
 
 from backend.blocks.data_manipulation import CreateListBlock
@@ -10,6 +12,7 @@ from .helpers import (
     AGENT_INPUT_BLOCK_ID,
     AGENT_OUTPUT_BLOCK_ID,
     MCP_TOOL_BLOCK_ID,
+    TOOL_ORCHESTRATOR_BLOCK_ID,
     generate_uuid,
 )
 from .validator import AgentValidator
@@ -338,6 +341,29 @@ class TestValidatePromptDoubleCurlyBracesSpaces:
 
         assert v.validate_prompt_double_curly_braces_spaces(agent) is False
         assert any("spaces" in e for e in v.errors)
+
+    def test_spaces_in_braces_after_stray_braces_fails(self):
+        v = AgentValidator()
+        node = _make_node(input_default={"prompt": "{{{ {{user name}} and {{ok}}"})
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_prompt_double_curly_braces_spaces(agent) is False
+        assert len(v.errors) == 1
+        assert "'{{user name}}' should be '{{user_name}}'" in v.errors[0]
+
+    @pytest.mark.parametrize(
+        "prompt",
+        ["{" * 50_000, "{{a" * 20_000, "{{" + "a" * 50_000, "{{a}" * 15_000],
+        ids=["open_braces", "unclosed_placeholders", "long_unclosed", "half_closed"],
+    )
+    def test_unclosed_braces_are_checked_quickly(self, prompt: str):
+        v = AgentValidator()
+        node = _make_node(input_default={"prompt": prompt})
+        agent = _make_agent(nodes=[node])
+
+        started = time.monotonic()
+        assert v.validate_prompt_double_curly_braces_spaces(agent) is True
+        assert time.monotonic() - started < 2
 
 
 # ============================================================================
@@ -769,6 +795,29 @@ class TestValidate:
         assert error_message is not None
         assert "AgentInputBlock" in error_message
         assert "AgentOutputBlock" in error_message
+
+    @pytest.mark.parametrize("links", [[{}] * 5_000, []])
+    def test_errors_are_bounded(self, links):
+        """Many errors, each repeating a long name, give a bounded message."""
+        v = AgentValidator()
+        node = _make_node(
+            node_id="n" * 10_000,
+            block_id="b1",
+            input_default={str(i): 0 for i in range(5_000)},
+        )
+
+        is_valid, error_message = v.validate(
+            _make_agent(nodes=[node], links=links), [_make_block(block_id="b1")]
+        )
+
+        assert is_valid is False
+        assert len(v.errors) == AgentValidator.MAX_ERRORS + 1
+        assert all(
+            len(error) <= AgentValidator.MAX_ERROR_LENGTH + 3 for error in v.errors
+        )
+        assert "the rest are not listed" in v.errors[-1]
+        assert error_message is not None
+        assert len(error_message) < 500_000
 
 
 class TestValidateSinkInputExistence:
@@ -1657,3 +1706,122 @@ class TestListIndexLinks:
         agent = _make_agent(nodes=nodes, links=[link])
 
         assert v.validate_source_output_existence(agent, blocks) is valid
+
+
+# ============================================================================
+# validate_orchestrator_blocks
+# ============================================================================
+
+
+class TestValidateOrchestratorBlocks:
+    def _orchestrator(self, node_id: str) -> dict:
+        return _make_node(
+            node_id=node_id,
+            block_id=TOOL_ORCHESTRATOR_BLOCK_ID,
+            input_default={"agent_mode_max_iterations": 10},
+        )
+
+    def test_orchestrator_with_a_downstream_tool_passes(self):
+        v = AgentValidator()
+        agent = _make_agent(
+            nodes=[self._orchestrator("orc"), _make_node(node_id="tool")],
+            links=[_make_link(source_id="orc", source_name="tools", sink_id="tool")],
+        )
+
+        assert v.validate_orchestrator_blocks(agent) is True
+        assert v.errors == []
+
+    @pytest.mark.parametrize(
+        "links",
+        [
+            pytest.param([], id="no-links"),
+            pytest.param(
+                [_make_link(source_id="orc", source_name="output", sink_id="tool")],
+                id="not-from-tools",
+            ),
+            pytest.param(
+                [_make_link(source_id="orc", source_name="tools", sink_id="out")],
+                id="only-to-an-output-block",
+            ),
+            pytest.param(
+                [_make_link(source_id="other", source_name="tools", sink_id="tool")],
+                id="another-nodes-tools",
+            ),
+        ],
+    )
+    def test_orchestrator_without_a_downstream_tool_fails(self, links):
+        v = AgentValidator()
+        agent = _make_agent(
+            nodes=[
+                self._orchestrator("orc"),
+                _make_node(node_id="tool"),
+                _make_node(node_id="other"),
+                _make_node(node_id="out", block_id=AGENT_OUTPUT_BLOCK_ID),
+            ],
+            links=links,
+        )
+
+        assert v.validate_orchestrator_blocks(agent) is False
+        assert len(v.errors) == 1
+        assert "no downstream tool blocks connected" in v.errors[0]
+
+
+# ============================================================================
+# Large graphs
+# ============================================================================
+
+
+_SUB_AGENT = {
+    "graph_id": "sub-agent",
+    "graph_version": 1,
+    "name": "Sub-agent",
+    "input_schema": {"properties": {"query": {}}},
+}
+
+
+class TestLargeGraphs:
+    """The validator's work grows with the graph, not with nodes x links."""
+
+    @pytest.mark.parametrize(
+        "block_id, check",
+        [
+            pytest.param(
+                "block-1",
+                lambda v, agent: v.validate_required_inputs(agent, [_make_block()]),
+                id="validate_required_inputs",
+            ),
+            pytest.param(
+                AGENT_EXECUTOR_BLOCK_ID,
+                lambda v, agent: v.validate_agent_executor_blocks(agent, [_SUB_AGENT]),
+                id="validate_agent_executor_blocks",
+            ),
+            pytest.param(
+                TOOL_ORCHESTRATOR_BLOCK_ID,
+                lambda v, agent: v.validate_orchestrator_blocks(agent),
+                id="validate_orchestrator_blocks",
+            ),
+        ],
+    )
+    def test_check_scans_no_links_per_node(self, block_id, check):
+        nodes = [
+            {
+                "id": f"n{i}",
+                "block_id": block_id,
+                "input_default": {"graph_id": "sub-agent"},
+            }
+            for i in range(30_000)
+        ]
+        # Each node passes, so the check walks all of them: a node that failed
+        # would count toward the error cap, which ends the run early.
+        links = [
+            {"source_id": f"n{i}", "source_name": "tools", "sink_id": "missing"}
+            for i in range(30_000)
+        ]
+        agent = _make_agent(nodes=nodes, links=links)
+
+        started = time.perf_counter()
+        assert check(AgentValidator(), agent) is True
+
+        # One pass over the links takes well under a second; the bound leaves
+        # room for a CI pause.
+        assert time.perf_counter() - started < 10.0
