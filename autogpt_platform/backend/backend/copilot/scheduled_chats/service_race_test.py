@@ -33,13 +33,13 @@ async def test_concurrent_failures_resume_every_job_they_paused(
     """Resume restores both fire times and leaves an owner-paused job alone."""
     watchdog_seconds = 30
     # The outer watchdog bounds the race. Lock expiry is tested separately.
-    mocker.patch.object(scheduler_write_lock, "_LOCK_WAIT_SECONDS", watchdog_seconds)
     mocker.patch.object(
-        scheduler_write_lock, "get_redis_async", return_value=FakeAtResetRedis()
+        scheduler_write_lock, "_LOCK_WAIT_SECONDS", 2 * watchdog_seconds
     )
+    redis = FakeAtResetRedis()
+    mocker.patch.object(scheduler_write_lock, "get_redis_async", return_value=redis)
     active = {"job-a", "job-b"}
     first_paused_a = asyncio.Event()
-    second_started = asyncio.Event()
     finish_first_pause = asyncio.Event()
 
     async def pause(schedule_id: str, *, user_id: str) -> bool:
@@ -88,16 +88,13 @@ async def test_concurrent_failures_resume_every_job_they_paused(
         nonlocal row
         row = None
 
-    mocker.patch.object(
-        ScheduledChatStreak,
-        "prisma",
-        return_value=MagicMock(
-            find_unique=AsyncMock(side_effect=lambda **_: row),
-            update_many=AsyncMock(side_effect=update_many),
-            delete=AsyncMock(side_effect=delete),
-            count=AsyncMock(return_value=1),
-        ),
+    rows = MagicMock(
+        find_unique=AsyncMock(side_effect=lambda **_: row),
+        update_many=AsyncMock(side_effect=update_many),
+        delete=AsyncMock(side_effect=delete),
+        count=AsyncMock(return_value=1),
     )
+    mocker.patch.object(ScheduledChatStreak, "prisma", return_value=rows)
     mocker.patch.object(
         ExpertRoutine,
         "prisma",
@@ -126,15 +123,12 @@ async def test_concurrent_failures_resume_every_job_they_paused(
             routine_id="routine-1",
         )
 
-    async def second_run() -> None:
-        second_started.set()
-        await record_scheduled_run(routine_run("job-b"))
-
     async with asyncio.timeout(watchdog_seconds), asyncio.TaskGroup() as tasks:
         tasks.create_task(record_scheduled_run(routine_run("job-a")))
         await first_paused_a.wait()
-        tasks.create_task(second_run())
-        await second_started.wait()
+        tasks.create_task(record_scheduled_run(routine_run("job-b")))
+        await redis.lock_contended.wait()
+        rows.find_unique.assert_awaited_once()
         finish_first_pause.set()
 
     assert await resume_scheduled_chat("owner", "routine-1") is True

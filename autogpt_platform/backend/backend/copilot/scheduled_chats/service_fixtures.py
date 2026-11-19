@@ -1,10 +1,14 @@
 """Scheduler and inputs shared by the scheduled-chat service tests."""
 
+import asyncio
+from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pytest_mock import MockerFixture
+from redis.asyncio.lock import Lock as AsyncRedisLock
 
+from backend.copilot import scheduler_write_lock
 from backend.copilot.scheduled_chats import jobs
 from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
 from backend.copilot.scheduled_chats.service import ScheduledRun
@@ -24,6 +28,32 @@ def scheduler_fixture(mocker: MockerFixture) -> MagicMock:
     )
     mocker.patch.object(jobs, "get_scheduler_client", return_value=client)
     return client
+
+
+@pytest.fixture(name="watch_scheduler_lock")
+def watch_scheduler_lock_fixture(
+    mocker: MockerFixture,
+) -> Callable[[str, str], asyncio.Event]:
+    contention: dict[str, asyncio.Event] = {}
+    do_acquire = AsyncRedisLock.do_acquire
+
+    async def observe_attempt(lock: AsyncRedisLock, token: str | bytes) -> bool:
+        acquired = await do_acquire(lock, token)
+        if not acquired and isinstance(lock.name, str):
+            if (event := contention.get(lock.name)) is not None:
+                event.set()
+        return acquired
+
+    mocker.patch.object(AsyncRedisLock, "do_acquire", new=observe_attempt)
+    mocker.patch.object(scheduler_write_lock, "_LOCK_WAIT_SECONDS", 60)
+
+    def watch(user_id: str, schedule_key: str) -> asyncio.Event:
+        key = f"copilot:scheduled_chat_lock:{len(user_id)}:{user_id}:{schedule_key}"
+        event = asyncio.Event()
+        contention[key] = event
+        return event
+
+    return watch
 
 
 def scheduled_run(

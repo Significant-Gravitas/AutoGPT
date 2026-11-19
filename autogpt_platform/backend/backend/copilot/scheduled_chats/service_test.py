@@ -36,6 +36,9 @@ from backend.copilot.scheduled_chats.service_fixtures import scheduled_run as _r
 from backend.copilot.scheduled_chats.service_fixtures import (
     scheduler_fixture as scheduler_fixture,
 )
+from backend.copilot.scheduled_chats.service_fixtures import (
+    watch_scheduler_lock_fixture as watch_scheduler_lock_fixture,
+)
 from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
 
@@ -386,12 +389,11 @@ async def test_a_run_that_fired_before_the_pause_changes_nothing(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_two_runs_finishing_together_keep_the_pause(
-    server: SpinTestServer, scheduler: MagicMock
+    server: SpinTestServer, scheduler: MagicMock, watch_scheduler_lock, mocker
 ):
     """The second failure waits for the first pause and leaves its row alone."""
     pause_started = asyncio.Event()
     finish_pause = asyncio.Event()
-    straggler_started = asyncio.Event()
 
     async def pause(schedule_id: str, *, user_id: str) -> bool:
         pause_started.set()
@@ -401,20 +403,20 @@ async def test_two_runs_finishing_together_keep_the_pause(
     scheduler.pause_schedule.side_effect = pause
     user_id, session_id = await _owner()
     run = _run(user_id, session_id, RunOutcome(failure=_DISCORD, whole_run=True))
-
-    async def straggler() -> None:
-        straggler_started.set()
-        await record_scheduled_run(run)
+    contend = watch_scheduler_lock(user_id, run.schedule_key)
+    read_streak = mocker.spy(ScheduledChatStreakActions, "find_unique")
 
     try:
         for _ in range(2):
             await record_scheduled_run(run)
 
-        async with asyncio.timeout(10), asyncio.TaskGroup() as tasks:
+        async with asyncio.timeout(30), asyncio.TaskGroup() as tasks:
             tasks.create_task(record_scheduled_run(run))
             await pause_started.wait()
-            tasks.create_task(straggler())
-            await straggler_started.wait()
+            reads = read_streak.await_count
+            tasks.create_task(record_scheduled_run(run))
+            await contend.wait()
+            assert read_streak.await_count == reads
             finish_pause.set()
 
         scheduler.pause_schedule.assert_awaited_once()
@@ -454,12 +456,11 @@ async def test_a_good_run_that_read_the_streak_before_the_pause_keeps_it(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_new_failure_finishing_with_the_pause_keeps_it(
-    server: SpinTestServer, scheduler: MagicMock
+    server: SpinTestServer, scheduler: MagicMock, watch_scheduler_lock, mocker
 ):
     """A different failure reported during a pause keeps that pause."""
     pause_started = asyncio.Event()
     finish_pause = asyncio.Event()
-    other_started = asyncio.Event()
 
     async def pause(schedule_id: str, *, user_id: str) -> bool:
         pause_started.set()
@@ -469,20 +470,22 @@ async def test_a_new_failure_finishing_with_the_pause_keeps_it(
     scheduler.pause_schedule.side_effect = pause
     user_id, session_id = await _owner()
     run = _run(user_id, session_id, RunOutcome(failure=_DISCORD, whole_run=True))
-
-    async def other() -> None:
-        other_started.set()
-        await record_scheduled_run(_run(user_id, session_id, _TWITTER_OUTRIGHT))
+    contend = watch_scheduler_lock(user_id, run.schedule_key)
+    read_streak = mocker.spy(ScheduledChatStreakActions, "find_unique")
 
     try:
         for _ in range(2):
             await record_scheduled_run(run)
 
-        async with asyncio.timeout(10), asyncio.TaskGroup() as tasks:
+        async with asyncio.timeout(30), asyncio.TaskGroup() as tasks:
             tasks.create_task(record_scheduled_run(run))
             await pause_started.wait()
-            tasks.create_task(other())
-            await other_started.wait()
+            reads = read_streak.await_count
+            tasks.create_task(
+                record_scheduled_run(_run(user_id, session_id, _TWITTER_OUTRIGHT))
+            )
+            await contend.wait()
+            assert read_streak.await_count == reads
             finish_pause.set()
 
         paused = await list_paused_scheduled_chats(user_id)
@@ -613,35 +616,32 @@ async def _alert(user_id: str) -> AlertCondition | None:
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_chat_resumed_as_its_pause_raises_the_alert_is_left_without_one(
-    server: SpinTestServer, scheduler: MagicMock, mocker
+    server: SpinTestServer, scheduler: MagicMock, watch_scheduler_lock, mocker
 ):
     """Resuming while the pause raises its alert clears the alert."""
     alert_started = asyncio.Event()
     finish_alert = asyncio.Event()
-    resume_started = asyncio.Event()
     raise_paused = service.alerts.raise_paused
     user_id, session_id = await _owner()
     run = _run(user_id, session_id, RunOutcome(failure=_DISCORD, whole_run=True))
+    contend = watch_scheduler_lock(user_id, run.schedule_key)
 
     async def held_alert(*args, **kwargs):
         alert_started.set()
         await finish_alert.wait()
         await raise_paused(*args, **kwargs)
 
-    async def resume() -> bool:
-        resume_started.set()
-        return await resume_scheduled_chat(user_id, "sched-1")
-
     mocker.patch.object(service.alerts, "raise_paused", new=held_alert)
     try:
         for _ in range(2):
             await record_scheduled_run(run)
 
-        async with asyncio.timeout(10), asyncio.TaskGroup() as tasks:
+        async with asyncio.timeout(30), asyncio.TaskGroup() as tasks:
             tasks.create_task(record_scheduled_run(run))
             await alert_started.wait()
-            result = tasks.create_task(resume())
-            await resume_started.wait()
+            result = tasks.create_task(resume_scheduled_chat(user_id, run.schedule_key))
+            await contend.wait()
+            scheduler.resume_schedule.assert_not_awaited()
             finish_alert.set()
 
         assert result.result() is True
