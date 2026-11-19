@@ -18,7 +18,7 @@ from .agent_output import AgentOutputTool
 from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
-from .capability_gates import tool_refused_message
+from .capability_gates import gate_denied, tool_refused_message
 from .chat_platform import (
     EditChatPlatformMessageTool,
     ListChatPlatformChannelsTool,
@@ -493,10 +493,10 @@ async def execute_tool(
     # ``run_capability`` and the permission and envelope gates it applies.
     # Deferred-ness is a property of the tool, not of the turn, so it is
     # refused here rather than left to each caller's gate.
-    if tool_name in DEFERRED_TOOL_NAMES or (
-        tool_name in tool_names_in_groups(disabled_groups)
-        or tool_name in frozenset(disabled_tools)
-    ):
+    denied = tool_name in tool_names_in_groups(
+        disabled_groups
+    ) or tool_name in frozenset(disabled_tools)
+    if denied or tool_name in DEFERRED_TOOL_NAMES:
         logger.warning(
             "Refusing disabled tool: tool=%s user=%s session=%s",
             tool_name,
@@ -507,7 +507,11 @@ async def execute_tool(
             toolCallId=tool_call_id,
             toolName=tool_name,
             output=ErrorResponse(
-                message=tool_refused_message(tool_name),
+                message=(
+                    deferred_name_message(tool_name)
+                    if not denied and is_deferred_name_slip(tool_name)
+                    else tool_refused_message(tool_name)
+                ),
                 error="tool_disabled",
                 session_id=session.session_id,
             ).model_dump_json(),
@@ -533,3 +537,18 @@ async def execute_tool(
     )
 
     return await tool.execute(user_id, session, tool_call_id, **parameters)
+
+
+def is_deferred_name_slip(name: str) -> bool:
+    """Whether naming *name* directly is a slip rather than a denial: a
+    deferred tool this turn may run, through ``run_capability``."""
+    return name in DEFERRED_TOOL_NAMES and not gate_denied(name)
+
+
+def deferred_name_message(name: str) -> str:
+    """Send a model that named a deferred tool to the way it runs, instead of
+    telling it the work cannot be done."""
+    return (
+        f"'{name}' is not called by name, so this call did not run. "
+        f'Run it with run_capability(id="tool:{name}", input={{...}}).'
+    )

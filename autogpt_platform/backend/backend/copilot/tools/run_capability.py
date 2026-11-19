@@ -393,7 +393,7 @@ async def _describe_tool(
             message=UNKNOWN_ID_HINT, session_id=session.session_id
         ).from_outside()
     if gate_denied(name):
-        return gate_denied_error(name, session.session_id)
+        return gate_denied_error(name, session.session_id, describing=True)
     return CapabilityDetailsResponse(
         message=f"{tool.description} Call again without validate_only to run.",
         capability=entry.listing(),

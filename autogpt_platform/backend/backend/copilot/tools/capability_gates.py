@@ -29,16 +29,25 @@ def gate_denied(name: str) -> bool:
     )
 
 
-def gate_denied_error(name: str, session_id: str) -> ErrorResponse:
+def gate_denied_error(
+    name: str, session_id: str, *, describing: bool = False
+) -> ErrorResponse:
+    """The refusal for *name*. A *describing* lookup attempted nothing, so it
+    is not told that something did not happen."""
+    message = (
+        f"'{name}' is not available in this session's permissions. "
+        "If the task needs it, say so instead of working around it."
+        if describing
+        else tool_refused_message(name)
+    )
     return ErrorResponse(
-        message=tool_refused_message(name),
-        error="tool_disabled",
-        session_id=session_id,
+        message=message, error="tool_disabled", session_id=session_id
     ).from_outside()
 
 
 def tool_refused_message(name: str) -> str:
-    """What the model is told when a turn refuses *name*, on every refusal path.
+    """What the model is told when a turn refuses a call to *name*: from this
+    gate, from ``execute_tool``, and from the SDK engine's PreToolUse hook.
 
     The model reports what it did, and a refusal it reads as a hiccup turns
     into a claim: a routine run refused ``schedule_routine`` and Otto went on
