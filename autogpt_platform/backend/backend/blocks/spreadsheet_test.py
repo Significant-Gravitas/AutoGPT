@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import pytest
 from openpyxl import Workbook
+from openpyxl.styles import Font
 
 from backend.blocks.spreadsheet import ReadSpreadsheetBlock
 from backend.data.execution import ExecutionContext
@@ -244,6 +245,60 @@ async def test_excel_within_the_caps_is_not_reported(workbook_path):
         await read_rows(file_input=MediaFileType("book.xlsx"))
 
     report.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "cells, refusal",
+    [
+        ({"A1": "id", "XFD400": "far"}, "cells"),
+        ({f"XFD{row}": None for row in range(1, 400)}, "cells"),
+        # A cell holds at most 32,767 characters, so 1,100 full ones pass 32 MB.
+        ({f"A{row}": "x" * 32_767 for row in range(1, 1101)}, "MB of text"),
+    ],
+    ids=["grid", "listed-empty-cells", "text"],
+)
+async def test_excel_sheet_reading_past_the_caps_is_refused_unread(cells, refusal):
+    target = save_workbook("big.xlsx", cells)
+    try:
+        with (
+            patch(
+                "pandas.read_excel",
+                side_effect=AssertionError("the workbook was read"),
+            ) as read_excel,
+            pytest.raises(ValueError, match=refusal),
+        ):
+            await read_rows(file_input=MediaFileType(target.name))
+    finally:
+        target.unlink(missing_ok=True)
+    read_excel.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_rows_past_the_output_cap_are_refused():
+    contents = "h" * 100_000 + "\n" + "1\n" * 400
+
+    with pytest.raises(ValueError, match="rows add up to more than 32 MB"):
+        await read_rows(contents=contents)
+
+
+def save_workbook(name: str, cells: dict[str, str | None]) -> Path:
+    """Write a one-sheet workbook into the block's exec_file directory.
+
+    A ``None`` cell is written as an empty bold cell, listed in the file.
+    """
+    workbook = Workbook()
+    sheet = workbook.active
+    assert sheet is not None
+    for ref, value in cells.items():
+        sheet[ref] = value
+        if value is None:
+            sheet[ref].font = Font(bold=True)
+    base = Path(get_exec_file_path(GRAPH_EXEC_ID, ""))
+    base.mkdir(parents=True, exist_ok=True)
+    target = base / name
+    workbook.save(target)
+    return target
 
 
 @pytest.mark.asyncio

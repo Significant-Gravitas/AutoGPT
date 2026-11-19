@@ -13,8 +13,14 @@ from backend.blocks._base import (
 from backend.data.execution import ExecutionContext
 from backend.data.model import ContributorDetails, SchemaField
 from backend.util.file import get_exec_file_path, store_media_file
-from backend.util.file_content_parser import check_xlsx_unpacked_size
+from backend.util.file_content_parser import (
+    check_xlsx_sheet_size,
+    check_xlsx_unpacked_size,
+)
 from backend.util.type import MediaFileType
+
+# The rows, counted as the JSON they are output as, header names included.
+MAX_ROWS_OUTPUT_SIZE = 32 * 1024 * 1024
 
 
 class ReadSpreadsheetBlock(Block):
@@ -137,10 +143,13 @@ class ReadSpreadsheetBlock(Block):
                 try:
                     import pandas as pd
 
-                    def _read_xlsx() -> "pd.DataFrame":
+                    def _read_xlsx() -> str:
                         workbook = Path(file_path).read_bytes()
                         check_xlsx_unpacked_size(
                             io.BytesIO(workbook), source="spreadsheet_block"
+                        )
+                        check_xlsx_sheet_size(
+                            io.BytesIO(workbook), input_data.sheet_name
                         )
                         # dtype=object and keep_default_na=False keep the sheet's own
                         # values: "N/A"/"NULL"/"NaN" stay text instead of being read as
@@ -150,27 +159,26 @@ class ReadSpreadsheetBlock(Block):
                         # reader below, so pandas doesn't rename duplicate or blank
                         # headers ("a.1", "Unnamed: 2") and Excel gets the same
                         # header handling as CSV.
-                        return pd.read_excel(
+                        df = pd.read_excel(
                             io.BytesIO(workbook),
                             sheet_name=input_data.sheet_name or 0,
                             header=None,
                             dtype=object,
                             keep_default_na=False,
                         )
+                        # Write the CSV with the same dialect it is parsed with below,
+                        # otherwise a non-default delimiter yields a single column.
+                        csv_buffer = StringIO()
+                        df.to_csv(
+                            csv_buffer,
+                            index=False,
+                            header=False,
+                            sep=input_data.delimiter,
+                            quotechar=input_data.quotechar,
+                        )
+                        return csv_buffer.getvalue()
 
-                    df = await asyncio.to_thread(_read_xlsx)
-
-                    # Write the CSV with the same dialect it is parsed with below,
-                    # otherwise a non-default delimiter yields a single column.
-                    csv_buffer = StringIO()
-                    df.to_csv(
-                        csv_buffer,
-                        index=False,
-                        header=False,
-                        sep=input_data.delimiter,
-                        quotechar=input_data.quotechar,
-                    )
-                    csv_content = csv_buffer.getvalue()
+                    csv_content = await asyncio.to_thread(_read_xlsx)
 
                 except ImportError:
                     raise ValueError(
@@ -238,7 +246,20 @@ class ReadSpreadsheetBlock(Block):
             return data
 
         # csv.reader yields [] for a blank line; don't turn those into {} rows.
-        rows = [process_row(row) for row in reader if row]
+        rows = []
+        output_size = 0
+        for row in reader:
+            if not row:
+                continue
+            processed = process_row(row)
+            output_size += sum(len(k) + len(v) + 6 for k, v in processed.items())
+            if output_size > MAX_ROWS_OUTPUT_SIZE:
+                raise ValueError(
+                    "The spreadsheet's rows add up to more than "
+                    f"{MAX_ROWS_OUTPUT_SIZE // (1024 * 1024)} MB; read a smaller "
+                    "file, or skip some columns."
+                )
+            rows.append(processed)
 
         if input_data.produce_singular_result:
             for processed_row in rows:

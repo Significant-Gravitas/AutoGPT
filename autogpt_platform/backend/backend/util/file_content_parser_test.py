@@ -2,6 +2,7 @@
 
 import io
 import json
+import re
 import struct
 import zipfile
 from unittest.mock import patch
@@ -592,6 +593,51 @@ class TestXlsxUnpackedSize:
         data = self._with_member(xlsx_bytes, _XLSX_MEMBER_CAP + 1)
 
         assert parse_file_content(data, "xlsx") == data
+
+    @pytest.mark.parametrize("dimension", [None, "A1:A1"])
+    def test_a_sheet_past_the_cell_cap_is_refused_unread(self, dimension):
+        """Refused whatever size the sheet's ``<dimension>`` claims, as pandas ignores it."""
+        from openpyxl import Workbook
+
+        workbook = Workbook()
+        sheet = workbook.active
+        assert sheet is not None
+        sheet["A1"], sheet["XFD400"] = "Name", "far"
+        buf = io.BytesIO()
+        workbook.save(buf)
+        data = buf.getvalue()
+        if dimension:
+            data = self._with_dimension(data, dimension)
+
+        with (
+            patch(
+                "pandas.read_excel",
+                side_effect=AssertionError("the workbook was read"),
+            ) as read_excel,
+            pytest.raises(ValueError, match="cells"),
+        ):
+            parse_file_content(data, "xlsx", strict=True)
+        read_excel.assert_not_called()
+
+    @staticmethod
+    def _with_dimension(xlsx: bytes, ref: str) -> bytes:
+        """Rewrite the first sheet's ``<dimension>`` to claim ``ref``."""
+        out = io.BytesIO()
+        with (
+            zipfile.ZipFile(io.BytesIO(xlsx)) as source,
+            zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target,
+        ):
+            for item in source.infolist():
+                content = source.read(item)
+                if item.filename == "xl/worksheets/sheet1.xml":
+                    content, found = re.subn(
+                        rb'<dimension ref="[^"]*"\s*/>',
+                        f'<dimension ref="{ref}"/>'.encode(),
+                        content,
+                    )
+                    assert found == 1
+                target.writestr(item, content)
+        return out.getvalue()
 
     def test_a_member_at_the_cap_is_read(self, xlsx_bytes: bytes):
         data = self._with_member(xlsx_bytes, _XLSX_MEMBER_CAP)
