@@ -107,6 +107,8 @@ export function AppDrawerContent({ navigation }: Props) {
       />
       {isSearching ? (
         <FlatList
+          // A key per mode, so each list starts at its top.
+          key="search"
           data={matches}
           keyExtractor={(match) => match.session.id}
           renderItem={({ item }) => (
@@ -131,6 +133,7 @@ export function AppDrawerContent({ navigation }: Props) {
         />
       ) : (
         <FlatList
+          key="recent"
           data={groups}
           keyExtractor={(group) => group.key}
           renderItem={({ item }) => (

@@ -1,7 +1,7 @@
 import type { FlashListRef } from "@shopify/flash-list";
 import { useRef, useState } from "react";
 import { Keyboard, type LayoutChangeEvent } from "react-native";
-import { useSharedValue } from "react-native-reanimated";
+import { useDerivedValue, useSharedValue } from "react-native-reanimated";
 
 import type { Turn } from "./turns";
 
@@ -20,16 +20,19 @@ export function useMessageList(topInset: number) {
   const pendingAnchor = useRef<number | null>(null);
   const [isAnchored, setIsAnchored] = useState(false);
   const [isAtEnd, setIsAtEnd] = useState(true);
-  const blankSpace = useSharedValue(0);
+  // The room under the last turn before the header's inset; null while
+  // unanchored. The inset is applied below, so a header that changes height
+  // updates the blank space without a new layout pass.
+  const roomBelow = useSharedValue<number | null>(null);
+  const blankSpace = useDerivedValue(() =>
+    roomBelow.value === null ? 0 : Math.max(0, roomBelow.value - topInset),
+  );
   const composerHeight = useSharedValue(0);
 
   function updateBlank(anchored: boolean) {
-    blankSpace.value = anchored
-      ? Math.max(
-          0,
-          viewport.current - topInset - lastTurnHeight.current - BOTTOM_PADDING,
-        )
-      : 0;
+    roomBelow.value = anchored
+      ? viewport.current - lastTurnHeight.current - BOTTOM_PADDING
+      : null;
   }
 
   /** Call once a send is accepted; `turnCount` is the turns shown before it. */

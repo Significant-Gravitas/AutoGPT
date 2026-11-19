@@ -29,7 +29,7 @@ interface Props {
 }
 
 interface Anchor {
-  right: number;
+  left: number;
   bottom: number;
 }
 
@@ -44,10 +44,14 @@ export function UserMenu({ name, email, image, onOpenSettings, onSignOut }: Prop
   const detail = name?.trim() ? email : null;
 
   function open() {
-    // Right edges line up, so the menu grows left from the avatar.
+    // Right edges line up, so the menu grows left from the avatar, but never
+    // past the window's left edge on a narrow phone.
     buttonRef.current?.measureInWindow((x, y, width) => {
       setAnchor({
-        right: Math.max(windowWidth - x - width, spacing.sm),
+        left: Math.max(
+          Math.min(x + width, windowWidth - spacing.sm) - MENU_WIDTH,
+          spacing.sm,
+        ),
         bottom: windowHeight - y + spacing.sm,
       });
     });

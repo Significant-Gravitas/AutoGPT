@@ -43,6 +43,8 @@ export function useAppDrawer(
   }
 
   function openChat(sessionID: string) {
+    // The next time the menu opens it shows its rows, not these results.
+    closeSearch();
     router.navigate({
       pathname: "/chat/[sessionId]",
       params: { sessionId: sessionID },

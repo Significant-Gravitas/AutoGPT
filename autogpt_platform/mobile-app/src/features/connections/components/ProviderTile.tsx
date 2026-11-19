@@ -18,17 +18,27 @@ const TILE_COLOURS = Object.values(palette).map((entry) => entry.hex);
 
 /** A service's logo, or its initials on a colour picked from its name. */
 export function ProviderTile({ name, logoID, size = 32 }: Props) {
-  const styles = useStyles();
-  // Kept per URL, so a tile handed another service tries its logo afresh.
-  const [failedURL, setFailedURL] = useState<string | null>(null);
-  const frame = { width: size, height: size, borderRadius: size / 4 };
   const iconURL = logoID ? logoURL(logoID) : null;
+  // Keyed by URL: a tile handed another logo, or its old one back, tries it afresh.
+  return <Tile key={iconURL ?? ""} name={name} iconURL={iconURL} size={size} />;
+}
+
+interface TileProps {
+  name: string;
+  iconURL: string | null;
+  size: number;
+}
+
+function Tile({ name, iconURL, size }: TileProps) {
+  const styles = useStyles();
+  const [hasFailed, setHasFailed] = useState(false);
+  const frame = { width: size, height: size, borderRadius: size / 4 };
 
   function handleError() {
-    setFailedURL(iconURL);
+    setHasFailed(true);
   }
 
-  if (iconURL && iconURL !== failedURL) {
+  if (iconURL && !hasFailed) {
     return (
       <View
         accessibilityElementsHidden
@@ -36,7 +46,6 @@ export function ProviderTile({ name, logoID, size = 32 }: Props) {
         style={[styles.tile, styles.logoTile, frame]}
       >
         <Image
-          key={iconURL}
           source={{ uri: iconURL }}
           style={{ width: size * 0.7, height: size * 0.7 }}
           contentFit="contain"

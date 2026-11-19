@@ -1,4 +1,4 @@
-import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import { InformationCircleIcon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Text, View } from "react-native";
 import { Drawer } from "react-native-drawer-layout";
@@ -71,6 +71,30 @@ export default function ChatScreen() {
     );
   }
 
+  function renderIdentity() {
+    if (identity) {
+      return (
+        <ChatIdentity
+          name={identity.name}
+          avatar={identity.avatar}
+          tint={identity.tint}
+          onPress={hasFiles ? openFiles : undefined}
+          actionLabel={expertID ? "open details" : "open files"}
+        />
+      );
+    }
+    // The expert's name is still loading; the panel opens anyway.
+    if (!hasFiles) return null;
+    return (
+      <IconButton
+        icon={InformationCircleIcon}
+        label={expertID ? "Open details" : "Open files"}
+        onPress={openFiles}
+        variant="floating"
+      />
+    );
+  }
+
   function renderPanel() {
     if (!sessionID) return null;
     if (expertID) {
@@ -114,17 +138,7 @@ export default function ChatScreen() {
           {renderBody()}
           {/* After the body, so it floats over the thread. */}
           <FloatingHeader
-            center={
-              identity ? (
-                <ChatIdentity
-                  name={identity.name}
-                  avatar={identity.avatar}
-                  tint={identity.tint}
-                  onPress={hasFiles ? openFiles : undefined}
-                  actionLabel={expertID ? "open details" : "open files"}
-                />
-              ) : null
-            }
+            center={renderIdentity()}
             right={
               <IconButton
                 icon={PencilEdit02Icon}
