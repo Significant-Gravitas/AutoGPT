@@ -7,6 +7,11 @@ from backend.data.auth.api_key import (
     APIKeyInfo,
     APIKeyPermission,
 )
+from backend.util.text_limits import (
+    MAX_DESCRIPTION_LENGTH,
+    MAX_ID_LENGTH,
+    MAX_NAME_LENGTH,
+)
 
 
 def _no_oauth_only_permissions(
@@ -21,16 +26,21 @@ def _no_oauth_only_permissions(
     return permissions
 
 
+# Repeats pass the enum check, so the count is what bounds the list.
 APIKeyPermissions = Annotated[
-    list[APIKeyPermission], pydantic.AfterValidator(_no_oauth_only_permissions)
+    list[APIKeyPermission],
+    pydantic.Field(max_length=len(APIKeyPermission)),
+    pydantic.AfterValidator(_no_oauth_only_permissions),
 ]
 
 
 class CreateAPIKeyRequest(pydantic.BaseModel):
-    name: str
+    name: str = pydantic.Field(max_length=MAX_NAME_LENGTH)
     permissions: APIKeyPermissions
-    description: Optional[str] = None
-    team_id: Optional[str] = None
+    description: Optional[str] = pydantic.Field(
+        default=None, max_length=MAX_DESCRIPTION_LENGTH
+    )
+    team_id: Optional[str] = pydantic.Field(default=None, max_length=MAX_ID_LENGTH)
 
 
 class CreateAPIKeyResponse(pydantic.BaseModel):
