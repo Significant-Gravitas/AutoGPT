@@ -596,6 +596,84 @@ describe("builder canvas when another workflow opens in place", () => {
   });
 });
 
+describe("builder canvas when the version it shows is fetched again", () => {
+  // Window focus or an invalidation fetches the open version again, and every
+  // response is a new object. The backend returns a version's nodes and links
+  // unordered, and can change them in place (a webhook, a model migration).
+  test.each<[string, (graph: GraphModel) => GraphModel]>([
+    ["unchanged", (graph) => graph],
+    [
+      "with changed links",
+      (graph) => ({
+        ...graph,
+        links: graph.links?.map((link) => ({
+          ...link,
+          is_static: !link.is_static,
+        })),
+      }),
+    ],
+    [
+      "with its nodes in another order",
+      (graph) => ({ ...graph, nodes: [...(graph.nodes ?? [])].reverse() }),
+    ],
+  ])(
+    "fetching it again %s keeps the user's unsaved edits",
+    async (_, change) => {
+      saveVersion(SAVED_WORKFLOW);
+      const { queryClient } = renderBuilder(
+        `?flowID=${GRAPH_ID}&flowVersion=1`,
+      );
+      await waitFor(
+        () => expect(useGraphStore.getState().loadedGraph?.version).toBe(1),
+        NETWORK_WAIT,
+      );
+      const block = useNodeStore
+        .getState()
+        .nodes.find((node) => node.data.block_id === STORE_VALUE_BLOCK.id)!;
+      act(() => {
+        useNodeStore.getState().onNodesChange([
+          {
+            type: "position",
+            id: block.id,
+            position: { x: 120, y: 80 },
+            dragging: false,
+          },
+        ]);
+        useNodeStore.getState().updateNodeData(block.id, {
+          hardcodedValues: { ...block.data.hardcodedValues, input: "edited" },
+        });
+      });
+      const edited = canvas();
+      expect(edited.nodes).toContainEqual(
+        expect.objectContaining({
+          input_default: { input: "edited" },
+          metadata: expect.objectContaining({ position: { x: 120, y: 80 } }),
+        }),
+      );
+      const loadedBefore = useGraphStore.getState().loadedGraph;
+
+      backend.graphs[GRAPH_ID][0] = change(backend.graphs[GRAPH_ID][0]);
+      await act(() =>
+        queryClient.invalidateQueries({
+          queryKey: getGetV1GetSpecificGraphQueryKey(GRAPH_ID, { version: 1 }),
+        }),
+      );
+      await waitFor(
+        () =>
+          expect(useGraphStore.getState().loadedGraph).not.toBe(loadedBefore),
+        NETWORK_WAIT,
+      );
+
+      expect(canvas().nodes, "the fetch replaced the edited blocks").toEqual(
+        edited.nodes,
+      );
+      expect(canvas().links, "the fetch replaced the canvas's links").toEqual(
+        edited.links,
+      );
+    },
+  );
+});
+
 describe("builder Run whose workflow never loads", () => {
   test("closing the builder while Run waits cancels the run, and reopening the workflow doesn't start it", async () => {
     saveVersion(SAVED_WORKFLOW);

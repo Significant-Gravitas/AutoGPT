@@ -27,7 +27,10 @@ import {
   getGraphLoadErrorToast,
   retryUnlessClientError,
 } from "../../../helpers/graphLoadError";
-import { showsAnotherSavedGraph } from "../../../helpers/waitForLoadedGraph";
+import {
+  showsAnotherSavedGraph,
+  showsSavedGraph,
+} from "../../../helpers/waitForLoadedGraph";
 import { useIsExecutionSubscribed } from "./useFlowRealtime";
 import {
   isSnapshotStatusCurrent,
@@ -204,15 +207,17 @@ export const useFlow = () => {
   }, [graph, flowVersion, resolveLatestVersion]);
 
   // Nodes and links are replaced together, once the graph's block info is in,
-  // so the canvas never pairs one graph's links with another's nodes.
+  // so the canvas never pairs one graph's links with another's nodes. Only a
+  // workflow or version the canvas isn't showing replaces it: fetching the one
+  // it shows again (window focus, an invalidation) keeps the user's edits.
   useEffect(() => {
-    if (customNodes.length === 0) return;
+    if (customNodes.length === 0 || !graph || showsSavedGraph(graph)) return;
     useNodeStore.getState().setNodes([]);
     useNodeStore.getState().clearResolutionState();
     addNodes(customNodes);
     useEdgeStore.getState().setEdges([]);
-    addLinks(graph?.links ?? []);
-  }, [customNodes, graph?.links, addNodes, addLinks]);
+    addLinks(graph.links ?? []);
+  }, [customNodes, graph, addNodes, addLinks]);
 
   // Saves wait for this (waitForLoadedGraph), so it runs after the fill. A
   // graph with no nodes has nothing to wait for. When the canvas shows another

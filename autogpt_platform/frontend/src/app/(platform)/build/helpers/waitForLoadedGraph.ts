@@ -43,12 +43,20 @@ export function getLoadedGraph(graphID: string, version: number | null) {
   return shownGraph(useGraphStore.getState(), graphID, version);
 }
 
-/** Whether the canvas shows a saved graph other than this version of `graph`. */
-export function showsAnotherSavedGraph(graph: GraphModel) {
+/** Whether the canvas was last loaded from this version of `graph`. */
+export function showsSavedGraph(graph: GraphModel) {
   const loaded = useGraphStore.getState().loadedGraph;
   return (
     loaded !== null &&
-    (loaded.id !== graph.id || loaded.version !== graph.version)
+    loaded.id === graph.id &&
+    loaded.version === graph.version
+  );
+}
+
+/** Whether the canvas shows a saved graph other than this version of `graph`. */
+export function showsAnotherSavedGraph(graph: GraphModel) {
+  return (
+    useGraphStore.getState().loadedGraph !== null && !showsSavedGraph(graph)
   );
 }
 
