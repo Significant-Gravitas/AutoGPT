@@ -182,7 +182,14 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             ) from None
         if not response.ok:
             raise SignInConnectionError("Google didn't accept the sign-in's token.")
-        info = response.json()
+        try:
+            info = response.json()
+        except ValueError:
+            info = None
+        if not isinstance(info, dict):
+            raise SignInConnectionError(
+                "Google's token check answered with no token info."
+            )
         if self.client_id not in (info.get("azp"), info.get("aud")):
             raise SignInClientMismatch(
                 "Google sign-in uses a different OAuth client than Google "

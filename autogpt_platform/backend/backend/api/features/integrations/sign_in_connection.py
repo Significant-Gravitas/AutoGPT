@@ -233,7 +233,7 @@ async def keep_held_sign_in_connection(
             _take_held(user_id), timeout=HELD_LOOKUP_TIMEOUT_SECONDS
         )
     except Exception:
-        logger.warning("Couldn't read the held sign-in connection", exc_info=True)
+        logger.warning("Couldn't read the held sign-in connection")
         return None
     if not sealed:
         return None
@@ -246,7 +246,7 @@ async def keep_held_sign_in_connection(
     try:
         result = await keep_sign_in_connection(user_id, credentials)
     except Exception:
-        logger.warning("A held sign-in connection wasn't kept", exc_info=True)
+        logger.warning("A held sign-in connection wasn't kept")
         return None
     logger.info("Held sign-in connection for %s: %s", credentials.provider, result)
     return result
@@ -268,7 +268,11 @@ async def _credentials_from_sign_in(
     )
     if request.provider == "google":
         handler = _get_provider_oauth_handler(ProviderName.GOOGLE)
-        assert isinstance(handler, GoogleOAuthHandler)
+        if not isinstance(handler, GoogleOAuthHandler):
+            raise HTTPException(
+                status.HTTP_501_NOT_IMPLEMENTED,
+                detail="Integration with provider 'google' is not configured.",
+            )
         return await handler.credentials_from_sign_in(
             access_token, refresh_token, request.expires_at
         )

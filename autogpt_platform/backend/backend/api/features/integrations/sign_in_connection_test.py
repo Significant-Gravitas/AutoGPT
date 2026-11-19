@@ -215,6 +215,41 @@ def test_a_google_check_that_cant_resolve_google_is_refused(store, google, monke
     store.create.assert_not_called()
 
 
+def test_a_google_check_that_answers_with_no_token_info_is_refused(
+    store, google, monkeypatch
+):
+    class NotJSON:
+        ok = True
+
+        def json(self):
+            raise ValueError("Expecting value: line 1 column 1 (char 0)")
+
+    class AnswersAPage:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def post(self, url, *args, **kwargs):
+            return NotJSON()
+
+    monkeypatch.setattr(google_oauth, "Requests", AnswersAPage)
+
+    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+
+    assert res.status_code == 422
+    store.create.assert_not_called()
+
+
+def test_a_google_sign_in_without_googles_handler_is_refused(store, monkeypatch):
+    monkeypatch.setattr(
+        sign_in_connection, "_get_provider_oauth_handler", lambda _: MagicMock()
+    )
+
+    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+
+    assert res.status_code == 501
+    store.create.assert_not_called()
+
+
 def test_a_sign_in_never_widens_a_managed_or_system_connection(
     store, google, monkeypatch
 ):
