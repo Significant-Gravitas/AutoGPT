@@ -1014,7 +1014,9 @@ export default class BackendAPI {
    * All handlers are invoked after the WebSocket reconnects, once the server
    * has handled the subscriptions the connect handlers sent again. Anything
    * published while it was down never arrives, so re-read live state here.
-   * The first connection is not a reconnect.
+   * The first connection is not a reconnect. They are also invoked once a
+   * subscribe the server could not complete is confirmed on a retry: what was
+   * published before that never arrived either.
    *
    * @returns a detacher for the passed handler.
    */

@@ -34,7 +34,8 @@ interface UseExecutionEventsOptions {
   /**
    * Called after the socket reconnects, once the server has these
    * subscriptions again. Updates published while it was down never arrive,
-   * so refetch here. Not called for the first connection.
+   * so refetch here. Not called for the first connection, unless one of its
+   * subscribes failed and was confirmed on a retry.
    */
   onReconnect?: () => void;
 }

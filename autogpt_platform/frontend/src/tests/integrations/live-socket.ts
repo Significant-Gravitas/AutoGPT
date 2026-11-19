@@ -9,6 +9,11 @@ import { expect, onTestFinished, vi } from "vitest";
  */
 export const AFTER_RECONNECT = { timeout: 6000 };
 
+export interface SentMessage {
+  method: string;
+  data?: unknown;
+}
+
 /**
  * Stands in for the backend's run-updates WebSocket. The app's real
  * BackendAPI connects through it and the fake answers every heartbeat as
@@ -24,8 +29,14 @@ export function installLiveSocket() {
   let noticesAtDrop = 0;
 
   return {
-    /** Accepts the app's next connection and keeps answering its pings. */
-    async acceptNext() {
+    /**
+     * Accepts the app's next connection and keeps answering its pings.
+     * `answer` gets every other message the app sends; like the server, it
+     * should reply in a microtask, so replies keep the order of the requests.
+     */
+    async acceptNext(
+      answer?: (message: SentMessage, socket: FakeWebSocket) => void,
+    ) {
       await waitFor(
         () => expect(FakeWebSocket.instances.length).toBeGreaterThan(accepted),
         { timeout: 5000 },
@@ -33,8 +44,11 @@ export function installLiveSocket() {
       const socket = FakeWebSocket.instances[accepted];
       accepted += 1;
       socket.send.mockImplementation((data: string) => {
-        if (JSON.parse(data).method === "heartbeat") {
+        const message: SentMessage = JSON.parse(data);
+        if (message.method === "heartbeat") {
           queueMicrotask(() => socket.pong());
+        } else {
+          answer?.(message, socket);
         }
       });
       await act(async () => socket.open());
