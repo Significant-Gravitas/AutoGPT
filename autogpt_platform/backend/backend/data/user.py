@@ -1,11 +1,10 @@
 import asyncio
 import base64
-import contextvars
 import hashlib
 import hmac
 import logging
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Literal, Optional, cast
 from urllib.parse import quote_plus
@@ -47,6 +46,10 @@ from backend.notifications.posthog_audience import set_account_properties
 from backend.notifications.queue import queue_audience_change
 from backend.notifications.subscriber_fields import audience_event
 from backend.util.cache import cached
+from backend.util.cache_invalidation import (
+    run_cache_invalidation,
+    run_cache_invalidation_in,
+)
 from backend.util.encryption import JSONCryptor
 from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
@@ -153,7 +156,7 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # reset link ends in. Better Auth marks the identity verified in the
         # frontend, which can't reach this cache, so drop it here.
         try:
-            await asyncio.to_thread(forget_user_email_verification, user.id)
+            await run_cache_invalidation(forget_user_email_verification, user.id)
         except Exception:
             # Mail eligibility only, and the entry expires on its own.
             logger.warning(
@@ -502,7 +505,7 @@ async def update_user_integrations(user_id: str, data: UserIntegrations):
         data={"integrations": encrypted_data},
     )
     # Invalidate cache for this user
-    await asyncio.to_thread(get_user_by_id.cache_delete, user_id)
+    await run_cache_invalidation(get_user_by_id.cache_delete, user_id)
 
 
 async def get_user_credentials(user_id: str) -> list[Credentials]:
@@ -782,7 +785,7 @@ async def update_user_notification_preference(
 
         # Invalidate cache for this user since notification preferences are
         # part of user data
-        await asyncio.to_thread(get_user_by_id.cache_delete, user_id)
+        await run_cache_invalidation(get_user_by_id.cache_delete, user_id)
         return _preference_from_user(user)
     except NotFoundError:
         raise
@@ -814,7 +817,7 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
             data={"emailVerified": verified},
         )
         # Invalidate cache for this user
-        await asyncio.to_thread(get_user_by_id.cache_delete, user_id)
+        await run_cache_invalidation(get_user_by_id.cache_delete, user_id)
     except Exception as e:
         raise DatabaseError(
             f"Failed to set email verification status for user {user_id}: {e}"
@@ -841,7 +844,7 @@ async def disable_all_user_notifications(
     try:
         await PrismaUser.prisma().update(where={"id": user_id}, data=data)
         # Invalidate cache for this user
-        await asyncio.to_thread(get_user_by_id.cache_delete, user_id)
+        await run_cache_invalidation(get_user_by_id.cache_delete, user_id)
         logger.info(f"Disabled all notification preferences for user {user_id}")
     except Exception as e:
         raise DatabaseError(
@@ -1282,28 +1285,9 @@ def _clear_user_caches(user_id: str, email: str | None) -> None:
 
 async def _invalidate_user_caches(user_id: str, email: str | None) -> None:
     """Run the deletes and whole-cache scan together, even if the caller cancels."""
-    context = contextvars.copy_context()
-    clear = _USER_CACHE_CLEAR_EXECUTOR.submit(
-        context.run, _clear_user_caches, user_id, email
+    await run_cache_invalidation_in(
+        _USER_CACHE_CLEAR_EXECUTOR, _clear_user_caches, user_id, email
     )
-    awaiting_clear = asyncio.wrap_future(clear)
-    try:
-        await asyncio.shield(awaiting_clear)
-    except asyncio.CancelledError:
-        awaiting_clear.add_done_callback(
-            lambda done: None if done.cancelled() else done.exception()
-        )
-        clear.add_done_callback(
-            lambda done: context.run(_log_cancelled_cache_clear_error, done)
-        )
-        raise
-
-
-def _log_cancelled_cache_clear_error(clear: Future[None]) -> None:
-    try:
-        clear.result()
-    except Exception:
-        logger.exception("User cache clear failed after request cancellation")
 
 
 class BriefingCandidate(BaseModel):

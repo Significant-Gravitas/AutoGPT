@@ -1,6 +1,9 @@
 """Keeping a closed account: the status the sign-in screen reads, and the
 reopen. routes_test.py runs both against the real database."""
 
+import asyncio
+import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -14,6 +17,7 @@ from backend.api.features.account_deletion.restore import (
     restore_account,
 )
 from backend.data.account_deletion import ReopenOutcome
+from backend.util import cache_invalidation
 from backend.util.posthog_events import PostHogEvent
 
 MODULE = "backend.api.features.account_deletion.restore"
@@ -115,6 +119,42 @@ async def test_keeping_the_account_lets_the_owner_and_its_work_back_at_once(
     assert event is PostHogEvent.ACCOUNT_DELETION_KEPT
     assert properties["tenure_bucket"] == "90d+"
     assert 0 <= properties["days_left"] <= 14
+
+
+@pytest.mark.asyncio
+async def test_cancelled_restore_still_invalidates_refusal_and_listings(
+    mocker: MockerFixture, edges: MagicMock
+):
+    _reopen(mocker, ReopenOutcome.REOPENED)
+    queued: asyncio.Future[Future[object]] = asyncio.get_running_loop().create_future()
+    release = threading.Event()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(release.wait)
+        submit = pool.submit
+
+        def record_submission(*args, **kwargs):
+            worker = submit(*args, **kwargs)
+            queued.set_result(worker)
+            return worker
+
+        mocker.patch.object(cache_invalidation, "_cache_executor", pool)
+        mocker.patch.object(pool, "submit", side_effect=record_submission)
+        request = asyncio.create_task(restore_account(USER_ID))
+        try:
+            worker = await asyncio.wait_for(queued, timeout=5)
+            assert not worker.running()
+            request.cancel()
+            done, _ = await asyncio.wait([request], timeout=5)
+            assert request in done
+            with pytest.raises(asyncio.CancelledError):
+                await request
+        finally:
+            release.set()
+            await asyncio.gather(request, return_exceptions=True)
+        await asyncio.wrap_future(worker)
+
+    edges.forget_refusal.assert_called_once_with(USER_ID)
+    edges.forget_store_listings.assert_called_once_with()
 
 
 @pytest.mark.asyncio

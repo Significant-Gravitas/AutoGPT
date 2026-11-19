@@ -23,7 +23,6 @@ of its own down (`close_account`), and nothing here puts one back up. Agents
 nobody else uses are deleted with the account.
 """
 
-import asyncio
 import logging
 from datetime import timedelta
 
@@ -40,6 +39,7 @@ from backend.data.account_erasure.deleted_user import (
 from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema, transaction
 from backend.data.graph import hand_over_graphs
+from backend.util.cache_invalidation import run_cache_invalidation
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ async def transfer_shared_agents(subject: Subject, *, dry_run: bool) -> StepRepo
     }
     if not dry_run:
         await _transfer(subject)
-        await asyncio.to_thread(_clear_store_caches)
+        await run_cache_invalidation(_clear_store_caches)
     return _report(counts, dry_run)
 
 

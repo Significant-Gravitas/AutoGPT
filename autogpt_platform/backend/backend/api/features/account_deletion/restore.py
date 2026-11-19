@@ -23,7 +23,6 @@ and the session cookie cached in the browser (for up to 5 minutes) are only
 refused while the account is closed, and work again once it is kept.
 """
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -38,6 +37,7 @@ from backend.data.account_deletion import (
     reopen_account,
 )
 from backend.data.user import get_user_by_id, is_user_banned
+from backend.util.cache_invalidation import run_cache_invalidation
 from backend.util.posthog_client import capture_anonymous
 from backend.util.posthog_events import PostHogEvent
 
@@ -92,7 +92,7 @@ async def restore_account(user_id: str) -> None:
     # background work and the creator page come back without waiting out a
     # cache.
     forget_account_state(user_id)
-    await asyncio.to_thread(
+    await run_cache_invalidation(
         invalidate_account_caches,
         user_id,
         listings_changed=outcome is ReopenOutcome.REOPENED,

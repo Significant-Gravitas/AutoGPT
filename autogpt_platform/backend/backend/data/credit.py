@@ -70,6 +70,7 @@ from backend.data.wallet_payment_state import invoice_paid_from_wallet
 from backend.notifications.queue import queue_notification_async
 from backend.util import posthog_client
 from backend.util.cache import cached
+from backend.util.cache_invalidation import run_cache_invalidation
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.json import SafeJson, dumps
@@ -1813,7 +1814,7 @@ async def get_stripe_customer_id(user_id: str) -> str:
     await User.prisma().update(
         where={"id": user_id}, data={"stripeCustomerId": customer.id}
     )
-    await asyncio.to_thread(get_user_by_id.cache_delete, user_id)
+    await run_cache_invalidation(get_user_by_id.cache_delete, user_id)
     return customer.id
 
 
@@ -1822,7 +1823,7 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
         where={"id": user_id},
         data={"topUpConfig": SafeJson(config.model_dump())},
     )
-    await asyncio.to_thread(get_user_by_id.cache_delete, user_id)
+    await run_cache_invalidation(get_user_by_id.cache_delete, user_id)
 
 
 async def set_subscription_tier(
@@ -1851,7 +1852,7 @@ async def set_subscription_tier(
     else:
         data["subscriptionEndedAt"] = None
         await User.prisma().update(where={"id": user_id}, data=data)
-    await asyncio.to_thread(invalidate_subscription_caches, user_id)
+    await run_cache_invalidation(invalidate_subscription_caches, user_id)
     if track_lifecycle:
         schedule_posthog_lifecycle_sync(user_id)
 
@@ -1926,7 +1927,7 @@ async def cancel_all_subscriptions_now(user_id: str) -> int:
     """
     # Read past the five-minute user cache, so a customer saved since it was
     # filled can't be missed and its plan left running.
-    await asyncio.to_thread(get_user_by_id.cache_delete, user_id)
+    await run_cache_invalidation(get_user_by_id.cache_delete, user_id)
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
         return 0
@@ -3344,7 +3345,7 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
         stripe_subscription, trial_tier = trial_result
         status = stripe_subscription.get("status", "")
         if trial_tier is not None:
-            await asyncio.to_thread(invalidate_subscription_caches, user.id)
+            await run_cache_invalidation(invalidate_subscription_caches, user.id)
             return
     price_id = ""
     if status == "active" and await replaced_by_newer_plan(
@@ -3478,7 +3479,7 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
                     where={"id": user.id},
                     data={"subscriptionTier": tier, "subscriptionEndedAt": None},
                 )
-        await asyncio.to_thread(invalidate_subscription_caches, user.id)
+        await run_cache_invalidation(invalidate_subscription_caches, user.id)
         if locked_user.subscriptionTier != tier:
             await _cleanup_stale_subscriptions(customer_id, new_sub_id)
             if is_tier_upgrade(SubscriptionTier(locked_user.subscriptionTier), tier):

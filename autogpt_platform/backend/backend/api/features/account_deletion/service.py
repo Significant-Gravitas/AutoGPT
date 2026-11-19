@@ -123,6 +123,7 @@ from backend.data.credit import cancel_all_subscriptions_now, set_auto_top_up
 from backend.data.model import AutoTopUpConfig
 from backend.data.user import get_user_by_id
 from backend.notifications.auth import send_account_deleted_email
+from backend.util.cache_invalidation import run_cache_invalidation
 from backend.util.posthog_client import capture_anonymous
 from backend.util.posthog_events import PostHogEvent
 
@@ -242,7 +243,9 @@ async def _close(
     # background work starts for it, and its listings and creator page leave
     # the store at once (the transaction has committed).
     remember_account_closed(user_id)
-    await asyncio.to_thread(invalidate_account_caches, user_id, listings_changed=True)
+    await run_cache_invalidation(
+        invalidate_account_caches, user_id, listings_changed=True
+    )
     if request is not None:
         logger.info(f"Account deletion closed the account of user {user_id}")
     else:
