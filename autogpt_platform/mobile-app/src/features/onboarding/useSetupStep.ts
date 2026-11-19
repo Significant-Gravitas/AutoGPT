@@ -25,6 +25,8 @@ import {
 import type { WorkAnswer } from "./helpers";
 import { markOnboarded } from "./onboardedStore";
 
+// Only once the answers reached the server may the copy say they are saved.
+const SAVE_FAILED = "We couldn't save your answers. Check your connection and try again.";
 const SETUP_FAILED =
   "We couldn't finish setting up your account. Your answers are saved; try again.";
 // Long enough to read the toast before Home replaces this screen.
@@ -80,6 +82,8 @@ export function useSetupStep({
   const [isDone, setIsDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isRunning = useRef(false);
+  // Read in the catch, where `stage` state would be stale.
+  const stageRef = useRef<FinishStage>("saving");
 
   async function run() {
     if (isRunning.current) return;
@@ -93,6 +97,7 @@ export function useSetupStep({
         work,
         recordingID,
         onStage(next, names) {
+          stageRef.current = next;
           setStage(next);
           setTeamNames(names);
         },
@@ -114,7 +119,7 @@ export function useSetupStep({
       // Swaps the root stack to Home.
       markOnboarded(userID);
     } catch {
-      setError(SETUP_FAILED);
+      setError(stageRef.current === "saving" ? SAVE_FAILED : SETUP_FAILED);
     } finally {
       isRunning.current = false;
     }
