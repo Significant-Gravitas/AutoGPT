@@ -1,11 +1,11 @@
 """Parquet files read into rows in a short-lived child process.
 
 Each read runs in a fresh interpreter started with ``python -m`` (never a fork of
-the calling process) that refuses a file of more than ``MAX_PARQUET_CELLS``
-cells, caps its data segment at ``PARQUET_READ_MEMORY_BYTES`` past what its
+the calling process) that refuses a file of more than ``MAX_PARQUET_CELLS`` cells
+or values, caps its data segment at ``PARQUET_READ_MEMORY_BYTES`` past what its
 imports hold, and is killed after ``PARQUET_READ_TIMEOUT_SECONDS``. It answers
-with an exit code and the rows as JSON, never a pickle, and receives only the
-environment variables in ``CHILD_ENV_ALLOWLIST``.
+with an exit code and at most ``MAX_PARQUET_JSON_BYTES`` of rows as JSON, never a
+pickle, and receives only the environment variables in ``CHILD_ENV_ALLOWLIST``.
 """
 
 import io
@@ -21,7 +21,7 @@ if sys.platform != "win32":
 MAX_PARQUET_CELLS = 1_000_000
 PARQUET_READ_MEMORY_BYTES = 512 * 1024 * 1024
 PARQUET_READ_TIMEOUT_SECONDS = 30
-MAX_PARQUET_JSON_BYTES = 64 * 1024 * 1024
+MAX_PARQUET_JSON_BYTES = 16 * 1024 * 1024
 
 # What the interpreter needs to start and find the backend package.
 CHILD_ENV_ALLOWLIST = (
@@ -67,7 +67,7 @@ def read_parquet_rows(content: bytes) -> list[list[Any]]:
         return [table["columns"], *table["data"]]
     if done.returncode == _EXIT_TOO_LARGE:
         raise ValueError(
-            f"Parquet file is too large to read: over {MAX_PARQUET_CELLS:,} cells, "
+            f"Parquet file is too large to read: over {MAX_PARQUET_CELLS:,} values, "
             f"or over {PARQUET_READ_MEMORY_BYTES // 2**20} MiB once read"
         )
     if done.returncode == _EXIT_UNREADABLE:
@@ -96,11 +96,15 @@ def _child_main() -> int:
     _limit_memory(_data_in_use())
     try:
         metadata = pq.ParquetFile(io.BytesIO(content)).metadata
-        rows = max(
-            metadata.num_rows,
-            sum(metadata.row_group(i).num_rows for i in range(metadata.num_row_groups)),
+        groups = [metadata.row_group(i) for i in range(metadata.num_row_groups)]
+        rows = max(metadata.num_rows, sum(group.num_rows for group in groups))
+        # A list cell holds many values, so count those as well as the cells.
+        values = sum(
+            group.column(c).num_values
+            for group in groups
+            for c in range(group.num_columns)
         )
-        if rows * metadata.num_columns > MAX_PARQUET_CELLS:
+        if max(rows * metadata.num_columns, values) > MAX_PARQUET_CELLS:
             return _EXIT_TOO_LARGE
         # With no path given, to_json returns the text.
         table = cast(
