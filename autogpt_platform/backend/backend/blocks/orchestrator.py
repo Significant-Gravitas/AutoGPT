@@ -1826,8 +1826,7 @@ class OrchestratorBlock(Block):
                     "XDG_CACHE_HOME": os.path.join(sdk_cwd, ".cache"),
                 },
                 model=input_data.model.value or None,
-                # No settings files or MCP servers from the CLI's config dir:
-                # every run on this host shares it.
+                # No settings files or MCP servers from any source.
                 setting_sources=[],
                 extra_args={
                     "strict-mcp-config": None,
