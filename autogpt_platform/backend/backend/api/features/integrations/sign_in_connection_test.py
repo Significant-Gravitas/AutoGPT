@@ -445,13 +445,6 @@ def test_a_connection_that_cant_be_held_never_fails_the_sign_up(
 _FRONTEND_HANDOFF_WAIT_SECONDS = 8
 
 
-def test_googles_token_check_ends_before_the_frontend_stops_waiting(store, google):
-    client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
-
-    (post,) = google.posts
-    assert post["timeout"].total < _FRONTEND_HANDOFF_WAIT_SECONDS
-
-
 def _api() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -512,4 +505,31 @@ async def test_an_unreachable_redis_never_holds_up_a_sign_in(store, monkeypatch)
     result = await sign_in_connection.keep_held_sign_in_connection("user-1")
 
     assert result is None
+    assert time.monotonic() - started < _HANG_SECONDS
+
+
+async def test_googles_token_check_ends_before_the_frontend_stops_waiting(
+    monkeypatch,
+):
+    # The whole check, however many throttled answers Google retries through.
+    assert google_oauth.TOKEN_INFO_TIMEOUT_SECONDS < _FRONTEND_HANDOFF_WAIT_SECONDS
+
+    class GoogleNeverAnswers:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def post(self, *args, **kwargs):
+            await asyncio.sleep(3600)
+
+    monkeypatch.setattr(google_oauth, "Requests", GoogleNeverAnswers)
+    monkeypatch.setattr(google_oauth, "TOKEN_INFO_TIMEOUT_SECONDS", 0.05)
+    handler = GoogleOAuthHandler(
+        client_id="integration-client",
+        client_secret="secret",
+        redirect_uri="https://platform.example/auth/integrations/oauth_callback",
+    )
+    started = time.monotonic()
+
+    with pytest.raises(asyncio.TimeoutError):
+        await handler.credentials_from_sign_in("ya29.sign-in-access", None, None)
     assert time.monotonic() - started < _HANG_SECONDS
