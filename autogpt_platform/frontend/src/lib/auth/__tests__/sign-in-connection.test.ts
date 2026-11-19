@@ -5,11 +5,18 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { GOOGLE_ACCESS_SCOPES } from "@/lib/google-access";
+import { askedToConnect } from "../connect-at-sign-in";
 import { connectSignIn, keepingSignInTokens } from "../sign-in-connection";
 
 vi.mock("@better-auth/core/context", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@better-auth/core/context")>()),
   tryGetCurrentAuthEndpointContext: vi.fn(),
+}));
+// What the sign-in's OAuth state says (sign-in-connection-flow.test.ts runs
+// the real one).
+vi.mock("../connect-at-sign-in", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../connect-at-sign-in")>()),
+  askedToConnect: vi.fn(async () => true),
 }));
 vi.mock("../service-token", () => ({
   mintServiceToken: vi.fn(async () => "service-token"),
@@ -66,6 +73,15 @@ describe("keepingSignInTokens", () => {
     // /sign-in/social takes an ID token plus any access token the caller
     // chooses; none of it came from the provider's redirect.
     await signInAt("/sign-in/social");
+
+    expect(handoffs).toEqual([]);
+  });
+
+  it("connects nothing for a sign-in that didn't ask to connect", async () => {
+    // Its token still carries the data scopes an earlier sign-in granted.
+    vi.mocked(askedToConnect).mockResolvedValueOnce(false);
+
+    await signInAt("/callback/:id");
 
     expect(handoffs).toEqual([]);
   });

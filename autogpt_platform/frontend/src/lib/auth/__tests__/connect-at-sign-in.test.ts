@@ -5,6 +5,14 @@ import { server } from "@/mocks/mock-server";
 import { GOOGLE_ACCESS_SCOPES } from "@/lib/google-access";
 import { withoutProviderTokens } from "../connect-at-sign-in";
 
+// The sign-in's OAuth state exists only inside Better Auth's request
+// (sign-in-connection-flow.test.ts runs the real one).
+const oauthState = vi.hoisted(() => ({ addOAuthServerContext: vi.fn() }));
+vi.mock("better-auth/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("better-auth/api")>()),
+  addOAuthServerContext: oauthState.addOAuthServerContext,
+}));
+
 // The module remembers the backend's answer, so each test loads it afresh.
 async function load() {
   vi.resetModules();
@@ -27,6 +35,7 @@ function backendClients(answer: Record<string, string | null> | "down") {
 
 beforeEach(() => {
   lookups = 0;
+  oauthState.addOAuthServerContext.mockClear();
   vi.stubEnv("AUTH_GOOGLE_CLIENT_ID", "google-client");
   vi.stubEnv("AUTH_MICROSOFT_CLIENT_ID", "microsoft-client");
   backendClients({ google: "google-client", microsoft: "microsoft-client" });
@@ -119,7 +128,12 @@ describe("connectAtSignInScopes", () => {
 
   it("gives up on a stalled backend after two seconds", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const timeouts = vi.spyOn(AbortSignal, "timeout");
+    // The two seconds have already passed.
+    const timeouts = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation(() =>
+        AbortSignal.abort(new DOMException("timed out", "TimeoutError")),
+      );
     server.use(
       http.get("*/api/auth/sign-in-connection", async () => {
         await delay("infinite");
@@ -128,11 +142,10 @@ describe("connectAtSignInScopes", () => {
     );
     const { connectAtSignInScopes } = await load();
 
-    // A backend that never answers: the lookup ends at its timeout instead,
-    // well inside this test's own.
+    // A backend that never answers: the lookup ends at its timeout instead.
     expect(await connectAtSignInScopes("google")).toBeNull();
     expect(timeouts).toHaveBeenCalledWith(2_000);
-  }, 15_000);
+  });
 });
 
 describe("assertSignInScopes", () => {
@@ -154,6 +167,20 @@ describe("assertSignInScopes", () => {
     ).resolves.toBeUndefined();
     await expect(signIn("google", [])).resolves.toBeUndefined();
     await expect(signIn("google")).resolves.toBeUndefined();
+  });
+
+  it("notes in the OAuth state only a sign-in that asks for data scopes", async () => {
+    const signIn = await signInCheck();
+
+    await signIn("google");
+    await signIn("google", []);
+    await signIn("microsoft", ["offline_access", "User.Read"]);
+    expect(oauthState.addOAuthServerContext).not.toHaveBeenCalled();
+
+    await signIn("google", [...GOOGLE_ACCESS_SCOPES]);
+    expect(oauthState.addOAuthServerContext).toHaveBeenCalledWith({
+      connectAtSignIn: true,
+    });
   });
 
   it("refuses any other scope for Google or Microsoft", async () => {

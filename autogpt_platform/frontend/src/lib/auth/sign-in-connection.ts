@@ -5,7 +5,9 @@ import type { SignInConnectionRequest } from "@/app/api/__generated__/models/sig
 import { environment } from "@/services/environment";
 import {
   type ConnectProvider,
+  askedToConnect,
   connectAtSignInScopes,
+  includesDataScope,
 } from "./connect-at-sign-in";
 import { mintServiceToken } from "./service-token";
 
@@ -69,14 +71,17 @@ async function keepTokens(provider: ConnectProvider, tokens: OAuth2Tokens) {
   // Only the provider's redirect: an ID token sent to /sign-in/social comes
   // with whatever tokens the browser chose.
   if (!ctx?.path?.startsWith("/callback/") || !tokens.accessToken) return;
-  const asked = await connectAtSignInScopes(provider);
-  if (!asked) return;
+  // Only a sign-in that asked to connect: one that asked only who the person
+  // is can still get a token carrying the data scopes an earlier sign-in was
+  // granted (Google includes them).
+  if (!(await askedToConnect())) return;
+  // Only where sign-in still uses the connections' client.
+  if (!(await connectAtSignInScopes(provider))) return;
   const granted = (tokens.scopes ?? []).map((scope) =>
     scope.replace(GRAPH_PREFIX, ""),
   );
-  // A sign-in that asked who the person is, or where every data permission
-  // was declined, has nothing to connect.
-  if (!granted.some((scope) => asked.includes(scope))) return;
+  // Where every data permission was declined, there is nothing to connect.
+  if (!includesDataScope(provider, granted)) return;
   signInTokens.set(ctx, {
     provider,
     access_token: tokens.accessToken,

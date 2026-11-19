@@ -1,4 +1,8 @@
-import { APIError } from "better-auth/api";
+import {
+  APIError,
+  addOAuthServerContext,
+  getOAuthState,
+} from "better-auth/api";
 import type { SignInConnectionClients } from "@/app/api/__generated__/models/signInConnectionClients";
 import { GOOGLE_ACCESS_SCOPES } from "@/lib/google-access";
 import { MICROSOFT_BASE_SCOPES } from "@/lib/microsoft-setup";
@@ -20,6 +24,14 @@ const CONNECT_SCOPES = {
 } as const satisfies Record<string, readonly string[]>;
 
 export type ConnectProvider = keyof typeof CONNECT_SCOPES;
+
+// In Microsoft's list, but not data: User.Read reads the person's own profile,
+// which a sign-in that asked only who they are can come back with, and
+// offline_access only makes the tokens renewable.
+const NOT_DATA_SCOPES: readonly string[] = ["User.Read", "offline_access"];
+
+// Noted in the OAuth state of a sign-in that asks for the data scopes.
+const ASKED_TO_CONNECT = "connectAtSignIn";
 
 // The OAuth client each sign-in uses (auth.ts, microsoft-login.ts).
 const SIGN_IN_CLIENT_ENV = {
@@ -88,10 +100,23 @@ async function askBackendForClients(): Promise<SignInConnectionClients | null> {
 
 const SCOPED_SIGN_IN_PATHS = new Set(["/sign-in/social", "/link-social"]);
 
+/** Whether any of these scopes reaches the person's mail, files or calendar. */
+export function includesDataScope(
+  provider: ConnectProvider,
+  scopes: readonly string[],
+) {
+  const connectScopes: readonly string[] = CONNECT_SCOPES[provider];
+  return scopes.some(
+    (scope) =>
+      connectScopes.includes(scope) && !NOT_DATA_SCOPES.includes(scope),
+  );
+}
+
 /**
  * Better Auth passes a sign-in request's `scopes` straight to the provider.
  * For Google and Microsoft, whose tokens become a connection, only the data
- * scopes above may be asked for, and only when the sign-in can connect.
+ * scopes above may be asked for, and only when the sign-in can connect. A
+ * sign-in that asks for them says so in its OAuth state (askedToConnect).
  */
 export async function assertSignInScopes(
   path: string | undefined,
@@ -110,12 +135,29 @@ export async function assertSignInScopes(
       (scope) => typeof scope === "string" && allowed.includes(scope),
     )
   ) {
+    if (includesDataScope(provider, scopes)) {
+      await addOAuthServerContext({ [ASKED_TO_CONNECT]: true });
+    }
     return;
   }
   throw new APIError("BAD_REQUEST", {
     code: "SCOPES_NOT_ALLOWED",
     message: "This sign-in can't ask for those permissions.",
   });
+}
+
+/**
+ * Whether the sign-in whose callback this is asked for the data scopes. Only
+ * the server writes this part of the state, so the browser can't claim it.
+ */
+export async function askedToConnect() {
+  try {
+    const state = await getOAuthState();
+    return state?.serverContext?.[ASKED_TO_CONNECT] === true;
+  } catch {
+    // No sign-in's request, so no state: nothing to connect.
+    return false;
+  }
 }
 
 /**

@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { GOOGLE_ACCESS_SCOPES } from "@/lib/google-access";
+import { MICROSOFT_BASE_SCOPES } from "@/lib/microsoft-setup";
 
 // Runs the real Better Auth handler with this app's auth options (from
 // ../auth) on an in-memory database: the sign-in redirect, then the
@@ -64,6 +65,8 @@ vi.mock("../service-token", async (importOriginal) => ({
 const baseURL = "http://localhost:3000";
 const PERSONAL_TENANT = "9188040d-6c67-4c5b-b112-36a304b66dad";
 const IDENTITY = ["openid", "https://www.googleapis.com/auth/userinfo.email"];
+// What a connecting Microsoft sign-in asks for (connect-at-sign-in.ts).
+const MICROSOFT_CONNECT_SCOPES = ["offline_access", ...MICROSOFT_BASE_SCOPES];
 type Handler = (request: Request) => Promise<Response>;
 
 // The clients the backend's connections use: by default the ones sign-in
@@ -136,6 +139,29 @@ function answerAsGoogle(
           name: "Pat",
         }),
       }),
+    ),
+  );
+}
+
+function answerAsMicrosoft(granted: string) {
+  server.use(
+    http.post(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      () =>
+        HttpResponse.json({
+          token_type: "Bearer",
+          access_token: "microsoft-access",
+          refresh_token: "microsoft-refresh",
+          expires_in: 3600,
+          scope: granted,
+          id_token: unsignedJWT({
+            sub: "pairwise",
+            oid: "personal-id",
+            tid: PERSONAL_TENANT,
+            email: "pat@outlook.com",
+            name: "Pat",
+          }),
+        }),
     ),
   );
 }
@@ -266,7 +292,9 @@ describe("Connecting at sign-in", () => {
 
   it("connects nothing for a sign-in that asked only who the person is", async () => {
     const { handler, db } = await createAuth();
-    answerAsGoogle(IDENTITY);
+    // Someone who connected before chose to sign in without connecting:
+    // Google's token still carries the data scopes granted then.
+    answerAsGoogle([...IDENTITY, ...GOOGLE_ACCESS_SCOPES]);
     const handoffs = backendHandoffs();
 
     const { landing } = await signInWith(handler, "google");
@@ -344,36 +372,15 @@ describe("Connecting at sign-in", () => {
   it("hands the backend a Microsoft sign-in's tokens, and never the auth table", async () => {
     const { handler, db } = await createAuth();
     const handoffs = backendHandoffs();
-    server.use(
-      http.post(
-        "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-        () =>
-          HttpResponse.json({
-            token_type: "Bearer",
-            access_token: "microsoft-access",
-            refresh_token: "microsoft-refresh",
-            expires_in: 3600,
-            scope:
-              "openid profile email https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Files.ReadWrite",
-            id_token: unsignedJWT({
-              sub: "pairwise",
-              oid: "personal-id",
-              tid: PERSONAL_TENANT,
-              email: "pat@outlook.com",
-              name: "Pat",
-            }),
-          }),
-      ),
+    answerAsMicrosoft(
+      "openid profile email https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Files.ReadWrite",
     );
 
-    const { authorizeURL } = await signInWith(handler, "microsoft", [
-      "offline_access",
-      "User.Read",
-      "Mail.ReadWrite",
-      "Mail.Send",
-      "Calendars.ReadWrite",
-      "Files.ReadWrite",
-    ]);
+    const { authorizeURL } = await signInWith(
+      handler,
+      "microsoft",
+      MICROSOFT_CONNECT_SCOPES,
+    );
 
     expect(authorizeURL.searchParams.get("scope")).toContain("Mail.ReadWrite");
     expect(handoffs).toEqual([
@@ -392,5 +399,24 @@ describe("Connecting at sign-in", () => {
         idToken: null,
       }),
     ]);
+  });
+
+  it("connects nothing for a Microsoft sign-in granted none of the data scopes", async () => {
+    const { handler, db } = await createAuth();
+    const handoffs = backendHandoffs();
+    // The profile scope and a refresh token, but no mail, files or calendar.
+    answerAsMicrosoft(
+      "openid profile email https://graph.microsoft.com/User.Read offline_access",
+    );
+
+    const { landing } = await signInWith(
+      handler,
+      "microsoft",
+      MICROSOFT_CONNECT_SCOPES,
+    );
+
+    expect(landing).toBe("/auth/callback");
+    expect(handoffs).toEqual([]);
+    expect(db.UserAuthSession).toHaveLength(1);
   });
 });
