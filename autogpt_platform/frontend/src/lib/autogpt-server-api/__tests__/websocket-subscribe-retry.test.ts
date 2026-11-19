@@ -5,6 +5,7 @@ vi.mock("@/lib/auth/actions", () => ({ getWebSocketToken: vi.fn() }));
 import { getWebSocketToken } from "@/lib/auth/actions";
 import BackendAPI from "../client";
 import type { GraphID } from "../types";
+import { SubscribeRetries } from "../websocket-retry";
 import { FakeWebSocket } from "./websocket-fake";
 
 interface Request {
@@ -58,6 +59,15 @@ function failing(
   let failures = 0;
   return (request: Request) =>
     failures++ < times ? failure(request) : confirmed(request);
+}
+
+function failingFor(graphID: string, times: number) {
+  let failures = 0;
+  return (request: Request) =>
+    (request.data as { graph_id?: string }).graph_id === graphID &&
+    failures++ < times
+      ? couldNotComplete(request)
+      : confirmed(request);
 }
 
 // Answers each message as the server does: in order, so the pong to a ping
@@ -169,6 +179,25 @@ describe("a subscribe the server could not complete", () => {
     );
   });
 
+  it("warns again on the next connection when retries run out there too", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    function givingUp() {
+      return warn.mock.calls.filter(([message]) =>
+        String(message).includes("still failing after"),
+      ).length;
+    }
+    viewSubscribes();
+    const first = await accept(0, failing(Infinity));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(givingUp()).toBe(1);
+
+    first.serverClose(1011);
+    await vi.advanceTimersByTimeAsync(500);
+    await accept(1, failing(Infinity));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(givingUp()).toBe(2);
+  });
+
   it("gets all its retries again if it fails after a retry was confirmed", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const answers: ((request: Request) => unknown)[] = [
@@ -202,6 +231,20 @@ describe("a subscribe the server could not complete", () => {
     );
   });
 
+  it("is not sent again when another view's copy of it is refused", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    viewSubscribes();
+    viewSubscribes();
+    let answers = 0;
+    const socket = await accept(0, (request) =>
+      answers++ === 0 ? couldNotComplete(request) : refused(request),
+    );
+    expect(subscribes(socket)).toHaveLength(2);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(subscribes(socket)).toHaveLength(2);
+  });
+
   it("is sent again once, however many views asked for it", async () => {
     viewSubscribes();
     viewSubscribes();
@@ -212,28 +255,32 @@ describe("a subscribe the server could not complete", () => {
     expect(subscribes(socket)).toHaveLength(3);
   });
 
-  it("holds the views' re-read after a reconnect until its retry is confirmed", async () => {
-    const { second, reconnected } = await reconnect(failing(1));
-    // The pong to the ordering ping is in, but the resubscription failed.
+  it("lets the views re-read at once after a reconnect, and again once its retry is confirmed", async () => {
+    // A view whose subscription goes through, beside the one that fails.
+    api.onWebSocketConnect(
+      () => void api.subscribeToGraphExecutions("graph-2" as GraphID),
+    );
+    const { second, reconnected } = await reconnect(failingFor("graph-1", 1));
+    // The pong to the ordering ping is in: graph-2's views are fresh, while
+    // graph-1 waits for its retry.
     expect(sent(second).map((message) => message.method)).toEqual([
       "heartbeat",
       "subscribe_graph_executions",
-      "heartbeat",
-    ]);
-    expect(reconnected).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(499);
-    expect(reconnected).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
-    // The retry, then a ping whose pong follows the retry's answer.
-    expect(sent(second).map((message) => message.method)).toEqual([
-      "heartbeat",
-      "subscribe_graph_executions",
-      "heartbeat",
       "subscribe_graph_executions",
       "heartbeat",
     ]);
     expect(reconnected).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(499);
+    expect(reconnected).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    // The retry, then a ping whose pong follows the retry's answer.
+    expect(
+      sent(second)
+        .map((message) => message.method)
+        .slice(4),
+    ).toEqual(["subscribe_graph_executions", "heartbeat"]);
+    expect(reconnected).toHaveBeenCalledTimes(2);
   });
 
   it("sent during the reconnect spread, leaves the ordering ping to after it", async () => {
@@ -251,16 +298,16 @@ describe("a subscribe the server could not complete", () => {
     expect(reconnected).toHaveBeenCalledTimes(1);
   });
 
-  it("lets the views re-read after a reconnect once its retry is refused", async () => {
+  it("lets the views re-read again after a reconnect once its retry is refused", async () => {
     let answers = 0;
     const { reconnected } = await reconnect((request) =>
       answers++ === 0 ? couldNotComplete(request) : refused(request),
     );
     vi.spyOn(console, "info").mockImplementation(() => {});
-    expect(reconnected).not.toHaveBeenCalled();
+    expect(reconnected).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(500);
-    expect(reconnected).toHaveBeenCalledTimes(1);
+    expect(reconnected).toHaveBeenCalledTimes(2);
   });
 
   it("from a server that doesn't name the request changes nothing", async () => {
@@ -300,5 +347,31 @@ describe("a subscribe the server could not complete", () => {
     expect(subscribes(second)).toEqual([GRAPH_1]);
     api.disconnectWebSocket();
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("SubscribeRetries", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("takes echoes of one subscribe with their keys in another order as one", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const resend = vi.fn();
+    const retries = new SubscribeRetries(resend);
+    for (const data of [
+      { graph_id: "graph-1", after: "x" },
+      { after: "x", graph_id: "graph-1" },
+    ]) {
+      retries.read(
+        couldNotComplete({ method: "subscribe_graph_executions", data }),
+      );
+    }
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(resend).toHaveBeenCalledTimes(1);
+    retries.clear();
   });
 });

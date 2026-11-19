@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import cast, get_args
 from unittest.mock import AsyncMock
 
@@ -306,8 +307,16 @@ async def test_websocket_router_invalid_method(
         mock_websocket, user_id=DEFAULT_USER_ID
     )
     mock_websocket.send_text.assert_called_once()
-    assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
-    assert '"success":false' in mock_websocket.send_text.call_args[0][0]
+    reply = WSRequestFailed.model_validate_json(
+        mock_websocket.send_text.call_args[0][0]
+    )
+    assert reply.method == WSMethod.ERROR
+    assert reply.success is False
+    assert reply.request.model_dump(mode="json") == {
+        "method": "graph_execution_event",
+        "data": None,
+    }
+    assert reply.retryable is False
     mock_manager.disconnect_socket.assert_called_once_with(
         mock_websocket, user_id=DEFAULT_USER_ID
     )
@@ -363,6 +372,42 @@ async def test_a_failed_subscribe_is_answered_with_itself_and_whether_to_send_it
     assert reply.request.model_dump(mode="json") == request
     assert reply.retryable is retryable
     assert "internal detail" not in (reply.error or "")
+
+
+@pytest.mark.asyncio
+async def test_a_socket_reports_each_kind_of_retryable_failure_once_as_an_error(
+    mock_websocket: AsyncMock,
+    mock_manager: AsyncMock,
+    mocker,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Sentry files error logs, and the client retries these failures: a
+    socket's retries of one failure must not each become an event."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    request = json.dumps(
+        {"method": "subscribe_graph_executions", "data": {"graph_id": "g-1"}}
+    )
+    mock_websocket.receive_text.side_effect = [request] * 3 + [WebSocketDisconnect()]
+    mock_manager.subscribe_graph_execs.side_effect = [
+        TimeoutError(),
+        TimeoutError(),
+        EventStreamLostError("lost"),
+    ]
+
+    with caplog.at_level(logging.WARNING, logger="backend.api.ws_api"):
+        await websocket_router(
+            cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+        )
+
+    levels = [
+        record.levelname
+        for record in caplog.records
+        if record.getMessage().startswith("Error while handling")
+    ]
+    assert levels == ["ERROR", "WARNING", "ERROR"]
 
 
 @pytest.mark.asyncio
@@ -503,8 +548,16 @@ async def test_handle_unsubscribe_missing_data(
 
     mock_manager.unsubscribe_graph_exec.assert_not_called()
     mock_websocket.send_text.assert_called_once()
-    assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
-    assert '"success":false' in mock_websocket.send_text.call_args[0][0]
+    reply = WSRequestFailed.model_validate_json(
+        mock_websocket.send_text.call_args[0][0]
+    )
+    assert reply.method == WSMethod.ERROR
+    assert reply.success is False
+    assert reply.request.model_dump(mode="json") == {
+        "method": "unsubscribe",
+        "data": None,
+    }
+    assert reply.retryable is False
 
 
 # ---------- Per-graph subscribe branch ----------

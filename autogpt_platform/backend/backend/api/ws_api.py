@@ -308,6 +308,8 @@ async def websocket_router(
 
     # Track WebSocket connection
     update_websocket_connections(user_id, 1)
+    # Each kind of failure the client may retry, once this socket has hit it.
+    failed_before: set[type[Exception]] = set()
 
     try:
         while True:
@@ -339,7 +341,10 @@ async def websocket_router(
                 continue
 
             if message.method in _MSG_HANDLERS:
-                if not await _handle_request(manager, websocket, user_id, message):
+                handled = await _handle_request(
+                    manager, websocket, user_id, message, failed_before
+                )
+                if not handled:
                     break
                 continue
 
@@ -370,7 +375,11 @@ async def websocket_router(
 
 
 async def _handle_request(
-    manager: ConnectionManager, websocket: WebSocket, user_id: str, message: WSMessage
+    manager: ConnectionManager,
+    websocket: WebSocket,
+    user_id: str,
+    message: WSMessage,
+    failed_before: set[type[Exception]],
 ) -> bool:
     """Run the request's handler, answering a failure with an error that
     names the request and whether it may succeed if sent again. False when
@@ -409,11 +418,17 @@ async def _handle_request(
     except Exception as e:
         if _is_ws_close_race(e, websocket):
             return False
-        # Redis didn't confirm in time, a stream was lost, a read failed.
-        logger.error(
-            f"Error while handling '{message.method.value}' message "
-            f"for user #{user_id}: {e}"
+        # Redis didn't confirm in time, a stream was lost, a read failed. The
+        # client sends it again, so only the socket's first failure of each
+        # kind is an error, which Sentry files; its retries' are warnings.
+        logger.log(
+            logging.WARNING if type(e) in failed_before else logging.ERROR,
+            "Error while handling '%s' message for user #%s: %s",
+            message.method.value,
+            user_id,
+            e,
         )
+        failed_before.add(type(e))
         await _answer_failure(
             websocket,
             message,

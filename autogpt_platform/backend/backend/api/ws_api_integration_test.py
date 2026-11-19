@@ -114,24 +114,41 @@ def _graphs_on_the_notification_shard(user_id: str, count: int) -> list[str]:
 
 def _hold_confirmation(
     monkeypatch: pytest.MonkeyPatch, channel: str
-) -> tuple[asyncio.Event, asyncio.Event]:
+) -> tuple[asyncio.Event, asyncio.Event, asyncio.Event]:
     """Hold Redis's confirmation of ``channel``'s SSUBSCRIBE where the stream
     reads it, as a slow connection to the shard would: nothing behind it is
-    read until it is released. Returns the event set once it is held, and the
-    event that releases it."""
-    held, release = asyncio.Event(), asyncio.Event()
+    read until it is released. Returns the event set once it is held, the
+    event that releases it, and one set once the stream reads Redis's
+    confirmation of a SUNSUBSCRIBE of the channel."""
+    held, release, unsubscribed = asyncio.Event(), asyncio.Event(), asyncio.Event()
     read = ShardedSubscription.messages
 
     async def messages(self: ShardedSubscription):
         async with aclosing(read(self)) as stream:
             async for message in stream:
-                if message["type"] == "ssubscribe" and message["channel"] == channel:
-                    held.set()
-                    await release.wait()
+                if message.get("channel") == channel:
+                    if message["type"] == "ssubscribe":
+                        held.set()
+                        await release.wait()
+                    elif message["type"] == "sunsubscribe":
+                        unsubscribed.set()
                 yield message
 
     monkeypatch.setattr(ShardedSubscription, "messages", messages)
-    return held, release
+    return held, release, unsubscribed
+
+
+def _deadlines_on_demand(monkeypatch: pytest.MonkeyPatch) -> list[asyncio.Timeout]:
+    """Make each subscribe's deadline one that never passes by itself, so the
+    test expires it, through the real expiry path, once it is ready."""
+    deadlines: list[asyncio.Timeout] = []
+
+    def subscribe_deadline() -> asyncio.Timeout:
+        deadlines.append(asyncio.timeout(None))
+        return deadlines[-1]
+
+    monkeypatch.setattr(conn_manager, "_subscribe_deadline", subscribe_deadline)
+    return deadlines
 
 
 def _serve(
@@ -158,18 +175,21 @@ async def test_a_subscribe_redis_did_not_confirm_in_time_names_itself_to_be_sent
     """#16922: a subscribe whose confirmation timed out is answered with an
     error that names the request and says it may be sent again. Until the
     client sends it again, the channel's events never reach it; then they do."""
-    bound = conn_manager._SUBSCRIBE_TIMEOUT_S
+    real_deadline = conn_manager._subscribe_deadline
     user_id = f"user-ws-int-{uuid4().hex[:8]}"
     redis_client.get_redis.cache_clear()
     cluster = redis_client.get_redis()
     steady, flaky = _graphs_on_the_notification_shard(user_id, 2)
-    held, release = _hold_confirmation(monkeypatch, _runs_channel(user_id, flaky))
+    held, release, taken_back = _hold_confirmation(
+        monkeypatch, _runs_channel(user_id, flaky)
+    )
 
-    def publish(graph_id: str, marker: str) -> None:
+    def publish(graph_id: str, marker: str) -> int:
+        """The number of subscriptions Redis delivered it to."""
         payload = _graph_event_payload(
             user_id=user_id, graph_id=graph_id, graph_exec_id="e", marker=marker
         )
-        cluster.spublish(_runs_channel(user_id, graph_id), payload.decode())
+        return cluster.spublish(_runs_channel(user_id, graph_id), payload.decode())
 
     browser = _Browser()
     router = _serve(browser, user_id, monkeypatch)
@@ -177,20 +197,25 @@ async def test_a_subscribe_redis_did_not_confirm_in_time_names_itself_to_be_sent
         async with asyncio.timeout(_HANG_SECONDS):
             browser.send("subscribe_graph_executions", {"graph_id": steady})
             assert (await browser.next_reply())["success"] is True
-            # Its confirmation is held until released, so it passes any bound;
-            # a short one only keeps the test quick.
-            monkeypatch.setattr(conn_manager, "_SUBSCRIBE_TIMEOUT_S", 0.2)
+            deadlines = _deadlines_on_demand(monkeypatch)
             browser.send("subscribe_graph_executions", {"graph_id": flaky})
+            # Redis has confirmed it, but the stream hasn't read that yet:
+            # the bound passes now, however slow the runner.
+            await held.wait()
+            [deadline] = deadlines
+            deadline.reschedule(asyncio.get_running_loop().time())
             failure = await browser.next_reply()
-        monkeypatch.setattr(conn_manager, "_SUBSCRIBE_TIMEOUT_S", bound)
-        assert held.is_set()
+        monkeypatch.setattr(conn_manager, "_subscribe_deadline", real_deadline)
         assert failure["method"] == "error"
         assert failure["success"] is False
         release.set()
+        # Redis applied the SSUBSCRIBE, so the server takes it back.
+        async with asyncio.timeout(_HANG_SECONDS):
+            await taken_back.wait()
 
+        assert publish(flaky, "missed") == 0
         # One shard, one connection, published in this order: once the steady
         # graph's event is in, the flaky graph's would have come before it.
-        publish(flaky, "missed")
         publish(steady, "after-the-failure")
         async with asyncio.timeout(_HANG_SECONDS):
             await browser.event("after-the-failure")

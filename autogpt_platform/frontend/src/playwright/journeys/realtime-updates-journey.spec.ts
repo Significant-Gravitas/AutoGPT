@@ -22,9 +22,22 @@ test.describe("realtime updates journey", () => {
     const live = await routeLiveConnection(page);
     const agent = await createCountdownAgent(page);
     const reads = trackListReads(page, agent.graphID);
+    // The server can't complete the page's first subscribe to the workflow's
+    // runs, as when Redis doesn't confirm it in time (#16922).
+    live.failFirstSubscribe(agent.graphID);
 
     await page.goto(`/library/agents/${agent.libraryAgentID}`);
     await waitForAgentPageLoad(page);
+    // Until Activity opens, only the runs list subscribes to the workflow, so
+    // nothing delivers its updates unless the page sends that subscribe again.
+    await expect
+      .poll(() => live.failedSubscribeConfirmedAgain(), {
+        message:
+          "the page should send the subscribe the server could not complete " +
+          "again, or the run's live updates never arrive",
+        timeout: 15_000,
+      })
+      .toBe(true);
     await clickRunButton(page);
     await expect
       .poll(() => getActiveItemId(page), {
@@ -40,6 +53,12 @@ test.describe("realtime updates journey", () => {
         runItem.getByRole("img", { name: /^Task (queued|running)$/ }),
         "the runs list should show the run in flight",
       ).toBeVisible({ timeout: 30_000 });
+      await expect
+        .poll(() => live.forwardedStatuses(runID).length, {
+          message: "live update arrived after one failed resubscribe",
+          timeout: 30_000,
+        })
+        .toBeGreaterThan(0);
       const activity = await openActivity(page);
       await expect(activityItem(activity, agent.name)).toContainText(
         /queued|running/,
@@ -112,13 +131,28 @@ test.describe("realtime updates journey", () => {
 
 /**
  * Routes the page's run-updates socket through Playwright, so the journey
- * can break the server side the way production sees it: updates stop
- * arriving, then the server closes the socket with 1011.
+ * can break the server side the way production sees it: a subscribe it
+ * can't complete, updates that stop arriving, then a close with 1011.
  */
 async function routeLiveConnection(page: Page) {
   const connections: Connection[] = [];
   let closedUpTo = 0;
   let outage = false;
+  const failure = {
+    graphID: "",
+    // Only a connection the page opens once this is armed.
+    fromConnection: Infinity,
+    failed: false,
+    confirmedAgain: false,
+  };
+
+  // What the journey breaks must not reach the real Sentry, whose tunnel is
+  // on the app's own origin.
+  await page
+    .context()
+    .route(/sentry\.io|[?&]o=\d+&p=\d+/, (route) =>
+      route.fulfill({ status: 200, body: "{}" }),
+    );
 
   await page.routeWebSocket(/\/ws(\?|$)/, (client) => {
     const connection: Connection = {
@@ -127,11 +161,35 @@ async function routeLiveConnection(page: Page) {
       openedAt: Date.now(),
       // One the page opens during the outage gets no updates either.
       streamLost: outage,
+      subscribing: [],
       dropped: [],
       forwarded: [],
     };
     connections.push(connection);
+    client.onMessage((message) => {
+      const subscribe = subscribeRequest(message);
+      if (
+        subscribe?.graphID === failure.graphID &&
+        subscribe.method === "subscribe_graph_executions" &&
+        connections.indexOf(connection) >= failure.fromConnection &&
+        !failure.failed
+      ) {
+        failure.failed = true;
+        client.send(couldNotComplete(subscribe.graphID));
+        return;
+      }
+      if (subscribe) connection.subscribing.push(subscribe.graphID);
+      connection.server.send(message);
+    });
     connection.server.onMessage((message) => {
+      // The server answers a socket's subscribes in order.
+      const answer = subscribeAnswer(message);
+      if (answer) {
+        const graphID = connection.subscribing.shift();
+        if (failure.failed && graphID === failure.graphID && answer === "ok") {
+          failure.confirmedAgain = true;
+        }
+      }
       const update = runUpdate(message);
       if (connection.streamLost && update) {
         if (update.status) connection.dropped.push(withStatus(update));
@@ -143,6 +201,13 @@ async function routeLiveConnection(page: Page) {
   });
 
   return {
+    /** Fails the page's next subscribe to the graph's runs, once. */
+    failFirstSubscribe(graphID: string) {
+      failure.graphID = graphID;
+      failure.fromConnection = connections.length;
+    },
+    /** The server confirmed a later subscribe to the graph that failed. */
+    failedSubscribeConfirmedAgain: () => failure.confirmedAgain,
     opened: () => connections.length,
     /** When the first connection after the last close opened. */
     reopenedAt: () => connections[closedUpTo]?.openedAt ?? Infinity,
@@ -183,6 +248,8 @@ interface Connection {
   server: WebSocketRoute;
   openedAt: number;
   streamLost: boolean;
+  /** The graph of each subscribe sent to the server and not yet answered. */
+  subscribing: (string | undefined)[];
   dropped: { runID: string; status: string }[];
   forwarded: { runID: string; status: string }[];
 }
@@ -242,6 +309,49 @@ function trackListReads(page: Page, graphID: string) {
         .toBe(true);
     },
   };
+}
+
+/** A subscribe the page sends, or null for anything else. */
+function subscribeRequest(message: string | Buffer) {
+  const parsed = parseMessage(message);
+  if (!parsed?.method?.startsWith("subscribe_")) return null;
+  return { method: parsed.method, graphID: parsed.data?.graph_id };
+}
+
+/** The server's answer to a subscribe, or null for anything else. */
+function subscribeAnswer(message: string | Buffer) {
+  const parsed = parseMessage(message);
+  if (parsed?.method === "error") return "failed";
+  if (parsed?.method?.startsWith("subscribe_")) return "ok";
+  return null;
+}
+
+// ws_api.py's answer to a subscribe Redis didn't confirm in time.
+function couldNotComplete(graphID: string) {
+  return JSON.stringify({
+    method: "error",
+    data: null,
+    success: false,
+    channel: null,
+    error: "Could not handle 'subscribe_graph_executions'; retry",
+    request: {
+      method: "subscribe_graph_executions",
+      data: { graph_id: graphID },
+    },
+    retryable: true,
+  });
+}
+
+function parseMessage(message: string | Buffer) {
+  if (typeof message !== "string") return null;
+  try {
+    return JSON.parse(message) as {
+      method?: string;
+      data?: { graph_id?: string };
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** A run's update from the server, or null for anything else. */

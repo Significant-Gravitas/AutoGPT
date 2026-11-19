@@ -44,22 +44,29 @@ export class SubscribeRetries {
 
   /**
    * Reads a message from the server, acting on an error that names a
-   * subscribe. Servers from before the request and retryable fields name
-   * none, so their errors change nothing.
+   * subscribe; true when that schedules a retry. Servers from before the
+   * request and retryable fields name none, so their errors change nothing.
    */
-  read(message: unknown) {
-    if (!isSubscribeFailure(message)) return;
-    const key = `${message.request.method} ${JSON.stringify(message.request.data)}`;
+  read(message: unknown): boolean {
+    if (!isSubscribeFailure(message)) return false;
+    const key = `${message.request.method} ${sortedJSON(message.request.data)}`;
     const retry = this.retries.get(key) ?? {
       request: message.request,
       sent: 0,
     };
-    // Another view's copy of a subscribe already waiting to go again.
-    if (retry.timer !== undefined) return;
-    if (!message.retryable || retry.sent >= MAX_SUBSCRIBE_RETRIES) {
+    // A refusal stands, even with another copy's retry already waiting.
+    if (!message.retryable) {
+      clearTimeout(retry.timer);
       this.retries.delete(key);
       this.logStopped(message, retry.sent);
-      return;
+      return false;
+    }
+    // Another view's copy of a subscribe already waiting to go again.
+    if (retry.timer !== undefined) return false;
+    if (retry.sent >= MAX_SUBSCRIBE_RETRIES) {
+      this.retries.delete(key);
+      this.logStopped(message, retry.sent);
+      return false;
     }
     retry.timer = setTimeout(
       () => {
@@ -70,6 +77,7 @@ export class SubscribeRetries {
       withJitter(FIRST_SUBSCRIBE_RETRY_MS * 2 ** retry.sent),
     );
     this.retries.set(key, retry);
+    return true;
   }
 
   /**
@@ -110,6 +118,18 @@ export class SubscribeRetries {
       ws_error: failure.error ?? null,
     });
   }
+}
+
+// Sorted keys: the server echoes the request's data, and its key order is
+// not a promise, so two echoes of one subscribe still make one key.
+function sortedJSON(value: unknown) {
+  return JSON.stringify(value, (_key, nested: unknown) =>
+    nested && typeof nested === "object" && !Array.isArray(nested)
+      ? Object.fromEntries(
+          Object.entries(nested).sort(([a], [b]) => (a < b ? -1 : 1)),
+        )
+      : nested,
+  );
 }
 
 // Equal jitter: a random point in the second half of the step, so clients

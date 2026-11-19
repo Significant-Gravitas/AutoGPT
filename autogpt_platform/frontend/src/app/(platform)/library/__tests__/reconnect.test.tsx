@@ -96,19 +96,25 @@ function tile(label: string) {
   return within(button as HTMLElement);
 }
 
-// The server's side of the app's subscribes, noting each in `log`. The first
-// subscribe to `failOnce` it could not complete, as when Redis doesn't
-// confirm it in time; it confirms the rest.
-function subscriptions(log: string[], failOnce?: string) {
+// The server's side of the app's subscribes, noting each in `log`. It can't
+// complete a subscribe to `failing.graphID`, as when Redis doesn't confirm it
+// in time, `failing.times` times or until allowed; it confirms the rest.
+function subscriptions(
+  log: string[],
+  failing?: { graphID: string; times: number },
+) {
   const subscribed = new Set<string>();
-  let failed = false;
+  let failuresLeft = failing?.times ?? 0;
   return {
     subscribed,
+    allow() {
+      failuresLeft = 0;
+    },
     answer(message: SentMessage, socket: FakeWebSocket) {
       if (message.method !== "subscribe_graph_executions") return;
       const { graph_id } = message.data as { graph_id: string };
-      if (graph_id === failOnce && !failed) {
-        failed = true;
+      if (graph_id === failing?.graphID && failuresLeft > 0) {
+        failuresLeft -= 1;
         log.push(`failed ${graph_id}`);
         queueMicrotask(() =>
           socket.receive({
@@ -205,7 +211,7 @@ test("a run update reaches Library once a subscribe the server could not complet
     return status;
   });
   const live = installLiveSocket();
-  const runUpdates = subscriptions(log, agent.graph_id);
+  const runUpdates = subscriptions(log, { graphID: agent.graph_id, times: 1 });
 
   render(<LibraryPage />);
   const socket = await live.acceptNext(runUpdates.answer);
@@ -229,7 +235,7 @@ test("a run update reaches Library once a subscribe the server could not complet
   );
 });
 
-test("after a reconnect, Library re-reads its runs only once a resubscription that failed is confirmed", async () => {
+test("after a reconnect, Library re-reads its runs at once, and again once a resubscription that failed is confirmed", async () => {
   noSpread();
   let status: AgentExecutionStatus = AgentExecutionStatus.RUNNING;
   const log: string[] = [];
@@ -244,20 +250,29 @@ test("after a reconnect, Library re-reads its runs only once a resubscription th
   await waitFor(() => expect(tile("Running now").getByText("1")).toBeDefined());
 
   status = AgentExecutionStatus.COMPLETED;
-  log.length = 0;
   await live.drop(first);
-  await live.acceptNext(subscriptions(log, agent.graph_id).answer);
-  await live.caughtUp();
+  const server = subscriptions(log, {
+    graphID: agent.graph_id,
+    times: Infinity,
+  });
+  await live.acceptNext(server.answer);
+  // Fresh right after the reconnect, while the server still can't complete
+  // the workflow's subscribe and the page keeps retrying it.
   await waitFor(
     () => expect(tile("Recently completed").getByText("1")).toBeDefined(),
     AFTER_RECONNECT,
   );
-  // Read any earlier, the page would miss every later update of the run.
-  expect(log).toEqual([
-    `failed ${agent.graph_id}`,
-    `subscribed ${agent.graph_id}`,
-    "read COMPLETED",
-  ]);
+  expect(server.subscribed.has(agent.graph_id)).toBe(false);
+
+  log.length = 0;
+  server.allow();
+  // Read again once the retry is confirmed, so the last read follows it:
+  // read only before, the page would miss every later update of the run.
+  await waitFor(() => {
+    const confirmedAt = log.indexOf(`subscribed ${agent.graph_id}`);
+    expect(confirmedAt).toBeGreaterThan(-1);
+    expect(log.slice(confirmedAt + 1)).toContain("read COMPLETED");
+  }, AFTER_RECONNECT);
 });
 
 test("the Library summary and the Activity list share one request for the runs after a reconnect", async () => {

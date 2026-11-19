@@ -16,8 +16,8 @@ import {
 interface Handlers {
   onConnect: () => void;
   /**
-   * After a reconnect, once the server has handled what onConnect sent, or
-   * after a subscribe it could not complete is confirmed on a retry.
+   * After a reconnect, once the server has handled what onConnect sent; and
+   * once a subscribe it could not complete has settled on a retry.
    */
   onReconnect: () => void;
   onDisconnect: () => void;
@@ -62,6 +62,9 @@ export class BackendWebSocket {
   private pongsOwed = 0;
   private pongsUntilResubscribed = 0;
   private sentDuringResubscribeCheck = false;
+  // What makes the views re-read at the next caught-up pong.
+  private rereadAfterReconnect = false;
+  private rereadAfterRetries = false;
   private watchingPage = false;
   private retries = new SubscribeRetries((request) =>
     this.resubscribe(request),
@@ -208,7 +211,7 @@ export class BackendWebSocket {
       if (this.pongsUntilResubscribed > 0 && answersARequest(message)) {
         this.armDeadline(socket, generation, RESUBSCRIBED_TIMEOUT_MS);
       }
-      this.retries.read(message);
+      if (this.retries.read(message)) this.rereadAfterRetries = true;
       this.handlers.onMessage(event);
       return;
     }
@@ -226,14 +229,26 @@ export class BackendWebSocket {
         this.checkResubscribed(socket, generation);
         return;
       }
-      this.retries.settle();
-      // A subscribe the server could not complete is not caught up: sent
-      // again, it pings once more, and that pong ends this.
-      if (this.retries.waiting) return;
+      this.caughtUp();
+    }
+  }
+
+  // The server has handled everything sent before the last ping. After a
+  // reconnect the views re-read at once: the subscriptions that went through
+  // are live. A subscribe still being retried makes them re-read once more
+  // when it settles, so the last read follows it.
+  private caughtUp() {
+    this.retries.settle();
+    const retrying = this.retries.waiting;
+    if (this.rereadAfterReconnect) {
       // A reconnect only counts as healthy once it has caught up.
       this.startHealthyTimer();
-      this.handlers.onReconnect();
+    } else if (!this.rereadAfterRetries || retrying) {
+      return;
     }
+    this.rereadAfterReconnect = false;
+    this.rereadAfterRetries = retrying;
+    this.handlers.onReconnect();
   }
 
   // A pong follows backend authentication; transport open alone does not.
@@ -251,6 +266,7 @@ export class BackendWebSocket {
       this.startHealthyTimer();
       return;
     }
+    this.rereadAfterReconnect = true;
     this.resubscribedTimer = setTimeout(() => {
       this.resubscribedTimer = undefined;
       this.checkResubscribed(socket, generation);
@@ -271,6 +287,7 @@ export class BackendWebSocket {
   // unless one already out or the one after the spread will.
   private resubscribe(request: WebSocketRequest) {
     const socket = this.socket;
+    // Not sent: the socket is closing, and its close clears the retries.
     if (!socket || !this.send(JSON.stringify(request))) return;
     if (this.pongsUntilResubscribed > 0) return;
     if (this.resubscribedTimer !== undefined) return;
@@ -355,6 +372,8 @@ export class BackendWebSocket {
     clearTimeout(this.resubscribedTimer);
     this.resubscribedTimer = undefined;
     this.retries.clear();
+    this.rereadAfterReconnect = false;
+    this.rereadAfterRetries = false;
     this.pongsOwed = 0;
     this.pongsUntilResubscribed = 0;
     this.sentDuringResubscribeCheck = false;
