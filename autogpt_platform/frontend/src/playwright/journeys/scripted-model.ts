@@ -59,6 +59,18 @@ export async function requireScriptedModel() {
   }
 }
 
+/**
+ * Lets the run's held reply (a turn with `stream.hold_after_words`) finish
+ * streaming, once the journey has done what it held the reply open for.
+ */
+export async function releaseHeldReply(nonce: string) {
+  const response = await fetch(
+    `${SCRIPTED_MODEL_URL}/__scripted__/release?nonce=${encodeURIComponent(nonce)}`,
+    { method: "POST" },
+  );
+  expect(response.ok, `POST release: ${response.status}`).toBe(true);
+}
+
 /** Every model request a run made, oldest first. */
 export async function readJournal(nonce: string) {
   const response = await fetch(

@@ -13,6 +13,11 @@ export const SIMPLE_AGENT = {
   outputName: "smoke-result",
 } as const;
 
+// A hang guard, not a speed check: the wait ends as soon as the nodes draw. On
+// a slow CI runner the builder can take over 10 s to load and read the graph
+// before it draws the first node (#16927).
+const CANVAS_HANG_GUARD_MS = 45_000;
+
 // A node by its position on the canvas or by its block title.
 type NodeRef = number | string;
 
@@ -213,12 +218,12 @@ export class BuildPage extends BasePage {
   async waitForNodeOnCanvas(expectedCount?: number): Promise<void> {
     if (expectedCount !== undefined) {
       await expect(this.getNodeLocator()).toHaveCount(expectedCount, {
-        timeout: 10000,
+        timeout: CANVAS_HANG_GUARD_MS,
       });
     } else {
       await this.getNodeLocator()
         .first()
-        .waitFor({ state: "visible", timeout: 10000 });
+        .waitFor({ state: "visible", timeout: CANVAS_HANG_GUARD_MS });
     }
   }
 

@@ -263,6 +263,16 @@ class RecentExecution(pydantic.BaseModel):
     activity_summary: str | None = None
 
 
+class ScheduleInfo(pydantic.BaseModel):
+    """Each graph's earliest next run, and whether the scheduler answered.
+
+    ``available=False`` means the schedules are unknown, not absent.
+    """
+
+    next_runs: dict[str, str] = pydantic.Field(default_factory=dict)
+    available: bool = True
+
+
 def _parse_settings(settings: dict | str | None) -> GraphSettings:
     """Parse settings from database, handling both dict and string formats."""
     if settings is None:
@@ -344,6 +354,13 @@ class LibraryAgent(pydantic.BaseModel):
         default=None,
         description="ISO 8601 timestamp of the next scheduled run, if any",
     )
+    schedule_info_unavailable: bool = pydantic.Field(
+        default=False,
+        description=(
+            "The scheduler didn't answer, so is_scheduled and next_scheduled_run "
+            "are unknown rather than false"
+        ),
+    )
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
     organization_id: str | None = None
     team_id: str | None = None
@@ -355,7 +372,7 @@ class LibraryAgent(pydantic.BaseModel):
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
         store_listing: Optional[prisma.models.StoreListing] = None,
         execution_count_override: Optional[int] = None,
-        schedule_info: Optional[dict[str, str]] = None,
+        schedule_info: Optional[ScheduleInfo] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -363,6 +380,7 @@ class LibraryAgent(pydantic.BaseModel):
         """
         if not agent.AgentGraph:
             raise ValueError("Associated Agent record is required.")
+        next_runs = schedule_info.next_runs if schedule_info else {}
 
         graph = GraphModel.from_db(agent.AgentGraph, sub_graphs=sub_graphs)
         if agent.AgentGraph.userId != agent.userId:
@@ -516,9 +534,10 @@ class LibraryAgent(pydantic.BaseModel):
             team_id=agent.teamId,
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
-            is_scheduled=bool(schedule_info and agent.agentGraphId in schedule_info),
-            next_scheduled_run=(
-                schedule_info.get(agent.agentGraphId) if schedule_info else None
+            is_scheduled=agent.agentGraphId in next_runs,
+            next_scheduled_run=next_runs.get(agent.agentGraphId),
+            schedule_info_unavailable=bool(
+                schedule_info and not schedule_info.available
             ),
             settings=_parse_settings(agent.settings),
             marketplace_listing=marketplace_listing_info,

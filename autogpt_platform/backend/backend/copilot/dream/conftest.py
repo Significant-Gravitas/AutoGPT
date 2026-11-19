@@ -32,7 +32,7 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 
-from backend.copilot import usage_activation_fixtures
+from backend.copilot import database_manager_fixtures, usage_activation_fixtures
 from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.dream_pass_models import (
     DREAM_TEXT_FIELDS,
@@ -55,9 +55,10 @@ async def server():
     return None
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup():
-    """No-op graph cleanup stub."""
+@pytest.fixture(scope="session", autouse=True)
+def graph_cleanup():
+    """No-op graph cleanup stub. Not async: setting it up must not run the
+    event loop between billing_e2e's database manager fake and dream's."""
     yield
 
 
@@ -560,6 +561,10 @@ def _order(value: Enum | None) -> int:
 # (#15208's ``attributed_usage``); every dream test gets the ready, untrialed
 # usage state unless it sets its own.
 usage_snapshot = usage_activation_fixtures.usage_snapshot
+
+# No database manager runs in the copilot-sdk shard (see sdk/conftest.py).
+fake_database_manager_clients = database_manager_fixtures.fake_database_manager_clients
+database_manager = database_manager_fixtures.database_manager
 
 
 @pytest.fixture(autouse=True)

@@ -28,8 +28,10 @@ SHARD_E2E_FLAGS = {
     "util-executor": "E2E_CLAMD_CONTAINER",
 }
 
-# No test in "copilot-sdk" starts the database manager, so a call that reaches
-# for one fails after a few tries instead of retrying for most of an hour.
+# No test in "copilot-sdk" starts the database manager. Its conftests answer
+# database manager calls with a fake (backend/copilot/database_manager_fixtures.py);
+# this is the backstop for a call that slips past it, so it fails after a few
+# tries instead of retrying until the job's time limit.
 SHARDS_WITHOUT_DATABASE_MANAGER = {"copilot-sdk"}
 
 
