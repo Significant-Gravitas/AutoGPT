@@ -17,7 +17,7 @@ from backend.api.features.store import exceptions as store_exceptions
 from backend.api.features.store import submission_media
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data.graph import is_graph_published_in_marketplace
-from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.exceptions import ConflictError, DatabaseError, NotFoundError
 from backend.util.json import SafeJson
 
 APPROVED = prisma.enums.SubmissionStatus.APPROVED
@@ -198,9 +198,7 @@ async def test_rejection_serializes_with_approval_of_a_parent_workflow(
         waiting_statement = await _overlap_reviews(
             monkeypatch,
             lambda: _reject(child, owner),
-            lambda: store_db.review_store_submission(
-                parent, True, "", "", owner, notify_creator=False
-            ),
+            lambda: _approve(parent, owner),
         )
         assert (
             waiting_statement and '"StoreListing"' in waiting_statement
@@ -249,9 +247,7 @@ async def test_rejection_of_an_approved_child_stands_when_parent_approval_overla
         await _overlap_reviews(
             monkeypatch,
             reject_child,
-            lambda: store_db.review_store_submission(
-                parent, True, "", "", owner, notify_creator=False
-            ),
+            lambda: _approve(parent, owner),
             second_read=parent_checked_child,
         )
 
@@ -264,6 +260,101 @@ async def test_rejection_of_an_approved_child_stands_when_parent_approval_overla
         assert not await is_graph_published_in_marketplace(child_graph, 1)
         with pytest.raises(NotFoundError):
             await store_db.get_store_agent_details(owner, child_graph)
+        assert (
+            await store_db.get_store_agent_details(owner, parent_graph)
+        ).active_version_id == parent
+    finally:
+        await _clean_up(owner, [parent_graph, child_graph])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "explicit_approval", [False, True], ids=["parent-only", "also-approved-directly"]
+)
+async def test_parent_approval_handles_a_child_withdrawn_before_its_first_read(
+    server, monkeypatch, explicit_approval: bool
+):
+    tag = uuid4().hex[:12]
+    owner = await _seed_creator(tag, avatar_url="")
+    parent_graph, child_graph = f"parent-{tag}", f"child-{tag}"
+    try:
+        parent, child = await _seed_parent_with_child(
+            owner, parent_graph, child_graph, APPROVED
+        )
+        get_sub_graphs = store_db.get_sub_graphs
+
+        async def withdraw_before_child_read(graph):
+            if graph.id == parent_graph:
+                await _reject(child, owner)
+            return await get_sub_graphs(graph)
+
+        monkeypatch.setattr(store_db, "get_sub_graphs", withdraw_before_child_read)
+        monkeypatch.setattr(store_db, "ensure_embedding", AsyncMock())
+        if explicit_approval:
+            _after_child_listing_read(
+                monkeypatch, child_graph, lambda: _approve(child, owner)
+            )
+        await _approve(parent, owner)
+
+        assert await is_graph_published_in_marketplace(child_graph, 1)
+        listing = await prisma.models.StoreListing.prisma().find_unique_or_raise(
+            where={"agentGraphId": child_graph}
+        )
+        assert listing.hasApprovedVersion
+        assert listing.activeVersionId == (child if explicit_approval else None)
+        assert (
+            await store_db.get_store_agent_details(owner, parent_graph)
+        ).active_version_id == parent
+    finally:
+        await _clean_up(owner, [parent_graph, child_graph])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "delete_superseded", [False, True], ids=["superseded", "deleted"]
+)
+async def test_parent_review_rolls_back_when_the_child_submission_is_replaced(
+    server, monkeypatch, delete_superseded: bool
+):
+    tag = uuid4().hex[:12]
+    owner = await _seed_creator(tag, avatar_url="")
+    parent_graph, child_graph = f"parent-{tag}", f"child-{tag}"
+    try:
+        parent, child = await _seed_parent_with_child(
+            owner, parent_graph, child_graph, PENDING
+        )
+        listings = prisma.models.StoreListing.prisma()
+        versions = prisma.models.StoreListingVersion.prisma()
+
+        async def replace_child():
+            await store_db.create_store_submission(
+                owner, child_graph, 1, child_graph, child_graph, "Replacement"
+            )
+            if delete_superseded:
+                await store_db.delete_store_submission_or_raise(owner, child)
+
+        monkeypatch.setattr(store_db, "ensure_embedding", AsyncMock())
+        with monkeypatch.context() as overlap:
+            _after_child_listing_read(overlap, child_graph, replace_child)
+            with pytest.raises(ConflictError, match="changed during review"):
+                await _approve(parent, owner)
+
+        listing = await listings.find_unique_or_raise(
+            where={"agentGraphId": child_graph}
+        )
+        assert not listing.hasApprovedVersion
+        assert (
+            await versions.find_unique_or_raise(where={"id": parent})
+        ).submissionStatus == PENDING
+        [replacement] = await versions.find_many(
+            where={"storeListingId": listing.id, "isDeleted": False}
+        )
+        assert replacement.id != child and replacement.submissionStatus == PENDING
+
+        await _approve(parent, owner)
+        assert (
+            await versions.find_unique_or_raise(where={"id": replacement.id})
+        ).submissionStatus == APPROVED
         assert (
             await store_db.get_store_agent_details(owner, parent_graph)
         ).active_version_id == parent
@@ -354,6 +445,25 @@ async def _overlap_reviews(
     if second_read is None:
         assert waiting_statement
     return waiting_statement
+
+
+def _after_child_listing_read(monkeypatch, child_graph: str, action):
+    listing_actions = type(prisma.models.StoreListing.prisma())
+    find_first = listing_actions.find_first
+
+    async def read_then_act(actions, **kwargs):
+        listing = await find_first(actions, **kwargs)
+        if listing and listing.agentGraphId == child_graph and listing.Versions:
+            await action()
+        return listing
+
+    monkeypatch.setattr(listing_actions, "find_first", read_then_act)
+
+
+async def _approve(version_id: str, reviewer_id: str):
+    await store_db.review_store_submission(
+        version_id, True, "", "", reviewer_id, notify_creator=False
+    )
 
 
 async def _reject(version_id: str, reviewer_id: str):

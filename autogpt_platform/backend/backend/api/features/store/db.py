@@ -1712,7 +1712,7 @@ async def review_store_submission(
             reviewed_submission
         )
 
-    except (NotFoundError, PreconditionFailed):
+    except (NotFoundError, PreconditionFailed, ConflictError):
         raise
     except Exception as e:
         logger.error(f"Could not create store submission review: {e}")
@@ -2008,24 +2008,28 @@ async def _approve_sub_agent(
         (
             v
             for v in listing.Versions or []
-            if v.agentGraphId == sub_graph.id
+            if not v.isDeleted
+            and v.agentGraphId == sub_graph.id
             and v.agentGraphVersion == sub_graph.version
         ),
         None,
     )
 
     if matching_version:
+        # A parent review approves its dependencies, including previously rejected
+        # versions. Reusing an existing approval leaves later withdrawals effective.
         if matching_version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-            # Reuse the approval so a concurrent moderator withdrawal stays effective.
             return
 
         # Take the listing lock before writing its version, just as withdrawal does.
         await prisma.models.StoreListing.prisma(tx).update(
             where={"id": listing.id}, data={"hasApprovedVersion": True}
         )
-        await prisma.models.StoreListingVersion.prisma(tx).update_many(
+        versions = prisma.models.StoreListingVersion.prisma(tx)
+        changed = await versions.update_many(
             where={
                 "id": matching_version.id,
+                "isDeleted": False,
                 "submissionStatus": {"not": prisma.enums.SubmissionStatus.APPROVED},
             },
             data={
@@ -2033,6 +2037,17 @@ async def _approve_sub_agent(
                 "reviewedAt": datetime.now(tz=timezone.utc),
             },
         )
+        if not changed and not await versions.count(
+            where={
+                "id": matching_version.id,
+                "isDeleted": False,
+                "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+            }
+        ):
+            raise ConflictError(
+                f"The submission for sub-workflow #{sub_graph.id} v{sub_graph.version} "
+                "changed during review. Retry the parent review."
+            )
         return
 
     # Create new version if no matching version found
