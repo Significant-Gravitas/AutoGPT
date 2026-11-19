@@ -50,6 +50,22 @@
     // a `.key` field (e.g. `column.key === "Delete"`) trips them too. That is
     // the one case for `// eslint-disable-next-line no-restricted-syntax`.
     //
+    // The App Router renders with the React build Next vendors (19.2 canary
+    // for Next 15.5), not the installed react package, and that build has no
+    // useEffectEvent. Importing it type-checks and passes vitest, which use
+    // the installed package, then throws as the page renders.
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "react",
+            "importNames": ["useEffectEvent"],
+            "message": "The React that Next's App Router renders with has no useEffectEvent, so the page would throw. Keep the latest callback in a ref set from an effect."
+          }
+        ]
+      }
+    ],
     // Both the key list and the selectors are covered by
     // scripts/eslint-keyboard-rules.test.ts.
     "no-restricted-syntax": [
