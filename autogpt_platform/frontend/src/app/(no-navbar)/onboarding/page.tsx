@@ -36,6 +36,8 @@ export default function OnboardingPage() {
     progressConflict,
     retryProgress,
     completionError,
+    setupWaitingFor,
+    reportSlowSetup,
   } = useOnboardingPage();
   const prevStep = useOnboardingWizardStore((s) => s.prevStep);
   const isStepBusy = useOnboardingWizardStore((s) => s.isStepBusy);
@@ -70,7 +72,11 @@ export default function OnboardingPage() {
         retry={retryProgress}
       />
     ) : (
-      <LoadingSetup totalSteps={totalSteps} />
+      <LoadingSetup
+        totalSteps={totalSteps}
+        waitingFor={setupWaitingFor}
+        onSlow={reportSlowSetup}
+      />
     );
 
   // ProgressBar + StepIndicator track only the user-interactive steps.

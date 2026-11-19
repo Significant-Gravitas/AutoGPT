@@ -12,6 +12,7 @@ import type { OnboardingWizardProgress } from "@/app/api/__generated__/models/on
 import { getGetBrainDumpPlanMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { server } from "@/mocks/mock-server";
 import { http, HttpResponse } from "msw";
+import * as Sentry from "@sentry/nextjs";
 import {
   installGtagShim,
   removeGtagShim,
@@ -22,6 +23,11 @@ import { useOnboardingWizardStore } from "../store";
 import { progressStorageKey } from "../progress";
 import { makeProgress as makeBaseProgress } from "./progress-fixture";
 
+// Only the slow-setup report is checked; the rest of Sentry runs as shipped.
+vi.mock("@sentry/nextjs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sentry/nextjs")>()),
+  captureMessage: vi.fn(),
+}));
 vi.mock("../steps/AccessStep/AccessStep", () => ({
   AccessStep: () => (
     <button
@@ -978,36 +984,73 @@ it("lets a new account finish while the previous account's profile save is outst
   expect(screen.queryByText(/couldn't save your profile/i)).toBeNull();
 });
 
-describe("a setup that never finishes loading (#16965)", () => {
+describe("a setup that is slow to load (#16965)", () => {
+  const SLOW = "Your setup is taking longer than usual";
+  const REPORT = "Onboarding setup did not load in time";
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
-  it("ends in an error with a retry instead of loading forever", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  it("says so, offers a reload and reports it once when the account never arrives", async () => {
     // The page's sign-in check never reports the account.
     user = null;
     render(<OnboardingPage />);
     expect(screen.getByRole("status").textContent).toBe("Loading your setup…");
 
     await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS - 1));
-    expect(screen.queryByRole("button", { name: "Try Again" })).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
     await act(() => vi.advanceTimersByTimeAsync(1));
 
+    const notice = screen.getByRole("alert");
+    expect(notice.textContent).toContain(SLOW);
+    // Focus moves to the notice that replaced the placeholder.
+    expect(document.activeElement).toBe(notice.parentElement);
+    expect(Sentry.captureMessage).toHaveBeenCalledOnce();
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      REPORT,
+      expect.objectContaining({
+        level: "warning",
+        tags: expect.objectContaining({
+          waiting_for: expect.stringContaining("account"),
+        }),
+      }),
+    );
     const reload = vi
       .spyOn(window.location, "reload")
       .mockImplementation(() => {});
-    fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
     expect(reload).toHaveBeenCalledOnce();
-    reload.mockRestore();
   });
 
-  it("still opens the wizard when the account arrives after the error", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  it("reports one slow setup once, even when the placeholder remounts", async () => {
     user = null;
     const view = render(<OnboardingPage />);
     await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS));
-    expect(screen.getByRole("button", { name: "Try Again" })).toBeDefined();
+    expect(screen.getByRole("alert")).toBeDefined();
+
+    // The page moves to another loading state and back.
+    trial = { ...trial, ready: false };
+    view.rerender(<OnboardingPage />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    trial = { ...trial, ready: true };
+    view.rerender(<OnboardingPage />);
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS));
+
+    expect(screen.getByRole("alert")).toBeDefined();
+    expect(Sentry.captureMessage).toHaveBeenCalledOnce();
+  });
+
+  it("still opens the wizard when the account arrives after the notice", async () => {
+    user = null;
+    const view = render(<OnboardingPage />);
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS));
+    expect(screen.getByRole("alert").textContent).toContain(SLOW);
 
     user = {
       id: "u1",
@@ -1019,6 +1062,18 @@ describe("a setup that never finishes loading (#16965)", () => {
     await vi.waitFor(() =>
       expect(screen.getByTestId("step-team")).toBeDefined(),
     );
-    expect(screen.queryByRole("button", { name: "Try Again" })).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("neither shows the notice nor reports while the account is known", async () => {
+    // A slow but healthy load: the account is there, the progress read isn't.
+    getState.mockImplementation(() => new Promise(() => {}));
+    render(<OnboardingPage />);
+
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS * 2));
+
+    expect(screen.getByTestId("onboarding-placeholder")).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 });

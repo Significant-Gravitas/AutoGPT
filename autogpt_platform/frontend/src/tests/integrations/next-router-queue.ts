@@ -14,14 +14,23 @@ const TYPES_MODULE =
 interface QueuedPayload {
   type: string;
   run?: () => Promise<unknown>;
+  routerFails?: boolean;
   arrived?: Promise<void>;
   resolve?: (value: unknown) => void;
   reject?: (reason: unknown) => void;
 }
 
+interface ServerActionOptions {
+  /**
+   * The router can't apply the server's answer, so its reducer rejects too,
+   * as Next's does when a refetch it needs for the answer fails.
+   */
+  routerFails?: boolean;
+}
+
 interface ActionQueue {
   action: (state: unknown, payload: QueuedPayload) => Promise<unknown>;
-  dispatch: (payload: QueuedPayload, setState: () => void) => void;
+  dispatch: (payload: QueuedPayload, setState: (next: unknown) => void) => void;
 }
 
 let hooks: { deregister: () => void } | null = null;
@@ -46,6 +55,7 @@ export function createRouterQueue() {
         payload.resolve?.(await payload.run?.());
       } catch (error) {
         payload.reject?.(error);
+        if (payload.routerFails) throw error;
       }
     } else if (payload.type === ACTION_NAVIGATE) {
       await payload.arrived;
@@ -53,19 +63,24 @@ export function createRouterQueue() {
     return state;
   };
   function noop() {}
+  // React takes the router state as a promise; a failed action rejects it.
+  function setState(next: unknown) {
+    if (next instanceof Promise) next.catch(noop);
+  }
 
   return {
     /** Sends a server action, as `callServer` does; `run` is the server. */
-    callServer<T>(run: () => Promise<T>) {
+    callServer<T>(run: () => Promise<T>, options: ServerActionOptions = {}) {
       return new Promise<T>((resolve, reject) => {
         queue.dispatch(
           {
             type: ACTION_SERVER_ACTION,
             run,
+            routerFails: options.routerFails,
             resolve: resolve as (value: unknown) => void,
             reject,
           },
-          noop,
+          setState,
         );
       });
     },
@@ -75,7 +90,7 @@ export function createRouterQueue() {
       const arrived = new Promise<void>((resolve) => {
         arrive = resolve;
       });
-      queue.dispatch({ type: ACTION_NAVIGATE, arrived }, noop);
+      queue.dispatch({ type: ACTION_NAVIGATE, arrived }, setState);
       return { arrive };
     },
   };
