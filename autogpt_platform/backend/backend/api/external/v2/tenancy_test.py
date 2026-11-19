@@ -206,6 +206,11 @@ async def test_graph_read_from_an_org_home_key_is_not_team_filtered(
     pass none at all: with one, a key stops finding org-home graphs."""
     from .graphs import get_graph
 
+    active_version = mocker.patch(
+        "backend.data.graph.get_active_graph_version",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
     graph_db = mocker.patch(
         "backend.data.graph.get_graph",
         new_callable=AsyncMock,
@@ -215,6 +220,7 @@ async def test_graph_read_from_an_org_home_key_is_not_team_filtered(
     with pytest.raises(HTTPException):
         await get_graph(graph_id="graph-1", version=None, auth=_key_for(ORG_A))
 
+    active_version.assert_awaited_once_with("graph-1", USER_ID, organization_id=ORG_A)
     assert graph_db.await_args.kwargs["organization_id"] == ORG_A
     assert "team_id" not in graph_db.await_args.kwargs
 

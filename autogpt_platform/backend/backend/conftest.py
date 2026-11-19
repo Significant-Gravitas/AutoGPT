@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import logging
 import os
@@ -23,6 +24,7 @@ from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
 from backend.util import posthog_client
+from backend.util.clients import get_scheduler_client
 from backend.util.httpx_client_guard import HttpxClientGuard, left_open_report
 from backend.util.logging import configure_logging
 from backend.util.platform_payment import settings as platform_payment_settings
@@ -89,6 +91,9 @@ async def server():
 
     await _require_test_stack()
     async with SpinTestServer() as server:
+        await asyncio.wait_for(
+            get_scheduler_client(should_retry=True).health_check_async(), timeout=90
+        )
         async with _track_test_graphs(server):
             yield server
 

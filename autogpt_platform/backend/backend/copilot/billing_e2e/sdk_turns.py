@@ -146,6 +146,8 @@ class SdkTurns:
             "first_message_expert_context": AsyncMock(return_value=""),
             "inject_user_context": AsyncMock(return_value=None),
             "_graphiti_enabled": MagicMock(return_value=False),
+            "_fetch_graphiti_context": AsyncMock(return_value=(False, "")),
+            "_enqueue_graphiti_turn": AsyncMock(),
             "capture_chat_turn": AsyncMock(),
             "create_copilot_mcp_server": MagicMock(),
             "create_security_hooks": MagicMock(),

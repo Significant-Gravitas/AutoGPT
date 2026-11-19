@@ -13,7 +13,7 @@ from backend.util.json import SafeJson
 
 
 @pytest.fixture
-async def account():
+async def account(server):
     user_id = str(uuid.uuid4())
     await prisma.models.User.prisma().create(
         data={"id": user_id, "email": f"{user_id}@example.com"}

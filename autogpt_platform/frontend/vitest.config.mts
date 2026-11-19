@@ -6,6 +6,8 @@ export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
     environment: "happy-dom",
+    // Avoid Vitest 4's console RPC teardown race; CI still prints stdout/stderr.
+    disableConsoleIntercept: process.env.CI === "true",
     // Any test that mounts a real-URL iframe (desktop-stream, YouTube embeds) must not have
     // happy-dom actually fetch it: vitest teardown cuts the socket mid-connect and the resulting
     // ECANCELED/AbortError/NetworkError reads as a test failure (#16544).

@@ -15,6 +15,7 @@ from prometheus_client import REGISTRY, generate_latest
 from backend.copilot import ai_spans
 from backend.copilot.background_task import BACKGROUND_TIMEOUT_MESSAGE
 from backend.copilot.baseline.service import _build_natural_finish_empty_fallback_events
+from backend.copilot.executor.manager import turns_counter
 from backend.copilot.executor.processor import CoPilotProcessor
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import (
@@ -26,7 +27,6 @@ from backend.copilot.response_model import (
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
 )
-from backend.copilot.turn_metrics import turns_counter
 
 from .processor_test import _make_entry, _make_log
 

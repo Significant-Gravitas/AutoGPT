@@ -18,6 +18,7 @@ from backend.copilot.sdk.retry_scenarios_test import (
 )
 from backend.copilot.tools import skill_matching_helpers_test as baseline
 from backend.copilot.tools import skill_matching_test as skill_fixtures
+from backend.copilot.tools.skill_matching import build_matched_skills_notice
 from backend.util import json
 
 baseline_io = baseline_fixtures.baseline_io
@@ -189,6 +190,11 @@ def _sdk_client_factory(queries: list[str], retry: bool):
 
 
 def _patch_sdk_context(stack: ExitStack, resume: bool) -> None:
+    stack.enter_context(
+        patch.object(
+            sdk_service, "build_matched_skills_notice", build_matched_skills_notice
+        )
+    )
     stack.enter_context(
         patch.object(sdk_service.config, "claude_agent_use_resume", resume)
     )

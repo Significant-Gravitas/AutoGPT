@@ -67,6 +67,7 @@ function resolveSourceMap(sourcePath: string) {
 }
 
 export default defineConfig({
+  captureGitInfo: { diff: false },
   testDir: "./src/playwright",
   testMatch: /.*-happy-path\.spec\.ts/,
   /* Global setup file that runs before all tests */

@@ -14,6 +14,7 @@ from backend.copilot.at_reset import (
 )
 from backend.copilot.continuation import KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE
 from backend.copilot.db import PaginatedMessages
+from backend.copilot.limit_tracking import LimitReading
 from backend.copilot.model import ChatMessage, ChatSessionInfo, ChatSessionMetadata
 from backend.copilot.pending_message_helpers import StreamRegistryUnavailable
 from backend.copilot.rate_limit import (
@@ -313,8 +314,16 @@ async def test_an_account_with_no_allowance_drops_the_turn_when_it_fires(
     global_limits, _, gate = limits
     global_limits.return_value = (0, 0, SubscriptionTier.NO_TIER)
     gate.side_effect = RateLimitUnavailable("Subscription changed")
-    verdict = await fire_verdict("send", _chat(), SET_AT)
+    reading = LimitReading(tier=SubscriptionTier.TRIAL.value, cap=0.0)
+    with patch(
+        f"{_MOD}.no_allowance_reading",
+        AsyncMock(return_value=("trial", reading)),
+    ) as read_allowance:
+        verdict = await fire_verdict("send", _chat(), SET_AT)
     assert verdict.action == "drop"
+    assert verdict.window == "trial"
+    assert verdict.reading == reading
+    read_allowance.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
     gate.assert_not_awaited()
 
 

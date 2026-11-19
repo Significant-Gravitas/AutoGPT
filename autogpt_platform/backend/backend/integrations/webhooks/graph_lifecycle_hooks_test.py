@@ -195,8 +195,20 @@ def _sheets_node(credentials_id: str) -> tuple[str, dict[str, Any]]:
     return GoogleSheetsReadBlock().id, {"spreadsheet": spreadsheet, "range": "A1"}
 
 
+@pytest.fixture
+def graph_block_registry(monkeypatch):
+    monkeypatch.setattr(
+        "backend.blocks.get_blocks",
+        lambda: {
+            block().id: block for block in (GoogleSheetsReadBlock, StoreValueBlock)
+        },
+    )
+
+
 @pytest.mark.asyncio
-async def test_before_graph_activate_keeps_only_files_picked_with_own_credentials():
+async def test_before_graph_activate_keeps_only_files_picked_with_own_credentials(
+    graph_block_registry,
+):
     """[SECRT-1772] A save keeps the file the user picked with their own Google
     account. A file embedding someone else's credentials, as in an agent
     imported from another user's export, is cleared so they pick it again."""
@@ -217,7 +229,9 @@ async def test_before_graph_activate_keeps_only_files_picked_with_own_credential
 
 
 @pytest.mark.asyncio
-async def test_before_graph_activate_skips_the_lookup_without_picked_files():
+async def test_before_graph_activate_skips_the_lookup_without_picked_files(
+    graph_block_registry,
+):
     """Saving a graph without any picked file must not load the user's
     credentials just to check ownership, and must leave inputs that aren't
     pickers alone even when they hold a `_credentials_id` key."""
