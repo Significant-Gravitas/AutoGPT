@@ -38,7 +38,12 @@ export function useHireExpert({ onHired, onError }: Args) {
       queryClient.setQueryData<Expert[]>(expertKeys.list, (old) =>
         old ? withHiredExpert(old, expert) : old,
       );
-      void queryClient.invalidateQueries({ queryKey: expertKeys.list });
+      // A list request that started before the hire mustn't be the load that
+      // decides it (`hiresSince`). Invalidating alone reuses a first load still
+      // in flight, so cancel whatever is running, then load afresh.
+      void queryClient
+        .cancelQueries({ queryKey: expertKeys.list })
+        .then(() => queryClient.invalidateQueries({ queryKey: expertKeys.list }));
       onHired(expert, template);
     } catch (caught) {
       // A refusal for an account already signed out must not end the next one.
