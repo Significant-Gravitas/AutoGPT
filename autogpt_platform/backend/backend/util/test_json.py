@@ -911,7 +911,16 @@ class TestValidateWithJsonschema:
         assert error == expected
         assert error is not None and "secret-z" not in error
 
-    def test_a_key_of_the_given_value_is_cut_short_on_one_line(self):
+    @pytest.mark.parametrize(
+        "key,location",
+        [
+            ("plain_key-1", "headers.plain_key-1"),
+            ("a.b", 'headers["a.b"]'),
+            ("", 'headers[""]'),
+            ("line\nbreak" + "k" * 100, 'headers["line\\nbreak' + "k" * 27 + '..."]'),
+        ],
+    )
+    def test_a_key_of_the_given_value_is_short_and_unambiguous(self, key, location):
         schema = {
             "type": "object",
             "properties": {
@@ -921,11 +930,16 @@ class TestValidateWithJsonschema:
                 }
             },
         }
-        key = "line\nbreak" + "k" * 100
         error = validate_with_jsonschema(schema, {"headers": {key: 1}})
-        assert error == (
-            "headers.linebreak" + "k" * 28 + "...: expected string, got integer"
-        )
+        assert error == f"{location}: expected string, got integer"
+
+    def test_a_property_named_like_the_key_keyword_is_still_a_value(self):
+        schema = {
+            "type": "object",
+            "properties": {"propertyNames": {"type": "integer"}},
+        }
+        error = validate_with_jsonschema(schema, {"propertyNames": "x"})
+        assert error == "propertyNames: expected integer, got string"
 
     def test_long_message_is_capped(self):
         depth = 20
@@ -953,7 +967,7 @@ class TestValidateWithJsonschema:
         [
             ("enum", "is not one of the allowed values"),
             ("required", "is missing a required property"),
-            ("type", "is not valid"),
+            ("type", "does not match any of the allowed forms"),
             ("minimum", "is not valid"),
         ],
     )

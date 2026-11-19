@@ -4,6 +4,7 @@ import math
 import re
 import sys
 from collections import OrderedDict
+from collections.abc import Iterable
 from copy import deepcopy
 from enum import Enum
 from threading import Lock
@@ -313,7 +314,18 @@ _JSON_TYPE_NAMES: dict[type, str] = {
 }
 
 _PATH_PART_MAX_LENGTH = 40
-_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+_PLAIN_PATH_PART = re.compile(r"[A-Za-z0-9_-]+")
+# Keywords whose next schema path part is a name, not a keyword.
+_NAMING_KEYWORDS = frozenset(
+    {
+        "properties",
+        "patternProperties",
+        "dependentSchemas",
+        "dependencies",
+        "$defs",
+        "definitions",
+    }
+)
 
 _BOUND_SIGNS: dict[str, str] = {
     "minimum": ">=",
@@ -346,7 +358,7 @@ def describe_validation_error(
     path.extend(error.absolute_path)
     location = _format_error_path(path)
     message = _describe_failed_check(error)
-    if "propertyNames" in error.absolute_schema_path:
+    if _checks_a_key(error.absolute_schema_path):
         message = f"a key {message}"
     if location:
         message = f"{location}: {message}"
@@ -357,27 +369,47 @@ def describe_validation_error(
 
 def _format_error_path(path: list[str | int]) -> str:
     location = ""
-    for part in path:
+    for index, part in enumerate(path):
         if isinstance(part, int):
             location += f"[{part}]"
             continue
         # A key of a free-form dict comes from the given value, so keep it
-        # short and on one line.
-        name = _CONTROL_CHARS.sub("", str(part))
+        # short, and quote it unless it is a plain name.
+        name = str(part)
         if len(name) > _PATH_PART_MAX_LENGTH:
             name = name[: _PATH_PART_MAX_LENGTH - 3] + "..."
-        location += f".{name}" if location else name
+        if _PLAIN_PATH_PART.fullmatch(name):
+            location += f".{name}" if index else name
+        else:
+            location += f"[{orjson.dumps(name).decode()}]"
     return location
+
+
+def _checks_a_key(schema_path: Iterable[str | int]) -> bool:
+    """Whether the failed check came from `propertyNames`, which checks the
+    keys of an object rather than its values."""
+    after_naming_keyword = False
+    for part in schema_path:
+        if after_naming_keyword:
+            after_naming_keyword = False
+        elif part == "propertyNames":
+            return True
+        else:
+            after_naming_keyword = part in _NAMING_KEYWORDS
+    return False
 
 
 def _json_type_name(value: Any) -> str:
     return _JSON_TYPE_NAMES.get(type(value), type(value).__name__)
 
 
-def _expected_types(types: Any) -> list[str]:
-    if isinstance(types, list):
-        return [str(t) for t in types]
-    return [str(types)]
+def _expected_types(types: Any) -> list[str] | None:
+    """The type names a `type` check allows, or None when they are not all
+    plain names (draft 3 also allows schemas there)."""
+    names = types if isinstance(types, list) else [types]
+    if names and all(isinstance(name, str) for name in names):
+        return names
+    return None
 
 
 def _count(number: int, noun: str) -> str:
@@ -395,18 +427,19 @@ def _describe_failed_check(error: jsonschema.ValidationError) -> str:
     schema: Any = error.schema
     context: list[jsonschema.ValidationError] = list(error.context or [])
 
-    if keyword == "type" and isinstance(expected, (str, list)):
-        allowed = " or ".join(_expected_types(expected))
-        return f"expected {allowed}, got {_json_type_name(given)}"
+    if keyword == "type":
+        if allowed := _expected_types(expected):
+            return f"expected {' or '.join(allowed)}, got {_json_type_name(given)}"
+        return "does not match any of the allowed forms"
     if keyword in ("anyOf", "oneOf"):
         if context and all(
             sub.validator == "type" and not sub.relative_path for sub in context
         ):
-            types: list[str] = []
-            for sub in context:
-                types.extend(_expected_types(sub.validator_value))
-            unique_types = " or ".join(dict.fromkeys(types))
-            return f"expected {unique_types}, got {_json_type_name(given)}"
+            allowed_per_form = [_expected_types(sub.validator_value) for sub in context]
+            if all(allowed_per_form):
+                types = [name for names in allowed_per_form for name in names or []]
+                unique_types = " or ".join(dict.fromkeys(types))
+                return f"expected {unique_types}, got {_json_type_name(given)}"
         if keyword == "oneOf" and not context:
             return "matches more than one of the allowed forms"
         return "does not match any of the allowed forms"
