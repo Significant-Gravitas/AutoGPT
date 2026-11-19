@@ -127,6 +127,12 @@ describe("whoLine", () => {
     expect(whoLine(template({ name: "Kai", tagline: "I sort your inbox." }))).toBe(
       "Kai, I sort your inbox.",
     );
+    expect(whoLine(template({ name: "Kai", tagline: "I'm sorting your inbox." }))).toBe(
+      "Kai, I'm sorting your inbox.",
+    );
+    expect(whoLine(template({ name: "Kai", tagline: "I’ll sort your inbox." }))).toBe(
+      "Kai, I’ll sort your inbox.",
+    );
   });
 
   it("is just the name without a tagline", () => {

@@ -58,8 +58,6 @@ export function useHomeScreen() {
   const suggested = (data ?? []).filter(Boolean).slice(0, 6).map(ottoWording);
   const team = experts.data ?? [];
   const selected = team.find((expert) => expert.id === selectedID) ?? null;
-  // A "new chat with this expert" link names them before the team loads.
-  const isRecipientLoading = selectedID !== null && selected === null && experts.isPending;
   // The suggestions come from what Otto knows about the user's business; an
   // expert gets starters for their own area instead.
   const ottoPrompts = suggested.length > 0 ? suggested : FALLBACK_PROMPTS;
@@ -84,10 +82,29 @@ export function useHomeScreen() {
     }
   }
 
+  /**
+   * Who a send goes to: null for Otto, undefined when it can't go yet. A
+   * "new chat with this expert" link can name someone the team list doesn't
+   * have yet (still loading, or cached from before they were hired), so look
+   * again rather than send it to Otto.
+   */
+  async function recipientID() {
+    if (selectedID === null || selected) return selected?.id ?? null;
+    const fresh = await experts.refetch();
+    const found = fresh.data?.find((expert) => expert.id === selectedID);
+    if (found) return found.id;
+    if (fresh.isError) {
+      setError("Couldn't load your team. Try again.");
+    } else {
+      // Gone from the team: the picker already shows Otto, so say so.
+      setSelectedID(null);
+      setError("That expert isn't on your team any more. Send again to ask Otto.");
+    }
+    return undefined;
+  }
+
   async function submit(text: string) {
     if (isStartingRef.current) return false;
-    // Sending now would start a chat with Otto instead of the expert asked for.
-    if (isRecipientLoading) return false;
     // A starter row skips the composer's own check, and the send would leave the file behind.
     if (isUploading(files.attachments)) {
       setError("Wait for your files to finish uploading.");
@@ -97,7 +114,9 @@ export function useHomeScreen() {
     setIsStarting(true);
     setError(null);
     try {
-      await startChat(text, selected?.id, files.readyFiles);
+      const expertID = await recipientID();
+      if (expertID === undefined) return false;
+      await startChat(text, expertID ?? undefined, files.readyFiles);
       files.clear();
       return true;
     } catch (caught) {

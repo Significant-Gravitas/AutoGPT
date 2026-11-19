@@ -107,7 +107,7 @@ export function whoLine(template: Pick<ExpertTemplate, "name" | "tagline">) {
   const tagline = template.tagline?.trim();
   if (!tagline) return template.name;
   // Keep words that open in capitals, such as "SEO" or "I".
-  const keepsCase = /^[A-Z]([A-Z]|\s|$)/.test(tagline);
+  const keepsCase = /^[A-Z]([A-Z]|\s|['’]|$)/.test(tagline);
   const rest = keepsCase ? tagline : tagline.charAt(0).toLowerCase() + tagline.slice(1);
   return `${template.name}, ${rest}`;
 }

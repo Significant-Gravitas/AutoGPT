@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { isSessionID } from "@/lib/api/chat";
 import { useMountEffect } from "@/lib/useMountEffect";
@@ -35,6 +35,8 @@ export function useOAuthReturn(params: Record<string, unknown>) {
   // An account saved for an expert who couldn't be given it yet.
   const [failedGrant, setFailedGrant] = useState<Grant | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
+  // False once the user left, so a retry that ends later doesn't navigate again.
+  const isOnScreen = useRef(true);
 
   useMountEffect(() => {
     const returned = oauthReturnFromParams(params);
@@ -83,10 +85,12 @@ export function useOAuthReturn(params: Record<string, unknown>) {
     });
     return () => {
       isMounted = false;
+      isOnScreen.current = false;
     };
   });
 
   function goBack() {
+    isOnScreen.current = false;
     leave(sessionID);
   }
 
@@ -96,7 +100,7 @@ export function useOAuthReturn(params: Record<string, unknown>) {
     setIsRetrying(true);
     try {
       await allowForExpert(failedGrant.expertID, [failedGrant.credentialID]);
-      leave(sessionID);
+      if (isOnScreen.current) leave(sessionID);
     } catch (caught) {
       setError(allowErrorText(caught));
     } finally {
