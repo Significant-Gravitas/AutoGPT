@@ -361,6 +361,11 @@ def describe_validation_error(
     if _checks_a_key(error.absolute_schema_path):
         message = f"a key {message}"
     if location:
+        # Keep the failed check and the end of the path, nearest the failure.
+        room = VALIDATION_ERROR_MAX_LENGTH - len(message) - 2
+        if len(location) > room:
+            keep = max(room - 3, 0)
+            location = "..." + location[len(location) - keep :]
         message = f"{location}: {message}"
     if len(message) > VALIDATION_ERROR_MAX_LENGTH:
         message = message[: VALIDATION_ERROR_MAX_LENGTH - 3] + "..."

@@ -952,7 +952,8 @@ class TestValidateWithJsonschema:
         error = validate_with_jsonschema(schema, data)
         assert error is not None
         assert len(error) == json_util.VALIDATION_ERROR_MAX_LENGTH
-        assert error.endswith("...")
+        assert error.startswith("...")
+        assert error.endswith(": expected integer, got string")
 
     def test_a_draft_4_exclusive_bound_reads_as_exclusive(self):
         schema = {
