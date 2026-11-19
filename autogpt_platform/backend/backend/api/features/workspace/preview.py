@@ -11,9 +11,10 @@ whole file to the browser:
 * text-like files      -> first N bytes (partial read, no full download)
 
 Image/PDF/Office thumbnails are cached in Redis keyed by file checksum so
-repeat views and re-renders are free. Every render of a file's bytes runs in a
-short-lived child process with a time and memory limit (see ``preview_render``),
-so neither the event loop nor its thread pool waits on one.
+repeat views and re-renders are free, up to a size per thumbnail and a daily
+total per workspace. Every render of a file's bytes runs in a short-lived child
+process with a time and memory limit (see ``preview_render``), so neither the
+event loop nor its thread pool waits on one.
 """
 
 import asyncio
@@ -25,13 +26,18 @@ import fastapi
 from fastapi.responses import Response
 
 from backend.api.features.workspace import preview_render
-from backend.data.redis_client import get_redis_async
+from backend.data.redis_client import AsyncRedisClient, get_redis_async
+from backend.data.redis_helpers import incr_with_ttl
 from backend.data.workspace import WorkspaceFile
 from backend.util.workspace_storage import get_workspace_storage
 
 logger = logging.getLogger(__name__)
 
 PREVIEW_CACHE_TTL = 86_400  # 1 day
+# The cache shares the platform's Redis, so a workspace may only put so much
+# there; a thumbnail past either cap is still served, just rendered again.
+PREVIEW_CACHE_MAX_ENTRY_BYTES = 512 * 1024
+PREVIEW_CACHE_MAX_WORKSPACE_BYTES = 32 * 1024 * 1024
 # Each thumbnail renders in its own child process; cap how many run at once so a
 # burst of large previews can't hold many full-resolution bitmaps in memory
 # together.
@@ -230,9 +236,24 @@ async def _cached(
 
     if redis is not None:
         try:
-            await redis.set(
-                key, base64.b64encode(content).decode(), ex=PREVIEW_CACHE_TTL
+            await _store(
+                redis, key, file.workspace_id, base64.b64encode(content).decode()
             )
         except Exception as e:
             logger.warning(f"Preview cache write failed for {file.id}: {e}")
     return content
+
+
+async def _store(
+    redis: AsyncRedisClient, key: str, workspace_id: str, value: str
+) -> None:
+    if len(value) > PREVIEW_CACHE_MAX_ENTRY_BYTES:
+        return
+    used = await incr_with_ttl(
+        redis,
+        f"wsfile:preview-bytes:{workspace_id}",
+        PREVIEW_CACHE_TTL,
+        amount=len(value),
+    )
+    if used <= PREVIEW_CACHE_MAX_WORKSPACE_BYTES:
+        await redis.set(key, value, ex=PREVIEW_CACHE_TTL)
