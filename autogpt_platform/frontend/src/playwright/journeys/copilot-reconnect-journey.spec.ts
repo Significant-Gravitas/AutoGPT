@@ -99,6 +99,9 @@ async function loseConnectionMidAnswer({
     // Online, one drop resumes silently: the chat speaks up from the second
     // failed attempt in a row.
     reconnected = page.waitForRequest(isChatStream("GET"));
+    // A failure before it is awaited mustn't leave it to reject unhandled
+    // when the page closes; the success path still awaits it below.
+    void reconnected.catch(() => undefined);
     if (offline) await context.setOffline(true);
     await cutChatStreams(page);
     // Only now does the model write the rest, while the connection is down:
@@ -110,7 +113,10 @@ async function loseConnectionMidAnswer({
     // A journey that fails before the cut must not leave the reply held open
     // on the scripted model. Each release lets one held reply through, so
     // this one goes out only if the journey's own didn't.
-    if (!released) await releaseHeldReply(run.nonce).catch(() => undefined);
+    if (!released) {
+      await releaseHeldReply(run.nonce).catch(() => undefined);
+      if (offline) await context.setOffline(false).catch(() => undefined);
+    }
   }
   if (offline) {
     await expect(
