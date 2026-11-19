@@ -62,7 +62,7 @@ YAML_EXPANSION_FACTOR = 8
 # The .xlsx caps, per member and per workbook, checked before pandas reads it.
 MAX_XLSX_MEMBER_BYTES = 50 * 1024 * 1024
 MAX_XLSX_TOTAL_BYTES = 200 * 1024 * 1024
-# What one sheet may read to: cells up to its last used row and column, and text.
+# What one sheet may read to, in cells and in characters of text.
 MAX_XLSX_SHEET_CELLS = 5_000_000
 MAX_XLSX_SHEET_CHARACTERS = 32 * 1024 * 1024
 
@@ -422,7 +422,7 @@ def check_xlsx_sheet_size(file: IO[bytes], sheet_name: str | None = None) -> Non
         )
         if sheet is None:
             return
-        # As pandas does: read every cell the file lists, then pad rows to the widest.
+        # Read every cell, as pandas does.
         sheet.reset_dimensions()
         read = last_row = width = characters = 0
         for number, row in enumerate(sheet.iter_rows(values_only=True), start=1):

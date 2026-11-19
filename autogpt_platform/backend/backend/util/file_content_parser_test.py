@@ -596,7 +596,6 @@ class TestXlsxUnpackedSize:
 
     @pytest.mark.parametrize("dimension", [None, "A1:A1"])
     def test_a_sheet_past_the_cell_cap_is_refused_unread(self, dimension):
-        """Refused whatever size the sheet's ``<dimension>`` claims, as pandas ignores it."""
         from openpyxl import Workbook
 
         workbook = Workbook()
