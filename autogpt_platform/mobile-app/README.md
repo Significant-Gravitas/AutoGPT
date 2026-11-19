@@ -4,7 +4,9 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 
 ## What it does
 
-- **Login:** email and password, existing accounts only.
+- **Login:** email and password.
+- **Sign-up:** email and password. On a server that asks for a verified email, the link opens the web, then you come back to the app and carry on.
+- **Onboarding:** three short steps for an account that has not finished it: your role, your work (talk, type or skip) and a setup screen that saves the answers, hires your team and opens Home.
 - **Home:** laid out like the ChatGPT app. A pill at the top picks who you are talking to (Otto or one of your experts); the page stays empty, with a short list just above the composer: what needs you and what is running or next, then starters. The composer's main button dictates until there is something to send.
 - **Chats:** as in the ChatGPT app, the menu slides in over three quarters of the screen and pushes the page aside, rounded and faded; tap what is left of the page to close it. It has search, your team, the Marketplace and "All chats" (every chat grouped by expert), then one row per expert with their latest chat, with a floating "New chat" pill and your avatar (settings, sign out) at its foot. In a chat you can send, stream, stop, load earlier messages, and pick up a reply that is still running or was dropped.
 - **Chat feel:** a sent message moves to the top of the screen and the reply fills in below it at an even pace, without the view chasing it; an arrow brings you back to the end. The thread moves with the keyboard frame by frame, and dragging it down closes the keyboard. Long-press a message to copy or share it. The composer is the same card as on Home.
@@ -21,7 +23,7 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 
 ## What it does not do
 
-Sign-up, onboarding, billing and paywalls, social login, push notifications, choosing a model, pausing a single routine, uploading or generating an expert's picture, deleting or downloading files, store builds, and CI.
+Billing and paywalls, choosing a plan (on a server that needs one, onboarding ends by sending you to the web), social login, push notifications, choosing a model, pausing a single routine, uploading or generating an expert's picture, deleting or downloading files, store builds, and CI.
 
 ## Run it
 
@@ -47,6 +49,8 @@ The app follows the auth service's contract for installed apps in [`docs/enginee
 - Dictation and Settings use web routes that read a cookie, so for those two the app sends the same credential as the session cookie.
 
 A web app from before that contract answers a sign-in with a cookie only, and the app then says the server can't sign it in yet.
+
+Sign-up uses the same contract at `/api/auth/sign-up/email`. With email verification off, the server signs the app in at once, and the app creates the platform user (`POST /api/auth/user`) and records consent. With it on, the server emails a link and makes no session: the link opens the web, which creates the platform user and records consent there, then lands on `/app-verified`, a page that sends the person back to the app. "I've opened the link" then signs in with the password the app kept in memory. After any sign-in the app asks the backend once per account whether onboarding is finished, and remembers a yes on the phone.
 
 ### Connecting services
 
@@ -86,3 +90,6 @@ Set these in `.env.local` (see `.env.example`). Trailing slashes are dropped.
 - Only `http` and `https` links open.
 - Plain HTTP only works in development; release builds need HTTPS.
 - The Settings WebView sets the session cookie with `document.cookie`, so inside the WebView it is not HttpOnly.
+- In onboarding, a spoken answer is sent as its text; the recording itself is not uploaded.
+- A too-short answer about your work gets no follow-up question; the backend falls back to the plan for your role.
+- An account that starts on a server with the paywall on answers role and work again on the web, where it chooses a plan.

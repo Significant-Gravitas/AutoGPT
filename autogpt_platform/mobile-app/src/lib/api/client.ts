@@ -23,6 +23,7 @@ interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
+  signal?: AbortSignal;
 }
 
 export async function authHeaders(): Promise<Record<string, string>> {
@@ -58,9 +59,13 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
   return (await response.json()) as T;
 }
 
-async function send(path: string, { method = "GET", body, query }: RequestOptions) {
+async function send(
+  path: string,
+  { method = "GET", body, query, signal }: RequestOptions,
+) {
   return fetch(apiUrl(path, query), {
     method,
+    signal,
     headers: {
       ...(await authHeaders()),
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
