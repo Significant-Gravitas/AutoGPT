@@ -730,13 +730,13 @@ async def get_graph_executions(
                 "createdAt": order_direction,
             }
 
-    executions = await AgentGraphExecution.prisma().find_many(
+    rows = await GraphExecutionListRow.prisma().find_many(
         where=where_filter,
         order=order_clause,
         take=limit,
         skip=offset,
     )
-    return [GraphExecutionMeta.from_db(execution) for execution in executions]
+    return [GraphExecutionMeta.from_db(row.without_inputs()) for row in rows]
 
 
 async def get_graph_executions_count(
@@ -1068,11 +1068,11 @@ async def get_child_graph_executions(
     Returns:
         List of child graph executions
     """
-    children = await AgentGraphExecution.prisma().find_many(
+    children = await GraphExecutionListRow.prisma().find_many(
         where={"parentGraphExecutionId": parent_exec_id, "isDeleted": False}
     )
 
-    return [GraphExecutionMeta.from_db(child) for child in children]
+    return [GraphExecutionMeta.from_db(child.without_inputs()) for child in children]
 
 
 async def create_graph_execution(
