@@ -22,6 +22,7 @@ const FOLLOW_UP_STREAM = emptyStream({
 type Row = PersistedRow & { id: string };
 
 interface PostedBody {
+  message: string;
   message_id: string;
   file_ids: string[] | null;
   folder_ids: string[] | null;

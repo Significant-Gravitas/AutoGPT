@@ -497,10 +497,12 @@ export const ChatContainer = ({
       });
   });
 
-  // Send again waits while anything holds the one request slot: a turn, a
-  // send uploading its files (it goes first), or the lock.
+  // Send again waits while anything holds the one request slot (a turn, or a
+  // send uploading its files, which goes first), and while the lock or the
+  // usage limit pauses sending, as it does the composer. A refused resend
+  // would hand the text back without its first id.
   const canResend = !(
-    isTurnLocked ||
+    isSendLocked ||
     isStreaming ||
     isUploadingFiles ||
     pendingSend

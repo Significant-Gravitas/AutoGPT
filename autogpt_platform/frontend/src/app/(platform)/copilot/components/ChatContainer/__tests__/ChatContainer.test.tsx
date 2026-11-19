@@ -399,6 +399,28 @@ describe("ChatContainer", () => {
     expect(onResendUnconfirmed).toHaveBeenCalledTimes(1);
   });
 
+  it("holds Send again back while the usage limit pauses sending", () => {
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const { rerender } = render(
+      <ChatContainer {...baseProps} onResendUnconfirmed={vi.fn()} />,
+    );
+    expect(
+      screen.getByTestId("chat-input").getAttribute("data-send-disabled"),
+    ).toBe("true");
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+
+    // A send the server just refused over the limit pauses it too.
+    mockIsUsageLimitReached.mockReturnValue(false);
+    rerender(
+      <ChatContainer
+        {...baseProps}
+        isUsageRefused
+        onResendUnconfirmed={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+  });
+
   it("holds Send again back while a new message's files upload", () => {
     const { rerender } = render(
       <ChatContainer

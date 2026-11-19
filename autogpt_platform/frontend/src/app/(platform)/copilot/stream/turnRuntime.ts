@@ -325,7 +325,10 @@ export class TurnRuntime {
     if (prompt.clientMessageId === null) return null;
     this.segments.splice(index, 1);
     // With the model chosen now, as any send is, not the first request's.
-    void this.postPrompt(prompt.message, model, prompt.clientMessageId);
+    // The send's end reaches the chat through onEnd; nobody awaits this.
+    this.postPrompt(prompt.message, model, prompt.clientMessageId).catch(
+      () => {},
+    );
     return prompt.message;
   }
 

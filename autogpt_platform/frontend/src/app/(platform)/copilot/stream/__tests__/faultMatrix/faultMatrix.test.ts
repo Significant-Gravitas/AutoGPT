@@ -661,6 +661,9 @@ describe("a send", () => {
       await expect(tab.runtime.send({ text: P2 }, undefined)).rejects.toThrow(
         SendInFlightError,
       );
+      await advance(0);
+      // P1's two requests are all that went out: the refused send made none.
+      expect(server.posts.map((post) => post.message)).toEqual([P1, P1]);
       expect(tab.screen().chat).toEqual([`user: ${P1}`]);
     },
   );
@@ -858,7 +861,11 @@ describe("a send", () => {
       await advance(5_000);
       server.publish();
       await advance(30_000);
-      expectScreen({ error: "Failed to fetch" });
+      // P2 arrived and its answer follows it; P1 never did and has none.
+      expectScreen({
+        error: "Failed to fetch",
+        chat: [`user: ${P1}`, `user: ${P2}`, ANSWER],
+      });
     },
   );
 
