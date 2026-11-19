@@ -184,15 +184,24 @@ async function routeLiveConnection(page: Page) {
         client.send(subscribeTimedOutFrame(subscribe.graphID));
         return;
       }
-      if (subscribe) connection.subscribing.push(subscribe.graphID);
+      if (subscribe) {
+        connection.subscribing.push({
+          graphID: subscribe.graphID,
+          sentAfterFailure: failure.failed,
+        });
+      }
       connection.server.send(message);
     });
     connection.server.onMessage((message) => {
       // The server answers a socket's subscribes in order.
       const answer = subscribeAnswer(message);
       if (answer) {
-        const graphID = connection.subscribing.shift();
-        if (failure.failed && graphID === failure.graphID && answer === "ok") {
+        const subscribe = connection.subscribing.shift();
+        if (
+          subscribe?.sentAfterFailure &&
+          subscribe.graphID === failure.graphID &&
+          answer === "ok"
+        ) {
           failure.confirmedAgain = true;
         }
       }
@@ -213,7 +222,11 @@ async function routeLiveConnection(page: Page) {
     },
     /** The page sent that subscribe, and the server's failure went back. */
     subscribeFailed: () => failure.failed,
-    /** The server confirmed a later subscribe to the graph that failed. */
+    /**
+     * The server confirmed a subscribe to the graph sent after the failure.
+     * Until Run, only the page's retry can be one: the workflow's page has no
+     * live view, and the menu's Activity row subscribes to each workflow once.
+     */
     failedSubscribeConfirmedAgain: () => failure.confirmedAgain,
     opened: () => connections.length,
     /** When the first connection after the last close opened. */
@@ -255,8 +268,8 @@ interface Connection {
   server: WebSocketRoute;
   openedAt: number;
   streamLost: boolean;
-  /** The graph of each subscribe sent to the server and not yet answered. */
-  subscribing: (string | undefined)[];
+  /** Each subscribe sent to the server and not yet answered. */
+  subscribing: { graphID?: string; sentAfterFailure: boolean }[];
   dropped: { runID: string; status: string }[];
   forwarded: { runID: string; status: string }[];
 }
@@ -328,7 +341,10 @@ function subscribeRequest(message: string | Buffer) {
 /** The server's answer to a subscribe, or null for anything else. */
 function subscribeAnswer(message: string | Buffer) {
   const parsed = parseMessage(message);
-  if (parsed?.method === "error") return "failed";
+  // An error answers a subscribe only if it names one.
+  if (parsed?.method === "error") {
+    return parsed.request?.method?.startsWith("subscribe_") ? "failed" : null;
+  }
   if (parsed?.method?.startsWith("subscribe_")) return "ok";
   return null;
 }
@@ -339,6 +355,7 @@ function parseMessage(message: string | Buffer) {
     return JSON.parse(message) as {
       method?: string;
       data?: { graph_id?: string };
+      request?: { method?: string };
     };
   } catch {
     return null;

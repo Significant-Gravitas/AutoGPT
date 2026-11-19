@@ -44,8 +44,8 @@ export class SubscribeRetries {
 
   /**
    * Reads a message from the server, acting on an error that names a
-   * subscribe; true when that schedules a retry. Servers from before the
-   * request and retryable fields name none, so their errors change nothing.
+   * subscribe; true when that schedules a retry. An error that names no
+   * request changes nothing.
    */
   read(message: unknown): boolean {
     if (!isSubscribeFailure(message)) return false;
@@ -96,7 +96,7 @@ export class SubscribeRetries {
     this.reportedGivingUp = false;
   }
 
-  private logStopped(failure: RequestFailure, retries: number) {
+  private logStopped(failure: RequestFailure, retriesSent: number) {
     const subscribe = `[BackendAPI] WebSocket ${failure.request.method}`;
     if (!failure.retryable) {
       // A refusal stands (a cap, a run that is gone), and the server logs it.
@@ -105,7 +105,7 @@ export class SubscribeRetries {
       );
       return;
     }
-    const givingUp = `${subscribe} still failing after ${retries} retries; its live updates stop until the next reconnect`;
+    const givingUp = `${subscribe} still failing after ${retriesSent} retries; its live updates stop until the next reconnect`;
     // A warning is a Sentry event, and one Redis outage can fail every
     // subscribe of a connection: report the first, keep the rest as crumbs.
     if (this.reportedGivingUp) {

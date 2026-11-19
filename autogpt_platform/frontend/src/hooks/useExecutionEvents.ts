@@ -32,10 +32,10 @@ interface UseExecutionEventsOptions {
   throttleMs?: number;
   onExecutionUpdate?: ExecutionEventHandler;
   /**
-   * Called after the socket reconnects, once the server has these
-   * subscriptions again. Updates published while it was down never arrive,
-   * so refetch here. Not called for the first connection. Called again once
-   * a subscribe that failed has settled on a retry.
+   * Called whenever live state should be re-read, because updates may have
+   * been missed: after the socket reconnects, once the server has these
+   * subscriptions again, and after a subscribe that failed settles on a
+   * retry, on any connection, the first included. Refetch here.
    */
   onReconnect?: () => void;
 }

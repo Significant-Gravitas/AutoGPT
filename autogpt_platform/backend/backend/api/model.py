@@ -38,7 +38,9 @@ class WSRequestSent(pydantic.BaseModel):
 class WSRequestFailed(WSMessage):
     """The ``error`` answering a request the server could not handle. It names
     the request, so the client knows which subscription failed, and says
-    whether sending it again can succeed. Older clients read a plain error."""
+    whether sending it again can succeed. Older clients read a plain error.
+    ``request`` is the request as received, unchanged: the client sends it
+    again as it is, and keys its retries on it."""
 
     method: WSMethod = WSMethod.ERROR
     success: bool | None = False

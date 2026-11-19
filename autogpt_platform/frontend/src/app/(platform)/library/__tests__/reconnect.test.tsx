@@ -97,41 +97,41 @@ function tile(label: string) {
 }
 
 // The server's side of the app's subscribes, noting each in `log`. It can't
-// complete a subscribe to `failing.graphID`, as when Redis doesn't confirm it
-// in time, `failing.times` times or until allowed; it confirms the rest.
+// complete the first `failing.times` subscribes to `failing.graphID`, as when
+// Redis doesn't confirm them in time; it confirms the rest. With `hold`, its
+// answer to the next one waits for `release()`, and every answer after it.
 function subscriptions(
   log: string[],
-  failing?: { graphID: string; times: number },
+  failing?: { graphID: string; times: number; hold?: boolean },
 ) {
   const subscribed = new Set<string>();
   let failuresLeft = failing?.times ?? 0;
+  let release = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   return {
     subscribed,
-    allow() {
-      failuresLeft = 0;
-    },
-    answer(message: SentMessage, socket: FakeWebSocket) {
+    release: () => release(),
+    async answer(message: SentMessage, socket: FakeWebSocket) {
       if (message.method !== "subscribe_graph_executions") return;
       const { graph_id } = message.data as { graph_id: string };
       if (graph_id === failing?.graphID && failuresLeft > 0) {
         failuresLeft -= 1;
         log.push(`failed ${graph_id}`);
-        queueMicrotask(() =>
-          socket.receive({
-            method: "error",
-            success: false,
-            error: "Could not handle 'subscribe_graph_executions'; retry",
-            request: message,
-            retryable: true,
-          }),
-        );
+        socket.receive({
+          method: "error",
+          success: false,
+          error: "Could not handle 'subscribe_graph_executions'; retry",
+          request: message,
+          retryable: true,
+        });
         return;
       }
+      if (graph_id === failing?.graphID && failing.hold) await released;
       subscribed.add(graph_id);
       log.push(`subscribed ${graph_id}`);
-      queueMicrotask(() =>
-        socket.receive({ method: message.method, success: true }),
-      );
+      socket.receive({ method: message.method, success: true });
     },
   };
 }
@@ -253,11 +253,12 @@ test("after a reconnect, Library re-reads its runs at once, and again once a res
   await live.drop(first);
   const server = subscriptions(log, {
     graphID: agent.graph_id,
-    times: Infinity,
+    times: 1,
+    hold: true,
   });
   await live.acceptNext(server.answer);
-  // Fresh right after the reconnect, while the server still can't complete
-  // the workflow's subscribe and the page keeps retrying it.
+  // Fresh right after the reconnect, while the resubscription has failed
+  // and its retry waits for the server's answer.
   await waitFor(
     () => expect(tile("Recently completed").getByText("1")).toBeDefined(),
     AFTER_RECONNECT,
@@ -265,7 +266,7 @@ test("after a reconnect, Library re-reads its runs at once, and again once a res
   expect(server.subscribed.has(agent.graph_id)).toBe(false);
 
   log.length = 0;
-  server.allow();
+  server.release();
   // Read again once the retry is confirmed, so the last read follows it:
   // read only before, the page would miss every later update of the run.
   await waitFor(() => {

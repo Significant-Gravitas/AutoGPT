@@ -31,11 +31,16 @@ export function installLiveSocket() {
   return {
     /**
      * Accepts the app's next connection and keeps answering its pings.
-     * `answer` gets every other message the app sends; like the server, it
-     * should reply in a microtask, so replies keep the order of the requests.
+     * `answer` gets every other message the app sends and replies with
+     * `socket.receive`. Like the server, the socket answers in order: each
+     * reply, pongs included, waits for those before it, so an answer that
+     * returns a promise holds every answer after it.
      */
     async acceptNext(
-      answer?: (message: SentMessage, socket: FakeWebSocket) => void,
+      answer?: (
+        message: SentMessage,
+        socket: FakeWebSocket,
+      ) => void | Promise<void>,
     ) {
       await waitFor(
         () => expect(FakeWebSocket.instances.length).toBeGreaterThan(accepted),
@@ -43,13 +48,14 @@ export function installLiveSocket() {
       );
       const socket = FakeWebSocket.instances[accepted];
       accepted += 1;
+      let answered = Promise.resolve();
       socket.send.mockImplementation((data: string) => {
         const message: SentMessage = JSON.parse(data);
-        if (message.method === "heartbeat") {
-          queueMicrotask(() => socket.pong());
-        } else {
-          answer?.(message, socket);
-        }
+        answered = answered.then(() =>
+          message.method === "heartbeat"
+            ? socket.pong()
+            : answer?.(message, socket),
+        );
       });
       await act(async () => socket.open());
       return socket;

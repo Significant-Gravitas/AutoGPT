@@ -16,8 +16,9 @@ import {
 interface Handlers {
   onConnect: () => void;
   /**
-   * After a reconnect, once the server has handled what onConnect sent; and
-   * once a subscribe it could not complete has settled on a retry.
+   * Whenever live state should be re-read: after a reconnect, once the
+   * server has handled what onConnect sent, and after a subscribe it could
+   * not complete settles on a retry, on any connection.
    */
   onReconnect: () => void;
   onDisconnect: () => void;
