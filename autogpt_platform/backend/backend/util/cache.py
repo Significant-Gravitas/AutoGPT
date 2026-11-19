@@ -21,7 +21,6 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 from functools import cache, wraps
 from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
-from weakref import WeakKeyDictionary
 
 import sentry_sdk
 from redis.cluster import RedisCluster
@@ -122,22 +121,26 @@ class _InFlight:
         self._turns = asyncio.Semaphore(max_concurrent)
 
     async def run(
-        self, key: Any, compute: Callable[[], Awaitable[T]], share: Callable[[T], T]
+        self,
+        key: Any,
+        compute: Callable[[], Awaitable[T]],
+        snapshot: Callable[[T], Callable[[], T]],
     ) -> T:
-        """``compute()``'s result, or the running computation's for ``key``,
-        passed through ``share``. Its error is raised to every caller that
-        waited for it; if its own caller is cancelled, a waiting one computes
-        instead."""
+        """``compute()``'s result, or the running computation's for ``key``:
+        each waiting caller gets one from ``snapshot``, taken when the value
+        is computed, so whatever its own caller then does to it can't reach
+        theirs. Its error is raised to every caller that waited for it; if
+        its own caller is cancelled, a waiting one computes instead."""
         while (flight := self._flights.get(key)) is not None:
             try:
-                value = await asyncio.shield(flight)
+                copy = await asyncio.shield(flight)
             except asyncio.CancelledError:
                 caller = asyncio.current_task()
                 # Only the computation was cancelled, not this caller too.
                 if flight.cancelled() and not (caller and caller.cancelling()):
                     continue
                 raise
-            return share(value)
+            return copy()
         flight = self._flights[key] = asyncio.get_running_loop().create_future()
         try:
             async with self._turns:
@@ -147,7 +150,7 @@ class _InFlight:
             flight.exception()  # Retrieved: an error nobody waited for logs nothing.
             raise
         else:
-            flight.set_result(value)
+            flight.set_result(snapshot(value))
             return value
         finally:
             if not flight.done():
@@ -156,17 +159,40 @@ class _InFlight:
                 del self._flights[key]
 
 
-def _private_copy(value: T) -> T:
-    """A copy of a shared-cache value for one more caller, who, as from
-    Redis, gets one of its own. A value that can't be pickled is shared."""
+def _private_copies(value: T) -> Callable[[], T]:
+    """Copies of a shared-cache value, one per waiting caller, who, as from
+    Redis, each get their own: made from the bytes it pickles to now. A value
+    that can't be pickled is shared."""
     try:
-        return pickle.loads(pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
+        pickled = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
     except Exception:
-        return value
+        return lambda: value
+    return lambda: pickle.loads(pickled)
 
 
-def _as_is(value: T) -> T:
-    return value
+def _the_same(value: T) -> Callable[[], T]:
+    """The value itself for every waiting caller, as the in-memory cache
+    hands out on a hit."""
+    return lambda: value
+
+
+# Each loop keeps the coordinators of its misses, one per decorated function,
+# so they live exactly as long as the loop: a map from loops elsewhere would
+# keep each loop alive through the semaphore that binds to it.
+_IN_FLIGHT_ATTR = "_shared_cache_in_flight"
+
+
+def _in_flight_on(
+    loop: asyncio.AbstractEventLoop, function: object, max_concurrent: int
+) -> _InFlight:
+    by_function: dict[object, _InFlight] | None = getattr(loop, _IN_FLIGHT_ATTR, None)
+    if by_function is None:
+        by_function = {}
+        setattr(loop, _IN_FLIGHT_ATTR, by_function)
+    in_flight = by_function.get(function)
+    if in_flight is None:
+        in_flight = by_function[function] = _InFlight(max_concurrent)
+    return in_flight
 
 
 @dataclass
@@ -303,13 +329,18 @@ def cached(
             ...
     """
 
+    if max_concurrent_misses < 1:
+        # No miss could ever start computing.
+        raise ValueError(
+            f"max_concurrent_misses must be at least 1, not {max_concurrent_misses}"
+        )
+
     def decorator(target_func: Callable[P, R]) -> CachedFunction[P, R]:
         func_name = target_func.__name__
         signature = inspect.signature(target_func)
         cache_storage: dict[tuple, CachedValue] = {}
-        _in_flight_by_loop: WeakKeyDictionary[asyncio.AbstractEventLoop, _InFlight] = (
-            WeakKeyDictionary()
-        )
+        # Names this function's coordinator on each loop.
+        in_flight_token = object()
 
         def _get_from_redis(redis_key: str) -> Any:
             """Get value from Redis, optionally refreshing TTL.
@@ -425,13 +456,9 @@ def cached(
         if inspect.iscoroutinefunction(target_func):
 
             def _in_flight() -> _InFlight:
-                loop = asyncio.get_running_loop()
-                in_flight = _in_flight_by_loop.get(loop)
-                if in_flight is None:
-                    in_flight = _in_flight_by_loop[loop] = _InFlight(
-                        max_concurrent_misses
-                    )
-                return in_flight
+                return _in_flight_on(
+                    asyncio.get_running_loop(), in_flight_token, max_concurrent_misses
+                )
 
             @wraps(target_func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs):
@@ -475,8 +502,11 @@ def cached(
                 # Slow path: one caller per key computes it, and the ones that
                 # miss it meanwhile share its result; misses for other keys
                 # don't wait for it.
-                share = _private_copy if shared_cache else _as_is
-                return await _in_flight().run(key, compute, share)
+                # The shared cache's own key: arguments Python counts as equal,
+                # such as ``True`` and ``1``, are different entries in Redis.
+                if shared_cache:
+                    return await _in_flight().run(redis_key, compute, _private_copies)
+                return await _in_flight().run(key, compute, _the_same)
 
             wrapper = async_wrapper
 

@@ -119,12 +119,23 @@ def _run_to_completion(loop: asyncio.AbstractEventLoop, coroutine: Any) -> None:
 
 
 async def _close(client: AsyncRedisCluster) -> None:
-    async with asyncio.timeout(REDIS_OP_TIMEOUT_S):
-        await client.aclose()
-        # aclose() skips a client that a connection error left due to read
-        # the slot map again, though its connections are still open.
-        await client.nodes_manager.aclose()
-        await client.nodes_manager.aclose("startup_nodes")
+    """Close ``client``, then each of its node pools: ``aclose()`` skips a
+    client that a connection error left due to read the slot map again,
+    though its connections are still open. Each attempt is bounded and made
+    whatever the one before did; the first failure is raised after all."""
+    failures: list[Exception] = []
+    for close in (
+        client.aclose,
+        client.nodes_manager.aclose,
+        lambda: client.nodes_manager.aclose("startup_nodes"),
+    ):
+        try:
+            async with asyncio.timeout(REDIS_OP_TIMEOUT_S):
+                await close()
+        except Exception as e:
+            failures.append(e)
+    if failures:
+        raise failures[0]
 
 
 def _new_async_redis() -> AsyncRedisCluster:

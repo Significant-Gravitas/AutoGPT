@@ -86,7 +86,11 @@ async def test_a_burst_of_distinct_searches_runs_a_capped_number_of_queries_at_o
     """The public store search runs a database query for each search it
     hasn't cached, and anyone can send distinct ones. The cache computes
     misses of different searches side by side, but at most
-    ``MAX_CONCURRENT_MISSES`` at once per process."""
+    ``MAX_CONCURRENT_MISSES`` at once per process.
+
+    Redis here answers at once and keeps nothing, so no read suspends: every
+    search has reached its query or its turn before the test looks."""
+    monkeypatch.setattr(cache_util, "_get_async_redis", _a_redis_that_keeps_nothing)
     cap = cache_util.MAX_CONCURRENT_MISSES
     searches = 3 * cap
     everyone_in = callers_in_flight(monkeypatch, searches)
@@ -135,6 +139,21 @@ async def test_a_burst_of_distinct_searches_runs_a_capped_number_of_queries_at_o
 
     assert [result["search_query"] for result in results] == queries
     assert peak == cap
+
+
+class _RedisThatKeepsNothing:
+    async def get(self, key: str) -> None:
+        return None
+
+    async def getex(self, key: str, ex: int | None = None) -> None:
+        return None
+
+    async def set(self, key: str, value: bytes, ex: int | None = None) -> bool:
+        return True
+
+
+async def _a_redis_that_keeps_nothing() -> _RedisThatKeepsNothing:
+    return _RedisThatKeepsNothing()
 
 
 async def _search(query: str):

@@ -55,9 +55,13 @@ def test_a_client_is_checked_only_in_the_test_that_used_it() -> None:
     client = _new_async_redis()
     loop = asyncio.new_event_loop()
     try:
+        guard.start()
         loop.run_until_complete(_ping_once(guard, client, close=False))
         loop.close()
+        # The test that used it is told...
+        assert len(guard.stop()) == 1
 
+        # ...and the next one, which used no client, isn't.
         guard.start()
         left_open = guard.stop()
     finally:
