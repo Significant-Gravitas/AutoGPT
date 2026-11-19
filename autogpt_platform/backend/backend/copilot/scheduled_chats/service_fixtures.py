@@ -46,6 +46,7 @@ def watch_scheduler_lock_fixture(
 
     mocker.patch.object(AsyncRedisLock, "do_acquire", new=observe_attempt)
     mocker.patch.object(scheduler_write_lock, "_LOCK_WAIT_SECONDS", 60)
+    mocker.patch.object(scheduler_write_lock, "_LOCK_TTL_SECONDS", 120)
 
     def watch(user_id: str, schedule_key: str) -> asyncio.Event:
         key = f"copilot:scheduled_chat_lock:{len(user_id)}:{user_id}:{schedule_key}"
