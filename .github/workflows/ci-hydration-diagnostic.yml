@@ -411,9 +411,9 @@ jobs:
         assert text.count(old) == 1
         text = text.replace(old, '''import { expect, test as base } from "./fixtures";
         const test = base.extend<{ hydrationDiagnostic: void }>({
-          hydrationDiagnostic: [async ({ page }, use, testInfo) => {
+          hydrationDiagnostic: [async ({ page }, provide, testInfo) => {
             const finish = await captureHydration(page, testInfo);
-            try { await use(); } finally { await finish(); }
+            try { await provide(); } finally { await finish(); }
           }, { auto: true }],
         });''')
         path.write_text(text)
