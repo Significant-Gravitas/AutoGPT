@@ -1593,6 +1593,10 @@ async def review_store_submission(
 
         sub_graphs = []
         if is_approved:
+            if submission.isDeleted:
+                raise ConflictError(
+                    "This submission has been superseded. Review its replacement instead."
+                )
             if foreign_refs := await foreign_sub_graph_refs(submission.AgentGraph):
                 raise PreconditionFailed(
                     "This workflow runs sub-workflows that are neither its "
@@ -1645,6 +1649,12 @@ async def review_store_submission(
                         f"{store_listing_version_id}: {emb_err}"
                     )
 
+                target = await _lock_store_review_target(tx, store_listing_version_id)
+                if not target or target["isDeleted"]:
+                    raise ConflictError(
+                        "This submission was replaced or removed. "
+                        "Refresh the listing before approving it."
+                    )
                 await prisma.models.StoreListing.prisma(tx).update(
                     where={"id": submission.storeListingId},
                     data={
@@ -1706,6 +1716,21 @@ async def review_store_submission(
         raise DatabaseError("Failed to create store submission review") from e
 
 
+async def _lock_store_review_target(
+    tx: prisma.Prisma, version_id: str
+) -> dict[str, Any] | None:
+    """Lock the listing before its version, then read the current review state."""
+    rows = await query_raw_with_schema(
+        'SELECT l."activeVersionId", v."isDeleted", '
+        'v."submissionStatus"::text AS "submissionStatus" '
+        'FROM {schema_prefix}"StoreListing" l JOIN {schema_prefix}"StoreListingVersion" v '
+        'ON v."storeListingId" = l.id WHERE v.id = $1 FOR UPDATE OF l, v',
+        version_id,
+        client=tx,
+    )
+    return rows[0] if rows else None
+
+
 async def _withdraw_store_version(
     tx: prisma.Prisma, version: prisma.models.StoreListingVersion
 ) -> str | None:
@@ -1715,22 +1740,15 @@ async def _withdraw_store_version(
     reactivated version ID, if any. Clear the listing's flag only when no
     other undeleted approval remains.
     """
-    # Serialize reviews of a listing before choosing a replacement for its live version.
-    rows = await query_raw_with_schema(
-        'SELECT l."activeVersionId", v."submissionStatus"::text AS "submissionStatus" '
-        'FROM {schema_prefix}"StoreListing" l JOIN {schema_prefix}"StoreListingVersion" v '
-        'ON v."storeListingId" = l.id WHERE v.id = $1 FOR UPDATE OF l, v',
-        version.id,
-        client=tx,
-    )
+    target = await _lock_store_review_target(tx, version.id)
     if (
-        not rows
-        or rows[0]["submissionStatus"] != prisma.enums.SubmissionStatus.APPROVED
+        not target
+        or target["submissionStatus"] != prisma.enums.SubmissionStatus.APPROVED
     ):
         return None
 
     listings = prisma.models.StoreListing.prisma(tx)
-    if rows[0]["activeVersionId"] == version.id:
+    if target["activeVersionId"] == version.id:
         fallback = await prisma.models.StoreListingVersion.prisma(tx).find_first(
             where={
                 **installable_store_version_where(),
@@ -1783,6 +1801,8 @@ async def _publish_approved_media(
 
     On reactivation, the eligibility read authorizes the copy. The URL update
     succeeds only while the version remains eligible and its source URLs match.
+    A successful approval returns the updated row. A successful reactivation
+    returns a copy with the published URLs. An unchanged version is returned as-is.
     """
     if not public_media.publishing_enabled():
         return version
@@ -2291,27 +2311,6 @@ async def get_admin_listings_with_versions(
             page_size=page_size,
         ),
     )
-
-
-async def check_submission_already_approved(
-    store_listing_version_id: str,
-) -> bool:
-    """Check the submission status of a store listing version."""
-    try:
-        store_listing_version = (
-            await prisma.models.StoreListingVersion.prisma().find_unique(
-                where={"id": store_listing_version_id}
-            )
-        )
-        if not store_listing_version:
-            return False
-        return (
-            store_listing_version.submissionStatus
-            == prisma.enums.SubmissionStatus.APPROVED
-        )
-    except Exception as e:
-        logger.error(f"Error checking submission status: {e}")
-        return False
 
 
 async def get_agent_as_admin(

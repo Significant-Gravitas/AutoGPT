@@ -11,12 +11,17 @@ from uuid import uuid4
 import prisma.enums
 import prisma.models
 import pytest
+from fakeredis import FakeRedis
 
+from backend.api.features.admin import store_admin_routes
+from backend.api.features.store import cache as store_cache
 from backend.api.features.store import db as store_db
 from backend.api.features.store import exceptions as store_exceptions
 from backend.api.features.store import submission_media
+from backend.api.features.store.model import ReviewSubmissionRequest
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data.graph import is_graph_published_in_marketplace
+from backend.util import cache as cache_util
 from backend.util.exceptions import ConflictError, DatabaseError, NotFoundError
 from backend.util.json import SafeJson
 
@@ -220,6 +225,102 @@ async def test_rejection_and_replacement_of_the_same_pending_submission(
         assert (
             await store_db.get_store_agent_details(owner, graph_id)
         ).active_version_id == live
+    finally:
+        await _clean_up(owner, [graph_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "delete_replaced", [False, True], ids=["superseded", "removed"]
+)
+async def test_approval_refuses_a_submission_replaced_during_review(
+    server, monkeypatch, delete_replaced: bool
+):
+    tag = uuid4().hex[:12]
+    owner = await _seed_creator(tag, avatar_url="")
+    graph_id = f"graph-{tag}"
+    try:
+        live, pending = await _seed_listing(graph_id, owner, [APPROVED, PENDING])
+        get_sub_graphs = store_db.get_sub_graphs
+
+        async def replace_after_review_read(graph):
+            await _submit(owner, graph_id)
+            if delete_replaced:
+                await store_db.delete_store_submission_or_raise(owner, pending)
+            return await get_sub_graphs(graph)
+
+        embedding = AsyncMock()
+        monkeypatch.setattr(store_db, "ensure_embedding", embedding)
+        with monkeypatch.context() as overlap:
+            overlap.setattr(store_db, "get_sub_graphs", replace_after_review_read)
+            with pytest.raises(ConflictError):
+                await _approve(pending, owner)
+
+        versions = prisma.models.StoreListingVersion.prisma()
+        old = await versions.find_unique(where={"id": pending})
+        if delete_replaced:
+            assert old is None
+        else:
+            assert old and old.isDeleted and old.submissionStatus == PENDING
+            embedding.reset_mock()
+            with pytest.raises(ConflictError):
+                await _approve(pending, owner)
+            embedding.assert_not_awaited()
+        assert (
+            await store_db.get_store_agent_details(owner, graph_id)
+        ).active_version_id == live
+        replacement = await versions.find_first_or_raise(
+            where={
+                "agentGraphId": graph_id,
+                "isDeleted": False,
+                "submissionStatus": PENDING,
+            }
+        )
+        await _approve(replacement.id, owner)
+        assert (
+            await store_db.get_store_agent_details(owner, graph_id)
+        ).active_version_id == replacement.id
+    finally:
+        await _clean_up(owner, [graph_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rejection_refreshes_a_listing_cached_after_an_overlapping_approval(
+    server, monkeypatch
+):
+    tag = uuid4().hex[:12]
+    owner = await _seed_creator(tag, avatar_url="")
+    graph_id = f"graph-{tag}"
+    try:
+        live, pending = await _seed_listing(graph_id, owner, [APPROVED, PENDING])
+        request = ReviewSubmissionRequest(
+            store_listing_version_id=pending, is_approved=False, comments=""
+        )
+        review = store_db.review_store_submission
+
+        async def review_with_overlap(**kwargs):
+            if not kwargs["is_approved"]:
+                await store_admin_routes.review_submission(
+                    pending,
+                    request.model_copy(update={"is_approved": True}),
+                    user_id=owner,
+                )
+                assert (
+                    await store_cache.get_cached_agent_details(owner, graph_id)
+                ).active_version_id == pending
+            return await review(**kwargs, notify_creator=False)
+
+        monkeypatch.setattr(store_db, "review_store_submission", review_with_overlap)
+        monkeypatch.setattr(store_db, "ensure_embedding", AsyncMock())
+        with FakeRedis() as redis:
+            monkeypatch.setattr(cache_util, "_get_redis", lambda: redis)
+            await store_admin_routes.review_submission(pending, request, user_id=owner)
+            assert (
+                await store_db.get_store_agent_details(owner, graph_id)
+            ).active_version_id == live
+            assert (
+                await store_cache.get_cached_agent_details(owner, graph_id)
+            ).active_version_id == live
     finally:
         await _clean_up(owner, [graph_id])
 

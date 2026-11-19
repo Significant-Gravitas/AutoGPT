@@ -1702,7 +1702,11 @@ def review_mocks(mocker):
         "query_raw_with_schema",
         new_callable=AsyncMock,
         return_value=[
-            {"activeVersionId": None, "submissionStatus": version.submissionStatus}
+            {
+                "activeVersionId": None,
+                "isDeleted": False,
+                "submissionStatus": version.submissionStatus,
+            }
         ],
     )
     mocker.patch("prisma.models.AgentGraph.prisma").return_value.update = AsyncMock()
