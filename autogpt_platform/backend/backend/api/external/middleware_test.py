@@ -1,5 +1,6 @@
 """Which lookup a credential gets, what checking it costs, and that a banned
-owner's credential is refused.
+owner's credential, or one issued in an organization its owner has left, is
+refused.
 
 An API key is matched on its head and then hashed with Scrypt; an OAuth access
 token is looked up by its digest. A bearer in the token format must never be
@@ -27,6 +28,7 @@ from fastapi.testclient import TestClient
 from prisma.enums import APIKeyPermission, APIKeyStatus
 
 from backend.api.external import middleware
+from backend.api.external.auth_rate_limit import APIKeyValidationBudget
 from backend.api.external.middleware import resolve_auth_info
 from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
@@ -49,6 +51,14 @@ EVERY_CREDENTIAL = pytest.mark.parametrize(
     ],
     ids=["api-key", "api-key-as-bearer", "access-token"],
 )
+
+
+@pytest.fixture(autouse=True)
+def fresh_membership_answers():
+    """Membership answers are reused for a few seconds; no case sees another's."""
+    middleware.holds_membership.cache_clear()
+    yield
+    middleware.holds_membership.cache_clear()
 
 
 @pytest.mark.parametrize(
@@ -74,6 +84,47 @@ def test_a_credential_answers_by_its_owners_ban_state(
         assert response.json() == {"user_id": user_id}
 
 
+@pytest.mark.parametrize(
+    "api_key, bearer",
+    [
+        ("agpt_header_key", "agpt_bearer_key"),
+        ("agpt_header_key", "agpt_xt_token"),
+        ("agpt_xt_header_key", "agpt_xt_token"),
+    ],
+)
+@pytest.mark.parametrize("valid", [True, False])
+def test_explicit_key_wins_for_admission_and_validation(mocker, api_key, bearer, valid):
+    admit = mocker.patch.object(
+        middleware, "enforce_api_key_validate_rate_limit", return_value=None
+    )
+
+    async def validate(value, *, before_verify):
+        await before_verify()
+        return _principal() if valid else None
+
+    validate_key = mocker.patch.object(
+        middleware, "validate_api_key", side_effect=validate
+    )
+    validate_token = mocker.patch.object(middleware, "validate_access_token")
+    mocker.patch.object(middleware, "is_user_banned", return_value=False)
+    refund = mocker.patch.object(middleware, "refund_api_key_validate_rate_limit")
+
+    with _client() as client:
+        response = client.get(
+            "/auth", headers={"X-API-Key": api_key, "Authorization": f"Bearer {bearer}"}
+        )
+
+    assert response.status_code == (200 if valid else 401)
+    assert admit.await_args.args[1] == api_key
+    validate_key.assert_awaited_once()
+    assert validate_key.await_args.args == (api_key,)
+    validate_token.assert_not_awaited()
+    if valid:
+        refund.assert_awaited_once_with(None)
+    else:
+        refund.assert_not_awaited()
+
+
 @pytest.fixture
 def closed_owner(auth_row) -> Iterator[str]:
     """Closing an account bans its sign-in too; the closed answer wins."""
@@ -96,6 +147,115 @@ def test_a_closed_accounts_credential_is_refused_as_closed(
 
     assert response.status_code == 401
     assert response.json() == {"detail": "This account is closed."}
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{"X-API-Key": "agpt_key"}, {"Authorization": "Bearer agpt_key"}],
+    ids=["api-key", "api-key-as-bearer"],
+)
+def test_a_closed_accounts_key_keeps_its_validation_reservation(
+    mocker, closed_owner, headers
+):
+    budget = APIKeyValidationBudget(head_key="budget")
+    admit = mocker.patch.object(
+        middleware, "enforce_api_key_validate_rate_limit", return_value=budget
+    )
+
+    async def validate(value, *, before_verify):
+        await before_verify()
+        return _key(closed_owner)
+
+    mocker.patch.object(middleware, "validate_api_key", side_effect=validate)
+    refund = mocker.patch.object(middleware, "refund_api_key_validate_rate_limit")
+
+    response = _client().get("/auth", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "This account is closed."}
+    admit.assert_awaited_once()
+    refund.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "organization_id, team_id, member, status",
+    [
+        ("org-1", None, True, 200),
+        ("org-1", None, False, 403),
+        ("org-1", "team-1", True, 200),
+        ("org-1", "team-1", False, 403),
+        (None, "team-1", True, 403),
+    ],
+    ids=[
+        "org-member",
+        "former-org-member",
+        "team-member",
+        "former-team-member",
+        "team-without-org",
+    ],
+)
+@EVERY_CREDENTIAL
+def test_a_credential_issued_in_an_organization_needs_its_owner_still_in_it(
+    mocker, headers, organization_id, team_id, member, status
+):
+    scope = {"organization_id": organization_id, "team_id_restriction": team_id}
+    mocker.patch.object(
+        middleware,
+        "validate_api_key",
+        return_value=_key("user-1").model_copy(update=scope),
+    )
+    mocker.patch.object(
+        middleware,
+        "validate_access_token",
+        return_value=(_token("user-1").model_copy(update=scope), None),
+    )
+    is_member = mocker.patch.object(middleware, "is_active_member", return_value=member)
+
+    response = _client().get("/auth", headers=headers)
+
+    assert response.status_code == status
+    if status == 403:
+        assert response.json()["detail"] == middleware.FORMER_MEMBER_DETAIL
+    if organization_id:
+        is_member.assert_awaited_once_with("user-1", organization_id, team_id)
+    else:
+        is_member.assert_not_awaited()
+
+
+@EVERY_CREDENTIAL
+def test_a_credential_that_names_no_organization_reads_no_membership(mocker, headers):
+    """Keys made before organizations act in the owner's personal one."""
+    mocker.patch.object(middleware, "validate_api_key", return_value=_key("user-1"))
+    mocker.patch.object(
+        middleware, "validate_access_token", return_value=(_token("user-1"), None)
+    )
+    is_member = mocker.patch.object(middleware, "is_active_member", return_value=False)
+
+    response = _client().get("/auth", headers=headers)
+
+    assert response.status_code == 200
+    is_member.assert_not_awaited()
+
+
+def test_a_former_members_key_keeps_its_validation_reservation(mocker):
+    budget = APIKeyValidationBudget(head_key="budget")
+    mocker.patch.object(
+        middleware, "enforce_api_key_validate_rate_limit", return_value=budget
+    )
+
+    async def validate(value, *, before_verify):
+        await before_verify()
+        return _key("user-1").model_copy(update={"organization_id": "org-1"})
+
+    mocker.patch.object(middleware, "validate_api_key", side_effect=validate)
+    mocker.patch.object(middleware, "is_active_member", return_value=False)
+    refund = mocker.patch.object(middleware, "refund_api_key_validate_rate_limit")
+
+    response = _client().get("/auth", headers={"X-API-Key": "agpt_key"})
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == middleware.FORMER_MEMBER_DETAIL
+    refund.assert_not_awaited()
 
 
 def _bearer(token: str) -> HTTPAuthorizationCredentials:

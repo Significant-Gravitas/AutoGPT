@@ -11,7 +11,11 @@ import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 import backend.blocks
-from backend.api.external.middleware import require_auth, require_permission
+from backend.api.external.middleware import (
+    require_auth,
+    require_permission,
+    require_resource_permission,
+)
 from backend.api.external.rate_limit import EXECUTION_LIMIT, READ_LIMIT
 from backend.blocks._base import AnyBlockSchema
 from backend.copilot.capabilities.block_meta import is_graph_only_block
@@ -209,7 +213,9 @@ async def _run_direct_block(
 async def create_graph(
     graph: graph_db.Graph,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY)
+        require_resource_permission(
+            APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY
+        )
     ),
 ) -> graph_db.GraphModel:
     """
@@ -259,7 +265,7 @@ async def execute_graph(
     graph_version: int,
     node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.EXECUTE_GRAPH)
+        require_resource_permission(APIKeyPermission.EXECUTE_GRAPH)
     ),
 ) -> dict[str, Any]:
     # Strict route-level paywall: 503 on tier-lookup failure (rather
@@ -289,6 +295,15 @@ async def execute_graph(
                 exc_info=True,
             )
             org_id, team_id = None, None
+
+    # A key issued in an organization acts only on workflows visible there.
+    if auth.organization_id and not await graph_db.get_graph(
+        graph_id=graph_id,
+        version=graph_version,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+    ):
+        raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
 
     try:
         graph_exec = await add_graph_execution(
@@ -337,15 +352,21 @@ async def get_graph_execution_results(
     graph_id: str,
     graph_exec_id: str,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.READ_GRAPH)
+        require_resource_permission(APIKeyPermission.READ_GRAPH)
     ),
 ) -> GraphExecutionResult:
+    # The key's own runs, in the organization the key was issued in.
     graph_exec = await execution_db.get_graph_execution(
         user_id=auth.user_id,
         execution_id=graph_exec_id,
         include_node_executions=True,
+        organization_id=auth.organization_id,
     )
-    if not graph_exec:
+    if (
+        not graph_exec
+        or graph_exec.user_id != auth.user_id
+        or graph_exec.graph_id != graph_id
+    ):
         raise HTTPException(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
         )
@@ -354,6 +375,7 @@ async def get_graph_execution_results(
         graph_id=graph_exec.graph_id,
         version=graph_exec.graph_version,
         user_id=auth.user_id,
+        organization_id=auth.organization_id,
     ):
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 

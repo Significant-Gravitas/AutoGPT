@@ -1,9 +1,15 @@
 import { withAuthTracking } from "@/lib/auth-redirect";
 import { ACCOUNT_CLOSED_PATH } from "@/lib/auth/closed-account";
 import type { EmailVerificationNotice } from "@/lib/auth/email-verification";
+import { ACCOUNT_NOT_LINKED_CODE } from "@/lib/auth/microsoft-login";
 
 export const ACCOUNT_BANNED_NOTICE_COPY =
   "This account has been banned. If you think this is a mistake, please contact support.";
+
+// Same for an account using the address and for an address the provider
+// didn't verify (provider-verified-email.ts), so it says neither.
+export const ACCOUNT_NOT_LINKED_NOTICE_COPY =
+  "We can't sign you in with that account. If you already have an AutoGPT account, log in the way you usually do. If not, sign up with your email address.";
 
 export const EMAIL_VERIFICATION_NOTICE_COPY: Record<
   EmailVerificationNotice,
@@ -19,9 +25,17 @@ export const EMAIL_VERIFICATION_NOTICE_COPY: Record<
 const BANNED_USER_ERROR_CODE = "BANNED_USER";
 
 // A social sign-in refused at the provider callback comes back with its error
-// code. The app's own copy, never the error_description from the query.
-export function getSignInErrorNotice(error: string | null) {
-  return error === BANNED_USER_ERROR_CODE ? ACCOUNT_BANNED_NOTICE_COPY : null;
+// code. The app's own copy, never the error_description from the query; a
+// Microsoft refusal gets Microsoft's (getSocialSignInError).
+export function getSignInErrorNotice(
+  error: string | null,
+  provider: string | null,
+) {
+  if (error === BANNED_USER_ERROR_CODE) return ACCOUNT_BANNED_NOTICE_COPY;
+  if (error === ACCOUNT_NOT_LINKED_CODE && provider !== "microsoft") {
+    return ACCOUNT_NOT_LINKED_NOTICE_COPY;
+  }
+  return null;
 }
 
 interface PostLoginPathArgs {

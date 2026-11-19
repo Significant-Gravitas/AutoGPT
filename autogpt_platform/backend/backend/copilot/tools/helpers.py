@@ -13,6 +13,7 @@ from pydantic_core import PydanticUndefined
 
 from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
+from backend.blocks.helpers.review import ReviewReadError
 from backend.copilot.capabilities import block_meta
 from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.constants import (
@@ -621,12 +622,16 @@ async def execute_block(
                     session_id=session_id,
                 ).from_outside(outputs)
             except BlockError as e:
-                # A setup card (connect or reconnect) that comes before any
-                # output means the provider did no work, so it stays free.
+                # A setup card (connect or reconnect), or a saved review that
+                # could not be read, before any output means the provider did
+                # no work, so it stays free.
                 if (
                     cost > 0
                     and not outputs
-                    and _is_setup_card_failure(block, e, matched_credentials)
+                    and (
+                        _is_setup_card_failure(block, e, matched_credentials)
+                        or isinstance(e.__cause__, ReviewReadError)
+                    )
                 ):
                     refunded = True
                     await asyncio.shield(
@@ -756,9 +761,10 @@ async def _debit_block_run(
     debits it in one atomic step, refusing to overdraw.
     Once the run ends, ``_settle_block_run`` charges or gives back the
     difference to what it cost, failed runs included, as the executor
-    settles a node, since a run may already have called the provider; the
-    one exception is a setup card before any output, which is refunded
-    whole (see ``_is_setup_card_failure``).
+    settles a node, since a run may already have called the provider. The
+    exceptions are refunded whole: a setup card before any output (see
+    ``_is_setup_card_failure``), and a step whose saved review could not be
+    read, which stops before its provider is called.
     """
     if cost <= 0:
         return None

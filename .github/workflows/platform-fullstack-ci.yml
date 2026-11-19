@@ -71,6 +71,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           submodules: recursive
+          persist-credentials: false
 
       # ------------------------ Backend setup ------------------------
 
@@ -109,7 +110,7 @@ jobs:
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
 
       - name: Set up Backend - Generate Prisma client
-        uses: ./.github/actions/generate-prisma-client
+        uses: $/.github/actions/generate-prisma-client
 
       - name: Set up Frontend - Export OpenAPI schema from Backend
         working-directory: autogpt_platform/backend
@@ -118,7 +119,7 @@ jobs:
       # ------------------------ Frontend setup ------------------------
 
       - name: Set up Frontend - Set up pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
@@ -207,7 +208,7 @@ jobs:
             # selfhost-journey asserts nothing hosted-only exists; it needs a
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
-            min_tests: 11
+            min_tests: 12
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
             seed: false
@@ -236,6 +237,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           submodules: recursive
+          persist-credentials: false
 
       # The seed dump is an image in GHCR, not an Actions cache entry.
       # The key hashes only what changes the dump's content: the seed script
@@ -307,14 +309,6 @@ jobs:
           # Used by E2E test data script to generate embeddings for approved store agents
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
-      # Flags that ship off but have an E2E spec. Written before the compose
-      # file is resolved and the images are built, since the frontend inlines
-      # NEXT_PUBLIC_* at build time.
-      - name: Set up Platform - Force on the flags the E2E suite covers
-        run: |
-          echo "NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true" >> .env
-          echo "FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true" >> ../backend/.env
-
       # The hosted configuration, as far as one compose stack allows. Gaps are
       # listed in src/playwright/journeys/README.md.
       - name: Set up Platform - Configure hosted backend .env
@@ -325,7 +319,7 @@ jobs:
       # A cache that can't be read or written only makes the build cold.
       - name: Set up Platform - Log in to the GHCR build cache
         continue-on-error: true
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -339,7 +333,7 @@ jobs:
         timeout-minutes: 3
         working-directory: /tmp
         run: |
-          ref="$E2E_SEED_IMAGE:${{ steps.e2e-seed-key.outputs.tag }}"
+          ref="$E2E_SEED_IMAGE:${E2E_SEED_TAG}"
           if ! docker pull --quiet "$ref"; then
             echo "No cached E2E test data at $ref; seeding instead"
             exit 0
@@ -349,6 +343,8 @@ jobs:
           docker rm "$container" >/dev/null
           docker rmi "$ref" >/dev/null
           echo "hit=true" >> "$GITHUB_OUTPUT"
+        env:
+          E2E_SEED_TAG: ${{ steps.e2e-seed-key.outputs.tag }}
 
       - name: Set up Platform - Prepare Docker build
         working-directory: autogpt_platform
@@ -491,7 +487,7 @@ jobs:
           timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
 
       - name: Set up tests - Set up pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
@@ -731,11 +727,13 @@ jobs:
         timeout-minutes: 5
         working-directory: /tmp
         run: |
-          ref="$E2E_SEED_IMAGE:${{ steps.e2e-seed-key.outputs.tag }}"
+          ref="$E2E_SEED_IMAGE:${E2E_SEED_TAG}"
           tar -C /tmp -c e2e_test_data.sql | docker import \
             --change "LABEL org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
             - "$ref"
           docker push "$ref"
+        env:
+          E2E_SEED_TAG: ${{ steps.e2e-seed-key.outputs.tag }}
 
       - name: Validate coverage report
         id: validate-e2e-coverage
@@ -784,7 +782,7 @@ jobs:
       - name: Save Next.js build cache
         if: ${{ !cancelled() && matrix.suite == 'smoke' && steps.next-build-cache-export.outcome == 'success' }}
         continue-on-error: true
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /tmp/next-build-cache
           key: ${{ steps.next-build-cache.outputs.cache-primary-key }}

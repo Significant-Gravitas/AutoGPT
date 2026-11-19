@@ -35,8 +35,9 @@ from .tenancy import (
     TenantContext,
     in_tenant,
     owned_by_caller,
-    require_paid_permission,
+    require_paid_resource_permission,
     require_permission,
+    require_resource_permission,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ async def list_reviews(
     ),
     page: PageRequest = Depends(page_request),
     auth: TenantContext = Security(
-        require_permission(APIKeyPermission.READ_RUN_REVIEW)
+        require_resource_permission(APIKeyPermission.READ_RUN_REVIEW)
     ),
 ) -> Page[AgentRunReview]:
     """
@@ -102,7 +103,7 @@ async def submit_reviews(
     request: AgentRunReviewsSubmitRequest,
     run_id: str = Path(description="Graph Execution ID"),
     auth: TenantContext = Security(
-        require_paid_permission(APIKeyPermission.WRITE_RUN_REVIEW)
+        require_paid_resource_permission(APIKeyPermission.WRITE_RUN_REVIEW)
     ),
 ) -> AgentRunReviewsSubmitResponse:
     """
@@ -164,7 +165,9 @@ async def list_runs(
         Query(description="Only runs created at or before this time"),
     ] = None,
     page: PageRequest = Depends(page_request),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_RUN)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_RUN)
+    ),
 ) -> Page[AgentGraphRun]:
     """List agent runs, optionally filtered by graph, status and creation time."""
     result = await execution_db.get_graph_executions_paginated(
@@ -191,7 +194,9 @@ async def list_runs(
 )
 async def get_run(
     run_id: str = Path(description="Graph Execution ID"),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_RUN)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_RUN)
+    ),
 ) -> AgentGraphRunDetails:
     """Get detailed information about a specific run."""
     result = await execution_db.get_graph_execution(
@@ -218,7 +223,9 @@ async def get_run(
 )
 async def stop_run(
     run_id: str = Path(description="Graph Execution ID"),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_RUN)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.WRITE_RUN)
+    ),
 ) -> AgentGraphRun:
     """
     Stop a run that hasn't finished: one that is incomplete, queued, running,
@@ -257,7 +264,9 @@ async def stop_run(
 )
 async def delete_run(
     run_id: str = Path(description="Graph Execution ID"),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_RUN)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.WRITE_RUN)
+    ),
 ) -> None:
     """Delete an agent run. A shared run stops being downloadable too."""
     await _assert_own_run_in_tenant(run_id, auth)
@@ -279,7 +288,9 @@ async def delete_run(
 async def enable_sharing(
     run_id: str = Path(description="Graph Execution ID"),
     auth: TenantContext = Security(
-        require_permission(APIKeyPermission.READ_RUN, APIKeyPermission.SHARE_RUN)
+        require_resource_permission(
+            APIKeyPermission.READ_RUN, APIKeyPermission.SHARE_RUN
+        )
     ),
 ) -> AgentRunShareResponse:
     """Enable public sharing for a run.

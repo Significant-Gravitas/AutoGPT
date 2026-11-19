@@ -39,6 +39,8 @@ class FrontendFlag(str, Enum):
 
     MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms"
     CHAT_MODE_OPTION = Flag.CHAT_MODE_OPTION.value
+    LOCAL_PC_EXECUTOR = Flag.LOCAL_PC_EXECUTOR.value
+    WORKFLOW_RECORDING = Flag.WORKFLOW_RECORDING.value
     GENERIC_TRIGGER_AGENTS = Flag.GENERIC_TRIGGER_AGENTS.value
     CHAT_WORKSPACE_FILES = "chat-workspace-files"
     CHAT_PINNING = "chat-pinning"
@@ -59,7 +61,6 @@ class FrontendFlag(str, Enum):
     # The onboarding steps in the order an experiment wants them: the named
     # steps lead and the rest keep their default order (frontend `resolveStepOrder`).
     ONBOARDING_STEP_ORDER = "onboarding-step-order"
-    SELF_SERVE_ACCOUNT_DELETION = Flag.SELF_SERVE_ACCOUNT_DELETION.value
 
     @classmethod
     def __get_pydantic_json_schema__(

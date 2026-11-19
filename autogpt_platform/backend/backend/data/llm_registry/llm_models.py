@@ -146,7 +146,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GPT6_ASTRA = "gpt-6-astra"
     GPT6_SOL = "gpt-6-sol"
     GPT6_1_SOL = "gpt-6.1-sol"
+    GPT6_2_SOL = "gpt-6.2-sol"
     GPT6_1_TERRA = "gpt-6.1-terra"
+    GPT6_2_ASTRA = "gpt-6.2-astra"
     GPT6_LUNA = "gpt-6-luna"
     # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
@@ -214,6 +216,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_3_5_FLASH_LITE = "google/gemini-3.5-flash-lite"
     GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
     GEMINI_4_ARGON = "google/gemini-4-argon"
+    GEMINI_4_HYDROGEN = "google/gemini-4-hydrogen"
+    GEMINI_4_CARBON = "google/gemini-4-carbon"
+    GEMINI_4_NEON = "google/gemini-4-neon"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     GEMMA_4_31B_IT = "google/gemma-4-31b-it"
@@ -270,6 +275,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     QWEN3_CODER = "qwen/qwen3-coder"
     QWEN3_8_MAX_0902 = "qwen/qwen3.8-max-0902"
     QWEN3_8_FLASH = "qwen/qwen3.8-flash"
+    QWEN4_MAX = "qwen/qwen4-max"
     # Xiaomi models
     MIMO_V2_6_PRO = "xiaomi/mimo-v2.6-pro"
     MIMO_V2_6_FLASH = "xiaomi/mimo-v2.6-flash"

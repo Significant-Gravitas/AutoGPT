@@ -1,4 +1,3 @@
-import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { ExpertIdentity } from "@/app/api/__generated__/models/expertIdentity";
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
@@ -7,6 +6,7 @@ import { render, screen, within } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RecentChats } from "../RecentChats";
+import { type SidebarChat, sidebarBackend } from "./sidebarBackend";
 
 // SECRT-3401: a new expert had no sidebar entry until their first chat, and
 // nothing pointed the user at that chat. Experts added in the last week with
@@ -31,23 +31,13 @@ function expert(
   };
 }
 
-function chat(id: string, expertId: string | null) {
-  return {
-    id,
-    title: `${id} title`,
-    is_processing: false,
-    created_at: "2026-11-09T10:00:00Z",
-    updated_at: "2026-11-09T10:00:00Z",
-    expert_id: expertId,
-  };
+function chat(id: string, expertId: string | null): SidebarChat {
+  return { id, title: `${id} title`, expert_id: expertId };
 }
 
-function renderWith(
-  experts: ExpertIdentity[],
-  sessions: ReturnType<typeof chat>[],
-) {
+function renderWith(experts: ExpertIdentity[], chats: SidebarChat[]) {
   server.use(
-    getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
+    ...sidebarBackend(() => chats),
     getListExpertIdentitiesMockHandler(experts),
   );
   return render(

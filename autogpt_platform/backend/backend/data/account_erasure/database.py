@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from backend.data.account_erasure.ledger import count_unscrubbed, scrub_ledger
 from backend.data.account_erasure.models import StepReport, StepStatus, Subject
+from backend.data.account_erasure.skills_cache import delete_skills_cache
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema, transaction
 from backend.data.user import _invalidate_user_caches
 
@@ -75,6 +76,7 @@ async def delete_rows(subject: Subject, *, dry_run: bool) -> StepReport:
                 client=tx,
             )
     await _invalidate_user_caches(subject.user_id, subject.email)
+    counts["skill_cache_entries"] = await delete_skills_cache(subject.user_id)
     return StepReport(name="database", status=StepStatus.DONE, counts=counts)
 
 

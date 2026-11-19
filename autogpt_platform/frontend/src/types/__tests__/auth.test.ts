@@ -6,7 +6,6 @@ describe("signupFormSchema", () => {
     const result = signupFormSchema.safeParse({
       email: "not-an-email",
       password: "short",
-      confirmPassword: "different",
     });
 
     expect(result.success).toBe(false);
@@ -21,14 +20,12 @@ describe("signupFormSchema", () => {
     expect(fieldErrors.password).toContain(
       "Password must contain at least 12 characters",
     );
-    expect(fieldErrors.confirmPassword).toContain("Passwords don't match");
   });
 
-  test("accepts a valid signup payload without a terms checkbox", () => {
+  test("accepts a valid signup payload with the password given once and no terms checkbox", () => {
     const result = signupFormSchema.safeParse({
       email: "valid@example.com",
       password: "validpassword123",
-      confirmPassword: "validpassword123",
     });
 
     expect(result.success).toBe(true);
@@ -38,7 +35,6 @@ describe("signupFormSchema", () => {
     const result = signupFormSchema.parse({
       email: "valid@example.com",
       password: "validpassword123",
-      confirmPassword: "validpassword123",
     });
 
     expect(result.marketingOptOut).toBe(false);
@@ -48,7 +44,6 @@ describe("signupFormSchema", () => {
     const result = signupFormSchema.parse({
       email: "valid@example.com",
       password: "validpassword123",
-      confirmPassword: "validpassword123",
       marketingOptOut: true,
     });
 
@@ -59,7 +54,6 @@ describe("signupFormSchema", () => {
     const result = signupFormSchema.safeParse({
       email: "valid@example.com",
       password: "validpassword123",
-      confirmPassword: "validpassword123",
       marketingOptOut: "yes",
     });
 

@@ -6,10 +6,11 @@ from enum import Enum
 from types import TracebackType
 from typing import Any
 
-from pydantic import SecretStr
+from pydantic import BaseModel, ConfigDict, SecretStr
 from sentry_sdk._init_implementation import init as _sentry_init
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 from sentry_sdk.api import flush as _sentry_flush
+from sentry_sdk.consts import SPANDATA
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST
@@ -20,10 +21,21 @@ except ImportError:
     AnthropicIntegration = None  # type: ignore[assignment,misc]
 
 from backend.util.exceptions import get_execution_failure_reason
+from backend.util.request_credentials import select_credentials
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
 from backend.util.tracing import traces_sampler
-from backend.util.url_redaction import REDACTED, redact_url
+from backend.util.url_redaction import (
+    MIN_CREDENTIAL_LENGTH,
+    REDACTED,
+    credentials_in_url,
+    is_credential_header,
+    mask_known,
+    redact_query_string,
+    redact_url,
+    redact_urls_in_text,
+    request_credentials,
+)
 
 settings = Settings()
 
@@ -77,6 +89,7 @@ _SENTRY_SENSITIVE_FIELDS = sorted(
     | SENSITIVE_FIELD_NAMES
     | {
         "anthropic_auth_token",
+        "bot_token",
         "client_secret",
         "codex_access_token",
         "codex_api_key",
@@ -84,11 +97,22 @@ _SENTRY_SENSITIVE_FIELDS = sorted(
         "id_token",
         "login_code",
         "openai_api_key",
+        "plain_text_key",
+        "plaintext_key",
+        "plaintext_secret",
+        "plaintext_token",
         "provider_state",
+        "secret_token",
         "secrets",
         "state_token",
         "user_code",
         "verification_url",
+        # The credentials a route takes in its path, under their own names and
+        # the database's.
+        "share_token",
+        "shareToken",
+        "webhook_id",
+        "webhookId",
     }
 )
 # A user is known to Sentry by their id only, so their email and IP address are
@@ -105,12 +129,54 @@ _SENTRY_SENSITIVE_KEYS = frozenset(
         *_SENTRY_PERSONAL_FIELDS,
     )
 )
+# The names a secret is assigned to, as a key or keyword argument; "_" in one
+# stands for "_", "-" or nothing.
+_SECRET_NAMES = (
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "state_token",
+    "bot_token",
+    "share_token",
+    "secret_token",
+    "api_key",
+    "authorization",
+    "client_secret",
+    "password",
+    "provider_state",
+    "secret",
+    "device_code",
+    "login_code",
+    "user_code",
+    "verification_url",
+    "webhook_id",
+    "plain_text_key",
+    "plain_text_secret",
+    "plain_text_token",
+)
+# Letters outside ASCII that IGNORECASE matches to an ASCII one.
+_CASE_FOLDS = {"i": "İı", "k": "\u212a", "s": "ſ"}
+_SECRET_NAME_STARTS = "".join(
+    sorted(
+        {name[0] for name in _SECRET_NAMES}
+        | {name[0].upper() for name in _SECRET_NAMES}
+        | {fold for name in _SECRET_NAMES for fold in _CASE_FOLDS.get(name[0], "")}
+    )
+)
 _EMBEDDED_SECRET_ASSIGNMENT = re.compile(
-    r"(?i)(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|"
-    r"authorization|client[_-]?secret|password|provider[_-]?state|secret|"
-    r"device[_-]?code|login[_-]?code|state[_-]?token|user[_-]?code|"
-    r"verification[_-]?url)"
-    r"(?:\\?[\"']?)\s*[:=]"
+    # A search starts only at one of the names' first letters, matched with
+    # case, which the engine finds far faster than the names without it.
+    f"(?=[{_SECRET_NAME_STARTS}])"
+    + "(?i:"
+    + "|".join(name.replace("_", "[_-]?") for name in _SECRET_NAMES)
+    + ")"
+    # An unset one, as a model's repr or a JSON object shows each of its fields,
+    # holds nothing: None, null or empty, and then a closing bracket, the end,
+    # or the next field, whose value reads as a repr's or JSON's does: quoted, a
+    # number, a bracket, None, True, False or a call. Free text that only
+    # starts like one is filtered.
+    + r"(?:\\?[\"']?)\s*[:=](?!\s*(?:None|null|''|\"\")\s*(?:[)}\]]|$|,\s*(?:[\"']"
+    + r"|\w+\s*=\s*(?:b?[\"'\[{(<\d-]|(?:None|null|True|False)\b|[\w.]+\())))"
 )
 _TOKEN_SHAPED_VALUE = re.compile(
     r"(?i)(?:\b(?:bearer|basic)\s+[a-z0-9._~+/=-]{8,}|"
@@ -126,64 +192,317 @@ _FILTERED_VALUE = "[Filtered]"
 _MAX_LOCAL_REPR = 1024
 # The SDK cuts every string in an event to this length before ``before_send``.
 _SENTRY_MAX_VALUE_LENGTH = 8 * 1024
+# The SDK's annotations of an event, under ``_meta``, read for masked keys.
+_MAX_META_NODES = 4096
 # Characters of text the scrubber searches per event; strings past it are filtered.
 _SENTRY_SCRUB_BUDGET = 512 * 1024
 # Sentry lists breadcrumbs, chained exceptions and frames oldest or outermost first;
 # the scrubber walks them from the end so the budget goes to the newest.
 _OLDEST_FIRST_LISTS = frozenset({"values", "frames"})
+# The HTTP client integrations record each outgoing request's query and
+# fragment as sent, an API key in ``?key=`` included, and an ASGI scope among a
+# frame's variables holds the raw query of the request.
+# Recorded apart from its URL, a fragment can be a bare token.
+_FRAGMENT_KEYS = frozenset({SPANDATA.HTTP_FRAGMENT})
+_QUERY_KEYS = frozenset({SPANDATA.HTTP_QUERY, "query_string"})
+# The IDs and timestamps the SDK writes on an event, its spans and its trace
+# context, which hold a trace together: never searched or charged to the
+# budget, so an event past it keeps its shape. Only there, and only in their
+# own format, so a payload's field of the same name is still scrubbed.
+_SDK_FIELDS = frozenset(
+    {
+        "event_id",
+        "trace_id",
+        "span_id",
+        "parent_span_id",
+        "start_timestamp",
+        "timestamp",
+    }
+)
+_SDK_FIELD_VALUE = re.compile(
+    r"[0-9a-f]{16}|[0-9a-f]{32}|\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d)?"
+)
+# Fields that name the event itself, from the deployment and the code rather
+# than the request. They are never masked for a value the request carried: a
+# caller can present any value as a credential, and masking one of these would
+# move their errors out of the alerts and issues they belong to. Everywhere
+# else the value is still masked. So is the transaction when a request no
+# route matched names it after its raw path; a matched route's is a name.
+_EVENT_NAMES = frozenset({"environment", "release", "dist", "server_name", "logger"})
+_EXCEPTION_NAMES = frozenset({"type", "module"})
+_CODE_LOCATION_NAMES = frozenset({"function", "module", "filename", "abs_path"})
 
 
-def _scrub_sentry_event(event: dict) -> None:
+class _Search(BaseModel):
+    """What one event's scrub looks for, and where the SDK's own fields are."""
+
+    model_config = ConfigDict(frozen=True)
+
+    credentials: tuple[str, ...] = ()
+    secret_shapes: bool = True
+    sdk_records: frozenset[int] = frozenset()
+    # The mappings holding the event's names, by identity, and their name keys.
+    name_fields: dict[int, frozenset[str]] = {}
+
+
+def _scrub_sentry_event(event: dict, *, secret_shapes: bool = True) -> None:
     """Scrub sensitive keys and secret-shaped values from an outgoing event.
 
     ``before_send`` sees the event after the SDK has serialized it, and the
     transport then ``json.dumps`` it as is. So every replacement must be plain
     JSON: sentry's EventScrubber writes ``AnnotatedValue`` objects, and one of
-    those here made the SDK drop the whole event as an internal error. ``_meta``
-    is the SDK's own annotation tree and is left alone.
+    those here made the SDK drop the whole event as an internal error.
 
     It searches at most ``_SENTRY_SCRUB_BUDGET`` characters per event and filters
     any string beyond that rather than send it unsearched; it walks breadth-first,
     newest breadcrumb and innermost frame first, and the breadcrumbs get only what
     the rest of the event left.
+
+    An event raised in a request carries the variables of every frame, the
+    route's included, so each credential the request held in its URL or headers
+    is masked wherever it turns up, in a key as in a value, and so are the
+    credentials in any URL the event quotes. ``secret_shapes=False`` skips the
+    search for secret-shaped values, the costliest part. ``_meta``, the SDK's
+    record of what it cut, isn't scrubbed itself, but its annotations under a
+    key masked here are dropped.
     """
+    # Read from the request's URL before it is masked.
+    credentials = _known_credentials(event)
     _redact_request_urls(event)
-    keys = [key for key in event if key not in ("_meta", "breadcrumbs")]
-    budget = _scrub_breadth_first([(event, key) for key in keys], _SENTRY_SCRUB_BUDGET)
+    # Built from what was just read here, so there is nothing to validate.
+    search = _Search.model_construct(
+        credentials=credentials,
+        secret_shapes=secret_shapes,
+        sdk_records=_sdk_records(event),
+        name_fields=_name_fields(event),
+    )
+    keys = [
+        key
+        for key in event
+        if key not in ("_meta", "breadcrumbs")
+        and not _is_sdk_field(search, event, key, event[key])
+    ]
+    budget = _scrub_breadth_first(
+        [(event, key) for key in keys], _SENTRY_SCRUB_BUDGET, search
+    )
     if "breadcrumbs" in event:
-        _scrub_breadth_first([(event, "breadcrumbs")], budget)
+        budget = _scrub_breadth_first([(event, "breadcrumbs")], budget, search)
+    meta = event.get("_meta")
+    if isinstance(meta, dict) and not _drop_masked_annotations(meta, search, budget):
+        del event["_meta"]
 
 
-def _scrub_breadth_first(roots: list[tuple[dict[Any, Any], Any]], budget: int) -> int:
+def _drop_masked_annotations(meta: dict, search: _Search, budget: int) -> bool:
+    """Drop the annotations ``_meta`` keeps under a key the scrubber masks: they
+    mirror the event's paths, so they repeat a key as it was sent, such as a
+    credential used as a mapping's key whose value the SDK cut. Each key read is
+    charged to what is left of ``budget``. Return False if there are more than
+    ``_MAX_META_NODES`` to read, or more text than the budget covers."""
+    pending = [meta]
+    read = 0
+    while pending:
+        node = pending.pop()
+        for key in list(node):
+            read += 1
+            if read > _MAX_META_NODES:
+                return False
+            if isinstance(key, str) and len(key) >= MIN_CREDENTIAL_LENGTH:
+                budget -= len(key)
+                if budget < 0:
+                    return False
+                if _scrub_text(key, search) != key:
+                    del node[key]
+                    continue
+            if isinstance(node[key], dict):
+                pending.append(node[key])
+    return True
+
+
+def _scrub_breadth_first(
+    roots: list[tuple[dict[Any, Any], Any]],
+    budget: int,
+    search: _Search = _Search(),
+) -> int:
     """Scrub the values under ``roots`` and return the budget left over."""
     queue: deque[tuple[dict[Any, Any] | list[Any], Any]] = deque(roots)
     while queue:
         parent, key = queue.popleft()
         value = parent[key]
+        _mask_headers(key, value)
         if isinstance(value, dict):
+            # By each key as sent: one renamed below, for holding a credential,
+            # can still name a secret field.
             for nested_key in value:
                 if (
                     isinstance(nested_key, str)
                     and nested_key.lower() in _SENTRY_SENSITIVE_KEYS
                 ):
                     value[nested_key] = _FILTERED_VALUE
-                else:
-                    queue.append((value, nested_key))
+            value, budget = _scrub_keys(parent, key, budget, search)
+            queue.extend(
+                (value, nested_key)
+                for nested_key, nested in value.items()
+                if nested is not _FILTERED_VALUE
+                and not _is_sdk_field(search, value, nested_key, nested)
+            )
         elif isinstance(value, list):
             indices = range(len(value))
             if key in _OLDEST_FIRST_LISTS:
                 indices = indices[::-1]
             queue.extend((value, index) for index in indices)
         elif isinstance(value, str):
+            # Charged as sent, before anything reads it.
             if len(value) > budget:
                 parent[key] = _FILTERED_VALUE
                 continue
             budget -= len(value)
-            if _EMBEDDED_SECRET_ASSIGNMENT.search(value) or _TOKEN_SHAPED_VALUE.search(
-                value
-            ):
-                parent[key] = _FILTERED_VALUE
+            if key in _FRAGMENT_KEYS and value:
+                # A fragment can be a bare token, which no query rule reads.
+                value = REDACTED
+            elif key in _QUERY_KEYS:
+                value = redact_query_string(value)
+            names_event = key in search.name_fields.get(id(parent), ())
+            parent[key] = _scrub_text(value, search, known=not names_event)
     return budget
+
+
+def _scrub_text(text: str, search: _Search, known: bool = True) -> str:
+    """``text``, or ``[Filtered]`` if it holds a secret-shaped value, with the
+    credentials in any URL in it masked, then, unless not ``known``, the
+    request's credentials: in that order, so a request value that is part of a
+    URL can't hide the URL's credentials from their masking."""
+    if search.secret_shapes and (
+        _EMBEDDED_SECRET_ASSIGNMENT.search(text) or _TOKEN_SHAPED_VALUE.search(text)
+    ):
+        return _FILTERED_VALUE
+    text = redact_urls_in_text(text)
+    return mask_known(text, search.credentials) if known else text
+
+
+def _scrub_keys(
+    parent: dict[Any, Any] | list[Any],
+    key: Any,
+    budget: int,
+    search: _Search,
+) -> tuple[dict[Any, Any], int]:
+    """Scrub the keys of the mapping at ``parent[key]`` as text, renaming each
+    that holds a secret, such as a mapping from a token to what it grants. A key
+    shorter than any credential is a name, and is kept. Past the budget a key
+    is only checked for the known credentials, which is cheap, and is never
+    filtered: the event's shape depends on its keys."""
+    value: dict[Any, Any] = parent[key]
+    renames: dict[str, str] = {}
+    for nested_key in value:
+        if not isinstance(nested_key, str) or len(nested_key) < MIN_CREDENTIAL_LENGTH:
+            continue
+        if len(nested_key) <= budget:
+            budget -= len(nested_key)
+            scrubbed = _scrub_text(nested_key, search)
+        else:
+            scrubbed = mask_known(nested_key, search.credentials)
+        if scrubbed != nested_key:
+            renames[nested_key] = scrubbed
+    if not renames:
+        return value, budget
+    renamed: dict[Any, Any] = {}
+    for nested_key, nested in value.items():
+        if nested_key in renames:
+            new_key = renames[nested_key]
+            while new_key in renamed or new_key in value:
+                new_key += "*"
+            nested_key = new_key
+        renamed[nested_key] = nested
+    parent[key] = renamed
+    return renamed, budget
+
+
+def _mask_headers(key: object, headers: object) -> None:
+    """Mask every credential header, whatever it is called, under a ``headers``
+    key: the SDK knows a fixed list of names, which misses a webhook provider's
+    secret token such as Telegram's. Headers come as a mapping, or, in an ASGI
+    scope among a frame's variables, as name and value pairs, the names reprs of
+    bytes, such as ``["b'cookie'", "b'session=...'"]``."""
+    if key != "headers":
+        return
+    if isinstance(headers, dict):
+        for name in headers:
+            if isinstance(name, str) and is_credential_header(name):
+                headers[name] = _FILTERED_VALUE
+    elif isinstance(headers, list):
+        for pair in headers:
+            if (
+                isinstance(pair, list)
+                and len(pair) == 2
+                and isinstance(pair[0], str)
+                and is_credential_header(pair[0])
+            ):
+                pair[1] = _FILTERED_VALUE
+
+
+def _known_credentials(event: dict) -> tuple[str, ...]:
+    """The credentials of the request the event was raised in: those its app
+    kept from the URL and headers, then those in the URL the event reports."""
+    request = event.get("request")
+    if not isinstance(request, dict):
+        request = {}
+    url, query = request.get("url"), request.get("query_string")
+    reported = set()
+    if isinstance(url, str):
+        reported = credentials_in_url(
+            f"{url}?{query}" if isinstance(query, str) else url
+        )
+    return select_credentials(set(request_credentials()), reported)
+
+
+def _name_fields(event: dict) -> dict[int, frozenset[str]]:
+    """The mappings, by identity, whose fields name the event: the event itself,
+    its user, its exceptions (their types) and their frames (code locations)."""
+    names = _EVENT_NAMES
+    info = event.get("transaction_info")
+    if isinstance(info, dict) and info.get("source") not in (None, "url"):
+        # A matched route's template names the event as its environment does;
+        # only a raw path, which a request no route matched gives, is masked.
+        names |= {"transaction"}
+    fields: dict[int, frozenset[str]] = {id(event): names}
+    user = event.get("user")
+    if isinstance(user, dict):
+        fields[id(user)] = frozenset({"id"})
+    for exception in _listed(event.get("exception")):
+        fields[id(exception)] = _EXCEPTION_NAMES
+        for frame in _listed(exception.get("stacktrace"), "frames"):
+            fields[id(frame)] = _CODE_LOCATION_NAMES
+    return fields
+
+
+def _is_sdk_field(search: _Search, record: object, key: object, value: object) -> bool:
+    """Whether ``record[key]`` is one of the SDK's IDs or timestamps."""
+    return (
+        id(record) in search.sdk_records
+        and key in _SDK_FIELDS
+        and isinstance(value, str)
+        and _SDK_FIELD_VALUE.fullmatch(value) is not None
+    )
+
+
+def _sdk_records(event: dict) -> frozenset[int]:
+    """The event, its spans and its trace context, where the SDK writes its IDs
+    and timestamps."""
+    records: list[object] = [event, *_listed(event, "spans")]
+    contexts = event.get("contexts")
+    if isinstance(contexts, dict):
+        records.append(contexts.get("trace"))
+    return frozenset(id(record) for record in records if isinstance(record, dict))
+
+
+def _listed(container: object, key: str = "values") -> list[dict]:
+    """The mappings in ``container[key]``, which a serialized event keeps as a
+    list of mappings, or none."""
+    if not isinstance(container, dict):
+        return []
+    items = container.get(key)
+    if not isinstance(items, list):
+        return []
+    return [item for item in items if isinstance(item, dict)]
 
 
 def _redact_request_urls(event: dict) -> None:
@@ -193,7 +512,9 @@ def _redact_request_urls(event: dict) -> None:
     query string, which for the WebSocket holds the user's session JWT, and
     the path secrets in ``url`` would otherwise be sent with every event.
     """
-    request = event.get("request") or {}
+    request = event.get("request")
+    if not isinstance(request, dict):
+        request = {}
     if isinstance(request.get("url"), str):
         request["url"] = redact_url(request["url"])
     # The SDK has already decoded the query, so a %26 inside a value reads as a
@@ -202,7 +523,8 @@ def _redact_request_urls(event: dict) -> None:
         request["query_string"] = REDACTED
     # A request no route matched is named after its raw URL.
     transaction = event.get("transaction")
-    source = (event.get("transaction_info") or {}).get("source")
+    info = event.get("transaction_info")
+    source = info.get("source") if isinstance(info, dict) else None
     if source == "url" and isinstance(transaction, str):
         event["transaction"] = redact_url(transaction)
 
@@ -336,10 +658,17 @@ def _before_send(event, hint):
 
 def _before_send_transaction(event, hint):
     """Transactions skip ``before_send`` but carry the same request data, and
-    every WebSocket connection is one."""
+    every WebSocket connection is one. Their spans record what the request did
+    with its credentials too: each outgoing request's URL and query, and each
+    Redis command's key.
+
+    The search for secret-shaped values is left out. Its finds are in error
+    messages and variables, which a transaction doesn't carry, and on every
+    request's transaction it took longer than the SDK's own serializing of it.
+    """
     _strip_user_pii(event)
     _strip_ip_headers(event)
-    _redact_request_urls(event)
+    _scrub_sentry_event(event, secret_shapes=False)
     return event
 
 
@@ -421,7 +750,10 @@ def sentry_init():
         # (backend.util.service); outbound calls to third parties, such as a
         # block's request to a user-supplied URL, carry no Sentry headers.
         trace_propagation_targets=[],
-        profiles_sample_rate=1.0,
+        # Continuous profiling: one sample buffer per process, however many
+        # transactions are in flight, profiling while any traced one runs.
+        profile_session_sample_rate=1.0,
+        profile_lifecycle="trace",
         release=settings.config.sentry_release.strip() or None,
         environment=_sentry_environment(),
         # The SDK default, pinned: no IP address, request headers with
@@ -441,10 +773,35 @@ def sentry_init():
 
 def _bounded_repr(value: object) -> str | None:
     """The SDK repr()s frame locals in full while holding the GIL, which takes seconds
-    and gigabytes when a traceback holds a large upload."""
-    if isinstance(value, (str, bytes, bytearray)) and len(value) > _MAX_LOCAL_REPR:
-        return f"{value[:_MAX_LOCAL_REPR]!r}... ({len(value):,} long)"
-    return None
+    and gigabytes when a traceback holds a large upload. A known credential is
+    masked before the cut, so none is cut in two and half of it kept."""
+    if isinstance(value, str) and len(value) > _MAX_LOCAL_REPR:
+        head = _masked_head(value, request_credentials())
+    elif isinstance(value, (bytes, bytearray)) and len(value) > _MAX_LOCAL_REPR:
+        # Latin-1 maps each byte to one character and back, so the bytes are
+        # kept as they were, the credentials apart.
+        head = _masked_head(value, request_credentials()).encode("latin-1")
+        if isinstance(value, bytearray):
+            head = bytearray(head)
+    else:
+        return None
+    return f"{head!r}... ({len(value):,} long)"
+
+
+def _masked_head(value: str | bytes | bytearray, credentials: tuple[str, ...]) -> str:
+    """At most the first ``_MAX_LOCAL_REPR`` characters of ``value``, bytes read
+    as Latin-1, with ``credentials`` masked, so none is cut in two and half of
+    it kept. One window is read, the head and twice the longest credential
+    (longest first), so the work is bounded however long ``value`` is and
+    however much masking shortens it; the head is shorter when it does."""
+    longest = len(credentials[0]) if credentials else 0
+    window = value[: _MAX_LOCAL_REPR + 2 * longest]
+    text = window if isinstance(window, str) else bytes(window).decode("latin-1")
+    head = mask_known(text, credentials)
+    if longest and len(window) < len(value):
+        # A credential the window cuts is left in its last characters.
+        head = head[:-longest]
+    return head[:_MAX_LOCAL_REPR]
 
 
 def _running_under_pytest() -> bool:

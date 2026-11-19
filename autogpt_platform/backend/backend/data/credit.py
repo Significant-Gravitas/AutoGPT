@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
 from backend.data import subscription_activation, subscription_trial_stripe
+from backend.data.account_deletion import refuse_closed_account
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.credit_admin_lookup import search_history_keys, user_emails
 from backend.data.credit_history import get_credit_history
@@ -44,6 +45,7 @@ from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
     expire_all_open_checkouts,
+    expire_if_account_closed,
     expire_other_subscription_checkouts,
     subscription_checkout_lock,
 )
@@ -1422,6 +1424,10 @@ class UserCredit(UserCreditBase):
                 f"Top up amount must be at most ${MAX_TOP_UP_AMOUNT // 100:,} but is ${amount // 100:,}"
             )
 
+        # Past the auth cache, before a Stripe customer is made: closing
+        # expires the open Checkouts, and a closed account must get none.
+        await refuse_closed_account(user_id)
+
         # Resolve the Stripe Product ID from LD; when unset (default), keep the
         # legacy inline product_data path (Stripe creates an ephemeral product
         # per Checkout). When set, reference the canonical Product so all
@@ -1477,6 +1483,7 @@ class UserCredit(UserCreditBase):
             customer_update={"address": "auto"},
             metadata=_datafast_metadata(datafast_visitor_id, datafast_session_id),
         )
+        await expire_if_account_closed(user_id, checkout_session.id)
 
         await self._add_transaction(
             user_id=user_id,
@@ -3105,6 +3112,9 @@ async def _create_subscription_checkout(
     datafast_visitor_id: str | None,
     datafast_session_id: str | None,
 ) -> str:
+    # Past the auth cache, before a Stripe customer is made: closing expires
+    # the open Checkouts, and a closed account must get none.
+    await refuse_closed_account(user_id)
     price_id = await get_subscription_price_id(tier, billing_cycle)
     if not price_id:
         raise ValueError(f"Subscription not available for tier {tier.value}")
@@ -3150,6 +3160,7 @@ async def _create_subscription_checkout(
         },
         metadata=datafast,
     )
+    await expire_if_account_closed(user_id, session.id)
     if not session.url:
         # An empty checkout URL for a paid upgrade is always an error; surfacing it
         # as ValueError means the API handler returns 422 instead of silently

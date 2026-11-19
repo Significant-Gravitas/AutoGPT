@@ -258,9 +258,10 @@ internally.
 
 Before exposing the proxy, complete the [Account policy](#account-policy)
 bootstrap, promote the intended administrator, and close new-account signup.
-The bundled nginx records the external proxy as the immediate client, so the
-proxy must preserve its own client-attribution logs and enforce any per-client
-IP rate limits or access rules.
+Set `TRUSTED_PROXIES` on the container to that proxy's addresses, so the
+bundled nginx reads the visitor's address from `X-Forwarded-For` and the
+sign-in limits, IP blocks and sign-in log see each visitor rather than the
+proxy; see [Client IP Addresses](client-ip.md#the-single-container-image).
 
 Set `AUTOGPT_PUBLIC_URL` to the browser-visible HTTPS origin, for example:
 
@@ -1185,6 +1186,9 @@ logs a warning, and startup continues without the catalog. Set
 - Required email verification is unsupported.
 - The prebuilt frontend cannot configure Google Picker public keys at runtime.
 - Remote TLS termination is operator-supplied.
-- The local `bash_exec` fallback depends on host support for Bubblewrap user and
-  network namespaces. Do not make the entire appliance privileged to work
-  around a host that disables them.
+- The local `bash_exec` fallback depends on host support for Bubblewrap user,
+  network and PID namespaces, and on a host `/proc` the sandbox can mount its
+  own copy of: an appliance started with Docker's default masked `/proc` runs no
+  command, and reports the setting to change (`--security-opt
+  systempaths=unconfined`, or `procMount: Unmasked` on Kubernetes). Do not make
+  the entire appliance privileged to work around a host that disables them.
