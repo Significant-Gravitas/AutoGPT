@@ -9,6 +9,8 @@ cache-mode: none
 env:
   DEPLOY_IMAGE: docker.io/significantgravitas/autogpt
   BUILD_CACHE_IMAGE: ghcr.io/significant-gravitas/autogpt-single-container-buildcache
+  BENCHMARK_APPLICATION_PARENT: e514ac6ce0b4cc64f017d635065442763122db08
+  BENCHMARK_APPLICATION_TREE: 88971556809482f4d8a7eb17a490895c85216360
 jobs:
   appliance:
     name: Docker installer (${{ matrix.platform }}, ${{ matrix.installer }})
@@ -64,7 +66,7 @@ jobs:
 
           git diff --exit-code
 
-          test "$(git rev-parse HEAD:autogpt_platform)" = "$(git rev-parse HEAD^:autogpt_platform)"
+          test "$(git rev-parse HEAD:autogpt_platform)" = "$BENCHMARK_APPLICATION_TREE"
 
           '
       - name: Initialize validation reports
@@ -192,10 +194,10 @@ jobs:
           \ run --rm --entrypoint sh \"$SMOKE_IMAGE\" -c 'test ! -e /usr/local/bin/uv'\npython3 - <<'PY'\n\
           import json, os, subprocess\nfrom pathlib import Path\nreport = Path(os.environ['REPORT_DIR'])\n\
           inventory = json.loads((report / 'inventory.json').read_text())\nassert len(inventory) > 100\n\
-          metadata = {\n    'sha': os.environ['GITHUB_SHA'], 'parent': subprocess.check_output(['git', 'rev-parse',\
-          \ 'HEAD^'], text=True).strip(),\n    'installer': os.environ['INSTALLER'], 'arch': os.environ['ARCH'],\n\
-          \    'application_tree': subprocess.check_output(['git', 'rev-parse', 'HEAD:autogpt_platform'],\
-          \ text=True).strip(),\n    'inventory_count': len(inventory),\n}\n(report / 'installer.json').write_text(json.dumps(metadata,\
+          metadata = {\n    'sha': os.environ['GITHUB_SHA'], 'parent': os.environ['BENCHMARK_APPLICATION_PARENT'],\n\
+          \    'installer': os.environ['INSTALLER'], 'arch': os.environ['ARCH'],\n    'application_tree':\
+          \ subprocess.check_output(['git', 'rev-parse', 'HEAD:autogpt_platform'], text=True).strip(),\n\
+          \    'inventory_count': len(inventory),\n}\n(report / 'installer.json').write_text(json.dumps(metadata,\
           \ indent=2))\nPY\n"
       - name: Smoke-test the complete image
         id: complete-image-smoke
