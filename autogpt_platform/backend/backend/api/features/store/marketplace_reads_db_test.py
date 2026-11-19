@@ -225,6 +225,33 @@ async def test_rejection_and_replacement_of_the_same_pending_submission(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_creator_can_resubmit_after_deleting_the_latest_replacement(server):
+    tag = uuid4().hex[:12]
+    owner = await _seed_creator(tag, avatar_url="")
+    graph_id = f"graph-{tag}"
+    try:
+        [live] = await _seed_listing(graph_id, owner, [APPROVED])
+        superseded = await _submit(owner, graph_id)
+        latest = await _submit(owner, graph_id)
+        await store_db.delete_store_submission_or_raise(
+            owner, latest.listing_version_id
+        )
+
+        new = await _submit(owner, graph_id)
+        assert (
+            superseded.listing_version,
+            latest.listing_version,
+            new.listing_version,
+        ) == (2, 3, 3)
+        assert new.listing_version_id != latest.listing_version_id
+        assert (
+            await store_db.get_store_agent_details(owner, graph_id)
+        ).active_version_id == live
+    finally:
+        await _clean_up(owner, [graph_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_rejection_serializes_with_approval_of_a_parent_workflow(
     server, monkeypatch
 ):
@@ -516,15 +543,29 @@ async def _wait_for_blocked_statement(tx, *, until: asyncio.Event | None = None)
 def _after_child_listing_read(monkeypatch, child_graph: str, action):
     listing_actions = type(prisma.models.StoreListing.prisma())
     find_first = listing_actions.find_first
+    fired = False
 
     async def read_then_act(actions, **kwargs):
+        nonlocal fired
         listing = await find_first(actions, **kwargs)
-        if listing and listing.agentGraphId == child_graph and listing.Versions:
+        if (
+            not fired
+            and listing
+            and listing.agentGraphId == child_graph
+            and listing.Versions
+        ):
+            fired = True
             async with asyncio.timeout(10):
                 await action()
         return listing
 
     monkeypatch.setattr(listing_actions, "find_first", read_then_act)
+
+
+async def _submit(owner: str, graph_id: str):
+    return await store_db.create_store_submission(
+        owner, graph_id, 1, graph_id, graph_id, "Replacement"
+    )
 
 
 async def _approve(version_id: str, reviewer_id: str):

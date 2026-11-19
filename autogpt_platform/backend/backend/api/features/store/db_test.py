@@ -11,6 +11,7 @@ from prisma import Prisma
 
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.util.exceptions import (
+    ConflictError,
     DatabaseError,
     NotAuthorizedError,
     NotFoundError,
@@ -403,8 +404,12 @@ def _patch_submission(
         AsyncMock(return_value=[existing_listing] if existing_listing else []),
     )
     mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
-    mock_slv.return_value.find_many = AsyncMock(
-        return_value=existing_listing.Versions if existing_listing else []
+    mock_slv.return_value.find_first = AsyncMock(
+        return_value=(
+            max(existing_listing.Versions or [], key=lambda v: v.version, default=None)
+            if existing_listing
+            else None
+        )
     )
     mock_slv.return_value.create = AsyncMock(return_value=mock_version)
     mock_slv.return_value.update_many = AsyncMock()
@@ -1743,6 +1748,26 @@ async def _review(is_approved: bool):
         internal_comments="",
         reviewer_id="reviewer-id",
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_dependency_conflict_stops_the_parent_review(mocker, review_mocks):
+    graph = review_mocks.version.AgentGraph
+    children = [
+        graph.model_copy(update={"id": name}) for name in ("child-a", "child-b")
+    ]
+    mocker.patch.object(db, "get_sub_graphs", AsyncMock(return_value=children))
+    approve = mocker.patch.object(
+        db,
+        "_approve_sub_agent",
+        AsyncMock(side_effect=[ConflictError("changed during review"), None]),
+    )
+
+    with pytest.raises(ConflictError, match="changed during review"):
+        await _review(is_approved=True)
+
+    approve.assert_awaited_once()
+    review_mocks.slv.update.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")

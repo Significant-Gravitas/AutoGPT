@@ -1026,26 +1026,18 @@ async def create_store_submission(
                 )
 
             versions = prisma.models.StoreListingVersion.prisma(tx)
-            latest_by_status = (
-                await versions.find_many(
-                    where={"storeListingId": existing_listing.id, "isDeleted": False},
+            next_version = 1
+            if existing_listing:
+                # Superseded versions still occupy their number in the unique index.
+                latest = await versions.find_first(
+                    where={"storeListingId": existing_listing.id},
                     order={"version": "desc"},
-                    distinct=["submissionStatus"],
                 )
-                if existing_listing
-                else []
-            )
-            next_version = max((v.version for v in latest_by_status), default=0) + 1
-
-            # Delete any currently PENDING submissions for the same graph
-            # in favor of the new submission
-            if any(
-                v.submissionStatus == prisma.enums.SubmissionStatus.PENDING
-                for v in latest_by_status
-            ):
+                if latest:
+                    next_version = latest.version + 1
                 await versions.update_many(
                     where={
-                        "agentGraphId": graph.id,
+                        "storeListingId": existing_listing.id,
                         "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
                         "isDeleted": False,
                     },
@@ -1612,19 +1604,14 @@ async def review_store_submission(
         reactivated_id = None
         async with transaction() as tx:
             if is_approved:
-                # Handle sub-agent approvals in transaction
-                await asyncio.gather(
-                    *[
-                        _approve_sub_agent(
-                            tx,
-                            sub_graph,
-                            submission.name,
-                            submission.agentGraphVersion,
-                            creator_user_id,
-                        )
-                        for sub_graph in sub_graphs
-                    ]
-                )
+                for sub_graph in sorted(sub_graphs, key=lambda graph: graph.id):
+                    await _approve_sub_agent(
+                        tx,
+                        sub_graph,
+                        submission.name,
+                        submission.agentGraphVersion,
+                        creator_user_id,
+                    )
 
                 # Update the AgentGraph with store listing data
                 await prisma.models.AgentGraph.prisma(tx).update(
