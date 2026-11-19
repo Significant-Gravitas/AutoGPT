@@ -540,6 +540,39 @@ async def test_sdk_mode_cancelled_before_a_result_records_estimated_input() -> N
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("provider_cost, cost_type", [(0.02, "cost_usd"), (None, None)])
+async def test_a_call_records_the_type_of_its_provider_cost(provider_cost, cost_type):
+    block = OrchestratorBlock()
+    input_data = MagicMock(
+        conversation_compaction=False,
+        model=LLMModel.CLAUDE_4_5_HAIKU,
+        max_tokens=100,
+        ollama_host="localhost:11434",
+        multiple_tool_calls=False,
+    )
+    response = MagicMock(
+        prompt_tokens=10,
+        completion_tokens=5,
+        cache_read_tokens=0,
+        cache_creation_tokens=0,
+        provider_cost=provider_cost,
+        tool_calls=None,
+    )
+
+    with patch(
+        "backend.blocks.orchestrator.llm.llm_call", AsyncMock(return_value=response)
+    ):
+        await block._attempt_llm_call_with_validation(
+            credentials=None,
+            input_data=input_data,
+            current_prompt=[{"role": "user", "content": "hi"}],
+            tool_functions=[],
+        )
+
+    assert block.execution_stats.provider_cost_type == cost_type
+
+
+@pytest.mark.asyncio
 async def test_built_in_mode_stopped_mid_call_records_estimated_input() -> None:
     block = OrchestratorBlock()
     input_data = MagicMock(

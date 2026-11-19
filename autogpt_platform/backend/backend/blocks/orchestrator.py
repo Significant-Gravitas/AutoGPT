@@ -962,6 +962,9 @@ class OrchestratorBlock(Block):
                 cache_creation_token_count=resp.cache_creation_tokens,
                 llm_call_count=1,
                 provider_cost=resp.provider_cost,
+                provider_cost_type=(
+                    "cost_usd" if resp.provider_cost is not None else None
+                ),
             )
         )
 
