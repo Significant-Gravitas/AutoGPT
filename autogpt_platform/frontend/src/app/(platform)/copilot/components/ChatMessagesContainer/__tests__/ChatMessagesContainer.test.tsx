@@ -325,6 +325,15 @@ describe("ChatMessagesContainer — assistant rendering", () => {
       ],
     ],
     ["the step opened after a finished tool", [finishedTool, stepStart]],
+    ["several steps opened in a row", [finishedTool, stepStart, stepStart]],
+    [
+      "a step opened after a follow-up was drained",
+      [
+        { type: "text", text: "Looking into it." },
+        { type: "data-pending-drained", data: {} },
+        stepStart,
+      ] as Message["parts"],
+    ],
   ])(
     "keeps the thinking indicator through %s, until the model writes",
     (_label, parts) => {
@@ -340,23 +349,51 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     },
   );
 
-  it("does not bring the thinking indicator back when a step opens after text", () => {
-    render(
-      <ChatMessagesContainer
-        {...baseProps}
-        messages={[
-          {
-            id: "assistant-text-then-step",
-            role: "assistant",
-            parts: [{ type: "text", text: "Looking into it." }, stepStart],
-          },
-        ]}
-        status="streaming"
-      />,
-    );
+  it.each([
+    ["text", [{ type: "text", text: "Looking into it." }]],
+    ["reasoning", [{ type: "reasoning", text: "Weighing the options." }]],
+    [
+      "a pause",
+      [
+        { type: "text", text: "Saved where I got to." },
+        { type: "data-turn-paused", data: { reason: "steps", steps: 450 } },
+      ],
+    ],
+    [
+      "a running tool",
+      [{ ...finishedTool, state: "input-available", output: undefined }],
+    ],
+    [
+      "a tool waiting for approval",
+      [
+        {
+          ...finishedTool,
+          state: "approval-requested",
+          output: undefined,
+          approval: { id: "approval-1" },
+        },
+      ],
+    ],
+  ] as Array<[string, Message["parts"]]>)(
+    "does not bring the thinking indicator back when a step opens after %s",
+    (_label, before) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[
+            {
+              id: "assistant-then-step",
+              role: "assistant",
+              parts: [...before, stepStart],
+            },
+          ]}
+          status="streaming"
+        />,
+      );
 
-    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
-  });
+      expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+    },
+  );
 
   it("drops the thinking indicator once a streaming turn has landed on a pause", () => {
     render(

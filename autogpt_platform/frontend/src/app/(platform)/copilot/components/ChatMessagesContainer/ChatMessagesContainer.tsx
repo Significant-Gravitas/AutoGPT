@@ -17,7 +17,7 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
-import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
+import { isToolCallPending } from "../ToolChain/helpers";
 import { TurnEndAnnouncer } from "../JobStatsBar/TurnEndAnnouncer";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
@@ -397,13 +397,9 @@ export function ChatMessagesContainer({
     // A pause is how the turn ends, so nothing more is coming to wait on.
     if (lastPart.type === TURN_PAUSED_PART_TYPE) return true;
 
-    if (
-      lastPart.type.startsWith(TOOL_PART_PREFIX) &&
-      "state" in lastPart &&
-      (lastPart.state === "input-streaming" ||
-        lastPart.state === "input-available")
-    )
-      return true;
+    // A running tool, or one paused on the user's approval, shows its own
+    // card, so Thinking must not sit beside it.
+    if (isToolCallPending(lastPart)) return true;
 
     return false;
   })();
