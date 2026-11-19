@@ -35,6 +35,9 @@ logger = logging.getLogger(__name__)
 MAX_STORED_ITEM_BYTES = 64 * 1024
 MAX_CREDENTIALS_PER_USER = 100
 MAX_PENDING_OAUTH_STATES_PER_USER = 100
+# The web callback page sends a sign-in whose state carries this prefix back to
+# the mobile app. `token_urlsafe` never emits ".", so the prefix can't collide.
+NATIVE_STATE_PREFIX = "native."
 
 
 def canonical_provider(stored: str) -> str:
@@ -633,8 +636,11 @@ class IntegrationCredentialsStore:
         state_metadata: Optional[dict] = None,
         initiated_by_api_key_id: Optional[str] = None,
         credential_id: Optional[str] = None,
+        native: bool = False,
     ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
+        if native:
+            token = NATIVE_STATE_PREFIX + token
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds)
 
         (code_challenge, code_verifier) = self._generate_code_challenge()

@@ -30,6 +30,9 @@ export interface UserSegment {
   /** The id of the row the backend writes for a send: null for a chip, a
    *  kickoff, or a send before any view named the session's user. */
   persistedId: string | null;
+  /** The `message_id` its request named, which a send again reuses: null
+   *  for a chip. */
+  clientMessageId: string | null;
 }
 
 export interface TurnSegment {
@@ -95,10 +98,22 @@ export function newTurnSegment(
   };
 }
 
+const CHIP_KEY_PREFIX = "pending-chip-";
+
+/** The row a promoted follow-up shows as until its drained row stands in. */
+export function chipKey(queuedId: string): string {
+  return `${CHIP_KEY_PREFIX}${queuedId}`;
+}
+
+export function isChipKey(key: string): boolean {
+  return key.startsWith(CHIP_KEY_PREFIX);
+}
+
 export function userSegment(
   message: UIMessage,
   origin: UserSegment["origin"],
   persistedId: string | null = null,
+  clientMessageId: string | null = null,
 ): UserSegment {
   return {
     kind: "user",
@@ -109,6 +124,7 @@ export function userSegment(
     rawId: null,
     createdAt: null,
     persistedId,
+    clientMessageId,
   };
 }
 
@@ -396,18 +412,19 @@ export function promptFloor(
   index: number,
   ownedFrom: number | null,
 ) {
-  const placed = segments.slice(0, index).flatMap((seg) => {
-    if (seg.kind === "user") return [seg.sequence];
-    return (seg.kind === "rows" ? seg.rows : seg.log.rows).map(
-      (r) => r.sequence,
-    );
-  });
-  return Math.max(
-    ownedFrom ?? 0,
-    ...placed
-      .filter((s): s is number => typeof s === "number")
-      .map((s) => s + 1),
-  );
+  let floor = ownedFrom ?? 0;
+  for (const seg of segments.slice(0, index)) {
+    const sequences =
+      seg.kind === "user"
+        ? [seg.sequence]
+        : (seg.kind === "rows" ? seg.rows : seg.log.rows).map(
+            (r) => r.sequence,
+          );
+    for (const sequence of sequences)
+      if (typeof sequence === "number" && sequence + 1 > floor)
+        floor = sequence + 1;
+  }
+  return floor;
 }
 
 export function lastCheckpoint(log: TurnLog): TurnCheckpoint | null {

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useLocalSearchParams } from "expo-router";
 import { useRef, useState } from "react";
 
 import { isUploading } from "@/features/chat/attachmentHelpers";
@@ -11,6 +12,7 @@ import { getHome, homeKeys } from "@/lib/api/home";
 import { isSessionGone, signOut } from "@/lib/session";
 
 import { areaPrompts } from "./areaPrompts";
+import { recipientFromParam } from "./openHome";
 import {
   hasExistingWork,
   homeRows,
@@ -30,8 +32,18 @@ export function useHomeScreen() {
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const params = useLocalSearchParams<{ recipient?: string; at?: string }>();
   // null means Otto.
-  const [selectedID, setSelectedID] = useState<string | null>(null);
+  const [selectedID, setSelectedID] = useState<string | null>(() =>
+    recipientFromParam(params.recipient),
+  );
+  // Home stays mounted, so a later "new chat with this expert" link arrives as
+  // new params: pick its recipient once per request.
+  const [handledAt, setHandledAt] = useState(params.at);
+  if (params.at !== handledAt) {
+    setHandledAt(params.at);
+    setSelectedID(recipientFromParam(params.recipient));
+  }
   // State lands a render late; the ref stops a second tap in the same frame.
   const isStartingRef = useRef(false);
   const { data } = useQuery({
