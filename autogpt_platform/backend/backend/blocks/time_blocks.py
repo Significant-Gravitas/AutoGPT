@@ -15,9 +15,9 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.data_manipulation import _json_bytes
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
-from backend.util.json import dumps
 
 # Shared timezone literal type for all time/date blocks
 TimezoneLiteral = Literal[
@@ -523,8 +523,10 @@ class CountdownTimerBlock(Block):
                 f"exceeds max ({self.MAX_TOTAL_SECONDS}s = 7 days)"
             )
 
-        repeated_bytes = _message_bytes(input_data.input_message) * repeat
-        if repeat > 1 and repeated_bytes > MAX_REPEATED_MESSAGE_BYTES:
+        repeated_bytes = (
+            _json_bytes(input_data.input_message) * repeat if repeat > 1 else 0
+        )
+        if repeated_bytes > MAX_REPEATED_MESSAGE_BYTES:
             raise ValueError(
                 f"Repeating the message {repeat} times would output "
                 f"{repeated_bytes / 2**20:.1f} MiB, more than the limit of "
@@ -535,11 +537,3 @@ class CountdownTimerBlock(Block):
             if total_seconds > 0:
                 await asyncio.sleep(total_seconds)
             yield "output_message", input_data.input_message
-
-
-def _message_bytes(message: Any) -> int:
-    try:
-        return len(dumps(message).encode())
-    except TypeError:
-        # orjson stops at 64-bit integers.
-        return len(str(message).encode())
