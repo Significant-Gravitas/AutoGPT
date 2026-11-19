@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { GET } from "../route";
 
 describe("Microsoft callback recovery", () => {
@@ -57,10 +57,6 @@ describe("Microsoft callback recovery", () => {
 });
 
 describe("Sign-in started by the mobile app", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   function callback(query: string) {
     return GET(
       new Request(
@@ -95,26 +91,6 @@ describe("Sign-in started by the mobile app", () => {
 
     expect(response.headers.get("location")).toBe(
       "autogpt-app://integrations/oauth?state=native.xyz&error=missing_code",
-    );
-  });
-
-  it("uses the configured return URL", async () => {
-    vi.stubEnv("NATIVE_OAUTH_RETURN_URL", "autogpt-dev://integrations/oauth");
-
-    const response = await callback("code=abc&state=native.xyz");
-
-    expect(response.headers.get("location")).toBe(
-      "autogpt-dev://integrations/oauth?code=abc&state=native.xyz",
-    );
-  });
-
-  it("never sends the code to a web address from the setting", async () => {
-    vi.stubEnv("NATIVE_OAUTH_RETURN_URL", "https://evil.example/steal");
-
-    const response = await callback("code=abc&state=native.xyz");
-
-    expect(response.headers.get("location")).toBe(
-      "autogpt-app://integrations/oauth?code=abc&state=native.xyz",
     );
   });
 

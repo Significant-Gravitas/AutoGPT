@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 
 // Matches NATIVE_STATE_PREFIX in backend/integrations/credentials_store.py.
 const NATIVE_STATE_PREFIX = "native.";
-const DEFAULT_NATIVE_RETURN_URL = "autogpt-app://integrations/oauth";
+// Fixed: the app registers this scheme and waits for exactly this address
+// (OAUTH_RETURN_URL in mobile-app/src/lib/api/integrations.ts).
+const NATIVE_RETURN_URL = "autogpt-app://integrations/oauth";
 
 interface NativeCallback {
   state: string;
@@ -23,7 +25,7 @@ export function redirectToNativeApp({
   error,
   errorDescription,
 }: NativeCallback) {
-  const url = nativeReturnURL();
+  const url = new URL(NATIVE_RETURN_URL);
   const params = code
     ? { code, state, iss }
     : {
@@ -38,13 +40,4 @@ export function redirectToNativeApp({
     status: 302,
     headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
   });
-}
-
-function nativeReturnURL() {
-  const configured = process.env.NATIVE_OAUTH_RETURN_URL;
-  if (configured && URL.canParse(configured)) {
-    const url = new URL(configured);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return url;
-  }
-  return new URL(DEFAULT_NATIVE_RETURN_URL);
 }

@@ -103,10 +103,14 @@
   .menu span.i { width: 20px; text-align: center; color: var(--text2); }
   .flow { margin-top: 44px; max-width: 1330px; }
   .flow h2 { font-size: 18px; margin: 0 0 12px; }
-  .lanes { display: grid; grid-template-columns: 110px repeat(6, 1fr); gap: 0; font-size: 12.5px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-  .lanes div { overflow-wrap: anywhere; padding: 9px 10px; border-bottom: 1px solid var(--border); border-left: 1px solid var(--border); color: var(--text2); }
-  .lanes .lh { color: var(--text); font-weight: 600; border-left: none; background: var(--surface); }
+  .lanes { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 12.5px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .lanes col.actor { width: 110px; }
+  .lanes th, .lanes td { overflow-wrap: anywhere; padding: 9px 10px; border-bottom: 1px solid var(--border); border-left: 1px solid var(--border); color: var(--text2); text-align: left; vertical-align: top; font-weight: 400; }
+  .lanes th { color: var(--text); font-weight: 600; background: var(--surface); }
+  .lanes tr > :first-child { border-left: none; }
   .lanes .new { color: var(--accent); background: rgba(119,51,245,.08); }
+  .lanes .app { color: var(--text); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .legend { font-size: 12.5px; color: var(--text3); margin-top: 8px; }
   .legend span { color: var(--accent); }
 </style>
@@ -294,14 +298,20 @@
 
 <div class="flow">
   <h2>Sign-in flow (screens 1 → 4)</h2>
-  <div class="lanes">
-    <div class="lh">Step</div><div class="lh">1</div><div class="lh">2</div><div class="lh">3</div><div class="lh">4</div><div class="lh">5</div><div class="lh">6</div>
-    <div class="lh">App</div><div>Tap Sign in → <code>GET /integrations/{p}/login?scopes&amp;client=native</code></div><div>Save pending flow (provider, chat, state) to SecureStore</div><div><code>openAuthSessionAsync(login_url, "autogpt-app://integrations/oauth")</code></div><div></div><div>Gets <code>autogpt-app://…?code&amp;state</code> → <code>POST /integrations/{p}/callback</code> with JWT</div><div>Grant to expert (if any) → <code>PUT credential-selection</code> → send follow-up line</div>
-    <div class="lh">Backend</div><div class="new">Marks state as native (prefix or metadata)</div><div></div><div></div><div></div><div>Checks state, PKCE, swaps code, saves account (no change)</div><div></div>
-    <div class="lh">Web callback</div><div></div><div></div><div></div><div class="new">Native state → 302 to app scheme instead of <code>postMessage</code> + close</div><div></div><div></div>
-    <div class="lh">Provider</div><div></div><div></div><div>Consent page</div><div>Redirects to <code>agpt.co/auth/integrations/oauth_callback</code> (already registered)</div><div></div><div></div>
-  </div>
-  <div class="legend"><span>Purple</span> = new server work. Everything else exists today.</div>
+  <table class="lanes">
+    <caption class="sr-only">Who does what at each step of a sign-in started from the app</caption>
+    <colgroup><col class="actor"><col span="6"></colgroup>
+    <thead>
+      <tr><th scope="col">Step</th><th scope="col">1</th><th scope="col">2</th><th scope="col">3</th><th scope="col">4</th><th scope="col">5</th><th scope="col">6</th></tr>
+    </thead>
+    <tbody>
+      <tr><th scope="row">App (new)</th><td class="app">Tap Sign in → <code>GET /integrations/{p}/login?scopes&amp;client=native</code></td><td class="app">Save pending flow (provider, chat, state) to SecureStore</td><td class="app"><code>openAuthSessionAsync(login_url, "autogpt-app://integrations/oauth")</code></td><td></td><td class="app">Gets <code>autogpt-app://…?code&amp;state</code> → <code>POST /integrations/{p}/callback</code> with JWT</td><td class="app">Grant to expert (if any) → <code>PUT credential-selection</code> → send follow-up line</td></tr>
+      <tr><th scope="row">Backend</th><td class="new">Starts the state with <code>native.</code></td><td></td><td></td><td></td><td>Checks state, PKCE, swaps code, saves account (no change)</td><td></td></tr>
+      <tr><th scope="row">Web callback</th><td></td><td></td><td></td><td class="new">Native state → 302 to app scheme instead of <code>postMessage</code> + close</td><td></td><td></td></tr>
+      <tr><th scope="row">Provider</th><td></td><td></td><td>Consent page</td><td>Redirects to <code>agpt.co/auth/integrations/oauth_callback</code> (already registered)</td><td></td><td></td></tr>
+    </tbody>
+  </table>
+  <div class="legend"><span>Purple</span> = new server work. Every step in the App row is new app work. Everything else exists today.</div>
 </div>
 </body>
 </html>
