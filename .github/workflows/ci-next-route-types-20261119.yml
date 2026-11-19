@@ -1,4 +1,4 @@
-name: Next route type equivalence
+name: Next build type equivalence
 
 on:
   push:
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   route-types:
-    name: Next route types (${{ matrix.first }} first)
+    name: Next build types (${{ matrix.first }} first)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -28,6 +28,17 @@ jobs:
       CI: "true"
       NEXT_TELEMETRY_DISABLED: "1"
       NODE_OPTIONS: --max-old-space-size=8192
+      NEXT_SKIP_BUILD_CHECKS: "false"
+      NEXT_PUBLIC_AGPT_SERVER_URL: /_agpt/api
+      NEXT_PUBLIC_AGPT_WS_SERVER_URL: /_agpt/ws
+      NEXT_PUBLIC_FRONTEND_BASE_URL: ""
+      NEXT_PUBLIC_APP_ENV: local
+      NEXT_PUBLIC_BEHAVE_AS: LOCAL
+      NEXT_PUBLIC_SOURCEMAPS: "false"
+      NEXT_PUBLIC_TURNSTILE: disabled
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ""
+      BETTER_AUTH_SECRET: build-only-placeholder-not-used-at-runtime
+      DATABASE_URL: "postgresql:///postgres?host=%2Frun%2Fpostgresql&user=autogpt_frontend"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -48,15 +59,15 @@ jobs:
         run: |
           pnpm install --frozen-lockfile --prefer-offline
           pnpm generate:api
-      - name: Compare generated route checks and reject an invalid page signature
+      - name: Compare original build types and reject an invalid page
         run: >-
-          python3 ../../.github/ci-diagnostics/benchmark_next_route_types.py
+          python3 ../../.github/ci-diagnostics/benchmark_next_build_types.py
           --first "${{ matrix.first }}"
           --output "$RUNNER_TEMP/next-route-types-report"
       - name: Upload timings and positive and negative checks
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: next-route-types-${{ matrix.first }}-first
+          name: next-build-types-${{ matrix.first }}-first
           path: ${{ runner.temp }}/next-route-types-report
           if-no-files-found: error
