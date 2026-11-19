@@ -78,6 +78,7 @@ from backend.util.exceptions import (
 from backend.util.process import AppProcess
 from backend.util.service import EXPOSED_FLAG, UnhealthyServiceError
 from backend.util.settings import Config
+from backend.util.timezone_utils import MAX_TIMEZONE_LENGTH
 
 _SCHEDULER_PATH = "backend.executor.scheduler"
 _TURN_QUEUE_PATH = "backend.copilot.turn_queue"
@@ -179,6 +180,16 @@ def test_build_trigger_refuses_an_overlong_cron_before_parsing_it():
         pytest.raises(ValueError, match="too long"),
     ):
         _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+    parse.assert_not_called()
+
+
+def test_build_trigger_refuses_an_overlong_timezone_before_looking_it_up():
+    timezone = "Europe/" + "a/" * MAX_TIMEZONE_LENGTH
+    with (
+        patch.object(CronTrigger, "from_crontab") as parse,
+        pytest.raises(ValueError, match="too long"),
+    ):
+        _build_trigger(cron="0 9 * * *", run_at=None, user_timezone=timezone)
     parse.assert_not_called()
 
 

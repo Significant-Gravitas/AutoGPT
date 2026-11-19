@@ -5,6 +5,7 @@ import pydantic
 
 from backend.data.model import CredentialsMetaInput
 from backend.data.schedule import ScheduleName
+from backend.util.timezone_utils import MAX_TIMEZONE_LENGTH
 
 
 class ScheduleCreationRequest(pydantic.BaseModel):
@@ -15,6 +16,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
     credentials: dict[str, CredentialsMetaInput] = pydantic.Field(default_factory=dict)
     timezone: Optional[str] = pydantic.Field(
         default=None,
+        max_length=MAX_TIMEZONE_LENGTH,
         description="User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC.",
     )
     expert_id: Optional[str] = pydantic.Field(
@@ -48,5 +50,6 @@ class ScheduleUpdateRequest(pydantic.BaseModel):
     timezone: Optional[str] = pydantic.Field(
         default=None,
         min_length=1,
+        max_length=MAX_TIMEZONE_LENGTH,
         description="Timezone to evaluate the cron in (e.g., 'America/New_York'). If not provided, the schedule keeps its current timezone.",
     )

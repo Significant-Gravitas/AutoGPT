@@ -36183,7 +36183,10 @@
             "title": "Credentials"
           },
           "timezone": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100 },
+              { "type": "null" }
+            ],
             "title": "Timezone",
             "description": "User's timezone for scheduling (e.g., 'America/New_York'). If not provided, will use user's saved timezone or UTC."
           },
@@ -36450,7 +36453,10 @@
             "title": "Credentials"
           },
           "timezone": {
-            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
             "title": "Timezone",
             "description": "Timezone to evaluate the cron in (e.g., 'America/New_York'). If not provided, the schedule keeps its current timezone."
           }
