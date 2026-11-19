@@ -34,8 +34,9 @@ from backend.util.exceptions import InvalidInputError
     [
         ({"essay": "x" * (MAX_PRESET_INPUT_BYTES + 1)}, "bytes"),
         ({"config": [[]] * MAX_PRESET_INPUT_VALUES}, "values"),
+        ({"config": [0] * MAX_PRESET_INPUT_VALUES}, "values"),
     ],
-    ids=["bytes", "values"],
+    ids=["bytes", "values", "plain values"],
 )
 def test_inputs_over_a_payload_bound_are_refused(inputs: dict, expected: str):
     with pytest.raises(InvalidInputError, match=expected):
