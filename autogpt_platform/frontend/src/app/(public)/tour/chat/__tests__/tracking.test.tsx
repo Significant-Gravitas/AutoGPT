@@ -13,6 +13,15 @@ vi.mock("../components/DotDistortionShader/DotDistortionShader", () => ({
   DotDistortionShader: () => null,
 }));
 
+// A signed-out visitor, answered at once: the auth store's session checks
+// settle before their deadlines are armed, so teardown's timer sweep never
+// fires one.
+vi.mock("@/lib/auth/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
+  getCurrentUser: async () => ({ user: null }),
+  validateSession: async () => ({ user: null, isValid: false }),
+}));
+
 import {
   configureCookiebot,
   installCookiebot,
@@ -89,12 +98,7 @@ describe("Tour DataFast tracking", () => {
     });
   });
 
-  afterEach(async () => {
-    // A session check the last step started gets its answer before the
-    // sweep, or the sweep runs its deadline instead.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
+  afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
     vi.unstubAllEnvs();

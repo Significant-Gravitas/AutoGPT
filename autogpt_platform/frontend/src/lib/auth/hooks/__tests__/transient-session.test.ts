@@ -233,11 +233,54 @@ describe("a session check that never gets an answer (#16988)", () => {
 
     void validate();
     await vi.advanceTimersByTimeAsync(SESSION_CHECK_DEADLINE_MS);
+    // Unavailable, so a backoff retry now waits its first second.
+    expect(useAuthStore.getState().retryTimer).not.toBeNull();
     document.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(0);
 
+    // The refocus checked at once, in place of that retry, which never fires.
+    expect(actions.validateSession).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(actions.validateSession).toHaveBeenCalledTimes(2);
     expect(useAuthStore.getState().user).toBe(admin);
+  });
+
+  it("ignores an answer that arrives after the deadline, and the next check finds the session ended", async () => {
+    const router = makeRouter();
+    // Retries run against the page the store last saw, as in the app.
+    useAuthStore.setState({
+      user: admin,
+      hasLoadedUser: true,
+      routerRef: router,
+      currentPath: "/library",
+    });
+    const signedOut = {
+      user: null,
+      isValid: false,
+      redirectPath: "/login?next=%2Flibrary",
+    };
+    let answerLate: (value: unknown) => void = () => {};
+    actions.validateSession.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answerLate = resolve;
+      }),
+    );
+    actions.validateSession.mockResolvedValue(signedOut);
+
+    void validate(router);
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_DEADLINE_MS);
+    // The session ended meanwhile, and the check's answer comes too late.
+    answerLate(signedOut);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(useAuthStore.getState().user).toBe(admin);
+    expect(router.push).not.toHaveBeenCalled();
+
+    // The backoff retry a second later is the next check, and it signs out.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(actions.validateSession).toHaveBeenCalledTimes(2);
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(router.push).toHaveBeenCalledWith(signedOut.redirectPath);
   });
 
   it("finishes start-up when its first lookup never answers", async () => {

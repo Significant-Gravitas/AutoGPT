@@ -17,6 +17,15 @@ vi.mock("@/app/(platform)/copilot/useIsMobile", () => ({
   useIsMobile: () => false,
 }));
 
+// A signed-out visitor, answered at once: the auth store's session checks
+// settle before their deadlines are armed, so teardown's timer sweep never
+// fires one.
+vi.mock("@/lib/auth/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
+  getCurrentUser: async () => ({ user: null }),
+  validateSession: async () => ({ user: null, isValid: false }),
+}));
+
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -78,12 +87,7 @@ describe("Tour chat app shell", () => {
     useCopilotUIStore.getState().clearArtifactPreview();
   });
 
-  afterEach(async () => {
-    // A session check the last step started gets its answer before the
-    // sweep, or the sweep runs its deadline instead.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
+  afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
     vi.unstubAllEnvs();

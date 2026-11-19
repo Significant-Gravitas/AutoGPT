@@ -9,9 +9,8 @@ type SessionCheck = "getCurrentUser" | "validateSession" | "refreshSession";
 //
 // It frees the store, not Next's action queue, which runs one server action
 // at a time. A dropped action never ran, so the next check goes straight out.
-// One the server accepted but never answered still holds the queue: later
-// checks wait behind it until a navigation discards it. #17028 moves these
-// checks off the queue.
+// Checks still on Next's action queue can wait behind an unanswered action
+// until a navigation discards it (see #17028).
 export const SESSION_CHECK_DEADLINE_MS = 10_000;
 
 class SessionCheckTimeoutError extends Error {
