@@ -58,6 +58,14 @@ _PLACEHOLDER = re.compile(
 )
 
 
+# A full-size body with a full-size message filled in twice fits.
+MAX_RENDERED_BODY_CHARS = 200_000
+
+
+class SkillRenderTooLargeError(ValueError):
+    """Filling in the arguments would pass ``MAX_RENDERED_BODY_CHARS``."""
+
+
 class SkillInvocation(BaseModel):
     """A message that asks to run a skill by name."""
 
@@ -107,10 +115,22 @@ def split_arguments(arguments: str) -> list[str]:
 
 
 def render_skill_body(body: str, arguments: str, names: list[str]) -> str:
-    """The skill body with its argument placeholders filled in."""
+    """The skill body with its argument placeholders filled in.
+
+    Raises ``SkillRenderTooLargeError`` when it would pass
+    ``MAX_RENDERED_BODY_CHARS``.
+    """
     positional = split_arguments(arguments) if arguments else []
     named = {name: index for index, name in enumerate(names)}
     received = False
+    room = MAX_RENDERED_BODY_CHARS - len(body)
+
+    def insert(value: str) -> str:
+        nonlocal room
+        room -= len(value)
+        if room < 0:
+            raise SkillRenderTooLargeError
+        return value
 
     def substitute(match: re.Match[str]) -> str:
         nonlocal received
@@ -123,25 +143,25 @@ def render_skill_body(body: str, arguments: str, names: list[str]) -> str:
             return token
         if whole is not None:
             received = True
-            return backslashes + arguments
+            return backslashes + insert(arguments)
         index = bracket_index or digit_index
         if index is not None:
             position = int(index)
             if position >= len(positional):
                 return match.group(0)
             received = True
-            return backslashes + positional[position]
+            return backslashes + insert(positional[position])
         # A declared name counts as receiving even when its position is empty.
         if name is None:
             return match.group(0)
         received = True
         position = named[name]
         value = positional[position] if position < len(positional) else ""
-        return backslashes + value
+        return backslashes + insert(value)
 
     rendered = _PLACEHOLDER.sub(substitute, body)
     if arguments and not received:
-        rendered = f"{rendered.rstrip()}\n\nARGUMENTS: {arguments}"
+        rendered = rendered.rstrip() + insert(f"\n\nARGUMENTS: {arguments}")
     return rendered
 
 
@@ -279,7 +299,9 @@ async def inject_skill_invocation(
     skill stays in context and the chat still shows what the user typed.
 
     Returns the new message, or None when there is nothing to expand. A failed lookup
-    leaves the message unchanged; persistence failures raise before sending.
+    leaves the message unchanged; persistence failures raise before sending. A
+    skill too long once its arguments are filled in is replaced by a note
+    asking the model to tell the user.
     """
     if not user_id:
         return None
@@ -299,11 +321,16 @@ async def inject_skill_invocation(
         return None
     if found is None:
         return None
-    block = (
-        f"<{SKILL_INVOCATION_TAG}>\n"
-        f"{render_invocation(found, invocation)}\n"
-        f"</{SKILL_INVOCATION_TAG}>\n\n"
-    )
+    try:
+        rendered = render_invocation(found, invocation)
+    except SkillRenderTooLargeError:
+        rendered = (
+            f"The user ran /{invocation.name}, but the '{found.skill.name}' skill "
+            f"with these arguments filled in would be longer than "
+            f"{MAX_RENDERED_BODY_CHARS:,} characters, so it was not loaded. Tell "
+            "the user, and ask them to shorten the arguments."
+        )
+    block = f"<{SKILL_INVOCATION_TAG}>\n{rendered}\n</{SKILL_INVOCATION_TAG}>\n\n"
     return await persist_current_user_message(
         session_id,
         session_messages,

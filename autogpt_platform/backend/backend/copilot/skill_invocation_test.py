@@ -12,8 +12,10 @@ from backend.copilot.service import (
     strip_injected_context_for_display,
 )
 from backend.copilot.skill_invocation import (
+    MAX_RENDERED_BODY_CHARS,
     InvocableSkill,
     SkillInvocation,
+    SkillRenderTooLargeError,
     argument_names,
     inject_skill_invocation,
     parse_skill_invocation,
@@ -119,6 +121,35 @@ def test_a_single_backslash_escapes_a_placeholder():
         "Keep $ARGUMENTS\n\nARGUMENTS: x"
     )
     assert render_skill_body(r"Two \\$0", "Ada", []) == r"Two \\Ada"
+
+
+@pytest.mark.parametrize(
+    "body, names",
+    [
+        ("$0" * 1000, []),
+        ("$ARGUMENTS " * 1000, []),
+        ("$ARGUMENTS[0]" * 1000, []),
+        ("$issue" * 1000, ["issue"]),
+    ],
+    ids=["$0", "$ARGUMENTS", "$ARGUMENTS[N]", "named"],
+)
+def test_filled_in_placeholders_are_bounded(body: str, names: list[str]):
+    with pytest.raises(SkillRenderTooLargeError):
+        render_skill_body(body, "A" * 64_000, names)
+
+
+def test_a_full_size_message_fits_a_full_size_body_twice():
+    body = "$0 and $ARGUMENTS".ljust(50_000, ".")
+    rendered = render_skill_body(body, "A" * 64_000, [])
+    assert len(rendered) == 50_000 + 2 * 64_000 - len("$0$ARGUMENTS")
+
+
+def test_appended_arguments_count_towards_the_bound():
+    appended = len("\n\nARGUMENTS: ") + 64_000
+    body = "x" * (MAX_RENDERED_BODY_CHARS - appended)
+    assert len(render_skill_body(body, "A" * 64_000, [])) == MAX_RENDERED_BODY_CHARS
+    with pytest.raises(SkillRenderTooLargeError):
+        render_skill_body(body + "x", "A" * 64_000, [])
 
 
 def test_undeclared_dollar_words_are_left_alone():
@@ -303,6 +334,19 @@ async def test_the_skill_goes_between_server_context_and_the_users_words(
     assert f"Fix issue 42.\n</{SKILL_INVOCATION_TAG}>\n\n/fix-issue 42" in message
     assert strip_injected_context_for_display(message) == "/fix-issue 42"
     si.persist_current_user_message.assert_awaited_once()  # type: ignore[attr-defined]
+
+
+async def test_a_skill_too_long_with_its_arguments_asks_to_shorten_them(
+    owned: dict[str, ParsedSkill],
+):
+    owned["repeat"] = _skill(name="repeat", body="$0" * 1000)
+    message = await inject_skill_invocation(
+        "/repeat " + "A" * 63_992, "session", [], user_id="user", expert_id=None
+    )
+    assert message is not None
+    assert "would be longer than 200,000 characters" in message
+    assert len(message) < 2 * 64_000
+    assert strip_injected_context_for_display(message) == "/repeat " + "A" * 63_992
 
 
 @pytest.mark.parametrize(
