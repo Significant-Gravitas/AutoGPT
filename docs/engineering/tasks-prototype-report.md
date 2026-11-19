@@ -32,7 +32,6 @@ The first two rows work today. The third is not built yet: a workflow run does n
 | Start later, once | "In 5 minutes, research X" creates a task with a start time | Built, checked in a browser |
 | Repeating ("every morning") | One task with a rhythm and a list of runs; Pause, Resume, Stop repeating; pauses itself after 3 failed runs in a row | Built, tests pass; not yet tried in a real chat |
 | Start on an event | "When a PR is opened on acme/web, review it": one task that watches (`start_task` with `on_event`), runs once per event under the chat that asked, and goes back to watching. GitHub repo events (pull requests, issues, releases, …) and the generic webhook (the card shows the URL to call); any provider with a trigger block works. Pause, Resume, Stop watching; up to 5 events wait; pauses itself after 3 failed runs. Board lane and sidebar group "Watching". No migration: the watch lives in `Task.metadata.schedule` | Built, unit and data-level tests pass; not yet tried in a real chat or with a real GitHub delivery |
-| A task starting another task | | **Not built** |
 
 ### Start later, in detail
 
@@ -241,7 +240,7 @@ Target shape:
 
 ```
 Task            what, who, proof
- ├─ Starter     now | at a time | on a rhythm | on an event | after another task
+ ├─ Starter     now | at a time | on a rhythm | on an event
  └─ Task runs   one each time it starts
       ├─ Work chat
       ├─ Workflow runs   (only those this task started)

@@ -8,7 +8,7 @@ from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.capabilities.registry import configure_tools
-from backend.copilot.capabilities.sources import EAGER_CORE
+from backend.copilot.capabilities.sources import EAGER_CORE, RETIRED_TOOLS
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tracking import track_tool_called
 
@@ -457,7 +457,11 @@ def reachable_tool_names(
     session still do X" want this, not ``get_available_tools``; asking the
     schema list alone reads every deferred tool as removed.
     """
-    hidden = tool_names_in_groups(disabled_groups) | frozenset(disabled_tools)
+    hidden = (
+        tool_names_in_groups(disabled_groups)
+        | frozenset(disabled_tools)
+        | RETIRED_TOOLS
+    )
     declared = {
         name
         for name, tool in TOOL_REGISTRY.items()

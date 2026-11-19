@@ -56,8 +56,8 @@ class StartTaskTool(BaseTool):
             "the user can keep chatting; its result comes back to this chat. "
             "Use it for anything bigger than a quick answer. Work for later: set "
             "start_in_seconds or start_at; repeating work: repeat_crons; work "
-            "each time something happens: on_event; a plain reminder is "
-            "schedule_followup. After it, only more start_task calls and one "
+            "each time something happens: on_event; a reminder is a start "
+            "time too. After it, only more start_task calls and one "
             "closing line. Inside a task, it splits off a "
             "subtask for one part of the work."
         )

@@ -47,7 +47,7 @@ export function ValueView({ value, depth = 0 }: Props) {
   }
   if (typeof value === "number") {
     return (
-      <Text variant="small" as="span" tone="ink" className="tabular-nums">
+      <Text variant="small" as="span" tone="ink" tabular>
         {value.toLocaleString()}
       </Text>
     );

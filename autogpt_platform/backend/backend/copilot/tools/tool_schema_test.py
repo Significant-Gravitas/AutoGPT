@@ -643,7 +643,11 @@ def test_total_schema_char_budget() -> None:
 # start_task's repeat_crons, for repeating tasks (2026-11-17):
 #     merged tree                                 81,522
 #     + headroom                      +300        81,822
-_SESSION_WIRE_BUDGET = 81_822
+# schedule_followup and schedule_routine retired from the model (2026-11-19):
+# the measure leaves RETIRED_TOOLS out, as no session declares them.
+#     merged tree                                 76,835
+#     + headroom                      +300        77,135
+_SESSION_WIRE_BUDGET = 77_135
 
 
 def test_largest_declared_session_wire_budget() -> None:
@@ -663,6 +667,7 @@ def test_largest_declared_session_wire_budget() -> None:
 
 def _largest_session_wire_chars() -> int:
     """Wire chars an Otto chat declares with both flags on, E2B, interactive."""
+    from backend.copilot.capabilities.sources import RETIRED_TOOLS
     from backend.copilot.sdk.e2b_file_tools import E2B_FILE_TOOLS
     from backend.copilot.sdk.tool_adapter import (
         _READ_TOOL_DESCRIPTION,
@@ -693,6 +698,9 @@ def _largest_session_wire_chars() -> int:
     )
     hidden |= set(BASELINE_ONLY_MCP_TOOLS) | {"get_agent_building_guide"}
     hidden |= origin_disabled_tools("interactive")
+    # Retired tools stay in the registry but no session declares, finds or
+    # describes them.
+    hidden |= RETIRED_TOOLS
 
     total = sum(
         wire(name, tool.description, _build_input_schema(tool))
@@ -799,12 +807,12 @@ def test_automation_origin_declares_no_interactive_origin_tools() -> None:
             f"{sorted(INTERACTIVE_ORIGIN_TOOLS & reachable)}"
         )
         # The gate is narrow on purpose: an automation still does its work,
-        # still reports through a chat platform, still wakes itself up.
+        # still reports through a chat platform, still sets up work for later.
         assert {
             "run_agent",
             "run_capability",
             "run_sub_session",
-            "schedule_followup",
+            "start_task",
             "ask_question",
         } <= reachable
 
@@ -889,4 +897,32 @@ def test_set_matches_the_tools_that_call_the_origin_guard() -> None:
         "INTERACTIVE_ORIGIN_TOOLS is out of step with the runtime guard: "
         f"guarded but declared {sorted(guarded - INTERACTIVE_ORIGIN_TOOLS)}, "
         f"hidden but unguarded {sorted(INTERACTIVE_ORIGIN_TOOLS - guarded)}"
+    )
+
+
+def test_the_old_scheduling_tools_are_retired_from_the_model() -> None:
+    """Later work is a task now. Both tools stay in the code, for follow-ups
+    and routines already set up and for calls stored in old chats, but no
+    session declares them, finds them, runs them by id or calls them by
+    name."""
+    from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
+    from backend.copilot.tools import (
+        DEFERRED_TOOL_NAMES,
+        get_available_tools,
+        reachable_tool_names,
+    )
+
+    retired = {"schedule_followup", "schedule_routine"}
+    assert retired <= set(TOOL_REGISTRY)
+    # Deferred, so a call naming one directly is refused (see the test above).
+    assert retired <= DEFERRED_TOOL_NAMES
+    declared = {t["function"]["name"] for t in get_available_tools()}
+    assert not retired & declared
+    assert not retired & reachable_tool_names()
+    for name in retired:
+        call = {"id": f"tool:{name}", "input": {}}
+        assert resolve_tool_dispatch("run_capability", call) is None
+    # What lets the user see and remove what already exists stays reachable.
+    assert {"list_schedules", "delete_schedule", "list_routines"} <= (
+        reachable_tool_names()
     )

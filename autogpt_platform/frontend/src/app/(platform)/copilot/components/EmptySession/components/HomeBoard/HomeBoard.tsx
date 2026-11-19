@@ -1,18 +1,23 @@
 "use client";
 
 import { TaskBoard } from "@/app/(platform)/tasks/components/TaskBoard/TaskBoard";
+import { TaskList } from "@/app/(platform)/tasks/components/TaskList/TaskList";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { BriefButton } from "../HomeToday/BriefButton";
+import { BoardViewSwitch } from "./BoardViewSwitch";
 import { CreateTask } from "./CreateTask";
+import { useBoardView } from "./useBoardView";
 import { useHomeBoard } from "./useHomeBoard";
 
-/** Home's Tasks tab: every task as a board that fills the page, under a
- *  heading row with the day's brief and Create task. A card opens beside
- *  the page, in the sidebar. */
+/** Home's Tasks tab: every task as a board or a list that fills the page,
+ *  under a heading row with the layout switch, the day's brief and Create
+ *  task. A task opens beside the page, in the sidebar. */
 export function HomeBoard() {
   const board = useHomeBoard();
+  const { view, setView } = useBoardView();
+  const Tasks = view === "list" ? TaskList : TaskBoard;
 
   return (
     <section
@@ -24,6 +29,7 @@ export function HomeBoard() {
           Tasks
         </Text>
         <span className="ml-auto flex items-center gap-2">
+          <BoardViewSwitch value={view} onChange={setView} />
           <BriefButton />
           <CreateTask />
         </span>
@@ -39,7 +45,7 @@ export function HomeBoard() {
           <LoadingSpinner size="small" />
         </div>
       ) : (
-        <TaskBoard
+        <Tasks
           tasks={board.tasks}
           experts={board.experts}
           selectedID={board.selectedID}

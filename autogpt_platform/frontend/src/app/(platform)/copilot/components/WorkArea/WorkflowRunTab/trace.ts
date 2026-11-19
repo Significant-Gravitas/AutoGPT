@@ -3,8 +3,14 @@ import type { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExe
 import type { NodeModel } from "@/app/api/__generated__/models/nodeModel";
 import { beautifyString } from "@/lib/utils";
 
-/** The five families a block's colour comes from. */
-export type BlockKind = "ai" | "integration" | "logic" | "io" | "other";
+/** The families a block's colour comes from. */
+export type BlockKind =
+  | "ai"
+  | "integration"
+  | "logic"
+  | "io"
+  | "data"
+  | "other";
 export type StepState = "waiting" | "running" | "done" | "failed" | "stopped";
 
 export interface TraceStep {
@@ -19,6 +25,8 @@ export interface TraceStep {
   input: Record<string, unknown> | null;
   output: Record<string, unknown[]> | null;
   error: string | null;
+  /** The block runs another workflow (an agent block). */
+  runsWorkflow?: boolean;
 }
 
 export interface Trace {
@@ -28,7 +36,6 @@ export interface Trace {
 }
 
 const MIN_AXIS_MS = 1000;
-const IO_CATEGORIES = new Set(["INPUT", "OUTPUT"]);
 const AI_CATEGORIES = new Set(["AI", "SAFETY"]);
 const LOGIC_CATEGORIES = new Set(["LOGIC", "AGENT"]);
 const LOCAL_CATEGORIES = new Set(["TEXT", "DATA", "BASIC"]);
@@ -43,13 +50,19 @@ export function kindOf(block: BlockInfo | undefined): BlockKind {
   if (!block) return "other";
   const categories = block.categories.map((entry) => entry.category);
   const ui = block.uiType.toLowerCase();
+  // Only the workflow's own input and output blocks: a block filed under
+  // OUTPUT (a web request, a notification) reaches outside, so it reads as
+  // an integration below.
   if (ui === "input" || ui === "output") return "io";
-  if (categories.some((c) => IO_CATEGORIES.has(c))) return "io";
   if (categories.some((c) => AI_CATEGORIES.has(c))) return "ai";
   if (categories.some((c) => LOGIC_CATEGORIES.has(c))) return "logic";
   if (categories.length > 0 && categories.every((c) => LOCAL_CATEGORIES.has(c)))
-    return "other";
+    return "data";
   return categories.length > 0 ? "integration" : "other";
+}
+
+function runsWorkflow(block: BlockInfo | undefined): boolean {
+  return !!block?.categories.some((entry) => entry.category === "AGENT");
 }
 
 function stateOf(status: string): StepState {
@@ -115,6 +128,7 @@ export function buildTrace(args: BuildArgs): Trace {
       id: execution.node_exec_id,
       name: nameOf(block, nodeByID.get(execution.node_id)),
       kind: kindOf(block),
+      runsWorkflow: runsWorkflow(block),
       state,
       offsetMs:
         start === null
@@ -165,20 +179,6 @@ export function buildTrace(args: BuildArgs): Trace {
   return { steps, totalMs: Math.max(MIN_AXIS_MS, lastEnd, liveEnd) };
 }
 
-const NICE_STEPS_S = [
-  0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600,
-];
-
-/** A few round ticks across the axis, from 0 to under its end. */
-export function axisTicks(totalMs: number, count = 4): number[] {
-  const rough = totalMs / 1000 / count;
-  const step =
-    (NICE_STEPS_S.find((candidate) => candidate >= rough) ?? rough) * 1000;
-  const ticks: number[] = [];
-  for (let at = 0; at <= totalMs * 0.8; at += step) ticks.push(at);
-  return ticks;
-}
-
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const seconds = ms / 1000;
@@ -188,12 +188,4 @@ export function formatDuration(ms: number): string {
   const rest = Math.round(seconds % 60);
   if (minutes < 60) return `${minutes}m ${String(rest).padStart(2, "0")}s`;
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
-}
-
-export function formatTick(ms: number): string {
-  if (ms === 0) return "0s";
-  const seconds = ms / 1000;
-  if (seconds < 60)
-    return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}s`;
-  return seconds % 60 === 0 ? `${seconds / 60}m` : formatDuration(ms);
 }

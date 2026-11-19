@@ -11,7 +11,6 @@ flowchart LR
     s2["Otto, from chat"]
     s3["A clock<br/>(once or repeating)"]
     s4["An event<br/>(GitHub, Stripe,<br/>Telegram, webhook…)"]
-    s5["Another task finishing"]
   end
 
   T["TASK<br/>what, who, when, proof"]
@@ -34,7 +33,6 @@ flowchart LR
   s2 --> T
   s3 --> T
   s4 --> T
-  s5 --> T
   T --> u1
   T --> u2
   T --> u3
@@ -54,7 +52,6 @@ flowchart LR
 | A clock, repeating ("every morning") | Yes, as a follow-up or an expert routine. Runs inside a chat each time. | Library → Follow-ups; the expert's page |
 | An event (GitHub, Stripe, Telegram, Airtable, generic webhook) | Yes, but it can only start a **workflow** you built in the builder | Library → the workflow's runs |
 | An event from Gmail, Slack, Discord, Calendar | No trigger. Only by checking on a clock. | — |
-| One piece of work starting another | No | — |
 
 The problem is not that little is possible. It is that each starter lives in a different place, behaves differently, and leaves no common record.
 
@@ -179,43 +176,14 @@ Your chat is free straight away. Results come back as cards in the same chat.
 | 43 | "When a stock I follow moves 5 percent, tell me why" | No | Task, check |
 | 44 | "When Nick posts in our Discord channel, tell me" | No | Task, check (channel, not personal DM) |
 
-### One task starting another
+### One task starting another (dropped)
 
-| # | You say | Today | After |
-|---|---|---|---|
-| 45 | "When the research task finishes, start drafting the blog post from it" | No | Task, starts when another finishes |
-| 46 | "When the lead research is done, draft the outreach email for my approval" | No | Task, starts when another finishes |
-| 47 | "When the weekly report is ready, turn it into slides" | No | Task, starts when another finishes |
-| 48 | "If the deploy check finds errors, start the rollback checklist" | No | Task, starts when another fails |
-| 49 | "When I approve the draft, schedule the post for tomorrow 9am" | No | Task, starts on your answer |
-| 50 | "When the candidate shortlist is ready, book intro calls with the top three" | No | Task, starts when another finishes |
+Decided on 2026-11-19: a task does not start another task. Rows 45 to 50 are out of scope; ask Otto for the next step once the first task is done.
 
-### What the fifty show
-
-| Group | Today | After |
-|---|---|---|
-| Clock, once (1–8) | Possible but clunky | Clean |
-| Clock, repeating (9–20) | Possible but clunky, noisy | Clean, quiet when nothing changed |
-| Event with a trigger (21–34) | Only by building a workflow | One sentence in chat |
-| Event without a trigger (35–44) | Not possible | Works by checking; instant as triggers are added |
-| Task starting a task (45–50) | Not possible | New |
-
-## 6. "Anything a human could do": honest limits
-
-Tasks decide **when** work starts and **keep track** of it. Whether the expert can actually do the work still depends on:
-
-| Limit | What it means |
-|---|---|
-| Access | It needs a connected account or a tool for the thing (email, repo, calendar, a website) |
-| Instant events | Only services with a trigger are instant. Others are checked on a rhythm. |
-| Personal DMs | Some services (Discord) do not let any app read them |
-| Judgment calls | Sending, paying, deleting: the task should stop and ask you first |
-| Cost | Every run costs. Checks should be cheap and stay quiet when nothing changed. |
 
 ## 7. Build order for the prototype
 
 1. Start later, once (in flight).
 2. One task, many runs (repeating).
 3. An event starts a task: begin with GitHub or the generic webhook.
-4. A task starts another task.
-5. Board groups: Scheduled, Watching.
+4. Board groups: Scheduled, Watching.

@@ -10,7 +10,7 @@ from prisma.enums import TaskCreator, TaskStatus
 
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import task_db, task_schedule_db
-from backend.data.task import TaskPatch
+from backend.data.task import SETTLED_STATUSES, TaskPatch
 from backend.data.task_text import DONE_WHEN_MAX_CHARS, GOAL_MAX_CHARS, clip
 
 from .base import BaseTool
@@ -284,6 +284,9 @@ class UpdateTaskTool(BaseTool):
                 done_when=clip(done_when, DONE_WHEN_MAX_CHARS),
             )
             task = await task_db().update_task(task_id, user_id, patch)
+            if task.repeat and task.status in SETTLED_STATUSES:
+                # Cancelled or marked done: it stops repeating too.
+                await task_schedule_db().clear_task_repeat(task_id, user_id)
         except ValueError as e:  # includes NotFoundError
             return _error("update_task_failed", str(e), session)
         except Exception as e:

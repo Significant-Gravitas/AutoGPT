@@ -122,6 +122,6 @@ fall between 2026-10-20 and 2026-11-12; "today" is 2026-11-09.
 `start_task`, `create_task`, `list_tasks`, `get_task`, `update_task`,
 `archive_task`, `ask_question`, `find_capability`, `run_capability`,
 `connect_integration`, `web_search`, `web_fetch`, `memory_search`,
-`memory_store`, `delegate_to_expert`, `consult_teammate`, `list_team`,
-`schedule_followup`. Services in `services_called` are provider keys from
+`memory_store`, `delegate_to_expert`, `consult_teammate`, `list_team`.
+Services in `services_called` are provider keys from
 `connected_accounts` (gmail, calendar, slack, shopify, …).

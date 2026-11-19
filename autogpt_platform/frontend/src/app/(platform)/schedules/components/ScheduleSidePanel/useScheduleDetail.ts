@@ -5,9 +5,11 @@ import { useState } from "react";
 import { useGetV1ListGraphExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetTaskRecord } from "@/app/api/__generated__/endpoints/tasks/tasks";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { Task } from "@/app/api/__generated__/models/task";
 import { okData } from "@/app/api/helpers";
 
+import { runHref } from "@/app/(platform)/runs/helpers";
 import { taskHref } from "@/app/(platform)/tasks/helpers";
 
 import type { PanelAction, Schedule } from "../../affect/agent-schedules";
@@ -55,8 +57,27 @@ export function useScheduleDetail(args: Args) {
 
   return {
     schedule,
-    actions: actionsFor(args, task, workflow, confirming, setConfirming),
+    actions: [
+      ...lastRunAction(args, workflow, executions.data?.executions ?? []),
+      ...actionsFor(args, task, workflow, confirming, setConfirming),
+    ],
   };
+}
+
+/** A workflow schedule's newest run, on the run's own page. */
+function lastRunAction(
+  args: Args,
+  workflow: GraphExecutionJobInfo | undefined,
+  executions: GraphExecutionMeta[],
+): PanelAction[] {
+  const last = executions[0];
+  if (!workflow || !last) return [];
+  return [
+    {
+      label: "Open last run",
+      onClick: () => args.onOpen(runHref(workflow.graph_id, last.id)),
+    },
+  ];
 }
 
 function actionsFor(

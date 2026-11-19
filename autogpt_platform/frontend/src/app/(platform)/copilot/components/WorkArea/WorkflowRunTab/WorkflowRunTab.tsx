@@ -49,7 +49,10 @@ export function WorkflowRunTab({ tab }: Props) {
         trace={view.trace}
         isLive={view.isLive}
         now={view.now}
+        agent={view.agent}
         onBack={view.showRuns}
+        onStarted={view.showRun}
+        onSetup={() => setIsSettingUp(true)}
       />
     );
   }

@@ -4,9 +4,8 @@
 new thread in a channel of a chat platform (Discord, Slack, Telegram, or
 Microsoft Teams) the user has linked. The headline use case is *scheduled*
 output: "every Monday post an
-update in #standup" — Otto schedules a follow-up turn (via
-``schedule_followup``) whose message instructs it to post, and at fire time it
-calls this tool.
+update in #standup" — Otto starts a repeating task (``start_task`` with
+``repeat_crons``) whose brief says to post, and each run calls this tool.
 
 A single ``platform`` enum keeps the tool surface flat as platforms are added,
 instead of one ``post_to_<platform>`` tool per platform. Delivery and
@@ -241,7 +240,7 @@ class PostToChatPlatformTool(BaseTool):
             "mode='thread' opens a thread (needs thread_name; channels only). "
             "'channel' is a name (#standup) or numeric ID — on Telegram, a "
             "linked group's numeric chat ID. Teams supports target='dm' only. "
-            "Pair with schedule_followup for recurring posts; call "
+            "For recurring posts, a repeating start_task; call "
             "tool:list_chat_platform_channels if a Discord/Slack channel won't "
             "resolve. Edit a post later with tool:edit_chat_platform_message "
             "using the channel_id and ref_id it returns — for mode='thread' "

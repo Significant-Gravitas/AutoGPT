@@ -39,6 +39,7 @@ export enum Key {
   RECENT_CHATS_COLLAPSED_GROUPS = "recent-chats.collapsedGroups",
   HOME_BRIEF_SEEN = "home-brief-seen",
   HOME_BRIEF_AUTO_OPENED = "home.brief.autoOpened",
+  HOME_TASKS_VIEW = "home.tasks.view",
 }
 
 export const storage = createSafeStorage<Key>("local");

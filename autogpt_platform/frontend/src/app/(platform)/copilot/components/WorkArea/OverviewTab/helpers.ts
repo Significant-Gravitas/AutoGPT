@@ -143,9 +143,13 @@ export function chatWorkflowsOf(messages: UIMessage[]): ChatWorkflow[] {
     const output = asRecord(call.output);
     const graphID = text(output.graph_id) ?? text(output.agent_id);
     if (!graphID) continue;
-    const runID =
-      text(output.execution_id) ??
-      text(asRecord(output.execution).execution_id);
+    // A scheduled workflow answers with its schedule's id in the same
+    // field: that is not a run to open.
+    const isSchedule = text(output.status)?.toUpperCase() === "SCHEDULED";
+    const runID = isSchedule
+      ? null
+      : (text(output.execution_id) ??
+        text(asRecord(output.execution).execution_id));
     const known = byGraph.get(graphID);
     const runIDs = known?.runIDs ?? [];
     byGraph.set(graphID, {

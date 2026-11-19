@@ -1,8 +1,11 @@
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { DEFAULT_AUTOPILOT_MODE } from "@/app/(platform)/copilot/autopilotModeStore";
 import { getModeOption } from "@/app/(platform)/copilot/components/ChatInput/components/AutopilotModeSelector/helpers";
+import type { RunTone } from "@/app/(platform)/copilot/components/WorkArea/WorkflowRunTab/runs";
+import type { StepState } from "@/app/(platform)/copilot/components/WorkArea/WorkflowRunTab/trace";
 import { getWeeklySpend } from "@/app/(platform)/team/helpers";
 import { creditsToUsdLabel } from "@/lib/credits";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
@@ -112,4 +115,34 @@ export function getWorkInfo(expert: Expert) {
         : "Not yet",
     },
   ];
+}
+
+const RECENT_RUNS = 5;
+
+/** The status mark a run row shows, as in the workflow tab's runs list. */
+export const RUN_TONE_STATE: Record<RunTone, StepState> = {
+  live: "running",
+  ok: "done",
+  failed: "failed",
+  idle: "stopped",
+  waiting: "waiting",
+};
+
+interface RecentRunsArgs {
+  runs: GraphExecutionMeta[];
+  userID: string | null;
+  expertID: string | null;
+}
+
+/** The newest runs the user started themselves (the list also holds
+ *  teammates' runs in a shared organisation), or only an expert's. The list
+ *  comes newest first. */
+export function pickRecentRuns({ runs, userID, expertID }: RecentRunsArgs) {
+  if (!userID) return [];
+  return runs
+    .filter(
+      (run) =>
+        run.user_id === userID && (!expertID || run.expert_id === expertID),
+    )
+    .slice(0, RECENT_RUNS);
 }

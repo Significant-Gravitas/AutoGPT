@@ -12,6 +12,7 @@ import {
 } from "./components/AccessSections";
 import { ScheduledGroup, WorkInfoGroup } from "./components/DetailsSections";
 import { InfoHeader } from "./components/InfoHeader";
+import { RecentRunsGroup } from "./components/RecentRunsGroup";
 import { TasksGroup } from "./components/TasksGroup";
 import { getExpertRole } from "./helpers";
 import { useExpertInfoPanel, type InfoTab } from "./useExpertInfoPanel";
@@ -58,6 +59,7 @@ export function ExpertProfile({ recipient }: ProfileProps) {
             isLoading={panel.isLoadingTasks}
             ownerName={panel.ownerName}
           />
+          <RecentRunsGroup expertID={null} />
         </>
       ) : panel.isLoading ? (
         <div className="flex justify-center py-10">
@@ -105,6 +107,7 @@ function ExpertDetails({ recipient, expert, panel }: DetailsProps) {
             isPaused={Boolean(expert.schedules_paused_at)}
             isLoading={panel.isLoadingSchedules}
           />
+          <RecentRunsGroup expertID={expert.id} />
           <WorkInfoGroup expert={expert} />
         </>
       )}

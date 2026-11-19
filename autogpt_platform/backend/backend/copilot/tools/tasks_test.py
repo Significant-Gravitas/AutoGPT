@@ -22,6 +22,7 @@ from backend.copilot.tools.tasks import (
     UpdateTaskTool,
 )
 from backend.data.task import Task, TaskPatch
+from backend.data.task_schedule_meta import TaskRepeat
 from backend.util.exceptions import NotFoundError
 
 from ._test_data import make_session
@@ -173,3 +174,24 @@ async def test_archive(db, archived):
     expected = TaskArchivedResponse if archived else ErrorResponse
     assert isinstance(result, expected)
     db.archive_task.assert_awaited_once_with("task-1", _USER)
+
+
+@pytest.mark.parametrize(
+    "status, cleared", [("CANCELLED", True), ("DONE", True), ("IN_PROGRESS", False)]
+)
+async def test_settling_a_repeating_task_stops_it_repeating(db, status, cleared):
+    """ "Cancel that" on a repeating task is ``update_task`` now that the old
+    scheduling tools are retired, so settling one takes its rhythm off."""
+    repeat = TaskRepeat(crons=["0 8 * * *"], label="Every day at 08:00")
+    db.update_task = AsyncMock(
+        return_value=_task(status=TaskStatus(status), repeat=repeat)
+    )
+    schedule = MagicMock(clear_task_repeat=AsyncMock(return_value=True))
+
+    with patch("backend.copilot.tools.tasks.task_schedule_db", return_value=schedule):
+        result = await UpdateTaskTool()._execute(
+            _USER, make_session(_USER), task_id="task-1", status=status
+        )
+
+    assert isinstance(result, TaskUpdatedResponse)
+    assert schedule.clear_task_repeat.await_count == (1 if cleared else 0)

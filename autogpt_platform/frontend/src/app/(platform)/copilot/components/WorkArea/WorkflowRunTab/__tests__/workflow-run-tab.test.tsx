@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { getGetV2GetLibraryAgentByGraphIdResponseMock } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { server } from "@/mocks/mock-server";
-import { render, screen, within } from "@/tests/integrations/test-utils";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { WorkflowRunTab } from "../WorkflowRunTab";
 import type { WorkflowTab } from "../useWorkflowRun";
 
@@ -128,12 +128,14 @@ function renderTab(executionID: string | null = "run-1") {
   return render(<WorkflowRunTab tab={tab} />);
 }
 
-async function rowTexts() {
-  const list = await screen.findByRole("list", { name: "Block runs" });
-  await within(list).findByText("Post To Slack");
-  return within(list)
-    .getAllByRole("listitem")
-    .map((item) => item.textContent ?? "");
+/** The block runs as the Run Detail block draws them: one row button each. */
+async function rows() {
+  await screen.findByText("Post To Slack", { selector: ".ui-ard-row__name" });
+  return Array.from(document.querySelectorAll<HTMLElement>("[data-step]"));
+}
+
+function runStatus() {
+  return document.querySelector(".ui-ard-head .ui-ard-status")?.textContent;
 }
 
 describe("Workflow run tab", () => {
@@ -168,16 +170,19 @@ describe("Workflow run tab", () => {
     });
     renderTab();
 
-    const rows = await rowTexts();
-    expect(rows).toHaveLength(3);
-    expect(rows[0]).toContain("Fetch Page");
-    expect(rows[1]).toContain("Summarise");
-    expect(rows[2]).toContain("Post To Slack");
-    expect(rows[1]).toContain("4.0s");
-    expect(screen.getByTestId("run-status").textContent).toBe("Done");
+    const texts = (await rows()).map((row) => row.textContent ?? "");
+    expect(texts).toHaveLength(3);
+    expect(texts[0]).toContain("Fetch Page");
+    expect(texts[1]).toContain("Summarise");
+    expect(texts[2]).toContain("Post To Slack");
+    expect(texts[1]).toContain("4.0s");
+    expect(runStatus()).toBe("Done");
     expect(
-      screen.getByRole("heading", { name: "Morning digest" }),
+      screen.getByText("Morning digest", { selector: "h1" }),
     ).toBeDefined();
+    expect(
+      screen.getByText("Open full page").closest("a")?.getAttribute("href"),
+    ).toBe("/runs/graph-1/run-1");
   });
 
   it("shows a failed block's error when its row opens", async () => {
@@ -204,17 +209,27 @@ describe("Workflow run tab", () => {
     });
     renderTab();
 
-    const list = await screen.findByRole("list", { name: "Block runs" });
-    const failed = await within(list).findByRole("button", {
-      name: /Post To Slack/,
-    });
-    expect(screen.queryByRole("alert")).toBeNull();
+    const failed = (await rows()).find((row) =>
+      row.textContent?.includes("Post To Slack"),
+    )!;
+    expect(failed.getAttribute("aria-label")).toContain("failed");
+    expect(
+      screen.queryByText("Slack said the channel does not exist"),
+    ).toBeNull();
     await userEvent.click(failed);
 
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "Slack said the channel does not exist",
-    );
-    expect(failed.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      await screen.findByText("Slack said the channel does not exist"),
+    ).toBeDefined();
+    // The block run's input, drawn to be read rather than as JSON.
+    expect(
+      screen
+        .getByText(/example\.com/)
+        .closest("a")
+        ?.getAttribute("href"),
+    ).toBe("https://example.com");
+    await userEvent.click(screen.getByText("Back to the run"));
+    expect((await rows()).length).toBe(2);
   });
 
   it("offers Run now when the workflow has no runs", async () => {
@@ -250,17 +265,13 @@ describe("Workflow run tab", () => {
     serve([run], { ...run, node_executions: steps.map(nodeExecution) });
     renderTab();
 
-    const list = await screen.findByRole("list", { name: "Block runs" });
-    const running = await within(list).findByRole("button", {
-      name: /Summarise/,
-    });
-    expect(running.closest("li")?.getAttribute("data-step-state")).toBe(
-      "running",
-    );
-    expect(within(running).getByText("Running")).toBeDefined();
-    expect((await screen.findByTestId("run-status")).textContent).toBe(
-      "Running",
-    );
-    expect(screen.getByRole("button", { name: "Stop" })).toBeDefined();
+    await screen.findByText("Summarise", { selector: ".ui-ard-row__name" });
+    const running = document.querySelector<HTMLElement>('[data-step="s2"]')!;
+    expect(running.getAttribute("aria-label")).toMatch(/Summarise .*running$/);
+    expect(
+      running.querySelector(".ui-ard-bar")?.hasAttribute("data-running"),
+    ).toBe(true);
+    expect(runStatus()).toBe("Running");
+    expect(screen.getByText("Stop", { selector: "button" })).toBeDefined();
   });
 });

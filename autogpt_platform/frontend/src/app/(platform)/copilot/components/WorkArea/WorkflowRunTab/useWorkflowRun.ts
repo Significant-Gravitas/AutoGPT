@@ -45,7 +45,7 @@ export function useWorkflowRun(tab: WorkflowTab) {
   const runs = runsQuery.data?.executions ?? [];
   const selectedID = tab.executionID;
 
-  const run = useGetV1GetExecutionDetails(tab.graphID, selectedID ?? "", {
+  const runQuery = useGetV1GetExecutionDetails(tab.graphID, selectedID ?? "", {
     query: {
       enabled: !!selectedID,
       select: okData,
@@ -56,8 +56,20 @@ export function useWorkflowRun(tab: WorkflowTab) {
       },
       refetchOnWindowFocus: false,
     },
-  }).data;
+  });
+  const run = runQuery.data;
   const isLive = !!run && isLiveStatus(run.status);
+  // A run that cannot be read (deleted, or an id that was never a run) has
+  // nothing to show: the tab goes back to the workflow's list of runs
+  // instead of waiting on it for ever.
+  const isRunMissing =
+    !!selectedID && !run && (runQuery.isError || runQuery.isSuccess);
+  const graphID = tab.graphID;
+  const tabTitle = tab.title;
+  useEffect(() => {
+    if (!isRunMissing) return;
+    openWorkflowRun({ graphID, executionID: null, title: tabTitle });
+  }, [isRunMissing, graphID, tabTitle, openWorkflowRun]);
 
   const { trace, now } = useRunTrace({
     graphID: tab.graphID,

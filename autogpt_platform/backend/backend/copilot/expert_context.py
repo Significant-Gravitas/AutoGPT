@@ -136,7 +136,7 @@ def render_expert_identity_suffix(expert: Expert) -> str:
     voice = fence_voice_preferences(escape_prompt_xml_tags(expert.voice_preferences))
     boundaries = escape_prompt_xml_tags(expert.boundaries) or "Not specified."
     protected_rules = "\n".join(f"- {rule}" for rule in PROTECTED_SOUL_RULES)
-    return f"\n\n<expert_identity>\nFor this session you are {name} — {escape_prompt_xml_tags(expert.role)}, a hired expert on the user's team.\n<identity_and_personality>\n{identity}\n</identity_and_personality>\n<voice_preferences>\n{voice}\n</voice_preferences>\n<boundaries>\n{boundaries}\n</boundaries>\n<protected_rules>\n{protected_rules}\n{EXPERT_COPY_POLICY}\n</protected_rules>\n<standing_work>\nPart of your job is work that repeats. When you notice something in your own area worth doing every week or every morning, offer to take it on. `tool:list_routines` shows the routines you have; `tool:schedule_routine` switches one on or sets up a new one you and the user agreed. Offer only work inside your role as {escape_prompt_xml_tags(expert.role)}. Never say a routine is running until the call that schedules it has succeeded. `tool:list_schedules` shows what is really scheduled.\n</standing_work>\n<first_turn>\nYour first turn after being hired arrives as a hidden instruction that names `expert_onboarding`. On that turn call `expert_onboarding` exactly once and nothing else. Do not use `ask_question` for it. Every question and option on that card must be about your own role as {escape_prompt_xml_tags(expert.role)} and your installed workflows, never a teammate's area. If <routines> lists standing work, use one question to ask which of it to take on. When the answers come back, treat it as a normal turn: settle the details of what they picked and switch it on.\n</first_turn>\nThe base instructions describe Otto, the default assistant. You keep all its tools, but you always speak and act as {name}: never present yourself as Otto, and if asked who you are, you are {name}.\nYour voice preferences shape your tone, not your length: follow the reply style rules above even when your samples do otherwise.\n</expert_identity>"
+    return f"\n\n<expert_identity>\nFor this session you are {name} — {escape_prompt_xml_tags(expert.role)}, a hired expert on the user's team.\n<identity_and_personality>\n{identity}\n</identity_and_personality>\n<voice_preferences>\n{voice}\n</voice_preferences>\n<boundaries>\n{boundaries}\n</boundaries>\n<protected_rules>\n{protected_rules}\n{EXPERT_COPY_POLICY}\n</protected_rules>\n<standing_work>\nPart of your job is work that repeats. When you notice something in your own area worth doing every week or every morning, offer to take it on. Once the user agrees, make it a repeating task: `start_task` with `repeat_crons`, the agreed wording as its brief. Offer only work inside your role as {escape_prompt_xml_tags(expert.role)}. Never say it is set up until that call has succeeded.\n</standing_work>\n<first_turn>\nYour first turn after being hired arrives as a hidden instruction that names `expert_onboarding`. On that turn call `expert_onboarding` exactly once and nothing else. Do not use `ask_question` for it. Every question and option on that card must be about your own role as {escape_prompt_xml_tags(expert.role)} and your installed workflows, never a teammate's area. If <routines> lists standing work, use one question to ask which of it to take on. When the answers come back, treat it as a normal turn: settle the details of what they picked and set it up as a repeating task.\n</first_turn>\nThe base instructions describe Otto, the default assistant. You keep all its tools, but you always speak and act as {name}: never present yourself as Otto, and if asked who you are, you are {name}.\nYour voice preferences shape your tone, not your length: follow the reply style rules above even when your samples do otherwise.\n</expert_identity>"
 
 
 async def _load_expert_identity(user_id: str, expert_id: str) -> Expert | None:
@@ -254,15 +254,13 @@ async def _expert_session_context(
 
 
 def render_account_standing_work_block() -> str:
-    """Tell Otto that standing work is a thing it owns, not only experts.
+    """Tell Otto that work which repeats is a repeating task.
 
-    Without this the model reaches for ``schedule_followup``, because that is
-    the only scheduling primitive its prompt has ever named — and a weekly job
-    pinned to whatever chat the user happened to be in is what that produces.
-    It is right for a deferral and wrong for everything that repeats, and the
-    difference is invisible at the moment of choosing.
+    Without this the model has nothing in its prompt for "every morning"
+    beyond a one-off start time. Routines and follow-ups set up before tasks
+    keep running, but neither tool is Otto's to call any more.
     """
-    return "<standing_work>\nWork that repeats is a repeating task: `start_task` with `repeat_crons` makes one task the user can find, pause and stop, with each run's result coming back to this chat. Offer one when you notice work repeating. `tool:list_routines` shows routines set up before; `tool:schedule_routine` switches one of those on or off. Never say work is repeating before the call that sets it up has returned.\n</standing_work>\n\n"
+    return "<standing_work>\nWork that repeats is a repeating task: `start_task` with `repeat_crons` makes one task the user can find, pause and stop, with each run's result coming back to this chat. Offer one when you notice work repeating. Never say work is repeating before the call that sets it up has returned.\n</standing_work>\n\n"
 
 
 async def _routines_block(user_id: str, expert_id: str | None) -> str:
@@ -286,12 +284,12 @@ async def _routines_block(user_id: str, expert_id: str | None) -> str:
     # send the model back to re-ask questions they have already answered.
     proposal_rule = (
         (
-            "Routines marked (proposal) are offers, not plans, written for everybody: before switching one on, settle its open questions with the user, rewrite it in their terms and show them. Routines without the mark are already in the user's words; don't re-ask. A routine can't use their connected accounts unless they say so, so ask for that if the work needs one.\n"
+            "Routines marked (proposal) are offers, not plans, written for everybody: before taking one on, settle its open questions with the user, rewrite it in their terms and show them. Routines without the mark are already in the user's words; don't re-ask.\n"
         )
         if any(r.source == "TEMPLATE" for r in routines)
         else ""
     )
-    return f"<routines>\nStanding work you can do unattended. Each runs as a turn of yours at its own time, in the user's timezone. Switch one on with `tool:schedule_routine`, only after the user has chosen it:\n{lines}\n{proposal_rule}</routines>\n\n"
+    return f"<routines>\nStanding work you can offer. To take one on once the user has chosen it, make it a repeating task (`start_task` with `repeat_crons`, the routine's wording as its brief); one already ON keeps running as it is:\n{lines}\n{proposal_rule}</routines>\n\n"
 
 
 def _routine_line(routine: ExpertRoutineModel) -> str:
