@@ -43,6 +43,7 @@ from backend.blocks.mcp.protocol import (
     negotiate_version,
 )
 from backend.util.request import HTTPClientError, HTTPServerError, Response
+from backend.util.text_limits import MAX_URL_LENGTH
 
 SERVER_URL = "https://mcp.example.com/mcp"
 
@@ -286,6 +287,18 @@ class TestEraCache:
         assert cache.get("https://b.example/mcp") is None
         assert cache.get("https://a.example/mcp") is legacy
         assert cache.get("https://c.example/mcp") is legacy
+
+    def test_a_url_longer_than_the_url_limit_is_not_kept(self):
+        cache = MCPServerEraCache(ttl_seconds=60)
+        legacy = MCPServerProtocol(
+            era=MCPProtocolEra.LEGACY, protocol_version=LEGACY_PROTOCOL_VERSION
+        )
+        base = "https://a.example/"
+        at_limit = base + "x" * (MAX_URL_LENGTH - len(base))
+        cache.set(at_limit, legacy)
+        cache.set(at_limit + "x", legacy)
+        assert len(cache) == 1
+        assert cache.get(at_limit) is legacy
 
 
 # ───────────────────────── fake transport ─────────────────────────
@@ -769,6 +782,7 @@ class TestLegacyRequests:
             ("not a version", LEGACY_PROTOCOL_VERSION),
             ("2024-11-05" * 10, LEGACY_PROTOCOL_VERSION),
             (20241105, LEGACY_PROTOCOL_VERSION),
+            ("２０２４-１１-０５", LEGACY_PROTOCOL_VERSION),
             (None, LEGACY_PROTOCOL_VERSION),
         ],
     )

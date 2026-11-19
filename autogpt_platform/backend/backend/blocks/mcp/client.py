@@ -63,7 +63,7 @@ _NO_FALLBACK_STATUSES = frozenset({401, 403, 407, 429})
 # Bound on ``input_required`` retries when the server only wants its
 # ``requestState`` echoed back (no interactive input requested).
 _MAX_INPUT_REQUIRED_RETRIES = 3
-_DATED_VERSION_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_DATED_VERSION_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 # ``Requests`` retries throttled/5xx responses forever unless told otherwise.
 # MCP calls run inside graph executions and chat turns, so keep them bounded.
 _HTTP_RETRY_ATTEMPTS = 3
