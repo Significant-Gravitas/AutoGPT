@@ -368,8 +368,8 @@ export function ChatMessagesContainer({
     // A step-start is skipped too: the backend opens a step seconds before
     // the model writes anything (at the start of a turn, and before each
     // model call after a tool), so what decides is the part before it.
-    // Thinking stays up through that wait instead of vanishing, and after
-    // text or reasoning it stays hidden, so nothing flashes between steps.
+    // Thinking stays up through that wait; after text or reasoning it stays
+    // hidden, so nothing flashes between steps.
     let lastIndex = lastMessage.parts.length - 1;
     while (
       lastIndex >= 0 &&

@@ -374,6 +374,17 @@ describe("ChatMessagesContainer — assistant rendering", () => {
         },
       ],
     ],
+    [
+      "a tool whose approval was just answered",
+      [
+        {
+          ...finishedTool,
+          state: "approval-responded",
+          output: undefined,
+          approval: { id: "approval-1", approved: true },
+        },
+      ],
+    ],
   ] as Array<[string, Message["parts"]]>)(
     "does not bring the thinking indicator back when a step opens after %s",
     (_label, before) => {
