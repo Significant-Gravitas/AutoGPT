@@ -1100,7 +1100,8 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
 
     Goes through the paginated loader (with ``limit=MAX_LOADED_CHAT_MESSAGES``,
     no cursor) so the LLM-context path inherits the same tool-pair boundary
-    expansion and visibility guarantees the UI scroll-back path uses. The
+    expansion and visibility guarantees the UI scroll-back path uses, and its
+    ``MAX_LOADED_CHAT_MESSAGE_BYTES`` cap on what those rows may hold. The
     cap-hit log surfaces here (the LLM-context use case) rather than inside the
     generic paginated function.
     """
@@ -1115,10 +1116,9 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
 
     if page.has_more:
         logger.warning(
-            "Session %s loaded with capped messages (%d) — older history "
-            "must come from transcript checkpoint or context will be lost",
-            session_id,
-            MAX_LOADED_CHAT_MESSAGES,
+            f"Session {session_id} loaded with capped messages "
+            f"({len(page.messages)}) — older history must come from transcript "
+            "checkpoint or context will be lost"
         )
 
     session = ChatSession(

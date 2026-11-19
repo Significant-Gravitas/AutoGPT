@@ -64,6 +64,10 @@ class PaginatedMessages(BaseModel):
 # a transcript, the cap-hit warning below makes the case observable in logs.
 MAX_LOADED_CHAT_MESSAGES = 1000
 
+# A row can hold hundreds of kilobytes, so a load is capped by stored size too;
+# past it older rows are left out exactly as when the row cap engages.
+MAX_LOADED_CHAT_MESSAGE_BYTES = 16 * 1024 * 1024
+
 
 # NOTE: there is intentionally no eager-load ``get_chat_session`` here. Callers
 # that need the full session (LLM context, sub-session tools) call
@@ -164,6 +168,50 @@ def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
     ]
 
 
+async def _limit_within_byte_budget(
+    session_id: str, limit: int, sequence_filter: dict[str, Any]
+) -> int:
+    """Lower *limit* to the number of newest rows in the window that fit in
+    ``MAX_LOADED_CHAT_MESSAGE_BYTES``.
+
+    Sizes are summed in SQL, newest first, so an oversized window is never
+    fetched. Never below one row, so a page always makes progress.
+    """
+    conditions = ['"sessionId" = $1']
+    params: list[Any] = [session_id]
+    for key, condition in (
+        ("lt", '"sequence" < ${}::int'),
+        ("gte", '"sequence" >= ${}::int'),
+        ("in", '"sequence" = ANY(${}::int[])'),
+    ):
+        if key in sequence_filter:
+            params.append(sequence_filter[key])
+            conditions.append(condition.format(len(params)))
+    params += [limit, MAX_LOADED_CHAT_MESSAGE_BYTES]
+    rows = await db.query_raw_with_schema(
+        f"""
+        SELECT COUNT(*)::int AS "fit" FROM (
+            SELECT SUM("size") OVER (ORDER BY "sequence" DESC) AS "running"
+            FROM (
+                SELECT "sequence",
+                       COALESCE(octet_length("content"), 0)
+                       + COALESCE(octet_length("refusal"), 0)
+                       + COALESCE(octet_length("toolCalls"::text), 0)
+                       + COALESCE(octet_length("functionCall"::text), 0)
+                       + COALESCE(octet_length("metadata"::text), 0) AS "size"
+                FROM {{schema_prefix}}"ChatMessage"
+                WHERE {" AND ".join(conditions)}
+                ORDER BY "sequence" DESC
+                LIMIT ${len(params) - 1}::int
+            ) newest
+        ) sized
+        WHERE "running" <= ${len(params)}::bigint
+        """,
+        *params,
+    )
+    return min(limit, max(1, rows[0]["fit"]))
+
+
 async def get_chat_messages_paginated(
     session_id: str,
     limit: int = 50,
@@ -196,6 +244,10 @@ async def get_chat_messages_paginated(
     ``limit`` (i.e. the cap engaged); irrelevant for range fetches but
     harmlessly populated.
 
+    Every pattern is also capped at ``MAX_LOADED_CHAT_MESSAGE_BYTES`` of stored
+    messages: ``limit`` is lowered to the newest rows that fit, so the byte cap
+    engaging looks to callers exactly like the row cap engaging.
+
     ``message_sequences`` selects exact message numbers within any bounds;
     tool-pair and visibility expansion are disabled for this selection.
     """
@@ -212,6 +264,8 @@ async def get_chat_messages_paginated(
         msg_filter["gte"] = after_sequence
     if message_sequences is not None:
         msg_filter["in"] = message_sequences
+
+    limit = await _limit_within_byte_budget(session_id, limit, msg_filter)
 
     msg_include: FindManyChatMessageArgsFromChatSession = {
         "order_by": {"sequence": "desc"},
@@ -274,7 +328,9 @@ async def _expand_tool_boundary(
     extra = await PrismaChatMessage.prisma().find_many(
         where=boundary_where,
         order={"sequence": "desc"},
-        take=_BOUNDARY_SCAN_LIMIT,
+        take=await _limit_within_byte_budget(
+            session_id, _BOUNDARY_SCAN_LIMIT, {"lt": results[0].sequence}
+        ),
     )
     # Find the first non-tool message (should be the assistant)
     boundary_msgs = []
@@ -319,7 +375,9 @@ async def _expand_for_visibility(
     extra = await PrismaChatMessage.prisma().find_many(
         where=expand_where,
         order={"sequence": "desc"},
-        take=_VISIBILITY_EXPAND_LIMIT,
+        take=await _limit_within_byte_budget(
+            session_id, _VISIBILITY_EXPAND_LIMIT, {"lt": results[0].sequence}
+        ),
     )
     if not extra:
         return results, has_more
