@@ -9,7 +9,7 @@ import { MAX_TYPED_CHARS, canSendTyped, type WorkAnswer } from "../helpers";
 import { useWorkStep } from "../useWorkStep";
 import { OnboardingShell } from "./OnboardingShell";
 import { OttoMightAsk } from "./OttoMightAsk";
-import { PrivacyNote } from "./PrivacyNote";
+import { WorkPrivacyNote } from "./WorkPrivacyNote";
 import { WorkListening } from "./WorkListening";
 
 const ORB_SIZE = 112;
@@ -171,7 +171,7 @@ export function WorkStep({ onSubmit, onBackToRole }: Props) {
       footer={
         <>
           <View style={styles.row}>{renderFooterButtons()}</View>
-          <PrivacyNote />
+          <WorkPrivacyNote />
         </>
       }
     >

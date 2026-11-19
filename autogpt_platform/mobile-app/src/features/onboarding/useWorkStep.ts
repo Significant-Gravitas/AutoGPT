@@ -20,13 +20,16 @@ export function useWorkStep({ onSubmit, onBackToRole }: Args) {
   const [typed, setTyped] = useState("");
   // Only right after a talk attempt: the reason it ended without words.
   const [showNotice, setShowNotice] = useState(false);
+  // Between "Start over"'s stop and the new recording, still listening.
+  const [isRestarting, setIsRestarting] = useState(false);
   const isStarting = useRef(false);
   const dictation = useDictation({
     getDraft: () => "",
     onText: (text) => onSubmit({ mode: "typed", text: text.trim() }),
   });
 
-  const screen: WorkScreen = dictation.isActive ? "listening" : base;
+  const screen: WorkScreen =
+    dictation.isActive || isRestarting ? "listening" : base;
 
   async function talk() {
     // A second tap while the microphone prompt is up must not leave the screen.
@@ -44,8 +47,13 @@ export function useWorkStep({ onSubmit, onBackToRole }: Args) {
   }
 
   async function startOver() {
-    await dictation.cancel();
-    await dictation.start();
+    setIsRestarting(true);
+    try {
+      await dictation.cancel();
+      await dictation.start();
+    } finally {
+      setIsRestarting(false);
+    }
   }
 
   function sendSpoken() {

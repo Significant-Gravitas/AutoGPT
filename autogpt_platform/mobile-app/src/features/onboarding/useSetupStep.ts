@@ -11,6 +11,7 @@ import {
   hireOnboardingPlan,
   submitOnboardingProfile,
 } from "@/lib/api/onboarding";
+import { signOut } from "@/lib/session";
 import { useMountEffect } from "@/lib/useMountEffect";
 
 import {
@@ -120,5 +121,7 @@ export function useSetupStep({
     error,
     toast,
     retry: run,
+    // A setup that keeps failing must not trap the person on this screen.
+    signOut,
   };
 }

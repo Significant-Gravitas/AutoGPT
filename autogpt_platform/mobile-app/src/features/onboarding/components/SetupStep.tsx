@@ -74,6 +74,7 @@ export function SetupStep(props: Props) {
             {setup.error}
           </Text>
           <Button label="Try again" onPress={setup.retry} />
+          <Button label="Sign out" variant="ghost" onPress={setup.signOut} />
         </View>
       ) : (
         <View style={styles.list}>
@@ -132,6 +133,6 @@ const useStyles = createStyles((colors) => ({
   itemText: { ...type.body, color: colors.textTertiary },
   itemDone: { color: colors.text },
   itemActive: { color: colors.text, fontWeight: "500" },
-  errorBox: { alignItems: "center", gap: spacing.lg },
+  errorBox: { alignItems: "center", gap: spacing.md },
   error: { ...type.body, color: colors.text, textAlign: "center" },
 }));
