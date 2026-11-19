@@ -36,7 +36,7 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     LibraryAgentWhereInput,
 )
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import BaseModel, BeforeValidator, Field, PrivateAttr
 from pydantic.fields import computed_field
 
 from backend.blocks import get_block, get_blocks
@@ -318,6 +318,19 @@ class GraphBaseMeta(BaseDbModel):
     forked_from_version: int | None = None
 
 
+class _SharedSubGraphMemo(BaseModel):
+    """What the graphs that share one sub-graph model derive from its nodes."""
+
+    # The sub-graph's entries of `aggregate_credentials_inputs`'s
+    # `node_credential_data` and `node_required_map`.
+    credentials_inputs: (
+        tuple[list[tuple[CredentialsFieldInfo, tuple[str, str]]], dict[str, bool]]
+        | None
+    ) = None
+    # Left set when the walk raised, so the next graph fails without walking again.
+    credentials_inputs_failed: bool = False
+
+
 class BaseGraph(GraphBaseMeta):
     """
     Graph with nodes, links, and computed I/O schema fields.
@@ -329,6 +342,8 @@ class BaseGraph(GraphBaseMeta):
 
     nodes: list[Node] = Field(default_factory=list)
     links: list[Link] = Field(default_factory=list)
+    # Set on a sub-graph model several graphs share (`graph_model_sharing_sub_graphs`).
+    _shared_memo: _SharedSubGraphMemo | None = PrivateAttr(default=None)
 
     @computed_field
     @property
@@ -728,6 +743,21 @@ class GraphModel(Graph, GraphMeta):
         node_required_map: dict[str, bool] = {}  # node_id -> is_required
 
         for graph in [self] + self.sub_graphs:
+            memo = graph._shared_memo
+            if memo is not None and memo.credentials_inputs is not None:
+                credential_data, required_map = memo.credentials_inputs
+                node_credential_data.extend(credential_data)
+                node_required_map.update(required_map)
+                continue
+            if memo is not None:
+                if memo.credentials_inputs_failed:
+                    raise ValueError(
+                        f"The credentials inputs of sub-graph #{graph.id} "
+                        f"v{graph.version} can't be determined"
+                    )
+                memo.credentials_inputs_failed = True
+            walked_from = len(node_credential_data)
+
             linked_inputs = {
                 (link.sink_id, sanitize_pin_name(link.sink_name))
                 for link in graph.links
@@ -841,6 +871,13 @@ class GraphModel(Graph, GraphMeta):
                     node_credential_data.append(
                         (discriminated_info, (node.id, field_name))
                     )
+
+            if memo is not None:
+                memo.credentials_inputs = (
+                    node_credential_data[walked_from:],
+                    {node.id: node_required_map[node.id] for node in graph.nodes},
+                )
+                memo.credentials_inputs_failed = False
 
         # Combine credential field info (this will merge discriminator_values automatically)
         combined = CredentialsFieldInfo.combine(*node_credential_data)
@@ -1429,7 +1466,9 @@ class GraphModel(Graph, GraphMeta):
         """
         return GraphModelWithoutNodes.model_validate(self, from_attributes=True)
 
-    def shared_copy(self) -> Self:
+    def shared_copy(
+        self, stripped_sub_graphs: dict[int, BaseGraph] | None = None
+    ) -> Self:
         """A copy safe to show someone who doesn't own this graph.
 
         Every node, sub-graphs' included, is stripped the way an export strips
@@ -1437,7 +1476,8 @@ class GraphModel(Graph, GraphMeta):
         `from_db(..., for_export=True)` does. It works on an already-loaded
         model, so a route can decide by ownership once it knows the owner.
         Internal callers that act on the owner's behalf (presets, triggers, the
-        executor) keep reading the full graph.
+        executor) keep reading the full graph. Copies of several graphs that
+        share sub-graph models pass one *stripped_sub_graphs* to strip each once.
         """
         return self.model_copy(
             update={
@@ -1448,17 +1488,29 @@ class GraphModel(Graph, GraphMeta):
                 # Sub-graphs serialize without their owner's ids only because
                 # they are typed `BaseGraph`, which has no such fields.
                 "sub_graphs": [
-                    sub_graph.model_copy(
-                        update={
-                            "nodes": [
-                                node.stripped_for_export() for node in sub_graph.nodes
-                            ]
-                        }
-                    )
+                    _stripped_sub_graph(sub_graph, stripped_sub_graphs)
                     for sub_graph in self.sub_graphs
                 ],
             }
         )
+
+
+def _stripped_sub_graph(
+    sub_graph: BaseGraph, stripped_sub_graphs: dict[int, BaseGraph] | None
+) -> BaseGraph:
+    if stripped_sub_graphs is not None and (
+        copy := stripped_sub_graphs.get(id(sub_graph))
+    ):
+        return copy
+    copy = sub_graph.model_copy(
+        update={"nodes": [node.stripped_for_export() for node in sub_graph.nodes]}
+    )
+    shared = sub_graph._shared_memo is not None
+    # The memo describes the unstripped nodes, so the copy starts its own.
+    copy._shared_memo = _SharedSubGraphMemo() if shared else None
+    if stripped_sub_graphs is not None and shared:
+        stripped_sub_graphs[id(sub_graph)] = copy
+    return copy
 
 
 def _describe_node_errors(
@@ -2101,6 +2153,35 @@ async def _sub_graph_ids_named_by(graph_id: str) -> set[str]:
     }
 
 
+def graph_model_sharing_sub_graphs(
+    graph: AgentGraph,
+    sub_graphs: Sequence[AgentGraph],
+    shared_sub_graphs: dict[tuple[str, int, str], GraphModel],
+    user_id: str,
+) -> GraphModel:
+    """One of several graphs read together, with its *sub_graphs*, as *user_id*
+    sees it. Each sub-graph is converted once for all of them: pass every call
+    the same, initially empty, *shared_sub_graphs*. A shared model must not be
+    edited."""
+    model = _graph_model_seen_by(graph, user_id)
+    for sub_graph in sub_graphs:
+        key = (sub_graph.id, sub_graph.version, sub_graph.userId)
+        if key not in shared_sub_graphs:
+            shared = _graph_model_seen_by(sub_graph, user_id)
+            shared._shared_memo = _SharedSubGraphMemo()
+            shared_sub_graphs[key] = shared
+        model.sub_graphs.append(shared_sub_graphs[key])
+    return model
+
+
+def _graph_model_seen_by(graph: AgentGraph, user_id: str) -> GraphModel:
+    model = GraphModel.from_db(graph)
+    if model.user_id != user_id:
+        # Only the owner sees the files they picked and the credentials in them.
+        model.clear_auto_credentials()
+    return model
+
+
 def _sub_graph_refs(graph: AgentGraph, agent_block_id: str) -> list[tuple[str, int]]:
     return [
         (graph_id, graph_version)
@@ -2228,21 +2309,16 @@ async def get_graph_all_versions(
     if not graph_versions:
         return []
 
-    sub_graphs = (
-        await get_sub_graphs_of_each(graph_versions)
-        if include_subgraphs
-        else [None] * len(graph_versions)
-    )
-    versions = [
-        GraphModel.from_db(graph, sub_graphs=subs)
-        for graph, subs in zip(graph_versions, sub_graphs)
+    if not include_subgraphs:
+        return [_graph_model_seen_by(graph, user_id) for graph in graph_versions]
+    # Versions often name the same sub-graph; each is converted once for all.
+    shared_sub_graphs: dict[tuple[str, int, str], GraphModel] = {}
+    return [
+        graph_model_sharing_sub_graphs(graph, subs, shared_sub_graphs, user_id)
+        for graph, subs in zip(
+            graph_versions, await get_sub_graphs_of_each(graph_versions)
+        )
     ]
-    for version in versions:
-        if version.user_id != user_id:
-            # A teammate reading the history: only the owner sees the files
-            # they picked and the credentials embedded in them.
-            version.clear_auto_credentials()
-    return versions
 
 
 async def get_active_graph_version(

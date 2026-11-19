@@ -373,21 +373,25 @@ class LibraryAgent(pydantic.BaseModel):
         store_listing: Optional[prisma.models.StoreListing] = None,
         execution_count_override: Optional[int] = None,
         schedule_info: Optional[ScheduleInfo] = None,
+        graph: Optional[GraphModel] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
-        model instance.
+        model instance. A caller reading several agents passes `graph`, built by
+        `graph_model_sharing_sub_graphs`, instead of `sub_graphs`.
         """
         if not agent.AgentGraph:
             raise ValueError("Associated Agent record is required.")
         next_runs = schedule_info.next_runs if schedule_info else {}
 
-        graph = GraphModel.from_db(agent.AgentGraph, sub_graphs=sub_graphs)
-        if agent.AgentGraph.userId != agent.userId:
-            # Someone else's agent in this user's library (e.g. from the
-            # marketplace): its input defaults mustn't carry the owner's
-            # picked files or the credentials embedded in them.
-            graph.clear_auto_credentials()
+        with_sub_graphs = graph is not None or sub_graphs is not None
+        if graph is None:
+            graph = GraphModel.from_db(agent.AgentGraph, sub_graphs=sub_graphs)
+            if agent.AgentGraph.userId != agent.userId:
+                # Someone else's agent in this user's library (e.g. from the
+                # marketplace): its input defaults mustn't carry the owner's
+                # picked files or the credentials embedded in them.
+                graph.clear_auto_credentials()
 
         created_at = agent.createdAt
 
@@ -514,7 +518,7 @@ class LibraryAgent(pydantic.BaseModel):
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
             credentials_input_schema=(
-                graph.credentials_input_schema if sub_graphs is not None else None
+                graph.credentials_input_schema if with_sub_graphs else None
             ),
             has_external_trigger=graph.has_external_trigger,
             has_human_in_the_loop=graph.has_human_in_the_loop,

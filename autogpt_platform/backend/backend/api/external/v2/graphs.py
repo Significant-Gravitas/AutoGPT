@@ -297,8 +297,14 @@ async def list_graph_versions(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Graph #{graph_id} not found.",
         )
+    stripped_sub_graphs: dict[int, graph_db.BaseGraph] = {}
     return page.paged(
-        [Graph.from_internal(_shared_if_not_owner(g, auth.user_id)) for g in graphs],
+        [
+            Graph.from_internal(
+                _shared_if_not_owner(g, auth.user_id, stripped_sub_graphs)
+            )
+            for g in graphs
+        ],
         total_count,
     )
 
@@ -575,8 +581,12 @@ async def _get_graph_version(
 
 
 def _shared_if_not_owner(
-    graph: graph_db.GraphModel, user_id: str
+    graph: graph_db.GraphModel,
+    user_id: str,
+    stripped_sub_graphs: dict[int, graph_db.BaseGraph] | None = None,
 ) -> graph_db.GraphModel:
     """As the internal graph routes answer: anyone but the owner, a colleague
     included, gets the copy without the owner's ids, credentials and secrets."""
-    return graph if graph.user_id == user_id else graph.shared_copy()
+    if graph.user_id == user_id:
+        return graph
+    return graph.shared_copy(stripped_sub_graphs)
