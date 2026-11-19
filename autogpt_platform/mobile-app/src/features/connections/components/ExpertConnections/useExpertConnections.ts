@@ -132,7 +132,8 @@ export function useExpertConnections({ sessionID, expertID, expertName, isOpen }
     accounts,
     needs,
     isLoading: !granted.data && granted.isPending,
-    hasFailed: !granted.data && granted.isError,
+    // A failed needs list would otherwise read as "No connections yet".
+    hasFailed: (!granted.data && granted.isError) || (!setup.data && setup.isError),
     // Empty only once the needs are known too, so the empty state never flashes.
     isEmpty: !!granted.data && accounts.length === 0 && needs.length === 0 && !setup.isPending,
     retry,

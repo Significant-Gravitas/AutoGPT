@@ -135,7 +135,8 @@ export function useConnect({ origin, onConnected }: Args) {
   }
 
   function handleSaved(rowKey: string, credential: CredentialMeta) {
-    setSheet(null);
+    // A save that ends after another sheet opened leaves that one alone.
+    setSheet((open) => (open?.rowKey === rowKey ? null : open));
     onConnected(rowKey, toPicked(credential));
   }
 

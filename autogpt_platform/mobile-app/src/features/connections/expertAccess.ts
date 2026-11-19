@@ -11,6 +11,8 @@ import { queryClient, sessionGeneration } from "@/lib/session";
 function settle(expertID: string, granted: ExpertCredential[], startedIn: number) {
   if (startedIn !== sessionGeneration()) return;
   queryClient.setQueryData(integrationKeys.expertCredentials(expertID), granted);
+  // A grant and a removal can answer out of order; the server has the last word.
+  void queryClient.invalidateQueries({ queryKey: integrationKeys.expertCredentials(expertID) });
   // A grant can be what a scheduled workflow was waiting for.
   void queryClient.invalidateQueries({ queryKey: integrationKeys.expertSetup });
 }

@@ -10,6 +10,7 @@ import { hireErrorMessage, withHiredExpert } from "./helpers";
 import {
   claimHire,
   hireStateFor,
+  readHireState,
   recordHire,
   releaseHire,
   useHireStore,
@@ -55,9 +56,12 @@ export function useHireExpert({ onHired, onError }: Args) {
     return store.inFlight.has(templateID);
   }
 
-  /** The expert this sign-in just hired from the template, if any. */
+  /**
+   * The expert this sign-in just hired from the template, if any. Read when
+   * called, so the hire toast's Chat button sees the hire it announces.
+   */
   function justHired(templateID: string) {
-    return store.hired.get(templateID) ?? null;
+    return hireStateFor(readHireState(), sessionGeneration()).hired.get(templateID) ?? null;
   }
 
   return { hire, isHiring, justHired, hired: store.hired };
