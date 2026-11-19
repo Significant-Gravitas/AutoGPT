@@ -73,6 +73,7 @@ function RootStack() {
         </Stack.Protected>
         <Stack.Protected guard={!session}>
           <Stack.Screen name="login" />
+          <Stack.Screen name="signup" />
         </Stack.Protected>
       </Stack>
     </>
