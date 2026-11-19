@@ -1735,3 +1735,36 @@ class TestAyrshareSSOURL:
 
         assert response.status_code == 502
         assert response.json()["detail"] == "Failed to generate JWT"
+
+
+class TestNativeLogin:
+    def _login(self, params: dict):
+        handler = MagicMock()
+        handler.get_login_url.return_value = "https://github.com/login/oauth/authorize"
+        with (
+            patch(
+                "backend.api.features.integrations.router._get_provider_oauth_handler",
+                return_value=handler,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager") as mock_mgr,
+        ):
+            mock_mgr.store.store_state_token = AsyncMock(return_value=("tok", "v"))
+            response = client.get("/github/login", params=params)
+        return response, mock_mgr.store.store_state_token.await_args
+
+    def test_native_client_asks_for_a_native_state(self):
+        response, call = self._login({"client": "native"})
+
+        assert response.status_code == 200
+        assert call.kwargs["native"] is True
+
+    def test_web_login_keeps_the_plain_state(self):
+        response, call = self._login({})
+
+        assert response.status_code == 200
+        assert call.kwargs["native"] is False
+
+    def test_unknown_client_is_rejected(self):
+        response, _ = self._login({"client": "desktop"})
+
+        assert response.status_code == 422
