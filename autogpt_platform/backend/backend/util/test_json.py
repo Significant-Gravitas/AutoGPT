@@ -917,6 +917,8 @@ class TestValidateWithJsonschema:
             ("plain_key-1", "headers.plain_key-1"),
             ("a.b", 'headers["a.b"]'),
             ("", 'headers[""]'),
+            ("\ud800", 'headers["\\\\ud800"]'),
+            ("日本", 'headers["日本"]'),
             ("line\nbreak" + "k" * 100, 'headers["line\\nbreak' + "k" * 27 + '..."]'),
         ],
     )

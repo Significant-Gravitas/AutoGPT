@@ -386,6 +386,8 @@ def _format_error_path(path: list[str | int]) -> str:
         if _PLAIN_PATH_PART.fullmatch(name):
             location += f".{name}" if index else name
         else:
+            # orjson rejects lone surrogates, so spell them out first.
+            name = name.encode("utf-8", "backslashreplace").decode("utf-8")
             location += f"[{orjson.dumps(name).decode()}]"
     return location
 
