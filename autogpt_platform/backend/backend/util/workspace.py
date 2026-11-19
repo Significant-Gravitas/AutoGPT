@@ -25,7 +25,11 @@ from backend.data.db_accessors import (
     workspace_skill_db,
 )
 from backend.data.skill_capacity import skill_owner_folder
-from backend.data.workspace import WorkspaceFile, storage_limit_exceeded
+from backend.data.workspace import (
+    WorkspaceFile,
+    require_storable_file_attributes,
+    storage_limit_exceeded,
+)
 from backend.data.workspace_internal import is_internal_workspace_file
 from backend.data.workspace_scope import (
     EXPERT_FILE_ACCESS_DENIED,
@@ -323,6 +327,7 @@ class WorkspaceManager:
             path = await self._free_path(requested_path)
             if path != requested_path:
                 filename = posixpath.basename(path)
+        require_storable_file_attributes(filename, path, mime_type)
         is_internal = is_internal_workspace_file(
             name=filename, path=path, metadata=metadata
         )
@@ -560,6 +565,10 @@ class WorkspaceManager:
         removed = [self._resolve_path(path) for path in removed_paths]
         for path in [*(item.path for item in package), *removed]:
             self._authorize_path(path, write=True)
+        for item in package:
+            require_storable_file_attributes(
+                posixpath.basename(item.path), item.path, item.mime_type
+            )
         config = config if config is not None else Config()
         storage_limit = await self._require_package_room(
             package, removed, config.max_file_size_mb

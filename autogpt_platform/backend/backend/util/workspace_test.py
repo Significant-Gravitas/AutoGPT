@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.errors import UniqueViolationError
 
-from backend.data.workspace import WorkspaceFile
+from backend.data.workspace import FileAttributeTooLongError, WorkspaceFile
 from backend.util.workspace import WorkspaceManager
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -596,3 +596,42 @@ async def test_list_files_passes_the_written_window_to_the_query(manager, mock_d
 
     kwargs = mock_db.list_workspace_files.await_args.kwargs
     assert (kwargs["created_after"], kwargs["created_before"]) == (since, until)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "session_id, write",
+    [
+        pytest.param(None, {"filename": "a" * 256 + ".txt"}, id="name"),
+        pytest.param(
+            None, {"filename": "a.txt", "path": "/d" * 520 + "/a.txt"}, id="path"
+        ),
+        pytest.param("s" * 1_024, {"filename": "a.txt"}, id="session-path"),
+        pytest.param(
+            None, {"filename": "a.txt", "mime_type": "text/" + "x" * 251}, id="mime"
+        ),
+    ],
+)
+async def test_write_file_refuses_an_over_long_attribute_before_storing(
+    mock_storage, mock_db, session_id, write
+):
+    manager = WorkspaceManager(
+        user_id="user-123", workspace_id="ws-123", session_id=session_id
+    )
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage",
+            return_value=mock_storage,
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            return_value=250 * 1024 * 1024,
+        ),
+    ):
+        with pytest.raises(FileAttributeTooLongError):
+            await manager.write_file(content=b"x", **write)
+
+    mock_storage.store.assert_not_called()
+    mock_db.create_workspace_file.assert_not_called()
