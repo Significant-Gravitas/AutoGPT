@@ -24,6 +24,7 @@ from backend.copilot.tools.skills import (
 from backend.data.db import transaction
 from backend.util.exceptions import NotFoundError, PreconditionFailed
 
+from . import db as store_db
 from . import skill_db, skill_model
 
 _MAX_LICENSE_CHARS = 256
@@ -42,7 +43,33 @@ async def submit_skill(
     # One bracketed read, after the refusals: the body and the files must be the
     # same version of the skill, and these are blob reads of up to 20 MiB.
     skill, files = await _read_library_package(user_id, slug)
+    return await _create_pending_version(user_id, slug, request, skill, files)
 
+
+async def submit_skill_package(
+    user_id: str,
+    request: skill_model.SkillSubmissionRequest,
+    skill: ParsedSkill,
+    files: list[SkillFile],
+) -> skill_model.SkillSubmission:
+    """Create a pending version for a package that is not in a library.
+
+    The preview seed publishes its synthetic creators' skills this way: they
+    have no workspace to read from, and get the same listing and version rows
+    as a library skill submitted through :func:`submit_skill`.
+    """
+    slug = request.skill_name.strip().lower()
+    await _require_profile(user_id)
+    return await _create_pending_version(user_id, slug, request, skill, files)
+
+
+async def _create_pending_version(
+    user_id: str,
+    slug: str,
+    request: skill_model.SkillSubmissionRequest,
+    skill: ParsedSkill,
+    files: list[SkillFile],
+) -> skill_model.SkillSubmission:
     async with transaction() as tx:
         listing = await prisma.models.SkillListing.prisma(tx).find_unique(
             where={"slug": slug}
@@ -199,6 +226,8 @@ async def review_skill_submission(
                 )
                 or listing
             )
+    if is_approved and listing.owningUserId:
+        await store_db.publish_creator_avatar(listing.owningUserId)
     return skill_model.SkillSubmission.from_db(updated, listing)
 
 

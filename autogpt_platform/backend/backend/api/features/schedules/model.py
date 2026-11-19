@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Optional
 
 import pydantic
@@ -19,4 +20,33 @@ class ScheduleCreationRequest(pydantic.BaseModel):
     expert_id: Optional[str] = pydantic.Field(
         default=None,
         description="Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow.",
+    )
+    schedule_id: Optional[uuid.UUID] = pydantic.Field(
+        default=None,
+        description="A key for this create, sent again on a retry, that becomes the schedule's id: a retried create that was already applied returns that schedule instead of adding another.",
+    )
+
+
+class ResumeScheduledChatResponse(pydantic.BaseModel):
+    resumed: bool
+
+
+class SetScheduledChatCadenceRequest(pydantic.BaseModel):
+    cron: str = pydantic.Field(
+        description="One of the cadences offered for this chat, as returned by "
+        "getScheduledChatCadence"
+    )
+
+
+class ScheduleUpdateRequest(pydantic.BaseModel):
+    """Fields to change on an existing schedule; omitted fields keep their value."""
+
+    name: Optional[ScheduleName] = None
+    cron: Optional[str] = None
+    inputs: Optional[dict[str, Any]] = None
+    credentials: Optional[dict[str, CredentialsMetaInput]] = None
+    timezone: Optional[str] = pydantic.Field(
+        default=None,
+        min_length=1,
+        description="Timezone to evaluate the cron in (e.g., 'America/New_York'). If not provided, the schedule keeps its current timezone.",
     )

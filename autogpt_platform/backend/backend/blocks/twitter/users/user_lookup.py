@@ -4,7 +4,13 @@ import tweepy
 from pydantic import BaseModel
 from tweepy.client import Response
 
-from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchemaOutput
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockEffect,
+    BlockOutput,
+    BlockSchemaOutput,
+)
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -114,6 +120,7 @@ class TwitterGetUserBlock(Block):
                     "Twitter",
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -295,6 +302,7 @@ class TwitterGetUsersBlock(Block):
                     ["Twitter", "Twitter Dev"],
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

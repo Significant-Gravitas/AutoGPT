@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, RenderOptions } from "@testing-library/react";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { ReactElement, ReactNode } from "react";
+import { ProActivationProvider } from "@/services/pro-activation/ProActivationProvider";
 
 function createTestQueryClient() {
   return new QueryClient({
@@ -16,14 +17,21 @@ function createTestQueryClient() {
   });
 }
 
-function TestProviders({ children }: { children: ReactNode }) {
-  const queryClient = createTestQueryClient();
+function TestProviders({
+  children,
+  queryClient = createTestQueryClient(),
+}: {
+  children: ReactNode;
+  queryClient?: QueryClient;
+}) {
   return (
     <QueryClientProvider client={queryClient}>
       <NuqsTestingAdapter>
         <BackendAPIProvider>
           <OnboardingProvider>
-            <TooltipProvider>{children}</TooltipProvider>
+            <TooltipProvider>
+              <ProActivationProvider>{children}</ProActivationProvider>
+            </TooltipProvider>
           </OnboardingProvider>
         </BackendAPIProvider>
       </NuqsTestingAdapter>
@@ -33,9 +41,20 @@ function TestProviders({ children }: { children: ReactNode }) {
 
 function customRender(
   ui: ReactElement,
-  options?: Omit<RenderOptions, "wrapper">,
+  {
+    queryClient,
+    ...options
+  }: Omit<RenderOptions, "wrapper"> & {
+    /** For a test that reads query state; the default retries nothing. */
+    queryClient?: QueryClient;
+  } = {},
 ) {
-  return render(ui, { wrapper: TestProviders, ...options });
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <TestProviders queryClient={queryClient}>{children}</TestProviders>
+    ),
+    ...options,
+  });
 }
 
 // MorphingTextAnimation renders one span per character and uses a non-breaking

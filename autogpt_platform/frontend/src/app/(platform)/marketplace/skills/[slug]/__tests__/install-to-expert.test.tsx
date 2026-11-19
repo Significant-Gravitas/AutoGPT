@@ -34,14 +34,6 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({ useAuth: mockUseAuth }));
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return { ...actual, useFlagStatus: () => ({ enabled: true, ready: true }) };
-});
-
 const outreach: MarketplaceSkillDetails = {
   slug: "outreach-playbook",
   name: "outreach-playbook",

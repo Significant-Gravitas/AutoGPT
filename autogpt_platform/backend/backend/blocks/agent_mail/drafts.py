@@ -12,6 +12,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -110,6 +111,7 @@ class AgentMailCreateDraftBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -210,6 +212,7 @@ class AgentMailGetDraftBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -305,6 +308,7 @@ class AgentMailListDraftsBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -409,6 +413,7 @@ class AgentMailUpdateDraftBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -506,6 +511,7 @@ class AgentMailSendDraftBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -572,6 +578,7 @@ class AgentMailDeleteDraftBlock(Block):
             test_mock={
                 "delete_draft": lambda *a, **kw: None,
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -653,6 +660,7 @@ class AgentMailListOrgDraftsBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

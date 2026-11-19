@@ -36,6 +36,11 @@ from .runner import (
     summarize_expert,
     wrong_spec_rows,
 )
+
+try:
+    roster_experts()
+except Exception as exc:  # the catalog is a separate repo; no roster, no eval
+    pytest.skip(f"skills catalog roster unavailable: {exc}", allow_module_level=True)
 from .scorer import response_score
 
 _RUNNER = "backend.copilot.eval.style.runner"

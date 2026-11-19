@@ -22,7 +22,7 @@ class TestParseChoiceValue:
     def test_round_trips_token_and_index(self):
         card = choice_card("Q?", "abcdef012345", ["US", "EU"])
         value = card["content"]["actions"][1]["data"]
-        assert parse_choice_value(value) == ("abcdef012345", 1)
+        assert parse_choice_value(value) == ("qans", "abcdef012345", 1)
 
     def test_non_dict_value_returns_none(self):
         assert parse_choice_value(None) is None

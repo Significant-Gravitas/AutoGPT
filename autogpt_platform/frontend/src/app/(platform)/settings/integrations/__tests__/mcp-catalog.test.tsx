@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { http, HttpResponse } from "msw";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 import {
   fireEvent,
@@ -11,7 +12,11 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
-import { getGetV1ListProvidersMockHandler } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
+import {
+  getGetV1ListCredentialsMockHandler,
+  getGetV1ListProvidersMockHandler,
+} from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
+import { getPostV2StoreABearerTokenForAnMcpServerMockHandler200 } from "@/app/api/__generated__/endpoints/mcp/mcp.msw";
 import SettingsIntegrationsPage from "../page";
 import {
   authProviders,
@@ -40,6 +45,23 @@ beforeEach(() => {
   );
 });
 
+function shippedCatalogProvider(name: string): ProviderMetadata {
+  const catalog: ProviderMetadata[] = JSON.parse(
+    readFileSync(
+      resolve("../backend/backend/integrations/mcp_catalog.json"),
+      "utf8",
+    ),
+  );
+  const entry = catalog.find((item) => item.name === name);
+  expect(entry).toBeDefined();
+  return {
+    ...entry!,
+    service: entry!.mcp_server?.provider ?? name.replace(/^mcp_/, ""),
+    service_name: entry!.display_name,
+    service_icon: entry!.mcp_server?.icon_id ?? null,
+  };
+}
+
 async function openPicker() {
   const buttons = await screen.findAllByRole("button", {
     name: /connect.*service/i,
@@ -50,18 +72,12 @@ async function openPicker() {
 
 describe("SettingsIntegrationsPage — MCP catalogue", () => {
   test("shows PostHog branding and connection options from the shipped catalog", async () => {
-    const catalog: ProviderMetadata[] = JSON.parse(
-      readFileSync(
-        resolve("../backend/backend/integrations/mcp_catalog.json"),
-        "utf8",
-      ),
+    server.use(
+      getGetV1ListProvidersMockHandler([shippedCatalogProvider("mcp_posthog")]),
     );
-    const posthog = catalog.find((entry) => entry.name === "mcp_posthog");
-    expect(posthog).toBeDefined();
-    server.use(getGetV1ListProvidersMockHandler([posthog!]));
 
     render(<SettingsIntegrationsPage />);
-    const row = await screen.findByRole("button", { name: /posthog.*mcp/i });
+    const row = await screen.findByRole("button", { name: /posthog/i });
     expect(row.querySelector("img")?.getAttribute("src")).toBe(
       "/integrations/posthog.png",
     );
@@ -81,6 +97,103 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     ).toBeDefined();
   });
 
+  test("opens OpenSEO on its cloud server and lets self-hosters change the URL", async () => {
+    server.use(
+      getGetV1ListProvidersMockHandler([shippedCatalogProvider("mcp_openseo")]),
+    );
+
+    render(<SettingsIntegrationsPage />);
+    const row = await screen.findByRole("button", { name: /openseo/i });
+    expect(within(row).queryByText("Setup required")).toBeNull();
+    fireEvent.click(row);
+
+    const dialog = await screen.findByRole("dialog");
+    const input =
+      await within(dialog).findByLabelText<HTMLInputElement>("Server URL");
+    expect(input.value).toBe("https://app.openseo.so/mcp");
+    expect(input.readOnly).toBe(false);
+    fireEvent.change(input, {
+      target: { value: "https://openseo.example.workers.dev/mcp" },
+    });
+    expect(input.value).toBe("https://openseo.example.workers.dev/mcp");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^connect$/i }));
+    await waitFor(() => {
+      expect(oauthRequest).toHaveBeenCalledWith({
+        server_url: "https://openseo.example.workers.dev/mcp",
+      });
+    });
+  });
+
+  test("AnySearch is one row under its brand name, and a pasted token connects its server", async () => {
+    const connection: CredentialsMetaResponse = {
+      id: "anysearch-token",
+      provider: "mcp",
+      type: "oauth2",
+      title: "MCP: api.anysearch.com",
+      scopes: null,
+      username: null,
+      host: null,
+      is_managed: false,
+      service: "anysearch",
+      service_name: "AnySearch",
+      service_icon: "anysearch",
+    };
+    let saved = false;
+    server.use(
+      getGetV1ListProvidersMockHandler([
+        {
+          name: "anysearch",
+          description: "AI-native web search",
+          supported_auth_types: ["api_key"],
+          service: "anysearch",
+          service_icon: "anysearch",
+        },
+        shippedCatalogProvider("mcp_anysearch"),
+      ]),
+      getGetV1ListCredentialsMockHandler(() => (saved ? [connection] : [])),
+      getPostV2StoreABearerTokenForAnMcpServerMockHandler200(
+        async ({ request }) => {
+          tokenRequest(await request.json());
+          saved = true;
+          return connection;
+        },
+      ),
+    );
+
+    render(<SettingsIntegrationsPage />);
+    const rows = await screen.findAllByRole("button", { name: /^anysearch/i });
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0]).getByText("AnySearch")).toBeDefined();
+    fireEvent.click(rows[0]);
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      await within(dialog).findByRole("button", {
+        name: "Use an AnySearch token instead",
+      }),
+    );
+    const input =
+      await within(dialog).findByLabelText<HTMLInputElement>("Server URL");
+    expect(input.value).toBe("https://api.anysearch.com/mcp");
+    fireEvent.change(within(dialog).getByPlaceholderText("Paste API token"), {
+      target: { value: "anysearch-access-token" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /save token/i }),
+    );
+
+    expect(await screen.findByText("api.anysearch.com")).toBeDefined();
+    expect(
+      screen.getByText(
+        "AnySearch blocks in workflows need their own connection.",
+      ),
+    ).toBeDefined();
+    expect(tokenRequest).toHaveBeenCalledWith({
+      server_url: "https://api.anysearch.com/mcp",
+      token: "Bearer anysearch-access-token",
+    });
+  });
+
   test("lists native providers and branded MCP entries together", async () => {
     render(<SettingsIntegrationsPage />);
     expect(
@@ -89,7 +202,7 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     const preset = await screen.findByRole("button", {
       name: /agentmail.*account/i,
     });
-    expect(within(preset).getByText("MCP", { exact: true })).toBeDefined();
+    expect(within(preset).queryByText("MCP", { exact: true })).toBeNull();
     expect(preset.querySelector("img")?.getAttribute("src")).toBe(
       "/integrations/agent_mail.png",
     );
@@ -196,9 +309,8 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
           : "Connected, but this server returned no tools.",
       );
       expect(
-        within(dialog).getByText(/no connection was saved/i),
+        within(dialog).getByText(/needs no sign-in, so nothing was saved/i),
       ).toBeDefined();
-      expect(within(dialog).getByText(/use this server url/i)).toBeDefined();
       expect(discoveryRequest).toHaveBeenCalledWith({
         server_url: "https://search.parallel.ai/mcp",
         use_saved_credentials: false,

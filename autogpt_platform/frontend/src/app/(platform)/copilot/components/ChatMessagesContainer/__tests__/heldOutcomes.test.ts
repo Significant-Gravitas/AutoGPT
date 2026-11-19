@@ -68,3 +68,56 @@ test("an output that contains the closing tag is kept whole", () => {
   ]);
   expect(outcomes.get("call-7")?.output).toBe(body);
 });
+
+function heldCall(
+  toolCallId: string,
+  reviewId: string,
+): UIMessage<unknown, UIDataTypes, UITools> {
+  return {
+    id: `a-${toolCallId}`,
+    role: "assistant",
+    parts: [
+      {
+        type: "tool-bash_exec",
+        toolCallId,
+        state: "output-available",
+        input: {},
+        output: JSON.stringify({
+          type: "approval_required",
+          review_id: reviewId,
+        }),
+      },
+    ],
+  };
+}
+
+const standIn = (reviewId: string, outcome: string) =>
+  lateResult(
+    {
+      held_call: {
+        tool_call_id: "sdk-365200f8ce9e",
+        review_id: reviewId,
+        outcome,
+      },
+    },
+    "done",
+  );
+
+test("a result under the SDK engine's stand-in id settles the model's held call by review id", () => {
+  const outcomes = getHeldOutcomes([
+    heldCall("toolu_01", "gate:abc"),
+    standIn("gate:abc", "approved"),
+  ]);
+  expect(outcomes.get("toolu_01")?.outcome).toBe("approved");
+  expect(outcomes.get("sdk-365200f8ce9e")?.outcome).toBe("approved");
+});
+
+test("a repeat of the same call waits for its own result, not the first one's", () => {
+  const outcomes = getHeldOutcomes([
+    heldCall("toolu_01", "gate:abc"),
+    standIn("gate:abc", "rejected"),
+    heldCall("toolu_02", "gate:abc"),
+  ]);
+  expect(outcomes.get("toolu_01")?.outcome).toBe("rejected");
+  expect(outcomes.has("toolu_02")).toBe(false);
+});

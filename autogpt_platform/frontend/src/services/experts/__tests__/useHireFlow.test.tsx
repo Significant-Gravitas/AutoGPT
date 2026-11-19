@@ -5,7 +5,6 @@ import {
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
-import { markHireStarted } from "@/services/experts/hire-timing";
 import { useHireFlow } from "@/services/experts/useHireFlow";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, screen, waitFor } from "@testing-library/react";
@@ -102,7 +101,6 @@ describe("useHireFlow", () => {
   beforeEach(() => {
     captureMock.mockReset();
     pushMock.mockReset();
-    window.sessionStorage.clear();
     server.use(
       getHireExpertMockHandler({ expert: hiredMaria }),
       getUpdateExpertSoulMockHandler(hiredMaria),
@@ -110,9 +108,6 @@ describe("useHireFlow", () => {
   });
 
   test("walks hire → voice pick → saved voice and hands off to the thread", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    markHireStarted("template-maria");
-    vi.advanceTimersByTime(1500);
     const { result } = renderHireFlow();
 
     await act(async () => {
@@ -129,17 +124,31 @@ describe("useHireFlow", () => {
     expect(pushMock).toHaveBeenCalledWith(
       "/copilot?expertId=expert-maria&kickoff=1",
     );
-    const completed = capturedEvent("hire_flow_completed")?.[1] as {
-      voice_picked: boolean;
-      elapsed_ms: number | null;
-    };
-    expect(completed.voice_picked).toBe(true);
-    expect(completed.elapsed_ms).toBeGreaterThanOrEqual(1500);
-    // The mark is consumed, so a second finish cannot report a stale span.
-    expect(
-      window.sessionStorage.getItem("autogpt:hire-started:template-maria"),
-    ).toBeNull();
-    vi.useRealTimers();
+  });
+
+  test("tells the backend where the hire came from and sends no hire event itself", async () => {
+    let body: unknown;
+    server.use(
+      http.post("/api/proxy/api/experts", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ expert: hiredMaria, failed_preloads: [] });
+      }),
+    );
+    const { result } = renderHireFlow();
+
+    await act(async () => {
+      await result.current.hire();
+    });
+    await act(async () => {
+      result.current.skipVoice();
+    });
+
+    // The backend's `expert_hired` is the one record of the hire.
+    expect(body).toEqual({
+      template_id: "template-maria",
+      surface: "expert_page",
+    });
+    expect(captureMock).not.toHaveBeenCalled();
   });
 
   test("skipping the voice pick still celebrates the hire", async () => {
@@ -156,10 +165,6 @@ describe("useHireFlow", () => {
     expect(pushMock).toHaveBeenCalledWith(
       "/copilot?expertId=expert-maria&kickoff=1",
     );
-    expect(capturedEvent("hire_flow_completed")?.[1]).toMatchObject({
-      voice_picked: false,
-      elapsed_ms: null,
-    });
   });
 
   test("finishes straight away when the persona ships no writing samples", async () => {

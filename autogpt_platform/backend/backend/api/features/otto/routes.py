@@ -1,7 +1,9 @@
 import logging
 
 from autogpt_libs.auth import get_user_id, requires_user
-from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, Depends, HTTPException, Security
+
+from backend.copilot.rate_limit import enforce_payment_paywall
 
 from .models import ApiResponse, ChatRequest
 from .service import OttoService
@@ -14,7 +16,7 @@ router = APIRouter()
 @router.post(
     "/ask",
     response_model=ApiResponse,
-    dependencies=[Security(requires_user)],
+    dependencies=[Security(requires_user), Depends(enforce_payment_paywall)],
     summary="Proxy Otto Chat Request",
 )
 async def proxy_otto_request(

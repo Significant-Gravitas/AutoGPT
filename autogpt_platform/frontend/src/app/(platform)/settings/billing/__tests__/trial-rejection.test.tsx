@@ -10,6 +10,12 @@ import {
   trialResponse,
 } from "@/tests/integrations/trial-fixtures";
 
+// These cover the hosted billing UI, which self-hosted builds hide.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
+
 let searchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useSearchParams: () => searchParams,
@@ -105,7 +111,9 @@ it("keeps a paid-plan action and support available after rejection", async () =>
   );
   render(<SettingsBillingPage />);
   await screen.findByText("This introductory offer has already been used");
-  expect(await screen.findByRole("button", { name: "Get Pro" })).toBeDefined();
+  expect(
+    (await screen.findAllByRole("button", { name: "Start Pro" })).length,
+  ).toBeGreaterThan(0);
   expect(
     screen.getByRole("link", { name: "Contact support" }).getAttribute("href"),
   ).toBe("https://discord.gg/autogpt");

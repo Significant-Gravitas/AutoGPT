@@ -15,7 +15,7 @@ export class ProfileFormPage extends BasePage {
   private async hideFloatingWidgets(): Promise<void> {
     await this.page.addStyleTag({
       content: `
-        [data-tally-open] { display: none !important; }
+        [data-feedback-trigger] { display: none !important; }
       `,
     });
   }

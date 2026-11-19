@@ -54,6 +54,33 @@ describe("MCP OAuth callback route", () => {
     expect(message.message).toContain("Missing parameters");
   });
 
+  it("echoes state and the provider error when sign-in is denied", async () => {
+    const response = await GET(
+      new Request(
+        `${origin}/auth/integrations/mcp_callback?error=access_denied&error_description=${encodeURIComponent("User denied access")}&state=xyz`,
+      ),
+    );
+
+    const message = embeddedMessage(await response.text());
+    expect(message.success).toBe(false);
+    // Without state the opener drops the message and waits out its timeout.
+    expect(message.state).toBe("xyz");
+    expect(message.message).toBe("access_denied: User denied access");
+  });
+
+  it("reports failure without state when the provider sends none", async () => {
+    const response = await GET(
+      new Request(
+        `${origin}/auth/integrations/mcp_callback?error=server_error`,
+      ),
+    );
+
+    const message = embeddedMessage(await response.text());
+    expect(message.success).toBe(false);
+    expect(message).not.toHaveProperty("state");
+    expect(message.message).toBe("server_error");
+  });
+
   it("escapes script-breaking characters in query values", async () => {
     const response = await GET(
       new Request(
@@ -66,5 +93,42 @@ describe("MCP OAuth callback route", () => {
     expect(embeddedMessage(html).code).toBe(
       "</script><script>alert(1)</script>",
     );
+  });
+});
+
+describe("MCP sign-in started by the mobile app", () => {
+  it("sends the code, state and issuer back to the app", async () => {
+    const response = await GET(
+      new Request(
+        `${origin}/auth/integrations/mcp_callback?code=abc&state=native.xyz&iss=${encodeURIComponent("https://auth.example.com")}`,
+      ),
+    );
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(`${location.protocol}//${location.host}${location.pathname}`).toBe(
+      "autogpt-app://integrations/oauth",
+    );
+    expect(Object.fromEntries(location.searchParams)).toEqual({
+      code: "abc",
+      state: "native.xyz",
+      iss: "https://auth.example.com",
+    });
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+  });
+
+  it("sends the provider's error back to the app", async () => {
+    const response = await GET(
+      new Request(
+        `${origin}/auth/integrations/mcp_callback?error=access_denied&state=native.xyz`,
+      ),
+    );
+
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(Object.fromEntries(location.searchParams)).toEqual({
+      state: "native.xyz",
+      error: "access_denied",
+    });
   });
 });

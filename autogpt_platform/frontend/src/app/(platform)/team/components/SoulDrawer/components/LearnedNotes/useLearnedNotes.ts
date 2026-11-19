@@ -4,7 +4,6 @@ import {
   useListMyExpertMemoryFacts,
 } from "@/app/api/__generated__/endpoints/memory/memory";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 
 /** Enough to show what the expert is picking up without crowding out the Soul
@@ -12,14 +11,11 @@ import { useQueryClient } from "@tanstack/react-query";
 const SOUL_NOTES_LIMIT = 5;
 
 export function useLearnedNotes(expertId: string) {
-  const isMemoryEnabled = useGetFlag(Flag.GRAPHITI_MEMORY);
   const queryClient = useQueryClient();
 
-  const factsQuery = useListMyExpertMemoryFacts(
-    expertId,
-    { limit: SOUL_NOTES_LIMIT },
-    { query: { enabled: Boolean(isMemoryEnabled) } },
-  );
+  const factsQuery = useListMyExpertMemoryFacts(expertId, {
+    limit: SOUL_NOTES_LIMIT,
+  });
   const facts =
     factsQuery.data?.status === 200 ? factsQuery.data.data.items : [];
 

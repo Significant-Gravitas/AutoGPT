@@ -18,15 +18,6 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
   >()),
   useGetFlag: () => true,
 }));
-vi.mock("@/components/molecules/NotionAvatar/NotionAvatarImage", () => ({
-  NotionAvatarImage: ({
-    config,
-    title,
-  }: {
-    config: { color: string };
-    title: string;
-  }) => <span role="img" aria-label={title} data-color={config.color} />,
-}));
 
 function Picker() {
   const { recipient, options, selectRecipient } = useRecipientPicker();
@@ -40,15 +31,15 @@ function Picker() {
 }
 
 describe("recipient colors", () => {
-  it("keeps the saved appearance color independent of the owner token", async () => {
+  it("keeps the saved PNG in the selected avatar and menu", async () => {
     server.use(
       http.get("*/api/experts/identities", () =>
         HttpResponse.json([
           {
             id: "expert-maria",
             name: "Maria",
-            color: "violet-300",
-            avatar_url: "/avatars/notion/0-0-0-0-0-0-0-0-0-0.orange.svg",
+            color: "orange-500",
+            avatar_url: "/experts/clay/v1/marketing.png",
             role: "Marketing",
             is_archived: false,
           },
@@ -68,16 +59,14 @@ describe("recipient colors", () => {
       name: /Sending to Maria/,
     });
     await waitFor(() =>
-      expect(within(chip).getByRole("img").getAttribute("data-color")).toBe(
-        "orange",
+      expect(within(chip).getByRole("img").getAttribute("src")).toContain(
+        "marketing.png",
       ),
     );
     await userEvent.click(chip);
     const menu = await screen.findByRole("menu");
     expect(
-      within(menu)
-        .getByRole("img", { name: "Maria" })
-        .getAttribute("data-color"),
-    ).toBe("orange");
+      within(menu).getByRole("img", { name: "Maria" }).getAttribute("src"),
+    ).toContain("marketing.png");
   });
 });

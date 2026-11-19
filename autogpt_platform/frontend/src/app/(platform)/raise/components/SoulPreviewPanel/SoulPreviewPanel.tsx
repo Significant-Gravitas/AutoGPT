@@ -1,11 +1,12 @@
 "use client";
 
+import type { ExpertAvatarRequestCategory } from "@/app/api/__generated__/models/expertAvatarRequestCategory";
 import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
 import { DEFAULT_GLASS_PARAMS } from "@/components/molecules/GlassOrb/GlassSurface";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { kitBudgetLabel, kitToolsLabel, type RaiseKit } from "../../helpers";
-import { roleLabelFor } from "../RoleStep/helpers";
+import { roleFor } from "../CategoryStep/helpers";
 import { SoulDetailCard } from "./SoulDetailCard";
 
 const REVEAL =
@@ -18,7 +19,7 @@ type SoulDetail = {
 
 interface Props {
   name: string;
-  role: string | null;
+  category: ExpertAvatarRequestCategory | null;
   jobTitle?: string | null;
   avatarUrl: string | null;
   color: string | null;
@@ -31,7 +32,7 @@ interface Props {
 // Answers stack beneath it, which pushes the identity card up as they land.
 export function SoulPreviewPanel({
   name,
-  role,
+  category,
   jobTitle,
   avatarUrl,
   color,
@@ -39,7 +40,7 @@ export function SoulPreviewPanel({
   voiceLabel,
   kit,
 }: Props) {
-  const roleLabel = jobTitle || roleLabelFor(role);
+  const roleLabel = jobTitle || roleFor(category);
   const details = [
     { label: "About", value: about },
     { label: "Voice", value: voiceLabel },
@@ -49,7 +50,8 @@ export function SoulPreviewPanel({
 
   return (
     <div className="flex w-full max-w-[19rem] flex-col items-center gap-3">
-      <aside className="flex w-full flex-col items-center gap-8 rounded-[2rem] border border-border bg-background px-8 py-12 shadow-2xl">
+      {/* oxlint-disable-next-line design-system/no-arbitrary-values -- the 32px radius has no rounded-* step in this theme (3xl is 24px) */}
+      <aside className="flex w-full flex-col items-center gap-8 rounded-[2rem] border border-border-base bg-canvas px-8 py-12 shadow-2xl">
         <div className="size-28 shrink-0 overflow-hidden rounded-full">
           {avatarUrl ? (
             <Image
@@ -68,15 +70,17 @@ export function SoulPreviewPanel({
         <div className="flex flex-col items-center gap-1.5">
           <h2
             className={cn(
-              "text-center text-2xl font-semibold tracking-[-0.02em]",
-              name ? `text-foreground ${REVEAL}` : "text-muted-foreground/50",
+              "text-center text-heading-md font-semibold tracking-heading",
+              name
+                ? `text-foreground-base ${REVEAL}`
+                : "text-foreground-tertiary/50",
             )}
           >
             {name || "No name yet"}
           </h2>
           {roleLabel ? (
             <p
-              className={`text-sm uppercase tracking-[0.12em] text-muted-foreground ${REVEAL}`}
+              className={`text-body tracking-caps text-foreground-tertiary uppercase ${REVEAL}`}
             >
               {roleLabel}
             </p>

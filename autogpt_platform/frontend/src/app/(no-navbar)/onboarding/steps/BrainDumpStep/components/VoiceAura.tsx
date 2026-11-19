@@ -33,8 +33,8 @@ export function VoiceAura({ colors, size, levels, isActive, children }: Props) {
   return (
     <div
       data-testid="voice-aura"
-      className="relative flex items-center justify-center"
-      style={{ width: size, height: size }}
+      className="relative flex size-[var(--aura-size)] items-center justify-center"
+      style={{ "--aura-size": `${size}px` } as React.CSSProperties}
     >
       <VoiceStreaks
         field={fieldRef.current.field}

@@ -40,7 +40,9 @@ from backend.blocks.desktop._common import (
 )
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.tools.e2b_sandbox import (
+    KEEP_CEILING,
     METADATA_MOUNTS,
+    Ceiling,
     SandboxLookupError,
     SandboxOwner,
     get_or_create_owner_sandbox,
@@ -140,6 +142,7 @@ async def open_desktop(
     *,
     user_id: Optional[str],
     session_id: Optional[str] = None,
+    providers: Ceiling = KEEP_CEILING,
 ) -> tuple[DesktopStream, bool, bool]:
     """Turn the screen on in the owner's box; return ``(stream, first_time, shared)``.
 
@@ -149,6 +152,8 @@ async def open_desktop(
     an idle box opened from the UI is paused by the lifecycle timeout instead.
     *user_id* is who the stream link is issued to (see ``_owner_bound``) and,
     with *session_id*, provenance stamped on a newly created box.
+    *providers* is the turn's ceiling on connected accounts when a turn opens
+    it (``start_desktop``); the UI has none and keeps the box's.
 
     One opener at a time per owner: the panel's button and the model's
     ``start_desktop`` (or two tabs) would otherwise race to start a second
@@ -169,7 +174,12 @@ async def open_desktop(
     try:
         return await asyncio.wait_for(
             _open_desktop_locked(
-                owner, mounts, api_key, user_id=user_id, session_id=session_id
+                owner,
+                mounts,
+                api_key,
+                user_id=user_id,
+                session_id=session_id,
+                providers=providers,
             ),
             timeout=_DESKTOP_OPEN_DEADLINE_SECONDS,
         )
@@ -184,6 +194,7 @@ async def _open_desktop_locked(
     *,
     user_id: str,
     session_id: Optional[str],
+    providers: Ceiling = KEEP_CEILING,
 ) -> tuple[DesktopStream, bool, bool]:
     sandbox = await get_or_create_owner_sandbox(
         owner,
@@ -195,6 +206,7 @@ async def _open_desktop_locked(
         user_id=user_id,
         session_id=session_id,
         count_turn=False,
+        providers=providers,
     )
     was_on = await screen_is_on(owner, sandbox.sandbox_id)
     desktop = DesktopSession(sandbox)

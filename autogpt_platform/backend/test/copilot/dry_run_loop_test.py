@@ -70,7 +70,10 @@ class TestSystemPromptBasics:
         assert "automations" in DEFAULT_SYSTEM_PROMPT.lower()
 
     def test_mentions_action_oriented(self):
-        assert "action-oriented" in DEFAULT_SYSTEM_PROMPT.lower()
+        assert (
+            "You do the work with your tools instead of explaining how the user "
+            "could do it." in DEFAULT_SYSTEM_PROMPT
+        )
 
 
 class TestToolDescriptionsDryRunLoop:
@@ -114,7 +117,8 @@ class TestPromptingSupplementContent:
     """
 
     def test_includes_tool_discovery_priority(self):
-        assert "Discovery" in _SDK_SUPPLEMENT and "MANDATORY" in _SDK_SUPPLEMENT
+        assert "Search it; don't rely on what you remember." in _SDK_SUPPLEMENT
+        assert "start with `find_capability(" in _SDK_SUPPLEMENT
 
     def test_includes_find_capability_first(self):
         assert "find_capability" in _SDK_SUPPLEMENT

@@ -77,7 +77,7 @@ describe("ShareChatDialog", () => {
     // The auto-share toggle is present and labelled — the always-show
     // box the user asked for, regardless of run count.
     expect(
-      screen.getByLabelText(/share agent runs from this chat/i),
+      screen.getByLabelText(/share workflow runs from this chat/i),
     ).toBeDefined();
   });
 
@@ -121,7 +121,7 @@ describe("ShareChatDialog", () => {
     // component implementation; we just pin that it exists and is
     // reachable via its accessible label.
     expect(
-      screen.getByLabelText(/share agent runs from this chat/i),
+      screen.getByLabelText(/share workflow runs from this chat/i),
     ).toBeDefined();
   });
 
@@ -275,7 +275,7 @@ describe("ShareChatDialog", () => {
     // only appears once isLoadingState flips false), then assert the
     // toggle is in Radix's data-disabled state.
     await screen.findByRole("button", { name: /stop sharing/i });
-    const toggle = screen.getByLabelText(/share agent runs from this chat/i);
+    const toggle = screen.getByLabelText(/share workflow runs from this chat/i);
     expect(toggle.getAttribute("data-disabled")).not.toBeNull();
   });
 });

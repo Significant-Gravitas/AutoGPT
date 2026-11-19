@@ -11,12 +11,14 @@ interface Props {
   size?: number;
   transparent?: boolean;
   className?: string;
+  backgroundColor?: string;
 }
 
 export function AutopilotAvatar({
   size = 24,
   transparent = false,
   className,
+  backgroundColor,
 }: Props) {
   if (transparent) {
     return (
@@ -26,6 +28,7 @@ export function AutopilotAvatar({
         width={size}
         height={size}
         sizes={`${size}px`}
+        data-slot="autopilot-avatar"
         className={cn("shrink-0 object-contain", className)}
       />
     );
@@ -36,6 +39,7 @@ export function AutopilotAvatar({
       name={AUTOPILOT_NAME}
       avatarUrl={AUTOPILOT_AVATAR_URL}
       size={size}
+      backgroundColor={backgroundColor}
       className={className}
     />
   );

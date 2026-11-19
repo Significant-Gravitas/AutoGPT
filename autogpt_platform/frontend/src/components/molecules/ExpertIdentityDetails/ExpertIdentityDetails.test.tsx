@@ -4,7 +4,7 @@ import { ExpertIdentityDetails } from "./ExpertIdentityDetails";
 
 describe("ExpertIdentityDetails", () => {
   test.each(["card", "page"] as const)(
-    "uses one neutral area chip in %s size",
+    "falls back to the role label on the name line in %s size",
     (size) => {
       render(
         <ExpertIdentityDetails
@@ -14,28 +14,31 @@ describe("ExpertIdentityDetails", () => {
         />,
       );
 
-      const area = screen.getByText("Social Media Manager");
-      const chip = area.parentElement;
-      expect(screen.getAllByText("Social Media Manager")).toHaveLength(1);
-      expect(chip?.classList.contains("bg-zinc-50")).toBe(true);
-      expect(chip?.classList.contains("rounded-full")).toBe(true);
-      expect(chip?.querySelector("svg")).not.toBeNull();
+      expect(screen.getAllByText(/Social Media Manager/)).toHaveLength(1);
+      expect(screen.queryByText("AI Expert")).toBeNull();
     },
   );
 
-  test("shows the job title in the chip and keeps the area's icon", () => {
-    render(
-      <ExpertIdentityDetails
-        name="Jules"
-        role="Social & Content Repurposing"
-        jobTitle="Social Media Manager"
-      />,
-    );
+  test.each(["card", "page"] as const)(
+    "puts the job title on the name line in %s size, in place of the kind",
+    (size) => {
+      render(
+        <ExpertIdentityDetails
+          name="Jules"
+          role="Social & Content Repurposing"
+          jobTitle="Social Media Manager"
+          size={size}
+        />,
+      );
 
-    const chip = screen.getByText("Social Media Manager").parentElement;
-    expect(chip?.querySelector("svg")).not.toBeNull();
-    expect(screen.queryByText("Social media")).toBeNull();
-  });
+      const title = screen.getByText(/Social Media Manager/);
+      expect(title.closest("div")?.textContent).toBe(
+        "Jules\u2022 Social Media Manager",
+      );
+      expect(screen.queryByText("AI Expert")).toBeNull();
+      expect(screen.queryByText("Social media")).toBeNull();
+    },
+  );
 
   test("shows the job title as the compact text", () => {
     render(
@@ -68,7 +71,7 @@ describe("ExpertIdentityDetails", () => {
 
 test("does not grant Otto's identity exception from a specialist title", () => {
   render(<ExpertIdentityDetails name="My Expert" role="Head of AI" />);
-  expect(screen.getByText("AI Expert")).toBeDefined();
+  expect(screen.getByText(/Head of AI/)).toBeDefined();
   expect(screen.queryByText("Your personal Head of AI")).toBeNull();
 });
 
@@ -114,7 +117,7 @@ test.each(["compact", "card", "page"] as const)(
         size={size}
       />,
     );
-    expect(screen.getByText("Head of AI")).toBeDefined();
+    expect(screen.getByText(/Head of AI/)).toBeDefined();
     expect(screen.queryByText("Your personal Head of AI")).toBeNull();
   },
 );

@@ -3,8 +3,7 @@
 Single-job counterpart to ``backend/copilot/dream/scheduling_test.py``.
 Contracts pinned here:
 
-  1. Empty ``user_id`` → no-op, no flag check, no RPC.
-  2. Flag off → no-op, no timezone lookup, no RPC.
+  1. Empty ``user_id`` → no-op, no RPC.
   3. Timezone lookup failure is "unknown", not "UTC" — skip the cycle
      rather than risk re-registering onto UTC.
   4. First call (no marker) registers the cron and writes the marker.
@@ -39,7 +38,6 @@ from .scheduling import (
 # Paths used by the helper — patched at the module level since the helper
 # does lazy imports of the scheduler client + Redis client to avoid
 # bootstrap circular imports (same pattern as backend/copilot/dream).
-_PATH_FLAG = "backend.copilot.briefing.scheduling.is_feature_enabled"
 _PATH_TZ = "backend.copilot.briefing.scheduling._resolve_user_timezone"
 _PATH_READ_TZ = "backend.copilot.briefing.scheduling._read_registration_marker"
 _PATH_WRITE_TZ = "backend.copilot.briefing.scheduling._write_registration_marker"
@@ -70,29 +68,15 @@ def _mock_scheduler_client(*, fail: bool = False) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_empty_user_id_no_op():
-    flag_mock = AsyncMock(return_value=True)
-    with patch(_PATH_FLAG, new=flag_mock):
+    with patch(_PATH_TZ, new=AsyncMock()) as lookup, patch(_PATH_CLIENT) as client:
         await ensure_morning_briefing_scheduled("")
-
-    flag_mock.assert_not_called()
+    lookup.assert_not_awaited()
+    client.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# Flag gate
+# Registration prerequisites
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_flag_off_no_op():
-    client = _mock_scheduler_client()
-    tz_mock = AsyncMock(return_value="UTC")
-    with patch(_PATH_FLAG, new=AsyncMock(return_value=False)), patch(
-        _PATH_TZ, new=tz_mock
-    ), patch(_PATH_CLIENT, return_value=client):
-        await ensure_morning_briefing_scheduled("abc")
-
-    tz_mock.assert_not_called()
-    client.add_morning_briefing_schedule.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -104,12 +88,11 @@ async def test_flag_off_no_op():
 async def test_timezone_lookup_failure_skips_registration():
     client = _mock_scheduler_client()
     write_spy = AsyncMock()
-    with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
-        _PATH_TZ, new=AsyncMock(return_value=None)
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=write_spy
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=write_spy),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         await ensure_morning_briefing_scheduled("abc")
 
@@ -126,12 +109,11 @@ async def test_timezone_lookup_failure_skips_registration():
 async def test_first_call_registers_and_writes_marker():
     client = _mock_scheduler_client()
     write_spy = AsyncMock()
-    with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
-        _PATH_TZ, new=AsyncMock(return_value="America/New_York")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=write_spy
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_TZ, new=AsyncMock(return_value="America/New_York")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=write_spy),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         await ensure_morning_briefing_scheduled("abc")
 
@@ -150,10 +132,10 @@ async def test_first_call_registers_and_writes_marker():
 async def test_existing_marker_skips_timezone_lookup_and_registration():
     client = _mock_scheduler_client()
     tz_mock = AsyncMock(return_value="America/New_York")
-    with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
-        _PATH_TZ, new=tz_mock
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_TZ, new=tz_mock),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value="America/New_York")),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         await ensure_morning_briefing_scheduled("abc")
 
@@ -170,12 +152,11 @@ async def test_existing_marker_skips_timezone_lookup_and_registration():
 async def test_cleared_marker_reregisters_on_current_timezone():
     client = _mock_scheduler_client()
     write_spy = AsyncMock()
-    with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
-        _PATH_TZ, new=AsyncMock(return_value="Europe/Paris")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=write_spy
-    ), patch(
-        _PATH_CLIENT, return_value=client
+    with (
+        patch(_PATH_TZ, new=AsyncMock(return_value="Europe/Paris")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=write_spy),
+        patch(_PATH_CLIENT, return_value=client),
     ):
         await ensure_morning_briefing_scheduled("abc")
 
@@ -193,26 +174,16 @@ async def test_cleared_marker_reregisters_on_current_timezone():
 @pytest.mark.asyncio
 async def test_scheduler_rpc_failure_is_swallowed_and_logged(caplog):
     client = _mock_scheduler_client(fail=True)
-    with patch(_PATH_FLAG, new=AsyncMock(return_value=True)), patch(
-        _PATH_TZ, new=AsyncMock(return_value="UTC")
-    ), patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)), patch(
-        _PATH_WRITE_TZ, new=AsyncMock()
-    ), patch(
-        _PATH_CLIENT, return_value=client
-    ), caplog.at_level(
-        logging.WARNING, logger=scheduling.logger.name
+    with (
+        patch(_PATH_TZ, new=AsyncMock(return_value="UTC")),
+        patch(_PATH_READ_TZ, new=AsyncMock(return_value=None)),
+        patch(_PATH_WRITE_TZ, new=AsyncMock()),
+        patch(_PATH_CLIENT, return_value=client),
+        caplog.at_level(logging.WARNING, logger=scheduling.logger.name),
     ):
         await ensure_morning_briefing_scheduled("abc")  # must not raise
 
     assert any(r.levelno == logging.WARNING for r in caplog.records)
-
-
-@pytest.mark.asyncio
-async def test_unexpected_flag_check_error_is_swallowed():
-    with patch(
-        _PATH_FLAG, new=AsyncMock(side_effect=ConnectionError("LD unreachable"))
-    ):
-        await ensure_morning_briefing_scheduled("abc")  # must not raise
 
 
 # ---------------------------------------------------------------------------

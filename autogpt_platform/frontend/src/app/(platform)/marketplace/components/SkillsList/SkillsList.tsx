@@ -1,9 +1,7 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { Book04Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { SectionHeader } from "../SectionHeader";
 import {
@@ -54,8 +52,6 @@ export function SkillsList({ category }: Props) {
       className="mb-16 scroll-mt-24"
     >
       <SectionHeader
-        size="small"
-        titleIcon={<Icon icon={Book04Icon} size="2.2rem" aria-hidden />}
         title="Skills"
         titleId={HEADING_ID}
         subtitle="Playbooks your experts pick up as they work."
@@ -79,18 +75,18 @@ export function SkillsList({ category }: Props) {
           ))}
         </div>
       ) : isError ? (
-        <div className="flex items-center gap-2 text-sm text-zinc-600">
+        <div className="flex items-center gap-2 text-body text-foreground-secondary">
           <span>Couldn&apos;t load skills right now.</span>
           <button
             type="button"
             onClick={() => refetch()}
-            className="font-medium text-accent underline-offset-2 transition-colors hover:underline"
+            className="font-medium text-brand underline-offset-2 transition-colors hover:underline"
           >
             Retry
           </button>
         </div>
       ) : isEmpty ? (
-        <div className="flex items-center gap-2 text-sm text-zinc-600">
+        <div className="flex items-center gap-2 text-body text-foreground-secondary">
           <span>
             {topic
               ? `No ${formatCategoryLabel(topic).toLowerCase()} skills yet.`
@@ -100,7 +96,7 @@ export function SkillsList({ category }: Props) {
             <button
               type="button"
               onClick={() => selectTopic(null)}
-              className="font-medium text-accent underline-offset-2 transition-colors hover:underline"
+              className="font-medium text-brand underline-offset-2 transition-colors hover:underline"
             >
               Show all
             </button>

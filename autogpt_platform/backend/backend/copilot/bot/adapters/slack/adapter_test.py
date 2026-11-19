@@ -105,8 +105,38 @@ class TestInboundRouting:
         assert ctx.text == "hi there"  # bot mention stripped
         # The opaque channel_id carries the workspace so sends pick its token.
         assert ctx.channel_id == "T1|C1|"
+        # The header and post_to_chat_platform use Slack's own channel id.
+        assert ctx.public_channel_id == "C1"
+        # post_to_chat_platform gets the workspace-qualified target.
+        assert ctx.post_channel_id == "T1|C1|"
+        assert ctx.public_thread_id is None
         # The author is who the bot answers, so a reply naming them pings.
         assert [uid for _, uid in ctx.mentionable_users] == ["U1"]
+
+    @pytest.mark.asyncio
+    async def test_thread_context_gives_the_public_thread_ts(self, adapter):
+        captured = {}
+
+        async def cb(ctx, ad):
+            captured["ctx"] = ctx
+
+        adapter.on_message(cb)
+        await adapter._dispatch_event(
+            {
+                "type": "app_mention",
+                "channel": "C1",
+                "ts": "2.0",
+                "thread_ts": "1.0",
+                "user": "U1",
+                "text": "<@UBOT> hi",
+                "team": "T1",
+            }
+        )
+        ctx = captured["ctx"]
+        assert ctx.public_channel_id == "C1"
+        assert ctx.public_thread_id == "1.0"
+        # Posting with this value lands in the thread, in the right workspace.
+        assert ctx.post_channel_id == "T1|C1|1.0"
 
     @pytest.mark.asyncio
     async def test_thread_reply_is_not_bot_mentioned(self, adapter):
@@ -604,6 +634,28 @@ class TestChoiceButtons:
         adapter._on_message_callback.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_a_card_click_that_fails_tells_the_clicker_to_retry(self, adapter):
+        # The click runs as a detached task, so an error that escapes it is
+        # seen by nobody.
+        adapter._on_message_callback = AsyncMock()
+        adapter._api.answer_card = AsyncMock(side_effect=RuntimeError("rpc down"))
+        payload = {
+            "type": "block_actions",
+            "team": {"id": "T1"},
+            "channel": {"id": "C1"},
+            "user": {"id": "U9"},
+            "container": {"type": "message", "message_ts": "111.222"},
+            "actions": [{"action_id": "appr:abcdef012345:0"}],
+        }
+
+        await adapter._dispatch_block_action(payload)
+
+        told = adapter._clients["T1"].chat_postEphemeral.await_args.kwargs["text"]
+        assert "Try again" in told
+        adapter._clients["T1"].chat_update.assert_not_awaited()
+        adapter._on_message_callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_malformed_action_id_is_a_no_op(self, adapter):
         adapter._on_message_callback = AsyncMock()
         payload = {
@@ -823,6 +875,11 @@ class TestChannelIdGrammar:
         assert adapter.looks_like_channel_id("C01234567")
         assert adapter.looks_like_channel_id("D09ABCDEF")
 
+    def test_workspace_qualified_targets_match(self, adapter):
+        assert adapter.looks_like_channel_id("T1|C01234567|")
+        assert adapter.looks_like_channel_id("T1|C01234567|1.0")
+        assert not adapter.looks_like_channel_id("T1|general|")
+
     def test_channel_names_do_not_match(self, adapter):
         assert not adapter.looks_like_channel_id("general")
         assert not adapter.looks_like_channel_id("announcements")
@@ -968,3 +1025,40 @@ def test_target_encode_decode_roundtrip():
     # Back-compat: the old single-workspace two-part form decodes with no team.
     assert _decode_target("C1|1.2") == ("", "C1", "1.2")
     assert _decode_target("D1") == ("", "D1", None)
+
+
+class TestAddressedToOthers:
+    @staticmethod
+    def _thread_reply(text: str) -> dict:
+        return {
+            "type": "message",
+            "channel_type": "channel",
+            "channel": "C1",
+            "ts": "2.0",
+            "thread_ts": "1.0",
+            "user": "U1",
+            "text": text,
+            "team": "T1",
+        }
+
+    async def _ctx_for(self, adapter: SlackAdapter, text: str):
+        cb = AsyncMock()
+        adapter.on_message(cb)
+        await adapter._dispatch_event(self._thread_reply(text))
+        cb.assert_awaited_once()
+        return cb.await_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_thread_reply_mentioning_someone_else(self, adapter):
+        ctx = await self._ctx_for(adapter, "<@U2> can you look at this?")
+        assert ctx.addressed_to_others is True
+
+    @pytest.mark.asyncio
+    async def test_thread_reply_mentioning_a_user_group(self, adapter):
+        ctx = await self._ctx_for(adapter, "<!subteam^S123|@eng> anyone?")
+        assert ctx.addressed_to_others is True
+
+    @pytest.mark.asyncio
+    async def test_plain_thread_reply(self, adapter):
+        ctx = await self._ctx_for(adapter, "and file it under Internal")
+        assert ctx.addressed_to_others is False

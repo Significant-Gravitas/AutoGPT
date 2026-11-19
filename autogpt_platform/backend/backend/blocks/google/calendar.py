@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -174,6 +175,7 @@ class GoogleCalendarReadEventsBlock(Block):
                 },
                 "_format_events": lambda *args, **kwargs: [test_event_dict],
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -494,6 +496,7 @@ class GoogleCalendarCreateEventBlock(Block):
                 }
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

@@ -7,11 +7,12 @@ interface LinkProps {
   children: React.ReactNode;
   className?: string;
   isExternal?: boolean;
+  onClick?: React.MouseEventHandler<HTMLAnchorElement>;
   variant?: "primary" | "secondary";
 }
 
 export const linkBaseClasses =
-  "font-sans text-sm font-medium leading-[22px] text-[var(--AutoGPT-Text-text-black,#141414)]";
+  "font-sans text-body font-medium text-foreground-base";
 
 export const linkVariantClasses: Record<
   Required<LinkProps>["variant"],
@@ -22,7 +23,7 @@ export const linkVariantClasses: Record<
 };
 
 export const linkFocusClasses =
-  "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-sm";
+  "focus:outline-none focus:ring-2 focus:ring-info focus:ring-offset-2 rounded-sm";
 
 const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
   {
@@ -46,6 +47,7 @@ const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
     return (
       <a
         ref={ref}
+        data-slot="link"
         href={href}
         target="_blank"
         rel="noopener noreferrer"
@@ -58,7 +60,13 @@ const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
   }
 
   return (
-    <NextLink ref={ref} href={href} className={linkClasses} {...props}>
+    <NextLink
+      ref={ref}
+      data-slot="link"
+      href={href}
+      className={linkClasses}
+      {...props}
+    >
       {children}
     </NextLink>
   );

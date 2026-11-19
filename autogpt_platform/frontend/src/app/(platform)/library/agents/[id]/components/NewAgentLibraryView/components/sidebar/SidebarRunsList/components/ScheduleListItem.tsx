@@ -36,8 +36,8 @@ export function ScheduleListItem({
       onClick={onClick}
       selected={selected}
       icon={
-        <IconWrapper className="border-slate-50 bg-yellow-50">
-          <Icon icon={TimeScheduleIcon} size={16} className="text-yellow-700" />
+        <IconWrapper className="border-surface-muted bg-warning-surface text-yellow-foreground">
+          <Icon icon={TimeScheduleIcon} size={16} />
         </IconWrapper>
       }
       actions={

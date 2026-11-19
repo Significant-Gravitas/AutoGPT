@@ -1,4 +1,4 @@
-"""Shared slash-command policy — /setup and /unlink, platform-neutral.
+"""Shared slash-command policy — /setup, /unlink and DM linking, platform-neutral.
 
 Each adapter owns its transport (Discord interactions, Slack form POSTs) and
 its rendering (View buttons vs block kit), but the *policy* — how a link token
@@ -8,6 +8,7 @@ returned ``CommandReply`` in their own markup.
 """
 
 import logging
+from enum import Enum
 
 from pydantic import BaseModel
 
@@ -17,6 +18,21 @@ from backend.util.settings import Settings
 from .bot_backend import BotBackend
 
 logger = logging.getLogger(__name__)
+
+
+class AdminCheck(str, Enum):
+    """What the platform says about the member who ran /setup.
+
+    Linking a server ties everyone in it to one AutoGPT account: their
+    messages to the bot run and bill there, and only that account can unlink.
+    So, like Discord's Manage Server rule, only the server's admins may link
+    it. ``UNVERIFIED`` means the platform couldn't be asked, and is refused
+    the same way.
+    """
+
+    ADMIN = "admin"
+    NOT_ADMIN = "not_admin"
+    UNVERIFIED = "unverified"
 
 
 class CommandReply(BaseModel):
@@ -32,6 +48,8 @@ async def setup_reply(
     *,
     platform: str,
     server_noun: str,
+    admin_check: AdminCheck,
+    admin_role: str,
     platform_server_id: str,
     platform_user_id: str,
     platform_username: str,
@@ -41,8 +59,16 @@ async def setup_reply(
     """Mint a server link token and describe the outcome.
 
     ``server_noun`` is the platform's word for a server ("server",
-    "workspace") so the shared copy reads natively everywhere.
+    "workspace") so the shared copy reads natively everywhere. Nothing is
+    minted unless ``admin_check`` says the caller administers the server;
+    ``admin_role`` names who does ("workspace admin or owner") for the
+    refusal.
     """
+    refusal = admin_only_reply(
+        admin_check, server_noun=server_noun, admin_role=admin_role
+    )
+    if refusal is not None:
+        return refusal
     try:
         result = await api.create_link_token(
             platform=platform,
@@ -81,6 +107,104 @@ async def setup_reply(
         ),
         button_label=f"Link {server_noun.capitalize()}",
         button_url=result.link_url,
+    )
+
+
+def admin_only_reply(
+    admin_check: AdminCheck,
+    *,
+    server_noun: str,
+    admin_role: str,
+    retry_hint: str = "Please try again in a moment.",
+) -> CommandReply | None:
+    """Why /setup was refused, or None when the caller may link the server.
+
+    ``retry_hint`` follows the "couldn't confirm" reply, for platforms where
+    the usual cause is a missing permission rather than a passing error.
+    """
+    if admin_check is AdminCheck.ADMIN:
+        return None
+    if admin_check is AdminCheck.UNVERIFIED:
+        return CommandReply(
+            text=(
+                f"I couldn't confirm that you're a {admin_role}, so I can't "
+                f"link this {server_noun} right now. {retry_hint}"
+            )
+        )
+    return CommandReply(
+        text=(
+            f"Only a {admin_role} can link this {server_noun} to an AutoGPT "
+            "account, because everyone here would then use AutoGPT through "
+            f"that account. Ask a {admin_role} to run /setup. To use AutoGPT "
+            "with your own account, send me a direct message."
+        )
+    )
+
+
+async def dm_link_reply(
+    api: BotBackend,
+    *,
+    platform: str,
+    platform_display: str,
+    platform_user_id: str,
+    platform_username: str,
+) -> CommandReply:
+    """Greet a user who opened a DM with the bot and link it if needed.
+
+    Answers a "start" in a DM (Telegram's /start), so a user who arrives from
+    the Bots settings page gets the Link Account button straight away instead
+    of having to send a first message.
+    """
+    try:
+        resolved = await api.resolve_user(
+            platform, platform_user_id, include_account=True
+        )
+        if resolved.linked:
+            return _dm_linked_reply(platform_display, resolved.account_hint)
+        result = await api.create_user_link_token(
+            platform=platform,
+            platform_user_id=platform_user_id,
+            platform_username=platform_username,
+        )
+    except LinkAlreadyExistsError:
+        # Linked between the check and the mint.
+        return _dm_linked_reply(platform_display, None)
+    except Exception:
+        logger.exception("%s DM link token creation failed", platform)
+        return CommandReply(
+            text="Something went wrong setting up the link. Try again later."
+        )
+    return CommandReply(
+        text=(
+            "**Welcome to AutoGPT**\n\n"
+            "Tap the button below to connect this chat to your AutoGPT "
+            "account. Once linked, just message me here to chat.\n\n"
+            "This link expires in 30 minutes."
+        ),
+        button_label="Link Account",
+        button_url=result.link_url,
+    )
+
+
+def _dm_linked_reply(platform_display: str, account_hint: str | None) -> CommandReply:
+    """Say which account the DMs run as, and how to switch if it's the wrong one.
+
+    The web Bots page lists only the signed-in account's links, so someone
+    signed in elsewhere has to manage the link as the account named here.
+    """
+    if account_hint:
+        account = f"the AutoGPT account {account_hint}"
+        switch = f"sign in as {account_hint} and unlink these DMs"
+    else:
+        account = "an AutoGPT account"
+        switch = "sign in as that account and unlink these DMs"
+    return CommandReply(
+        text=(
+            f"Your {platform_display} DMs are linked to {account}. Send me a "
+            "message to start chatting.\n\n"
+            "Using a different AutoGPT account? Send /unlink, "
+            f"{switch}, then message me again to link the right one."
+        )
     )
 
 

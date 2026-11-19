@@ -38,8 +38,6 @@ export function useAdminSkillSubmissions() {
     });
   }
 
-  // A 404 here is the skills-hub flag being off, not an empty queue — reporting
-  // "nothing to review" would tell an admin the opposite of the truth.
   const loaded = query.data?.status === 200 ? query.data.data : null;
 
   return {

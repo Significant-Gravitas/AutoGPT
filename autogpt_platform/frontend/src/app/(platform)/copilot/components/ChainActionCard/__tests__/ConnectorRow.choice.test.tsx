@@ -81,6 +81,7 @@ function row(overrides: Partial<Row> = {}): Row {
     },
     selected: undefined,
     hasUnansweredTarget: false,
+    rejectedCredentialIds: [],
     select: vi.fn(),
     onConnected: vi.fn(),
     ...overrides,
@@ -156,6 +157,85 @@ describe("ConnectorRow with several saved accounts for one provider", () => {
       expect.objectContaining({ id: "cred-work" }),
     );
     expect(screen.queryByText("Choose account")).toBeNull();
+  });
+});
+
+describe("ConnectorRow with several untitled sign-ins for one provider", () => {
+  it("names each account by its email so they can be told apart", () => {
+    // Google and most OAuth sign-ins store no title, only the account's email.
+    const signIn = (id: string, username: string) => ({
+      id,
+      provider: "github",
+      type: "oauth2",
+      title: undefined,
+      username,
+      scopes: [],
+    });
+    renderRow(
+      row({
+        schema: {
+          credentials_provider: ["github"],
+          credentials_types: ["oauth2"],
+        },
+      }),
+      [
+        signIn("cred-work", "work@example.com"),
+        signIn("cred-personal", "me@example.com"),
+      ] as never,
+    );
+
+    fireEvent.click(screen.getByText("Choose account"));
+
+    expect(screen.getByText("use-work@example.com")).toBeDefined();
+    expect(screen.getByText("use-me@example.com")).toBeDefined();
+    expect(screen.queryByText("use-GitHub")).toBeNull();
+  });
+
+  it("auto-selects a single untitled account by its email", () => {
+    const signIn = {
+      id: "cred-google",
+      provider: "github",
+      type: "oauth2",
+      title: undefined,
+      username: "otto@example.com",
+      scopes: [],
+    };
+    const current = row({
+      schema: {
+        credentials_provider: ["github"],
+        credentials_types: ["oauth2"],
+      },
+    });
+    renderRow(current, [signIn] as never);
+
+    expect(current.select).toHaveBeenCalledWith({
+      id: "cred-google",
+      provider: "github",
+      type: "oauth2",
+      title: "otto@example.com",
+    });
+  });
+});
+
+describe("ConnectorRow with a refused credential", () => {
+  it("says Connect when the refused credential is not among this provider's", () => {
+    // One card's rejection reaches every row it asks for, and the refused
+    // account may since have been deleted: neither is this row's to renew.
+    renderRow(row({ rejectedCredentialIds: ["cred-twitter"] }), []);
+
+    expect(screen.getByRole("button", { name: "Connect" })).toBeDefined();
+  });
+
+  it("offers the other accounts and selects nothing on its own", () => {
+    const current = row({ rejectedCredentialIds: ["cred-work"] });
+    renderRow(current, [work, personal]);
+
+    expect(current.select).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+
+    expect(screen.getByText("purpose-choose")).toBeDefined();
+    expect(screen.getByText("use-personal")).toBeDefined();
+    expect(screen.queryByText("use-work")).toBeNull();
   });
 });
 

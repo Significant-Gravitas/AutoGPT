@@ -1,0 +1,11 @@
+# Findings Trivy reports in the single-container image that are not AutoGPT
+# secrets. Keep every entry to one rule in one third-party file.
+secrets:
+  - id: aws-access-key-id
+    paths:
+      - "**/site-packages/yt_dlp/extractor/shahid.py"
+    statement: >-
+      yt-dlp's Shahid extractor embeds the site's public client key. Trivy only
+      reports it since the appliance stopped building on the finished backend
+      server image, whose CMD made Trivy treat every backend layer as a base
+      image layer and skip it during secret scanning.

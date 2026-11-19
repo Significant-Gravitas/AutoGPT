@@ -6,7 +6,7 @@
 --   One row per user-role chat message (last 90 days): the copilot
 --   equivalent of a graph execution. This is where "run_autopilot"
 --   and "run_expert" come from for Looker, and it is the SQL twin of
---   the PostHog events of the same names.
+--   the PostHog event chat_message_sent.
 --
 --   Dream/daydream sessions (memory maintenance, not the user) are
 --   excluded. Sessions with origin 'automation' are model-authored
