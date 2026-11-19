@@ -18,6 +18,7 @@ from backend.api.features.builder.db import update_search
 from backend.api.features.builder.model import SearchEntry
 from backend.api.features.library import db as library_db
 from backend.api.features.store import db as store_db
+from backend.blocks.agent import AgentExecutorBlock
 from backend.copilot import db as chat_db
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -161,6 +162,69 @@ async def test_a_store_submission_tags_its_listing_and_version(user_id):
         personal_org_id,
         personal_org_id,
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approved_sub_workflow_is_listed_in_its_workflows_org(user_id):
+    """The sub-workflow's listing and version go to the workflow's org."""
+    await prisma.profile.create(
+        data={
+            "userId": user_id,
+            "username": user_id,
+            "name": "Creator",
+            "description": "Makes workflows",
+            "links": [],
+        }
+    )
+    sub = await _graph(user_id)
+    main = await graph_db.create_graph(
+        graph_db.make_graph_model(
+            graph_db.Graph(
+                name="Briefing with a helper",
+                description="Summarises the week",
+                nodes=[
+                    graph_db.Node(
+                        block_id=AgentExecutorBlock().id,
+                        input_default={
+                            "user_id": user_id,
+                            "graph_id": sub.id,
+                            "graph_version": sub.version,
+                            "inputs": {},
+                            "input_schema": {},
+                            "output_schema": {},
+                        },
+                    )
+                ],
+            ),
+            user_id,
+        ),
+        user_id,
+    )
+    submission = await store_db.create_store_submission(
+        user_id=user_id,
+        graph_id=main.id,
+        graph_version=main.version,
+        slug=f"briefing-{uuid.uuid4().hex[:8]}",
+        name="Briefing",
+        sub_heading="Summarises the week",
+        description="Summarises the week",
+    )
+
+    await store_db.review_store_submission(
+        submission.listing_version_id,
+        is_approved=True,
+        external_comments="",
+        internal_comments="",
+        reviewer_id=user_id,
+        notify_creator=False,
+    )
+
+    personal_org_id, _ = await _personal_tenancy(user_id)
+    sub_listing = await prisma.storelisting.find_first_or_raise(
+        where={"agentGraphId": sub.id}, include={"Versions": True}
+    )
+    assert sub_listing.owningOrgId == personal_org_id
+    assert [v.organizationId for v in sub_listing.Versions or []] == [personal_org_id]
 
 
 async def _personal_tenancy(user_id: str) -> tuple[str, str]:

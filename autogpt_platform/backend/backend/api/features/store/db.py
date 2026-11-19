@@ -1987,7 +1987,10 @@ async def _approve_sub_agent(
     await prisma.models.StoreListingVersion.prisma(tx).create(
         data={
             **_create_sub_agent_version_data(
-                sub_graph, heading, main_agent_name, listing.owningOrgId
+                sub_graph,
+                heading,
+                main_agent_name,
+                listing.owningOrgId,
             ),
             "version": next_version,
             "storeListingId": listing.id,

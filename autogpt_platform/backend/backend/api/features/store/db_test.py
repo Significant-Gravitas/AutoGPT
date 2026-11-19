@@ -32,6 +32,15 @@ async def setup_prisma():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _personal_org(mocker):
+    """A row written without an org takes the user's personal one."""
+    mocker.patch(
+        "backend.data.tenancy.personal_org_tenancy",
+        AsyncMock(return_value=("org-personal", "team-default")),
+    )
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents(mocker):
     # Mock data
@@ -306,6 +315,7 @@ async def test_a_submission_in_an_organization_lands_on_a_listing_it_owns(
     await _submit(organization_id="org-1")
 
     version_prisma.create.assert_awaited_once()
+    assert version_prisma.create.await_args.kwargs["data"]["organizationId"] == "org-1"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -333,10 +343,6 @@ def _patch_submission(
     """create_store_submission without a database, for user-id's graph agent-id
     v1, by a member of any organization. Returns the AgentGraph and
     StoreListingVersion prisma mocks."""
-    mocker.patch(
-        "backend.data.tenancy.personal_org_tenancy",
-        AsyncMock(return_value=("org-personal", "team-default")),
-    )
     now = datetime.now()
     mock_profile = prisma.models.Profile(
         id="profile-id",

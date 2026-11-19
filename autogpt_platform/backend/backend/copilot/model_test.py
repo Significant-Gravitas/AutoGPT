@@ -1612,7 +1612,11 @@ async def test_save_session_to_db_creates_new_row_with_expert_scope(
     )
     mock_db = mocker.MagicMock()
     mock_db.get_chat_session_metadata = mocker.AsyncMock(return_value=None)
-    mock_db.create_chat_session = mocker.AsyncMock()
+    mock_db.create_chat_session = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            organization_id="personal-org", team_id="personal-team"
+        )
+    )
     mock_db.update_chat_session = mocker.AsyncMock()
     mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=0)
     mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
@@ -1620,6 +1624,11 @@ async def test_save_session_to_db_creates_new_row_with_expert_scope(
     await _save_session_to_db(session, existing_message_count=0)
 
     assert mock_db.create_chat_session.await_args.kwargs["expert_id"] == "expert-1"
+    # The new row's tenancy is the session's from here on.
+    assert (session.organization_id, session.team_id) == (
+        "personal-org",
+        "personal-team",
+    )
     update = mock_db.update_chat_session.await_args.kwargs
     assert "organization_id" not in update
     assert "team_id" not in update
