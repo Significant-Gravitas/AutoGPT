@@ -29,6 +29,10 @@ on:
       - ".github/scripts/update_backend_test_durations.py"
       - ".github/scripts/report_backend_coverage.py"
       - ".github/scripts/test_report_backend_coverage.py"
+      - ".github/scripts/aggregate_backend_coverage.py"
+      - ".github/scripts/test_aggregate_backend_coverage.py"
+      - ".github/scripts/validate_cobertura.py"
+      - "codecov.yml"
       - ".github/scripts/backend-allowed-skips.json"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
@@ -155,9 +159,11 @@ jobs:
         run: |
           poetry run ruff check --select E4,E7,E9,F,I \
             ../../.github/scripts/report_backend_coverage.py \
-            ../../.github/scripts/test_report_backend_coverage.py
+            ../../.github/scripts/test_report_backend_coverage.py \
+            ../../.github/scripts/aggregate_backend_coverage.py \
+            ../../.github/scripts/test_aggregate_backend_coverage.py
           poetry run python -m unittest discover \
-            -s ../../.github/scripts -p 'test_report_backend_coverage.py'
+            -s ../../.github/scripts -p 'test_*backend_coverage.py'
 
     env:
       CI: true
@@ -713,14 +719,12 @@ jobs:
           sudo systemctl show "$unit" --property=Result,MemoryPeak,CPUUsageNSec,TasksCurrent || true
           exit "$status"
 
-      - name: Generate coverage XML once
+      - name: Finalize branch coverage data
         if: ${{ always() }}
-        # pytest-cov first analyzes every source file for a discarded summary
-        # when XML is requested. Reporting separately avoids that duplicate pass.
         run: >-
           poetry run python ../../.github/scripts/report_backend_coverage.py
           --data-file ".coverage-${TEST_SHARD}"
-          --output "coverage-${TEST_SHARD}.xml"
+          --combine-only
 
       - name: Validate test reports
         if: ${{ always() }}
@@ -730,21 +734,6 @@ jobs:
           --python-version "${{ matrix.python-version }}"
           "junit-${TEST_SHARD}.xml"
 
-      - name: Validate coverage reports
-        if: ${{ always() }}
-        run: |
-          python - "coverage-${TEST_SHARD}.xml" <<'PY'
-          import sys
-          from pathlib import Path
-          from xml.etree import ElementTree
-
-          report = Path(sys.argv[1])
-          if not report.is_file() or not report.stat().st_size:
-              raise SystemExit(f"Missing or empty report: {report}")
-          ElementTree.parse(report)
-          print(f"Validated nonempty XML report: {report}")
-          PY
-
       - name: Upload test and coverage reports
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -752,21 +741,10 @@ jobs:
           name: backend-test-reports-py${{ matrix.python-version }}-${{ matrix.test-shard }}-${{ matrix.partition }}
           path: |
             autogpt_platform/backend/junit-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
-            autogpt_platform/backend/coverage-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
             autogpt_platform/backend/shard-metrics-${{ matrix.test-shard }}-${{ matrix.partition }}.json
             autogpt_platform/backend/.coverage-${{ matrix.test-shard }}-${{ matrix.partition }}
           include-hidden-files: true
           if-no-files-found: error
-
-      - name: Upload coverage reports to Codecov
-        if: ${{ !cancelled() && !inputs.benchmark }}
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: platform-backend
-          override_pr: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || '' }}
-          disable_search: true
-          files: ./autogpt_platform/backend/coverage-${{ matrix.test-shard }}-${{ matrix.partition }}.xml
 
     env:
       CI: true
@@ -801,7 +779,15 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-          sparse-checkout: .github
+          filter: blob:none
+          sparse-checkout: |
+            /*
+            !/docs/platform/.gitbook/assets/*.png
+            !/docs/platform/.gitbook/assets/*.gif
+          sparse-checkout-cone-mode: false
+
+      - name: Verify source checkout for coverage processing
+        run: python3 .github/scripts/validate_ci_checkout.py
 
       - name: Download backend shard reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -821,3 +807,42 @@ jobs:
           python3 .github/scripts/validate_backend_skips.py \
             --allow-skips-from .github/scripts/backend-allowed-skips.json \
             --reports-dir backend-shard-reports --partitioned
+
+      - name: Install the locked coverage tool
+        run: |
+          version=$(python3 .github/workflows/scripts/get_package_version_from_lockfile.py \
+            coverage autogpt_platform/backend/poetry.lock)
+          python3 -m venv "$RUNNER_TEMP/backend-coverage"
+          "$RUNNER_TEMP/backend-coverage/bin/pip" install --disable-pip-version-check "coverage==$version"
+
+      - name: Validate and combine every shard's branch coverage
+        id: aggregate-coverage
+        working-directory: autogpt_platform/backend
+        run: >-
+          "$RUNNER_TEMP/backend-coverage/bin/python" ../../.github/scripts/aggregate_backend_coverage.py
+          --reports-dir ../../backend-shard-reports
+          --allow-skips-from ../../.github/scripts/backend-allowed-skips.json
+          --source-sha "$(git rev-parse HEAD)"
+          --data-file .coverage-complete
+          --output coverage-complete.xml
+
+      - name: Upload complete coverage to Codecov
+        if: ${{ !cancelled() && steps.aggregate-coverage.outcome == 'success' && !inputs.benchmark }}
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: platform-backend
+          override_pr: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || '' }}
+          disable_search: true
+          files: ./autogpt_platform/backend/coverage-complete.xml
+
+      - name: Retain complete backend coverage
+        if: ${{ !cancelled() && steps.aggregate-coverage.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backend-coverage-complete
+          path: |
+            autogpt_platform/backend/coverage-complete.xml
+            autogpt_platform/backend/.coverage-complete
+          include-hidden-files: true
+          if-no-files-found: error

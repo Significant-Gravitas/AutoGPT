@@ -120,7 +120,9 @@ def parallel_xml(data_file: str, files: list[str], output: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-file", required=True)
-    parser.add_argument("--output", required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--output")
+    mode.add_argument("--combine-only", action="store_true")
     args = parser.parse_args()
 
     started = time.perf_counter()
@@ -131,6 +133,9 @@ def main() -> None:
         raise SystemExit("Backend branch coverage data is missing")
     coverage.save()
     combined = time.perf_counter()
+    if args.combine_only:
+        print(json.dumps({"combine_seconds": combined - started}))
+        return
     parallel_xml(
         args.data_file, list(coverage.get_data().measured_files()), args.output
     )

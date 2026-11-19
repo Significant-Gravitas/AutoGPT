@@ -262,7 +262,7 @@ class BackendShardTests(unittest.TestCase):
                     databases.add(values["DATABASE_NAME"])
                     vhosts.add(values["RABBITMQ_VHOST"])
 
-    def test_coverage_waits_for_every_matrix_upload(self):
+    def test_coverage_waits_for_complete_matrix_aggregation(self):
         root = Path(__file__).resolve().parents[2]
         workflow = yaml.safe_load(
             (root / ".github/workflows/platform-backend-ci.yml").read_text()
@@ -296,5 +296,32 @@ class BackendShardTests(unittest.TestCase):
         self.assertCountEqual(identities, expected)
         self.assertEqual(
             codecov["flags"]["platform-backend"]["after_n_builds"],
-            len(expected),
+            1,
+        )
+        aggregate = workflow["jobs"]["validate-skip-policy"]
+        self.assertEqual(aggregate["needs"], "test")
+        self.assertFalse(
+            any(
+                "codecov-action" in step.get("uses", "")
+                for step in workflow["jobs"]["test"]["steps"]
+            )
+        )
+        steps = aggregate["steps"]
+        validate = next(
+            i
+            for i, step in enumerate(steps)
+            if "validate_backend_skips.py" in step.get("run", "")
+        )
+        combine = next(
+            i for i, step in enumerate(steps) if step.get("id") == "aggregate-coverage"
+        )
+        upload = next(
+            i
+            for i, step in enumerate(steps)
+            if "codecov-action" in step.get("uses", "")
+        )
+        self.assertLess(validate, combine)
+        self.assertLess(combine, upload)
+        self.assertIn(
+            "steps.aggregate-coverage.outcome == 'success'", steps[upload]["if"]
         )

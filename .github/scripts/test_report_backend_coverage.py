@@ -162,6 +162,16 @@ class BackendCoverageReportTests(unittest.TestCase):
         self.assertIn("branch coverage data is missing", result.stderr)
         self.assertFalse((self.root / "actual.xml").exists())
 
+    def test_finalizes_branch_data_without_generating_xml(self):
+        self.run_tests("")
+        (self.root / ".coverage").rename(self.root / ".coverage.worker")
+        result = self.run_command(
+            self.reporter, "--data-file", ".coverage", "--combine-only"
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((self.root / ".coverage").is_file())
+        self.assertEqual(list(self.root.glob("*.xml")), [])
+
     def test_rejects_line_only_data(self):
         self.run_tests("", branch=False)
         result = self.report()

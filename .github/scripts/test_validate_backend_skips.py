@@ -317,7 +317,9 @@ class WorkflowSkipPolicyTests(unittest.TestCase):
 
     def test_aggregate_step_refuses_partial_reports_from_unsuccessful_jobs(self):
         job = self.workflow["jobs"]["validate-skip-policy"]
-        validate = job["steps"][-1]
+        validate = next(
+            step for step in job["steps"] if "SHARD_JOB_RESULT" in step.get("env", {})
+        )
         self.assertEqual(validate["if"], "${{ always() }}")
         self.assertEqual(
             validate["env"]["SHARD_JOB_RESULT"], "${{ needs.test.result }}"
