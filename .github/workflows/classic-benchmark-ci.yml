@@ -20,6 +20,9 @@ on:
       - 'classic/pyproject.toml'
       - 'classic/poetry.lock'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ format('benchmark-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
   cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
@@ -45,6 +48,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: true
+          persist-credentials: false
 
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -134,6 +138,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: true
+          persist-credentials: false
 
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
