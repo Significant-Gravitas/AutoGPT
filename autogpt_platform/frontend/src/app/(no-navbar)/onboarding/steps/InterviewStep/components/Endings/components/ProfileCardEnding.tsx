@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { useState } from "react";
+import { type KeyboardEvent, useState } from "react";
 import { type ProfileRow, profileCorrections } from "../helpers";
 
 interface Props {
@@ -26,12 +26,36 @@ export function ProfileCardEnding({
 }: Props) {
   const [edited, setEdited] = useState(rows);
   const [editing, setEditing] = useState<number | null>(null);
+  // The row's value as it was when this edit began, for Escape.
+  const [before, setBefore] = useState<string | null>(null);
   const shown = isLive ? rows : edited;
 
   function handleChange(index: number, value: string) {
     setEdited((current) =>
       current.map((row, at) => (at === index ? { ...row, value } : row)),
     );
+  }
+
+  function handleEdit(index: number) {
+    setBefore(edited[index]?.value ?? null);
+    setEditing(index);
+  }
+
+  // Enter keeps the change; Escape puts the row back as it was.
+  function handleKeyDown(
+    index: number,
+    event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      setEditing(null);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      if (before !== null) handleChange(index, before);
+      setEditing(null);
+    }
   }
 
   return (
@@ -63,6 +87,7 @@ export function ProfileCardEnding({
                   value={row.value}
                   autoFocus
                   onChange={(event) => handleChange(index, event.target.value)}
+                  onKeyDown={(event) => handleKeyDown(index, event)}
                   onBlur={() => setEditing(null)}
                 />
               ) : (
@@ -74,7 +99,7 @@ export function ProfileCardEnding({
                   size="small"
                   aria-label={`Edit ${row.label.toLowerCase()}`}
                   disabled={isLeaving}
-                  onClick={() => setEditing(index)}
+                  onClick={() => handleEdit(index)}
                 >
                   Edit
                 </Button>

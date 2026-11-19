@@ -3782,6 +3782,54 @@ describe("onboarding interview by voice: the ending screens", () => {
     });
   });
 
+  it("saves a card row's edit on Enter, keeping the change", async () => {
+    callStates[CALL_ID] = [reviewCall("02-profile-card")];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    const user = userEvent.setup();
+
+    endCall(socket, "finished");
+    await user.click(
+      await screen.findByRole("button", { name: "Edit your team" }),
+    );
+    const team = screen.getByRole("textbox", { name: "Your team" });
+    await user.clear(team);
+    await user.type(team, "just me{Enter}");
+
+    expect(screen.queryByRole("textbox", { name: "Your team" })).toBeNull();
+    expect(screen.getByText("just me")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "That's me" }));
+
+    await expectPlanStep();
+    expect(JSON.parse(finishBodies[0])).toEqual({
+      corrections:
+        "Not right: Your team: a crew of six\nAlso: Your team: just me",
+    });
+  });
+
+  it("puts a card row back as it was on Escape", async () => {
+    callStates[CALL_ID] = [reviewCall("02-profile-card")];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    const user = userEvent.setup();
+
+    endCall(socket, "finished");
+    await user.click(
+      await screen.findByRole("button", { name: "Edit your team" }),
+    );
+    const team = screen.getByRole("textbox", { name: "Your team" });
+    await user.clear(team);
+    await user.type(team, "just me{Escape}");
+
+    expect(screen.queryByRole("textbox", { name: "Your team" })).toBeNull();
+    expect(screen.getByText("a crew of six")).toBeDefined();
+    expect(screen.queryByText("just me")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "That's me" }));
+
+    await expectPlanStep();
+    expect(finishBodies).toEqual([""]);
+  });
+
   it("ignores a details message of another shape", async () => {
     render(<OnboardingPage />);
     const socket = await liveCall();
