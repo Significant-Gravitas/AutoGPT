@@ -51,7 +51,8 @@ tag or manifest digest. Docker image tags map to source releases as follows:
 
 Release images carry a signed build provenance attestation, a record that this
 repository's release workflow built the image from the release's commit. To
-check an image before you run it, use the [GitHub CLI](https://cli.github.com/):
+check an image before you run it, use the [GitHub CLI](https://cli.github.com/),
+signed in with `gh auth login`:
 
 ```bash
 gh attestation verify oci://docker.io/significantgravitas/autogpt:vX.Y.Z \
