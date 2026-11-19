@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  PROFILE_EMAIL_MAX_LENGTH,
   PROFILE_IMAGE_URL_MAX_LENGTH,
   PROFILE_NAME_MAX_LENGTH,
 } from "../profile-field-lengths";
@@ -53,6 +54,7 @@ vi.mock("../email", () => ({ sendAuthEmail: vi.fn() }));
 const baseURL = "http://localhost:3000";
 const TOO_LONG_NAME = "n".repeat(PROFILE_NAME_MAX_LENGTH + 1);
 const TOO_LONG_IMAGE = "h".repeat(PROFILE_IMAGE_URL_MAX_LENGTH + 1);
+const TOO_LONG_EMAIL = `${"e".repeat(PROFILE_EMAIL_MAX_LENGTH)}@example.com`;
 const REFUSED = { status: 400, code: INVALID_PROFILE_FIELD_CODE };
 
 type Fields = Record<string, unknown>;
@@ -121,6 +123,7 @@ describe("profile fields on sign-up", () => {
     ["a name over the limit", { name: TOO_LONG_NAME }],
     ["a preferredName over the limit", { preferredName: TOO_LONG_NAME }],
     ["an image over the limit", { image: TOO_LONG_IMAGE }],
+    ["an email over the limit", { email: TOO_LONG_EMAIL }],
     ["a preferredName that is a list", { preferredName: ["someone"] }],
   ])("refuses %s", async (_, fields) => {
     const auth = await loadAuth();
@@ -222,17 +225,22 @@ describe("profile fields written without a checked request body", () => {
     });
   });
 
-  it("refuses an admin's update with an oversized field", async () => {
+  it.each([
+    [
+      "an admin's update",
+      { preferredName: TOO_LONG_NAME },
+      "/admin/update-user",
+    ],
+    ["a confirmed address change", { email: TOO_LONG_EMAIL }, "/verify-email"],
+  ])("refuses %s with an oversized field", async (_, fields, path) => {
     const { update } = await loadUserHooks();
 
-    await expect(
-      update({ preferredName: TOO_LONG_NAME }, { path: "/admin/update-user" }),
-    ).rejects.toMatchObject({
+    await expect(update(fields, { path })).rejects.toMatchObject({
       statusCode: 400,
       body: { code: INVALID_PROFILE_FIELD_CODE },
     });
     await expect(
-      update({ name: "Someone" }, { path: "/admin/update-user" }),
+      update({ name: "Someone" }, { path }),
     ).resolves.toBeUndefined();
   });
 });

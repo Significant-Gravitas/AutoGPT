@@ -44,7 +44,10 @@ import {
   platformUserExists,
   provisionPlatformUser,
 } from "./provision-platform-user";
-import { assertProfileFieldsFit } from "./profile-field-limits";
+import {
+  assertProfileFieldsFit,
+  USER_ROW_MAX_LENGTHS,
+} from "./profile-field-limits";
 import { assertProviderVerifiedEmail } from "./provider-verified-email";
 import {
   recordResetLinkAddress,
@@ -241,7 +244,7 @@ export const auth = betterAuth({
           // not an account uses it, before any later check tells them apart.
           assertProviderVerifiedEmail(user, ctx);
           // Also covers rows no request body carried: a provider's profile.
-          assertProfileFieldsFit(user);
+          assertProfileFieldsFit(user, USER_ROW_MAX_LENGTHS);
           // Microsoft's next: its refusals carry codes /login explains.
           assertMicrosoftSignUpAllowed(user, ctx);
           assertSignUpPolicy(user.email, ctx);
@@ -286,7 +289,7 @@ export const auth = betterAuth({
         // An admin's update carries its fields nested, out of hooks.before's view.
         // Merging with another update.before: keep both checks, in one hook.
         before: async (user: Record<string, unknown>) => {
-          assertProfileFieldsFit(user);
+          assertProfileFieldsFit(user, USER_ROW_MAX_LENGTHS);
         },
         // updateUserByEmail (fired when a change-email link is confirmed)
         // runs this hook post-commit; mirror the now-verified email onto the

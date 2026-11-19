@@ -1,22 +1,32 @@
 import { APIError } from "better-auth/api";
 import {
+  PROFILE_EMAIL_MAX_LENGTH,
   PROFILE_IMAGE_URL_MAX_LENGTH,
   PROFILE_NAME_MAX_LENGTH,
 } from "./profile-field-lengths";
 
 export const INVALID_PROFILE_FIELD_CODE = "INVALID_PROFILE_FIELD";
 
-const MAX_LENGTHS = {
+const MAX_LENGTHS: Record<string, number> = {
   name: PROFILE_NAME_MAX_LENGTH,
   preferredName: PROFILE_NAME_MAX_LENGTH,
   image: PROFILE_IMAGE_URL_MAX_LENGTH,
 };
 
-// Better Auth takes any JSON value for these, and the database would store an
-// array, object or number as its text, so only strings within the limit pass.
-export function assertProfileFieldsFit(fields: unknown) {
+// The stored address too. A request's `email` is also a sign-in address, which
+// the attempt limits count whatever its length, so only the row checks it.
+export const USER_ROW_MAX_LENGTHS: Record<string, number> = {
+  ...MAX_LENGTHS,
+  email: PROFILE_EMAIL_MAX_LENGTH,
+};
+
+// Only text within each field's limit passes; null clears a field.
+export function assertProfileFieldsFit(
+  fields: unknown,
+  maxLengths = MAX_LENGTHS,
+) {
   if (typeof fields !== "object" || fields === null) return;
-  for (const [field, maxLength] of Object.entries(MAX_LENGTHS)) {
+  for (const [field, maxLength] of Object.entries(maxLengths)) {
     const value = (fields as Record<string, unknown>)[field];
     if (value === undefined || value === null) continue;
     if (typeof value === "string" && value.length <= maxLength) continue;
