@@ -1,3 +1,4 @@
+import { getGetV1GetCreditHistoryMockHandler200 } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import {
   getGetTrialsGetTrialStatusMockHandler200,
   getPostTrialsStartTrialCheckoutMockHandler200,
@@ -1126,20 +1127,22 @@ describe("UsageCard", () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date("2026-03-09T16:00:00Z"));
       // 11:30 p.m. on March 8 in New York, after midnight in UTC.
-      const localMarch8 = "2026-03-09T03:30:00Z";
+      const localMarch8 = new Date("2026-03-09T03:30:00Z");
       server.use(
-        jsonHandler("get", "/api/credits/transactions", {
+        getGetV1GetCreditHistoryMockHandler200({
           transactions: [
             {
               transaction_key: "in-window",
               transaction_time: localMarch8,
               transaction_type: "USAGE",
+              user_id: "billing-user",
               amount: -150,
             },
             {
               transaction_key: "before-window",
-              transaction_time: "2026-02-07T17:00:00Z",
+              transaction_time: new Date("2026-02-07T17:00:00Z"),
               transaction_type: "USAGE",
+              user_id: "billing-user",
               amount: -999,
             },
           ],
@@ -1153,7 +1156,7 @@ describe("UsageCard", () => {
         month: "short",
         day: "numeric",
       });
-      const dateLabel = dateFormat.format(new Date(localMarch8));
+      const dateLabel = dateFormat.format(localMarch8);
       expect(
         await screen.findByRole("button", {
           name: `${dateLabel}: $1.50, 1 runs`,
