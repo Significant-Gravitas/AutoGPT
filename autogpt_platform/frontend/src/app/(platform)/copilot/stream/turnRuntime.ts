@@ -210,8 +210,8 @@ export class TurnRuntime {
   // A send whose stream ended before naming its turn, while hidden or offline.
   private unresolvedPost: { lost: Lost; end: ConnectionEnd } | null = null;
   // Lost sends, with no row yet, that the next view showing nothing running
-  // decides: another's turn may hold them queued, or their check's retry
-  // gave way to another retry, or found a turn running.
+  // decides: a turn ran when their check came due (another's may hold them
+  // queued), or their check's retry gave way to another retry.
   private sendsBehindTurn: { lost: Lost; end: ConnectionEnd }[] = [];
   // The lost send whose check waits on `retryTimer`, if a check set it.
   private retryingSend: { lost: Lost; end: ConnectionEnd } | null = null;
@@ -744,7 +744,10 @@ export class TurnRuntime {
       this.emitNow();
       return;
     }
+    const check = lost.turnId === null ? { lost, end } : null;
     if (Date.now() - lost.openedAt >= ROTATE_AFTER_MS && running) {
+      // The check waits for the turn instead.
+      if (check) this.sendsBehindTurn.push(check);
       this.resume(running);
       return;
     }
@@ -756,7 +759,6 @@ export class TurnRuntime {
     }
     const delay = BACKOFF_MS[this.failures - 1] ?? ANOMALY_RETRY_MS;
     this.clearRetry();
-    const check = lost.turnId === null ? { lost, end } : null;
     this.retryingSend = check;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
@@ -1402,6 +1404,8 @@ export class TurnRuntime {
   private wake(away = 0) {
     const unresolved = this.unresolvedPost;
     this.unresolvedPost = null;
+    // A turn followed meanwhile, maybe another's, decides it once it ends.
+    if (unresolved && this.runningTurn()) this.sendsBehindTurn.push(unresolved);
     if (unresolved && !this.runningTurn())
       void this.recoverUnknownTurn(unresolved.lost, unresolved.end);
     // A send still waiting for its turn is otherwise given up only at the next tick.

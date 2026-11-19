@@ -668,6 +668,94 @@ describe("a send", () => {
   );
 
   cell(
+    "S24r",
+    "lost, its checks' reads failing for 25 minutes, is still reported when a check finds another's turn followed",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.viewsDown = true;
+      tab.send(P1);
+      await advance(25 * 60_000);
+      // Another device's send starts a turn, and a page read the tab makes
+      // during its next check shows it; that check's own read still fails.
+      server.startTurn(P2);
+      server.beforeViewOnce = () => {
+        server.viewsDown = false;
+        const view = server.view();
+        server.viewsDown = true;
+        tab.runtime.observe(view);
+      };
+      await advance(60_000);
+      server.viewsDown = false;
+      server.publish();
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch" });
+    },
+  );
+
+  cell(
+    "S24h",
+    "lost while hidden, is still reported when the page showed another's turn before the tab came back",
+    async () => {
+      setVisibility("hidden");
+      server.postMode = "lost-before-send";
+      tab.send(P1);
+      await advance(1_000);
+      server.startTurn(P2);
+      tab.runtime.observe(server.view());
+      await advance(1_000);
+      setVisibility("visible");
+      await advance(2_000);
+      server.publish();
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch" });
+    },
+  );
+
+  cell(
+    "S25",
+    "the same text sent again after a turn that wrote no reply is its own message, its response lost",
+    async () => {
+      tab.send(P1);
+      await advance(0);
+      // The turn dies before it writes a reply: only its prompt row is kept.
+      server.stopWithoutFinish();
+      await advance(30_000);
+      server.postMode = "lost-after-receive";
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      await advance(30_000);
+      const chat = tab.screen().chat;
+      expectScreen({ error: null });
+      expect(chat.slice(-2)).toEqual([`user: ${P1}`, ANSWER]);
+      expect(chat.filter((line) => line === `user: ${P1}`)).toHaveLength(2);
+    },
+  );
+
+  cell(
+    "S26",
+    "a new chat's first message, sent before any view named its user, whose response was lost, is followed into its turn",
+    async () => {
+      server.namesUser = false;
+      const fresh = openTab();
+      server.postMode = "lost-after-receive";
+      fresh.send(P1);
+      // The page's next reads name the user; the send has no row id.
+      server.namesUser = true;
+      await advance(0);
+      server.publish(9);
+      await advance(2_000);
+      expectScreen(
+        { error: null, phase: "live", chat: [`user: ${P1}`, FIRST_BLOCK] },
+        fresh,
+      );
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] }, fresh);
+    },
+  );
+
+  cell(
     "S20",
     "an expert's first message whose response was lost is followed into its turn",
     async () => {

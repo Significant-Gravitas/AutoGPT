@@ -79,6 +79,10 @@ export class FaultServer {
   /** The next session GET lists this many of the newest rows late, as one
    *  that reads the messages just before a send's row and turn land. */
   lagRowsOnce = 0;
+  /** Views name the session's owner, as a read the page made after a send does. */
+  namesUser = true;
+  /** Runs once as the next session GET starts, as a page read landing meanwhile. */
+  beforeViewOnce: (() => void) | null = null;
   viewReads = 0;
   private pending: { text: string; id: string }[] = [];
   private pumps = new Set<() => void>();
@@ -91,6 +95,9 @@ export class FaultServer {
   }) as typeof fetch;
 
   view(): SessionView {
+    const before = this.beforeViewOnce;
+    this.beforeViewOnce = null;
+    before?.();
     this.viewReads += 1;
     if (this.viewsDown) throw new TypeError("Failed to fetch");
     if (this.failViews > 0) {
@@ -103,7 +110,7 @@ export class FaultServer {
     const read = lag ? this.history.slice(0, -lag) : this.history;
     const rows = this.window === null ? read : read.slice(-this.window);
     return {
-      user_id: USER_ID,
+      user_id: this.namesUser ? USER_ID : null,
       messages: rows.map((row) => ({ ...row })),
       has_more_messages: rows.length < read.length,
       active_stream:
@@ -220,6 +227,10 @@ export class FaultServer {
       if (mode === "lost-after-receive") throw new TypeError("Failed to fetch");
       return sse(FOLLOW_UP_STREAM);
     }
+    // The route matches a send on its text too only when it names no id: one
+    // that repeats the trailing user rows is dropped, and no turn starts.
+    if (!body.message_id && this.repeatsTrailingPrompt(body.message))
+      return sse(emptyStream());
     const turn = this.startTurn(
       body.message,
       this.queueing ? "queued" : "running",
@@ -326,6 +337,15 @@ export class FaultServer {
         end(() => {});
       },
     });
+  }
+
+  // `is_message_duplicate`: the text of one of the trailing user rows.
+  private repeatsTrailingPrompt(text: string) {
+    for (let i = this.history.length - 1; i >= 0; i--) {
+      if (this.history[i].role !== "user") return false;
+      if (this.history[i].content === text) return true;
+    }
+    return false;
   }
 
   private current(): FaultTurn | null {
