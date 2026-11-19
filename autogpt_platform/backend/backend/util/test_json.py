@@ -861,11 +861,31 @@ class TestValidateWithJsonschema:
     @pytest.mark.parametrize(
         "property_schema,value,expected",
         [
-            ({"enum": ["a", "b"]}, "secret-z", "f: must be one of 'a', 'b'"),
-            ({"const": "a"}, "secret-z", "f: must be 'a'"),
+            ({"enum": ["a", "b"]}, "secret-z", "f: is not one of the allowed values"),
+            ({"const": "a"}, "secret-z", "f: is not the required value"),
             ({"maxLength": 3}, "secret-z", "f: must have at most 3 characters"),
-            ({"pattern": "^a$"}, "secret-z", "f: does not match the pattern '^a$'"),
-            ({"maxItems": 1}, ["secret-z", "b"], "f: must have at most 1 items"),
+            ({"maxLength": 1}, "secret-z", "f: must have at most 1 character"),
+            (
+                {"pattern": "^a$"},
+                "secret-z",
+                "f: does not match the required pattern",
+            ),
+            ({"maxItems": 1}, ["secret-z", "b"], "f: must have at most 1 item"),
+            (
+                {"type": "object", "maxProperties": 0},
+                {"secret-z": 1},
+                "f: must have at most 0 properties",
+            ),
+            (
+                {"type": "object", "propertyNames": {"maxLength": 2}},
+                {"secret-z": 1},
+                "f: a key must have at most 2 characters",
+            ),
+            (
+                {"anyOf": [{"type": "string", "minLength": 2}, {"type": "string"}]},
+                5,
+                "f: expected string, got integer",
+            ),
             (
                 {"type": "object", "additionalProperties": False},
                 {"secret-z": 1},
@@ -891,14 +911,55 @@ class TestValidateWithJsonschema:
         assert error == expected
         assert error is not None and "secret-z" not in error
 
+    def test_a_key_of_the_given_value_is_cut_short_on_one_line(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                }
+            },
+        }
+        key = "line\nbreak" + "k" * 100
+        error = validate_with_jsonschema(schema, {"headers": {key: 1}})
+        assert error == (
+            "headers.linebreak" + "k" * 28 + "...: expected string, got integer"
+        )
+
     def test_long_message_is_capped(self):
-        options = [f"option-{i}" for i in range(500)]
-        schema = {"type": "object", "properties": {"f": {"enum": options}}}
-        error = validate_with_jsonschema(schema, {"f": "other"})
+        depth = 20
+        schema: dict[str, Any] = {"type": "integer"}
+        for _ in range(depth):
+            schema = {"type": "object", "additionalProperties": schema}
+        data: Any = "text"
+        for level in range(depth):
+            data = {f"level-{level}-" + "x" * 40: data}
+        error = validate_with_jsonschema(schema, data)
         assert error is not None
         assert len(error) == json_util.VALIDATION_ERROR_MAX_LENGTH
-        assert error.startswith("f: must be one of 'option-0'")
         assert error.endswith("...")
+
+    def test_a_draft_4_exclusive_bound_reads_as_exclusive(self):
+        schema = {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "type": "object",
+            "properties": {"f": {"minimum": 5, "exclusiveMinimum": True}},
+        }
+        assert validate_with_jsonschema(schema, {"f": 5}) == "f: must be > 5"
+
+    @pytest.mark.parametrize(
+        "validator,expected",
+        [
+            ("enum", "is not one of the allowed values"),
+            ("required", "is missing a required property"),
+            ("type", "is not valid"),
+            ("minimum", "is not valid"),
+        ],
+    )
+    def test_an_error_without_details_still_reads(self, validator, expected):
+        error = jsonschema.ValidationError("message", validator=validator)
+        assert describe_validation_error(error) == expected
 
     def test_describe_names_the_field_of_a_field_schema(self):
         with pytest.raises(jsonschema.ValidationError) as caught:
