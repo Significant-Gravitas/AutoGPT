@@ -512,6 +512,20 @@ def test_an_account_set_up_while_its_connection_was_held_keeps_it(store, google,
     assert held.values == {}
 
 
+def test_a_held_connection_kept_by_neither_request_isnt_reported_as_held(
+    store, google, held
+):
+    # The account was set up meanwhile, but keeping the connection then failed:
+    # it's gone, not waiting.
+    store.has_org.side_effect = [False, True]
+    store.create.side_effect = RuntimeError("database unavailable")
+
+    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+
+    assert res.json() == {"result": "skipped"}
+    assert held.values == {}
+
+
 def test_a_connection_that_cant_be_held_never_fails_the_sign_up(
     store, google, monkeypatch, caplog
 ):
@@ -574,7 +588,8 @@ async def test_a_held_connection_that_cant_be_read_is_dropped_quietly(
     with caplog.at_level(logging.WARNING):
         result = await sign_in_connection.keep_held_sign_in_connection("user-1")
 
-    assert result is None
+    # Taken and gone, so not still held.
+    assert result == "skipped"
     store.create.assert_not_called()
     assert "A held sign-in connection couldn't be read" in caplog.text
     assert "ya29.not-sealed" not in caplog.text

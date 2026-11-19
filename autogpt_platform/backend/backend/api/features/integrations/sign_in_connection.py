@@ -226,7 +226,9 @@ async def keep_held_sign_in_connection(
 
     Called by ``POST /auth/user`` once the account exists. Takes the held
     connection at most once, and never fails the request it runs in: without
-    the connection, onboarding offers to connect.
+    the connection, onboarding offers to connect. None when nothing was held
+    (or Redis couldn't say); ``skipped`` when one was taken but couldn't be
+    read or kept, so it's gone.
     """
     try:
         sealed = await asyncio.wait_for(
@@ -242,12 +244,12 @@ async def keep_held_sign_in_connection(
     except Exception:
         # Never the error: a validation error quotes its input, the tokens.
         logger.warning("A held sign-in connection couldn't be read")
-        return None
+        return "skipped"
     try:
         result = await keep_sign_in_connection(user_id, credentials)
     except Exception:
         logger.warning("A held sign-in connection wasn't kept")
-        return None
+        return "skipped"
     logger.info("Held sign-in connection for %s: %s", credentials.provider, result)
     return result
 
