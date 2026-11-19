@@ -16,6 +16,7 @@ from typing import Literal
 import bleach
 import html2text
 from markdown_it import MarkdownIt
+from markdown_it.token import Token
 from markupsafe import Markup
 from pydantic import BaseModel, ConfigDict
 
@@ -146,7 +147,28 @@ _STYLES = {
 
 
 def _to_html(body: str, body_format: BodyFormat) -> str:
-    return _MARKDOWN.render(body) if body_format is BodyFormat.MARKDOWN else body
+    if body_format is not BodyFormat.MARKDOWN:
+        return body
+    env: dict = {}
+    tokens = _MARKDOWN.parse(body, env)
+    _limit_link_attributes(tokens)
+    return _MARKDOWN.renderer.render(tokens, _MARKDOWN.options, env)
+
+
+def _limit_link_attributes(tokens: list[Token]) -> None:
+    """Applies ``MAX_ATTRIBUTE_TEXT`` to the attributes Markdown's links and
+    images will be rendered with, before rendering."""
+    attribute_text = sum(
+        len(str(value))
+        for token in tokens
+        for child in token.children or ()
+        for value in child.attrs.values()
+    )
+    if attribute_text > MAX_ATTRIBUTE_TEXT:
+        raise ValueError(
+            f"The body's links and images have more than {MAX_ATTRIBUTE_TEXT:,} "
+            "characters of attributes."
+        )
 
 
 def _plain_to_html(body: str) -> str:

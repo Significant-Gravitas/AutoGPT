@@ -381,7 +381,6 @@ async def test_a_body_over_the_length_limit_is_refused_before_it_is_read(
 
 @pytest.mark.parametrize(
     "limit, value, body",
-    # Each body is within the limit as written; the parser's copies are not.
     [
         ("MAX_ELEMENTS", 6, "<p><b>bold<p>x<p>y<p>z"),
         ("MAX_ATTRIBUTE_TEXT", 40, '<p><a title="twenty characters...">a<p>x<p>y'),
@@ -397,6 +396,21 @@ async def test_the_copies_the_parser_makes_count_against_its_limits(
     response = await run({"subject": "s", "body": body, "body_format": "html"})
 
     assert f"more than {value}" in _error(response)
+    assert sent_to(postmark) == []
+
+
+async def test_a_markdown_bodys_link_attributes_count_against_the_limit(
+    monkeypatch, postmark
+):
+    monkeypatch.setattr(owner_email_body, "MAX_ATTRIBUTE_TEXT", 1_000)
+    sanitize = MagicMock(wraps=owner_email_body._sanitize)
+    monkeypatch.setattr(owner_email_body, "_sanitize", sanitize)
+    body = "[docs]: https://example.com/docs\n\n" + "See [docs]. " * 50
+
+    response = await run({"subject": "s", "body": body})
+
+    assert "links and images have more than 1,000 characters" in _error(response)
+    sanitize.assert_not_called()
     assert sent_to(postmark) == []
 
 
