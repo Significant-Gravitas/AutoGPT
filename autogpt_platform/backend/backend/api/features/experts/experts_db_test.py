@@ -5685,6 +5685,27 @@ async def test_classify_run_outputs_degrades_only_corrupt_execution():
     }
 
 
+@pytest.mark.asyncio
+async def test_classify_run_outputs_reads_what_the_output_node_yielded():
+    """A formatted output is classified as the text it rendered, so the query
+    must load the Output rows: Prisma returns only the relations it includes."""
+
+    async def find_many(*, where, include):
+        node_exec = _output_node_exec("report", {"rows": 2}, output=["word " * 100])
+        if not include.get("Output"):
+            node_exec.Output = None
+        return [SimpleNamespace(agentGraphExecutionId="exec-1", **vars(node_exec))]
+
+    with patch.object(
+        prisma.models.AgentNodeExecution,
+        "prisma",
+        return_value=SimpleNamespace(find_many=find_many),
+    ):
+        classified = await experts_db._classify_run_outputs(["exec-1"])
+
+    assert classified == {"exec-1": ("doc", "report")}
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_update_soul_fields_patches_subset_only(
     server: SpinTestServer, test_user

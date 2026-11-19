@@ -294,3 +294,36 @@ async def test_run_outputs_show_format_error():
 async def test_run_outputs_without_format_are_unchanged():
     value = {"bed": "4B"}
     assert await _run_outputs(name="patient", value=value) == [value]
+
+
+@pytest.mark.asyncio
+async def test_run_outputs_mask_a_moderated_output():
+    """Moderation leaves the yielded Output rows in place, so its
+    ``cleared_outputs`` must win over them (stats as #15909 writes them)."""
+    inputs = {"name": "report", "value": "flag-me", "format": "{{ report | upper }}"}
+    execution = _execution()
+    execution.NodeExecutions = [
+        prisma.models.AgentNodeExecution.model_validate(
+            _node_exec(
+                "out",
+                status=AgentExecutionStatus.FAILED,
+                queued_s=1,
+                inputs=inputs,
+                outputs=await _yielded(**inputs),
+                stats={
+                    "error": MODERATED,
+                    "cleared_inputs": {
+                        "name": ["report"],
+                        "value": [MODERATED],
+                        "format": [MODERATED],
+                    },
+                    "cleared_outputs": {"output": [MODERATED]},
+                },
+            )
+        )
+    ]
+
+    run = GraphExecution.from_db(execution)
+
+    assert dict(run.outputs) == {"report": [MODERATED]}
+    assert "FLAG-ME" not in run.model_dump_json()
