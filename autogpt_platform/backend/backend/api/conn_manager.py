@@ -296,6 +296,7 @@ class ConnectionManager:
             return
 
     def _outbox_for(self, user_id: str, websocket: WebSocket) -> WSOutbox:
+        """The socket's outbox, made on first use; disconnect_socket drops it."""
         outbox = self._outboxes.get(websocket)
         if outbox is None:
 

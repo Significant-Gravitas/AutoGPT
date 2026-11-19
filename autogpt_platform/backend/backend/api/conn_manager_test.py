@@ -1442,6 +1442,37 @@ async def test_a_socket_waiting_on_its_client_holds_up_no_other_socket(
 
 
 @pytest.mark.asyncio
+async def test_a_sockets_streams_on_every_shard_share_its_bound(
+    connection_manager: ConnectionManager,
+    mock_websocket: AsyncMock,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The client is what falls behind, so its events count against one
+    bound whichever shard they come from, and go out through one sender."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    fake_redis.shard_of = lambda channel: ("redis", 2 if "graph-b" in channel else 1)
+    client = _StuckClient(mock_websocket)
+    for graph_id in ("graph-a", "graph-b"):
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id=graph_id, websocket=mock_websocket
+        )
+    first, second = (p.inbox for p in fake_redis.pubsubs)
+    try:
+        first.put_nowait(_graph_event("graph-a"))
+        async with asyncio.timeout(_HANG_SECONDS):
+            await client.waited_on.wait()
+        second.put_nowait(_graph_event("graph-b"))
+        await _until(lambda: mock_websocket.close.await_count == 1)
+        mock_websocket.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
+        )
+        assert mock_websocket.send_text.await_count == 1
+    finally:
+        client.reading.set()
+
+
+@pytest.mark.asyncio
 async def test_a_queued_event_of_a_dropped_subscription_never_reaches_the_client(
     fake_redis: _FakeRedis, outbox: WSOutbox
 ) -> None:

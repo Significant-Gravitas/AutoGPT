@@ -64,10 +64,10 @@ class WSOutbox:
         and skipped."""
         if not self._open:
             return
-        # A client with nothing waiting isn't behind, however big the event.
-        if self._queue and len(self._queue) >= MAX_QUEUED_EVENTS:
+        if len(self._queue) >= MAX_QUEUED_EVENTS:
             self.overflow("MAX_QUEUED_EVENTS")
             return
+        # A client with nothing waiting isn't behind, however big the event.
         if self._queue and self.queued_bytes + size > MAX_QUEUED_BYTES:
             self.overflow("MAX_QUEUED_BYTES")
             return
@@ -80,7 +80,8 @@ class WSOutbox:
             self._sender = asyncio.create_task(self._send_queued())
 
     def overflow(self, bound: str) -> None:
-        """The client passed ``bound``: drop its events and close it."""
+        """The client passed ``bound``: drop its events and close it. Called
+        by the outbox itself and by ``WSBacklog``."""
         if not self._open:
             return
         why = f"{bound}: {len(self._queue)} events, {self.queued_bytes} bytes waiting"
