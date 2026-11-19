@@ -833,11 +833,20 @@ async def test_an_account_check_that_runs_out_of_time_closes_the_socket_to_retry
 ) -> None:
     """The check never counts as allowed by running out of time: the message
     isn't handled, and the socket closes with a code the client reconnects
-    on, which runs the connect-time checks."""
+    on, which runs the connect-time checks. Nor does a ban lookup that
+    swallowed the cancellation start the closure lookup past the deadline,
+    which no second cancellation would end."""
+    refusal_lookup_started = asyncio.Event()
+
+    async def refusal_lookup(user_id: str) -> bool:
+        refusal_lookup_started.set()
+        return await _never_answers(user_id)
+
     mocker.patch(
         "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
     )
     mocker.patch("backend.api.ws_api.is_user_banned", new=ban_lookup)
+    mocker.patch("backend.api.ws_api.is_user_refused", new=refusal_lookup)
     # The lookup never finishes on its own, so the bound decides when the
     # check gives up, not whether.
     mocker.patch.object(ws_api, "ACCOUNT_CHECK_TIMEOUT_S", 0.05)
@@ -857,6 +866,7 @@ async def test_an_account_check_that_runs_out_of_time_closes_the_socket_to_retry
     mock_websocket.close.assert_awaited_once_with(code=1013, reason="Try again")
     mock_manager.subscribe_graph_exec.assert_not_called()
     mock_websocket.send_text.assert_not_called()
+    assert not refusal_lookup_started.is_set()
 
 
 # ---------- get_connection_manager singleton ----------

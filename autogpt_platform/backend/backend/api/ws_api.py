@@ -462,7 +462,10 @@ async def _closed_for_account(websocket: WebSocket, user_id: str) -> bool:
     try:
         async with deadline:
             banned = await _banned_now(user_id)
-            refused = not banned and await _refused_now(user_id)
+            # A ban lookup that swallowed the cancellation leaves no second
+            # one coming, so the deadline is checked before the next lookup.
+            if not banned and not deadline.expired():
+                refused = await _refused_now(user_id)
     except TimeoutError:
         pass
     # Also when a lookup swallowed the cancellation and answered anyway.

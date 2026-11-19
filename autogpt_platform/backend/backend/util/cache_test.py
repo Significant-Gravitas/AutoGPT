@@ -18,9 +18,12 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
+import redis.asyncio.cluster as async_cluster
 import redis.connection
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from backend.util import cache as cache_module
+from backend.util import cache_redis
 from backend.util.cache import (
     _SCAN_BATCH_SIZE,
     cached,
@@ -28,6 +31,7 @@ from backend.util.cache import (
     thread_cached,
 )
 from backend.util.cache_test_helpers import cache_key, hold_cache_read
+from backend.util.redis_client_guard import is_open
 
 # Only a step that never comes keeps a wait going this long.
 _HANG_SECONDS = 10.0
@@ -1469,6 +1473,22 @@ def _unique(name: str) -> str:
     return f"{name}-{uuid.uuid4().hex}"
 
 
+def _a_key_off_the_first_node(function_name: str) -> str:
+    """An argument whose cache key lives on a node other than the one the
+    client starts from, when the cluster has more than one."""
+    redis = cache_module._get_redis()
+    first_port = cache_module.settings.config.redis_port
+    key = _unique("routed")
+    for _ in range(200):
+        if (
+            redis.get_node_from_key(cache_key(function_name, key=key)).port
+            != first_port
+        ):
+            break
+        key = _unique("routed")
+    return key
+
+
 class TestSharedCacheOnAnEventLoop:
     """A coroutine waiting on Redis is one coroutine waiting: the loop runs
     the others, a read Redis doesn't answer costs a call the cache's bound,
@@ -1588,6 +1608,123 @@ class TestSharedCacheOnAnEventLoop:
             other.close()
         # The other loop read the entry this one stored.
         assert calls == 1
+
+    @pytest.mark.asyncio
+    async def test_closing_a_loop_closes_its_client(self):
+        """However a loop is closed, its client is closed first: here as a
+        retired direct-block-execution worker's is, with ``loop.close()`` and
+        no ``shutdown_asyncgens()``. Nothing could close it after that."""
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def lookup(key: str) -> str:
+            return key
+
+        async def read_and_get_client():
+            await lookup(_unique("retired"))
+            return await cache_module._get_async_redis()
+
+        def retire_a_loop_after_one_read() -> bool:
+            loop = asyncio.new_event_loop()
+
+            def serve():
+                loop.run_forever()
+                loop.close()
+
+            worker = threading.Thread(target=serve, daemon=True)
+            worker.start()
+            client = asyncio.run_coroutine_threadsafe(
+                read_and_get_client(), loop
+            ).result(_HANG_SECONDS)
+            loop.call_soon_threadsafe(loop.stop)
+            worker.join(_HANG_SECONDS)
+            assert loop.is_closed()
+            return is_open(client)
+
+        left_open = [
+            await asyncio.to_thread(retire_a_loop_after_one_read) for _ in range(3)
+        ]
+
+        assert left_open == [False] * 3
+
+    @pytest.mark.asyncio
+    async def test_a_fresh_loops_first_read_goes_straight_to_its_keys_shard(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """redis-py's cluster client sends a read it gets before reading the
+        slot map to a random primary, and follows the redirect to the owner's
+        announced address, which ``address_remap`` never sees: CI's cluster
+        announces hostnames the runner can't resolve. So each loop's client
+        reads the map first. A random primary owns the key a third of the
+        time, so several fresh loops read."""
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def lookup(key: str) -> str:
+            return key
+
+        redirects: list[Exception] = []
+        move_slot = async_cluster.NodesManager.move_slot
+
+        async def recorded_move_slot(self, e):
+            redirects.append(e)
+            return await move_slot(self, e)
+
+        monkeypatch.setattr(async_cluster.NodesManager, "move_slot", recorded_move_slot)
+
+        def read_on_a_fresh_loop(key: str) -> str:
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(lookup(key))
+            finally:
+                loop.close()
+
+        for _ in range(8):
+            key = await asyncio.to_thread(_a_key_off_the_first_node, "lookup")
+            assert await asyncio.to_thread(read_on_a_fresh_loop, key) == key
+        assert redirects == []
+
+    @pytest.mark.asyncio
+    async def test_closing_a_loop_closes_its_client_after_a_connection_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A connection error leaves redis-py's client due to read the slot
+        map again, and its ``aclose()`` then skips the client, connections and
+        all. Closing the loop must still close them."""
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def lookup(key: str) -> str:
+            return key
+
+        key = _unique("connection-lost")
+        redis_key = cache_key("lookup", key=key)
+        execute = async_cluster.ClusterNode.execute_command
+
+        async def connection_lost(self, *args, **kwargs):
+            if args[1:2] == (redis_key,):
+                raise RedisConnectionError("connection lost")
+            return await execute(self, *args, **kwargs)
+
+        monkeypatch.setattr(
+            async_cluster.ClusterNode, "execute_command", connection_lost
+        )
+        created: list[async_cluster.RedisCluster] = []
+        new_client = cache_redis._new_async_redis
+
+        def remember_new_client() -> async_cluster.RedisCluster:
+            created.append(new_client())
+            return created[-1]
+
+        monkeypatch.setattr(cache_redis, "_new_async_redis", remember_new_client)
+
+        def read_on_a_loop_then_close_it() -> str:
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(lookup(key))
+            finally:
+                loop.close()
+
+        assert await asyncio.to_thread(read_on_a_loop_then_close_it) == key
+        [client] = created
+        assert not is_open(client)
 
     @pytest.mark.asyncio
     async def test_a_key_lock_is_dropped_once_nobody_holds_or_waits_for_it(self):

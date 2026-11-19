@@ -307,8 +307,8 @@ def cached(
             while Redis answers, and stops waiting after ``REDIS_OP_TIMEOUT_S``.
             Returns ``_UNREACHABLE`` when Redis didn't answer, or failed."""
             try:
-                redis = await _get_async_redis()
                 async with asyncio.timeout(REDIS_OP_TIMEOUT_S):
+                    redis = await _get_async_redis()
                     if refresh_ttl_on_get:
                         cached_bytes = await redis.getex(redis_key, ex=ttl_seconds)
                     else:
@@ -332,8 +332,8 @@ def cached(
             """``_set_to_redis`` for a coroutine, bounded the same way."""
             try:
                 pickled = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
-                redis = await _get_async_redis()
                 async with asyncio.timeout(REDIS_OP_TIMEOUT_S):
+                    redis = await _get_async_redis()
                     await redis.set(redis_key, _sign_payload(pickled), ex=ttl_seconds)
             except (TimeoutError, RedisTimeoutError):
                 logger.warning(

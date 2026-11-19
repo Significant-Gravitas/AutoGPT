@@ -8,9 +8,10 @@ the sync client (``get_redis``) blocks the thread that calls it.
 """
 
 import asyncio
-from collections.abc import AsyncGenerator
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from functools import cache
-from weakref import WeakKeyDictionary
+from typing import Any
 
 from redis.asyncio.cluster import ClusterNode as AsyncClusterNode
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
@@ -22,6 +23,7 @@ from redis.retry import Retry
 from backend.util.retry import conn_retry
 from backend.util.settings import Settings
 
+logger = logging.getLogger(__name__)
 settings = Settings()
 
 # Far above a healthy answer (a few ms), and short enough that a caller who
@@ -57,25 +59,70 @@ def get_redis() -> RedisCluster:
 
 
 # An asyncio connection belongs to the loop that opened it, so each loop gets
-# a client of its own, closed when the loop shuts its async generators down.
-_async_clients: WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncRedisCluster] = (
-    WeakKeyDictionary()
-)
-_async_client_closers: WeakKeyDictionary[
-    asyncio.AbstractEventLoop, AsyncGenerator[None, None]
-] = WeakKeyDictionary()
+# a client of its own. Only the loop holds it, so nothing here keeps a loop
+# alive, and closing the loop closes it first, whoever does that: asyncio.run,
+# pytest-asyncio, or a worker's own teardown that skips shutdown_asyncgens().
+_LOOP_ATTR = "_shared_cache_redis"
 
 
 async def get_async_redis() -> AsyncRedisCluster:
-    """This event loop's client. It connects on its first command, so the
-    caller's bound on that command covers connecting too."""
+    """This event loop's client, with the cluster's slot map read: an
+    uninitialized client sends its first command to any node, and redis-py
+    follows the redirect to the owner's announced address, not remapped.
+    Call it within the caller's bound, since it may read the map."""
     loop = asyncio.get_running_loop()
-    client = _async_clients.get(loop)
+    client: AsyncRedisCluster | None = getattr(loop, _LOOP_ATTR, None)
     if client is None:
-        client = _async_clients[loop] = _new_async_redis()
-        closer = _async_client_closers[loop] = _close_with_loop(client)
-        await anext(closer)
-    return client
+        client = _new_async_redis()
+        setattr(loop, _LOOP_ATTR, client)
+        _close_with(loop, client)
+    return await client.initialize()
+
+
+def _close_with(loop: asyncio.AbstractEventLoop, client: AsyncRedisCluster) -> None:
+    """Make ``loop.close()`` close ``client`` first. ``loop.close()`` alone
+    leaves its connections open, and nothing can close them once the loop
+    is closed: collected, they report themselves to whatever loop runs."""
+    close_loop = loop.close
+
+    def close() -> None:
+        if loop.is_running():
+            close_loop()  # Raises: a running loop can't be closed.
+            return
+        if vars(loop).get("close") is close:
+            delattr(loop, "close")
+        if getattr(loop, _LOOP_ATTR, None) is client:
+            delattr(loop, _LOOP_ATTR)
+            if not loop.is_closed():
+                try:
+                    _run_to_completion(loop, _close(client))
+                except Exception as e:
+                    logger.warning(f"Could not close the cache's Redis client: {e!r}")
+        close_loop()
+
+    setattr(loop, "close", close)
+
+
+def _run_to_completion(loop: asyncio.AbstractEventLoop, coroutine: Any) -> None:
+    """``loop.run_until_complete``, from a thread of its own when this one
+    already runs a loop (a coroutine closing a worker's loop): a thread runs
+    one loop at a time."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        loop.run_until_complete(coroutine)
+        return
+    with ThreadPoolExecutor(max_workers=1) as worker:
+        worker.submit(loop.run_until_complete, coroutine).result()
+
+
+async def _close(client: AsyncRedisCluster) -> None:
+    async with asyncio.timeout(REDIS_OP_TIMEOUT_S):
+        await client.aclose()
+        # aclose() skips a client that a connection error left due to read
+        # the slot map again, though its connections are still open.
+        await client.nodes_manager.aclose()
+        await client.nodes_manager.aclose("startup_nodes")
 
 
 def _new_async_redis() -> AsyncRedisCluster:
@@ -96,15 +143,3 @@ def _new_async_redis() -> AsyncRedisCluster:
         retry=AsyncRetry(NoBackoff(), _RETRIES),
         address_remap=_address_remap,
     )
-
-
-async def _close_with_loop(client: AsyncRedisCluster) -> AsyncGenerator[None, None]:
-    """Waits at its ``yield`` until the loop's ``shutdown_asyncgens()``."""
-    try:
-        yield
-    finally:
-        loop = asyncio.get_running_loop()
-        if _async_clients.get(loop) is client:
-            _async_clients.pop(loop, None)
-            _async_client_closers.pop(loop, None)
-        await client.aclose()
