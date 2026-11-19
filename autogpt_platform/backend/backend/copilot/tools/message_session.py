@@ -116,9 +116,14 @@ class MessageSessionTool(BaseTool):
             return self._error(_SELF_REFUSAL, session)
 
         # Ownership before anything else, and not-found rather than forbidden:
-        # a distinct refusal would let this tool probe for session ids.
+        # a distinct refusal would let this tool probe for session ids. The
+        # user's session in another organization is refused the same way.
         target = await chat_db().get_chat_session_metadata(target_id)
-        if target is None or target.user_id != user_id:
+        if (
+            target is None
+            or target.user_id != user_id
+            or target.organization_id != session.organization_id
+        ):
             return self._error(
                 f"No session {target_id} of yours. Use tool:find_session.", session
             )

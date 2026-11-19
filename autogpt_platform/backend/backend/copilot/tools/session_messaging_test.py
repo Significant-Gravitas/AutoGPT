@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot import db as chat_db_module
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.context import MAX_SESSION_MESSAGES_PER_TURN, reset_consult_budget
 from backend.copilot.model import (
@@ -47,10 +48,15 @@ CALLER_SESSION = "session-caller"
 TARGET_SESSION = "session-target"
 
 
-def _session(session_id: str = CALLER_SESSION, user_id: str = OWNER) -> ChatSession:
+def _session(
+    session_id: str = CALLER_SESSION,
+    user_id: str = OWNER,
+    organization_id: str | None = None,
+) -> ChatSession:
     return ChatSession(
         session_id=session_id,
         user_id=user_id,
+        organization_id=organization_id,
         usage=[],
         started_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
@@ -68,10 +74,12 @@ def _info(
     builder_graph_id: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
+    organization_id: str | None = None,
 ) -> ChatSessionInfo:
     return ChatSessionInfo(
         session_id=session_id,
         user_id=user_id,
+        organization_id=organization_id,
         usage=[],
         started_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
@@ -118,6 +126,57 @@ class TestFindSessionScoping:
         assert isinstance(result, SessionListResponse)
         listed = {s.session_id for s in result.sessions}
         assert "theirs" not in listed
+
+    @pytest.mark.parametrize("caller_org", ["org-a", None])
+    async def test_only_the_calling_sessions_organization_is_queried(
+        self, caller_org: str | None
+    ) -> None:
+        with patch(
+            f"{_DB}.list_recent_chat_sessions", new=AsyncMock(return_value=[])
+        ) as lister:
+            await FindSessionTool()._execute(
+                OWNER, _session(organization_id=caller_org)
+            )
+        assert lister.await_args.kwargs["organization_id"] == caller_org
+
+    @pytest.mark.parametrize(
+        "caller_org, other_org",
+        [("org-a", "org-b"), ("org-a", None), (None, "org-b")],
+    )
+    async def test_a_session_in_another_organization_is_not_listed(
+        self, caller_org: str | None, other_org: str | None
+    ) -> None:
+        rows = [
+            _info("same", organization_id=caller_org),
+            _info("other", organization_id=other_org),
+        ]
+        with patch(
+            f"{_DB}.list_recent_chat_sessions", new=AsyncMock(return_value=rows)
+        ):
+            result = await FindSessionTool()._execute(
+                OWNER, _session(organization_id=caller_org)
+            )
+        assert isinstance(result, SessionListResponse)
+        assert [s.session_id for s in result.sessions] == ["same"]
+
+    async def test_the_query_matches_the_organization_exactly(self) -> None:
+        """No carve-out for untagged or expert rows, unlike the session list."""
+        with patch(f"{_DB}.PrismaChatSession.prisma") as prisma:
+            prisma.return_value.find_many = AsyncMock(return_value=[])
+            await chat_db_module.list_recent_chat_sessions(
+                user_id=OWNER, organization_id="org-a"
+            )
+            await chat_db_module.list_recent_chat_sessions(
+                user_id=OWNER, organization_id=None
+            )
+        wheres = [
+            call.kwargs["where"]
+            for call in prisma.return_value.find_many.await_args_list
+        ]
+        assert wheres == [
+            {"userId": OWNER, "organizationId": "org-a", "archivedAt": None},
+            {"userId": OWNER, "organizationId": None, "archivedAt": None},
+        ]
 
     async def test_the_calling_session_is_not_listed(self) -> None:
         rows = [_info(CALLER_SESSION), _info("other")]
@@ -641,6 +700,50 @@ class TestMessageSessionGuards:
         assert isinstance(interview_reply, ErrorResponse)
         assert interview_reply.message == foreign_reply.message
         assert interview_reply.error == foreign_reply.error
+
+    @pytest.mark.parametrize(
+        "caller_org, target_org",
+        [("org-a", "org-b"), ("org-a", None), (None, "org-b")],
+    )
+    async def test_a_session_in_another_organization_reads_as_not_found(
+        self, caller_org: str | None, target_org: str | None
+    ) -> None:
+        target = _info(TARGET_SESSION, organization_id=target_org)
+        with patch(
+            f"{_DB}.get_chat_session_metadata", new=AsyncMock(return_value=target)
+        ):
+            with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
+                with patch(f"{_MSG}.try_enqueue_turn", new=AsyncMock()) as wake:
+                    result = await MessageSessionTool()._execute(
+                        OWNER,
+                        _session(organization_id=caller_org),
+                        session_id=TARGET_SESSION,
+                        message="hi",
+                    )
+        assert isinstance(result, ErrorResponse)
+        assert "No session" in (result.error or result.message or "")
+        deliver.assert_not_awaited()
+        wake.assert_not_awaited()
+
+    async def test_a_session_in_the_same_organization_is_delivered(self) -> None:
+        queued = QueuePendingMessageResponse(
+            buffer_length=1, max_buffer_length=10, turn_in_flight=True
+        )
+        target = _info(TARGET_SESSION, status="running", organization_id="org-a")
+        with patch(
+            f"{_DB}.get_chat_session_metadata", new=AsyncMock(return_value=target)
+        ):
+            with patch(
+                f"{_MSG}.queue_user_message", new=AsyncMock(return_value=queued)
+            ) as deliver:
+                result = await MessageSessionTool()._execute(
+                    OWNER,
+                    _session(organization_id="org-a"),
+                    session_id=TARGET_SESSION,
+                    message="hi",
+                )
+        assert isinstance(result, SessionMessageResponse)
+        deliver.assert_awaited_once()
 
     async def test_messaging_yourself_is_refused(self) -> None:
         with patch(f"{_MSG}.queue_user_message", new=AsyncMock()) as deliver:
