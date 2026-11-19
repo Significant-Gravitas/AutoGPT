@@ -1461,7 +1461,9 @@ describe("onboarding interview by voice: the call", () => {
   });
 
   it("puts the call's ending above its words once the call has ended, and the words above the call's buttons before", async () => {
-    callStates[CALL_ID] = [callRecord({ interview: "taken" })];
+    callStates[CALL_ID] = [
+      callRecord({ interview: "taken", ending: "02-profile-card" }),
+    ];
     render(<OnboardingPage />);
     const socket = await liveCall();
     act(() => {
@@ -1580,7 +1582,7 @@ describe("onboarding interview by voice: the call", () => {
     callStates[CALL_ID] = [callRecord({ interview: "taken" })];
     endCall(socket, "finished");
 
-    await screen.findByRole("button", { name: "Meet your team" });
+    await expectPlanStep();
     // The ticket kept 12 of 16 turns left: four were heard.
     expect(tracked("interview_ended")).toEqual([
       {
@@ -1614,7 +1616,7 @@ describe("onboarding interview by voice: the call", () => {
     callStates[CALL_ID] = [callRecord({ interview: "taken" })];
     endCall(socket, "finished");
 
-    await screen.findByRole("button", { name: "Meet your team" });
+    await expectPlanStep();
     expect(tracked("interview_ended")).toEqual([
       expect.objectContaining({ reason: "finished", ...OTTO_HEARD }),
     ]);
@@ -1861,7 +1863,7 @@ describe("onboarding interview by voice: the call", () => {
 });
 
 describe("onboarding interview by voice: how a call ends", () => {
-  it("shows Meet your team once a finished call is handed off, and moves on as path A", async () => {
+  it("goes on to the team by itself once a Default call that ran to its close is handed off, as path A", async () => {
     callStates[CALL_ID] = [
       callRecord({ status: "transcribing", hand_off: null }),
       callRecord({ status: "handed_off", interview: "taken" }),
@@ -1872,9 +1874,13 @@ describe("onboarding interview by voice: how a call ends", () => {
     endCall(socket, "finished");
 
     expect(await screen.findByText("Reading it back")).toBeDefined();
-    const meet = await screen.findByRole("button", { name: "Meet your team" });
     expect(screen.getByText("That's everything Otto needed.")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
+
+    await expectPlanStep();
+    // No stop screen: no button was shown, so none was clicked.
+    expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
+    expect(tracked("ending_action")).toEqual([]);
     expect(tracked("interview_ended")).toEqual([
       {
         mode: "voice",
@@ -1884,10 +1890,6 @@ describe("onboarding interview by voice: how a call ends", () => {
         ...NOT_LISTENED,
       },
     ]);
-
-    await userEvent.setup().click(meet);
-
-    await expectPlanStep();
     expect(finishes).toEqual([]);
     expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
     expect(tracked("team_screen_reached")).toEqual([
@@ -2322,7 +2324,7 @@ describe("onboarding interview by voice: how a call ends", () => {
     const socket = await liveCall();
 
     endCall(socket, "finished");
-    await screen.findByRole("button", { name: "Meet your team" });
+    await expectPlanStep();
 
     expect(
       vi
@@ -3232,9 +3234,7 @@ describe("onboarding interview by voice: the call's room", () => {
     expect(room.isLeft).toBe(false);
     act(() => room.ottoLeaves());
     expect(room.isLeft).toBe(true);
-    expect(
-      await screen.findByRole("button", { name: "Meet your team" }),
-    ).toBeDefined();
+    await expectPlanStep();
   });
 
   it("leaves the room once its wait for Otto's last words runs out", async () => {
@@ -3297,9 +3297,7 @@ describe("onboarding interview by voice: the call's room", () => {
 
       act(() => room.lose(reason));
 
-      expect(
-        await screen.findByRole("button", { name: "Meet your team" }),
-      ).toBeDefined();
+      await expectPlanStep();
       expect(room.isLeft).toBe(true);
       expect(screen.queryByText("We lost the call.")).toBeNull();
     },
@@ -3326,9 +3324,7 @@ describe("onboarding interview by voice: the call's room", () => {
 
       endCall(socket, "finished");
 
-      expect(
-        await screen.findByRole("button", { name: "Meet your team" }),
-      ).toBeDefined();
+      await expectPlanStep();
       expect(tracked("voice_interview_reconnected")).toEqual([]);
     },
   );
@@ -3514,32 +3510,102 @@ describe("onboarding interview by voice: the ending screens", () => {
   const FIRST_TASK = "Sort the order emails each morning";
   const PICK_KEY = "autogpt:onboarding-ending-pick:voice";
 
-  it("ends a call on an arm this code dropped as Default does", async () => {
+  it.each([
+    ["no arm", null],
+    ["an arm this code dropped", "09-first-task"],
+  ])(
+    "goes on to the team by itself after a call on %s, as Default does",
+    async (_case, ending) => {
+      callStates[CALL_ID] = [callRecord({ ending, first_task: FIRST_TASK })];
+      render(<OnboardingPage />);
+      const socket = await liveCall();
+
+      endCall(socket, "finished");
+
+      await expectPlanStep();
+      expect(screen.queryByText(FIRST_TASK)).toBeNull();
+      expect(finishes).toEqual([]);
+      expect(tracked("ending_action")).toEqual([]);
+      expect(tracked("team_screen_reached")).toEqual([
+        { mode: "voice", path: "A" },
+      ]);
+    },
+  );
+
+  it("finishes a Default call by itself, waiting out the server, before it goes on", async () => {
     callStates[CALL_ID] = [
-      callRecord({ ending: "09-first-task", first_task: FIRST_TASK }),
+      callRecord({ status: "transcribed", hand_off: null, interview: null }),
     ];
+    let refusals = 1;
+    server.use(
+      http.post(`${VOICE}/:callId/finish`, ({ params }) => {
+        finishes.push(String(params.callId));
+        if (refusals-- > 0) {
+          return HttpResponse.json(
+            { detail: { code: "call_not_ready" } },
+            { status: 409 },
+          );
+        }
+        return HttpResponse.json(ACCEPTED);
+      }),
+    );
     render(<OnboardingPage />);
     const socket = await liveCall();
 
     endCall(socket, "finished");
 
-    expect(
-      await screen.findByRole("button", { name: "Meet your team" }),
-    ).toBeDefined();
-    expect(screen.queryByText(FIRST_TASK)).toBeNull();
+    await expectPlanStep();
+    expect(finishes).toEqual([CALL_ID, CALL_ID]);
+    expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
+    expect(tracked("ending_action")).toEqual([]);
   });
 
-  it("keeps Meet your team for a call with no arm", async () => {
-    callStates[CALL_ID] = [callRecord({ first_task: FIRST_TASK })];
+  it("shows Meet your team and why when a Default call's own finish fails, and the click goes on", async () => {
+    callStates[CALL_ID] = [
+      callRecord({ status: "transcribed", hand_off: null, interview: null }),
+    ];
+    let failures = 1;
+    server.use(
+      http.post(`${VOICE}/:callId/finish`, ({ params }) => {
+        finishes.push(String(params.callId));
+        if (failures-- > 0) {
+          return HttpResponse.json(
+            { detail: "Internal error" },
+            { status: 500 },
+          );
+        }
+        return HttpResponse.json(ACCEPTED);
+      }),
+    );
     render(<OnboardingPage />);
     const socket = await liveCall();
 
     endCall(socket, "finished");
 
+    const meet = await screen.findByRole("button", { name: "Meet your team" });
     expect(
-      await screen.findByRole("button", { name: "Meet your team" }),
+      screen.getByText("That didn't go through. Try again."),
     ).toBeDefined();
-    expect(screen.queryByText(FIRST_TASK)).toBeNull();
+    // Tried once by itself; never again without the person.
+    expect(finishes).toEqual([CALL_ID]);
+
+    await userEvent.setup().click(meet);
+
+    await expectPlanStep();
+    expect(finishes).toEqual([CALL_ID, CALL_ID]);
+  });
+
+  it("shows a finished Default call's ending, not going on, when the step opens on it", async () => {
+    latestCall = callRecord({ interview: "taken" });
+    render(<OnboardingPage />);
+
+    const meet = await screen.findByRole("button", { name: "Meet your team" });
+    expect(screen.getByRole("button", { name: "Start over" })).toBeDefined();
+    expect(screen.queryByTestId("step-plan")).toBeNull();
+
+    await userEvent.setup().click(meet);
+
+    await expectPlanStep();
   });
 
   const DETAILS: InterviewDetails = {

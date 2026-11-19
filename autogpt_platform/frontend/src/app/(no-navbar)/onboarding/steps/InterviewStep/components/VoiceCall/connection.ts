@@ -64,6 +64,11 @@ export interface Connection {
   isHangingUp: boolean;
   isLeaving: boolean;
   hasChecked: boolean;
+  // The call that went live in this page session and has ended: only its
+  // ending may go on by itself.
+  endedHere: string | null;
+  // The call whose ending already went on by itself, once.
+  wentOnFrom: string | null;
   // When the live call's socket last dropped (epoch ms).
   droppedAt: number | null;
   // A call lost on the way is reported ended once its end is known.
@@ -97,6 +102,8 @@ export function newConnection(): Connection {
     isHangingUp: false,
     isLeaving: false,
     hasChecked: false,
+    endedHere: null,
+    wentOnFrom: null,
     droppedAt: null,
     lostCall: null,
     timers: new Set(),

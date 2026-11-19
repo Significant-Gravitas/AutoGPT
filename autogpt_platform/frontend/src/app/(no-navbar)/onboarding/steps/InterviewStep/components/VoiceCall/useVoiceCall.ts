@@ -96,7 +96,7 @@ import {
   type RelayMessage,
 } from "./protocol";
 import { useCallRoom } from "./useCallRoom";
-import { startBody } from "../Endings/helpers";
+import { endingArmOf, startBody } from "../Endings/helpers";
 
 type EndingAction =
   | "confirm"
@@ -745,6 +745,7 @@ export function useVoiceCall(args: Args) {
     setIsWrappingUp(false);
     setEndReason(reason);
     setPhase("wrapping_up");
+    if (call) conn.endedHere = call.callId;
     trackInterview("interview_ended", {
       mode: "voice",
       reason,
@@ -983,7 +984,22 @@ export function useVoiceCall(args: Args) {
     }
     setEnding(next);
     setFinishFailure(null);
-    setPhase("ended");
+    // A Default call (no arm this code knows) that ended well in this page
+    // session has no screen to stop on, once; a call the step opened on
+    // shows its ending, so Back never bounces forward.
+    if (
+      next.kind === "team" &&
+      call &&
+      endingArmOf(call.ending) === null &&
+      conn.shownCallId !== null &&
+      conn.endedHere === conn.shownCallId &&
+      conn.wentOnFrom !== conn.shownCallId
+    ) {
+      conn.wentOnFrom = conn.shownCallId;
+      void goOn(next.path);
+    } else {
+      setPhase("ended");
+    }
     trackInterview(
       "ending_shown",
       { mode: "voice", ending: next.kind },
@@ -1133,6 +1149,21 @@ export function useVoiceCall(args: Args) {
       conn.isLeaving = true;
       setIsLeaving(true);
       await argsRef.current.onLeave(ending.path);
+      return;
+    }
+    if (conn.shownCallId) await finishCall(conn.shownCallId);
+  }
+
+  // A Default call that ended well in this page session goes on as its
+  // "Meet your team" would, with the finishing state up until the step
+  // changes. Nobody clicked, so no ending action is reported. A finish that
+  // fails shows the ending, its button and why.
+  async function goOn(path: "A" | null) {
+    const conn = connRef.current;
+    if (path) {
+      conn.isLeaving = true;
+      setIsLeaving(true);
+      await argsRef.current.onLeave(path);
       return;
     }
     if (conn.shownCallId) await finishCall(conn.shownCallId);
