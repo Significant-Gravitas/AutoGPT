@@ -424,7 +424,7 @@ jobs:
         pnpm types
     - name: Run Playwright E2E suite
       id: e2e-playwright
-      run: pnpm exec playwright test --config playwright.journeys.config.ts --project hosted src/playwright/journeys/signup-onboarding-first-journey.spec.ts
+      run: pnpm exec playwright test src/playwright/journeys/signup-onboarding-first-journey.spec.ts --config playwright.journeys.config.ts --project hosted
         --repeat-each=6 --workers=2 --retries=0 --trace=retain-on-failure
       env:
         PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/results.json
