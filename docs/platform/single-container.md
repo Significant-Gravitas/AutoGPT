@@ -56,8 +56,14 @@ check an image before you run it, use the [GitHub CLI](https://cli.github.com/):
 ```bash
 gh attestation verify oci://docker.io/significantgravitas/autogpt:vX.Y.Z \
   --repo Significant-Gravitas/AutoGPT \
-  --signer-workflow Significant-Gravitas/AutoGPT/.github/workflows/platform-single-container-docker.yml
+  --signer-workflow Significant-Gravitas/AutoGPT/.github/workflows/platform-single-container-docker.yml \
+  --source-ref refs/tags/autogpt-platform-beta-vX.Y.Z
 ```
+
+Use the same version in both places: `--source-ref` accepts only an
+attestation made from that release's tag, not one made from a branch. The
+attestation covers the multi-platform image the tag points to, so check the tag
+or that image's digest, not the digest of one platform's image.
 
 The check shows where and how the image was built, not that its code is safe.
 Images released before attestations were added have none, so the command
