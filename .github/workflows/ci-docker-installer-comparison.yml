@@ -1,0 +1,307 @@
+name: Compare locked Docker dependency installers
+"on":
+  push:
+    branches:
+      - codex/ci-docker-installer-20261119
+permissions:
+  contents: read
+cache-mode: none
+env:
+  DEPLOY_IMAGE: docker.io/significantgravitas/autogpt
+  BUILD_CACHE_IMAGE: ghcr.io/significant-gravitas/autogpt-single-container-buildcache
+jobs:
+  appliance:
+    name: Docker installer (${{ matrix.platform }}, ${{ matrix.installer }})
+    permissions:
+      contents: read
+      packages: read
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            suffix: amd64
+            installer: poetry
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            suffix: amd64
+            installer: uv
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+            installer: poetry
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+            installer: uv
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: "/*
+
+            !/docs/platform/.gitbook/assets/*.png
+
+            !/docs/platform/.gitbook/assets/*.gif
+
+            "
+      - name: Verify application source and test fixtures are present
+        run: python3 .github/scripts/validate_ci_checkout.py
+      - name: Record benchmark inputs and standard runner
+        shell: bash
+        run: 'nproc
+
+          lscpu | grep -E ''^(Architecture|CPU\(s\)|Model name):''
+
+          docker version
+
+          git diff --exit-code
+
+          test "$(git rev-parse HEAD:autogpt_platform)" = "$(git rev-parse HEAD^:autogpt_platform)"
+
+          '
+      - name: Initialize validation reports
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        run:
+          "mkdir -p \"$REPORT_DIR\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n  --arg platform \"${{\
+          \ matrix.platform }}\" \\\n  '{sha: $sha, platform: $platform, validated: false}' \\\n  > \"$REPORT_DIR/status.json\"\
+          \n"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+        with:
+          version: v0.36.0
+          cleanup: false
+          driver-opts:
+            "image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
+
+            "
+      - name: Authenticate to GHCR build cache
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Configure registry build cache
+        id: cache
+        shell: bash
+        env:
+          BUILD_CACHE_ARCH: ${{ matrix.suffix }}
+        run:
+          "python3 - <<'PY'\nimport os, sys\nsys.path.insert(0, '.github/scripts')\nfrom single_container_cache\
+          \ import cache_settings\nsettings = cache_settings('pull_request', '', os.environ['BUILD_CACHE_IMAGE'],\
+          \ os.environ['BUILD_CACHE_ARCH'], head_ref='codex/ci-throughput-20261030')\nassert not any('.cache-to='\
+          \ in item for item in settings)\nwith open(os.environ['GITHUB_OUTPUT'], 'a') as stream:\n    stream.write('set<<CACHE_EOF\\\
+          n' + '\\n'.join(settings) + '\\nCACHE_EOF\\n')\nPY\n"
+      - name: Set the daily OS package refresh
+        id: apt-refresh
+        shell: bash
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - name: Test appliance runtime helpers
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        run:
+          python3 .github/scripts/run_unittest_junit.py --start-directory autogpt_platform/single-container/tests
+          --pattern 'test_*.py' --allow-skip test_documented_operations.DocumentedOperationsTest.test_restored_launch_supports_bash_3_when_available
+          --output "$REPORT_DIR/runtime-helpers.xml"
+      - name: Test publication helpers
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        run:
+          python3 .github/scripts/run_command_junit.py --name publication-policy --classname single-container.publication
+          --output "$REPORT_DIR/publication-policy.xml" -- bash .github/scripts/platform-single-container-publish.sh
+          self-test
+      - name: Give each Bake target a distinct source mount
+        id: source-contexts
+        shell: bash
+        run:
+          "{\n  echo 'set<<CONTEXT_EOF'\n  for target in backend-server-base backend-server single-container;\
+          \ do\n    path=\"$RUNNER_TEMP/context-$target\"\n    ln -s \"$GITHUB_WORKSPACE\" \"$path\"\n \
+          \   [[ \"$(readlink -f \"$path\")\" == \"$(readlink -f \"$GITHUB_WORKSPACE\")\" ]]\n    printf\
+          \ '%s.context=%s\\n' \"$target\" \"$path\"\n  done\n  echo CONTEXT_EOF\n} >> \"$GITHUB_OUTPUT\"\
+          \ngit diff --exit-code\n"
+      - name: Build image without publishing
+        id: build-image
+        background: true
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e
+        with:
+          source: .
+          files: autogpt_platform/single-container/docker-bake.hcl
+          targets: single-container
+          set: "*.platform=${{ matrix.platform }}
+
+            *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
+
+            single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
+
+            single-container.args.VCS_REF=${{ github.sha }}
+
+            single-container.output=type=docker,compression=uncompressed
+
+            single-container.tags=autogpt-platform-single-container:ci-${{ matrix.suffix }}
+
+            ${{ steps.cache.outputs.set }}
+
+            ${{ steps.source-contexts.outputs.set }}
+
+
+            backend-server-base.dockerfile=.github/ci-diagnostics/backend-${{ matrix.installer }}.Dockerfile
+
+            backend-server.dockerfile=.github/ci-diagnostics/backend-${{ matrix.installer }}.Dockerfile
+
+            *.args.CI_INSTALLER_BENCH_NONCE=${{ github.run_id }}-${{ github.run_attempt }}
+
+            "
+      - name: Wait for image build
+        wait: build-image
+      - name: Verify image source revision
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+        run:
+          "actual_revision=\"$(docker image inspect --format '{{ index .Config.Labels \"org.opencontainers.image.revision\"\
+          \ }}' \"$SMOKE_IMAGE\")\"\nif [[ \"$actual_revision\" != \"$GITHUB_SHA\" ]]; then\n  echo \"expected\
+          \ image revision $GITHUB_SHA, got $actual_revision\" >&2\n  exit 1\nfi\nimage_id=\"$(docker image\
+          \ inspect --format '{{ .Id }}' \"$SMOKE_IMAGE\")\"\njq -n \\\n  --arg sha \"$GITHUB_SHA\" \\\n\
+          \  --arg platform \"${{ matrix.platform }}\" \\\n  --arg image \"$SMOKE_IMAGE\" \\\n  --arg image_id\
+          \ \"$image_id\" \\\n  '{sha: $sha, platform: $platform, image: $image, image_id: $image_id, validated:\
+          \ false}' \\\n  > \"$REPORT_DIR/status.json\"\n"
+      - name: Inventory the final image's locked Python packages
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+          INSTALLER: ${{ matrix.installer }}
+          ARCH: ${{ matrix.suffix }}
+        run:
+          "docker run --rm --entrypoint /app/autogpt_platform/backend/.venv/bin/python \\\n  --mount\
+          \ \"type=bind,source=$GITHUB_WORKSPACE/.github/scripts/benchmark_backend_tools.py,target=/tmp/inventory.py,readonly\"\
+          \ \\\n  \"$SMOKE_IMAGE\" /tmp/inventory.py inventory > \"$REPORT_DIR/inventory.json\"\ndocker\
+          \ run --rm --entrypoint sh \"$SMOKE_IMAGE\" -c 'test ! -e /usr/local/bin/uv'\npython3 - <<'PY'\n\
+          import json, os, subprocess\nfrom pathlib import Path\nreport = Path(os.environ['REPORT_DIR'])\n\
+          inventory = json.loads((report / 'inventory.json').read_text())\nassert len(inventory) > 100\n\
+          metadata = {\n    'sha': os.environ['GITHUB_SHA'], 'parent': subprocess.check_output(['git', 'rev-parse',\
+          \ 'HEAD^'], text=True).strip(),\n    'installer': os.environ['INSTALLER'], 'arch': os.environ['ARCH'],\n\
+          \    'application_tree': subprocess.check_output(['git', 'rev-parse', 'HEAD:autogpt_platform'],\
+          \ text=True).strip(),\n    'inventory_count': len(inventory),\n}\n(report / 'installer.json').write_text(json.dumps(metadata,\
+          \ indent=2))\nPY\n"
+      - name: Smoke-test the complete image
+        id: complete-image-smoke
+        background: true
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+          SMOKE_PLATFORM: ${{ matrix.platform }}
+          SMOKE_SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
+        run:
+          python3 .github/scripts/run_command_junit.py --name complete-image-smoke --classname single-container.smoke
+          --output "$REPORT_DIR/smoke.xml" -- bash .github/scripts/platform-single-container-smoke.sh
+      - name: Install Trivy
+        continue-on-error: true
+        shell: bash
+        run: bash .github/scripts/install-trivy.sh
+      - name: Scan for fixable critical vulnerabilities
+        id: vulnerability_scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          skip-setup-trivy: true
+          cache: false
+          image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+          scanners: vuln
+          format: json
+          output: ${{ runner.temp }}/platform-single-container-results/trivy-critical.json
+          ignore-unfixed: true
+          severity: CRITICAL
+          exit-code: "1"
+          timeout: 30m
+          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
+      - name: Scan image filesystem for embedded secrets
+        id: secret_scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          skip-setup-trivy: true
+          cache: false
+          image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+          scanners: secret
+          format: json
+          output: ${{ runner.temp }}/platform-single-container-results/trivy-secrets.json
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          timeout: 30m
+          trivyignores: autogpt_platform/single-container/.trivyignore.yaml
+      - name: Signal concurrent scans complete
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          SCAN_COMPLETION_FILE: ${{ runner.temp }}/platform-single-container-results/scans-complete
+        run: touch "$SCAN_COMPLETION_FILE"
+      - name: Wait for complete-image smoke test
+        wait: complete-image-smoke
+      - name: Verify machine-readable reports
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+          SMOKE_IMAGE: autogpt-platform-single-container:ci-${{ matrix.suffix }}
+          SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
+          VULNERABILITY_SCAN_OUTCOME: ${{ steps.vulnerability_scan.outcome }}
+        run:
+          "scan_failed=0\nif [[ \"$VULNERABILITY_SCAN_OUTCOME\" != \"success\" ]]; then\n  echo \"vulnerability\
+          \ scan action concluded $VULNERABILITY_SCAN_OUTCOME\" >&2\n  scan_failed=1\nfi\nif [[ \"$SECRET_SCAN_OUTCOME\"\
+          \ != \"success\" ]]; then\n  echo \"secret scan action concluded $SECRET_SCAN_OUTCOME\" >&2\n\
+          \  scan_failed=1\nfi\nreports=(\n  runtime-helpers.xml\n  publication-policy.xml\n  smoke.xml\n\
+          \  trivy-critical.json\n  trivy-secrets.json\n)\nfor report in \"${reports[@]}\"; do\n  if [[\
+          \ ! -s \"$REPORT_DIR/$report\" ]]; then\n    echo \"missing machine-readable report: $report\"\
+          \ >&2\n    exit 1\n  fi\ndone\npython3 .github/scripts/verify_single_container_reports.py \\\n\
+          \  --report-dir \"$REPORT_DIR\" \\\n  --expected-image \"$SMOKE_IMAGE\"\n((scan_failed == 0))\n"
+      - name: Mark validation complete
+        shell: bash
+        env:
+          REPORT_DIR: ${{ runner.temp }}/platform-single-container-results
+        run:
+          'jq ''.validated = true'' "$REPORT_DIR/status.json" > "$REPORT_DIR/status.complete.json"
+
+          mv "$REPORT_DIR/status.complete.json" "$REPORT_DIR/status.json"
+
+          '
+      - name: Upload single-container reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: platform-single-container-ci-${{ matrix.suffix }}-${{ matrix.installer }}
+          path: ${{ runner.temp }}/platform-single-container-results
+          if-no-files-found: error
+          retention-days: 7
+  parity:
+    name: Require locked-package parity on both architectures
+    needs:
+      - appliance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout: .github
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: platform-single-container-ci-*
+          path: reports
+      - name: Compare versions, direct URLs, commits and editable installs
+        run: python3 .github/ci-diagnostics/compare-docker-installers.py reports
