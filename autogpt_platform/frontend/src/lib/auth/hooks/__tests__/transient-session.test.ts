@@ -23,6 +23,7 @@ vi.mock("@/services/analytics/reset-identity", () => ({
 const toast = vi.hoisted(() => vi.fn());
 vi.mock("@/components/molecules/Toast/use-toast", () => ({ toast }));
 
+import { SESSION_CHECK_DEADLINE_MS } from "../helpers";
 import { useAuthStore } from "../useAuthStore";
 
 const ACT_AS = "X-Act-As-User-Id";
@@ -190,6 +191,39 @@ describe("a deploy skew the reload didn't fix", () => {
         title: "A new version of AutoGPT is available",
       }),
     );
+    expect(useAuthStore.getState().user).toBe(admin);
+  });
+});
+
+describe("a session check that never gets an answer (#16988)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("lets the next refocus check the session once the deadline passes", async () => {
+    // Signed in, with the session listeners running as in the app.
+    useAuthStore.setState({ user: admin, hasLoadedUser: true });
+    await useAuthStore.getState().initialize({
+      api: { disconnectWebSocket: vi.fn() } as unknown as BackendAPI,
+      router: makeRouter(),
+      path: "/library",
+    });
+    // The first check's server action was dropped: it never answers.
+    actions.validateSession.mockReturnValueOnce(new Promise(() => {}));
+    actions.validateSession.mockResolvedValue({ user: admin, isValid: true });
+
+    void validate();
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_DEADLINE_MS);
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(actions.validateSession).toHaveBeenCalledTimes(2);
     expect(useAuthStore.getState().user).toBe(admin);
   });
 });

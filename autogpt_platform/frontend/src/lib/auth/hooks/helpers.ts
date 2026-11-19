@@ -21,9 +21,45 @@ interface FetchUserResult {
   isUserLoading: boolean;
 }
 
+// A session check that never answers must still end, or the store's
+// one-check slot stays taken and the tab never checks its session again
+// (#16988). Prod answers within about 0.7 s; a missed deadline counts as
+// unavailable, so the user stays signed in and the store retries.
+export const SESSION_CHECK_DEADLINE_MS = 10_000;
+
+class SessionCheckTimeoutError extends Error {
+  constructor() {
+    super("The session check got no answer in time");
+    this.name = "SessionCheckTimeoutError";
+  }
+}
+
+function withDeadline<T>(check: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new SessionCheckTimeoutError()),
+      SESSION_CHECK_DEADLINE_MS,
+    );
+    check.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function isSessionCheckTimeout(error: unknown): boolean {
+  return error instanceof SessionCheckTimeoutError;
+}
+
 export async function fetchUser(): Promise<FetchUserResult> {
   try {
-    const { user, error } = await getCurrentUser();
+    const { user, error } = await withDeadline(getCurrentUser());
 
     if (error || !user) {
       // Only mark as loaded if we got an explicit error (not just no user)
@@ -42,9 +78,13 @@ export async function fetchUser(): Promise<FetchUserResult> {
       isUserLoading: false,
     };
   } catch (error) {
-    // A check cut off by a full-page navigation (a login reloads the page) or
-    // a dropped connection is not a broken session.
-    if (isAbortError(error) || isNetworkError(error)) {
+    // A check cut off by a full-page navigation (a login reloads the page), a
+    // dropped connection or no answer in time is not a broken session.
+    if (
+      isAbortError(error) ||
+      isNetworkError(error) ||
+      isSessionCheckTimeout(error)
+    ) {
       console.warn("Get user deferred:", error);
     } else {
       console.error("Get user error:", error);
@@ -85,7 +125,7 @@ export async function validateSession(
   params: ValidateSessionParams,
 ): Promise<ValidateSessionResult> {
   try {
-    const result = await validateSessionAction(params.path);
+    const result = await withDeadline(validateSessionAction(params.path));
 
     if (result.isUnavailable) {
       return { isValid: true, shouldUpdateUser: false, unavailable: "network" };
@@ -144,7 +184,7 @@ interface RefreshSessionResult {
 export async function refreshSession(): Promise<RefreshSessionResult> {
   let result: RefreshSessionResult;
   try {
-    result = await refreshSessionAction();
+    result = await withDeadline(refreshSessionAction());
   } catch (error) {
     console.warn("Session refresh unavailable:", error);
     return {

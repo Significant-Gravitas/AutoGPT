@@ -1009,8 +1009,11 @@ describe("a setup that is slow to load (#16965)", () => {
 
     const notice = screen.getByRole("alert");
     expect(notice.textContent).toContain(SLOW);
-    // Focus moves to the notice that replaced the placeholder.
-    expect(document.activeElement).toBe(notice.parentElement);
+    // Focus moves to the notice that replaced the placeholder; it is named by
+    // its title, so focusing it doesn't read the whole alert out again.
+    expect(document.activeElement).toBe(
+      screen.getByRole("group", { name: SLOW }),
+    );
     expect(Sentry.captureMessage).toHaveBeenCalledOnce();
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
       REPORT,
@@ -1075,5 +1078,41 @@ describe("a setup that is slow to load (#16965)", () => {
     expect(screen.getByTestId("onboarding-placeholder")).toBeDefined();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("neither shows the notice nor reports when the account arrives in time", async () => {
+    // The account comes in before the deadline; the progress read still hangs.
+    getState.mockImplementation(() => new Promise(() => {}));
+    const account = user;
+    user = null;
+    const view = render(<OnboardingPage />);
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS - 1));
+
+    user = account;
+    view.rerender(<OnboardingPage />);
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS * 2));
+
+    expect(screen.getByTestId("onboarding-placeholder")).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("gives a later wait for the account a full deadline of its own", async () => {
+    getState.mockImplementation(() => new Promise(() => {}));
+    const account = user;
+    user = null;
+    const view = render(<OnboardingPage />);
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS));
+    expect(screen.getByRole("alert")).toBeDefined();
+
+    user = account;
+    view.rerender(<OnboardingPage />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    user = null;
+    view.rerender(<OnboardingPage />);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS));
+    expect(screen.getByRole("alert")).toBeDefined();
   });
 });

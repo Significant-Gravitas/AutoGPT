@@ -72,6 +72,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast() {} }),
 }));
 
+import { SESSION_CHECK_DEADLINE_MS } from "@/lib/auth/hooks/helpers";
 import { ImpersonationCookie as cookieWriter } from "@/lib/impersonation";
 
 type StoreModule = typeof import("@/lib/auth/hooks/useAuthStore");
@@ -99,13 +100,23 @@ interface Pending {
   answer: unknown;
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
+  // The store's deadline for it passed, so its answer will be dropped.
+  abandoned?: boolean;
 }
 
 interface Timer {
   id: number;
   tab: Tab;
   run: () => void;
+  // The session check this deadline gives up on when it fires.
+  deadlineFor?: Pending;
 }
+
+const SESSION_CHECKS: Kind[] = [
+  "getCurrentUser",
+  "validateSession",
+  "refreshSession",
+];
 
 const ADMIN_A: ServerUser = {
   id: "admin-a",
@@ -305,11 +316,19 @@ class World {
       const tab = this.current;
       if (tab) this.reloadRequests.push(tab);
     };
-    globalThis.setTimeout = ((run: () => void) => {
+    globalThis.setTimeout = ((run: () => void, delay?: number) => {
       const tab = this.current;
       const id = ++this.timerId;
-      if (tab) this.timers.push({ id, tab, run });
-      else this.escaped += 1;
+      if (tab) {
+        // The store arms a check's deadline right after sending it.
+        const deadlineFor =
+          delay === SESSION_CHECK_DEADLINE_MS
+            ? this.pending.findLast(
+                (p) => p.tab === tab && SESSION_CHECKS.includes(p.kind),
+              )
+            : undefined;
+        this.timers.push({ id, tab, run, deadlineFor });
+      } else this.escaped += 1;
       return id;
     }) as unknown as typeof setTimeout;
     globalThis.clearTimeout = ((id: number) => {
@@ -482,6 +501,7 @@ class World {
       const timer = this.pick(this.timers);
       this.timers.splice(this.timers.indexOf(timer), 1);
       this.log.push(`${timer.tab.name}: timer fires`);
+      if (timer.deadlineFor) timer.deadlineFor.abandoned = true;
       await this.inTab(timer.tab, () => timer.run());
     }
 
@@ -553,16 +573,15 @@ class World {
         const user = tab.store.getState().user;
 
         // (d) one session check at a time: start-up's lookups and every
-        // validation share it. Requests from an earlier epoch don't count;
-        // their answers are dropped.
+        // validation share it. Requests from an earlier epoch, and checks
+        // whose deadline passed, don't count; their answers are dropped.
         const epoch = tab.store.getState().sessionEpoch;
         const checksInFlight = this.pending.filter(
           (p) =>
             p.tab === tab &&
             p.epoch === epoch &&
-            (p.kind === "getCurrentUser" ||
-              p.kind === "validateSession" ||
-              p.kind === "refreshSession"),
+            !p.abandoned &&
+            SESSION_CHECKS.includes(p.kind),
         ).length;
         expect(
           checksInFlight,
