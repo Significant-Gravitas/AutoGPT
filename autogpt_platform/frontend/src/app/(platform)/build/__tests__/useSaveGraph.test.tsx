@@ -6,18 +6,20 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
+// The workflow in the URL; null until its first save.
+let mockFlowID: string | null;
 const mockSetQueryStates = vi.fn();
 vi.mock("nuqs", () => ({
   parseAsString: {},
   parseAsInteger: {},
   useQueryStates: vi.fn(() => [
-    { flowID: "graph-1", flowVersion: 1 },
+    { flowID: mockFlowID, flowVersion: mockFlowID ? 1 : null },
     mockSetQueryStates,
   ]),
 }));
 
-// The graph currently loaded for the flow — swapped per test to exercise the
-// update, create, and no-change branches.
+// The saved graph the canvas shows — swapped per test to exercise the update
+// and no-change branches.
 let mockCurrentGraph: unknown;
 const mockCreate = vi.fn();
 const mockUpdate = vi.fn();
@@ -27,7 +29,6 @@ let mockUpdateOptions: {
   };
 };
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
-  useGetV1GetSpecificGraph: () => ({ data: mockCurrentGraph }),
   usePostV1CreateNewGraph: () => ({
     mutateAsync: mockCreate,
     isPending: false,
@@ -55,8 +56,14 @@ vi.mock("@/app/(platform)/build/stores/edgeStore", () => ({
 
 const mockSetGraphSchemas = vi.fn();
 vi.mock("@/app/(platform)/build/stores/graphStore", () => ({
-  useGraphStore: (selector: (s: { setGraphSchemas: unknown }) => unknown) =>
-    selector({ setGraphSchemas: mockSetGraphSchemas }),
+  useGraphStore: Object.assign(
+    (selector: (s: { setGraphSchemas: unknown }) => unknown) =>
+      selector({ setGraphSchemas: mockSetGraphSchemas }),
+    {
+      getState: () => ({ loadedGraph: mockCurrentGraph ?? null }),
+      subscribe: () => () => undefined,
+    },
+  ),
 }));
 
 let mockEquivalent = false;
@@ -80,11 +87,13 @@ import { useSaveGraph } from "../hooks/useSaveGraph";
 describe("useSaveGraph", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFlowID = "graph-1";
     mockCurrentGraph = undefined;
     mockEquivalent = false;
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -187,8 +196,8 @@ describe("useSaveGraph", () => {
     expect(mockToast).not.toHaveBeenCalled();
   });
 
-  it("returns the created graph model when there is no existing graph", async () => {
-    mockCurrentGraph = undefined;
+  it("returns the created graph model when the workflow has not been saved yet", async () => {
+    mockFlowID = null;
     const created = {
       id: "new-graph",
       version: 1,
@@ -227,6 +236,7 @@ describe("useSaveGraph", () => {
   });
 
   it("names the invalid field and marks it on its node when the backend refuses the graph", async () => {
+    mockFlowID = null;
     mockCreate.mockRejectedValue(
       new ApiError("Agent Output › Name: This field is required", 400, {
         detail: {
@@ -258,6 +268,29 @@ describe("useSaveGraph", () => {
           "Agent Output › Name: This field is required",
         ),
         variant: "destructive",
+      }),
+    );
+  });
+
+  it("tells the user to try again when the canvas never finishes loading the saved workflow", async () => {
+    vi.useFakeTimers();
+
+    const { result } = renderHook(() => useSaveGraph({ showToast: false }));
+
+    let returned: unknown;
+    await act(async () => {
+      const saving = result.current.saveGraph();
+      await vi.advanceTimersByTimeAsync(30_000);
+      returned = await saving;
+    });
+
+    expect(returned).toBeNull();
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Error saving workflow",
+        description: "Your workflow is still loading. Try again in a moment.",
       }),
     );
   });

@@ -1,10 +1,9 @@
 // Creating this hook, because we are using same saving stuff at multiple places in our builder
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import {
-  useGetV1GetSpecificGraph,
   usePostV1CreateNewGraph,
   usePutV1UpdateGraphVersion,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
@@ -22,11 +21,14 @@ import {
   clearTempFlowId,
   getTempFlowId,
 } from "@/services/builder-draft/draft-service";
-import { retryUnlessClientError } from "../helpers/graphLoadError";
 import {
   describeSaveError,
   markInvalidFields,
 } from "../helpers/saveGraphError";
+import {
+  getLoadedGraph,
+  waitForLoadedGraph,
+} from "../helpers/waitForLoadedGraph";
 
 export type SaveGraphOptions = {
   showToast?: boolean;
@@ -50,17 +52,8 @@ export const useSaveGraph = ({
     useShallow((state) => state.setGraphSchemas),
   );
 
-  const { data: graph } = useGetV1GetSpecificGraph(
-    flowID ?? "",
-    flowVersion !== null ? { version: flowVersion } : {},
-    {
-      query: {
-        select: (res) => res.data as GraphModel,
-        enabled: !!flowID,
-        retry: retryUnlessClientError,
-      },
-    },
-  );
+  // A save waits while the canvas is still loading the workflow it would save.
+  const [isWaitingForCanvas, setIsWaitingForCanvas] = useState(false);
 
   const { mutateAsync: createNewGraph, isPending: isCreating } =
     usePostV1CreateNewGraph({
@@ -119,6 +112,18 @@ export const useSaveGraph = ({
 
   const persistGraph = useCallback(
     async (values?: { name?: string; description?: string }) => {
+      // A saved workflow is saved as a new version of the graph the canvas
+      // shows, so while the canvas is still loading the one in the URL (just
+      // after a save, or as the page opens) the save waits for it.
+      let graph = flowID ? getLoadedGraph(flowID, flowVersion) : null;
+      if (flowID && !graph) {
+        setIsWaitingForCanvas(true);
+        try {
+          graph = await waitForLoadedGraph(flowID, flowVersion);
+        } finally {
+          setIsWaitingForCanvas(false);
+        }
+      }
       const graphNodes = useNodeStore.getState().getBackendNodes();
       const graphLinks = useEdgeStore.getState().getBackendLinks();
 
@@ -175,7 +180,15 @@ export const useSaveGraph = ({
         return graphData;
       }
     },
-    [graph, toast, createNewGraph, updateGraph],
+    [
+      flowID,
+      flowVersion,
+      showToast,
+      toast,
+      createNewGraph,
+      updateGraph,
+      setGraphSchemas,
+    ],
   );
 
   // Resolves to null when the save fails; the user has been told why.
@@ -198,6 +211,6 @@ export const useSaveGraph = ({
 
   return {
     saveGraph,
-    isSaving: isCreating || isUpdating,
+    isSaving: isWaitingForCanvas || isCreating || isUpdating,
   };
 };

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { GraphMeta } from "@/app/api/__generated__/models/graphMeta";
+import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 
 interface GraphStore {
   graphExecutionStatus: AgentExecutionStatus | undefined;
@@ -22,6 +23,11 @@ interface GraphStore {
   availableSubGraphs: GraphMeta[];
   setAvailableSubGraphs: (graphs: GraphMeta[]) => void;
 
+  // The saved graph the canvas was last loaded from, which a save of a saved
+  // workflow becomes a new version of.
+  loadedGraph: GraphModel | null;
+  setLoadedGraph: (graph: GraphModel | null) => void;
+
   hasInputs: () => boolean;
   hasCredentials: () => boolean;
   hasOutputs: () => boolean;
@@ -35,6 +41,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   credentialsInputSchema: null,
   outputSchema: null,
   availableSubGraphs: [],
+  loadedGraph: null,
 
   setGraphExecutionStatus: (status: AgentExecutionStatus | undefined) => {
     set({
@@ -53,6 +60,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     set({ inputSchema, credentialsInputSchema, outputSchema }),
 
   setAvailableSubGraphs: (graphs) => set({ availableSubGraphs: graphs }),
+
+  setLoadedGraph: (graph) => set({ loadedGraph: graph }),
 
   hasOutputs: () => {
     const { outputSchema } = get();
@@ -75,5 +84,6 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       isGraphRunning: false,
       inputSchema: null,
       credentialsInputSchema: null,
+      loadedGraph: null,
     }),
 }));

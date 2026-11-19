@@ -59,6 +59,9 @@ export const useFlow = () => {
   const setAvailableSubGraphs = useGraphStore(
     useShallow((state) => state.setAvailableSubGraphs),
   );
+  const setLoadedGraph = useGraphStore(
+    useShallow((state) => state.setLoadedGraph),
+  );
   const { screenToFlowPosition, fitView } = useReactFlow();
   const addBlock = useNodeStore(useShallow((state) => state.addBlock));
   const setBlockMenuOpen = useControlPanelStore(
@@ -177,22 +180,24 @@ export const useFlow = () => {
     }
   }, [availableGraphs, setAvailableSubGraphs]);
 
-  // adding nodes
+  // Nodes and links are replaced in one step, once the graph's block info is
+  // in. Replacing the links as soon as the graph arrived paired the saved
+  // graph's link ids with the canvas's old node ids, and a save sent both.
   useEffect(() => {
-    if (customNodes.length > 0) {
-      useNodeStore.getState().setNodes([]);
-      useNodeStore.getState().clearResolutionState();
-      addNodes(customNodes);
-    }
-  }, [customNodes, addNodes]);
+    if (customNodes.length === 0) return;
+    useNodeStore.getState().setNodes([]);
+    useNodeStore.getState().clearResolutionState();
+    addNodes(customNodes);
+    useEdgeStore.getState().setEdges([]);
+    addLinks(graph?.links ?? []);
+  }, [customNodes, graph?.links, addNodes, addLinks]);
 
-  // adding links
+  // Saves wait for this (waitForLoadedGraph), so it runs after the fill.
   useEffect(() => {
-    if (graph?.links) {
-      useEdgeStore.getState().setEdges([]);
-      addLinks(graph.links);
+    if (graph && (customNodes.length > 0 || !graph.nodes?.length)) {
+      setLoadedGraph(graph);
     }
-  }, [graph?.links, addLinks]);
+  }, [graph, customNodes, setLoadedGraph]);
 
   useEffect(() => {
     if (customNodes.length > 0 && graph?.links) {
