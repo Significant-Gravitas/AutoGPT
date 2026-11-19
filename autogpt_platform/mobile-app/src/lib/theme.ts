@@ -27,6 +27,27 @@ const dark = {
   sky: "#38BDF8",
   avatarBorder: "rgba(255,255,255,0.12)",
   avatarTintBase: "#17171B",
+  // Laid over a page pushed aside by a drawer, in the page's own colour.
+  pageWash: "rgba(11,11,13,0.55)",
+  pageEdge: "rgba(255,255,255,0.10)",
+  // The menu and the chat panel sit a step lighter than the page.
+  menuBackground: "#141417",
+  menuRowActive: "#26262D",
+  menuButton: "#232329",
+  panelBackground: "#141417",
+  panelCard: "#1F1F25",
+  panelTabTrack: "#26262D",
+  // The chat's round header buttons and name pill, over the thread.
+  floatingButton: "#1F1F25",
+  floatingRing: "#33333C",
+  // Lines between rows inside a panel card.
+  panelDivider: "#2A2A30",
+  // The marketplace's round hire button and pinned hire pill.
+  actionStrong: "#F4F4F5",
+  onActionStrong: "#141414",
+  // The tick that marks an expert already on the team.
+  hiredBadge: "#16301F",
+  onHiredBadge: "#4ADE80",
 };
 
 export type Colors = typeof dark;
@@ -57,6 +78,21 @@ const light: Colors = {
   sky: "#0EA5E9",
   avatarBorder: "rgba(20,20,30,0.10)",
   avatarTintBase: "#FFFFFF",
+  pageWash: "rgba(254,254,254,0.55)",
+  pageEdge: "rgba(20,20,30,0.06)",
+  menuBackground: "#F3F3F4",
+  menuRowActive: "#E4E4E7",
+  menuButton: "#FFFFFF",
+  panelBackground: "#F3F3F4",
+  panelCard: "#FFFFFF",
+  panelTabTrack: "#E6E6E9",
+  floatingButton: "#FFFFFF",
+  floatingRing: "rgba(0,0,0,0.08)",
+  panelDivider: "#EFEFF1",
+  actionStrong: "#141414",
+  onActionStrong: "#FFFFFF",
+  hiredBadge: "#E7F6EC",
+  onHiredBadge: "#16A34A",
 };
 
 export const palettes: Record<Scheme, Colors> = { dark, light };
@@ -65,7 +101,36 @@ export const avatarTintPercent: Record<Scheme, number> = { dark: 16, light: 24 }
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 
-export const radius = { sm: 8, md: 12, lg: 18, pill: 999 } as const;
+// `page` matches the phone's own corners, for a page pushed aside by a drawer.
+export const radius = { sm: 8, md: 12, lg: 18, page: 40, pill: 999 } as const;
+
+// Light theme only: in dark, surfaces part by colour and shadows don't show.
+export const shadows = {
+  // The chat header's round buttons and name pill.
+  floating: {
+    shadowColor: "#000000",
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  // The menu's search and avatar buttons.
+  menuButton: {
+    shadowColor: "#000000",
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  // The chosen tab in the panel's tab track.
+  selectedTab: {
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 1.5,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+} as const;
 
 export const type = {
   title: { fontSize: 28, fontWeight: "600", lineHeight: 34 },

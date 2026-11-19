@@ -554,7 +554,7 @@ class _ShardStream:
         self._subscribing[channel] = confirmed
         try:
             # SSUBSCRIBE has no socket timeout of its own.
-            async with asyncio.timeout(_SUBSCRIBE_TIMEOUT_S):
+            async with _subscribe_deadline():
                 await subscription.add(channel)
                 await confirmed
         except TimeoutError:
@@ -697,6 +697,12 @@ class _ShardStream:
             await handler(data)
         except Exception:
             logger.exception(f"Websocket message-handler failed for {channel}")
+
+
+def _subscribe_deadline() -> asyncio.Timeout:
+    """The bound on Redis confirming one SSUBSCRIBE, from now: a function of
+    its own so a test can expire it at the point it chooses."""
+    return asyncio.timeout(_SUBSCRIBE_TIMEOUT_S)
 
 
 def graph_exec_channel_key(user_id: str, *, graph_exec_id: str) -> str:
