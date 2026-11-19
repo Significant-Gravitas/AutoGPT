@@ -179,7 +179,9 @@ const BLANK_WORKFLOW: Graph = {
   links: [],
 };
 
-type LoadRequest = "graph" | "blocks";
+// The graph request for a version, the one for a URL without a version (the
+// latest), and the blocks request.
+type LoadRequest = "graph" | "latest graph" | "blocks";
 
 // Waits that span requests and renders get room for a slow CI runner.
 const NETWORK_WAIT = { timeout: 10_000 };
@@ -194,7 +196,7 @@ const backend = {
   updates: [] as Graph[],
   refusals: [] as string[],
   executions: [] as { graphID: string; graphVersion: number }[],
-  requests: { graph: 0, blocks: 0 },
+  requests: { graph: 0, "latest graph": 0, blocks: 0 },
   held: null as LoadRequest | null,
   release: () => {},
 };
@@ -280,7 +282,13 @@ function hold(request: LoadRequest) {
 // Moves the open builder to another workflow without leaving the page, as
 // the builder chat does for the blank workflow it creates, or the browser's
 // back button does.
-function OpenWorkflowButton({ graphID }: { graphID: string }) {
+function OpenWorkflowButton({
+  graphID,
+  version = 1,
+}: {
+  graphID: string;
+  version?: number | null;
+}) {
   const [, setQueryStates] = useQueryStates({
     flowID: parseAsString,
     flowVersion: parseAsInteger,
@@ -288,9 +296,9 @@ function OpenWorkflowButton({ graphID }: { graphID: string }) {
   return (
     <button
       type="button"
-      onClick={() => setQueryStates({ flowID: graphID, flowVersion: 1 })}
+      onClick={() => setQueryStates({ flowID: graphID, flowVersion: version })}
     >
-      Open {graphID}
+      {version === null ? `Open ${graphID} latest` : `Open ${graphID}`}
     </button>
   );
 }
@@ -310,6 +318,7 @@ function renderBuilder(searchParams = "") {
           <TooltipProvider>
             <BuilderPage />
             <OpenWorkflowButton graphID={GRAPH_ID} />
+            <OpenWorkflowButton graphID={GRAPH_ID} version={null} />
             <OpenWorkflowButton graphID={BLANK_GRAPH_ID} />
             <Toaster />
           </TooltipProvider>
@@ -391,7 +400,7 @@ beforeEach(() => {
   backend.updates = [];
   backend.refusals = [];
   backend.executions = [];
-  backend.requests = { graph: 0, blocks: 0 };
+  backend.requests = { graph: 0, "latest graph": 0, blocks: 0 };
   backend.held = null;
   setTabIntroSeen("build", USER_ID);
 
@@ -414,9 +423,9 @@ beforeEach(() => {
         : HttpResponse.json({ graph: saved, skipped_webhook_presets: [] });
     }),
     getGetV1GetSpecificGraphMockHandler200(async ({ request, params }) => {
-      await answerLoad("graph");
-      const versions = backend.graphs[String(params.graphId)] ?? [];
       const version = new URL(request.url).searchParams.get("version");
+      await answerLoad(version ? "graph" : "latest graph");
+      const versions = backend.graphs[String(params.graphId)] ?? [];
       return versions[version ? Number(version) - 1 : versions.length - 1];
     }),
     getGetV2GetSpecificBlocksMockHandler200(async () => {
@@ -480,12 +489,10 @@ describe("builder Run while the workflow it runs is still loading", () => {
       await waitForTheRun();
 
       expect(backend.creates, "a second workflow was created").toBe(1);
-      for (const update of backend.updates) {
-        expect(strayLinkEnds(update)).toEqual([]);
-      }
+      expect(backend.updates, "running it saved a new version").toEqual([]);
       expect(backend.refusals).toEqual([]);
       expect(backend.executions).toEqual([
-        { graphID: GRAPH_ID, graphVersion: backend.graphs[GRAPH_ID].length },
+        { graphID: GRAPH_ID, graphVersion: 1 },
       ]);
       expect(screen.queryByText("Error saving workflow")).toBeNull();
     },
@@ -648,6 +655,61 @@ describe("builder Run whose workflow never loads", () => {
     renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
 
     await clickRunOnceItIsEnabled(user);
+
+    expect(
+      await screen.findByText(
+        "Your workflow couldn't be loaded. Reload the page and try again.",
+        {},
+        NETWORK_WAIT,
+      ),
+    ).toBeDefined();
+    expect(backend.updates).toEqual([]);
+    expect(backend.executions).toEqual([]);
+  });
+});
+
+describe("builder Run while the workflow it names is still loading", () => {
+  test("Run after moving to the workflow's latest version waits for it, and runs that version", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    saveVersion(SAVED_WORKFLOW);
+    const user = userEvent.setup();
+    hold("latest graph");
+    renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
+    await waitFor(
+      () => expect(useGraphStore.getState().loadedGraph?.version).toBe(1),
+      NETWORK_WAIT,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: `Open ${GRAPH_ID} latest` }),
+    );
+    await clickRunOnceItIsEnabled(user);
+    backend.release();
+    await waitForTheRun();
+
+    expect(backend.updates, "running it saved a new version").toEqual([]);
+    expect(backend.executions).toEqual([
+      { graphID: GRAPH_ID, graphVersion: 2 },
+    ]);
+  });
+
+  test("Run on a workflow whose graph request fails says so at once", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    server.use(
+      http.get(`/api/proxy/api/graphs/${GRAPH_ID}`, async () => {
+        await answerLoad("graph");
+        return HttpResponse.json(
+          { detail: `Workflow #${GRAPH_ID} not found` },
+          { status: 404 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    hold("graph");
+    renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
+
+    await clickRunOnceItIsEnabled(user);
+    backend.release();
 
     expect(
       await screen.findByText(

@@ -213,11 +213,12 @@ export const useFlow = () => {
       useEdgeStore.getState().setEdges([]);
       useHistoryStore.getState().initializeHistory();
     }
-    setLoadedGraph(graph);
-  }, [graph, customNodes, setLoadedGraph]);
+    setLoadedGraph(graph, flowVersion);
+  }, [graph, customNodes, flowVersion, setLoadedGraph]);
 
   // A save waiting for this workflow to load gives up when the builder moves to
-  // another workflow or closes, and fails at once if its blocks can't load.
+  // another workflow or closes, and fails at once if the workflow or its
+  // blocks can't load.
   useEffect(() => {
     const controller = new AbortController();
     setLoadSignal(controller.signal);
@@ -225,8 +226,8 @@ export const useFlow = () => {
   }, [flowID, setLoadSignal]);
 
   useEffect(() => {
-    setLoadFailed(isBlocksError);
-  }, [isBlocksError, setLoadFailed]);
+    setLoadFailed(isGraphError || isBlocksError);
+  }, [isGraphError, isBlocksError, setLoadFailed]);
 
   useEffect(() => {
     if (customNodes.length > 0 && graph?.links) {

@@ -11,13 +11,12 @@ const graph = getGetV1GetSpecificGraphResponseMock200({
 afterEach(() => {
   vi.useRealTimers();
   useGraphStore.getState().reset();
-  useGraphStore.getState().setLoadSignal(new AbortController().signal);
 });
 
 describe("waitForLoadedGraph", () => {
   test("resolves at once when the canvas already shows the graph", async () => {
     vi.useFakeTimers();
-    useGraphStore.getState().setLoadedGraph(graph);
+    useGraphStore.getState().setLoadedGraph(graph, 2);
 
     const loaded = waitForLoadedGraph("graph-1", 2);
     await vi.advanceTimersByTimeAsync(30_000);
@@ -26,10 +25,19 @@ describe("waitForLoadedGraph", () => {
   });
 
   test("waits for the canvas to show that version of the graph", async () => {
-    useGraphStore.getState().setLoadedGraph({ ...graph, version: 1 });
+    useGraphStore.getState().setLoadedGraph({ ...graph, version: 1 }, 1);
 
     const loaded = waitForLoadedGraph("graph-1", 2);
-    useGraphStore.getState().setLoadedGraph(graph);
+    useGraphStore.getState().setLoadedGraph(graph, 2);
+
+    await expect(loaded).resolves.toBe(graph);
+  });
+
+  test("with no version asked for, waits for a load made for the latest version", async () => {
+    useGraphStore.getState().setLoadedGraph({ ...graph, version: 1 }, 1);
+
+    const loaded = waitForLoadedGraph("graph-1", null);
+    useGraphStore.getState().setLoadedGraph(graph, null);
 
     await expect(loaded).resolves.toBe(graph);
   });
@@ -52,5 +60,17 @@ describe("waitForLoadedGraph", () => {
     controller.abort();
 
     expect(isSaveCancelled(await loaded.catch((error) => error))).toBe(true);
+  });
+
+  test("isn't cancelled by a builder that closed before it started", async () => {
+    const closedBuilder = new AbortController();
+    useGraphStore.getState().setLoadSignal(closedBuilder.signal);
+    closedBuilder.abort();
+    useGraphStore.getState().reset();
+
+    const loaded = waitForLoadedGraph("graph-1", 2);
+    useGraphStore.getState().setLoadedGraph(graph, 2);
+
+    await expect(loaded).resolves.toBe(graph);
   });
 });

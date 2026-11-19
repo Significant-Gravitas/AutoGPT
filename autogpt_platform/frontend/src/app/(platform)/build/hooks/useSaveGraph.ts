@@ -53,8 +53,8 @@ export const useSaveGraph = ({
     useShallow((state) => state.setGraphSchemas),
   );
 
-  // A save waits while the canvas is still loading the workflow it would save.
-  const [isWaitingForCanvas, setIsWaitingForCanvas] = useState(false);
+  // Saves waiting while the canvas is still loading the workflow they'd save.
+  const [canvasWaits, setCanvasWaits] = useState(0);
 
   const { mutateAsync: createNewGraph, isPending: isCreating } =
     usePostV1CreateNewGraph({
@@ -118,11 +118,11 @@ export const useSaveGraph = ({
       // after a save, or as the page opens) the save waits for it.
       let graph = flowID ? getLoadedGraph(flowID, flowVersion) : null;
       if (flowID && !graph) {
-        setIsWaitingForCanvas(true);
+        setCanvasWaits((count) => count + 1);
         try {
           graph = await waitForLoadedGraph(flowID, flowVersion);
         } finally {
-          setIsWaitingForCanvas(false);
+          setCanvasWaits((count) => count - 1);
         }
       }
       const graphNodes = useNodeStore.getState().getBackendNodes();
@@ -214,6 +214,6 @@ export const useSaveGraph = ({
 
   return {
     saveGraph,
-    isSaving: isWaitingForCanvas || isCreating || isUpdating,
+    isSaving: canvasWaits > 0 || isCreating || isUpdating,
   };
 };

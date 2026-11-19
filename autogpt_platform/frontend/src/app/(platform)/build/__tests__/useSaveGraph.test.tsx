@@ -8,12 +8,13 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 
 // The workflow in the URL; null until its first save.
 let mockFlowID: string | null;
+let mockFlowVersion: number | null;
 const mockSetQueryStates = vi.fn();
 vi.mock("nuqs", () => ({
   parseAsString: {},
   parseAsInteger: {},
   useQueryStates: vi.fn(() => [
-    { flowID: mockFlowID, flowVersion: mockFlowID ? 1 : null },
+    { flowID: mockFlowID, flowVersion: mockFlowVersion },
     mockSetQueryStates,
   ]),
 }));
@@ -75,6 +76,7 @@ vi.mock("@/app/(platform)/build/stores/graphStore", () => ({
 function mockGraphStoreState() {
   return {
     loadedGraph: mockCurrentGraph ?? null,
+    loadedForVersion: 1,
     loadSignal: mockLoadController.signal,
     loadFailed: false,
   };
@@ -111,6 +113,7 @@ describe("useSaveGraph", () => {
     mockGraphStoreListeners.clear();
     mockLoadController = new AbortController();
     mockFlowID = "graph-1";
+    mockFlowVersion = 1;
     mockCurrentGraph = undefined;
     mockEquivalent = false;
   });
@@ -221,6 +224,7 @@ describe("useSaveGraph", () => {
 
   it("returns the created graph model when the workflow has not been saved yet", async () => {
     mockFlowID = null;
+    mockFlowVersion = null;
     const created = {
       id: "new-graph",
       version: 1,
@@ -260,6 +264,7 @@ describe("useSaveGraph", () => {
 
   it("names the invalid field and marks it on its node when the backend refuses the graph", async () => {
     mockFlowID = null;
+    mockFlowVersion = null;
     mockCreate.mockRejectedValue(
       new ApiError("Agent Output › Name: This field is required", 400, {
         detail: {
@@ -349,6 +354,36 @@ describe("useSaveGraph", () => {
       expect.objectContaining({ graphId: "graph-1" }),
     );
     expect(returned).toBe(updated);
+    expect(result.current.isSaving).toBe(false);
+  });
+
+  it("stays saving until every save waiting for the canvas has finished", async () => {
+    mockEquivalent = true;
+    const { result, rerender } = renderHook(() =>
+      useSaveGraph({ showToast: false }),
+    );
+
+    let first: Promise<unknown> = Promise.resolve();
+    act(() => {
+      first = result.current.saveGraph();
+    });
+    mockFlowVersion = 2;
+    rerender();
+    let second: Promise<unknown> = Promise.resolve();
+    act(() => {
+      second = result.current.saveGraph();
+    });
+
+    await act(async () => {
+      loadCanvas({ id: "graph-1", name: "Agent", version: 1 });
+      await first;
+    });
+    expect(result.current.isSaving).toBe(true);
+
+    await act(async () => {
+      loadCanvas({ id: "graph-1", name: "Agent", version: 2 });
+      await second;
+    });
     expect(result.current.isSaving).toBe(false);
   });
 

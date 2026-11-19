@@ -24,9 +24,11 @@ interface GraphStore {
   setAvailableSubGraphs: (graphs: GraphMeta[]) => void;
 
   // The saved graph the canvas was last loaded from, which a save of a saved
-  // workflow becomes a new version of.
+  // workflow becomes a new version of, and the version the URL asked for then
+  // (null for the latest).
   loadedGraph: GraphModel | null;
-  setLoadedGraph: (graph: GraphModel | null) => void;
+  loadedForVersion: number | null;
+  setLoadedGraph: (graph: GraphModel | null, forVersion: number | null) => void;
   // Aborted when the builder moves to another workflow or closes, so a save
   // waiting for the canvas to load gives up.
   loadSignal: AbortSignal;
@@ -49,6 +51,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   outputSchema: null,
   availableSubGraphs: [],
   loadedGraph: null,
+  loadedForVersion: null,
   loadSignal: new AbortController().signal,
   loadFailed: false,
 
@@ -70,7 +73,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   setAvailableSubGraphs: (graphs) => set({ availableSubGraphs: graphs }),
 
-  setLoadedGraph: (graph) => set({ loadedGraph: graph }),
+  setLoadedGraph: (graph, forVersion) =>
+    set({ loadedGraph: graph, loadedForVersion: forVersion }),
 
   setLoadSignal: (signal) => set({ loadSignal: signal }),
 
@@ -98,6 +102,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       inputSchema: null,
       credentialsInputSchema: null,
       loadedGraph: null,
+      loadedForVersion: null,
+      loadSignal: new AbortController().signal,
       loadFailed: false,
     }),
 }));

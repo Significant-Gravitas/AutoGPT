@@ -31,28 +31,32 @@ export function isSaveCancelled(error: unknown) {
   return error instanceof SaveCancelledError;
 }
 
+type GraphStoreState = ReturnType<typeof useGraphStore.getState>;
+
 /**
- * The saved graph the canvas shows, if it shows `graphID` (at `version`, when
- * given). Otherwise the canvas holds something else: the workflow as it was
- * before a save, or nothing yet while the page opens.
+ * The saved graph the canvas shows, if it shows `graphID` as the URL asks for
+ * it: at `version`, or, with no version, as loaded for a URL without one.
+ * Otherwise the canvas holds something else: the workflow as it was before a
+ * save, an earlier version, or nothing yet while the page opens.
  */
 export function getLoadedGraph(graphID: string, version: number | null) {
-  const graph = useGraphStore.getState().loadedGraph;
-  return isGraph(graph, graphID, version) ? graph : null;
+  return shownGraph(useGraphStore.getState(), graphID, version);
 }
 
 /** Whether the canvas shows a saved graph other than this version of `graph`. */
 export function showsAnotherSavedGraph(graph: GraphModel) {
   const loaded = useGraphStore.getState().loadedGraph;
   return (
-    loaded !== null && !isGraph(loaded, graph.id ?? "", graph.version ?? null)
+    loaded !== null &&
+    (loaded.id !== graph.id || loaded.version !== graph.version)
   );
 }
 
 /**
- * Resolves once the canvas shows `graphID` (at `version`, when given). Fails at
- * once if its blocks can't load, and is cancelled (see `isSaveCancelled`) if
- * the builder moves to another workflow or closes first.
+ * Resolves once the canvas shows `graphID` as the URL asks for it (see
+ * `getLoadedGraph`). Fails at once if the workflow or its blocks can't load,
+ * and is cancelled (see `isSaveCancelled`) if the builder moves to another
+ * workflow or closes first.
  */
 export function waitForLoadedGraph(graphID: string, version: number | null) {
   return new Promise<GraphModel>((resolve, reject) => {
@@ -67,9 +71,10 @@ export function waitForLoadedGraph(graphID: string, version: number | null) {
     if (loadSignal.aborted) onAbort();
     else check(useGraphStore.getState());
 
-    function check(state: ReturnType<typeof useGraphStore.getState>) {
-      if (isGraph(state.loadedGraph, graphID, version)) {
-        settle(null, state.loadedGraph);
+    function check(state: GraphStoreState) {
+      const graph = shownGraph(state, graphID, version);
+      if (graph) {
+        settle(null, graph);
       } else if (state.loadFailed) {
         settle(new GraphLoadFailedError());
       }
@@ -85,12 +90,17 @@ export function waitForLoadedGraph(graphID: string, version: number | null) {
   });
 }
 
-function isGraph(
-  graph: GraphModel | null,
+// A URL without a version asks for the latest one, which only a load made for
+// such a URL is sure to show.
+function shownGraph(
+  { loadedGraph, loadedForVersion }: GraphStoreState,
   graphID: string,
   version: number | null,
-): graph is GraphModel {
-  return (
-    graph?.id === graphID && (version === null || graph.version === version)
-  );
+) {
+  if (loadedGraph?.id !== graphID) return null;
+  const shows =
+    version === null
+      ? loadedForVersion === null
+      : loadedGraph.version === version;
+  return shows ? loadedGraph : null;
 }
