@@ -59,10 +59,12 @@ from backend.data.execution import (
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import (
+    PLATFORM_FUNDED_COST_KEY,
     USER_TIMEZONE_NOT_SET,
     CredentialsMetaInput,
     GraphInput,
     NodeExecutionStats,
+    is_platform_funded_managed,
     is_refused_sdk_default,
     sdk_default_refused_message,
 )
@@ -335,13 +337,24 @@ def _coerce_usd(stats: NodeExecutionStats | None) -> float:
 
 def _with_schema_defaults(block: Block, input_data: BlockInput) -> BlockInput:
     """The input `Block._execute` runs on: `None` values dropped, schema defaults
-    filled in. Cost filters are matched against this."""
+    filled in. Cost filters are matched against this, with each credentials
+    input marked by whether the platform pays for its key."""
     defaults = {
         name: field.get_default(call_default_factory=True)
         for name, field in block.input_schema.model_fields.items()
         if not field.is_required()
     }
-    return {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
+    merged = {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
+    for field_name in block.input_schema.get_credentials_fields():
+        if isinstance(credentials := merged.get(field_name), dict):
+            merged[field_name] = {
+                **credentials,
+                PLATFORM_FUNDED_COST_KEY: is_platform_funded_managed(
+                    str(credentials.get("id") or ""),
+                    str(credentials.get("provider") or ""),
+                ),
+            }
+    return merged
 
 
 def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bool:

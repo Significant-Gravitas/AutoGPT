@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
-from backend.data.model import NodeExecutionStats
+from backend.data.model import NodeExecutionStats, platform_funded_managed_id
 from backend.executor.cost_tracking import (
     drain_pending_cost_logs,
     log_system_credential_cost,
@@ -252,6 +252,40 @@ class TestLogSystemCredentialCost:
             block = _make_block()
             stats = NodeExecutionStats()
             await log_system_credential_cost(node_exec, block, stats, db_client)
+        db_client.log_platform_cost.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_logs_platform_funded_managed_key(self):
+        db_client = _make_db_client()
+        cred_id = platform_funded_managed_id("agent_mail")
+        with patch(
+            "backend.executor.cost_tracking.block_usage_cost",
+            return_value=(1, None),
+        ):
+            node_exec = _make_node_exec(
+                inputs={"credentials": {"id": cred_id, "provider": "agent_mail"}}
+            )
+            await log_system_credential_cost(
+                node_exec, _make_block(), NodeExecutionStats(), db_client
+            )
+            await asyncio.sleep(0)
+
+        db_client.log_platform_cost.assert_awaited_once()
+        entry = db_client.log_platform_cost.call_args[0][0]
+        assert entry.provider == "agent_mail"
+        assert entry.credential_id == cred_id
+        assert entry.tracking_type == "per_run"
+        assert entry.metadata["credit_cost"] == 1
+
+    @pytest.mark.asyncio
+    async def test_skips_own_agent_mail_key(self):
+        db_client = _make_db_client()
+        node_exec = _make_node_exec(
+            inputs={"credentials": {"id": "user-cred-123", "provider": "agent_mail"}}
+        )
+        await log_system_credential_cost(
+            node_exec, _make_block(), NodeExecutionStats(), db_client
+        )
         db_client.log_platform_cost.assert_not_awaited()
 
     @pytest.mark.asyncio
