@@ -114,7 +114,7 @@ export function RecordingControls({
           {pendingStatus && (
             <div className="flex h-8 items-start justify-center pt-2">
               <SwapFade swapKey={pendingAction ?? "idle"}>
-                <p className="text-sm text-foreground-tertiary">
+                <p className="text-body text-foreground-tertiary">
                   {pendingStatus}
                 </p>
               </SwapFade>

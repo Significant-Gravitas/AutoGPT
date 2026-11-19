@@ -52,9 +52,9 @@ export function formatValidationError(
           <div className="font-medium text-action-foreground">
             {detail.message || "Validation failed"}
           </div>
-          <div className="mt-2 space-y-1 text-xs">{errorItems}</div>
+          <div className="mt-2 space-y-1 text-caption">{errorItems}</div>
           {agentInfo && (
-            <div className="mt-3 text-xs">
+            <div className="mt-3 text-caption">
               Open the workflow in the builder and try running it there for more
               details.{" "}
               <Link

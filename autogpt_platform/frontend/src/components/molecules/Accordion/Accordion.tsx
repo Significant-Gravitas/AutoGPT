@@ -38,7 +38,9 @@ const BaseAccordionTrigger = React.forwardRef<
       <Icon
         aria-hidden
         icon={ArrowDown01Icon}
-        className="h-4 w-4 shrink-0 text-foreground-tertiary transition-transform duration-200"
+        tone="muted"
+        motion="transform"
+        className="h-4 w-4 shrink-0"
       />
     </AccordionPrimitive.Trigger>
   </AccordionPrimitive.Header>

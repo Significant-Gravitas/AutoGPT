@@ -2,10 +2,12 @@ import {
   getGetV2GetSessionComputerMockHandler,
   getPostV2StartSessionDesktopMockHandler,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useCopilotUIStore } from "../../../store";
 import { ComputerPanelContent } from "../components/ComputerPanelContent";
@@ -207,5 +209,36 @@ describe("ComputerPanelContent", () => {
     await waitFor(() =>
       expect(screen.getByTitle("Interactive desktop (sbx-1)")).toBeDefined(),
     );
+  });
+
+  it("says why when the server refuses the desktop under a sandbox limit", async () => {
+    const refusal = "Too many sandboxes are running right now.";
+    server.use(
+      getGetV2GetSessionComputerMockHandler({
+        owner_kind: "session",
+        owner_id: "sess-1",
+        e2b_active: true,
+        box: null,
+        screen_on: false,
+        mounts: {},
+        workspace_path: "/home/user/workspace",
+        shared_path: "/home/user/shared",
+      }),
+      http.post("/api/proxy/api/chat/sessions/:sessionId/desktop", () =>
+        HttpResponse.json({ detail: refusal }, { status: 429 }),
+      ),
+    );
+
+    render(
+      <>
+        <ComputerPanelContent sessionId="sess-1" />
+        <Toaster />
+      </>,
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Turn on screen" }),
+    );
+
+    expect(await screen.findByText(refusal)).toBeDefined();
   });
 });

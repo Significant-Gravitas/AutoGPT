@@ -32,7 +32,7 @@ export function TrialCancelPending({
         <TrialTitle>Your trial</TrialTitle>
         <span
           data-slot="trial-cancel-pending-status"
-          className="inline-flex items-center gap-1.5 rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-body"
+          className="inline-flex items-center gap-1.5 rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-body"
         >
           <span
             aria-hidden
@@ -42,7 +42,7 @@ export function TrialCancelPending({
           Cancellation pending
         </span>
       </div>
-      <Text variant="body" className="!text-foreground-emphasis">
+      <Text variant="body" tone="emphasis">
         Cancellation confirmed. Your trial will not convert to a paid plan and
         your card won&apos;t be charged. Trial access ends{" "}
         <strong

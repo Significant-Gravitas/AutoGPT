@@ -64,6 +64,7 @@ async def _prepare(
     pins: dict | None = None,
     grant_hint: str = "",
     input_data: dict | None = None,
+    gap_messages: list[str] | None = None,
 ):
     session = MagicMock()
     session.session_id = _SESSION
@@ -110,6 +111,14 @@ async def _prepare(
         patch(
             "backend.copilot.tools.helpers.ungranted_credential_hint",
             AsyncMock(return_value=grant_hint),
+        ),
+        patch(
+            "backend.copilot.tools.helpers.credentials_for_gaps",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "backend.copilot.tools.helpers.annotate_credential_gaps",
+            side_effect=lambda _creds, _info, missing: (missing, gap_messages or []),
         ),
         patch(
             "backend.copilot.tools.helpers.unattended_missing_credentials_error",
@@ -219,6 +228,30 @@ async def test_an_ungranted_discord_credential_keeps_the_grant_card():
     assert isinstance(result, SetupRequirementsResponse)
     assert hint in result.message
     assert "post_to_chat_platform" not in result.message
+
+
+_GAP = "Your Discord account 'alice' is connected, but it was not granted the bot permission this needs."
+
+
+@pytest.mark.asyncio
+async def test_a_connected_but_short_card_still_names_the_bot():
+    result = await _prepare("SendDiscordMessageBlock", gap_messages=[_GAP])
+
+    assert isinstance(result, SetupRequirementsResponse)
+    assert _GAP in result.message
+    assert "tool:post_to_chat_platform" in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_connected_but_short_card_keeps_the_grant_hint():
+    hint = " The account already has a discord credential: grant it."
+    result = await _prepare(
+        "SendDiscordMessageBlock", grant_hint=hint, gap_messages=[_GAP]
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+    assert _GAP in result.message
+    assert hint in result.message
 
 
 @pytest.mark.asyncio

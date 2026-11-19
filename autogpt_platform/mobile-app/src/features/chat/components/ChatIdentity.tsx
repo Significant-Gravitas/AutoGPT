@@ -1,0 +1,37 @@
+import { Text, View } from "react-native";
+
+import { ExpertAvatar } from "@/components/ExpertAvatar";
+import { createStyles, spacing, type } from "@/lib/theme";
+
+interface Props {
+  name: string;
+  role: string | null;
+  avatar: string | null;
+  tint: string | null;
+}
+
+export function ChatIdentity({ name, role, avatar, tint }: Props) {
+  const styles = useStyles();
+  return (
+    <View accessibilityRole="header" style={styles.row}>
+      <ExpertAvatar name={name} source={avatar} tint={tint} size={32} />
+      <View style={styles.text}>
+        <Text numberOfLines={1} style={styles.name}>
+          {name}
+        </Text>
+        {role ? (
+          <Text numberOfLines={1} style={styles.role}>
+            {role}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+const useStyles = createStyles((colors) => ({
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, maxWidth: "100%" },
+  text: { flexShrink: 1 },
+  name: { ...type.label, color: colors.text },
+  role: { ...type.small, fontSize: 12, lineHeight: 16, color: colors.textTertiary },
+}));

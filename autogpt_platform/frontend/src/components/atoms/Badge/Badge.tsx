@@ -44,7 +44,7 @@ const chipSizes: Record<ChipSize, string> = {
 const chipVariants: Record<ChipVariant, string> = {
   solid: "border-transparent bg-action text-action-foreground shadow",
   secondary: "border-transparent bg-surface-hover text-foreground-strong",
-  destructive: "border-transparent bg-error text-destructive-foreground shadow",
+  destructive: "border-transparent bg-error text-action-foreground shadow",
   outline: "border-border-base text-foreground-base",
 };
 

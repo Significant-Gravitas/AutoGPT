@@ -2365,3 +2365,55 @@ def test_stagehand_keeps_remote_model_credentials_required(block_name):
         ]
         == []
     )
+
+
+@pytest.mark.parametrize(
+    "values, expected",
+    [
+        ({"name ": "Ada"}, {"name": "Ada"}),
+        ({" name\t": "Ada", "topic": "maths"}, {"name": "Ada", "topic": "maths"}),
+        ({"name ": "padded", "name": "clean"}, {"name": "clean"}),
+        ({"name": "clean", " name": "padded"}, {"name": "clean"}),
+        ({" name": "first", "name ": "second"}, {"name": "first"}),
+        ({"\ufeffname\u00a0": "Ada"}, {"name": "Ada"}),
+        ({"   ": "blank", "name": "Ada"}, {"name": "Ada"}),
+        ({}, {}),
+    ],
+)
+def test_strip_prompt_value_keys(values, expected):
+    assert llm.strip_prompt_value_keys(values) == expected
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_value_key_with_whitespace_fills_its_variable():
+    block = llm.AIStructuredResponseGeneratorBlock()
+    sent: dict[str, Any] = {}
+
+    async def fake_llm_call(*, prompt, **_):
+        sent["prompt"] = prompt
+        return llm.LLMResponse(
+            raw_response="",
+            prompt=[],
+            response="Hello",
+            tool_calls=None,
+            prompt_tokens=1,
+            completion_tokens=1,
+            reasoning=None,
+        )
+
+    input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+        prompt="Greet {{name}}",
+        sys_prompt="You talk to {{name}}.",
+        prompt_values={"name ": "Ada"},
+        expected_format={},
+        model=llm.DEFAULT_LLM_MODEL,
+        credentials=_TEST_AI_CREDENTIALS,
+    )
+
+    with patch.object(block, "llm_call", new=AsyncMock(side_effect=fake_llm_call)):
+        async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+            pass
+
+    contents = [message["content"] for message in sent["prompt"]]
+    assert any("You talk to Ada." in content for content in contents)
+    assert any("Greet Ada" in content for content in contents)

@@ -132,4 +132,16 @@ Now that AI/ML API is connected, expand your workflow by chaining additional blo
 
 ---
 
+## 🔌 Use the AI/ML API MCP Server
+
+AI/ML API also runs a hosted MCP server at `https://mcp.aimlapi.com/mcp`. It is listed in the MCP catalog as **AI/ML API**, next to the AI/ML API model credentials, and gives a workflow tools to find and compare models, generate images, video and audio, and call Agent Tools such as web search and page extraction.
+
+1. Add an **MCP Tool** block and enter `https://mcp.aimlapi.com/mcp`.
+2. Click **Connect & Discover** and sign in with your AI/ML API account, or paste the same API key you use for the models (from [aimlapi.com/app/keys](https://aimlapi.com/app/keys)).
+3. Pick a tool, such as `models_search`, and fill in its arguments.
+
+Generation, chat, embeddings, `jev_tool_search`, `jev_model_search` and `tools_run` are billed to your AI/ML API balance. Model lookups, account checks and `ping` are free. Otto asks you before running a billed tool, unless you have switched it to run without asking. See the [AI/ML API MCP documentation](https://docs.aimlapi.com/quickstart/mcp) for details.
+
+---
+
 🎉 You’re now generating AI responses using enterprise-grade models from **AI/ML API** in **AutoGPT**!

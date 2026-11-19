@@ -12,6 +12,7 @@ interface Props {
   onChange: (value: string) => void;
   onSubmit: () => void;
   isTooLong: boolean;
+  placeholder?: string;
   question: string;
   onTogglePause: () => void;
   announcement: string;
@@ -27,6 +28,7 @@ export function TypingComposer({
   onChange,
   onSubmit,
   isTooLong,
+  placeholder,
   question,
   onTogglePause,
   announcement,
@@ -64,6 +66,7 @@ export function TypingComposer({
         onChange={onChange}
         isTooLong={isTooLong}
         onSubmit={onSubmit}
+        placeholder={placeholder}
         rows={(isShortScreen ? 4 : 6) - (hasNotice ? 1 : 0)}
       />
     </div>

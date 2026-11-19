@@ -201,7 +201,7 @@ function renderInputTypes() {
         id="password"
       />
       <div className="flex flex-col gap-4">
-        <p className="font-mono text-sm">
+        <p className="font-mono text-body">
           If type=&quot;number&quot; prop is provided, the input will allow only
           positive or negative numbers. No decimal limiting.
         </p>
@@ -213,7 +213,7 @@ function renderInputTypes() {
         />
       </div>
       <div className="flex flex-col gap-4">
-        <p className="font-mono text-sm">
+        <p className="font-mono text-body">
           If type=&quot;amount&quot; prop is provided, it formats numbers with
           commas (1000 → 1,000) and limits decimals via decimalCount prop.
         </p>
@@ -226,7 +226,7 @@ function renderInputTypes() {
         />
       </div>
       <div className="flex flex-col gap-4">
-        <p className="font-mono text-sm">
+        <p className="font-mono text-body">
           If type=&quot;tel&quot; prop is provided, the input will allow only
           numbers, spaces, parentheses (), plus +, and brackets [].
         </p>
@@ -244,7 +244,7 @@ function renderInputTypes() {
         id="website"
       />
       <div className="flex flex-col gap-4">
-        <p className="font-mono text-sm">
+        <p className="font-mono text-body">
           If type=&quot;textarea&quot; prop is provided, it renders a multi-line
           text area with specified rows.
         </p>
@@ -257,11 +257,11 @@ function renderInputTypes() {
         />
       </div>
       <div className="flex flex-col gap-4">
-        <p className="font-mono text-sm">Native date input.</p>
+        <p className="font-mono text-body">Native date input.</p>
         <Input label="Date" type="date" placeholder="Select a date" id="date" />
       </div>
       <div className="flex flex-col gap-4">
-        <p className="font-mono text-sm">
+        <p className="font-mono text-body">
           Native datetime-local input (local time, no timezone).
         </p>
         <Input

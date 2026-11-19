@@ -151,8 +151,7 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 }));
 // Tests below override this default by re-mocking ../helpers as needed.
 vi.mock("../helpers", async (importOriginal) => ({
-  extractReviewTargets: (await importOriginal<typeof import("../helpers")>())
-    .extractReviewTargets,
+  ...(await importOriginal<typeof import("../helpers")>()),
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
@@ -303,6 +302,109 @@ describe("ChatMessagesContainer — assistant rendering", () => {
 
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
   });
+
+  const finishedTool = {
+    type: "tool-find_block",
+    toolCallId: "tool-1",
+    state: "output-available",
+    input: {},
+    output: {},
+  } as Message["parts"][number];
+  const stepStart = { type: "step-start" } as Message["parts"][number];
+
+  it.each([
+    ["a turn that has only opened its first step", [stepStart]],
+    [
+      "a status line followed by the first step",
+      [
+        {
+          type: "data-status",
+          data: { message: "Preparing workspace…" },
+        } as Message["parts"][number],
+        stepStart,
+      ],
+    ],
+    ["the step opened after a finished tool", [finishedTool, stepStart]],
+    ["several steps opened in a row", [finishedTool, stepStart, stepStart]],
+    [
+      "a step opened after a follow-up was drained",
+      [
+        { type: "text", text: "Looking into it." },
+        { type: "data-pending-drained", data: {} },
+        stepStart,
+      ] as Message["parts"],
+    ],
+  ])(
+    "keeps the thinking indicator through %s, until the model writes",
+    (_label, parts) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[{ id: "assistant-stepping", role: "assistant", parts }]}
+          status="streaming"
+        />,
+      );
+
+      expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+    },
+  );
+
+  it.each([
+    ["text", [{ type: "text", text: "Looking into it." }]],
+    ["reasoning", [{ type: "reasoning", text: "Weighing the options." }]],
+    [
+      "a pause",
+      [
+        { type: "text", text: "Saved where I got to." },
+        { type: "data-turn-paused", data: { reason: "steps", steps: 450 } },
+      ],
+    ],
+    [
+      "a running tool",
+      [{ ...finishedTool, state: "input-available", output: undefined }],
+    ],
+    [
+      "a tool waiting for approval",
+      [
+        {
+          ...finishedTool,
+          state: "approval-requested",
+          output: undefined,
+          approval: { id: "approval-1" },
+        },
+      ],
+    ],
+    [
+      "a tool whose approval was just answered",
+      [
+        {
+          ...finishedTool,
+          state: "approval-responded",
+          output: undefined,
+          approval: { id: "approval-1", approved: true },
+        },
+      ],
+    ],
+  ] as Array<[string, Message["parts"]]>)(
+    "does not bring the thinking indicator back when a step opens after %s",
+    (_label, before) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[
+            {
+              id: "assistant-then-step",
+              role: "assistant",
+              parts: [...before, stepStart],
+            },
+          ]}
+          status="streaming"
+        />,
+      );
+
+      expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+    },
+  );
 
   it("drops the thinking indicator once a streaming turn has landed on a pause", () => {
     render(
@@ -1878,7 +1980,8 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mounted()).toEqual([chatList(true, 0)]);
+    // One block run on screen, which is also what the key counts.
+    expect(mounted()).toEqual([chatList(true, 1)]);
   });
 
   it("finds a chat review stored before it had a session id of its own", () => {
@@ -1893,7 +1996,7 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mounted()).toEqual([chatList(true, 0)]);
+    expect(mounted()).toEqual([chatList(true, 1)]);
   });
 
   it("finds an agent run's reviews by its graph execution", () => {
@@ -1906,7 +2009,7 @@ describe("ChatMessagesContainer — pending reviews", () => {
 
     expect(mounted()).toEqual([
       { runs: [{ graphExecId: "exec-9" }] },
-      chatList(false, 0),
+      chatList(false, 1),
     ]);
   });
 
@@ -1943,10 +2046,11 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    // One held call on screen: fetched, but polled only if a card comes back.
+    // One held call and two block runs on screen: fetched, but polled only
+    // if a card comes back.
     expect(mounted()).toEqual([
       { runs: [{ graphExecId: "exec-9" }] },
-      chatList(false, 1),
+      chatList(false, 3),
     ]);
   });
 
@@ -1961,7 +2065,8 @@ describe("ChatMessagesContainer — pending reviews", () => {
       />,
     );
 
-    expect(mounted()).toEqual([chatList(true, 1)]);
+    // The held call, and the block run that returned it.
+    expect(mounted()).toEqual([chatList(true, 2)]);
   });
 
   it("still finds held cards whose call has paged out of the loaded history", () => {
@@ -1969,6 +2074,75 @@ describe("ChatMessagesContainer — pending reviews", () => {
 
     expect(mounted()).toEqual([chatList(false, 0)]);
   });
+
+  function toolCall(id: string, tool: string, output: string): Message {
+    return {
+      id,
+      role: "assistant",
+      parts: [
+        {
+          type: `tool-${tool}`,
+          toolCallId: `call-${id}`,
+          state: "output-available",
+          input: {},
+          output,
+        },
+      ],
+    } as Message;
+  }
+
+  const DIGESTED_REVIEW = [
+    `<tool-output-truncated total_chars=10200 workspace_path="tool-outputs/call-9.json" format="outline">`,
+    `$: {type="review_required", message="Block 'Gmail Send' requires human review.", block_id="gmail-send", block_name="Gmail Send", review_id="copilot-node-gmail:ab12", input_data={…4 keys @304+7650}}`,
+    ``,
+    `The preview above is a structural outline of the 10,200-char output, not a literal prefix of it.`,
+    `</tool-output-truncated>`,
+  ].join("\n");
+
+  it("keeps the chat's cards polled for a review the backend digested", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[toolCall("m1", "run_block", DIGESTED_REVIEW)]}
+      />,
+    );
+
+    expect(mounted()[0].pollWhileEmpty).toBe(true);
+  });
+
+  it.each([
+    "run_block",
+    "run_capability",
+    "continue_run_block",
+    "resume_capability",
+  ])(
+    "fetches the chat's cards again when %s returns, whatever it returned",
+    (tool) => {
+      const earlier = [toolCall("m1", "bash_exec", '{"stdout":"ok"}')];
+      const { rerender } = render(
+        <ChatMessagesContainer {...baseProps} messages={earlier} />,
+      );
+      const before = mounted()[0].refetchKey;
+
+      rerender(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[...earlier, toolCall("m2", tool, "<unreadable output>")]}
+        />,
+      );
+
+      expect(mounted()[0].refetchKey).not.toBe(before);
+    },
+  );
+
+  it.each(["streaming", "submitted"])(
+    "polls the chat's cards while the turn is %s",
+    (status) => {
+      render(<ChatMessagesContainer {...baseProps} status={status} />);
+
+      expect(mounted()[0].pollWhileEmpty).toBe(true);
+    },
+  );
 
   it("mounts nothing in a read-only transcript", () => {
     render(

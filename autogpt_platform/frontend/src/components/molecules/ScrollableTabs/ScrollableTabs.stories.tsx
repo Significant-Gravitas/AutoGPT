@@ -22,11 +22,11 @@ type Story = StoryObj<typeof meta>;
 function ScrollableTabsDemo() {
   return (
     <div className="flex flex-col gap-8 p-8">
-      <h2 className="text-2xl font-bold">ScrollableTabs Examples</h2>
+      <h2 className="text-heading-md font-bold">ScrollableTabs Examples</h2>
 
       <div className="space-y-6">
         <div>
-          <h3 className="mb-4 text-lg font-semibold">
+          <h3 className="mb-4 text-lead font-semibold">
             Short Content (Tabs Hidden)
           </h3>
           <div className="h-[300px] overflow-y-auto border border-border-base">
@@ -43,19 +43,19 @@ function ScrollableTabsDemo() {
                 </ScrollableTabsTrigger>
               </ScrollableTabsList>
               <ScrollableTabsContent value="tab1">
-                <div className="p-4 text-sm">
+                <div className="p-4 text-body">
                   Make changes to your account here. Click save when you&apos;re
                   done.
                 </div>
               </ScrollableTabsContent>
               <ScrollableTabsContent value="tab2">
-                <div className="p-4 text-sm">
+                <div className="p-4 text-body">
                   Change your password here. After saving, you&apos;ll be logged
                   out.
                 </div>
               </ScrollableTabsContent>
               <ScrollableTabsContent value="tab3">
-                <div className="p-4 text-sm">
+                <div className="p-4 text-body">
                   Update your preferences and settings here.
                 </div>
               </ScrollableTabsContent>
@@ -64,7 +64,7 @@ function ScrollableTabsDemo() {
         </div>
 
         <div>
-          <h3 className="mb-4 text-lg font-semibold">
+          <h3 className="mb-4 text-lead font-semibold">
             Long Content (Tabs Visible)
           </h3>
           <div className="h-[400px] overflow-y-auto border border-border-base">
@@ -81,8 +81,8 @@ function ScrollableTabsDemo() {
                 </ScrollableTabsTrigger>
               </ScrollableTabsList>
               <ScrollableTabsContent value="tab1">
-                <div className="p-8 text-sm">
-                  <h4 className="mb-4 text-lg font-semibold">
+                <div className="p-8 text-body">
+                  <h4 className="mb-4 text-lead font-semibold">
                     Account Settings
                   </h4>
                   <p className="mb-4">
@@ -108,8 +108,8 @@ function ScrollableTabsDemo() {
                 </div>
               </ScrollableTabsContent>
               <ScrollableTabsContent value="tab2">
-                <div className="p-8 text-sm">
-                  <h4 className="mb-4 text-lg font-semibold">
+                <div className="p-8 text-body">
+                  <h4 className="mb-4 text-lead font-semibold">
                     Password Settings
                   </h4>
                   <p className="mb-4">
@@ -135,8 +135,8 @@ function ScrollableTabsDemo() {
                 </div>
               </ScrollableTabsContent>
               <ScrollableTabsContent value="tab3">
-                <div className="p-8 text-sm">
-                  <h4 className="mb-4 text-lg font-semibold">
+                <div className="p-8 text-body">
+                  <h4 className="mb-4 text-lead font-semibold">
                     General Settings
                   </h4>
                   <p className="mb-4">
@@ -165,7 +165,7 @@ function ScrollableTabsDemo() {
         </div>
 
         <div>
-          <h3 className="mb-4 text-lg font-semibold">Many Tabs</h3>
+          <h3 className="mb-4 text-lead font-semibold">Many Tabs</h3>
           <div className="h-[500px] overflow-y-auto border border-border-base">
             <ScrollableTabs defaultValue="overview" className="h-full">
               <ScrollableTabsList>
@@ -189,8 +189,8 @@ function ScrollableTabsDemo() {
                 </ScrollableTabsTrigger>
               </ScrollableTabsList>
               <ScrollableTabsContent value="overview">
-                <div className="p-8 text-sm">
-                  <h4 className="mb-4 text-lg font-semibold">
+                <div className="p-8 text-body">
+                  <h4 className="mb-4 text-lead font-semibold">
                     Dashboard Overview
                   </h4>
                   <p className="mb-4">
@@ -208,8 +208,8 @@ function ScrollableTabsDemo() {
                 </div>
               </ScrollableTabsContent>
               <ScrollableTabsContent value="analytics">
-                <div className="p-8 text-sm">
-                  <h4 className="mb-4 text-lg font-semibold">Analytics</h4>
+                <div className="p-8 text-body">
+                  <h4 className="mb-4 text-lead font-semibold">Analytics</h4>
                   <p className="mb-4">
                     Detailed analytics and performance metrics.
                   </p>
@@ -224,8 +224,8 @@ function ScrollableTabsDemo() {
                 </div>
               </ScrollableTabsContent>
               <ScrollableTabsContent value="reports">
-                <div className="p-8 text-sm">
-                  <h4 className="mb-4 text-lg font-semibold">Reports</h4>
+                <div className="p-8 text-body">
+                  <h4 className="mb-4 text-lead font-semibold">Reports</h4>
                   <p className="mb-4">
                     Generate and view reports for your account.
                   </p>
@@ -241,8 +241,10 @@ function ScrollableTabsDemo() {
                 </div>
               </ScrollableTabsContent>
               <ScrollableTabsContent value="notifications">
-                <div className="p-8 text-sm">
-                  <h4 className="mb-4 text-lg font-semibold">Notifications</h4>
+                <div className="p-8 text-body">
+                  <h4 className="mb-4 text-lead font-semibold">
+                    Notifications
+                  </h4>
                   <p className="mb-4">Manage your notification preferences.</p>
                   <p className="mb-4">
                     Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut
@@ -255,8 +257,8 @@ function ScrollableTabsDemo() {
                 </div>
               </ScrollableTabsContent>
               <ScrollableTabsContent value="integrations">
-                <div className="p-8 text-sm">
-                  <h4 className="mb-4 text-lg font-semibold">Integrations</h4>
+                <div className="p-8 text-body">
+                  <h4 className="mb-4 text-lead font-semibold">Integrations</h4>
                   <p className="mb-4">
                     Connect and manage third-party integrations.
                   </p>
@@ -271,8 +273,8 @@ function ScrollableTabsDemo() {
                 </div>
               </ScrollableTabsContent>
               <ScrollableTabsContent value="billing">
-                <div className="p-8 text-sm">
-                  <h4 className="mb-4 text-lg font-semibold">Billing</h4>
+                <div className="p-8 text-body">
+                  <h4 className="mb-4 text-lead font-semibold">Billing</h4>
                   <p className="mb-4">
                     View and manage your billing information.
                   </p>
@@ -312,13 +314,13 @@ export const ShortContent = {
             </ScrollableTabsTrigger>
           </ScrollableTabsList>
           <ScrollableTabsContent value="account">
-            <div className="p-4 text-sm">
+            <div className="p-4 text-body">
               Make changes to your account here. Click save when you&apos;re
               done.
             </div>
           </ScrollableTabsContent>
           <ScrollableTabsContent value="password">
-            <div className="p-4 text-sm">
+            <div className="p-4 text-body">
               Change your password here. After saving, you&apos;ll be logged
               out.
             </div>
@@ -340,8 +342,8 @@ export const LongContent = {
             <ScrollableTabsTrigger value="tab3">Settings</ScrollableTabsTrigger>
           </ScrollableTabsList>
           <ScrollableTabsContent value="tab1">
-            <div className="p-8 text-sm">
-              <h4 className="mb-4 text-lg font-semibold">Account Settings</h4>
+            <div className="p-8 text-body">
+              <h4 className="mb-4 text-lead font-semibold">Account Settings</h4>
               <p className="mb-4">
                 Make changes to your account here. Click save when you&apos;re
                 done.
@@ -372,8 +374,10 @@ export const LongContent = {
             </div>
           </ScrollableTabsContent>
           <ScrollableTabsContent value="tab2">
-            <div className="p-8 text-sm">
-              <h4 className="mb-4 text-lg font-semibold">Password Settings</h4>
+            <div className="p-8 text-body">
+              <h4 className="mb-4 text-lead font-semibold">
+                Password Settings
+              </h4>
               <p className="mb-4">
                 Change your password here. After saving, you&apos;ll be logged
                 out.
@@ -402,8 +406,8 @@ export const LongContent = {
             </div>
           </ScrollableTabsContent>
           <ScrollableTabsContent value="tab3">
-            <div className="p-8 text-sm">
-              <h4 className="mb-4 text-lg font-semibold">General Settings</h4>
+            <div className="p-8 text-body">
+              <h4 className="mb-4 text-lead font-semibold">General Settings</h4>
               <p className="mb-4">Update your preferences and settings here.</p>
               <p className="mb-4">
                 Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet,

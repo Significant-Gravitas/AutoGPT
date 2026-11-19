@@ -2,9 +2,9 @@
 
 The CLI really runs and really talks to the fake provider, directly or
 through the Codex gateway. Stubbed: persistence, locks, transcript storage,
-the copilot's own tools and hooks, and per-user flag lookups. Model
-resolution, the CLI environment, retries, resume and every cost decision run
-as in production.
+memory, skill learning, the copilot's own tools and hooks, and per-user flag
+lookups. Model resolution, the CLI environment, retries, resume and every cost
+decision run as in production.
 """
 
 import base64
@@ -19,7 +19,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-from openai import AsyncOpenAI
 from pydantic import SecretStr
 
 from backend.copilot.budget_gate import AutoContinueGate
@@ -142,7 +141,12 @@ class SdkTurns:
             "build_skills_context": AsyncMock(return_value=""),
             "build_skills_update_notice": AsyncMock(return_value=None),
             "build_session_context": AsyncMock(return_value=""),
+            # A first turn reads the user's team from the database manager,
+            # which these tests don't run.
+            "first_message_expert_context": AsyncMock(return_value=""),
             "inject_user_context": AsyncMock(return_value=None),
+            "_graphiti_enabled": MagicMock(return_value=False),
+            "capture_chat_turn": AsyncMock(),
             "create_copilot_mcp_server": MagicMock(),
             "create_security_hooks": MagicMock(),
             "get_copilot_tool_names": MagicMock(return_value=[]),
@@ -232,7 +236,7 @@ class _CodexAccount(CodexAgentSession):
 
 def _codex_lease(provider: FakeProvider) -> CodexCredentialLease:
     credentials = _codex_credentials()
-    client = AsyncOpenAI(api_key="codex-billing-e2e", base_url=f"{provider.url}/codex")
+    client = provider.openai_client("/codex", api_key="codex-billing-e2e")
     session = CodexHttpSession(
         credentials,
         turn_timeout_seconds=120,

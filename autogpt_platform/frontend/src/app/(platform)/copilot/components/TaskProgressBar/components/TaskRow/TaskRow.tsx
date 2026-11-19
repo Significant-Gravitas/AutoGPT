@@ -26,7 +26,7 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
       : "text-foreground-secondary";
 
   return (
-    <li className="flex items-start gap-2 text-sm">
+    <li className="flex items-start gap-2 text-body">
       <span className="mt-0.5 flex-shrink-0">
         <AnimatePresence mode="wait" initial={false}>
           <motion.span

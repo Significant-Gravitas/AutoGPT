@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth/auth";
+import { sanitizeAuthNext } from "@/lib/auth-redirect";
 import { LoginProvider } from "@/types/auth";
 import { APIError } from "better-auth/api";
 import { NextResponse } from "next/server";
@@ -23,11 +24,17 @@ export async function POST(request: Request) {
     }
 
     try {
+      const callbackURL =
+        redirectTo || process.env.AUTH_CALLBACK_URL || "/auth/callback";
       const { url } = await auth.api.signInSocial({
         body: {
           provider,
-          callbackURL:
-            redirectTo || process.env.AUTH_CALLBACK_URL || "/auth/callback",
+          callbackURL,
+          // A sign-in refused at the provider callback (a banned account; for
+          // Microsoft also an email Microsoft did not confirm, or an address
+          // that belongs to another login) comes back to the login page with
+          // the error code in the query.
+          errorCallbackURL: loginPageFor(provider, callbackURL),
         },
         headers: request.headers,
       });
@@ -57,5 +64,27 @@ export async function POST(request: Request) {
       { error: "Failed to initiate OAuth" },
       { status: 500 },
     );
+  }
+}
+
+// The login page, with the callback's `next`, so a deep link survives
+// logging in another way. A Microsoft refusal says it is one: the page
+// explains Microsoft's codes in Microsoft's words (microsoft-login.ts).
+function loginPageFor(provider: LoginProvider, callbackURL: string) {
+  const params = new URLSearchParams();
+  if (provider === "microsoft") params.set("provider", provider);
+  const next = nextOf(callbackURL);
+  if (next) params.set("next", next);
+  const query = params.toString();
+  return query ? `/login?${query}` : "/login";
+}
+
+function nextOf(callbackURL: string) {
+  try {
+    return sanitizeAuthNext(
+      new URL(callbackURL, "http://localhost").searchParams.get("next"),
+    );
+  } catch {
+    return null;
   }
 }

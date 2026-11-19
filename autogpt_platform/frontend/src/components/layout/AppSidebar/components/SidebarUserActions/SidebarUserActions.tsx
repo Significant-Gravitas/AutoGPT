@@ -58,7 +58,7 @@ export function SidebarUserActions() {
   return (
     <SidebarFooter
       {...tourTarget("account")}
-      className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-separator bg-sidebar px-4"
+      className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-separator bg-surface-muted px-4"
     >
       <div className="flex w-full items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1">
         {isCollapsed ? (

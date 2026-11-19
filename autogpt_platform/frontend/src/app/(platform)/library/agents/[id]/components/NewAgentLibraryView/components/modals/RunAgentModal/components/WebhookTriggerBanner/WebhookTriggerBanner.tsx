@@ -16,10 +16,10 @@ export function WebhookTriggerBanner() {
           </svg>
         </div>
         <div className="ml-3">
-          <h3 className="text-sm font-medium text-info-foreground">
+          <h3 className="text-body font-medium text-info-foreground">
             Webhook Trigger
           </h3>
-          <div className="mt-2 text-sm text-info-foreground">
+          <div className="mt-2 text-body text-info-foreground">
             <p>
               This will create a webhook endpoint that automatically runs your
               workflow when triggered by external events.

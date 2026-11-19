@@ -32,7 +32,8 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
       <div className="flex h-6 w-6 items-center justify-center">
         <Icon
           icon={Search01Icon}
-          className="h-6 w-6 text-foreground-body"
+          tone="body"
+          className="h-6 w-6"
           strokeWidth={2}
         />
       </div>
@@ -60,7 +61,8 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
         >
           <Icon
             icon={Cancel01Icon}
-            className="h-6 w-6 text-foreground-body"
+            tone="body"
+            className="h-6 w-6"
             strokeWidth={2}
           />
         </Button>

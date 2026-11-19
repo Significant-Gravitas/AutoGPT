@@ -52,7 +52,7 @@ export function MemoryScopeSelector({
           disabled={loading}
         />
       </div>
-      <div aria-live="polite" className="flex flex-col gap-1 text-xs">
+      <div aria-live="polite" className="flex flex-col gap-1 text-caption">
         {loading ? (
           <p className="text-foreground-tertiary">Loading experts…</p>
         ) : null}

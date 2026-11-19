@@ -61,10 +61,6 @@ function fillValidForm() {
   fireEvent.change(screen.getByLabelText("Password", { selector: "input" }), {
     target: { value: "validpassword123" },
   });
-  fireEvent.change(
-    screen.getByLabelText("Confirm Password", { selector: "input" }),
-    { target: { value: "validpassword123" } },
-  );
 }
 
 function getLegalLine() {
@@ -120,18 +116,11 @@ describe("SignupPage", () => {
     fireEvent.change(screen.getByLabelText("Password", { selector: "input" }), {
       target: { value: "validpassword123" },
     });
-    fireEvent.change(
-      screen.getByLabelText("Confirm Password", { selector: "input" }),
-      {
-        target: { value: "validpassword123" },
-      },
-    );
     fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
 
     await waitFor(() => {
       expect(mockSignupAction).toHaveBeenCalledWith(
         "existing@example.com",
-        "validpassword123",
         "validpassword123",
         false,
         null,
@@ -233,6 +222,23 @@ describe("SignupPage", () => {
     await waitFor(() => expect(mockSignupAction).toHaveBeenCalledTimes(1));
   });
 
+  test("asks for the password once, with the Show toggle and new-password autofill", () => {
+    render(<SignupPage />);
+
+    const passwordFields = screen.getAllByLabelText(/password/i, {
+      selector: "input",
+    });
+    expect(passwordFields).toHaveLength(1);
+    const [password] = passwordFields;
+    expect(password.getAttribute("autocomplete")).toBe("new-password");
+    expect(password.getAttribute("type")).toBe("password");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+
+    expect(password.getAttribute("type")).toBe("text");
+    expect(screen.getByRole("button", { name: "Hide password" })).toBeDefined();
+  });
+
   test("puts the Log in link under the title, keeping ?next=", () => {
     navigation.searchParams = new URLSearchParams({
       next: "/library?tab=runs",
@@ -290,14 +296,23 @@ describe("SignupPage", () => {
     expect(previous?.lastElementChild?.textContent).toBe("Sign up");
   });
 
-  test("renders the legal line right after the Google button in cloud", () => {
+  test("renders the legal line right after the social sign-in buttons in cloud", () => {
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED", "true");
 
     render(<SignupPage />);
 
-    expect(getLegalLine().previousElementSibling).toBe(
-      screen.getByRole("button", { name: /continue with google/i }),
-    );
+    const buttons = getLegalLine().previousElementSibling;
+    expect(
+      buttons?.contains(
+        screen.getByRole("button", { name: /continue with google/i }),
+      ),
+    ).toBe(true);
+    expect(
+      buttons?.contains(
+        screen.getByRole("button", { name: /continue with microsoft/i }),
+      ),
+    ).toBe(true);
   });
 
   test("opting out swaps the sentence, keeps focus on the toggle and submits the opt-out", async () => {
@@ -327,7 +342,6 @@ describe("SignupPage", () => {
       expect(mockSignupAction).toHaveBeenCalledWith(
         "new@example.com",
         "validpassword123",
-        "validpassword123",
         true,
         null,
       );
@@ -354,7 +368,6 @@ describe("SignupPage", () => {
     await waitFor(() => {
       expect(mockSignupAction).toHaveBeenCalledWith(
         "new@example.com",
-        "validpassword123",
         "validpassword123",
         false,
         null,
@@ -467,7 +480,7 @@ describe("SignupPage", () => {
 
       expect(await screen.findByText("new@example.com")).toBeDefined();
       expect(setMarketingOptOutFlag.mock.calls).toEqual([[false]]);
-      expect(mockSignupAction.mock.calls[0][3]).toBe(optOut);
+      expect(mockSignupAction.mock.calls[0][2]).toBe(optOut);
     },
   );
 
@@ -487,7 +500,6 @@ describe("SignupPage", () => {
     await waitFor(() => {
       expect(mockSignupAction).toHaveBeenCalledWith(
         "new@example.com",
-        "validpassword123",
         "validpassword123",
         false,
         null,
@@ -595,6 +607,38 @@ describe("SignupPage", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("keeps Google unavailable while a Microsoft sign-up is starting", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED", "true");
+    let finish = () => {};
+    const settled = new Promise<Response>((resolve) => {
+      finish = () => resolve(new Response(JSON.stringify({})));
+    });
+    const passThrough = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+      input === PROVIDER_LOGIN_URL ? settled : passThrough(input, init),
+    );
+
+    try {
+      render(<SignupPage />);
+      fireEvent.click(
+        screen.getByRole("button", { name: /continue with microsoft/i }),
+      );
+
+      // Two sign-ups at once would race their redirects.
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("button", { name: /continue with google/i })
+            .hasAttribute("disabled"),
+        ).toBe(true),
+      );
+    } finally {
+      finish();
+      await settled;
+    }
   });
 
   test("does not link to the demo tour", () => {

@@ -328,6 +328,13 @@ describe("ContextPanelToggle computer button", () => {
     expect(panelState().history).toEqual([earlier]);
   });
 
+  test("is absent for a Local PC chat, which has no cloud computer", () => {
+    render(<ContextPanelToggle sessionId="s1" hideComputer />);
+
+    expect(screen.queryByLabelText("Open computer")).toBeNull();
+    expect(screen.getByLabelText("Open files")).toBeDefined();
+  });
+
   test("is hidden on mobile, whose sheet has no computer face", () => {
     setMobile(true);
     render(<ContextPanelToggle sessionId="s1" />);
