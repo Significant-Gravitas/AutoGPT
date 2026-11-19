@@ -260,7 +260,7 @@ class ConnectionManager:
         that stream if this is the socket's first channel there."""
         outbox = self._outbox_for(user_id, websocket)
         if not outbox.is_open:
-            # Closing for falling behind: a stream would read for nothing.
+            # Retired for falling behind: a stream would read for nothing.
             raise EventStreamLostError(f"{full_channel}: the socket is closing")
         shard = redis.resolve_shard_for_channel(full_channel)
         streams = self._ws_streams.setdefault(websocket, {})
@@ -315,20 +315,26 @@ class ConnectionManager:
         self, websocket: WebSocket, user_id: str, why: str
     ) -> None:
         """Close a socket whose client fell too far behind: the events it
-        would get next are dropped, so it resyncs as after a lost stream."""
+        would get next are dropped, so it resyncs as after a lost stream. Its
+        outbox shut before this ran, which retires the socket: ``_subscribe``
+        refuses it new streams from then on."""
         logger.warning(
             f"Closing WebSocket for user #{user_id}: its client fell too far "
             f"behind ({why})"
         )
-        # Nothing it reads would reach the client now, and the close may never
-        # get through a transport the client has stopped reading. A copy: the
-        # socket's own messages can still add or drop streams meanwhile.
-        for stream in list(self._ws_streams.get(websocket, {}).values()):
-            try:
-                await stream.stop()
-            except Exception:
-                logger.warning("Failed to stop a slow client's stream", exc_info=True)
-        await self._close_to_resync(websocket, "Client fell behind")
+        try:
+            # Nothing they read would reach the client now, and the close may
+            # never get through a transport the client has stopped reading. A
+            # copy: the socket's own messages can still drop streams meanwhile.
+            for stream in list(self._ws_streams.get(websocket, {}).values()):
+                try:
+                    await stream.stop()
+                except Exception:
+                    logger.warning(
+                        "Failed to stop a slow client's stream", exc_info=True
+                    )
+        finally:
+            await self._close_to_resync(websocket, "Client fell behind")
 
     async def _close_to_resync(self, websocket: WebSocket, reason: str) -> None:
         try:

@@ -128,10 +128,17 @@ class WSBacklog:
         self._behind: set[WSOutbox] = set()
 
     def make_room(self, size: int, outbox: WSOutbox) -> bool:
-        """Close the clients furthest behind until ``size`` more bytes fit.
-        False if that closed ``outbox``'s own client."""
+        """Close the clients furthest behind, most bytes first, until ``size``
+        more bytes fit; False if that closed ``outbox``'s own client. An outbox
+        with nothing waiting frees nothing, so it is never closed for room;
+        each pass takes one outbox out for good, so this ends."""
+        if size > MAX_QUEUED_BYTES_PER_PROCESS:
+            # Nothing closed would make it fit: only its own client goes.
+            outbox.overflow(f"MAX_QUEUED_BYTES_PER_PROCESS, one event of {size} bytes")
+            return False
         while self.queued_bytes + size > MAX_QUEUED_BYTES_PER_PROCESS and self._behind:
             furthest = max(self._behind, key=lambda o: o.queued_bytes)
+            self._behind.discard(furthest)
             furthest.overflow("MAX_QUEUED_BYTES_PER_PROCESS")
             if furthest is outbox:
                 return False

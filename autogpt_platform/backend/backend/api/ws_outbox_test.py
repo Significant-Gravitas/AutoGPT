@@ -45,10 +45,12 @@ class _Socket:
     def __init__(self, backlog: WSBacklog) -> None:
         self.client = _Client()
         self.closed = asyncio.Event()
+        self.closes = 0
         self.why = ""
 
         async def on_overflow(why: str) -> None:
             self.why = why
+            self.closes += 1
             self.closed.set()
 
         self.outbox = WSOutbox(on_overflow=on_overflow, backlog=backlog)
@@ -258,6 +260,89 @@ async def test_a_client_furthest_behind_that_puts_more_is_the_one_closed(
         assert not behind.closed.is_set()
     finally:
         for socket in (furthest, behind):
+            await socket.close()
+
+
+async def test_room_is_made_by_closing_the_largest_backlogs_first_and_no_more(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A socket that keeps up gets its event: the clients furthest behind,
+    most bytes first, are closed only until it fits. A smaller backlog and a
+    socket with nothing waiting stay open, and no client is closed twice."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_BYTES_PER_PROCESS", 100)
+    backlog = WSBacklog()
+    small, large, medium, idle, keeping_up = (_Socket(backlog) for _ in range(5))
+    sockets = (small, large, medium, idle, keeping_up)
+    try:
+        await small.stuck_behind([10])
+        await large.stuck_behind([25, 25])
+        await medium.stuck_behind([30])
+        assert backlog.queued_bytes == 90
+
+        # 90 + 75 is over: closing large (50) leaves 115, medium (30) 85.
+        keeping_up.outbox.put(keeping_up.client.delivery("fits"), 75)
+        async with asyncio.timeout(_HANG_SECONDS):
+            await large.closed.wait()
+            await medium.closed.wait()
+        assert backlog.queued_bytes == 85
+        assert [s.closes for s in sockets] == [0, 1, 1, 0, 0]
+        keeping_up.client.reading.set()
+        await _until(lambda: keeping_up.client.got == ["fits"])
+    finally:
+        for socket in sockets:
+            await socket.close()
+
+
+async def test_an_event_that_needs_every_backlog_gone_still_gets_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Making room ends after each client behind is closed once, and an event
+    that fits the process at all always gets in: nothing loops or starves."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_BYTES_PER_PROCESS", 100)
+    backlog = WSBacklog()
+    behind = [_Socket(backlog) for _ in range(5)]
+    keeping_up = _Socket(backlog)
+    try:
+        for socket in behind:
+            await socket.stuck_behind([20])
+        assert backlog.queued_bytes == 100
+
+        keeping_up.outbox.put(keeping_up.client.delivery("fits exactly"), 100)
+        async with asyncio.timeout(_HANG_SECONDS):
+            for socket in behind:
+                await socket.closed.wait()
+        assert [s.closes for s in behind] == [1] * 5
+        assert backlog.queued_bytes == 100
+        keeping_up.client.reading.set()
+        await _until(lambda: keeping_up.client.got == ["fits exactly"])
+        assert not keeping_up.closed.is_set()
+    finally:
+        for socket in (*behind, keeping_up):
+            await socket.close()
+
+
+async def test_an_event_bigger_than_the_process_budget_closes_only_its_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Closing others could never make it fit, so they keep their queues."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_BYTES_PER_PROCESS", 100)
+    backlog = WSBacklog()
+    behind, oversized = _Socket(backlog), _Socket(backlog)
+    try:
+        await behind.stuck_behind([30, 30])
+        oversized.outbox.put(oversized.client.delivery("too big"), 101)
+        async with asyncio.timeout(_HANG_SECONDS):
+            await oversized.closed.wait()
+        assert oversized.why.startswith(
+            "MAX_QUEUED_BYTES_PER_PROCESS, one event of 101 bytes"
+        )
+        assert not behind.closed.is_set()
+        assert backlog.queued_bytes == 60
+        oversized.client.reading.set()
+        await asyncio.sleep(0)
+        assert oversized.client.got == []
+    finally:
+        for socket in (behind, oversized):
             await socket.close()
 
 

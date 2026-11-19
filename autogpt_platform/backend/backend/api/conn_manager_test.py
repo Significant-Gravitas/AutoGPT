@@ -1558,26 +1558,14 @@ async def test_a_socket_closed_for_falling_behind_stops_reading_redis(
         stuck.reading.set()
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("meanwhile", ["streams-change", "a-stop-raises"])
-async def test_a_slow_client_is_closed_whatever_its_streams_do_meanwhile(
-    connection_manager: ConnectionManager,
-    fake_redis: _FakeRedis,
-    monkeypatch: pytest.MonkeyPatch,
-    meanwhile: str,
-) -> None:
-    """The close runs in its own task while the socket's messages are still
-    handled: an unsubscribe can drop one of its streams while another stops,
-    and a stop can fail. The socket is closed either way, with nothing left
-    raised, and it takes no new subscribe."""
-    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
-    shard_of = {
-        "graph-a": ("redis", 1),
-        "graph-b": ("redis", 2),
-        "graph-c": ("redis", 3),
-    }
+async def _two_streams_one_slow_to_stop(
+    connection_manager: ConnectionManager, fake_redis: _FakeRedis
+) -> tuple[AsyncMock, _StuckClient, _ShardStream, asyncio.Event, asyncio.Event]:
+    """A socket subscribed on two shards, "graph-a" and "graph-b", whose
+    first stream's stop waits on ``release`` once ``stopping`` is set."""
+    shard_of = {"graph-a": 1, "graph-b": 2, "graph-c": 3, "graph-d": 4}
     fake_redis.shard_of = lambda channel: next(
-        shard for graph_id, shard in shard_of.items() if graph_id in channel
+        ("redis", shard) for graph_id, shard in shard_of.items() if graph_id in channel
     )
     ws: AsyncMock = AsyncMock(spec=WebSocket)
     client = _StuckClient(ws)
@@ -1592,42 +1580,112 @@ async def test_a_slow_client_is_closed_whatever_its_streams_do_meanwhile(
         stopping.set()
         await release.wait()
 
-    if meanwhile == "streams-change":
-        fake_redis.clients[0].aclose.side_effect = close_slowly
-    failing_stop = (
-        patch.object(first, "stop", AsyncMock(side_effect=RuntimeError("boom")))
-        if meanwhile == "a-stop-raises"
-        else nullcontext()
-    )
+    fake_redis.clients[0].aclose.side_effect = close_slowly
+    return ws, client, first, stopping, release
+
+
+async def _fall_behind(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    ws: AsyncMock,
+    client: _StuckClient,
+) -> None:
+    """Past a bound of one event on the socket's first stream."""
     inbox = fake_redis.pubsubs[0].inbox
+    inbox.put_nowait(_graph_event("graph-a"))
+    async with asyncio.timeout(_HANG_SECONDS):
+        await client.waited_on.wait()
+    inbox.put_nowait(_graph_event("graph-a"))
+    await _until(lambda: connection_manager._outboxes[ws]._closer is not None)
+
+
+@pytest.mark.asyncio
+async def test_a_slow_client_is_closed_while_its_socket_changes_streams(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The close runs in its own task while the socket's messages are still
+    handled. While one stream stops, the socket drops another and asks for a
+    new shard: it is closed anyway with nothing left raised, the retired
+    socket gets no new stream, and another socket still subscribes."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    ws, client, _, stopping, release = await _two_streams_one_slow_to_stop(
+        connection_manager, fake_redis
+    )
+    healthy_ws: AsyncMock = AsyncMock(spec=WebSocket)
+    healthy_ws.send_text = AsyncMock()
     try:
-        with failing_stop:
-            inbox.put_nowait(_graph_event("graph-a"))
-            async with asyncio.timeout(_HANG_SECONDS):
-                await client.waited_on.wait()
-            inbox.put_nowait(_graph_event("graph-a"))
-            if meanwhile == "streams-change":
-                async with asyncio.timeout(_HANG_SECONDS):
-                    await stopping.wait()
-                await connection_manager.unsubscribe_graph_execs(
-                    user_id="user-1", graph_id="graph-b", websocket=ws
-                )
-                with pytest.raises(EventStreamLostError):
-                    await connection_manager.subscribe_graph_execs(
-                        user_id="user-1", graph_id="graph-c", websocket=ws
-                    )
-                release.set()
-            await _until(lambda: connection_manager._outboxes[ws]._closer is not None)
-            closer = connection_manager._outboxes[ws]._closer
-            assert closer is not None
-            async with asyncio.timeout(_HANG_SECONDS):
-                await asyncio.wait([closer])
+        await _fall_behind(connection_manager, fake_redis, ws, client)
+        async with asyncio.timeout(_HANG_SECONDS):
+            await stopping.wait()
+        await connection_manager.unsubscribe_graph_execs(
+            user_id="user-1", graph_id="graph-b", websocket=ws
+        )
+        with pytest.raises(EventStreamLostError):
+            await connection_manager.subscribe_graph_execs(
+                user_id="user-1", graph_id="graph-c", websocket=ws
+            )
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id="graph-d", websocket=healthy_ws
+        )
+        release.set()
+
+        closer = connection_manager._outboxes[ws]._closer
+        assert closer is not None
+        async with asyncio.timeout(_HANG_SECONDS):
+            await asyncio.wait([closer])
         assert closer.exception() is None
         ws.close.assert_awaited_once_with(
             code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
         )
-        fake_redis.clients[1].aclose.assert_awaited()
-        assert len(fake_redis.clients) == 2
+        # The retired socket's two streams, then the healthy socket's one.
+        assert len(fake_redis.clients) == 3
+        fake_redis.pubsubs[2].inbox.put_nowait(_graph_event("graph-d"))
+        await _until(lambda: healthy_ws.send_text.await_count == 1)
+    finally:
+        release.set()
+        client.reading.set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stop", ["raises", "is-cancelled"])
+async def test_a_slow_client_is_closed_whatever_a_stream_stop_does(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+    stop: str,
+) -> None:
+    """A stop that fails, or a close cancelled midway (as disconnecting the
+    socket does), still sends the client its close."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    ws, client, first, stopping, release = await _two_streams_one_slow_to_stop(
+        connection_manager, fake_redis
+    )
+    failing_stop = (
+        patch.object(first, "stop", AsyncMock(side_effect=RuntimeError("boom")))
+        if stop == "raises"
+        else nullcontext()
+    )
+    try:
+        with failing_stop:
+            await _fall_behind(connection_manager, fake_redis, ws, client)
+            closer = connection_manager._outboxes[ws]._closer
+            assert closer is not None
+            if stop == "is-cancelled":
+                async with asyncio.timeout(_HANG_SECONDS):
+                    await stopping.wait()
+                closer.cancel()
+            release.set()
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.wait([closer])
+        ws.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
+        )
+        if stop == "raises":
+            assert closer.exception() is None
+            # The stream after the failed one still stopped.
+            fake_redis.clients[1].aclose.assert_awaited()
     finally:
         release.set()
         client.reading.set()
