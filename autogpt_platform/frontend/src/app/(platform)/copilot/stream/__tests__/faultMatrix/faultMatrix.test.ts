@@ -448,7 +448,8 @@ describe("a send", () => {
       server.postMode = "lost-before-send";
       server.viewsDown = true;
       tab.send(P1);
-      // After the send's own token lookup: its recovery's lookups find no session.
+      // `send` reads the token before its first await, so this lands after
+      // the send's own lookup and before its recovery's.
       auth.signedIn = false;
       await advance(500);
       tab.runtime.stop();
@@ -794,6 +795,30 @@ describe("two tabs on one chat", () => {
       stale.send(P2);
       await advance(3_000);
       server.postMode = "stream";
+      stale.send(P3);
+      await advance(3_000);
+      server.publish();
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: "Failed to fetch" }, stale);
+    },
+  );
+
+  cell(
+    "M3d",
+    "two stale-tab sends behind the other tab's turn are both checked once it ends",
+    async () => {
+      const stale = openTab(300);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(0);
+      // Sent before P2's first check reads the session; queued behind P1's turn.
+      server.postMode = "lost-after-receive";
       stale.send(P3);
       await advance(3_000);
       server.publish();

@@ -209,8 +209,8 @@ export class TurnRuntime {
   private recovering = false;
   // A send whose stream ended before naming its turn, while hidden or offline.
   private unresolvedPost: { lost: Lost; end: ConnectionEnd } | null = null;
-  // A lost send, with no row yet, that another's turn may hold queued.
-  private sendBehindTurn: { lost: Lost; end: ConnectionEnd } | null = null;
+  // Lost sends, with no row yet, that another's turn may hold queued.
+  private sendsBehindTurn: { lost: Lost; end: ConnectionEnd }[] = [];
   // Counts stops: one ends every lost-send recovery begun before it.
   private stops = 0;
   private providerFailure: unknown = null;
@@ -318,7 +318,7 @@ export class TurnRuntime {
     this.queueDeclined = true;
     // As a stop ends a lost send's recovery, it drops one waiting on a turn.
     this.stops += 1;
-    this.sendBehindTurn = null;
+    this.sendsBehindTurn = [];
     this.endQueueWatch();
     this.notice = null;
     this.reveal.clear();
@@ -384,8 +384,8 @@ export class TurnRuntime {
       this.ensureConnected();
     }
     if (!running && !this.isPostPending() && !active) {
-      this.settleTail(view);
-      this.decideSendBehindTurn();
+      this.settleTail(view, rows);
+      this.decideSendsBehindTurn();
     }
     this.followQueue(view);
     this.emitNow();
@@ -801,7 +801,7 @@ export class TurnRuntime {
     this.abortConnections();
     this.clearRetry();
     this.unresolvedPost = null;
-    this.sendBehindTurn = null;
+    this.sendsBehindTurn = [];
     if (running) {
       this.updateTurn(running.key, (seg) => ({
         ...seg,
@@ -849,7 +849,7 @@ export class TurnRuntime {
       this.observe(view);
       // Another's running turn may hold the send queued until it ends.
       const behind = !!this.runningTurn() && this.sendInDoubt(lost, end);
-      if (behind) this.sendBehindTurn = { lost, end };
+      if (behind) this.sendsBehindTurn.push({ lost, end });
       if (attaching || behind) {
         this.resetFailures();
         return;
@@ -894,13 +894,12 @@ export class TurnRuntime {
     );
   }
 
-  // With nothing running, the session shows whether a send that another's
-  // turn may have held queued arrived.
-  private decideSendBehindTurn() {
-    const behind = this.sendBehindTurn;
-    if (!behind || this.disposed) return;
-    this.sendBehindTurn = null;
-    void this.recoverUnknownTurn(behind.lost, behind.end);
+  // With nothing running, the session shows whether each send that
+  // another's turn may have held queued arrived.
+  private decideSendsBehindTurn() {
+    if (this.disposed) return;
+    for (const behind of this.sendsBehindTurn.splice(0))
+      void this.recoverUnknownTurn(behind.lost, behind.end);
   }
 
   // ── The turn's lifecycle ───────────────────────────────────────────────
@@ -911,7 +910,7 @@ export class TurnRuntime {
   ) {
     const rows = persistedRows(view.messages);
     // A prompt the session has no row for is not this turn's.
-    const unwritten = this.takeUnwrittenPrompts(view);
+    const unwritten = this.takeUnwrittenPrompts(view, rows);
     const checkpoint = active.checkpoint ?? null;
     const start = checkpoint
       ? checkpoint.sequence
@@ -1214,9 +1213,8 @@ export class TurnRuntime {
   // With nothing running, a prompt whose turn never reached this client (a
   // stop before its first entry, a lost send) takes its row, and rows after
   // the tail's end are shown as persisted, above any prompt still without one.
-  private settleTail(view: SessionView) {
-    const rows = persistedRows(view.messages);
-    const unwritten = this.takeUnwrittenPrompts(view);
+  private settleTail(view: SessionView, rows: readonly PersistedRow[]) {
+    const unwritten = this.takeUnwrittenPrompts(view, rows);
     const last = this.segments[this.segments.length - 1];
     let placed = true;
     if (
@@ -1247,8 +1245,10 @@ export class TurnRuntime {
    * never arrived, or has not been written yet. They leave the tail while
    * the rows the session wrote meanwhile are placed, then go back after them.
    */
-  private takeUnwrittenPrompts(view: SessionView) {
-    const rows = persistedRows(view.messages);
+  private takeUnwrittenPrompts(
+    view: SessionView,
+    rows: readonly PersistedRow[],
+  ) {
     // A window that starts past a prompt's place can't show it has no row.
     const windowStart =
       view.has_more_messages === false

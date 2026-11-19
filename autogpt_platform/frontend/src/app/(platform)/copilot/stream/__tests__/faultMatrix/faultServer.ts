@@ -356,9 +356,10 @@ function scopedMessageId(url: URL, clientId: string) {
 
 function hangUntilAborted(signal: AbortSignal | null | undefined) {
   return new Promise<Response>((_, reject) => {
-    signal?.addEventListener("abort", () =>
-      reject(new DOMException("The operation was aborted.", "AbortError")),
-    );
+    const abort = () =>
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+    if (signal?.aborted) abort();
+    else signal?.addEventListener("abort", abort, { once: true });
   });
 }
 
