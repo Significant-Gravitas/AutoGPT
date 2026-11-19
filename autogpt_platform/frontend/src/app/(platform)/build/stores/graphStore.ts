@@ -4,17 +4,20 @@ import { GraphMeta } from "@/app/api/__generated__/models/graphMeta";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 
 // The workflow and version the builder is loading. `forLatest` when the URL
-// asked for no version; the version it is then given keeps the request.
+// asked for no version, and `latestVersion` once that request has resolved:
+// the builder then writes that version into the URL, which keeps the request.
 type LoadRequest = {
   graphID: string | null;
   version: number | null;
   forLatest: boolean;
+  latestVersion: number | null;
 };
 
 const NO_LOAD_REQUEST: LoadRequest = {
   graphID: null,
   version: null,
   forLatest: true,
+  latestVersion: null,
 };
 
 let loadController = new AbortController();
@@ -54,6 +57,7 @@ interface GraphStore {
   setLoadedGraph: (graph: GraphModel | null) => void;
   loadRequest: LoadRequest;
   requestLoad: (graphID: string | null, version: number | null) => void;
+  resolveLatestVersion: (graphID: string, version: number) => void;
   // Aborted when the builder moves to another workflow or version, or closes,
   // so a save waiting for the canvas to load gives up.
   loadSignal: AbortSignal;
@@ -64,6 +68,7 @@ interface GraphStore {
   hasInputs: () => boolean;
   hasCredentials: () => boolean;
   hasOutputs: () => boolean;
+  // Also aborts loadSignal, which cancels any save waiting for the canvas.
   reset: () => void;
 }
 
@@ -107,18 +112,30 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   requestLoad: (graphID, version) => {
     const request = get().loadRequest;
     if (request.graphID === graphID && request.version === version) return;
-    if (
+    const getsItsLatestVersion =
       request.graphID === graphID &&
       request.version === null &&
-      version !== null
-    ) {
+      version !== null &&
+      version === request.latestVersion;
+    if (getsItsLatestVersion) {
       set({ loadRequest: { ...request, version } });
       return;
     }
     set({
-      loadRequest: { graphID, version, forLatest: version === null },
+      loadRequest: {
+        graphID,
+        version,
+        forLatest: version === null,
+        latestVersion: null,
+      },
       loadSignal: renewLoadSignal(),
     });
+  },
+
+  resolveLatestVersion: (graphID, version) => {
+    const request = get().loadRequest;
+    if (request.graphID !== graphID || request.version !== null) return;
+    set({ loadRequest: { ...request, latestVersion: version } });
   },
 
   setLoadFailed: (failed) => set({ loadFailed: failed }),

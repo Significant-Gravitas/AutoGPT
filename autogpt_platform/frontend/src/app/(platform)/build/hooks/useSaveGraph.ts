@@ -37,6 +37,7 @@ export type SaveGraphOptions = {
   onError?: (error: any) => void;
 };
 
+/** Needs useFlow mounted, which fills the loadedGraph that saves wait for. */
 export const useSaveGraph = ({
   showToast = true,
   onSuccess,

@@ -482,7 +482,13 @@ describe("builder Run while the workflow it runs is still loading", () => {
       expect(backend.graphs[GRAPH_ID]).toHaveLength(1);
       expect(strayLinkEnds(canvas())).toEqual([]);
 
-      await clickRunOnceItIsEnabled(user);
+      // Pressed twice, as fast as a double-click: the wait disables Run on the
+      // first press, so the second one starts nothing.
+      await waitFor(
+        () => expect(runButton().disabled).toBe(false),
+        NETWORK_WAIT,
+      );
+      await user.dblClick(runButton());
       expect(runButton().disabled, "Run can be pressed again").toBe(true);
       backend.release();
       await waitForTheRun();
@@ -785,6 +791,35 @@ describe("builder Run while the version it waits for changes", () => {
     expect(backend.updates, "running it saved a new version").toEqual([]);
     expect(backend.executions).toEqual([
       { graphID: GRAPH_ID, graphVersion: 2 },
+    ]);
+  });
+
+  test("picking a version while Run waits for a URL's latest version cancels the run, and the picked version runs on its own Run", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    saveVersion(SAVED_WORKFLOW);
+    const user = userEvent.setup();
+    hold("latest graph");
+    renderBuilder(`?flowID=${GRAPH_ID}`);
+    await clickRunOnceItIsEnabled(user);
+    const runWaitsOn = useGraphStore.getState().loadSignal;
+
+    await user.click(screen.getByRole("button", { name: `Open ${GRAPH_ID}` }));
+    await waitFor(() =>
+      expect(
+        runWaitsOn.aborted,
+        "the Run for the latest version kept waiting",
+      ).toBe(true),
+    );
+    backend.release();
+    await waitFor(
+      () => expect(useGraphStore.getState().loadedGraph?.version).toBe(1),
+      NETWORK_WAIT,
+    );
+    await clickRunOnceItIsEnabled(user);
+    await waitForTheRun();
+
+    expect(backend.executions).toEqual([
+      { graphID: GRAPH_ID, graphVersion: 1 },
     ]);
   });
 

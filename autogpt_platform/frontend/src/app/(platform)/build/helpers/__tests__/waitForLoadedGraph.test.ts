@@ -49,13 +49,28 @@ describe("waitForLoadedGraph", () => {
     await expect(loaded).resolves.toBe(graph);
   });
 
-  test("still counts a load as the latest once the URL is given its version", async () => {
+  test("still counts a load as the latest once the URL is given the version it resolved to", async () => {
     useGraphStore.getState().requestLoad("graph-1", null);
     const loaded = waitForLoadedGraph("graph-1", null);
 
+    useGraphStore.getState().resolveLatestVersion("graph-1", 2);
     loadCanvas(2);
 
     await expect(loaded).resolves.toBe(graph);
+  });
+
+  test("is cancelled when a version is picked while it waits for the latest", async () => {
+    useGraphStore.getState().requestLoad("graph-1", null);
+    const beforeResolving = waitForLoadedGraph("graph-1", null);
+    useGraphStore.getState().requestLoad("graph-1", 2);
+
+    useGraphStore.getState().requestLoad("graph-1", null);
+    useGraphStore.getState().resolveLatestVersion("graph-1", 2);
+    const afterResolving = waitForLoadedGraph("graph-1", null);
+    useGraphStore.getState().requestLoad("graph-1", 1);
+
+    expect(isSaveCancelled(await beforeResolving.catch((e) => e))).toBe(true);
+    expect(isSaveCancelled(await afterResolving.catch((e) => e))).toBe(true);
   });
 
   test("fails at once when the canvas can't load the workflow", async () => {

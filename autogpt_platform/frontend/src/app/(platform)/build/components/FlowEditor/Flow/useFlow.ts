@@ -62,6 +62,9 @@ export const useFlow = () => {
   );
   const setLoadedGraph = useGraphStore((state) => state.setLoadedGraph);
   const requestLoad = useGraphStore((state) => state.requestLoad);
+  const resolveLatestVersion = useGraphStore(
+    (state) => state.resolveLatestVersion,
+  );
   const setLoadFailed = useGraphStore((state) => state.setLoadFailed);
   const { screenToFlowPosition, fitView } = useReactFlow();
   const addBlock = useNodeStore(useShallow((state) => state.addBlock));
@@ -190,6 +193,15 @@ export const useFlow = () => {
   useEffect(() => {
     requestLoad(flowID, flowVersion);
   }, [flowID, flowVersion, requestLoad]);
+
+  // Records the version a URL without one resolved to, which the schemas
+  // effect above writes into the URL. That write keeps a waiting save; picking
+  // any other version cancels it.
+  useEffect(() => {
+    if (graph?.id && flowVersion === null) {
+      resolveLatestVersion(graph.id, graph.version ?? 1);
+    }
+  }, [graph, flowVersion, resolveLatestVersion]);
 
   // Nodes and links are replaced together, once the graph's block info is in,
   // so the canvas never pairs one graph's links with another's nodes.
