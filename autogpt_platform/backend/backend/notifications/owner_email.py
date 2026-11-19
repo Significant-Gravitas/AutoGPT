@@ -17,6 +17,7 @@ from requests import RequestException
 from backend.data.redis_client import get_redis_async
 from backend.notifications.email import EmailSender
 from backend.notifications.owner_email_body import (
+    MAX_BODY_LENGTH,
     MAX_IMAGES,
     BodyFormat,
     InlineImage,
@@ -42,7 +43,7 @@ class OwnerRenderedEmail(RenderedEmail):
 
 class OwnerEmail(BaseModel):
     subject: str = Field(min_length=1, max_length=200)
-    body: str = Field(min_length=1, max_length=50_000)
+    body: str = Field(min_length=1, max_length=MAX_BODY_LENGTH)
     link: str | None = None
     body_format: BodyFormat = BodyFormat.MARKDOWN
     images: list[InlineImage] = Field(default_factory=list, max_length=MAX_IMAGES)

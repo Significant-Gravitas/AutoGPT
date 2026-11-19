@@ -25,7 +25,12 @@ from backend.copilot.tools.run_block import RunBlockTool
 from backend.data.execution import ExecutionContext
 from backend.data.workspace import WorkspaceFile
 from backend.notifications import email as email_module
-from backend.notifications import notifications, owner_email, owner_email_images
+from backend.notifications import (
+    notifications,
+    owner_email,
+    owner_email_body,
+    owner_email_images,
+)
 from backend.notifications.email import EmailSender
 from backend.util import file as file_module
 from backend.util import workspace as workspace_module
@@ -356,6 +361,51 @@ async def test_html_nested_too_deeply_is_refused(postmark, opening, closing):
 
     assert "nested more than 100 levels deep" in _error(response)
     assert sent_to(postmark) == []
+
+
+@pytest.mark.parametrize("body_format", ["markdown", "html"])
+async def test_a_body_over_the_length_limit_is_refused_before_it_is_read(
+    monkeypatch, postmark, body_format
+):
+    to_html = MagicMock(wraps=owner_email_body._to_html)
+    monkeypatch.setattr(owner_email_body, "_to_html", to_html)
+
+    response = await run(
+        {"subject": "s", "body": "x" * 50_001, "body_format": body_format}
+    )
+
+    assert "at most 50000 characters" in _error(response)
+    to_html.assert_not_called()
+    assert sent_to(postmark) == []
+
+
+@pytest.mark.parametrize(
+    "limit, value, body",
+    # Each body is within the limit as written; the parser's copies are not.
+    [
+        ("MAX_ELEMENTS", 6, "<p><b>bold<p>x<p>y<p>z"),
+        ("MAX_ATTRIBUTE_TEXT", 40, '<p><a title="twenty characters...">a<p>x<p>y'),
+        ("MAX_ATTRIBUTE_TEXT", 30, '<b title="twenty characters..."><p>x</b>y'),
+    ],
+    ids=["reopened elements", "reopened attributes", "cloned attributes"],
+)
+async def test_the_copies_the_parser_makes_count_against_its_limits(
+    monkeypatch, postmark, limit, value, body
+):
+    monkeypatch.setattr(owner_email_body, limit, value)
+
+    response = await run({"subject": "s", "body": body, "body_format": "html"})
+
+    assert f"more than {value}" in _error(response)
+    assert sent_to(postmark) == []
+
+
+async def test_an_unclosed_tag_in_an_ordinary_body_is_still_sent(postmark):
+    body = "<p><b>Weekly report<p>14 runs<p>2 failed"
+
+    await run({"subject": "s", "body": body, "body_format": "html"})
+
+    assert ">2 failed</b>" in _sent(postmark)["HtmlBody"]
 
 
 async def test_an_unclosed_script_takes_the_rest_of_the_body_with_it(postmark):
