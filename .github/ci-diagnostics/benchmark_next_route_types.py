@@ -21,7 +21,7 @@ def main():
     probe = FRONTEND / "src/app/ci-typecheck-probe"
     assert not probe.exists()
     tracked = {
-        path: path.read_bytes()
+        path: path.read_bytes() if path.exists() else None
         for path in (FRONTEND / "next-env.d.ts", FRONTEND / "tsconfig.json")
     }
     commands = {
@@ -73,7 +73,10 @@ def main():
         if probe.exists():
             shutil.rmtree(probe)
         for path, original in tracked.items():
-            path.write_bytes(original)
+            if original is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(original)
         benchmark.finish()
     if not all(benchmark.canaries.values()):
         raise SystemExit("Route type-check comparison did not preserve its safeguards")
