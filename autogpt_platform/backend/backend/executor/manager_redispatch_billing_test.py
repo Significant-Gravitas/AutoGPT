@@ -379,7 +379,8 @@ async def test_a_parked_block_reports_a_completed_run_with_nothing_to_bill():
 def test_a_failed_low_balance_alert_still_runs_the_node(harness):
     """The charge crosses the low-balance threshold and raising the alert
     fails (SECRT-3172). The charge has landed, so the node still runs and the
-    run completes instead of failing with the charge kept."""
+    run completes instead of failing with the charge kept, and operators still
+    get one alert about the failed check."""
     harness.price(PER_RUN)
     harness.sync_db.raise_alert_condition.side_effect = RuntimeError("db down")
     harness.sync_db.get_recent_daily_spend.return_value = 0
@@ -389,10 +390,13 @@ def test_a_failed_low_balance_alert_still_runs_the_node(harness):
         patch.object(
             billing.settings.config, "low_balance_threshold", 1_000 - PER_RUN_PRICE + 1
         ),
+        patch("backend.executor.manager.send_rate_limited_discord_alert") as alert,
     ):
         status = harness.dispatch(_runs(harness.row))
 
     harness.sync_db.raise_alert_condition.assert_called_once()
+    alert.assert_called_once()
+    assert str(alert.call_args.args[1]) == "db down"
     assert status == ExecutionStatus.COMPLETED
     assert harness.row.status == ExecutionStatus.RUNNING
     assert harness.wallet.total == PER_RUN_PRICE, harness.wallet.spent

@@ -1808,10 +1808,22 @@ class ExecutionProcessor:
                                 current_balance=remaining_balance,
                                 transaction_cost=cost,
                             )
-                        except Exception:
+                        except Exception as low_balance_error:
                             log_metadata.exception(
                                 f"Low-balance check failed after charging node "
                                 f"{queued_node_exec.node_exec_id}"
+                            )
+                            send_rate_limited_discord_alert(
+                                "handle_low_balance",
+                                low_balance_error,
+                                "low_balance_check",
+                                f"🚨 **Low-Balance Check Failed**\n"
+                                f"User: {graph_exec.user_id}\n"
+                                f"Graph ID: {graph_exec.graph_id}\n"
+                                f"Execution ID: {graph_exec.graph_exec_id}\n"
+                                f"Node Execution ID: {queued_node_exec.node_exec_id}\n"
+                                f"Error Type: {type(low_balance_error).__name__}\n"
+                                f"Error: {str(low_balance_error)[:200]}\n",
                             )
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
