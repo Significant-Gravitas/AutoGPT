@@ -1,8 +1,9 @@
+import threading
 from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.copilot.learning import owner_actions, publish
+from backend.copilot.learning import owner_actions, publication_validation, publish
 from backend.copilot.tools.skills import ParsedSkill, SkillFile
 
 from .package_test import BODY, SCRIPT, request
@@ -72,6 +73,60 @@ async def test_package_retry_update_and_restore_preserve_file_versions(
         actor_user_id="another-user",
     )
     assert foreign.status == "conflict"
+
+
+@pytest.mark.asyncio
+async def test_content_checks_run_off_the_event_loop(
+    fake_store, publication_files, monkeypatch
+):
+    """A package is up to 20 MB of text, so publishing and restoring a version
+    check it off the event loop."""
+    calls: list[tuple[str, int]] = []
+
+    def recording(label, check):
+        def run(*args, **kwargs):
+            calls.append((label, threading.get_ident()))
+            return check(*args, **kwargs)
+
+        return run
+
+    for module, name in (
+        (publish, "check_skill_bundle"),
+        (publish, "collect_content_approvals"),
+        (publication_validation, "check_skill_bundle"),
+    ):
+        label = f"{module.__name__.rsplit('.', 1)[-1]}.{name}"
+        monkeypatch.setattr(module, name, recording(label, getattr(module, name)))
+
+    stored = [SkillFile(relative_path="scripts/normalize.py", content=b"a\n")]
+    first = await publish.publish_learned_version(request(stored))
+    assert first.status == "applied" and first.version is not None
+    monkeypatch.setattr(
+        publish,
+        "read_user_skill_markdown",
+        AsyncMock(return_value=first.version.content),
+    )
+    monkeypatch.setattr(
+        publish, "read_user_skill_files", AsyncMock(return_value=stored)
+    )
+    second = await publish.publish_learned_version(
+        request([SkillFile(relative_path="scripts/normalize.py", content=b"b\n")])
+    )
+    assert second.status == "applied"
+    restored = await owner_actions.restore_version(
+        user_id="user-1",
+        expert_id=None,
+        skill_name="normalize-input",
+        version_id=first.version.id,
+        actor_user_id="user-1",
+    )
+    assert restored.status == "applied"
+    assert {label for label, _ in calls} == {
+        "publish.check_skill_bundle",
+        "publish.collect_content_approvals",
+        "publication_validation.check_skill_bundle",
+    }
+    assert threading.get_ident() not in {thread for _, thread in calls}
 
 
 @pytest.mark.asyncio

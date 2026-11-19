@@ -17,6 +17,7 @@ policy — a queued proposal never publishes on a stale snapshot.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from backend.api.features.store.exceptions import VirusDetectedError
@@ -169,12 +170,17 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
         metadata_failure = check_metadata(
             {str(i): f.relative_path for i, f in enumerate(current_files)}
         )
-        failure = metadata_failure or check_skill_bundle(previous_bundle)
+        # A package is up to 20 MB of text, so its checks run off the event loop.
+        failure = metadata_failure or await asyncio.to_thread(
+            check_skill_bundle, previous_bundle
+        )
         if failure is not None and metadata_failure is None:
             approvals = await current_content_approvals(
                 request.user_id, request.expert_id, request.skill_name
             )
-            failure = check_skill_bundle(previous_bundle, approved_matches=approvals)
+            failure = await asyncio.to_thread(
+                check_skill_bundle, previous_bundle, approved_matches=approvals
+            )
         if failure is not None:
             return PublishOutcome(
                 status="blocked_content",
@@ -275,7 +281,8 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
         sources=[s.as_dependency() for s in request.sources],
         evidence=request.evidence,
         limits=request.limits,
-        content_approvals=collect_content_approvals(
+        content_approvals=await asyncio.to_thread(
+            collect_content_approvals,
             {
                 "SKILL.md": rendered,
                 **{
@@ -303,8 +310,8 @@ async def _check_bundle(
     }
     failure = check_metadata({str(i): f.relative_path for i, f in enumerate(files)})
     bundle["SKILL.md"] = rendered
-    failure = failure or check_skill_bundle(
-        bundle, approved_matches=content_approvals or []
+    failure = failure or await asyncio.to_thread(
+        check_skill_bundle, bundle, approved_matches=content_approvals or []
     )
     if failure is None:
         return None
@@ -505,7 +512,8 @@ async def commit_and_write(
 ) -> PublishOutcome:
     draft = draft.model_copy(
         update={
-            "content_approvals": collect_content_approvals(
+            "content_approvals": await asyncio.to_thread(
+                collect_content_approvals,
                 {
                     "SKILL.md": draft.content,
                     **{
@@ -518,8 +526,8 @@ async def commit_and_write(
             )
         }
     )
-    invalid = _validate_version_content(
-        draft.content, draft.files, draft.content_approvals
+    invalid = await asyncio.to_thread(
+        _validate_version_content, draft.content, draft.files, draft.content_approvals
     )
     if invalid is not None:
         return invalid
@@ -553,8 +561,11 @@ async def write_committed_version(
             ]
         }
     )
-    invalid = _validate_version_content(
-        version.content, version.files, version.content_approvals
+    invalid = await asyncio.to_thread(
+        _validate_version_content,
+        version.content,
+        version.files,
+        version.content_approvals,
     )
     if invalid is not None:
         await skill_publication_db().abandon_publication(
