@@ -290,7 +290,10 @@ def test_block_searchable_text_is_identical_across_processes():
     ]
     texts = set()
     for run in runs:
-        out, err = run.communicate(timeout=120)
+        # A hang guard: each interpreter imports the backend, about 15 s for all
+        # four on 3.13 and over two minutes on 3.14, where prisma's generated
+        # types alone take about 35 s to import.
+        out, err = run.communicate(timeout=600)
         assert run.returncode == 0, err
         texts.add(out)
 
