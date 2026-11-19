@@ -830,6 +830,34 @@ describe("two tabs on one chat", () => {
   );
 
   cell(
+    "M3r",
+    "two stale-tab sends behind the other tab's turn are both checked when their reads fail at first",
+    async () => {
+      const stale = openTab(300);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(0);
+      server.postMode = "lost-after-receive";
+      stale.send(P3);
+      await advance(3_000);
+      server.publish();
+      await advance(5_000);
+      server.publish();
+      // The end-of-turn read is back, and both sends' checks are reading.
+      await advance(900);
+      server.viewsDown = true;
+      await advance(500);
+      server.viewsDown = false;
+      await advance(30_000);
+      expectScreen({ error: "Failed to fetch" }, stale);
+    },
+  );
+
+  cell(
     "M3s",
     "a stale tab's lost send is let go when the user stops the turn it waits on",
     async () => {

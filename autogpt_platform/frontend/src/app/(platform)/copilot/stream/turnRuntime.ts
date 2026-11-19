@@ -209,7 +209,9 @@ export class TurnRuntime {
   private recovering = false;
   // A send whose stream ended before naming its turn, while hidden or offline.
   private unresolvedPost: { lost: Lost; end: ConnectionEnd } | null = null;
-  // Lost sends, with no row yet, that another's turn may hold queued.
+  // Lost sends, with no row yet, that the next view showing nothing running
+  // decides: another's turn may hold them queued, or a read failed while
+  // another recovery held the one retry timer.
   private sendsBehindTurn: { lost: Lost; end: ConnectionEnd }[] = [];
   // Counts stops: one ends every lost-send recovery begun before it.
   private stops = 0;
@@ -842,6 +844,7 @@ export class TurnRuntime {
         const signedOut = await this.signedOut();
         if (ended()) return;
         if (signedOut) this.giveUp(new CopilotAuthError());
+        else if (this.retryTimer) this.sendsBehindTurn.push({ lost, end });
         else this.retry(lost, end);
         return;
       }
