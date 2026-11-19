@@ -38,9 +38,9 @@ from backend.data.auth import api_key
 class Setup(BaseModel):
     """A user in two organizations. In ``home`` they keep a workflow, one they
     submitted to the marketplace (so also in their library), and a run of each and
-    of an untagged workflow from before organizations; one run of their ``home``
-    workflow was recorded in ``elsewhere``. A teammate keeps a workflow and a run
-    in ``elsewhere``, visible to all its members."""
+    of another creator's marketplace workflow they keep in their library; one run
+    of their ``home`` workflow was recorded in ``elsewhere``. A teammate keeps a
+    workflow and a run in ``elsewhere``, visible to all its members."""
 
     user: str
     home: str
@@ -54,19 +54,22 @@ async def setup() -> AsyncIterator[Setup]:
     owned_connection = not db.is_connected()
     if owned_connection:
         await db.connect()
-    user, teammate = (f"key-org-scope-{uuid.uuid4()}" for _ in range(2))
-    for user_id in (user, teammate):
+    user, teammate, creator = (f"key-org-scope-{uuid.uuid4()}" for _ in range(3))
+    for user_id in (user, teammate, creator):
         await User.prisma().create(
             data={"id": user_id, "email": f"{user_id}@example.com"}
         )
     home = await _org("Home", user, personal=True)
     elsewhere = await _org("Elsewhere", user)
+    creators_org = await _org("Creator", creator, personal=True)
     await OrgMember.prisma().create(
         data={"orgId": elsewhere, "userId": teammate, "status": "ACTIVE"}
     )
     runs = {
         "workflow": await _workflow_with_run(user, home, home),
-        "untagged workflow": await _workflow_with_run(user, None, home),
+        "library workflow": await _library_workflow_with_run(
+            user, creator, creators_org, home
+        ),
         "submitted workflow": await _workflow_with_run(user, home, home),
         "run recorded elsewhere": await _workflow_with_run(user, home, elsewhere),
         "teammate's workflow": await _workflow_with_run(teammate, elsewhere, elsewhere),
@@ -80,11 +83,13 @@ async def setup() -> AsyncIterator[Setup]:
     try:
         yield Setup(user=user, home=home, elsewhere=elsewhere, runs=runs, keys=keys)
     finally:
-        users = {"in": [user, teammate]}
+        users = {"in": [user, teammate, creator]}
         await StoreListing.prisma().delete_many(where={"owningUserId": users})
         await LibraryAgent.prisma().delete_many(where={"userId": users})
         await User.prisma().delete_many(where={"id": users})
-        await Organization.prisma().delete_many(where={"id": {"in": [home, elsewhere]}})
+        await Organization.prisma().delete_many(
+            where={"id": {"in": [home, elsewhere, creators_org]}}
+        )
         if owned_connection:
             await db.disconnect()
 
@@ -116,7 +121,7 @@ KEYS_AND_STATUSES = [("home", 200), ("elsewhere", 404), ("no organization", 200)
 
 
 @pytest.mark.parametrize("key, status", KEYS_AND_STATUSES)
-@pytest.mark.parametrize("workflow", ["workflow", "untagged workflow"])
+@pytest.mark.parametrize("workflow", ["workflow", "library workflow"])
 async def test_run_results_are_found_only_through_a_key_for_their_organization(
     setup: Setup, client: AsyncClient, workflow: str, key: str, status: int
 ):
@@ -189,36 +194,76 @@ async def test_a_workflow_is_run_only_through_a_key_for_its_organization(
 
 
 async def _workflow_with_run(
-    user_id: str, graph_org: str | None, run_org: str
+    user_id: str, graph_org: str, run_org: str
 ) -> tuple[str, str]:
     graph = await graph_db.create_graph(
         graph_db.Graph(name="Weekly report", description=""),
         user_id,
         organization_id=graph_org,
     )
+    return graph.id, await _run(user_id, graph, run_org)
+
+
+async def _library_workflow_with_run(
+    user_id: str, creator_id: str, creators_org: str, run_org: str
+) -> tuple[str, str]:
+    """Another creator's approved marketplace workflow, in the user's library."""
+    graph = await graph_db.create_graph(
+        graph_db.Graph(name="Daily digest", description=""),
+        creator_id,
+        organization_id=creators_org,
+    )
+    await _profile(creator_id)
+    listing = await StoreListing.prisma().create(
+        data={
+            "slug": f"daily-digest-{uuid.uuid4().hex[:8]}",
+            "agentGraphId": graph.id,
+            "owningUserId": creator_id,
+            "owningOrgId": creators_org,
+        }
+    )
+    await StoreListingVersion.prisma().create(
+        data={
+            "storeListingId": listing.id,
+            "organizationId": creators_org,
+            "version": 1,
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+            "name": "Daily digest",
+            "subHeading": "",
+            "description": "",
+            "imageUrls": [],
+            "categories": [],
+            "submissionStatus": SubmissionStatus.APPROVED,
+        }
+    )
+    await LibraryAgent.prisma().create(
+        data={
+            "userId": user_id,
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+            "organizationId": run_org,
+        }
+    )
+    return graph.id, await _run(user_id, graph, run_org)
+
+
+async def _run(user_id: str, graph: graph_db.GraphModel, organization_id: str) -> str:
     run = await AgentGraphExecution.prisma().create(
         data={
             "agentGraphId": graph.id,
             "agentGraphVersion": graph.version,
             "userId": user_id,
-            "organizationId": run_org,
+            "organizationId": organization_id,
             "executionStatus": AgentExecutionStatus.COMPLETED,
         }
     )
-    return graph.id, run.id
+    return run.id
 
 
 async def _submit_to_marketplace(user_id: str, graph_id: str, org_id: str) -> None:
     """A pending submission, and the library entry its creator keeps."""
-    await Profile.prisma().create(
-        data={
-            "userId": user_id,
-            "name": "Creator",
-            "username": f"creator-{uuid.uuid4().hex[:8]}",
-            "description": "",
-            "links": [],
-        }
-    )
+    await _profile(user_id)
     listing = await StoreListing.prisma().create(
         data={
             "slug": f"weekly-report-{uuid.uuid4().hex[:8]}",
@@ -246,6 +291,18 @@ async def _submit_to_marketplace(user_id: str, graph_id: str, org_id: str) -> No
             "agentGraphId": graph_id,
             "agentGraphVersion": 1,
             "organizationId": org_id,
+        }
+    )
+
+
+async def _profile(user_id: str) -> None:
+    await Profile.prisma().create(
+        data={
+            "userId": user_id,
+            "name": "Creator",
+            "username": f"creator-{uuid.uuid4().hex[:8]}",
+            "description": "",
+            "links": [],
         }
     )
 
