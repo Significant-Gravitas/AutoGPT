@@ -2,6 +2,7 @@
 
 import { useGetV1GetCreditHistory } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { TransactionHistory } from "@/app/api/__generated__/models/transactionHistory";
+import { subDays } from "date-fns";
 
 export interface DailyUsageRow {
   day: string;
@@ -10,7 +11,6 @@ export interface DailyUsageRow {
   runs: number;
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOW_DAYS = 30;
 
 // Build a YYYY-MM-DD key from local date components so we don't shift dates
@@ -43,7 +43,7 @@ export function useUsageCard() {
   >();
 
   for (let i = WINDOW_DAYS - 1; i >= 0; i--) {
-    const d = new Date(today.getTime() - i * DAY_MS);
+    const d = subDays(today, i);
     buckets.set(toLocalDateKey(d), {
       day: d.toLocaleDateString(undefined, { weekday: "short" }),
       date: d.toLocaleDateString(undefined, {
