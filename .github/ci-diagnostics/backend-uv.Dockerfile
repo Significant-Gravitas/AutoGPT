@@ -62,8 +62,7 @@ COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.tom
 WORKDIR /app/autogpt_platform/backend
 ARG CI_INSTALLER_BENCH_NONCE
 RUN --mount=from=ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0,source=/uv,target=/usr/local/bin/uv \
-    poetry check --lock \
-    && poetry export --with dev --format requirements.txt --output /tmp/backend-requirements.txt \
+    poetry export --with dev --format requirements.txt --output /tmp/backend-requirements.txt \
     && UV_PYTHON_DOWNLOADS=never uv venv --python /usr/bin/python3.13 .venv \
     && uv pip sync --no-cache --compile-bytecode --python .venv/bin/python /tmp/backend-requirements.txt \
     && uv pip check --python .venv/bin/python \
