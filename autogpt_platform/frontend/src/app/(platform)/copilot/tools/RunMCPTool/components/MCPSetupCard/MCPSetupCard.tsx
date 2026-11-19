@@ -244,6 +244,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // ``true`` after a successful flow or ``false`` to drop the pill.
   const setConnected = setLocalConnected;
   const retryMessage = retryInstruction ?? "I've connected. Please retry.";
+  const owesLine = localConnected && !lineSent;
 
   useEffect(() => () => oauthRequest.current?.abort(), []);
 
@@ -402,9 +403,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       ready: connected,
       // Only a sign-in completed here owes Otto a line; a server that was
       // already connected when the chat loaded stays silent.
-      justConnected: localConnected && !lineSent,
-      buildMessage: () =>
-        localConnected && !lineSent ? retryMessageRef.current : null,
+      justConnected: owesLine,
+      buildMessage: () => (owesLine ? retryMessageRef.current : null),
       onSent: () => setLineSent(true),
       mcp: {
         id: actionId,
@@ -430,8 +430,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     chainActions,
     actionId,
     connected,
-    localConnected,
-    lineSent,
+    owesLine,
     loading,
     error,
     grantError,

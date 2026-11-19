@@ -941,6 +941,39 @@ describe("copilot Connect card, an account and an MCP server in one step", () =>
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves an already connected MCP server out of the account's message", async () => {
+    savedCredentials = [
+      {
+        id: "cred-mcp",
+        provider: "mcp",
+        type: "oauth2",
+        title: "Notion",
+        host: MCP_SERVER,
+        scopes: [],
+      },
+    ];
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[setupRequirementsPart(), unconnectedMcpPart()]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await connectRemainingProvider();
+
+    // The server was connected before this chat, so it owes Otto no line.
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toContain(
+      "I've configured the required credentials.",
+    );
+    expect(onSend.mock.calls[0][0]).not.toContain(MCP_RETRY);
+  });
+
   it("gives an MCP card that lands after the send a Proceed", async () => {
     const onSend = vi.fn();
     const { rerender } = render(
