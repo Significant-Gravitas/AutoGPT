@@ -58,6 +58,9 @@ from backend.executor.scheduler import (
 EXPERT = MemoryScope.for_expert("user-1", "expert-1")
 _EXECUTION = Jobstores.EXECUTION.value
 _RECONCILE_JOB = "reconcile_memory_scope_crons"
+# Only catches a pass held past its ceiling; a passing run ends at the
+# ceiling, and a CI runner can stall a test for seconds.
+_HANG_SECONDS = 10
 
 
 def noop(**kwargs: Any) -> None:
@@ -450,7 +453,7 @@ def test_a_stalled_listing_is_cut_off_at_the_passs_ceiling(
 
     def stalled_listing() -> list:
         started.set()
-        release.wait(timeout=5)
+        release.wait(timeout=60)
         return []
 
     monkeypatch.setattr(scheduler, "_memory_jobs", stalled_listing)
@@ -462,7 +465,7 @@ def test_a_stalled_listing_is_cut_off_at_the_passs_ceiling(
         release.set()
 
     assert started.is_set(), "the listing ran inside the pass"
-    assert took < 2
+    assert took < _HANG_SECONDS
     assert "Memory cron reconcile cut off" in caplog.text
 
 

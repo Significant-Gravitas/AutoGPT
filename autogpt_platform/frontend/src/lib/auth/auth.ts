@@ -44,6 +44,7 @@ import {
   platformUserExists,
   provisionPlatformUser,
 } from "./provision-platform-user";
+import { assertProviderVerifiedEmail } from "./provider-verified-email";
 import {
   recordResetLinkAddress,
   type ResetLinkContext,
@@ -51,6 +52,13 @@ import {
 } from "./reset-link-address";
 import { revokeResetLinksMailedElsewhere } from "./reset-links";
 import { RESET_LINK_EXPIRES_IN_SECONDS } from "./set-password-link";
+import { requireSignInCode } from "./require-sign-in-code";
+import {
+  alertNewSignInMethod,
+  joinsAnAccount,
+  noteSignUp,
+} from "./sign-in-code-emails";
+import { signInCode } from "./sign-in-code-plugin";
 import { JWKS_ALG } from "./service-token";
 import {
   isSignupAllowed,
@@ -233,7 +241,10 @@ export const auth = betterAuth({
           user: { email: string; emailVerified?: boolean | null },
           ctx: HookContext,
         ) => {
-          // Microsoft's first: its refusals carry codes /login explains.
+          // First, so an unverified address is answered the same whether or
+          // not an account uses it, before any later check tells them apart.
+          assertProviderVerifiedEmail(user, ctx);
+          // Microsoft's next: its refusals carry codes /login explains.
           assertMicrosoftSignUpAllowed(user, ctx);
           assertSignUpPolicy(user.email, ctx);
           // An email sign-up was already checked in hooks.before.
@@ -257,6 +268,8 @@ export const auth = betterAuth({
           },
           ctx: HookContext,
         ) => {
+          // So the provider row a sign-up writes next sends no notice.
+          noteSignUp(ctx, user.id);
           if (ctx?.path !== ADMIN_CREATE_USER_PATH) {
             await recordAuthIP(authDbPool, {
               userId: user.id,
@@ -289,6 +302,23 @@ export const auth = betterAuth({
               });
             });
           await mirrorVerifiedEmailToPlatformUser(authDbPool, user);
+        },
+      },
+    },
+    // A sign-in provider that joins an account it didn't create emails the
+    // account's owner (sign-in-code-emails.ts), alongside the response.
+    account: {
+      create: {
+        after: async (
+          account: { userId: string; providerId: string },
+          ctx: HookContext,
+        ) => {
+          if (!joinsAnAccount(account, ctx)) return;
+          runAfterResponse(
+            getAuthContext().then((context) =>
+              alertNewSignInMethod(context, account),
+            ),
+          );
         },
       },
     },
@@ -438,6 +468,9 @@ export const auth = betterAuth({
   },
   user: {
     modelName: "UserAuthIdentity",
+    // Before a provider sign-in joins an account or creates one: one that
+    // can't vouch for its address waits on a code emailed there.
+    validateUserInfo: requireSignInCode,
     additionalFields: {
       // Onboarding's "What should I call you?" answer; surfaced to
       // consumers as user_metadata.preferred_name (see mapSessionUser).
@@ -508,6 +541,7 @@ export const auth = betterAuth({
       },
     }),
     supabaseBridge(),
+    signInCode(),
     // Must be last so cookies set inside server actions stick.
     nextCookies(),
   ],

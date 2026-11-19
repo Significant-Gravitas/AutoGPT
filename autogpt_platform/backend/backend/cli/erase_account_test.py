@@ -5,12 +5,14 @@ account the way Settings does (its owner then has 14 days to keep it), and
 --pending erases every closed account whose 14 days are over."""
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import click
 import pytest
+from autogpt_libs.logging.config import LoggingConfig
 from click.testing import CliRunner
 
 from backend.api.features.account_deletion.service import PlanCancellationError
@@ -69,9 +71,27 @@ def _run_on_a_private_loop(coro):
 
 
 @pytest.fixture
-def run(monkeypatch):
+def log_levels():
+    """The command sets the root and the erasure's log levels; put them back,
+    so tests after these log as before."""
+    loggers = [logging.getLogger(), logging.getLogger("backend.data.account_erasure")]
+    levels = [logger.level for logger in loggers]
+    yield
+    for logger, level in zip(loggers, levels):
+        logger.setLevel(level)
+
+
+@pytest.fixture
+def run(monkeypatch, log_levels):
     """The command against a fake routine and no database."""
     monkeypatch.setattr(cli.asyncio, "run", _run_on_a_private_loop)
+    # A pod's level above INFO; the command must not keep it for its handlers.
+    monkeypatch.setenv("LOG_LEVEL", "WARNING")
+    handler_levels: list[str] = []
+    configured = MagicMock(
+        side_effect=lambda: handler_levels.append(LoggingConfig().level)
+    )
+    monkeypatch.setattr(cli, "configure_logging", configured)
     monkeypatch.setattr(db, "connect", AsyncMock())
     monkeypatch.setattr(db, "disconnect", AsyncMock())
     monkeypatch.setattr(cli, "_resolve", AsyncMock(return_value=(USER_ID, EMAIL)))
@@ -85,12 +105,21 @@ def run(monkeypatch):
     monkeypatch.setattr(request, "close_for_email_request", closing)
     ending = AsyncMock(return_value=True)
     monkeypatch.setattr(request, "end_grace_now", ending)
+    skipping = AsyncMock(return_value=True)
+    monkeypatch.setattr(request, "skip_confirmation", skipping)
 
     def invoke(*args: str, input: str | None = None):
         return CliRunner().invoke(cli.erase_account_command, [*args], input=input)
 
     return SimpleNamespace(
-        invoke=invoke, erasing=erasing, closed=closed, closing=closing, ending=ending
+        invoke=invoke,
+        erasing=erasing,
+        closed=closed,
+        closing=closing,
+        ending=ending,
+        configured=configured,
+        handler_levels=handler_levels,
+        skipping=skipping,
     )
 
 
@@ -115,6 +144,28 @@ def test_apply_runs_the_dry_run_first_then_erases(run):
     assert _dry_runs(run.erasing) == [True, False]
     run.closing.assert_not_awaited()
     assert "Done." in result.output
+
+
+def test_a_run_logs_the_erasures_own_line_and_no_chatter(run, caplog):
+    """The routine's "Account erasure of <user ID>" line is the run's
+    record in the pod's log; the database's and the clients' INFO lines stay
+    out of the report."""
+
+    def erasing(user_id, *, dry_run, **kw):
+        logging.getLogger("backend.data.db").info("chatter")
+        routine.logger.info(f"Account erasure of {user_id}: dry_run={dry_run}")
+        return _report(dry_run=dry_run)
+
+    run.erasing.side_effect = erasing
+
+    result = run.invoke(USER_ID, "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    run.configured.assert_called_once_with()
+    assert run.handler_levels == ["INFO"]
+    messages = [record.getMessage() for record in caplog.records]
+    assert f"Account erasure of {USER_ID}: dry_run=False" in messages
+    assert "chatter" not in messages
 
 
 def test_apply_asks_first_and_stops_on_no(run):
@@ -202,8 +253,9 @@ def test_close_now_closes_with_no_14_days_and_erases_in_the_same_run(run):
     result = run.invoke(EMAIL, "--close", "--now", "--apply", "--yes")
 
     assert result.exit_code == 0, result.output
-    run.closing.assert_awaited_once_with(USER_ID, erase_now=True)
+    run.closing.assert_awaited_once_with(USER_ID, erase_now=True, send_email=True)
     run.ending.assert_awaited_once_with(USER_ID)
+    run.skipping.assert_not_awaited()
     # A dry run for the blockers before closing, then the usual dry run and
     # the erasure.
     assert _dry_runs(run.erasing) == [True, True, False]
@@ -217,6 +269,96 @@ def test_close_now_on_a_closed_account_ends_its_14_days_and_erases(run):
     run.closing.assert_not_awaited()
     run.ending.assert_awaited_once_with(USER_ID)
     assert _dry_runs(run.erasing) == [True, True, False]
+
+
+def test_close_now_with_no_email_closes_and_erases_sending_none(run):
+    """The account is closed with no confirmation, recorded on the request,
+    so the erasure that follows sends none either."""
+    run.closed.return_value = None
+
+    result = run.invoke(EMAIL, "--close", "--now", "--no-email", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    run.closing.assert_awaited_once_with(USER_ID, erase_now=True, send_email=False)
+    # Marked again in case another close won the race and wrote no mark.
+    run.skipping.assert_awaited_once_with(USER_ID)
+    run.ending.assert_awaited_once_with(USER_ID)
+    assert _dry_runs(run.erasing) == [True, True, False]
+    assert "The erasure sends the owner no email" in result.output
+
+
+def test_no_email_says_so_when_the_confirmation_went_out_already(run):
+    run.skipping.return_value = False
+
+    result = run.invoke(EMAIL, "--close", "--now", "--no-email", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    assert "The confirmation went out when the account was closed" in result.output
+    assert "The erasure sends the owner no email" not in result.output
+
+
+def test_a_no_email_dry_run_shows_no_late_confirmation(run):
+    """The dry run reads the request before it is marked; it shows what the
+    apply will do."""
+
+    def erasing(user_id, *, dry_run, **kw):
+        report = _report(dry_run=dry_run)
+        report.steps.insert(
+            0,
+            StepReport(
+                name="confirmation",
+                status=StepStatus.WOULD_DO,
+                counts={"emails": 1},
+            ),
+        )
+        return report
+
+    run.erasing.side_effect = erasing
+
+    result = run.invoke(EMAIL, "--close", "--now", "--no-email")
+
+    assert result.exit_code == 0, result.output
+    assert "emails=1" not in result.output
+    assert "emails=0  (--no-email: none sent" in result.output
+
+
+def test_close_now_with_no_email_on_a_closed_account_skips_the_late_one(run):
+    """Closed earlier and its confirmation not sent yet: the erasure would
+    send it late, so the request is marked first."""
+    result = run.invoke(EMAIL, "--close", "--now", "--no-email", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    run.closing.assert_not_awaited()
+    run.skipping.assert_awaited_once_with(USER_ID)
+    assert _dry_runs(run.erasing) == [True, True, False]
+
+
+def test_close_now_with_no_email_and_no_apply_marks_nothing(run):
+    result = run.invoke(EMAIL, "--close", "--now", "--no-email")
+
+    assert result.exit_code == 0, result.output
+    run.skipping.assert_not_awaited()
+    run.ending.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        [EMAIL, "--no-email"],
+        [EMAIL, "--close", "--no-email"],
+        ["--pending", "--no-email"],
+        [EMAIL, "--no-email", "--apply", "--yes"],
+    ],
+)
+def test_no_email_goes_only_with_close_now(run, args):
+    """Only an owner erased at once may get no email: their account is gone
+    before an email could be any use to them."""
+    result = run.invoke(*args)
+
+    assert result.exit_code == 2
+    assert "--no-email goes with --close --now" in result.output
+    run.erasing.assert_not_awaited()
+    run.closing.assert_not_awaited()
 
 
 def test_close_now_without_apply_changes_nothing(run):
@@ -281,7 +423,7 @@ def test_close_now_goes_ahead_while_only_closing_stands_in_the_way(run):
     result = run.invoke(EMAIL, "--close", "--now", "--apply", "--yes")
 
     assert result.exit_code == 0, result.output
-    run.closing.assert_awaited_once_with(USER_ID, erase_now=True)
+    run.closing.assert_awaited_once_with(USER_ID, erase_now=True, send_email=True)
     assert _dry_runs(run.erasing) == [True, True, False]
 
 
@@ -345,6 +487,34 @@ def test_an_account_erased_already_is_a_success(run):
 
     assert result.exit_code == 0, result.output
     assert "nothing ran: erased already" in result.output
+
+
+@pytest.mark.parametrize(
+    "status, exit_code", [(StepStatus.DONE, 0), (StepStatus.FAILED, 1)]
+)
+def test_a_rerun_of_a_finished_erasure_reports_its_repeated_deletes(
+    run, status, exit_code
+):
+    """A rerun repeats the PostHog delete; it fails the command only when
+    that delete failed, so a leftover person is never read as gone."""
+
+    def erasing(user_id, *, dry_run, **kw):
+        if dry_run:
+            return _report(dry_run=True)
+        return ErasureReport(
+            user_id=user_id,
+            dry_run=False,
+            not_claimed=routine.ERASED_ALREADY,
+            steps=[StepReport(name="posthog", status=status, counts={"persons": 1})],
+        )
+
+    run.erasing.side_effect = erasing
+
+    result = run.invoke(EMAIL, "--apply", "--yes")
+
+    assert result.exit_code == exit_code, result.output
+    assert "erased already: repeats only the PostHog delete" in result.output
+    assert f"posthog           {status.value}" in result.output
 
 
 def test_an_erasure_the_owner_kept_meanwhile_fails_the_command(run):

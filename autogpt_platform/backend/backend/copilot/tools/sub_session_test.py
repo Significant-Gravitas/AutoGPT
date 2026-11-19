@@ -178,6 +178,7 @@ def mock_model(monkeypatch):
         delegated_by_expert_id: str | None = None,
         delegated_by_session_id: str | None = None,
         inherited_autopilot_mode: str | None = None,
+        text_only_result: bool = False,
     ):
         sess = MagicMock()
         sess.session_id = f"inner-{len(created) + 1}"

@@ -6,12 +6,14 @@ from pydantic import SecretStr
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.expert_scope import (
     ExpertWorkflowScope,
+    annotate_expert_grants,
     install_saved_agent,
     require_installed_workflow,
     resolve_target_expert,
     ungranted_credential_hint,
 )
 from backend.copilot.tools.models import AgentSavedResponse, ErrorResponse
+from backend.data.model import OAuth2Credentials
 
 _PATH = "backend.copilot.tools.expert_scope"
 
@@ -187,8 +189,6 @@ async def test_hint_lists_owned_but_ungranted_credentials(experts):
 
 
 async def test_missing_credentials_are_annotated_with_expert_grants(experts):
-    from backend.copilot.tools.expert_scope import annotate_expert_grants
-
     def cred(id: str, type: str, scopes: list[str]):
         return MagicMock(id=id, provider="github", title=id, type=type, scopes=scopes)
 
@@ -253,9 +253,6 @@ async def test_platform_key_is_usable_and_never_offered_as_a_grant(experts):
 
 
 async def test_grant_candidates_must_match_the_requested_mcp_server(experts):
-    from backend.copilot.tools.expert_scope import annotate_expert_grants
-    from backend.data.model import OAuth2Credentials
-
     def mcp_cred(id: str, server_url: str):
         return OAuth2Credentials(
             id=id,
@@ -287,6 +284,40 @@ async def test_grant_candidates_must_match_the_requested_mcp_server(experts):
         annotated = await annotate_expert_grants("user-1", "expert-a", missing)
     grant = annotated["mcp_credentials"]["expert_grant"]
     assert [c["id"] for c in grant["credentials"]] == ["right-server"]
+
+
+async def test_untitled_grant_candidates_are_named_by_their_email(experts):
+    """A Google sign-in stores no title, so naming candidates by provider
+    listed every account as "google" in the grant dialog."""
+
+    def google(id: str, email: str):
+        return OAuth2Credentials(
+            id=id,
+            provider="google",
+            title=None,
+            username=email,
+            access_token=SecretStr("token"),
+            scopes=[],
+        )
+
+    store = MagicMock()
+    store.get_all_creds = AsyncMock(
+        return_value=[
+            google("work", "work@example.com"),
+            google("personal", "personal@example.com"),
+        ]
+    )
+    missing = {"google_credentials": {"provider": "google", "types": ["oauth2"]}}
+    with patch(
+        f"{_PATH}.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    ):
+        annotated = await annotate_expert_grants("user-1", "expert-a", missing)
+    grant = annotated["google_credentials"]["expert_grant"]
+    assert [c["title"] for c in grant["credentials"]] == [
+        "work@example.com",
+        "personal@example.com",
+    ]
 
 
 async def test_agent_built_by_expert_settles_grants_before_install(experts):

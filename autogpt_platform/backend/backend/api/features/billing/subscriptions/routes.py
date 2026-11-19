@@ -66,6 +66,7 @@ from backend.data.subscription_trial_conversion import (
     TRIAL_RUNNING,
     TrialConversionRefused,
     convert_cancel_pending_trial,
+    end_trial_without_card,
     get_cancel_pending_trial,
     is_trial_plan,
 )
@@ -188,6 +189,16 @@ class SubscriptionStatusResponse(BaseModel):
             " Empty string in all other branches — the client sends the customer"
             " to this URL when non-empty."
         ),
+    )
+
+
+def _checkout_redirect_urls_valid(request: SubscriptionTierRequest) -> bool:
+    """Whether Checkout could open on this request's return URLs."""
+    return bool(
+        request.success_url
+        and request.cancel_url
+        and _validate_checkout_redirect_url(request.success_url)
+        and _validate_checkout_redirect_url(request.cancel_url)
     )
 
 
@@ -499,8 +510,9 @@ async def update_subscription_tier(
         SubscriptionTier.NO_TIER,
     ):
         # Only a trial scheduled to end may start a paid plan before trial_end.
-        # One that lost its card (NO_TIER) takes the same path, or the trial
-        # subscription would refuse every plan until trial_end.
+        # A NO_TIER one takes the same path, or the trial subscription would
+        # refuse every plan until trial_end; if its card can't be charged, it
+        # is ended below instead, scheduled to end or not.
         pending_trial = await get_cancel_pending_trial(user_id)
         if pending_trial is None and current_tier == SubscriptionTier.TRIAL:
             raise HTTPException(409, TRIAL_RUNNING)
@@ -573,14 +585,25 @@ async def update_subscription_tier(
 
     # Modify in place if there's a sub; else fall through to Checkout below.
     try:
-        if pending_trial is not None:
+        if (
+            current_tier == SubscriptionTier.NO_TIER
+            and target_price_id is not None
+            and _checkout_redirect_urls_valid(request)
+            and await end_trial_without_card(user_id)
+        ):
+            # The trial gave no access and had no card to charge, so neither
+            # converting it nor changing its subscription could work. It has
+            # ended; Checkout below collects a card for the plan. A request
+            # Checkout would refuse never gets this far, so it keeps the trial.
+            modified = False
+        elif pending_trial is not None:
             return await _convert_trial(
                 user_id,
                 pending_trial,
                 tier,
                 None if converts_trial else target_price_id,
             )
-        if request.preview_id is not None or request.proration_date is not None:
+        elif request.preview_id is not None or request.proration_date is not None:
             if (
                 request.preview_id is None
                 or request.proration_date is None

@@ -575,11 +575,12 @@ class NotificationManager(AppService):
             AUDIENCE_QUEUE: (self._process_audience_change, Ordering.AS_PUBLISHED),
             PASS_WORK_QUEUE: (self._process_pass_work, Ordering.COMMUTATIVE),
         }
+        # Declared before any consumer starts: a cancel or a failed declaration
+        # midway would leave the consumers already started outside `tasks`.
+        queues = {name: await channel.get_queue(name) for name in consumers}
         tasks = [
             asyncio.create_task(
-                self._consume_queue(
-                    await channel.get_queue(name), handler, name, ordering
-                )
+                self._consume_queue(queues[name], handler, name, ordering)
             )
             for name, (handler, ordering) in consumers.items()
         ]
@@ -588,6 +589,9 @@ class NotificationManager(AppService):
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
             logger.info("Service shutdown requested")
+            # gather raises once the first consumer finishes; cancelling the rest
+            # in the `finally` would cut short the grace they give their handlers.
+            await asyncio.wait(tasks)
             raise
         finally:
             # The four consumers share one channel, so they live and die

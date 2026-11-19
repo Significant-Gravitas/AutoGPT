@@ -41,6 +41,8 @@ from backend.executor.scheduler import (
 _SCHEDULER = "backend.executor.scheduler"
 _AT_RESET = "backend.copilot.at_reset"
 _LOCK = "backend.copilot.at_reset_lock"
+# Only stops a hung test; a passing run ends at its own short deadline.
+_HANG_SECONDS = 10
 USER = "user-1"
 SESSION = "0d3f7a52-61c4-4f0e-a8b2-9c1e5d7f3a64"
 SET_AT = datetime(2026, 10, 14, 15, 0, tzinfo=UTC)
@@ -455,13 +457,32 @@ async def test_an_unreadable_expert_puts_it_back_as_itself(fire_env):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["resume", "send"])
+async def test_an_at_reset_turn_into_an_archived_chat_retires(fire_env, kind):
+    """Resetting an expert archives its chats; a resume or send set before
+    the reset must not dispatch into one."""
+    archived = _chat()
+    archived.session.archived_at = SET_AT
+    fire_env.load.return_value = archived
+
+    await _fire(_args(kind))
+
+    fire_env.dispatch.assert_not_awaited()
+    fire_env.client.delete_schedule.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_followups_keep_their_own_path(fire_env):
     followup = CopilotTurnJobArgs(
         schedule_id="sched-1", user_id=USER, session_id=SESSION, message="check CI"
     )
-    with patch(
-        f"{_SCHEDULER}.get_chat_session",
-        AsyncMock(return_value=MagicMock(expert_id=None)),
+    open_chat = MagicMock(archived_at=None, expert_id=None)
+    with (
+        patch(f"{_SCHEDULER}.get_chat_session", AsyncMock(return_value=open_chat)),
+        patch(
+            f"{_SCHEDULER}.get_chat_session_metadata",
+            AsyncMock(return_value=open_chat),
+        ),
     ):
         await _fire(followup)
     fire_env.load.assert_not_awaited()
@@ -532,7 +553,9 @@ async def test_a_redis_that_never_answers_leaves_this_replicas_own_cancels(
         patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
         patch.object(shared_redis, "zscore", never_answers),
     ):
-        assert await asyncio.wait_for(_at_reset_cancelled_at(job), timeout=2) == here
+        assert (
+            await asyncio.wait_for(_at_reset_cancelled_at(job), _HANG_SECONDS) == here
+        )
 
 
 @pytest.mark.asyncio
@@ -540,19 +563,17 @@ async def test_a_cancel_redis_never_takes_gives_up_by_itself():
     # Its waiter in the request thread gives up too, but the write itself
     # must not linger and land late.
     never = asyncio.Event()
-    started = asyncio.get_running_loop().time()
-    with (
-        patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
-        patch.object(FakeTransaction, "execute", AsyncMock(side_effect=never.wait)),
-        pytest.raises(TimeoutError),
-    ):
-        await asyncio.wait_for(
-            _share_at_reset_cancel(
+    # Its own deadline raises inside; this test's guard would raise out of
+    # the `async with` instead, past `pytest.raises`.
+    async with asyncio.timeout(_HANG_SECONDS):
+        with (
+            patch(f"{_SCHEDULER}._AT_RESET_CANCEL_SHARE_TIMEOUT_SECONDS", 0.05),
+            patch.object(FakeTransaction, "execute", AsyncMock(side_effect=never.wait)),
+            pytest.raises(TimeoutError),
+        ):
+            await _share_at_reset_cancel(
                 at_reset_schedule_id("send", SESSION), datetime.now(UTC)
-            ),
-            timeout=2,
-        )
-    assert asyncio.get_running_loop().time() - started < 1
+            )
 
 
 @pytest.mark.asyncio

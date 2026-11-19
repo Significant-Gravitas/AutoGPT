@@ -87,19 +87,25 @@ calendar, files, Teams and Work IQ tools follow it.
   verified. Any other address joins no existing account (Better Auth
   answers `account_not_linked`) and creates none
   (`microsoft-sign-up-policy.ts` refuses with the same
-  `account_not_linked` and no message, so the redirect is the same either
-  way and doesn't reveal whether an account uses the address), whether
-  or not email verification is on. "Outlook.com" here means the domains in
-  `MICROSOFT_MAIL_DOMAINS`, each checked to route mail to Outlook.com's
-  consumer servers. Sign-in reads only name and email: it asks for
-  `openid profile email` and no Graph permission, and Better Auth's
-  profile-photo fetch is switched off. Only the redirect flow signs in: Better Auth's
-  ID-token sign-in is switched off for Microsoft. Emailing a confirmation link instead would not be
-  safe: the mailbox's owner could confirm it, and the other person's
-  Microsoft login would still sign in to the account.
+  `account_not_linked`), so the redirect is the same either way and doesn't
+  reveal whether an account uses the address. An address Microsoft vouches
+  for joins an existing account only once the code emailed there is typed
+  into /login (`require-sign-in-code.ts`), unless the Microsoft account is
+  that Outlook.com mailbox (`mailbox-provider.ts`): an organization vouching
+  for its domain doesn't run the mailbox. Every provider follows the same
+  rule. "Outlook.com"
+  here means the domains in `MICROSOFT_MAIL_DOMAINS`, each checked to route
+  mail to Outlook.com's consumer servers. Sign-in reads only name and email:
+  it asks for `openid profile email` and no Graph permission, and Better
+  Auth's profile-photo fetch is switched off. Only the redirect flow signs
+  in: Better Auth's ID-token sign-in is switched off for Microsoft. The code
+  can't be a link to click: the mailbox's owner could open it for someone
+  else's sign-in, and that person's Microsoft login would then sign in to
+  the account. It is typed into the browser that started the sign-in.
   An AutoGPT team address (`@agpt.co`) gets an account only through Google,
-  however Microsoft vouches for it (`team_email_requires_google`); a team
-  member's existing account still signs in with Microsoft. The hook runs
+  however Microsoft vouches for it (`team_email_requires_google`), and a
+  code doesn't change that; a team member's existing account can add
+  Microsoft with the code. The hook runs
   these Microsoft checks before the rules every provider shares, so a
   Microsoft sign-up gets these codes, which /login explains. Every
   provider's refused sign-in returns to /login with the page's `next`, so
@@ -142,8 +148,12 @@ On the environment's app (dev: `autogpt-dev`, prod: `AutoGPT`):
    `{frontend}/api/auth/callback/microsoft` (Continue with Microsoft).
 3. **Token configuration:** add the optional ID-token claim `xms_edov`.
    Without it, work and school accounts cannot use Continue with Microsoft.
-4. **Certificates & secrets:** the bot's existing secret also serves sign-in.
-   Rotate by adding a new secret, deploying it, then removing the old one.
+4. **Certificates & secrets:** an app that accepts personal accounts can hold
+   only two client secrets. Each app has two: the bot's (the backend's
+   `MICROSOFT_CLIENT_SECRET`) and Vercel's (`AUTH_MICROSOFT_CLIENT_SECRET`,
+   named "Vercel staging/production Continue with Microsoft", expiring
+   2028-11). With no free slot, rotating one means deleting it, adding the
+   new one and deploying it, with that side down in between.
 5. **API permissions:** add the connection's delegated Microsoft Graph
    permissions: `User.Read`, `openid`, `profile`, `email`, `offline_access`,
    `Mail.ReadWrite`, `Mail.Send`, `Calendars.ReadWrite`, `Files.ReadWrite`,
@@ -165,9 +175,23 @@ app, at `/common` (the Copilot-only connection used `/organizations`). So step
 flag: without it, personal accounts can't sign in. Continue with Microsoft has
 its own switch, below.
 
-Dev's app has steps 1–4 (2026-10-26); step 5 and the flags remain. Prod needs
-step 1 before this release reaches it, and step 5 so an admin's approval
-covers every service; then steps 2 and 3 and the flags.
+Both apps have steps 1–5 as of 2026-11-12:
+
+- **Dev (`autogpt-dev`):** steps 1–4 on 2026-10-26, for localhost and the
+  local test stack. On 2026-11-12 it got `dev-builder.agpt.co`'s two
+  redirects and step 5.
+- **Prod (`AutoGPT`):** all five on 2026-11-12, a day after v0.11.2 shipped
+  this to prod. Until then, personal accounts couldn't connect there.
+
+Four of the Copilot permissions (`ChannelMessage.Read.All`,
+`ExternalItem.Read.All`, `OnlineMeetingTranscript.Read.All`,
+`People.Read.All`) need an admin's consent in each organization, ours
+included. Nobody has granted it for agpt.co. The infra shared config sets
+`MICROSOFT_BROWSER_SIGN_IN` for both environments (infra #498), and Vercel's
+staging and Production environments hold the frontend settings below.
+Continue with Microsoft and browser sign-in are live on dev since
+2026-11-12. Prod has every setting in place, and both turn on with its
+next deploy (the button is read at build time).
 
 ## Environment variables
 

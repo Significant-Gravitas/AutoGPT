@@ -17,7 +17,7 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
-import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
+import { isToolCallPending } from "../ToolChain/helpers";
 import { TurnEndAnnouncer } from "../JobStatsBar/TurnEndAnnouncer";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
@@ -54,6 +54,7 @@ import {
   PendingUploadMessage,
 } from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { getThinkerHex } from "./thinkerColor";
 import { isSessionOpeningMessage, type SentFrom } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
@@ -364,8 +365,17 @@ export function ChatMessagesContainer({
     // the follow-up just landed and nothing has been produced past it, so
     // the text or tool above it is settled and Thinking is the only sign
     // the assistant picked the follow-up up.
+    // A step-start is skipped too: the backend opens a step seconds before
+    // the model writes anything (at the start of a turn, and before each
+    // model call after a tool), so what decides is the part before it.
+    // Thinking stays up through that wait; after text or reasoning it stays
+    // hidden, so nothing flashes between steps.
     let lastIndex = lastMessage.parts.length - 1;
-    while (lastIndex >= 0 && isBookkeepingPart(lastMessage.parts[lastIndex])) {
+    while (
+      lastIndex >= 0 &&
+      (isBookkeepingPart(lastMessage.parts[lastIndex]) ||
+        lastMessage.parts[lastIndex].type === "step-start")
+    ) {
       if (lastMessage.parts[lastIndex].type === PENDING_DRAINED_PART_TYPE)
         return false;
       lastIndex--;
@@ -384,21 +394,12 @@ export function ChatMessagesContainer({
     if (lastPart.type === "reasoning" && lastPart.text.trim().length > 0)
       return true;
 
-    // step-start is a turn boundary emitted right before the next tool or
-    // text chunk. Treat it as inflight so the bubble transitions straight
-    // into the next part without flashing back to "Thinking...".
-    if (lastPart.type === "step-start") return true;
-
     // A pause is how the turn ends, so nothing more is coming to wait on.
     if (lastPart.type === TURN_PAUSED_PART_TYPE) return true;
 
-    if (
-      lastPart.type.startsWith(TOOL_PART_PREFIX) &&
-      "state" in lastPart &&
-      (lastPart.state === "input-streaming" ||
-        lastPart.state === "input-available")
-    )
-      return true;
+    // A running tool, or one paused on the user's approval, shows its own
+    // card, so Thinking must not sit beside it.
+    if (isToolCallPending(lastPart)) return true;
 
     return false;
   })();
@@ -443,6 +444,7 @@ export function ChatMessagesContainer({
     <ThinkingIndicator
       active={showThinking}
       startedAtMs={streamClock.startedAtMs}
+      color={getThinkerHex({ expertIdentity, isResolvingExpertIdentity })}
     />
   );
   // Public viewers of a shared chat never see a live turn, so the indicator

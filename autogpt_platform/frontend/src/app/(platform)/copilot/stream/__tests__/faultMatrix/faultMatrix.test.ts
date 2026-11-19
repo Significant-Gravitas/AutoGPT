@@ -13,14 +13,25 @@ const CASES = new Set<string>();
 
 const P1 = "What does example.com say?";
 const P2 = "And what about example.org?";
+const P3 = "Then compare the two.";
 const ANSWER = "assistant: Let me fetch that page.It says Example Domain.";
 const FIRST_BLOCK = "assistant: Let me fetch that page.";
 const SIGN_IN_AGAIN = "Authentication failed — please sign in again.";
+const UNCONFIRMED =
+  "The connection stalled before the server confirmed your message.";
+const KICKOFF = {
+  kind: "expert_kickoff",
+  expertId: "3f2b8c1e-7d4a-4e9b-8c2f-1a6d5e9b0c47",
+};
 
-const auth = vi.hoisted(() => ({ signedIn: true }));
+const auth = vi.hoisted(() => ({ signedIn: true, tokenDown: false }));
 vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: async () =>
-    auth.signedIn ? { token: "token" } : { token: null, error: "No session" },
+    auth.tokenDown
+      ? { token: null, error: "Token service unavailable", retryable: true }
+      : auth.signedIn
+        ? { token: "token" }
+        : { token: null, error: "No session" },
 }));
 
 let server: FaultServer;
@@ -31,15 +42,20 @@ beforeEach(() => {
   vi.useFakeTimers();
   setVisibility("visible");
   auth.signedIn = true;
+  auth.tokenDown = false;
   server = new FaultServer();
   tab = openTab();
 });
 
 afterEach(() => {
+  // Each lost send's check ends in a verdict, a stop or a give-up, or is
+  // still held: one dropped on the way is never reported.
+  const dropped = tabs.flatMap((t) => t.runtime.droppedChecks());
   tabs.splice(0).forEach((t) => t.dispose());
   vi.restoreAllMocks();
   vi.useRealTimers();
   setVisibility("visible");
+  expect(dropped).toEqual([]);
 });
 
 it("every KNOWN_WRONG id names a case", () => {
@@ -389,14 +405,17 @@ describe("a send", () => {
     "queued at the running cap, its response lost, is followed into its turn",
     async () => {
       server.queueing = true;
-      server.postMode = "lost-before-send";
-      server.startTurn(P1, "queued");
+      server.postMode = "lost-after-receive";
       tab.send(P1);
       await advance(10_000);
       server.startQueued();
       server.publish(9);
       await advance(25_000);
-      expectScreen({ error: null, phase: "live" });
+      expectScreen({
+        error: null,
+        phase: "live",
+        chat: [`user: ${P1}`, FIRST_BLOCK],
+      });
     },
   );
 
@@ -409,6 +428,387 @@ describe("a send", () => {
       tab.send(P1);
       await advance(120_000);
       expectScreen({ error: SIGN_IN_AGAIN, notice: null, toasts: 0 });
+    },
+  );
+
+  cell(
+    "S18",
+    "lost, then signed out before its recovery reads, reports it without the reconnect loop",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.viewsDown = true;
+      tab.send(P1);
+      await advance(0);
+      auth.signedIn = false;
+      await advance(120_000);
+      expectScreen({ error: SIGN_IN_AGAIN, notice: null, toasts: 0 });
+    },
+  );
+
+  cell(
+    "S18s",
+    "lost, then stopped while its sign-out check waits, stays stopped without the sign-in error",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.viewsDown = true;
+      tab.send(P1);
+      // `send` reads the token before its first await, so this lands after
+      // the send's own lookup and before its recovery's.
+      auth.signedIn = false;
+      await advance(500);
+      tab.runtime.stop();
+      await advance(120_000);
+      expectScreen({ error: null, notice: null, toasts: 0 });
+    },
+  );
+
+  cell(
+    "S18b",
+    "lost while the token service is down keeps trying, and is reported once it is back",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.viewsDown = true;
+      tab.send(P1);
+      await advance(0);
+      auth.tokenDown = true;
+      await advance(20_000);
+      auth.tokenDown = false;
+      server.viewsDown = false;
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch", notice: null });
+    },
+  );
+
+  cell(
+    "S19",
+    "whose request hangs without reaching the server is reported once it is given up",
+    async () => {
+      server.postMode = "hang-before-send";
+      tab.send(P1);
+      await advance(60_000);
+      expectScreen({
+        error: UNCONFIRMED,
+        notice: null,
+        phase: "failed",
+        chat: [`user: ${P1}`],
+      });
+    },
+  );
+
+  cell(
+    "S19s",
+    "whose request hung, stopped while its checks run, shows no error",
+    async () => {
+      server.postMode = "hang-before-send";
+      tab.send(P1);
+      await advance(31_000);
+      tab.runtime.stop();
+      await advance(30_000);
+      expectScreen({ error: null, notice: null });
+    },
+  );
+
+  cell(
+    "S19t",
+    "whose request hung, stopped during its last check, shows no error",
+    async () => {
+      server.postMode = "hang-before-send";
+      tab.send(P1);
+      await advance(33_700);
+      tab.runtime.stop();
+      await advance(30_000);
+      expectScreen({ error: null, notice: null });
+    },
+  );
+
+  cell(
+    "S19h",
+    "whose request hung while hidden, never reaching the server, is reported on return",
+    async () => {
+      server.postMode = "hang-before-send";
+      setVisibility("hidden");
+      tab.send(P1);
+      await advance(60_000);
+      setVisibility("visible");
+      await advance(15_000);
+      expectScreen({ error: UNCONFIRMED, notice: null, phase: "failed" });
+    },
+  );
+
+  cell(
+    "S21",
+    "lost while hidden, its prompt past the session's window on return, stays above its turn",
+    async () => {
+      server.postMode = "lost-after-receive";
+      server.window = 2;
+      setVisibility("hidden");
+      tab.send(P1);
+      await advance(60_000);
+      server.publish(19);
+      setVisibility("visible");
+      await advance(2_000);
+      expectScreen({ error: null });
+      const chat = tab.screen().chat;
+      expect(chat[0]).toBe(`user: ${P1}`);
+      expect(chat.filter((line) => line === `user: ${P1}`)).toHaveLength(1);
+    },
+  );
+
+  cell(
+    "S21w",
+    "lost while hidden, its row past the session's window under another tab's new turn on return, is not reported",
+    async () => {
+      const other = openTab();
+      server.postMode = "lost-after-receive";
+      server.window = 2;
+      setVisibility("hidden");
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      await advance(30_000);
+      server.postMode = "stream";
+      other.send(P2);
+      await advance(0);
+      // The window shows the other tab's prompt, but not where P1's row is.
+      setVisibility("visible");
+      await advance(2_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null });
+    },
+  );
+
+  cell(
+    "S23",
+    "whose response was lost, read just before its prompt row landed, stays above its answer",
+    async () => {
+      server.postMode = "lost-after-receive";
+      // The send's first check reads the turn but not yet the prompt row.
+      server.lagRowsOnce = 1;
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(2_000);
+      expectScreen({
+        error: null,
+        phase: "live",
+        chat: [`user: ${P1}`, FIRST_BLOCK],
+      });
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "S23b",
+    "a later message whose response was lost, read just before its prompt row landed, stays above its answer",
+    async () => {
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      await advance(15_000);
+      server.postMode = "lost-after-receive";
+      // The read ends at the last reply, as if the new prompt were not written.
+      server.lagRowsOnce = 1;
+      tab.send(P2);
+      await advance(0);
+      server.publish(9);
+      await advance(2_000);
+      expectScreen({
+        error: null,
+        phase: "live",
+        chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, FIRST_BLOCK],
+      });
+      server.publish();
+      await advance(30_000);
+      expectScreen({
+        error: null,
+        chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+      });
+    },
+  );
+
+  cell(
+    "S24",
+    "lost, its check's read failing, is still reported when its retry finds a later send's turn running",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.failViews = 1;
+      tab.send(P1);
+      await advance(0);
+      server.postMode = "stream";
+      tab.send(P2);
+      await advance(0);
+      server.publish(9);
+      // P1's retry fires while P2's turn runs.
+      await advance(2_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: "Failed to fetch" });
+    },
+  );
+
+  cell(
+    "S24c",
+    "lost, its check's read failing, is still reported when a later send's dropped stream takes the retry",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.failViews = 1;
+      tab.send(P1);
+      await advance(0);
+      server.postMode = "stream";
+      tab.send(P2);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      // P2's stream drops before P1's retry fires, and its own retry replaces it.
+      server.connections[0].fail();
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: "Failed to fetch" });
+    },
+  );
+
+  cell(
+    "S15c",
+    "two sends lost while offline are both checked once the network returns",
+    async () => {
+      server.postMode = "lost-before-send";
+      setOnline(false);
+      tab.send(P1);
+      await advance(10_000);
+      // The second reaches the server, but its response is lost too.
+      server.postMode = "lost-after-receive";
+      tab.send(P2);
+      await advance(10_000);
+      setOnline(true);
+      await advance(5_000);
+      server.publish();
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch" });
+    },
+  );
+
+  cell(
+    "S19o",
+    "lost while offline, then stopped, shows no error when the network returns",
+    async () => {
+      server.postMode = "lost-before-send";
+      setOnline(false);
+      tab.send(P1);
+      await advance(10_000);
+      tab.runtime.stop();
+      await advance(1_000);
+      setOnline(true);
+      await advance(30_000);
+      expectScreen({ error: null });
+    },
+  );
+
+  cell(
+    "S24r",
+    "lost, its checks' reads failing for 25 minutes, is still reported when a check finds another's turn followed",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.viewsDown = true;
+      tab.send(P1);
+      await advance(25 * 60_000);
+      // Another device's send starts a turn, and a page read the tab makes
+      // during its next check shows it; that check's own read still fails.
+      server.startTurn(P2);
+      server.beforeViewOnce = () => {
+        server.viewsDown = false;
+        const view = server.view();
+        server.viewsDown = true;
+        tab.runtime.observe(view);
+      };
+      await advance(60_000);
+      server.viewsDown = false;
+      server.publish();
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch" });
+    },
+  );
+
+  cell(
+    "S24h",
+    "lost while hidden, is still reported when the page showed another's turn before the tab came back",
+    async () => {
+      setVisibility("hidden");
+      server.postMode = "lost-before-send";
+      tab.send(P1);
+      await advance(1_000);
+      server.startTurn(P2);
+      tab.runtime.observe(server.view());
+      await advance(1_000);
+      setVisibility("visible");
+      await advance(2_000);
+      server.publish();
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch" });
+    },
+  );
+
+  cell(
+    "S25",
+    "the same text sent again after a turn that wrote no reply is its own message, its response lost",
+    async () => {
+      tab.send(P1);
+      await advance(0);
+      // The turn dies before it writes a reply: only its prompt row is kept.
+      server.stopWithoutFinish();
+      await advance(30_000);
+      server.postMode = "lost-after-receive";
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      await advance(30_000);
+      const chat = tab.screen().chat;
+      expectScreen({ error: null });
+      expect(chat.slice(-2)).toEqual([`user: ${P1}`, ANSWER]);
+      expect(chat.filter((line) => line === `user: ${P1}`)).toHaveLength(2);
+    },
+  );
+
+  cell(
+    "S26",
+    "a new chat's first message, sent before any view named its user, whose response was lost, is followed into its turn",
+    async () => {
+      server.namesUser = false;
+      const fresh = openTab();
+      server.postMode = "lost-after-receive";
+      fresh.send(P1);
+      // The page's next reads name the user; the send has no row id.
+      server.namesUser = true;
+      await advance(0);
+      server.publish(9);
+      await advance(2_000);
+      expectScreen(
+        { error: null, phase: "live", chat: [`user: ${P1}`, FIRST_BLOCK] },
+        fresh,
+      );
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] }, fresh);
+    },
+  );
+
+  cell(
+    "S20",
+    "an expert's first message whose response was lost is followed into its turn",
+    async () => {
+      server.postMode = "lost-after-receive";
+      tab.send(P1, KICKOFF);
+      await advance(0);
+      server.publish(9);
+      await advance(2_000);
+      expectScreen({
+        error: null,
+        phase: "live",
+        chat: [`user: ${P1}`, FIRST_BLOCK],
+      });
     },
   );
 });
@@ -578,6 +978,330 @@ describe("two tabs on one chat", () => {
       expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] }, second);
     },
   );
+
+  cell(
+    "M3",
+    "a stale tab's send that never reached the server, while the other tab's turn runs, is reported below that turn",
+    async () => {
+      const stale = openTab();
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(3_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen(
+        {
+          error: "Failed to fetch",
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`],
+        },
+        stale,
+      );
+    },
+  );
+
+  cell(
+    "M3q",
+    "a stale tab's send that never reached the server is reported once the other tab's turn ends, though the page re-reads nothing",
+    async () => {
+      const stale = openTab(0, false);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(3_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen(
+        {
+          error: "Failed to fetch",
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`],
+        },
+        stale,
+      );
+    },
+  );
+
+  cell(
+    "M3f",
+    "a stale tab's send that never reached the server is reported after the other tab's turn ends, though every end-of-turn read fails",
+    async () => {
+      const stale = openTab(0, false);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(3_000);
+      // The turn's end is seen, but no read succeeds until later.
+      server.viewsDown = true;
+      server.publish();
+      await advance(5_000);
+      server.viewsDown = false;
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch" }, stale);
+    },
+  );
+
+  cell(
+    "M3u",
+    "two stale-tab sends behind the other tab's turn are both checked when their reads fail while the tab is hidden",
+    async () => {
+      const stale = openTab(300);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(0);
+      server.postMode = "lost-after-receive";
+      stale.send(P3);
+      await advance(3_000);
+      // P1's turn ends while the tab is hidden and every read fails.
+      setVisibility("hidden");
+      server.viewsDown = true;
+      server.publish();
+      await advance(10_000);
+      server.viewsDown = false;
+      setVisibility("visible");
+      await advance(5_000);
+      server.publish();
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch" }, stale);
+    },
+  );
+
+  cell(
+    "M3o",
+    "two stale-tab sends behind the other tab's turn are both checked when their reads fail while offline",
+    async () => {
+      const stale = openTab(300);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(0);
+      server.postMode = "lost-after-receive";
+      stale.send(P3);
+      await advance(3_000);
+      // P1's turn ends while the network is down.
+      setOnline(false);
+      server.viewsDown = true;
+      server.publish();
+      await advance(10_000);
+      server.viewsDown = false;
+      setOnline(true);
+      await advance(5_000);
+      server.publish();
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch" }, stale);
+    },
+  );
+
+  cell(
+    "M3n",
+    "a stale tab's lost send still reports its own failure after the message sent after it lands",
+    async () => {
+      const stale = openTab();
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(3_000);
+      server.postMode = "stream";
+      stale.send(P3);
+      await advance(3_000);
+      server.publish();
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: "Failed to fetch" }, stale);
+    },
+  );
+
+  cell(
+    "M3d",
+    "two stale-tab sends behind the other tab's turn are both checked once it ends",
+    async () => {
+      const stale = openTab(300);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(0);
+      // Sent before P2's first check reads the session; queued behind P1's turn.
+      server.postMode = "lost-after-receive";
+      stale.send(P3);
+      await advance(3_000);
+      server.publish();
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: "Failed to fetch" }, stale);
+    },
+  );
+
+  cell(
+    "M3r",
+    "two stale-tab sends behind the other tab's turn are both checked when their reads fail at first",
+    async () => {
+      const stale = openTab(300);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(0);
+      server.postMode = "lost-after-receive";
+      stale.send(P3);
+      await advance(3_000);
+      server.publish();
+      await advance(5_000);
+      server.publish();
+      // The end-of-turn read is back, and both sends' checks are reading.
+      await advance(900);
+      server.viewsDown = true;
+      await advance(500);
+      server.viewsDown = false;
+      await advance(30_000);
+      expectScreen({ error: "Failed to fetch" }, stale);
+    },
+  );
+
+  cell(
+    "M3s",
+    "a stale tab's lost send is let go when the user stops the turn it waits on",
+    async () => {
+      const stale = openTab();
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(3_000);
+      stale.runtime.stop();
+      server.publish();
+      await advance(1_000);
+      stale.runtime.observe(server.view());
+      await advance(30_000);
+      expectScreen({ error: null }, stale);
+    },
+  );
+
+  cell(
+    "M3t",
+    "a stale tab's lost send, stopped while its checks run, isn't reported when another tab's turn starts",
+    async () => {
+      const stale = openTab();
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(1_000);
+      stale.runtime.stop();
+      server.postMode = "stream";
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(1_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null }, stale);
+    },
+  );
+
+  cell(
+    "M4",
+    "a stale tab's send that never reached the server doesn't take the other tab's prompt that starts with its words",
+    async () => {
+      const stale = openTab();
+      const longer = `${P1} Keep it short.`;
+      tab.send(longer);
+      await advance(0);
+      server.publish();
+      await advance(3_000);
+      server.postMode = "lost-before-send";
+      stale.send(P1);
+      await advance(15_000);
+      expectScreen(
+        {
+          error: "Failed to fetch",
+          chat: [`user: ${longer}`, ANSWER, `user: ${P1}`],
+        },
+        stale,
+      );
+    },
+  );
+
+  cell(
+    "M5",
+    "a stale tab's send queued behind the other tab's turn, its response lost, is answered in order",
+    async () => {
+      const stale = openTab();
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-after-receive";
+      stale.send(P2);
+      // Longer than the send's own checks: only the turn's end can settle it.
+      await advance(10_000);
+      expectScreen({ error: null }, stale);
+      server.publish();
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen(
+        {
+          error: null,
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+        },
+        stale,
+      );
+    },
+  );
+
+  cell(
+    "M5p",
+    "a stale tab's queued send gets no error when the page attaches the other tab's turn before the send's own check",
+    async () => {
+      const stale = openTab(300);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-after-receive";
+      stale.send(P2);
+      await advance(0);
+      stale.runtime.observe(server.view());
+      await advance(10_000);
+      expectScreen({ error: null }, stale);
+      server.publish();
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen(
+        {
+          error: null,
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+        },
+        stale,
+      );
+    },
+  );
 });
 
 describe("the page lifecycle", () => {
@@ -649,8 +1373,8 @@ function expectScreen(should: Partial<Screen>, on: Tab = tab) {
   expect(seen).toEqual(should);
 }
 
-function openTab(viewLatencyMs = 0) {
-  const opened = new Tab(server, viewLatencyMs);
+function openTab(viewLatencyMs = 0, echoes = true) {
+  const opened = new Tab(server, viewLatencyMs, echoes);
   tabs.push(opened);
   return opened;
 }

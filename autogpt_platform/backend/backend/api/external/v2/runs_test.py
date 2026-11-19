@@ -63,6 +63,7 @@ def run_db(mocker: pytest_mock.MockFixture) -> SimpleNamespace:
     db = SimpleNamespace(
         calls=calls,
         get_graph_execution=AsyncMock(return_value=_run()),
+        get_graph_execution_meta=AsyncMock(return_value=_run()),
         delete_shared_execution_files=recorder("delete_files"),
         update_graph_execution_share_status=recorder("update_share"),
         create_shared_execution_files=recorder("create_files"),
@@ -71,6 +72,12 @@ def run_db(mocker: pytest_mock.MockFixture) -> SimpleNamespace:
     for name, value in vars(db).items():
         if name != "calls":
             mocker.patch.object(execution_db, name, new=value)
+    # The role in the run's own org and team, read from membership rows.
+    mocker.patch(
+        "backend.api.features.graph_executions.sharing"
+        ".require_role_where_resource_lives",
+        new=AsyncMock(),
+    )
     return db
 
 

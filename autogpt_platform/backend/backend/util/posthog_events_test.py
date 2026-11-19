@@ -24,6 +24,7 @@ LIVE_EVENT_NAMES = {
     "writing_style_added",
     "workflow_installed_on_expert",
     "expert_fired",
+    "expert_reset",
     "expert_mode_set_unsupervised",
     "briefing_generated",
     "briefing_delivered",

@@ -1,17 +1,5 @@
-"""The audit prompt, its bounds and the ruling handed back — the pure half
-of ``consult_teammate``.
-
-Separated from the tool so the experiment under ``experiments/consult_teammate``
-can exercise the exact prompt production uses, rather than a copy of it that
-drifts.
-
-The frame is deliberately not a persona. ``EXPERT_GENERATOR_FINDINGS.md`` shows
-the one reliable instrument in that corpus (97.9% self-agreement) was a
-scripted, soul-free audit, while giving an *actor* a soul swung this same
-dimension across the full 0.00-1.00 range. A reviewing teammate contributes
-their declared ``boundaries`` as policy to check against — fenced as data — and
-their name for accountability. Nothing else crosses.
-"""
+"""The audit prompt, its bounds and the ruling handed back: the pure half of
+``consult_teammate``."""
 
 import html
 from typing import Literal
@@ -64,14 +52,8 @@ class VerdictPayload(BaseModel):
 
 
 def audit_frame(reviewer: Expert) -> str:
-    """The fixed auditor prompt, carrying the teammate's limits as policy.
-
-    Deliberately not ``build_expert_identity_suffix``: the reviewer's identity
-    and voice would make the *judge* a persona, and a persona is the variable
-    T5 showed swings this dimension end to end. Only ``boundaries`` crosses,
-    and it crosses fenced — it is the team's declared policy, not orders to
-    the auditor.
-    """
+    """The fixed auditor prompt. The reviewer's identity and voice stay out, since a
+    persona swings this judgement; only their name and fenced ``boundaries`` cross."""
     name = _escaped(reviewer.name)
     policy = _escaped(reviewer.boundaries.strip()[:MAX_POLICY_CHARS])
     if policy:

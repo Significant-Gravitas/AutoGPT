@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import tempfile
 import typing
@@ -95,7 +96,7 @@ async def review_submission(
     state_changed = already_approved != request.is_approved
     # Clear caches whenever approval state changes, since store visibility can change
     if state_changed:
-        store_cache.clear_all_caches()
+        await asyncio.to_thread(store_cache.clear_all_caches)
     return submission
 
 
@@ -235,5 +236,5 @@ async def review_skill_submission(
         internal_comments=request.internal_comments or "",
     )
     if request.is_approved:
-        store_cache.clear_all_caches()
+        await asyncio.to_thread(store_cache.clear_all_caches)
     return submission

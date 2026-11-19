@@ -44,10 +44,6 @@ function submitSignupForm() {
   fireEvent.change(screen.getByLabelText("Password", { selector: "input" }), {
     target: { value: password },
   });
-  fireEvent.change(
-    screen.getByLabelText("Confirm Password", { selector: "input" }),
-    { target: { value: password } },
-  );
   fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
 }
 
