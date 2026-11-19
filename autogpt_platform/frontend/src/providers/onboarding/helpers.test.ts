@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   decideOnboardingRedirect,
+  getOnboardingRoute,
   shouldRedirectFromOnboarding,
 } from "./helpers";
 
@@ -91,5 +92,11 @@ describe("decideOnboardingRedirect", () => {
   test("completed user already on the product is left alone", () => {
     // E.g., /copilot, /library — no redirect needed.
     expect(decideOnboardingRedirect({ ...base, isCompleted: true })).toBeNull();
+  });
+});
+
+describe("getOnboardingRoute", () => {
+  test("never redirects from the page a phone sign-up's link ends on", () => {
+    expect(getOnboardingRoute("/app-verified").isExempt).toBe(true);
   });
 });
