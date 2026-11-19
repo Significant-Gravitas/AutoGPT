@@ -62,8 +62,11 @@ YAML_EXPANSION_FACTOR = 8
 # The .xlsx caps, per member and per workbook, checked before pandas reads it.
 MAX_XLSX_MEMBER_BYTES = 50 * 1024 * 1024
 MAX_XLSX_TOTAL_BYTES = 200 * 1024 * 1024
-# What one sheet may read to, in cells and in characters of text.
-MAX_XLSX_SHEET_CELLS = 5_000_000
+# What one sheet may read to: rows, cells the file lists, cells in the table read
+# from it, and characters of text.
+MAX_XLSX_SHEET_ROWS = 1_048_576
+MAX_XLSX_SHEET_CELLS_LISTED = 5_000_000
+MAX_XLSX_SHEET_CELLS = 500_000
 MAX_XLSX_SHEET_CHARACTERS = 32 * 1024 * 1024
 
 # ---------------------------------------------------------------------------
@@ -372,7 +375,7 @@ def _parse_xlsx(content: bytes) -> list[list[Any]]:
     import pandas as pd
 
     check_xlsx_unpacked_size(io.BytesIO(content), source="file_content_parser")
-    check_xlsx_sheet_size(io.BytesIO(content))
+    check_xlsx_sheet_size(io.BytesIO(content), source="file_content_parser")
     # Explicitly specify openpyxl engine; the default engine varies by pandas
     # version and does not support legacy .xls (which is excluded by our format map).
     df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
@@ -397,71 +400,122 @@ def check_xlsx_unpacked_size(
             max_total_bytes=MAX_XLSX_TOTAL_BYTES,
         )
     except ZipMemberTooLarge as e:
-        _report_xlsx_refusal(e, source)
+        limit_name = (
+            "MAX_XLSX_MEMBER_BYTES" if e.cap == "member" else "MAX_XLSX_TOTAL_BYTES"
+        )
+        _report_xlsx_refusal(
+            "xlsx workbook over unpack limit",
+            limit_name,
+            source,
+            unpacked_bytes=e.counted,
+            limit_bytes=e.limit,
+        )
         raise
 
 
-def check_xlsx_sheet_size(file: IO[bytes], sheet_name: str | None = None) -> None:
-    """Refuse a sheet that reads to more cells or text than the .xlsx caps.
+def check_xlsx_sheet_size(
+    file: IO[bytes],
+    sheet_name: str | None = None,
+    *,
+    source: Literal["spreadsheet_block", "file_content_parser"],
+) -> None:
+    """Refuse a sheet past the .xlsx sheet caps, reporting each refusal to Sentry.
 
-    It stops as soon as a cap is passed, so the check itself stays within them.
-    Anything it cannot open is left for pandas to report.
+    The workbook is opened, and the sheet picked, the way pandas does it; a
+    sheet name it does not have is left for pandas to report.
     """
     from openpyxl import load_workbook
 
     if not zipfile.is_zipfile(file):
         return
+    workbook = load_workbook(file, read_only=True, data_only=True, keep_links=False)
     try:
-        workbook = load_workbook(file, read_only=True, data_only=True)
-    except PARSE_EXCEPTIONS:
-        return
-    try:
-        sheets = {sheet.title: sheet for sheet in workbook.worksheets}
-        sheet = (
-            sheets.get(sheet_name) if sheet_name else next(iter(sheets.values()), None)
-        )
-        if sheet is None:
+        if sheet_name and sheet_name not in [ws.title for ws in workbook.worksheets]:
             return
-        # Read every cell, as pandas does.
-        sheet.reset_dimensions()
-        read = last_row = width = characters = 0
-        for number, row in enumerate(sheet.iter_rows(values_only=True), start=1):
-            read += len(row)
-            used = len(row)
-            while used and row[used - 1] in (None, ""):
-                used -= 1
-            if used:
-                last_row, width = number, max(width, used)
-                characters += sum(len(str(v)) for v in row[:used] if v is not None)
-            if max(read, last_row * width) > MAX_XLSX_SHEET_CELLS:
-                raise XlsxSheetTooLarge(
-                    f"The sheet spans more than {MAX_XLSX_SHEET_CELLS:,} cells, "
-                    "more than can be read."
-                )
-            if characters > MAX_XLSX_SHEET_CHARACTERS:
-                raise XlsxSheetTooLarge(
-                    "The sheet holds more than "
-                    f"{MAX_XLSX_SHEET_CHARACTERS // (1024 * 1024)} MB of text, "
-                    "more than can be read."
-                )
+        sheet = workbook[sheet_name] if sheet_name else workbook.worksheets[0]
+        try:
+            _walk_sheet(sheet)
+        except XlsxSheetTooLarge as e:
+            _report_xlsx_refusal(
+                "xlsx sheet over size limit",
+                e.limit_name,
+                source,
+                counted=e.counted,
+                limit=e.limit,
+            )
+            raise
     finally:
         workbook.close()
 
 
 class XlsxSheetTooLarge(ValueError):
-    """A sheet reads to more cells or text than the .xlsx caps allow."""
+    """A sheet reads to more than one of the .xlsx sheet caps."""
+
+    def __init__(self, limit_name: str, counted: int, limit: int, what: str):
+        super().__init__(f"The sheet {what}, more than can be read.")
+        self.limit_name, self.counted, self.limit = limit_name, counted, limit
 
 
-def _report_xlsx_refusal(error: ZipMemberTooLarge, source: str) -> None:
+def _walk_sheet(sheet: Any) -> None:
+    """Raise ``XlsxSheetTooLarge`` at the first sheet cap passed."""
+    # Read every cell, as pandas does.
+    sheet.reset_dimensions()
+    listed = last_row = width = characters = 0
+    for number, row in enumerate(sheet.iter_rows(values_only=True), start=1):
+        if number > MAX_XLSX_SHEET_ROWS:
+            raise XlsxSheetTooLarge(
+                "MAX_XLSX_SHEET_ROWS",
+                number,
+                MAX_XLSX_SHEET_ROWS,
+                f"has more than {MAX_XLSX_SHEET_ROWS:,} rows",
+            )
+        listed += len(row)
+        used = len(row)
+        while used and row[used - 1] in (None, ""):
+            used -= 1
+        if used:
+            last_row, width = number, max(width, used)
+            characters += sum(_csv_length(v) for v in row[:used] if v is not None)
+        if listed > MAX_XLSX_SHEET_CELLS_LISTED:
+            raise XlsxSheetTooLarge(
+                "MAX_XLSX_SHEET_CELLS_LISTED",
+                listed,
+                MAX_XLSX_SHEET_CELLS_LISTED,
+                f"lists more than {MAX_XLSX_SHEET_CELLS_LISTED:,} cells",
+            )
+        if last_row * width > MAX_XLSX_SHEET_CELLS:
+            raise XlsxSheetTooLarge(
+                "MAX_XLSX_SHEET_CELLS",
+                last_row * width,
+                MAX_XLSX_SHEET_CELLS,
+                f"spans more than {MAX_XLSX_SHEET_CELLS:,} cells",
+            )
+        if characters > MAX_XLSX_SHEET_CHARACTERS:
+            raise XlsxSheetTooLarge(
+                "MAX_XLSX_SHEET_CHARACTERS",
+                characters,
+                MAX_XLSX_SHEET_CHARACTERS,
+                f"holds more than {MAX_XLSX_SHEET_CHARACTERS // (1024 * 1024)} MB "
+                "of text",
+            )
+
+
+def _csv_length(value: Any) -> int:
+    # The length pandas writes it out at.
+    if isinstance(value, float) and value.is_integer():
+        return len(str(int(value)))
+    return len(str(value))
+
+
+def _report_xlsx_refusal(
+    message: str, limit_name: str, source: str, **extras: int
+) -> None:
     # Sizes and the call site only: never the file name or its content.
-    limit_name = (
-        "MAX_XLSX_MEMBER_BYTES" if error.cap == "member" else "MAX_XLSX_TOTAL_BYTES"
-    )
     sentry_sdk.capture_message(
-        "xlsx workbook over unpack limit",
+        message,
         level="warning",
         tags={"xlsx_limit": limit_name, "xlsx_source": source},
-        extras={"unpacked_bytes": error.counted, "limit_bytes": error.limit},
+        extras=extras,
     )
 
 
