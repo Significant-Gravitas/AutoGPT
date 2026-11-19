@@ -27,6 +27,7 @@ import {
   getGraphLoadErrorToast,
   retryUnlessClientError,
 } from "../../../helpers/graphLoadError";
+import { showsAnotherSavedGraph } from "../../../helpers/waitForLoadedGraph";
 import { useIsExecutionSubscribed } from "./useFlowRealtime";
 import {
   isSnapshotStatusCurrent,
@@ -61,6 +62,12 @@ export const useFlow = () => {
   );
   const setLoadedGraph = useGraphStore(
     useShallow((state) => state.setLoadedGraph),
+  );
+  const setLoadSignal = useGraphStore(
+    useShallow((state) => state.setLoadSignal),
+  );
+  const setLoadFailed = useGraphStore(
+    useShallow((state) => state.setLoadFailed),
   );
   const { screenToFlowPosition, fitView } = useReactFlow();
   const addBlock = useNodeStore(useShallow((state) => state.addBlock));
@@ -135,16 +142,19 @@ export const useFlow = () => {
     ? Array.from(new Set(nodes.map((node) => node.block_id)))
     : undefined;
 
-  const { data: blocks, isLoading: isBlocksLoading } =
-    useGetV2GetSpecificBlocks(
-      { block_ids: blockIds ?? [] },
-      {
-        query: {
-          select: (res) => res.data as BlockInfo[],
-          enabled: !!flowID && !!blockIds && blockIds.length > 0,
-        },
+  const {
+    data: blocks,
+    isLoading: isBlocksLoading,
+    isError: isBlocksError,
+  } = useGetV2GetSpecificBlocks(
+    { block_ids: blockIds ?? [] },
+    {
+      query: {
+        select: (res) => res.data as BlockInfo[],
+        enabled: !!flowID && !!blockIds && blockIds.length > 0,
       },
-    );
+    },
+  );
 
   const customNodes = useMemo(() => {
     if (!nodes || !blocks) return [];
@@ -180,9 +190,8 @@ export const useFlow = () => {
     }
   }, [availableGraphs, setAvailableSubGraphs]);
 
-  // Nodes and links are replaced in one step, once the graph's block info is
-  // in. Replacing the links as soon as the graph arrived paired the saved
-  // graph's link ids with the canvas's old node ids, and a save sent both.
+  // Nodes and links are replaced together, once the graph's block info is in,
+  // so the canvas never pairs one graph's links with another's nodes.
   useEffect(() => {
     if (customNodes.length === 0) return;
     useNodeStore.getState().setNodes([]);
@@ -192,12 +201,32 @@ export const useFlow = () => {
     addLinks(graph?.links ?? []);
   }, [customNodes, graph?.links, addNodes, addLinks]);
 
-  // Saves wait for this (waitForLoadedGraph), so it runs after the fill.
+  // Saves wait for this (waitForLoadedGraph), so it runs after the fill. A
+  // graph with no nodes has nothing to wait for. When the canvas shows another
+  // saved graph, it is emptied first, undo included, so a save can't copy that
+  // graph's blocks into this one; an unsaved canvas keeps its blocks for it.
   useEffect(() => {
-    if (graph && (customNodes.length > 0 || !graph.nodes?.length)) {
-      setLoadedGraph(graph);
+    if (!graph || (customNodes.length === 0 && graph.nodes?.length)) return;
+    if (!graph.nodes?.length && showsAnotherSavedGraph(graph)) {
+      useNodeStore.getState().setNodes([]);
+      useNodeStore.getState().clearResolutionState();
+      useEdgeStore.getState().setEdges([]);
+      useHistoryStore.getState().initializeHistory();
     }
+    setLoadedGraph(graph);
   }, [graph, customNodes, setLoadedGraph]);
+
+  // A save waiting for this workflow to load gives up when the builder moves to
+  // another workflow or closes, and fails at once if its blocks can't load.
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoadSignal(controller.signal);
+    return () => controller.abort();
+  }, [flowID, setLoadSignal]);
+
+  useEffect(() => {
+    setLoadFailed(isBlocksError);
+  }, [isBlocksError, setLoadFailed]);
 
   useEffect(() => {
     if (customNodes.length > 0 && graph?.links) {

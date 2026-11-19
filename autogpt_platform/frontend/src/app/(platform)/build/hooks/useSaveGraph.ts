@@ -27,6 +27,7 @@ import {
 } from "../helpers/saveGraphError";
 import {
   getLoadedGraph,
+  isSaveCancelled,
   waitForLoadedGraph,
 } from "../helpers/waitForLoadedGraph";
 
@@ -191,13 +192,15 @@ export const useSaveGraph = ({
     ],
   );
 
-  // Resolves to null when the save fails; the user has been told why.
+  // Resolves to null when the save fails, and the user has been told why, or
+  // when the builder left the workflow before it loaded.
   const saveGraph = useCallback(
     async (values?: { name?: string; description?: string }) => {
       let saved: GraphModel;
       try {
         saved = await persistGraph(values);
       } catch (error) {
+        if (isSaveCancelled(error)) return null;
         onError?.(error);
         markInvalidFields(error);
         toast(describeSaveError(error));

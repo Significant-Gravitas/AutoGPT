@@ -27,6 +27,13 @@ interface GraphStore {
   // workflow becomes a new version of.
   loadedGraph: GraphModel | null;
   setLoadedGraph: (graph: GraphModel | null) => void;
+  // Aborted when the builder moves to another workflow or closes, so a save
+  // waiting for the canvas to load gives up.
+  loadSignal: AbortSignal;
+  setLoadSignal: (signal: AbortSignal) => void;
+  // The canvas can't load the workflow's blocks.
+  loadFailed: boolean;
+  setLoadFailed: (failed: boolean) => void;
 
   hasInputs: () => boolean;
   hasCredentials: () => boolean;
@@ -42,6 +49,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   outputSchema: null,
   availableSubGraphs: [],
   loadedGraph: null,
+  loadSignal: new AbortController().signal,
+  loadFailed: false,
 
   setGraphExecutionStatus: (status: AgentExecutionStatus | undefined) => {
     set({
@@ -62,6 +71,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   setAvailableSubGraphs: (graphs) => set({ availableSubGraphs: graphs }),
 
   setLoadedGraph: (graph) => set({ loadedGraph: graph }),
+
+  setLoadSignal: (signal) => set({ loadSignal: signal }),
+
+  setLoadFailed: (failed) => set({ loadFailed: failed }),
 
   hasOutputs: () => {
     const { outputSchema } = get();
@@ -85,5 +98,6 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       inputSchema: null,
       credentialsInputSchema: null,
       loadedGraph: null,
+      loadFailed: false,
     }),
 }));

@@ -55,16 +55,37 @@ vi.mock("@/app/(platform)/build/stores/edgeStore", () => ({
 }));
 
 const mockSetGraphSchemas = vi.fn();
+// Kept so a test can load the canvas while a save waits for it.
+const mockGraphStoreListeners = new Set<(state: unknown) => void>();
+let mockLoadController: AbortController;
 vi.mock("@/app/(platform)/build/stores/graphStore", () => ({
   useGraphStore: Object.assign(
     (selector: (s: { setGraphSchemas: unknown }) => unknown) =>
       selector({ setGraphSchemas: mockSetGraphSchemas }),
     {
-      getState: () => ({ loadedGraph: mockCurrentGraph ?? null }),
-      subscribe: () => () => undefined,
+      getState: () => mockGraphStoreState(),
+      subscribe: (listener: (state: unknown) => void) => {
+        mockGraphStoreListeners.add(listener);
+        return () => mockGraphStoreListeners.delete(listener);
+      },
     },
   ),
 }));
+
+function mockGraphStoreState() {
+  return {
+    loadedGraph: mockCurrentGraph ?? null,
+    loadSignal: mockLoadController.signal,
+    loadFailed: false,
+  };
+}
+
+function loadCanvas(graph: unknown) {
+  mockCurrentGraph = graph;
+  mockGraphStoreListeners.forEach((listener) =>
+    listener(mockGraphStoreState()),
+  );
+}
 
 let mockEquivalent = false;
 vi.mock(
@@ -87,6 +108,8 @@ import { useSaveGraph } from "../hooks/useSaveGraph";
 describe("useSaveGraph", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGraphStoreListeners.clear();
+    mockLoadController = new AbortController();
     mockFlowID = "graph-1";
     mockCurrentGraph = undefined;
     mockEquivalent = false;
@@ -293,6 +316,56 @@ describe("useSaveGraph", () => {
         description: "Your workflow is still loading. Try again in a moment.",
       }),
     );
+  });
+
+  it("waits until the canvas shows this version of the saved workflow, then saves it", async () => {
+    const updated = {
+      id: "graph-1",
+      version: 2,
+      input_schema: { properties: {} },
+      credentials_input_schema: { properties: {} },
+      output_schema: { properties: {} },
+    };
+    mockUpdate.mockResolvedValue({ data: { graph: updated } });
+    const { result } = renderHook(() => useSaveGraph({ showToast: false }));
+
+    let saving: Promise<unknown> = Promise.resolve();
+    act(() => {
+      saving = result.current.saveGraph();
+    });
+    expect(result.current.isSaving).toBe(true);
+
+    await act(async () => {
+      loadCanvas({ id: "graph-1", name: "Agent", version: 0 });
+    });
+    expect(mockUpdate).not.toHaveBeenCalled();
+
+    let returned: unknown;
+    await act(async () => {
+      loadCanvas({ id: "graph-1", name: "Agent", version: 1 });
+      returned = await saving;
+    });
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ graphId: "graph-1" }),
+    );
+    expect(returned).toBe(updated);
+    expect(result.current.isSaving).toBe(false);
+  });
+
+  it("gives up without telling the user when the builder leaves the workflow before it loads", async () => {
+    const { result } = renderHook(() => useSaveGraph({ showToast: true }));
+
+    let returned: unknown;
+    await act(async () => {
+      const saving = result.current.saveGraph();
+      mockLoadController.abort();
+      returned = await saving;
+    });
+
+    expect(returned).toBeNull();
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("reports any other failed save instead of throwing it", async () => {

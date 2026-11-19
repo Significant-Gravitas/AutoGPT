@@ -19,6 +19,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { setTabIntroSeen } from "../../components/TabIntroCard/helpers";
@@ -30,6 +31,7 @@ import { useNodeStore } from "../stores/nodeStore";
 
 const USER_ID = "user-1";
 const GRAPH_ID = "graph-1";
+const BLANK_GRAPH_ID = "graph-2";
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({
@@ -57,8 +59,8 @@ vi.mock("@/lib/autogpt-server-api/context", () => {
 });
 
 // IndexedDB does not exist in happy-dom; drafts live in memory instead.
+const drafts = vi.hoisted(() => new Map<string, { id: string }>());
 vi.mock("@/lib/dexie/db", () => {
-  const drafts = new Map<string, { id: string }>();
   return {
     DRAFT_EXPIRY_MS: 24 * 60 * 60 * 1000,
     db: {
@@ -140,6 +142,43 @@ const QUEUED_RUN: GraphExecutionWithNodes = {
   node_executions: [],
 };
 
+// A saved two-block workflow, before the backend gives its nodes their ids.
+const SAVED_WORKFLOW: Graph = {
+  name: "Saved Agent",
+  description: "",
+  nodes: [
+    {
+      id: "a",
+      block_id: STORE_VALUE_BLOCK.id,
+      input_default: { input: "hello" },
+      metadata: { position: { x: 0, y: 0 } },
+    },
+    {
+      id: "b",
+      block_id: AGENT_OUTPUT_BLOCK.id,
+      input_default: { name: "result" },
+      metadata: { position: { x: 400, y: 0 } },
+    },
+  ],
+  links: [
+    {
+      source_id: "a",
+      sink_id: "b",
+      source_name: "output",
+      sink_name: "value",
+      is_static: true,
+    },
+  ],
+};
+
+// What the builder chat creates when it is opened without a workflow.
+const BLANK_WORKFLOW: Graph = {
+  name: "New Workflow",
+  description: "",
+  nodes: [],
+  links: [],
+};
+
 type LoadRequest = "graph" | "blocks";
 
 // Waits that span requests and renders get room for a slow CI runner.
@@ -149,7 +188,7 @@ const NETWORK_WAIT = { timeout: 10_000 };
 // save is a new version whose nodes get fresh ids, links follow the nodes
 // they name, and a link naming a node the save doesn't have is refused.
 const backend = {
-  versions: [] as GraphModel[],
+  graphs: {} as Record<string, GraphModel[]>,
   nodeIDs: [] as string[],
   creates: 0,
   updates: [] as Graph[],
@@ -161,15 +200,16 @@ const backend = {
 };
 let heldRequest = Promise.resolve();
 
-function saveVersion(graph: Graph) {
-  const version = backend.versions.length + 1;
+function saveVersion(graph: Graph, graphID = GRAPH_ID) {
+  const versions = (backend.graphs[graphID] ??= []);
+  const version = versions.length + 1;
   const newIDs = new Map(
     (graph.nodes ?? []).map((node) => [node.id, backend.nodeIDs.shift()!]),
   );
   const nodes = (graph.nodes ?? []).map((node) => ({
     ...node,
     id: newIDs.get(node.id),
-    graph_id: GRAPH_ID,
+    graph_id: graphID,
     graph_version: version,
     input_links: [],
     output_links: [],
@@ -189,7 +229,7 @@ function saveVersion(graph: Graph) {
     }
   }
   const saved = getGetV1GetSpecificGraphResponseMock200({
-    id: GRAPH_ID,
+    id: graphID,
     version,
     is_active: true,
     name: graph.name,
@@ -206,7 +246,7 @@ function saveVersion(graph: Graph) {
     has_sensitive_action: false,
     trigger_setup_info: null,
   });
-  backend.versions.push(saved);
+  versions.push(saved);
   return saved;
 }
 
@@ -237,6 +277,24 @@ function hold(request: LoadRequest) {
   });
 }
 
+// Moves the open builder to another workflow without leaving the page, as
+// the builder chat does for the blank workflow it creates, or the browser's
+// back button does.
+function OpenWorkflowButton({ graphID }: { graphID: string }) {
+  const [, setQueryStates] = useQueryStates({
+    flowID: parseAsString,
+    flowVersion: parseAsInteger,
+  });
+  return (
+    <button
+      type="button"
+      onClick={() => setQueryStates({ flowID: graphID, flowVersion: 1 })}
+    >
+      Open {graphID}
+    </button>
+  );
+}
+
 function renderBuilder(searchParams = "") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -251,6 +309,8 @@ function renderBuilder(searchParams = "") {
         <OnboardingProvider>
           <TooltipProvider>
             <BuilderPage />
+            <OpenWorkflowButton graphID={GRAPH_ID} />
+            <OpenWorkflowButton graphID={BLANK_GRAPH_ID} />
             <Toaster />
           </TooltipProvider>
         </OnboardingProvider>
@@ -308,6 +368,11 @@ function canvas(): Graph {
   };
 }
 
+// Long enough for a Run that should have stayed cancelled to send its request.
+async function waitForStrayRequests() {
+  await act(() => new Promise((resolve) => setTimeout(resolve, 300)));
+}
+
 async function waitForTheRun() {
   await waitFor(
     () =>
@@ -319,7 +384,8 @@ async function waitForTheRun() {
 }
 
 beforeEach(() => {
-  backend.versions = [];
+  drafts.clear();
+  backend.graphs = {};
   backend.nodeIDs = [...SERVER_NODE_IDS];
   backend.creates = 0;
   backend.updates = [];
@@ -338,20 +404,20 @@ beforeEach(() => {
         ? refuse("POST", "/api/graphs", saved)
         : HttpResponse.json(saved);
     }),
-    http.put("/api/proxy/api/graphs/:graphID", async ({ request }) => {
+    http.put("/api/proxy/api/graphs/:graphID", async ({ request, params }) => {
+      const graphID = String(params.graphID);
       const graph = (await request.json()) as Graph;
       backend.updates.push(graph);
-      const saved = saveVersion(graph);
+      const saved = saveVersion(graph, graphID);
       return typeof saved === "string"
-        ? refuse("PUT", `/api/graphs/${GRAPH_ID}`, saved)
+        ? refuse("PUT", `/api/graphs/${graphID}`, saved)
         : HttpResponse.json({ graph: saved, skipped_webhook_presets: [] });
     }),
-    getGetV1GetSpecificGraphMockHandler200(async ({ request }) => {
+    getGetV1GetSpecificGraphMockHandler200(async ({ request, params }) => {
       await answerLoad("graph");
+      const versions = backend.graphs[String(params.graphId)] ?? [];
       const version = new URL(request.url).searchParams.get("version");
-      return backend.versions[
-        version ? Number(version) - 1 : backend.versions.length - 1
-      ];
+      return versions[version ? Number(version) - 1 : versions.length - 1];
     }),
     getGetV2GetSpecificBlocksMockHandler200(async () => {
       await answerLoad("blocks");
@@ -404,10 +470,12 @@ describe("builder Run while the workflow it runs is still loading", () => {
         () => expect(backend.requests[request]).toBeGreaterThan(0),
         NETWORK_WAIT,
       );
-      expect(backend.versions).toHaveLength(1);
+      expect(backend.graphs[GRAPH_ID]).toHaveLength(1);
       expect(strayLinkEnds(canvas())).toEqual([]);
 
       await clickRunOnceItIsEnabled(user);
+      expect(runButton().disabled, "Run can be pressed again").toBe(true);
+      await user.click(runButton());
       backend.release();
       await waitForTheRun();
 
@@ -417,7 +485,7 @@ describe("builder Run while the workflow it runs is still loading", () => {
       }
       expect(backend.refusals).toEqual([]);
       expect(backend.executions).toEqual([
-        { graphID: GRAPH_ID, graphVersion: backend.versions.length },
+        { graphID: GRAPH_ID, graphVersion: backend.graphs[GRAPH_ID].length },
       ]);
       expect(screen.queryByText("Error saving workflow")).toBeNull();
     },
@@ -426,33 +494,7 @@ describe("builder Run while the workflow it runs is still loading", () => {
   test.each<LoadRequest>(["graph", "blocks"])(
     "Run on a saved workflow that is still opening, with its %s request still out, runs it as saved",
     async (request) => {
-      saveVersion({
-        name: "Saved Agent",
-        description: "",
-        nodes: [
-          {
-            id: "a",
-            block_id: STORE_VALUE_BLOCK.id,
-            input_default: { input: "hello" },
-            metadata: { position: { x: 0, y: 0 } },
-          },
-          {
-            id: "b",
-            block_id: AGENT_OUTPUT_BLOCK.id,
-            input_default: { name: "result" },
-            metadata: { position: { x: 400, y: 0 } },
-          },
-        ],
-        links: [
-          {
-            source_id: "a",
-            sink_id: "b",
-            source_name: "output",
-            sink_name: "value",
-            is_static: true,
-          },
-        ],
-      });
+      saveVersion(SAVED_WORKFLOW);
       const user = userEvent.setup();
       hold(request);
       renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
@@ -474,4 +516,147 @@ describe("builder Run while the workflow it runs is still loading", () => {
       ]);
     },
   );
+});
+
+describe("builder canvas when another workflow opens in place", () => {
+  test("opening an empty workflow empties the canvas, undo included, so Run copies none of the other workflow's blocks into it", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    saveVersion(BLANK_WORKFLOW, BLANK_GRAPH_ID);
+    const user = userEvent.setup();
+    renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
+    await waitFor(() => expect(canvas().nodes).toHaveLength(2), NETWORK_WAIT);
+    // Undo starts from the workflow as it loaded.
+    await waitFor(
+      () => expect(useHistoryStore.getState().canUndo()).toBe(false),
+      NETWORK_WAIT,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: `Open ${BLANK_GRAPH_ID}` }),
+    );
+    await waitFor(
+      () =>
+        expect(useGraphStore.getState().loadedGraph?.id).toBe(BLANK_GRAPH_ID),
+      NETWORK_WAIT,
+    );
+    await user.keyboard("{Control>}z{/Control}");
+    expect(canvas().nodes).toEqual([]);
+    expect(canvas().links).toEqual([]);
+
+    await clickRunOnceItIsEnabled(user);
+    await waitForTheRun();
+
+    expect(
+      backend.updates.flatMap((update) => update.nodes ?? []),
+      "a save copied the other workflow's blocks into it",
+    ).toEqual([]);
+    expect(backend.creates).toBe(0);
+    expect(backend.executions).toEqual([
+      { graphID: BLANK_GRAPH_ID, graphVersion: 1 },
+    ]);
+  });
+
+  test("a blank workflow made for an unsaved canvas keeps its blocks, and Run saves them into it", async () => {
+    saveVersion(BLANK_WORKFLOW, BLANK_GRAPH_ID);
+    const user = userEvent.setup();
+    renderBuilder();
+    buildWorkflow();
+
+    await user.click(
+      screen.getByRole("button", { name: `Open ${BLANK_GRAPH_ID}` }),
+    );
+    await waitFor(
+      () =>
+        expect(useGraphStore.getState().loadedGraph?.id).toBe(BLANK_GRAPH_ID),
+      NETWORK_WAIT,
+    );
+    expect(canvas().nodes).toHaveLength(2);
+
+    await clickRunOnceItIsEnabled(user);
+    await waitForTheRun();
+
+    expect(backend.refusals).toEqual([]);
+    expect(backend.updates.map((update) => update.nodes?.length)).toEqual([2]);
+    expect(backend.executions).toEqual([
+      { graphID: BLANK_GRAPH_ID, graphVersion: 2 },
+    ]);
+  });
+});
+
+describe("builder Run whose workflow never loads", () => {
+  test("closing the builder while Run waits cancels the run, and reopening the workflow doesn't start it", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    const user = userEvent.setup();
+    hold("blocks");
+    const builder = renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
+    await waitFor(
+      () => expect(backend.requests.blocks).toBeGreaterThan(0),
+      NETWORK_WAIT,
+    );
+    await clickRunOnceItIsEnabled(user);
+
+    builder.unmount();
+    backend.release();
+    renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
+    await waitFor(() => expect(canvas().nodes).toHaveLength(2), NETWORK_WAIT);
+    await waitForStrayRequests();
+
+    expect(backend.executions, "the abandoned Run started").toEqual([]);
+    expect(screen.queryByText("Error saving workflow")).toBeNull();
+  });
+
+  test("moving to another workflow while Run waits cancels the run, and coming back doesn't start it", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    saveVersion(BLANK_WORKFLOW, BLANK_GRAPH_ID);
+    const user = userEvent.setup();
+    hold("blocks");
+    renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
+    await waitFor(
+      () => expect(backend.requests.blocks).toBeGreaterThan(0),
+      NETWORK_WAIT,
+    );
+    await clickRunOnceItIsEnabled(user);
+
+    await user.click(
+      screen.getByRole("button", { name: `Open ${BLANK_GRAPH_ID}` }),
+    );
+    backend.release();
+    await waitFor(
+      () =>
+        expect(useGraphStore.getState().loadedGraph?.id).toBe(BLANK_GRAPH_ID),
+      NETWORK_WAIT,
+    );
+    await user.click(screen.getByRole("button", { name: `Open ${GRAPH_ID}` }));
+    await waitFor(() => expect(canvas().nodes).toHaveLength(2), NETWORK_WAIT);
+    await waitForStrayRequests();
+
+    expect(backend.executions, "the abandoned Run started").toEqual([]);
+    expect(screen.queryByText("Error saving workflow")).toBeNull();
+  });
+
+  test("Run on a workflow whose blocks didn't load says so at once", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    server.use(
+      http.get("/api/proxy/api/builder/blocks/batch", () =>
+        HttpResponse.json(
+          { detail: "Blocks are unavailable" },
+          { status: 500 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
+
+    await clickRunOnceItIsEnabled(user);
+
+    expect(
+      await screen.findByText(
+        "Your workflow couldn't be loaded. Reload the page and try again.",
+        {},
+        NETWORK_WAIT,
+      ),
+    ).toBeDefined();
+    expect(backend.updates).toEqual([]);
+    expect(backend.executions).toEqual([]);
+  });
 });
