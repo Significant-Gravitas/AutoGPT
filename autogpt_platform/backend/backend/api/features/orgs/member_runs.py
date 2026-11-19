@@ -6,6 +6,7 @@ import logging
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
 from backend.executor.utils import stop_graph_execution
+from backend.util.concurrency import gather_bounded
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +37,15 @@ async def stop_member_runs(org_id: str, user_id: str) -> None:
         _unfinished_runs(org_id, user_id, deleted=False),
         _unfinished_runs(org_id, user_id, deleted=True),
     )
-    slots = asyncio.Semaphore(STOP_CONCURRENCY)
-    await asyncio.gather(
-        *[_stop(slots, org_id, user_id, run_id) for run_id in visible],
-        # Lookups skip deleted runs, so a deleted one's stop can only send its
-        # cancel, not wait to see it end. That's enough: only a running one
-        # would carry on, since a deleted run is never resumed or picked up.
-        *[_stop(slots, org_id, user_id, run_id, wait_timeout=0) for run_id in deleted],
+    await gather_bounded(
+        [
+            *(_stop(org_id, user_id, run_id) for run_id in visible),
+            # Lookups skip deleted runs, so a deleted one's stop can only send
+            # its cancel, not wait to see it end. That's enough: only a running
+            # one would carry on, since a deleted run is never resumed.
+            *(_stop(org_id, user_id, run_id, wait_timeout=0) for run_id in deleted),
+        ],
+        STOP_CONCURRENCY,
     )
 
 
@@ -64,17 +67,12 @@ async def _unfinished_runs(org_id: str, user_id: str, deleted: bool) -> list[str
 
 
 async def _stop(
-    slots: asyncio.Semaphore,
-    org_id: str,
-    user_id: str,
-    graph_exec_id: str,
-    wait_timeout: float = 15.0,
+    org_id: str, user_id: str, graph_exec_id: str, wait_timeout: float = 15.0
 ) -> None:
     try:
-        async with slots:
-            await stop_graph_execution(
-                user_id=user_id, graph_exec_id=graph_exec_id, wait_timeout=wait_timeout
-            )
+        await stop_graph_execution(
+            user_id=user_id, graph_exec_id=graph_exec_id, wait_timeout=wait_timeout
+        )
     except Exception:
         logger.warning(
             f"Couldn't stop run #{graph_exec_id} of user {user_id}, "

@@ -13,7 +13,7 @@ START = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_ids_of_a_users_runs_in_one_org_by_status(server):
+async def test_ids_of_a_users_runs_by_org_and_status(server):
     org_id, other_org_id = str(uuid.uuid4()), str(uuid.uuid4())
     user_id, graph_id = await _user_with_graph()
     other_user_id, other_graph_id = await _user_with_graph()
@@ -24,7 +24,9 @@ async def test_ids_of_a_users_runs_in_one_org_by_status(server):
             user_id, graph_id, org_id, ExecutionStatus.RUNNING, 3, deleted=True
         )
         await _run(user_id, graph_id, org_id, ExecutionStatus.COMPLETED, 4)
-        await _run(user_id, graph_id, other_org_id, ExecutionStatus.QUEUED, 5)
+        elsewhere = await _run(
+            user_id, graph_id, other_org_id, ExecutionStatus.QUEUED, 5
+        )
         await _run(other_user_id, other_graph_id, org_id, ExecutionStatus.QUEUED, 6)
 
         visible = await get_graph_execution_ids(
@@ -34,9 +36,12 @@ async def test_ids_of_a_users_runs_in_one_org_by_status(server):
             user_id=user_id, organization_id=org_id, statuses=UNFINISHED, deleted=True
         )
 
+        everywhere = await get_graph_execution_ids(user_id=user_id, statuses=UNFINISHED)
+
         # Newest first, as `get_graph_executions` lists them.
         assert visible == [running, queued]
         assert deleted == [hidden]
+        assert everywhere == [elsewhere, running, queued]
     finally:
         # Deleting a user deletes their graphs and runs with them.
         await prisma.models.User.prisma().delete_many(

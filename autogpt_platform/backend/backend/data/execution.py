@@ -740,36 +740,38 @@ async def get_graph_executions(
 
 async def get_graph_execution_ids(
     user_id: str,
-    organization_id: str,
     statuses: list[ExecutionStatus],
+    organization_id: Optional[str] = None,
     deleted: bool = False,
 ) -> list[str]:
     """
-    The IDs of a user's graph executions in an org, newest first.
+    The IDs of a user's graph executions, newest first.
 
     Reads the `id` column alone, for a caller that needs nothing else from
     what may be many rows.
 
     Args:
-        organization_id: Only executions stored in this org (an exact match)
         statuses: Only executions in one of these statuses
+        organization_id: Only executions stored in this org (an exact match);
+            every org's when not given
         deleted: List the executions deleted from history instead of the
             visible ones
     """
+    org_filter = 'AND "organizationId" = $4' if organization_id else ""
     rows = await query_raw_with_schema(
-        """
+        f"""
         SELECT "id"
-        FROM {schema_prefix}"AgentGraphExecution"
+        FROM {{schema_prefix}}"AgentGraphExecution"
         WHERE "userId" = $1
-          AND "organizationId" = $2
-          AND "isDeleted" = $3
-          AND "executionStatus"::text = ANY($4::text[])
+          AND "isDeleted" = $2
+          AND "executionStatus"::text = ANY($3::text[])
+          {org_filter}
         ORDER BY "createdAt" DESC
         """,
         user_id,
-        organization_id,
         deleted,
         [status.value for status in statuses],
+        *([organization_id] if organization_id else []),
     )
     return [row["id"] for row in rows]
 

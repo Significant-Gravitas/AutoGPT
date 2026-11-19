@@ -13,22 +13,24 @@ from backend.api.features.account_deletion.best_effort import (
     attempt_step,
     log_step_failure,
 )
-from backend.data.execution import ExecutionStatus, get_graph_executions
+from backend.data.execution import ExecutionStatus, get_graph_execution_ids
 from backend.data.graph import set_node_webhook
 from backend.executor.scheduler import SchedulerClient
 from backend.executor.utils import stop_graph_execution
 from backend.util.clients import get_scheduler_client
+from backend.util.concurrency import gather_bounded
 
 logger = logging.getLogger(__name__)
 
 # How long each stop waits for its run to confirm it ended. The cancel goes
 # out before the wait, so this bounds the confirmation, not the stop itself:
 # queued and incomplete runs are marked terminated on the first poll, and a
-# running one that needs longer has already been told to stop. Every stop runs
-# at once with cascade off (a child run belongs to the same user, so it is in
-# the list itself), so the whole step takes about this long however many runs
-# there are and however deeply they nest.
+# running one that needs longer has already been told to stop. Stops run with
+# cascade off, since a child run belongs to the same user and is in the list
+# itself.
 STOP_WAIT_TIMEOUT_SECONDS = 5.0
+# How many of the user's runs are stopped at a time.
+STOP_CONCURRENCY = 4
 
 _UNFINISHED_STATUSES = [
     ExecutionStatus.INCOMPLETE,
@@ -158,16 +160,17 @@ async def _detach_triggered_nodes(user_id: str) -> None:
 
 
 async def _stop_unfinished_runs(user_id: str) -> None:
-    runs = await attempt_step(
+    run_ids = await attempt_step(
         "list unfinished runs",
         user_id,
-        get_graph_executions(user_id=user_id, statuses=_UNFINISHED_STATUSES),
+        get_graph_execution_ids(user_id=user_id, statuses=_UNFINISHED_STATUSES),
     )
-    await asyncio.gather(
-        *(
-            attempt_step(f"stop run #{run.id}", user_id, _stop_run(user_id, run.id))
-            for run in runs or []
-        )
+    await gather_bounded(
+        (
+            attempt_step(f"stop run #{run_id}", user_id, _stop_run(user_id, run_id))
+            for run_id in run_ids or []
+        ),
+        STOP_CONCURRENCY,
     )
 
 
