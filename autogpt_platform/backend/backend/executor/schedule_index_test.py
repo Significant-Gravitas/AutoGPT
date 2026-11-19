@@ -44,6 +44,16 @@ def test_upsert_inserts_and_replaces_on_same_job_id():
     assert index.all_job_ids() == {"j1"}
 
 
+def test_insert_if_missing_preserves_the_indexed_replacement():
+    index = _index()
+    index.upsert(_entry("j1", graph_id="replacement-graph"))
+
+    index.insert_if_missing(_entry("j1"))
+
+    assert index.candidate_job_ids(graph_id="graph-1") == []
+    assert index.candidate_job_ids(graph_id="replacement-graph") == ["j1"]
+
+
 def test_upsert_many_and_delete_many():
     index = _index()
     index.upsert_many([_entry("j1"), _entry("j2"), _entry("j3")])

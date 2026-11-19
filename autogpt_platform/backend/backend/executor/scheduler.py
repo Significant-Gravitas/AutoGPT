@@ -3779,6 +3779,8 @@ class Scheduler(AppService):
             and _fires_alike(job.trigger, trigger)
         ):
             raise ConflictError(_SCHEDULE_KEY_TAKEN)
+        # The earlier attempt may have stopped after persisting the job.
+        self._upsert_schedule_index_row(job.id, info, replace_existing=False)
         logger.info(f"Create of schedule {job.id} was sent again; answered with it")
         return info
 
@@ -4347,12 +4349,19 @@ class Scheduler(AppService):
         self,
         job_id: str,
         job_args: GraphExecutionJobArgs | CopilotTurnJobArgs,
+        *,
+        replace_existing: bool = True,
     ) -> None:
         """Keep successful mutations visible through full scans after an index failure."""
-        if self._schedule_index is None:
+        index = self._schedule_index
+        if index is None:
             return
         try:
-            self._schedule_index.upsert(_index_entry(job_id, job_args))
+            entry = _index_entry(job_id, job_args)
+            if replace_existing:
+                index.upsert(entry)
+            else:
+                index.insert_if_missing(entry)
         except Exception:
             with self._jobs_cache_lock:
                 self._schedule_index_ready = False
