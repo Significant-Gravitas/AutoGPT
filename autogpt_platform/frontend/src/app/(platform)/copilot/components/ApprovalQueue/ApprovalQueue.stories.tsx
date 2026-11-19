@@ -401,7 +401,7 @@ function homeRow(
 ) {
   const review = folder("a", "Q3 reports");
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white">
+    <div className="rounded-xl border border-border-base bg-surface">
       <AttentionRow
         item={{
           id: "approval-a",

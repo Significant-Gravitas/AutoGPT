@@ -2,7 +2,6 @@
 
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -37,13 +36,14 @@ from backend.data.redis_client import get_redis_async
 from backend.data.subscription_trial import get_subscription_trial
 
 enrollment = fixtures.enrollment
+usage_now = fixtures.usage_now
 pytestmark = fixtures.pytestmark
 
 
 @pytest.mark.parametrize("paid_tier", [SubscriptionTier.PRO, SubscriptionTier.MAX])
 @pytest.mark.parametrize("include_paid_call", [False, True])
 async def test_queued_approvals_charge_their_original_allowances(
-    enrollment, paid_tier, include_paid_call, monkeypatch
+    enrollment, usage_now, paid_tier, include_paid_call, monkeypatch
 ):
     user_id, generation = enrollment.user_id, str(uuid4())
     await _start_trial(enrollment.id, user_id)
@@ -67,8 +67,8 @@ async def test_queued_approvals_charge_their_original_allowances(
     monkeypatch.setattr("backend.copilot.tools.get_tool", lambda _: tool)
     redis = await get_redis_async()
     keys = [
-        *usage_keys(user_id, None, datetime.now(UTC)),
-        *usage_keys(user_id, generation, datetime.now(UTC)),
+        *usage_keys(user_id, None, usage_now),
+        *usage_keys(user_id, generation, usage_now),
         held._key(session.session_id),
     ]
     try:

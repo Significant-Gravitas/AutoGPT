@@ -21,6 +21,7 @@ from .models import (
     PostmarkClickWebhook,
     PostmarkDeliveryWebhook,
     PostmarkOpenWebhook,
+    PostmarkSpamComplaintWebhook,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ EmailWebhook = (
     | PostmarkOpenWebhook
     | PostmarkClickWebhook
     | PostmarkBounceWebhook
+    | PostmarkSpamComplaintWebhook
 )
 
 ID_SEGMENT = ":id"

@@ -2,20 +2,25 @@
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
+import { tourTarget } from "@/lib/tour-targets";
+import { useFirstRunTourAutoStart } from "@/app/(platform)/components/FirstRunTour/useFirstRunTourAutoStart";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import type { ComponentProps, ReactNode } from "react";
+import { useEffect, type ComponentProps, type ReactNode } from "react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useCopilotUIStore } from "../../store";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
 import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
-import { OnboardingWelcomeDialog } from "../OnboardingWelcomeDialog/OnboardingWelcomeDialog";
 import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
 import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
+import { useCollapsedSuggestions } from "../SuggestedTasks/useCollapsedSuggestions";
 import { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 import { EmptyHero } from "./components/EmptyHero";
+import { ExecutionTargetPicker } from "./components/ExecutionTargetPicker/ExecutionTargetPicker";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
 import { GreetingLoader } from "./components/GreetingLoader";
 import {
@@ -76,10 +81,25 @@ export function EmptySession({
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
+  const isLocalPCEnabled = useGetFlag(Flag.LOCAL_PC_EXECUTOR);
+  const resetNewChatExecutionTarget = useCopilotUIStore(
+    (state) => state.resetNewChatExecutionTarget,
+  );
+  const newChatExecutionTarget = useCopilotUIStore(
+    (state) => state.newChatExecutionTarget,
+  );
   const intro = useOnboardingIntroCard();
+  useFirstRunTourAutoStart({
+    isPending: intro.isFirstRunPending,
+    onFinished: intro.finishFirstRun,
+  });
 
   const {
     options,
+    experts,
+    expertsById,
+    isRosterLoaded,
+    hasRosterFailed,
     recipient,
     selectedExpert,
     isLoadingRecipient,
@@ -90,7 +110,18 @@ export function EmptySession({
     surface: intro.isVisible ? "intro" : "home",
     onSend: onStartTask ?? onSend,
     enabled: !intro.isAwaitingGreeting,
+    experts,
+    expertsById,
+    isRosterLoaded,
+    hasRosterFailed,
+    recipientID: recipient.id,
+    selectRecipient,
+    // A task starts its own chat only through onStartTask, which the page
+    // withholds while it resolves the recipient or the turn is locked.
+    canSend: Boolean(onStartTask) && !isComposerDisabled,
+    isRecipientResolving: isLoadingRecipient,
   });
+  const collapse = useCollapsedSuggestions();
   const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
   const recipientPicker = (
     <RecipientChip
@@ -104,7 +135,12 @@ export function EmptySession({
   const { inputPlaceholder } = useHomeComposer({
     enabled:
       !intro.isVisible && !intro.isAwaitingGreeting && !isKickoffStarting,
+    greetingPath: intro.isVisible ? intro.path : null,
   });
+
+  useEffect(() => {
+    resetNewChatExecutionTarget();
+  }, [resetNewChatExecutionTarget]);
 
   if (isKickoffStarting) {
     return <ExpertKickoffLoader expertName={expertName} />;
@@ -112,13 +148,9 @@ export function EmptySession({
 
   return (
     <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
-      <OnboardingWelcomeDialog
-        isOpen={intro.isWelcomeOpen}
-        onClose={intro.closeWelcome}
-      />
       {/* Which connection the new chat runs on, kept out of the composer and
           in the page corner, level with the inset header's controls. */}
-      <div className="absolute right-3 top-3 z-30 empty:hidden">
+      <div className="absolute top-3 right-3 z-30 empty:hidden">
         <ConnectionPicker className="ml-0" />
       </div>
       <motion.div
@@ -133,12 +165,13 @@ export function EmptySession({
               name={greetingName}
               greeting={intro.greeting}
               suggestions={suggestions}
+              collapse={collapse}
               transcript={intro.transcript}
               disabled={isComposerDisabled || !!atReset}
             />
           ) : intro.isAwaitingGreeting ? (
-            // Behind the welcome modal's blur and for as long as the
-            // pipeline is still writing. The orb it renders is the same
+            // For as long as the pipeline is still writing, which can be
+            // behind the first-run walkthrough. The orb it renders is the same
             // element the card above puts in its heading, so the swap
             // moves it there rather than replacing it.
             <GreetingLoader />
@@ -156,7 +189,11 @@ export function EmptySession({
               the greeting page instead of sitting under a bare hero. */}
           {!intro.isAwaitingGreeting && (
             <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
+              {isLocalPCEnabled || newChatExecutionTarget.kind === "local" ? (
+                <ExecutionTargetPicker />
+              ) : null}
               <div
+                {...tourTarget("composer")}
                 className={cn(
                   "text-left transition-colors duration-300 ease-out",
                   // The greeting's prompt card bleeds 1.25rem past the text
@@ -197,6 +234,7 @@ export function EmptySession({
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
                   expertId={expertId}
                   expertName={expertName}
+                  assistantName={selectedExpert?.name ?? expertName ?? null}
                   recipientPicker={
                     intro.isVisible ? recipientPicker : undefined
                   }
@@ -206,14 +244,18 @@ export function EmptySession({
             </div>
           )}
 
-          {/* These prompts are Otto's, so they go while an expert is the
-              recipient. */}
-          {!intro.isVisible && !intro.isAwaitingGreeting && !selectedExpert && (
-            <SuggestedTasksBlock
-              suggestions={suggestions}
-              disabled={isComposerDisabled || !!atReset}
-            />
-          )}
+          {/* The greeting's list once the greeting has retired. Each task
+              goes to its own owner, whoever the composer is addressed to. */}
+          {!intro.isVisible &&
+            !intro.isAwaitingGreeting &&
+            suggestions.isStored && (
+              <SuggestedTasksBlock
+                suggestions={suggestions}
+                collapse={collapse}
+                disabled={isComposerDisabled || !!atReset}
+                className="mx-auto mb-6 max-w-[42rem]"
+              />
+            )}
         </div>
 
         {!intro.isVisible && !intro.isAwaitingGreeting && <HomeRecap />}

@@ -110,19 +110,20 @@ export function ClarificationQuestionsCard({
       >
         <div className="flex w-full max-w-3xl gap-3">
           <div className="flex-shrink-0">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-green-500">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-success">
               <Icon
                 icon={CheckmarkCircle02Icon}
-                className="h-4 w-4 text-white"
+                tone="inverse"
+                className="h-4 w-4"
               />
             </div>
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
             <Card className="p-4">
-              <Text variant="h4" className="mb-1 text-slate-900">
+              <Text tone="primary" variant="h4" className="mb-1">
                 Answers submitted
               </Text>
-              <Text variant="small" className="text-slate-600">
+              <Text tone="secondary" variant="small">
                 Processing your responses...
               </Text>
             </Card>
@@ -145,11 +146,11 @@ export function ClarificationQuestionsCard({
             <div>
               <div className="flex gap-3">
                 <Icon icon={Chatting01Icon} className="size-6" />
-                <Text variant="h4" className="mb-1 text-slate-900">
+                <Text tone="primary" variant="h4" className="mb-1">
                   I need more information
                 </Text>
               </div>
-              <Text variant="body" className="text-slate-600">
+              <Text tone="secondary" variant="body">
                 {message}
               </Text>
             </div>
@@ -164,8 +165,8 @@ export function ClarificationQuestionsCard({
                     className={cn(
                       "relative rounded-lg border border-dotted p-3",
                       hasAnswer
-                        ? "border-green-500 bg-green-50/50"
-                        : "border-slate-100 bg-slate-50/50",
+                        ? "border-success bg-success-surface/50"
+                        : "border-separator bg-surface-muted/50",
                     )}
                   >
                     <div className="mb-2 flex items-start gap-2">
@@ -173,24 +174,29 @@ export function ClarificationQuestionsCard({
                         <Icon
                           icon={CheckmarkCircle02Icon}
                           size={20}
-                          className="mt-0.5 text-green-500"
+                          tone="success"
+                          className="mt-0.5"
                         />
                       ) : (
-                        <div className="mt-0 flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 font-mono">
+                        <div className="mt-0 flex h-6 w-6 items-center justify-center rounded-full border border-border-strong font-mono">
                           {index + 1}
                         </div>
                       )}
                       <div className="flex-1">
                         <Text
                           variant="h5"
-                          className="mb-2 font-semibold text-slate-900"
+                          tone="primary"
+                          weight="semibold"
+                          className="mb-2"
                         >
                           {q.question}
                         </Text>
                         {q.example && (
                           <Text
                             variant="body"
-                            className="mb-2 italic text-slate-500"
+                            tone="muted"
+                            italic
+                            className="mb-2"
                           >
                             Example: {q.example}
                           </Text>

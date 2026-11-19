@@ -45,16 +45,17 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
   }, [hasMore, isFetchingMore, onEndReached]);
 
   return (
-    <div className={className}>
+    <div data-slot="infinite-list" className={className}>
       {items.map((item, idx) => (
         <div
           key={getKey ? getKey(item, idx) : idx}
+          data-slot="infinite-list-item"
           className={itemWrapperClassName}
         >
           {renderItem(item, idx)}
         </div>
       ))}
-      <div ref={sentinelRef} />
+      <div ref={sentinelRef} data-slot="infinite-list-sentinel" />
     </div>
   );
 }

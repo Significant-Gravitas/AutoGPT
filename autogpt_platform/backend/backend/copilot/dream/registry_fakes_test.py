@@ -42,14 +42,16 @@ TOKYO = "Asia/Tokyo"
 
 # Short enough to keep deadline tests quick; long enough for a fake to answer.
 SHORT_DEADLINE = 0.05
+# Wall-clock allowance for a call bounded by SHORT_DEADLINE: far longer, as a
+# CI runner can stall a test for seconds (a lifecycle hook took 2.3 s on one,
+# #16920), and still short of the registry's default deadline, which a call
+# that ignored the short one would wait out.
+PROMPT = 0.8 * deadline.REGISTRY_CALL_TIMEOUT_SECONDS
 
 
 def job_ids(scope: MemoryScope) -> set[str]:
     """The crons the default flags give ``scope``: skill learning's is off."""
-    return {
-        f"community_rebuild_{scope.scope_key}",
-        f"dream_nightly_batch_{scope.scope_key}",
-    }
+    return {f"dream_nightly_batch_{scope.scope_key}"}
 
 
 def learning_job_id(scope: MemoryScope) -> str:
@@ -93,7 +95,6 @@ class FakeRegistryDB:
                 expert_id=expert_id,
                 timezone=user_timezone,
                 state=state,
-                community_job_id=None,
                 nightly_job_id=None,
                 learning_job_id=None,
                 last_nightly_run_at=None,
@@ -111,7 +112,6 @@ class FakeRegistryDB:
         scope_key: str,
         *,
         user_timezone: str,
-        community_job_id: str | None,
         nightly_job_id: str | None,
         learning_job_id: str | None,
     ) -> bool:
@@ -121,7 +121,6 @@ class FakeRegistryDB:
         self.update(
             scope_key,
             timezone=user_timezone,
-            community_job_id=community_job_id,
             nightly_job_id=nightly_job_id,
             learning_job_id=learning_job_id,
         )
@@ -141,7 +140,6 @@ class FakeRegistryDB:
         fields: dict[str, Any] = {"state": state}
         if state != ACTIVE:
             fields |= {
-                "community_job_id": None,
                 "nightly_job_id": None,
                 "learning_job_id": None,
             }
@@ -153,8 +151,6 @@ class FakeRegistryDB:
         if row is None:
             return False
         fields: dict[str, Any] = {}
-        if row.community_job_id == job_id:
-            fields["community_job_id"] = None
         if row.nightly_job_id == job_id:
             fields["nightly_job_id"] = None
         if row.learning_job_id == job_id:
@@ -199,9 +195,6 @@ class FakeScheduler:
         self.jobs: dict[str, str] = {}  # job id -> timezone it runs in
         self.scopes: dict[str, MemoryScope] = {}  # job id -> the scope it is for
         self.tagged: set[str] = set()  # job ids the reconcile registered
-        self.add_scope_community_rebuild_schedule = AsyncMock(
-            side_effect=self._adder("community_rebuild")
-        )
         self.add_scope_nightly_batch_schedule = AsyncMock(
             side_effect=self._adder("dream_nightly_batch")
         )
@@ -275,8 +268,7 @@ class RegistryEnv:
 
     def adds(self) -> int:
         return (
-            self.scheduler.add_scope_community_rebuild_schedule.await_count
-            + self.scheduler.add_scope_nightly_batch_schedule.await_count
+            self.scheduler.add_scope_nightly_batch_schedule.await_count
             + self.scheduler.add_scope_skill_learning_schedule.await_count
         )
 

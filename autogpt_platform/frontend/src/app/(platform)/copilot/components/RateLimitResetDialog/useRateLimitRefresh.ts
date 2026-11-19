@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useStableCallback } from "@/hooks/useStableCallback";
+import { useEffect, useInsertionEffect, useRef, useState } from "react";
 
 function boundedRefresh(retry: (throwOnError?: boolean) => Promise<unknown>) {
   let cancel = () => {};
@@ -24,7 +25,9 @@ export function useRateLimitRefresh(
   onRefreshingChange?: (refreshing: boolean) => void,
 ) {
   const latest = useRef({ retry, onRefreshingChange });
-  latest.current = { retry, onRefreshingChange };
+  useInsertionEffect(() => {
+    latest.current = { retry, onRefreshingChange };
+  });
   const requestID = useRef(0);
   const pending = useRef<ReturnType<typeof boundedRefresh> | null>(null);
   const [checkedMessage, setCheckedMessage] = useState<string | null>(null);
@@ -45,13 +48,12 @@ export function useRateLimitRefresh(
       if (requestID.current === id) setGuarded(false);
     } catch {
       if (requestID.current === id) setFailed(true);
-    } finally {
-      if (requestID.current === id) {
-        pending.current = null;
-        setChecking(false);
-        setCheckedMessage(message);
-        latest.current.onRefreshingChange?.(false);
-      }
+    }
+    if (requestID.current === id) {
+      pending.current = null;
+      setChecking(false);
+      setCheckedMessage(message);
+      latest.current.onRefreshingChange?.(false);
     }
   }
   function release() {
@@ -64,10 +66,11 @@ export function useRateLimitRefresh(
     setCheckedMessage(message);
     latest.current.onRefreshingChange?.(false);
   }
-  const refreshRef = useRef(refresh);
-  refreshRef.current = refresh;
+  const refreshForMessage = useStableCallback(() => {
+    void refresh();
+  });
   useEffect(() => {
-    if (message) void refreshRef.current();
+    if (message) refreshForMessage();
     else setCheckedMessage(null);
   }, [message]);
   useEffect(

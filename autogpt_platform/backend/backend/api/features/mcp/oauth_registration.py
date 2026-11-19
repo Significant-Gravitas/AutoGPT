@@ -1,8 +1,10 @@
+from typing import Any
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, SecretStr, model_validator
 
 from backend.blocks.mcp.oauth import MCPTokenEndpointAuthMethod
+from backend.integrations.mcp_catalog import MCPServerMetadata
 from backend.util.settings import Secrets
 
 
@@ -60,6 +62,22 @@ def select_client_auth_method(
     raise ValueError(
         "This MCP server requires an unsupported client authentication method"
     )
+
+
+def requested_scopes(
+    server: MCPServerMetadata | None,
+    protected_resource: dict[str, Any] | None,
+    metadata: dict[str, Any],
+) -> list[str]:
+    """The scopes to ask for when the caller names none: the catalog entry's
+    own, else the minimum the resource lists, else everything the authorization
+    server advertises. An entry can ask for everything advertised outright."""
+    if server and server.oauth_scopes is not None:
+        return server.oauth_scopes
+    advertised = metadata.get("scopes_supported") or []
+    if server and server.oauth_request_all_scopes and advertised:
+        return advertised
+    return (protected_resource or {}).get("scopes_supported") or advertised
 
 
 def requires_registered_client(metadata: dict[str, object]) -> bool:

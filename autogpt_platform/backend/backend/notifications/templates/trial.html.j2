@@ -13,8 +13,11 @@
 {% call ui.eyebrow(tone='confirmed' if kind in ['started', 'resumed', 'converted'] else 'needs_you' if kind == 'payment_failed' else 'neutral') %}YOUR AUTOGPT TRIAL{% endcall %}
 {% call ui.headline() %}{{ subject }}{% endcall %}
 {% call ui.para() %}{{ copy.lede() }}{% endcall %}
-{% if kind == 'converted' %}{{ ui.kvpanel([('Plan', plan.label, false)] + ([('Started', started_label, true)] if started_label else []) + [('Price', plan.price_display, true)]) }}{% else %}{{ ui.kvpanel([('Plan', plan.label, false), ('Trial ended' if kind == 'ended' else 'Trial ends', ends_label, true), ('Paid price', plan.price_display, true)]) }}{% endif %}
-{% if copy.detail() | trim %}{% call ui.para() %}{{ copy.detail() }}{% endcall %}{% endif %}
+{% if kind == 'converted' %}{{ ui.kvpanel([('Plan', plan.label, false)] + ([('Started', started_label, true)] if started_label else []) + [('Price', plan.price_display, true)]) }}{% elif kind in ['expiring', 'last_call'] %}{{ ui.kvpanel([('Plan', plan.label, false), ('Access ends', ends_label, true), ('Auto-renew', 'Off', false)]) }}{% else %}{{ ui.kvpanel([('Plan', plan.label, false), ('Trial ended' if kind == 'ended' else 'Trial ends', ends_label, true), ('Paid price', plan.price_display, true)]) }}{% endif %}
+{% if kind in ['expiring', 'last_call'] %}
+{{ ui.note_card('If you resume', copy.if_resume()) }}
+{{ ui.note_card('If you do nothing', copy.if_nothing(), top=12) }}
+{% elif copy.detail() | trim %}{% call ui.para() %}{{ copy.detail() }}{% endcall %}{% endif %}
 {% if kind == 'converted' %}
 {{ ui.cta('Open AutoGPT', urls.dashboard) }}
 {{ ui.also_panel('Three good places to start', [
@@ -24,6 +27,8 @@
 ]) }}
 {% elif kind == 'ended' %}
 {{ ui.cta('Choose a plan', urls.billing) }}
+{% elif kind in ['expiring', 'last_call'] %}
+{{ ui.cta('Resume my trial', urls.billing, micro=copy.resume_note()) }}
 {% else %}
 {{ ui.cta('Update payment method' if kind == 'payment_failed' else 'Review your plan', urls.billing) }}
 {% endif %}

@@ -138,6 +138,18 @@ class GraphitiConfig(BaseSettings):
         default=_DEFAULT_RERANKER_MODEL,
         description="Model for the cross-encoder reranker. Cheap, fast classifier prompts.",
     )
+    # A new chat's first turn waits on the slowest of those calls. OpenRouter
+    # picks a model's endpoint by price unless told otherwise; the ``nitro``
+    # variant sorts by throughput and lets OpenAI's priority tier serve the
+    # calls, keeping fallbacks, at twice the standard tier's token price.
+    reranker_openrouter_variant: str = Field(
+        default="nitro",
+        description=(
+            "OpenRouter variant appended to the reranker's model when it goes "
+            "through OpenRouter (nitro = throughput-sorted, priority tier "
+            "allowed); empty sends the model as named"
+        ),
+    )
 
     # Activity-gate threshold for community rebuilds (P-1.7).
     # ``rebuild_communities_for_user`` skips when there have been fewer
@@ -297,6 +309,19 @@ class GraphitiConfig(BaseSettings):
         if local_fallback is not None and local_fallback[1]:
             return local_fallback[1]
         return OPENROUTER_BASE_URL
+
+    def resolve_reranker_model(self) -> str:
+        """The model name the reranker sends: ``reranker_model`` with
+        ``reranker_openrouter_variant`` appended when the calls go through
+        OpenRouter and the name names no variant yet. Any other endpoint (a
+        custom ``llm_base_url``, local transport) gets the name as set."""
+        if (
+            not self.reranker_openrouter_variant
+            or ":" in self.reranker_model
+            or self.resolve_llm_base_url() != OPENROUTER_BASE_URL
+        ):
+            return self.reranker_model
+        return f"{self.reranker_model}:{self.reranker_openrouter_variant}"
 
     def resolve_embedder_api_key(self) -> str:
         if self.embedder_api_key:

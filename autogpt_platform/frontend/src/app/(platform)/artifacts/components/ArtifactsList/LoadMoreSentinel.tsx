@@ -41,7 +41,7 @@ export function LoadMoreSentinel({
     return (
       <div
         ref={sentinelRef}
-        className="divide-y divide-zinc-100 border-t border-zinc-100"
+        className="divide-y divide-separator border-t border-separator"
         data-testid="artifacts-load-more-sentinel"
       >
         {isLoading

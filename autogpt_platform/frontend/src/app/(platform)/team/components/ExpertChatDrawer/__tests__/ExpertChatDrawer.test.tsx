@@ -36,6 +36,9 @@ const SESSION_ID = "session-zara";
 const FRESH_SESSION_ID = "session-zara-fresh";
 const RETRY_SESSION_ID = "session-zara-retry";
 const ERROR_SESSION_ID = "session-zara-error";
+const SETUP_SESSION_ID = "session-zara-setup";
+const NEW_TASK_SESSION_ID = "session-zara-new-task";
+const WAIT_MS = 3_000;
 
 function deferred() {
   let resolve!: () => void;
@@ -472,16 +475,24 @@ describe("ExpertChatDrawer", () => {
     expect(createBodies).toEqual([]);
   });
 
-  test("keeps answers if creating the new chat fails", async () => {
+  test("sends setup answers to the chat whose card asked them", async () => {
     markKickoffDone(USER_ID, EXPERT_ID, markKickoffPending(USER_ID, EXPERT_ID));
     const createSession = vi.fn(() =>
-      HttpResponse.json({ detail: "Unavailable" }, { status: 503 }),
+      HttpResponse.json(getPostV2CreateSessionResponseMock200()),
     );
+    const streamBodies: string[] = [];
     server.use(
-      http.get("/api/proxy/api/experts/:expertId/onboarding", () =>
-        HttpResponse.json(onboardingCard()),
-      ),
+      ...pendingSetupHandlers(SETUP_SESSION_ID),
       http.post("/api/proxy/api/chat/sessions", createSession),
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${SETUP_SESSION_ID}/stream`,
+        async ({ request }) => {
+          streamBodies.push(await request.clone().text());
+          return streamSseResponse(assistantTextChunks("Thanks!"), {
+            abortSignal: request.signal,
+          });
+        },
+      ),
     );
     render(
       <ExpertChatDrawer
@@ -491,21 +502,23 @@ describe("ExpertChatDrawer", () => {
       />,
     );
     fireEvent.click(await screen.findByRole("radio", { name: "Pricing" }));
+    // The review, and its Send, follows the pick after a short timed beat.
     fireEvent.click(
-      await screen.findByRole("button", { name: "Send answers" }),
+      await screen.findByRole(
+        "button",
+        { name: "Send answers" },
+        { timeout: WAIT_MS },
+      ),
     );
-    await waitFor(() => expect(createSession).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(
-        (
-          screen.getByRole("button", {
-            name: "Send answers",
-          }) as HTMLButtonElement
-        ).disabled,
-      ).toBe(false),
+    await waitFor(() => expect(streamBodies.length).toBe(1), {
+      timeout: WAIT_MS,
+    });
+    expect(JSON.parse(streamBodies[0]).message).toBe(
+      "**Here are my answers:**\n\n> Which outcome should I start with?\n\nPricing\n\nPlease proceed.",
     );
+    expect(createSession).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: /Which outcome.*Pricing/ }),
+      await screen.findByText("Thanks!", {}, { timeout: WAIT_MS }),
     ).toBeDefined();
   });
 
@@ -545,13 +558,78 @@ describe("ExpertChatDrawer", () => {
     expect(request).not.toHaveBeenCalled();
   });
 
-  test("shows unanswered setup questions in a new chat", async () => {
+  test.each([
+    ["settled", () => HttpResponse.json(null)],
+    ["failed", () => HttpResponse.json({ detail: "down" }, { status: 500 })],
+  ])(
+    "a new task after setup is answered stays in a new thread (refetch %s)",
+    async (_, refetchResponse) => {
+      markKickoffDone(
+        USER_ID,
+        EXPERT_ID,
+        markKickoffPending(USER_ID, EXPERT_ID),
+      );
+      let answered = false;
+      let refetchAnswered = false;
+      server.use(
+        // Answering settles setup; the slow refetch leaves the cached chat id
+        // in place while "New task" is already showing an empty thread.
+        http.get("/api/proxy/api/experts/:expertId/onboarding", async () => {
+          if (!answered)
+            return HttpResponse.json({ session_id: NEW_TASK_SESSION_ID });
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          refetchAnswered = true;
+          return refetchResponse();
+        }),
+        ...pendingSetupHandlers(NEW_TASK_SESSION_ID),
+        http.post(
+          `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${NEW_TASK_SESSION_ID}/stream`,
+          async ({ request }) => {
+            answered = true;
+            return streamSseResponse(assistantTextChunks("Thanks!"), {
+              abortSignal: request.signal,
+            });
+          },
+        ),
+      );
+      render(
+        <ExpertChatDrawer
+          target={ZARA}
+          resumeLatest={false}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.click(await screen.findByRole("radio", { name: "Pricing" }));
+      fireEvent.click(
+        await screen.findByRole(
+          "button",
+          { name: "Send answers" },
+          { timeout: WAIT_MS },
+        ),
+      );
+      expect(
+        await screen.findByText("Thanks!", {}, { timeout: WAIT_MS }),
+      ).toBeDefined();
+      fireEvent.click(screen.getByRole("button", { name: "New task" }));
+      await waitFor(() => expect(refetchAnswered).toBe(true), {
+        timeout: WAIT_MS,
+      });
+      expect(
+        await screen.findByText(
+          "What can I do for you?",
+          {},
+          { timeout: WAIT_MS },
+        ),
+      ).toBeDefined();
+      expect(
+        screen.getByRole("link", { name: "Open in Chat" }).getAttribute("href"),
+      ).toBe(`/copilot?expertId=${EXPERT_ID}&new=1`);
+    },
+  );
+
+  test("opens the chat whose setup questions still wait", async () => {
     markKickoffDone(USER_ID, EXPERT_ID, markKickoffPending(USER_ID, EXPERT_ID));
-    server.use(
-      http.get("/api/proxy/api/experts/:expertId/onboarding", () =>
-        HttpResponse.json(onboardingCard()),
-      ),
-    );
+    server.use(...pendingSetupHandlers());
     render(
       <ExpertChatDrawer
         target={ZARA}
@@ -565,6 +643,9 @@ describe("ExpertChatDrawer", () => {
     expect(
       screen.getByRole("button", { name: "Skip questions" }),
     ).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "Open in Chat" }).getAttribute("href"),
+    ).toBe(`/copilot?sessionId=${SESSION_ID}`);
   });
 
   test("a hire's onboarding card is a live form, not a settled row", async () => {
@@ -602,3 +683,20 @@ describe("ExpertChatDrawer", () => {
     expect(screen.queryByText(/Setup questions from/)).toBeNull();
   });
 });
+
+function pendingSetupHandlers(sessionId = SESSION_ID) {
+  return [
+    http.get("/api/proxy/api/experts/:expertId/onboarding", () =>
+      HttpResponse.json({ session_id: sessionId }),
+    ),
+    getGetV2GetSessionMockHandler200({
+      id: sessionId,
+      created_at: "2026-09-27T18:00:00Z",
+      updated_at: "2026-09-27T18:01:00Z",
+      user_id: USER_ID,
+      expert_id: EXPERT_ID,
+      messages: onboardingTurn(),
+      active_stream: null,
+    }),
+  ];
+}

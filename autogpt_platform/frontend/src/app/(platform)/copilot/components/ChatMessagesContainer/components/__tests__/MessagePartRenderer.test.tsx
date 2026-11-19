@@ -17,7 +17,7 @@ vi.mock("../ReasoningCollapse", () => ({
 type ImgComponent = (
   props: React.JSX.IntrinsicElements["img"],
 ) => React.ReactNode;
-vi.mock("@/components/ai-elements/message", () => ({
+vi.mock("@/components/organisms/Message/Message", () => ({
   MessageResponse: ({
     children,
     components,

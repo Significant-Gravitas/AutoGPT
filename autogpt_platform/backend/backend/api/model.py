@@ -28,12 +28,16 @@ class WSMessage(pydantic.BaseModel):
     error: str | None = None
 
 
+# Ids are UUIDs; the bound keeps Redis channel names short.
+WS_ID_MAX_LENGTH = 128
+
+
 class WSSubscribeGraphExecutionRequest(pydantic.BaseModel):
-    graph_exec_id: str
+    graph_exec_id: str = pydantic.Field(max_length=WS_ID_MAX_LENGTH)
 
 
 class WSSubscribeGraphExecutionsRequest(pydantic.BaseModel):
-    graph_id: str
+    graph_id: str = pydantic.Field(max_length=WS_ID_MAX_LENGTH)
 
 
 GraphCreationSource = Literal["builder", "upload"]

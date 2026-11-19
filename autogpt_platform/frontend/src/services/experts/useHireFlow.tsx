@@ -31,7 +31,7 @@ function celebrate(result: HireResult) {
         href="/team"
         variant="outline"
         size="small"
-        className="border-white text-white hover:border-white hover:bg-white/15 hover:text-white"
+        className="border-surface text-action-foreground hover:border-surface hover:bg-surface/15 hover:text-action-foreground"
       >
         View team
       </Button>

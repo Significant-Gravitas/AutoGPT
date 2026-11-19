@@ -6,6 +6,8 @@ from backend.blocks._base import BlockSchema
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import get_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.util.exceptions import GraphActivationError, SharedCredentialsRefusedError
+from backend.util.url_redaction import mask_credential
 
 from . import get_webhook_manager, supports_webhooks
 
@@ -17,15 +19,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 credentials_manager = IntegrationCredentialsManager()
-
-
-class GraphActivationError(Exception):
-    """Raised when a graph cannot be activated (e.g. a required credential is
-    missing, revoked, or its OAuth token can no longer be refreshed).
-
-    Callers in the API layer should map this to HTTP 400 so the user sees a
-    clear, actionable message instead of an opaque 500.
-    """
 
 
 async def before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel":
@@ -140,7 +133,11 @@ def _apply_credential_result(
     (OAuth refresh raised, infra error) as "unusable" — failures are
     logged here so the caller doesn't have to.
     """
+    if isinstance(result, SharedCredentialsRefusedError):
+        raise GraphActivationError(str(result))
+
     refresh_error: str | None = None
+    unavailable = False
     if isinstance(result, BaseException):
         # Distinguish known credential-side failures (OAuth refresh rejected,
         # 401/403 from the provider) from infra failures (DB pool exhaustion,
@@ -165,9 +162,12 @@ def _apply_credential_result(
         )
         if is_known_credential_error:
             logger.warning(log_message)
+            # The provider's refusal describes the user's own credential.
+            refresh_error = str(result) or result.__class__.__name__
         else:
             logger.error(log_message, exc_info=result)
-        refresh_error = str(result) or result.__class__.__name__
+            # Ours, and can name a host or a pool: it stays in the log.
+            unavailable = True
         resolved = None
     else:
         resolved = result
@@ -209,6 +209,10 @@ def _apply_credential_result(
             "It may have been revoked or its access expired — please "
             "reconnect this integration and try again."
         )
+    if unavailable:
+        raise GraphActivationError(
+            f"{credential_ref} could not be loaded just now. Please try again."
+        )
     raise GraphActivationError(
         f"{credential_ref} no longer exists. Please pick a different "
         "credential and try again."
@@ -222,7 +226,8 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
     ⚠️ Assuming node entities are not re-used between graph versions, ⚠️
     this hook calls `on_node_deactivate` on all nodes in `graph`.
     """
-    get_credentials = credentials_manager.cached_getter(user_id)
+    # A webhook registered earlier on a platform key must still deregister.
+    get_credentials = credentials_manager.cached_getter(user_id, allow_sdk_default=True)
     updated_nodes = []
     for node in graph.nodes:
         block_input_schema = cast(BlockSchema, node.block.input_schema)
@@ -285,7 +290,7 @@ async def on_node_deactivate(
 
     if webhook_id := node.webhook_id:
         logger.warning(
-            f"Node #{node.id} still attached to webhook #{webhook_id} - "
+            f"Node #{node.id} still attached to webhook #{mask_credential(webhook_id)} - "
             "did migration by `migrate_legacy_triggered_graphs` fail? "
             "Triggered nodes are deprecated since Significant-Gravitas/AutoGPT#10418."
         )
@@ -298,7 +303,7 @@ async def on_node_deactivate(
         # Prune and deregister the webhook if it is no longer used anywhere
         logger.debug(
             f"Pruning{' and deregistering' if credentials else ''} "
-            f"webhook #{webhook_id}"
+            f"webhook #{mask_credential(webhook_id)}"
         )
         await webhooks_manager.prune_webhook_if_dangling(
             user_id, webhook_id, credentials
@@ -308,7 +313,7 @@ async def on_node_deactivate(
             and not credentials
         ):
             logger.warning(
-                f"Cannot deregister webhook #{webhook_id}: credentials "
+                f"Cannot deregister webhook #{mask_credential(webhook_id)}: credentials "
                 f"#{webhook.credentials_id} not available "
                 f"({webhook.provider.value} webhook ID: {webhook.provider_webhook_id})"
             )

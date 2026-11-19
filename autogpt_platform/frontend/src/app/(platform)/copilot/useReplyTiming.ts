@@ -1,5 +1,5 @@
 import { useMountEffect } from "@/hooks/useMountEffect";
-import { useEffect, useRef } from "react";
+import { useEffect, useInsertionEffect, useRef, type RefObject } from "react";
 import {
   abandonReply,
   advanceReply,
@@ -27,30 +27,14 @@ interface Args extends ReplyView {
 export function useReplyTiming({ streamClient, sendMessage, ...view }: Args) {
   const trackingRef = useRef<ReplyTracking | null>(null);
   const viewRef = useRef(view);
-  viewRef.current = view;
-
-  function update(step: (tracking: ReplyTracking) => ReplyStep) {
-    const tracking = trackingRef.current;
-    if (!tracking) return;
-    try {
-      const { tracking: next, record, recheckInMs } = step(tracking);
-      trackingRef.current = next;
-      // Reported off the render path, so a reply never waits on Sentry.
-      if (record) setTimeout(() => recordReplySpan(record), 0);
-      if (recheckInMs) setTimeout(checkReply, recheckInMs);
-    } catch {
-      trackingRef.current = null;
-    }
-  }
-
-  function checkReply() {
-    update((tracking) =>
-      advanceReply(tracking, viewRef.current, performance.now()),
-    );
-  }
+  useInsertionEffect(() => {
+    viewRef.current = view;
+  });
 
   function begin(timing: ReplyTimingStart) {
-    update((tracking) => abandonReply(tracking, performance.now()));
+    updateReply(trackingRef, viewRef, (tracking) =>
+      abandonReply(tracking, performance.now()),
+    );
     try {
       trackingRef.current = beginReplyTracking(
         timing,
@@ -65,26 +49,24 @@ export function useReplyTiming({ streamClient, sendMessage, ...view }: Args) {
   // A send that returns without a turn ever showing was suppressed; one
   // whose turn was over before any render saw it running ends here too.
   function markReturned(timing: ReplyTimingStart) {
-    update((tracking) => ({
+    updateReply(trackingRef, viewRef, (tracking) => ({
       tracking:
         tracking.start === timing
           ? { ...tracking, hasReturned: true }
           : tracking,
       record: null,
     }));
-    setTimeout(checkReply, 0);
+    setTimeout(() => checkReply(trackingRef, viewRef), 0);
   }
 
-  async function sendTimedMessage(input: SendInput, timing?: ReplyTimingStart) {
+  function sendTimedMessage(input: SendInput, timing?: ReplyTimingStart) {
     if (timing) begin(timing);
-    try {
-      await sendMessage(input);
-    } finally {
+    return dispatchAndSettle(sendMessage, input, () => {
       if (timing) markReturned(timing);
-    }
+    });
   }
 
-  useEffect(checkReply);
+  useEffect(() => checkReply(trackingRef, viewRef));
   // A chat switch unmounts the host and gives up its reply. Strict Mode's
   // development remount comes at once, so it cancels the give-up: a new
   // chat's first send is dispatched from this host's mount effect.
@@ -93,10 +75,52 @@ export function useReplyTiming({ streamClient, sendMessage, ...view }: Args) {
     if (unmountTimerRef.current) clearTimeout(unmountTimerRef.current);
     return () => {
       unmountTimerRef.current = setTimeout(() => {
-        update((tracking) => abandonReply(tracking, performance.now()));
+        updateReply(trackingRef, viewRef, (tracking) =>
+          abandonReply(tracking, performance.now()),
+        );
       }, 0);
     };
   });
 
   return { sendMessage: sendTimedMessage };
+}
+
+function updateReply(
+  trackingRef: RefObject<ReplyTracking | null>,
+  viewRef: RefObject<ReplyView>,
+  step: (tracking: ReplyTracking) => ReplyStep,
+) {
+  const tracking = trackingRef.current;
+  if (!tracking) return;
+  try {
+    const { tracking: next, record, recheckInMs } = step(tracking);
+    trackingRef.current = next;
+    if (record) setTimeout(() => recordReplySpan(record), 0);
+    if (recheckInMs) {
+      setTimeout(() => checkReply(trackingRef, viewRef), recheckInMs);
+    }
+  } catch {
+    trackingRef.current = null;
+  }
+}
+
+function checkReply(
+  trackingRef: RefObject<ReplyTracking | null>,
+  viewRef: RefObject<ReplyView>,
+) {
+  updateReply(trackingRef, viewRef, (tracking) =>
+    advanceReply(tracking, viewRef.current, performance.now()),
+  );
+}
+
+async function dispatchAndSettle(
+  sendMessage: Args["sendMessage"],
+  input: SendInput,
+  settled: () => void,
+) {
+  try {
+    await sendMessage(input);
+  } finally {
+    settled();
+  }
 }

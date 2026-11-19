@@ -9,6 +9,7 @@ import type { ChainActionEntry } from "./chainActions";
 const STUCK_AFTER_CONNECT_MS = 5000;
 
 interface Args {
+  /** The chain's registrations, keyed by the card copy that made each. */
   entries: ReadonlyMap<string, ChainActionEntry>;
 }
 
@@ -23,10 +24,11 @@ export function useCredentialFailureCounters({ entries }: Args) {
     function reportCardsStuckAfterConnecting() {
       const timers = stuckTimers.current;
       const reported = stuckReported.current;
+      const liveIds = new Set([...entries.values()].map((entry) => entry.id));
       // An unregistered card left the chain; its pending timer would count a
       // user who is no longer looking at it.
       timers.forEach((timer, id) => {
-        if (entries.has(id)) return;
+        if (liveIds.has(id)) return;
         clearTimeout(timer);
         timers.delete(id);
       });

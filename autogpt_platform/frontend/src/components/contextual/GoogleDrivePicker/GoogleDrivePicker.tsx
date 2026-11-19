@@ -23,7 +23,7 @@ export function GoogleDrivePicker(props: Props) {
   } = useGoogleDrivePicker(props);
 
   if (!credentials || credentials.isLoading) {
-    return <Icon icon={Loading03Icon} className="size-6 animate-spin" />;
+    return <Icon icon={Loading03Icon} spin className="size-6" />;
   }
 
   if (!hasGoogleOAuth) {

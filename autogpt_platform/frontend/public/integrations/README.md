@@ -8,6 +8,7 @@ The generic `database.png` and `generic_webhook.png` icons are rendered from `Da
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `allquiet.png`    | [All Quiet favicon](https://dtwty4t4iqzp9.cloudfront.net/img/favicon-v4/favicon-96x96.png), linked from [allquiet.app](https://allquiet.app)                                     |
 | `ayrshare.png`    | [Ayrshare favicon](https://www.ayrshare.com/favicon-196x196.png)                                                                                                                 |
+| `cloudflare.png`  | [Cloudflare developer docs favicon](https://developers.cloudflare.com/favicon.png), linked from [developers.cloudflare.com](https://developers.cloudflare.com)                   |
 | `compass.png`     | [Fieldy app icon](https://www.fieldy.ai/apple-touch-icon.png); the former Compass Wearable domain redirects to Fieldy                                                            |
 | `conductor.png`   | [Conductor site icon](https://www.conductor.build/icon.png), linked from [conductor.build](https://www.conductor.build); resized to 256x256                                              |
 | `dataforb2b.png`  | [DataForB2B favicon](https://dataforb2b.ai/asset/favicon-192x192.png)                                                                                                            |

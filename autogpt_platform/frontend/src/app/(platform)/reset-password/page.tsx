@@ -4,14 +4,14 @@ import { Input } from "@/components/atoms/Input/Input";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 import { ExpiredLinkMessage } from "@/components/auth/ExpiredLinkMessage";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
-import LoadingBox from "@/components/__legacy__/ui/loading";
+import { FormField } from "@/components/molecules/Form/Form";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { changePasswordFormSchema, sendEmailFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, FormProvider } from "react-hook-form";
 import { z } from "zod";
 import { changePassword, sendResetEmail } from "./actions";
 
@@ -111,9 +111,9 @@ function ResetPasswordContent() {
       }
       setDisabled(true);
       toast({
-        title: "Email Sent",
+        title: "Check your email",
         description:
-          "Password reset email sent if user exists. Please check your email.",
+          "If an account exists for this address, we've sent a reset link.",
         variant: "default",
       });
     },
@@ -174,7 +174,7 @@ function ResetPasswordContent() {
             onSubmit={changePasswordForm.handleSubmit(onChangePassword)}
             className="flex w-full flex-col gap-1"
           >
-            <Form {...changePasswordForm}>
+            <FormProvider {...changePasswordForm}>
               <FormField
                 control={changePasswordForm.control}
                 name="password"
@@ -217,14 +217,14 @@ function ResetPasswordContent() {
               >
                 {isLoading ? "Updating password..." : "Update password"}
               </Button>
-            </Form>
+            </FormProvider>
           </form>
         ) : (
           <form
             onSubmit={sendEmailForm.handleSubmit(onSendEmail)}
             className="flex w-full flex-col gap-1"
           >
-            <Form {...sendEmailForm}>
+            <FormProvider {...sendEmailForm}>
               <FormField
                 control={sendEmailForm.control}
                 name="email"
@@ -249,7 +249,7 @@ function ResetPasswordContent() {
               >
                 Send reset email
               </Button>
-            </Form>
+            </FormProvider>
           </form>
         )}
       </AuthCard>
@@ -260,7 +260,17 @@ function ResetPasswordContent() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<LoadingBox className="h-[80vh]" />}>
+    <Suspense
+      fallback={
+        <div className="flex h-[80vh] items-center justify-center">
+          <LoadingSpinner
+            variant="circle"
+            className="size-16"
+            aria-hidden="true"
+          />
+        </div>
+      }
+    >
       <ResetPasswordContent />
     </Suspense>
   );

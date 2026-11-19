@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import type { HomeExpert } from "@/app/api/__generated__/models/homeExpert";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
@@ -16,13 +16,17 @@ interface Args {
 
 // Home's review dialog over this chat's queue, so the box and the dialog share one set of answers.
 export function useChatReview({ queue, reviews, expert }: Args) {
-  const seen = useRef(new Map<string, PendingHumanReviewModel>());
+  // Every card this chat has shown, so an answered one keeps its row.
+  const [seen, setSeen] = useState<
+    ReadonlyMap<string, PendingHumanReviewModel>
+  >(() => new Map());
+  const known = rememberReviews(seen, reviews);
+  if (known !== seen) setSeen(known);
   const answeredHere = useRef(0);
-  for (const review of reviews) seen.current.set(review.node_exec_id, review);
 
   const waiting = new Set(reviews.map((review) => review.node_exec_id));
   const receipts = new Map(queue.answered.map((r) => [r.item.reviewId, r]));
-  const rows: AttentionListRow[] = [...seen.current.values()]
+  const rows: AttentionListRow[] = [...known.values()]
     .filter((r) => waiting.has(r.node_exec_id) || receipts.has(r.node_exec_id))
     .map((review) => ({
       item: toAttentionItem(review, expert),
@@ -62,6 +66,17 @@ export function useChatReview({ queue, reviews, expert }: Args) {
   }
 
   return { held, carousel: { ...carousel, close }, open };
+}
+
+function rememberReviews(
+  seen: ReadonlyMap<string, PendingHumanReviewModel>,
+  reviews: PendingHumanReviewModel[],
+) {
+  if (reviews.every((review) => seen.get(review.node_exec_id) === review))
+    return seen;
+  const next = new Map(seen);
+  for (const review of reviews) next.set(review.node_exec_id, review);
+  return next;
 }
 
 function toAttentionItem(

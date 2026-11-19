@@ -4,10 +4,12 @@ import contextlib
 import importlib.util
 import re
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
+from backend.copilot import integration_creds
 from backend.copilot.integration_creds import ProviderTokenUnavailable
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.swap_credentials import (
@@ -17,7 +19,9 @@ from backend.copilot.swap_credentials import (
     get_swap_bindings,
     resolve_swap_credential,
 )
+from backend.data.model import APIKeyCredentials
 from backend.util import e2b_network
+from backend.util.exceptions import ExpertNotFoundError
 
 _M = "backend.copilot.swap_credentials"
 _GITHUB_HOSTS = [
@@ -56,7 +60,9 @@ def _token(tokens, granted=("cred-a",)):
     """*tokens*: credential id to token (a string is every id's token), and
     the ids granted to sandbox sb-1."""
 
-    async def token(user_id, name, credential_id=None, strict=False, lock=False):
+    async def token(
+        user_id, name, credential_id=None, *, allowed_ids, strict=False, lock=False
+    ):
         assert lock, "the swap service refreshes under the manager's lock"
         assert strict, "a failed lookup must reach the proxy as an outage"
         if isinstance(tokens, dict):
@@ -89,7 +95,12 @@ async def test_a_bound_host_gets_the_credential_granted_to_the_box(host):
         allowed_hosts=_GITHUB_HOSTS,
     )
     lookup.assert_awaited_once_with(
-        "user-1", "github", credential_id="cred-a", strict=True, lock=True
+        "user-1",
+        "github",
+        credential_id="cred-a",
+        allowed_ids=None,
+        strict=True,
+        lock=True,
     )
 
 
@@ -150,7 +161,9 @@ async def test_one_failing_account_does_not_take_down_the_boxs_others():
     """A revoked account left granted to the box is never swapped in, so it
     has no value to scrub: the box's healthy account still resolves."""
 
-    async def token(user_id, name, credential_id=None, strict=False, lock=False):
+    async def token(
+        user_id, name, credential_id=None, *, allowed_ids, strict=False, lock=False
+    ):
         if credential_id == "cred-a":
             raise ProviderTokenUnavailable("github")
         return "ghp_b"
@@ -200,8 +213,81 @@ async def test_only_what_was_granted_to_the_box_resolves():
     assert credential.values == {"cred-b": "ghp_b"}
     # Only the granted credential is looked up, not every stored one.
     lookup.assert_awaited_once_with(
-        "user-1", "github", credential_id="cred-b", strict=True, lock=True
+        "user-1",
+        "github",
+        credential_id="cred-b",
+        allowed_ids=None,
+        strict=True,
+        lock=True,
     )
+
+
+@pytest.fixture
+def stored_a_and_b():
+    """The real lookup over user-1's GitHub accounts A and B on box sb-1."""
+    stored = [
+        APIKeyCredentials(
+            id=f"cred-{x}", provider="github", api_key=SecretStr(f"ghp_{x}"), title=x
+        )
+        for x in "ab"
+    ]
+    manager = MagicMock()
+    manager.store.get_creds_by_provider = AsyncMock(return_value=stored)
+    experts = MagicMock()
+    experts.expert_allowed_credential_ids = AsyncMock(return_value=["cred-a"])
+    caches = (
+        integration_creds._token_cache,
+        integration_creds._null_cache,
+        integration_creds._credential_id_cache,
+    )
+    for cache in caches:
+        cache.clear()
+    with (
+        patch(f"{_M}.granted_to_box", AsyncMock(return_value={"cred-a", "cred-b"})),
+        patch.object(integration_creds, "_manager", manager),
+        patch.object(integration_creds, "_ensure_cache_invalidation_listener"),
+        patch.object(integration_creds, "experts_db", return_value=experts),
+    ):
+        yield experts
+    for cache in caches:
+        cache.clear()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "owner, values, reads",
+    [
+        ("expert:e-1", {"cred-a": "ghp_a"}, 1),
+        ("session:s-1", {"cred-a": "ghp_a", "cred-b": "ghp_b"}, 0),
+    ],
+    ids=["expert box", "chat box"],
+)
+async def test_an_experts_box_resolves_only_what_the_expert_is_granted(
+    live_box, stored_a_and_b, owner, values, reads
+):
+    """An expert's box resolves only what its expert is granted; a chat's box,
+    everything granted to the box."""
+    live_box["owner"] = owner
+    credential = await resolve_swap_credential("user-1", "github", "github.com", _BOX)
+    assert credential is not None
+    assert credential.values == values
+    assert stored_a_and_b.expert_allowed_credential_ids.await_count == reads
+    if reads:
+        stored_a_and_b.expert_allowed_credential_ids.assert_awaited_with(
+            "user-1", "e-1"
+        )
+
+
+@pytest.mark.asyncio
+async def test_an_expert_whose_grants_cannot_be_read_is_an_outage(
+    live_box, stored_a_and_b
+):
+    live_box["owner"] = "expert:e-1"
+    stored_a_and_b.expert_allowed_credential_ids.side_effect = ExpertNotFoundError(
+        "e-1"
+    )
+    with pytest.raises(ExpertNotFoundError):
+        await resolve_swap_credential("user-1", "github", "github.com", _BOX)
 
 
 @pytest.mark.asyncio

@@ -25,7 +25,10 @@ from openai.types.chat.chat_completion_message import (
     ChatCompletionMessage,
 )
 
+from backend.copilot import credit_billing
+from backend.copilot.credit_billing import CreditBilledTurn
 from backend.copilot.model import ChatSession
+from backend.copilot.turn_pause import TurnPause
 
 from .models import ErrorResponse, WebSearchResponse, WebSearchResult
 from .web_search import (
@@ -34,6 +37,18 @@ from .web_search import (
     _extract_cost_usd,
     _extract_results,
 )
+
+_SPENT_TODAY = TurnPause(
+    reason="daily", resets_at=None, checkpoint_saved=False, started=False
+)
+
+
+@pytest.fixture(autouse=True)
+def spend_refusal(monkeypatch) -> AsyncMock:
+    """The user has allowance left unless a test says otherwise."""
+    refusal = AsyncMock(return_value=None)
+    monkeypatch.setattr("backend.copilot.tools.web_search.tool_spend_refusal", refusal)
+    return refusal
 
 
 def _usage(
@@ -536,6 +551,77 @@ class TestWebSearchToolDispatch:
         assert isinstance(result, ErrorResponse)
         assert result.error == "missing_query"
         openai_stub.chat.completions.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_spent_allowance_never_reaches_the_provider(
+        self, monkeypatch, spend_refusal
+    ):
+        spend_refusal.return_value = "You've reached your daily usage limit."
+        monkeypatch.setattr(
+            "backend.copilot.tools.web_search._chat_config",
+            type(
+                "C",
+                (),
+                {
+                    "api_key": "sk-test",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
+            )(),
+        )
+        with patch("backend.copilot.tools.web_search.AsyncOpenAI") as client:
+            result = await WebSearchTool()._execute(
+                user_id="u1", session=self._session(), query="anything", deep=True
+            )
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "usage_limit"
+        assert "daily usage limit" in result.message
+        client.assert_not_called()
+        spend_refusal.assert_awaited_once_with("u1")
+
+    @pytest.mark.asyncio
+    async def test_a_credit_billed_turn_searches_with_the_allowance_spent(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.copilot.tools.web_search.tool_spend_refusal",
+            credit_billing.tool_spend_refusal,
+        )
+        allowance = AsyncMock(return_value="You've reached your daily usage limit.")
+        monkeypatch.setattr(
+            "backend.copilot.credit_billing.platform_spend_refusal", allowance
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.web_search._chat_config",
+            type(
+                "C",
+                (),
+                {
+                    "api_key": "sk-test",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
+            )(),
+        )
+        mock_client = self._mock_client(_fake_response(citations=[], answer="ok"))
+        turn = CreditBilledTurn(
+            user_id="u1", session_id="sess-1", cap_credits=50, refusal=_SPENT_TODAY
+        )
+        with (
+            patch(
+                "backend.copilot.tools.web_search.AsyncOpenAI",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.tools.web_search.persist_and_record_usage",
+                new=AsyncMock(return_value=1),
+            ),
+        ):
+            async with credit_billing.credit_billing(turn):
+                result = await WebSearchTool()._execute(
+                    user_id="u1", session=self._session(), query="anything"
+                )
+        assert isinstance(result, WebSearchResponse)
+        mock_client.chat.completions.create.assert_awaited_once()
+        allowance.assert_not_awaited()
 
 
 class TestToolRegistryIntegration:

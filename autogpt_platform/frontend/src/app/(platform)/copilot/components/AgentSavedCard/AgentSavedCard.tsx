@@ -29,7 +29,7 @@ export function AgentSavedCard({
   const hideNavButtons = chatSurface === "builder";
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+    <div className="rounded-xl border border-border-base/60 bg-surface p-4 shadow-sm">
       <div className="flex items-baseline gap-2">
         <Image
           src={sparklesImg}
@@ -38,9 +38,8 @@ export function AgentSavedCard({
           height={24}
           className="relative top-1"
         />
-        <Text variant="body-medium" className="mb-2 text-[16px] text-black">
-          Workflow <span className="text-violet-600">{agentName}</span>{" "}
-          {message}
+        <Text variant="large-medium" className="mb-2 leading-inherit">
+          Workflow <span className="text-brand">{agentName}</span> {message}
         </Text>
       </div>
       {!hideNavButtons && (

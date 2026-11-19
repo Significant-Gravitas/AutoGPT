@@ -16,7 +16,7 @@ interface Props {
 }
 
 const baseRowClasses =
-  "group relative flex w-full items-center gap-3 rounded-lg pl-3 pr-2 py-2 text-left text-sm outline-none transition-colors duration-200 ease-out focus-visible:outline-none";
+  "group relative flex w-full items-center gap-3 rounded-lg pl-3 pr-2 py-2 text-left text-body outline-none transition-colors duration-200 ease-out focus-visible:outline-none";
 
 function RowBody({
   icon,
@@ -32,8 +32,8 @@ function RowBody({
   pending?: boolean;
 }) {
   const barClasses = destructive
-    ? "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-red-500 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
-    : "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-neutral-900 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100";
+    ? "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-error opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100"
+    : "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100";
 
   return (
     <>
@@ -49,7 +49,8 @@ function RowBody({
       ) : external ? (
         <Icon
           icon={LinkSquare01Icon}
-          className="relative z-10 shrink-0 text-neutral-700"
+          tone="body"
+          className="relative z-10 shrink-0"
           size={16}
           aria-hidden="true"
         />
@@ -91,8 +92,8 @@ export function AccountMenuRow({
   external = false,
 }: Props) {
   const colorClasses = destructive
-    ? "text-neutral-700 hover:bg-red-50 hover:text-red-600 focus-visible:bg-red-50 focus-visible:text-red-600"
-    : "text-neutral-700 hover:bg-neutral-100 focus-visible:bg-neutral-100";
+    ? "text-foreground-body hover:bg-error-surface hover:text-error-foreground focus-visible:bg-error-surface focus-visible:text-error-foreground"
+    : "text-foreground-body hover:bg-surface-hover focus-visible:bg-surface-hover";
   const rowClasses = cn(baseRowClasses, "font-normal", colorClasses);
 
   if (as === "link" && href) {

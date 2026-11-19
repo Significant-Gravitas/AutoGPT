@@ -3,6 +3,7 @@ import {
   ChatUnavailableError,
   isUnexpectedRefusal,
   MessageTooLongError,
+  UnconfirmedSendError,
 } from "./stream/turnRuntime";
 
 export type ChatErrorAction = "sign-in" | "new-chat" | "plans";
@@ -65,6 +66,12 @@ export function describeChatError(error: Error): ChatErrorGuidance {
     return {
       title:
         "The server had a problem. Please try sending your message again in a moment.",
+      action: null,
+    };
+  if (error instanceof UnconfirmedSendError)
+    return {
+      title:
+        "We couldn't confirm your message was sent. Check your connection and send it again.",
       action: null,
     };
   if (error.name === "TypeError")

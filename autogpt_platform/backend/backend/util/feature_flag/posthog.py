@@ -1,7 +1,7 @@
 """PostHog-backed feature flag evaluation.
 
 Takes plain data rather than importing ``backend.util.feature_flag``: that
-module dispatches to this one, so a back-import would be a cycle.
+module calls this one, so a back-import would be a cycle.
 """
 
 import asyncio
@@ -75,13 +75,13 @@ async def evaluate_flag(
     """``(value, evaluated)`` for one raw flag read.
 
     ``evaluated`` is False whenever *default* is standing in for an answer
-    PostHog could not give. Unlike LaunchDarkly this needs no inference: the
-    SDK returns no result exactly when the flag was not resolved, and a
-    disabled one when it conclusively matched no release condition.
+    PostHog could not give. The SDK returns no result exactly when the flag
+    was not resolved, and a disabled one when it conclusively matched no
+    release condition.
 
-    A flag carrying a payload resolves to that payload, mirroring how the
-    JSON-valued LaunchDarkly flags return their variation value. Only an
-    *exposure* read sends the billed ``$feature_flag_called`` event.
+    A flag carrying a payload resolves to that payload, which is how the
+    JSON-valued flags carry their value. Only an *exposure* read sends the
+    billed ``$feature_flag_called`` event.
     """
     client = get_flag_client()
     if client is None:
@@ -164,6 +164,40 @@ def defined_flag_keys() -> frozenset[str] | None:
     return frozenset(flag["key"] for flag in client.feature_flags)
 
 
+async def evaluate_variant(
+    flag_key: str,
+    distinct_id: str,
+    person_properties: dict[str, Any] | None = None,
+) -> str | None:
+    """The multivariate arm *distinct_id* falls in, or None when not enrolled.
+
+    Evaluated from the local definitions only and without an exposure event, so
+    the read sends PostHog nothing about the user; with no definitions loaded
+    (no ``POSTHOG_SECRET_KEY``) nobody is enrolled.
+    """
+    client = get_flag_client()
+    # With no definitions loaded the SDK would fetch them before evaluating.
+    if client is None or not client.feature_flags:
+        return None
+    try:
+        result = await asyncio.get_running_loop().run_in_executor(
+            _read_executor,
+            functools.partial(
+                client.get_feature_flag_result,
+                flag_key,
+                distinct_id,
+                person_properties=person_properties or None,
+                only_evaluate_locally=True,
+                # The browser reports the exposure, consent-gated (`useExperiment.ts`).
+                send_feature_flag_events=False,
+            ),
+        )
+    except Exception as e:
+        logger.warning(f"PostHog variant read failed for {flag_key}: {e}")
+        return None
+    return result.variant if result is not None and result.enabled else None
+
+
 def initialize_posthog_flags() -> None:
     """Build the flag client and load its definitions before any read needs them."""
     global _shut_down
@@ -194,8 +228,8 @@ def shutdown_posthog_flags() -> None:
         # Clear the "did we try" gate even when no client was built, or an
         # unconfigured first attempt latches it shut for the life of the process.
         _init_attempted = False
-        # A shadow read runs in a worker thread that outlives the cancelled
-        # task, so refuse to rebuild here: that client's poller would have no closer.
+        # A read still in flight during teardown would otherwise rebuild the
+        # client, and that client's poller would have no closer.
         _shut_down = True
     if client is None:
         return

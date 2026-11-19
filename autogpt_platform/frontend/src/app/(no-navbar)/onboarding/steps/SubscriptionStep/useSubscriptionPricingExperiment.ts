@@ -1,5 +1,6 @@
 "use client";
 
+import { Experiment } from "@/app/api/__generated__/models/experiment";
 import { useExperiment } from "@/services/experiments/useExperiment";
 import { useEffect } from "react";
 import { useOnboardingWizardStore } from "../../store";
@@ -7,12 +8,11 @@ import {
   getReportedPricingVariant,
   getSubscriptionPricingExperimentConfig,
   getSubscriptionPricingExperimentPlans,
-  SUBSCRIPTION_PRICING_EXPERIMENT_FLAG,
 } from "./helpers";
 
 export function useSubscriptionPricingExperiment() {
   const { variant, isResolved } = useExperiment(
-    SUBSCRIPTION_PRICING_EXPERIMENT_FLAG,
+    Experiment.SUBSCRIPTION_PRICING,
   );
   const applyPricingExperimentBilling = useOnboardingWizardStore(
     (s) => s.applyPricingExperimentBilling,

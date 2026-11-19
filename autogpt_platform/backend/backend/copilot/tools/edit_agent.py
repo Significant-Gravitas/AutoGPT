@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.blocks import get_block, get_webhook_block_ids
 from backend.copilot.model import ChatSession
 from backend.data.model import is_credentials_field_name
@@ -12,10 +14,12 @@ from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_sav
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
     AGENT_JSON_SCHEMA,
+    reads_workspace_file,
     resolve_agent_json_or_error,
 )
 from .base import BaseTool
 from .expert_scope import require_installed_workflow
+from .external_scope import external_allows, external_tenancy
 from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase
 
@@ -28,6 +32,18 @@ class EditAgentTool(BaseTool):
     @property
     def name(self) -> str:
         return "edit_agent"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY]
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # Reading the graph from a workspace file is a read of the caller's files.
+        needed = [APIKeyPermission.READ_FILES] if reads_workspace_file(args) else []
+        # Sub-agents to embed are read from the caller's library.
+        if args.get("library_agent_ids"):
+            needed.append(APIKeyPermission.READ_LIBRARY)
+        return needed
 
     @property
     def description(self) -> str:
@@ -181,6 +197,7 @@ class EditAgentTool(BaseTool):
 
         # Fetch library agents for AgentExecutorBlock validation
         library_agents = await fetch_library_agents(user_id, library_agent_ids)
+        organization_id, team_id = external_tenancy(session)
 
         return await fix_validate_and_save(
             agent_json,
@@ -190,6 +207,12 @@ class EditAgentTool(BaseTool):
             is_update=True,
             default_name="Updated Workflow",
             library_agents=library_agents,
+            organization_id=organization_id,
+            team_id=team_id,
+            # A webhook preset runs the version it is pinned to with its stored
+            # credentials, so moving it onto this one is a start.
+            move_webhook_presets=external_allows(session, APIKeyPermission.RUN_AGENT),
+            external_caller=session.external_caller,
         )
 
 

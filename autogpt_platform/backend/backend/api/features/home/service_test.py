@@ -7,10 +7,11 @@ from pytest_mock import MockerFixture
 
 from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
 from backend.copilot.scheduled_chats.service import PausedScheduledChat
+from backend.data.activity_event import ActivityEvent
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.execution_cost_summary import UserExecutionCostSummary
 
-from .service import _get_pending_questions, build_home_dashboard
+from .service import _get_pending_questions, _get_work_events, build_home_dashboard
 
 
 def _execution() -> GraphExecutionMeta:
@@ -316,8 +317,32 @@ async def test_scheduler_and_credit_failures_degrade_instead_of_failing_the_page
     dashboard = await build_home_dashboard(user_id="user-1")
 
     assert dashboard.upcoming_tasks == []
+    assert dashboard.schedules_unavailable is True
     assert dashboard.week.credits_balance is None
     assert dashboard.briefing.outcomes[0].title == "Booked the flight."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "refused, unavailable", [(None, False), (ConnectionError, True)]
+)
+async def test_upcoming_runs_are_unknown_only_when_the_scheduler_did_not_answer(
+    mocker: MockerFixture,
+    home_dependencies,
+    refused: type[Exception] | None,
+    unavailable: bool,
+) -> None:
+    scheduler = MagicMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[], side_effect=refused)
+    mocker.patch(
+        "backend.api.features.home.service.get_scheduler_client", return_value=scheduler
+    )
+
+    dashboard = await build_home_dashboard(user_id="user-1")
+
+    # An answered empty list is "nothing scheduled"; no answer is "unknown".
+    assert dashboard.upcoming_tasks == []
+    assert dashboard.schedules_unavailable is unavailable
 
 
 @pytest.mark.asyncio
@@ -458,3 +483,61 @@ class TestPooledOrgBalanceGate:
 
         assert dashboard.week.credits_balance == 100
         get_credit_model.assert_awaited_once_with("user-1", "personal-org")
+
+
+def _file_event(event_id: str, name: str, file_id: str) -> ActivityEvent:
+    return ActivityEvent(
+        id=event_id,
+        user_id="user-1",
+        created_at=datetime(2026, 10, 23, 11, 0, tzinfo=timezone.utc),
+        category="FILE",
+        event_type="file.created",
+        title=name,
+        object_id=file_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_recent_work_drops_files_marked_as_ottos_own(mocker: MockerFixture):
+    """FILE rows logged before working-file writes stopped being logged: the
+    migration marks the file, and the row is dropped through its file id."""
+    sticker = _file_event("e1", "sticker-01.png", "file-sticker")
+    scratchpad = _file_event("e2", "build_state.json", "file-state")
+    mocker.patch(
+        "backend.api.features.home.service.activity_db.list_activity_events",
+        AsyncMock(return_value=[sticker, scratchpad]),
+    )
+    internal = mocker.patch(
+        "backend.api.features.home.service.workspace_db.list_internal_file_ids",
+        AsyncMock(return_value={"file-state"}),
+    )
+
+    events = await _get_work_events(
+        user_id="user-1", since=datetime(2026, 10, 16, tzinfo=timezone.utc)
+    )
+
+    assert [event.title for event in events] == ["sticker-01.png"]
+    internal.assert_awaited_once_with("user-1", ["file-sticker", "file-state"])
+
+
+@pytest.mark.asyncio
+async def test_recent_work_keeps_actions_when_the_file_check_fails(
+    mocker: MockerFixture,
+):
+    action = _file_event("e1", "Airtable Create Table", "block-1").model_copy(
+        update={"category": "INTEGRATION", "event_type": "integration.action"}
+    )
+    mocker.patch(
+        "backend.api.features.home.service.activity_db.list_activity_events",
+        AsyncMock(return_value=[action, _file_event("e2", "sticker-01.png", "f1")]),
+    )
+    mocker.patch(
+        "backend.api.features.home.service.workspace_db.list_internal_file_ids",
+        AsyncMock(side_effect=RuntimeError("database unavailable")),
+    )
+
+    events = await _get_work_events(
+        user_id="user-1", since=datetime(2026, 10, 16, tzinfo=timezone.utc)
+    )
+
+    assert [event.title for event in events] == ["Airtable Create Table"]

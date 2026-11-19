@@ -171,6 +171,7 @@ class TestRunAgentToolSessionDryRun:
         mock_graph.name = "Test Agent"
         mock_graph.description = "A test agent"
         mock_graph.input_schema = {"properties": {}, "required": []}
+        mock_graph.regular_credentials_inputs = {}
         mock_graph.trigger_setup_info = None
         mock_graph.has_external_trigger = False
 
@@ -197,6 +198,10 @@ class TestRunAgentToolSessionDryRun:
             patch(
                 "backend.copilot.tools.run_agent.get_or_create_library_agent",
                 return_value=mock_library_agent,
+            ),
+            patch(
+                "backend.copilot.tools.run_agent._safe_link_to_chat_share",
+                new_callable=AsyncMock,
             ),
             patch(
                 "backend.copilot.tools.run_agent.orgs_db",

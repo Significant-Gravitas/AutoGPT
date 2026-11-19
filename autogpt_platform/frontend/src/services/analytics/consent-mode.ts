@@ -98,6 +98,6 @@ export function followConsentForGoogleTag(): () => void {
 function queueGtagCommand(..._command: unknown[]) {
   const scope = window as unknown as Record<string, unknown[] | undefined>;
   const dataLayer = (scope[DATA_LAYER_NAME] ??= []);
-  // eslint-disable-next-line prefer-rest-params
+  // eslint-disable-next-line prefer-rest-params -- gtag.js only runs real `arguments` objects
   dataLayer.push(arguments);
 }

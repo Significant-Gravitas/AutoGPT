@@ -1,7 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import _isEmpty from "lodash/isEmpty";
-import { twMerge } from "tailwind-merge";
 
+import { twMerge } from "@/lib/tw-merge";
 import {
   BlockIOObjectSubSchema,
   BlockIORootSchema,
