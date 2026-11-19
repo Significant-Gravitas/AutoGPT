@@ -74,16 +74,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.13
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Set up Python dependency cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-py3.12-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+          key: poetry-${{ runner.os }}-py3.13-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
 
       - name: Install Poetry
         run: |
@@ -142,16 +142,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.13
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Set up Python dependency cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-py3.12-libs-${{ hashFiles('autogpt_platform/autogpt_libs/poetry.lock') }}
+          key: poetry-${{ runner.os }}-py3.13-libs-${{ hashFiles('autogpt_platform/autogpt_libs/poetry.lock') }}
 
       - name: Install Poetry
         run: |
@@ -191,7 +191,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.13", "3.14", "3.15"]
     runs-on: ubuntu-latest
 
     steps:
@@ -246,7 +246,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.13", "3.14", "3.15"]
         test-shard: [data, copilot, copilot-sdk, util-executor, remainder]
     runs-on: ubuntu-latest
 

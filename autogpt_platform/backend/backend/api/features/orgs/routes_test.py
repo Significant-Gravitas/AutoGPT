@@ -873,7 +873,7 @@ class TestOrgRoutes:
         # Should not raise
         _verify_org_path(ctx, "org-A")
 
-    def test_get_org_mismatched_ctx_returns_403(self):
+    async def test_get_org_mismatched_ctx_returns_403(self):
         """GET /orgs/{org_id} also checks ctx.org_id matches via inline check."""
         from backend.api.features.orgs.routes import get_org
 
@@ -881,12 +881,7 @@ class TestOrgRoutes:
 
         # The route handler directly checks ctx.org_id != org_id
         with pytest.raises(fastapi.HTTPException) as exc_info:
-            # Call the async handler synchronously using run
-            import asyncio
-
-            asyncio.get_event_loop().run_until_complete(
-                get_org(org_id="org-Y", ctx=wrong_ctx)
-            )
+            await get_org(org_id="org-Y", ctx=wrong_ctx)
 
         assert exc_info.value.status_code == 403
 
@@ -1189,52 +1184,40 @@ class TestWorkspaceRoutes:
     FastAPI Security dependency overrides.
     """
 
-    def test_list_teams_wrong_org_returns_403(self):
+    async def test_list_teams_wrong_org_returns_403(self):
         """list_teams raises 403 when ctx.org_id != path org_id."""
         from backend.api.features.orgs.team_routes import list_teams
 
         ctx = _member_ctx(org_id="org-X")
 
         with pytest.raises(fastapi.HTTPException) as exc_info:
-            import asyncio
-
-            asyncio.get_event_loop().run_until_complete(
-                list_teams(org_id="org-Y", ctx=ctx)
-            )
+            await list_teams(org_id="org-Y", ctx=ctx)
 
         assert exc_info.value.status_code == 403
 
-    def test_list_team_members_requires_org_membership(self, mocker):
+    async def test_list_team_members_requires_org_membership(self, mocker):
         """list_members raises 403 when ctx.org_id != path org_id."""
         from backend.api.features.orgs.team_routes import list_members
 
         ctx = _member_ctx(org_id="org-mine")
 
         with pytest.raises(fastapi.HTTPException) as exc_info:
-            import asyncio
-
-            asyncio.get_event_loop().run_until_complete(
-                list_members(org_id="org-different", ws_id=WS_ID, ctx=ctx)
-            )
+            await list_members(org_id="org-different", ws_id=WS_ID, ctx=ctx)
 
         assert exc_info.value.status_code == 403
 
-    def test_get_team_wrong_org_returns_403(self):
+    async def test_get_team_wrong_org_returns_403(self):
         """get_team raises 403 when ctx.org_id != path org_id."""
         from backend.api.features.orgs.team_routes import get_team
 
         ctx = _member_ctx(org_id="org-A")
 
         with pytest.raises(fastapi.HTTPException) as exc_info:
-            import asyncio
-
-            asyncio.get_event_loop().run_until_complete(
-                get_team(org_id="org-B", ws_id=WS_ID, ctx=ctx)
-            )
+            await get_team(org_id="org-B", ws_id=WS_ID, ctx=ctx)
 
         assert exc_info.value.status_code == 403
 
-    def test_delete_team_wrong_org_returns_403(self):
+    async def test_delete_team_wrong_org_returns_403(self):
         """delete_team must reject when the caller's active org differs from
         the path org. Regression: the route previously lacked this guard, so
         an owner/admin of org A could delete a workspace in org B — the
@@ -1244,11 +1227,7 @@ class TestWorkspaceRoutes:
         ctx = _member_ctx(org_id="org-A")
 
         with pytest.raises(fastapi.HTTPException) as exc_info:
-            import asyncio
-
-            asyncio.get_event_loop().run_until_complete(
-                delete_team(org_id="org-B", ws_id=WS_ID, ctx=ctx)
-            )
+            await delete_team(org_id="org-B", ws_id=WS_ID, ctx=ctx)
 
         assert exc_info.value.status_code == 403
 

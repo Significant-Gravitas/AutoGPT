@@ -67,7 +67,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
@@ -81,7 +81,7 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: autogpt_platform/backend/.venv
-          key: native-server-python-${{ runner.os }}-3.12-${{ hashFiles('autogpt_platform/backend/poetry.lock', 'autogpt_platform/backend/pyproject.toml', 'autogpt_platform/autogpt_libs/pyproject.toml') }}
+          key: native-server-python-${{ runner.os }}-3.13-${{ hashFiles('autogpt_platform/backend/poetry.lock', 'autogpt_platform/backend/pyproject.toml', 'autogpt_platform/autogpt_libs/pyproject.toml') }}
 
       - name: Find pnpm store
         id: pnpm-store

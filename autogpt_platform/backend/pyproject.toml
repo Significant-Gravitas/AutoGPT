@@ -8,8 +8,7 @@ packages = [{ include = "backend", format = "sdist" }]
 
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.14"
-async-timeout = {version = "^5.0.1", python = "<3.11"}
+python = ">=3.13,<3.16"
 aio-pika = "^9.5.5"
 aiohttp = "^3.10.0"
 aiodns = ">=3.5,<5.0"
@@ -52,7 +51,9 @@ mem0ai = "1.0.8"
 # then: https://github.com/Zulko/moviepy/pull/2562, SECRT-3057.
 moviepy = { git = "https://github.com/Zulko/moviepy.git", rev = "4cf7f84ed1f840e4f0c3ed92b8cdec12a87b56ec" }
 ollama = "^0.6.1"
-openai = "^1.97.1"
+# 2.7.2+ is needed on Python 3.14, which refuses the attribute 1.x set on unions.
+# 3.x replaces httpx with HTTPX2 (a separate migration).
+openai = "^2.54.0"
 orjson = "^3.10.0"
 pika = "^1.3.2"
 pinecone = "^7.3.0"
@@ -88,7 +89,7 @@ tweepy = "^4.16.0"
 typesafe-sdk = "0.6.0"
 uvicorn = { extras = ["standard"], version = ">=0.40,<0.54" }
 websockets = "^15.0"
-youtube-transcript-api = "^1.2.1"
+youtube-transcript-api = "^1.2.5"  # 1.2.5 is the first to allow Python 3.15
 yt-dlp = "2026.8.19"
 zerobouncesdk = "^1.1.2"
 # NOTE: please insert new dependencies in their alphabetical location
@@ -98,7 +99,7 @@ tiktoken = ">=0.12,<0.15"
 aioclamd = "^1.0.0"
 setuptools = "^80.9.0"
 gcloud-aio-storage = "^9.5.0"
-pandas = "^2.3.1"
+pandas = "^3.0.6"  # 3.0.6 is the first with Python 3.15 wheels
 firecrawl-py = "^4.3.6"
 exa-py = ">=1.14.20,<3.0.0"
 croniter = "^6.0.0"
@@ -109,7 +110,7 @@ fpdf2 = "^2.8.6"
 openpyxl = "^3.1.5"
 pymssql = "^2.3.2"
 pymysql = "^1.1.1"
-pyarrow = "^23.0.0"
+pyarrow = "^26.0.0"  # 26 is the first with Python 3.15 wheels
 sqlparse = ">=0.5.5,<0.7.0"
 pillow = ">=13.0.0,<14"
 pypdfium2 = "^5.8.0"
@@ -216,11 +217,10 @@ filterwarnings = [
 ]
 
 [tool.ruff]
-# The floor the code needs, not what CI or the image run: ExceptionGroup and
-# TaskGroup are 3.11 builtins and py310 flagged them as undefined names. Kept
-# at the minimum so ruff still reports 3.12+ syntax, which would break the
-# 3.11 leg of the CI matrix.
-target-version = "py311"
+# The oldest Python the backend supports (the `python` range above), so ruff
+# still reports syntax newer than that, which would break the 3.13 leg of the
+# CI matrix.
+target-version = "py313"
 extend-exclude = ["test/fixtures"]
 # `poetry run format` runs `ruff check --fix .`, which would otherwise rewrite
 # the vendored fixture it walks into.
