@@ -36,6 +36,7 @@ interface Args {
   recordingID: string;
   onStage(stage: FinishStage, teamNames: string[]): void;
   wait?(ms: number): Promise<void>;
+  now?(): number;
 }
 
 /**
@@ -51,6 +52,7 @@ export async function finishOnboarding({
   recordingID,
   onStage,
   wait = sleep,
+  now = Date.now,
 }: Args): Promise<FinishResult> {
   onStage("saving", []);
   await api.submitProfile({ user_name: userName, user_role: role, pain_points: [] });
@@ -64,7 +66,7 @@ export async function finishOnboarding({
   if (await api.isPaywalled()) return { kind: "planNeeded" };
 
   onStage("team", []);
-  const names = await waitForTeam(api, wait, (team) => onStage("team", team));
+  const names = await waitForTeam(api, wait, now, (team) => onStage("team", team));
   let notHired: string[];
   try {
     const hire = await api.hirePlan();
@@ -84,10 +86,13 @@ export async function finishOnboarding({
 async function waitForTeam(
   api: OnboardingAPI,
   wait: (ms: number) => Promise<void>,
+  now: () => number,
   onTeam: (names: string[]) => void,
 ) {
   let names: string[] = [];
-  // Counted through `wait`, not the clock, so tests need no timers.
+  const startedAt = now();
+  // The sleeps are counted, so tests need no timers, and the clock is read
+  // too, so slow answers count against the same budget.
   for (let waited = 0; ; waited += PLAN_POLL_MS) {
     let plan: OnboardingPlan;
     try {
@@ -99,6 +104,7 @@ async function waitForTeam(
     names = plan.team.map((expert) => expert.name);
     onTeam(names);
     if (plan.ready || waited >= PLAN_WAIT_MS) return names;
+    if (now() - startedAt + PLAN_POLL_MS > PLAN_WAIT_MS) return names;
     await wait(PLAN_POLL_MS);
   }
 }

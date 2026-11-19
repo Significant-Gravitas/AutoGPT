@@ -123,6 +123,21 @@ describe("finishOnboarding", () => {
     expect(calls).toContain("hire");
   });
 
+  it("counts slow answers against the same wait", async () => {
+    let clock = 0;
+    let asked = 0;
+    const { api, calls } = fakeAPI({
+      getPlan: async () => {
+        asked += 1;
+        clock += 4_000;
+        return { ready: false, team: [{ name: "Maria" }] };
+      },
+    });
+    await finishOnboarding({ ...base, api, work: typed, now: () => clock });
+    expect(asked).toBe(3);
+    expect(calls).toContain("hire");
+  });
+
   it("fails, to be tried again, when an answer can't be saved", async () => {
     const { api, calls } = fakeAPI({
       finalizeDump: async () => {
