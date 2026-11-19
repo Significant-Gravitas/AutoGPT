@@ -29,7 +29,7 @@ from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
     get_graph_execution_meta,
-    get_node_executions,
+    get_node_ids_by_node_exec_id,
 )
 from backend.data.graph import get_graph_settings
 from backend.data.human_review import (
@@ -327,10 +327,7 @@ async def _resolve_node_ids(
     if graph_exec_id is None:
         return {neid: parse_node_id_from_exec_id(neid) for neid in node_exec_ids}
 
-    node_execs = await get_node_executions(
-        graph_exec_id=graph_exec_id, include_exec_data=False
-    )
-    by_exec_id = {ne.node_exec_id: ne.node_id for ne in node_execs}
+    by_exec_id = await get_node_ids_by_node_exec_id(graph_exec_id, node_exec_ids)
     for missing in [neid for neid in node_exec_ids if neid not in by_exec_id]:
         logger.error(f"Failed to resolve node_id for {missing}: execution not found.")
     return {neid: by_exec_id[neid] for neid in node_exec_ids if neid in by_exec_id}
