@@ -153,8 +153,8 @@ describe("Reviewing a finished task's result", () => {
     });
     await userEvent.type(field, "Only B2B partners{Enter}");
 
-    const details = screen.getByRole("region", { name: "Details" });
-    expect(await within(details).findByText("Working")).toBeDefined();
+    const status = screen.getByRole("region", { name: "Status" });
+    expect(await within(status).findByText("Working")).toBeDefined();
     expect(reviews).toEqual([
       { decision: "request_changes", note: "Only B2B partners" },
     ]);

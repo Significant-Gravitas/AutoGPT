@@ -228,3 +228,16 @@ async def test_an_unknown_outcome_is_refused(store, session):
 
     assert isinstance(result, ErrorResponse)
     store.finish_task.assert_not_awaited()
+
+
+async def test_a_thin_task_finished_not_done_is_sent_to_ask_instead(store, session):
+    """QA pass 3, P2: missing details are a question, not a failure."""
+    store.finish_task.return_value = TaskFinish(task_id="task-1", needs_question=True)
+
+    result = await FinishTaskTool()._execute(
+        _USER, session, summary="No instructions given.", outcome="blocked"
+    )
+
+    assert isinstance(result, ErrorResponse)
+    assert "ask_question" in result.message
+    assert not turn_end.is_ending(session.session_id)

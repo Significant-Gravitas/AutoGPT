@@ -51,6 +51,11 @@ def setup_app_auth(mock_jwt_user, test_user_id):
 def admitted(mocker: MockerFixture):
     mocker.patch(f"{_ROUTES}.enforce_payment_paywall", new_callable=AsyncMock)
     mocker.patch(f"{_ROUTES}.enforce_platform_allowance", new_callable=AsyncMock)
+    # A start with no instructions first tries the scheduled-start path; left
+    # real it reaches for the database over RPC and waits on it.
+    mocker.patch(
+        f"{_ROUTES}.start_scheduled_now", new_callable=AsyncMock, return_value=None
+    )
 
 
 def _task(**overrides) -> Task:

@@ -13,20 +13,15 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/lib/utils/time";
 import { Calendar03Icon } from "@hugeicons/core-free-icons";
-import {
-  InfoGroup,
-  InfoMeta,
-} from "../EmptySession/components/ExpertInfoPanel/components/InfoParts";
+import { InfoMeta } from "../EmptySession/components/ExpertInfoPanel/components/InfoParts";
 import { BriefWords } from "../EmptySession/components/HomeToday/BriefWords";
 import { metaOf } from "../EmptySession/components/HomeToday/helpers";
 import { useHomeToday } from "../EmptySession/components/HomeToday/useHomeToday";
 import { useWeekStats } from "../EmptySession/components/HomeToday/useWeekStats";
-import { span } from "../EmptySession/components/HomeToday/weekStats";
 import { BlockNote, BlockRow } from "./blocks";
 import {
   Block,
   FAILED,
-  Figure,
   Jump,
   NEEDS,
   NEXT,
@@ -38,6 +33,7 @@ import { BriefTaskBlocks } from "./BriefTaskBlocks";
 import { storedBriefTasks } from "./briefTasks";
 import { StartingToday } from "./StartingToday";
 import { SuggestedNext } from "./SuggestedNext/SuggestedNext";
+import { WeekFigures } from "./WeekFigures";
 
 /** The day's brief beside Home. Otto's own opening leads when the morning
  *  job wrote one, followed by where the tasks stand in words; then the next
@@ -192,16 +188,7 @@ export function BriefTab() {
         ))}
       </Block>
 
-      <InfoGroup label="This week">
-        <BlockNote>
-          <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5">
-            <Figure term="Tasks finished" value={String(stats.doneWeek)} />
-            <Figure term="Work handed off" value={span(stats.workSeconds)} />
-            <Figure term="A task takes about" value={span(stats.avgSeconds)} />
-            <Figure term="Chats" value={String(stats.chatsWeek)} />
-          </dl>
-        </BlockNote>
-      </InfoGroup>
+      <WeekFigures stats={stats} />
     </div>
   );
 }

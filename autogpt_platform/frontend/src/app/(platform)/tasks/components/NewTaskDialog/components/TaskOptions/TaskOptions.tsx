@@ -23,11 +23,7 @@ export function TaskOptions({ state }: Props) {
       className="flex flex-col gap-2 border-t border-border-base px-1 pt-2"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <StartPicker
-          key={options.repeat ? "repeating" : "once"}
-          value={options.startAt}
-          onChange={state.setStart}
-        />
+        <StartPicker value={options.start} onChange={state.setStart} />
         <RepeatPicker value={options.repeat} onChange={state.setRepeat} />
       </div>
       {refusal && refusal.field !== "form" ? (

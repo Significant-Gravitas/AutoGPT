@@ -1,12 +1,14 @@
 import { useState } from "react";
 import {
   fieldOfRefusal,
+  hasOptions,
   NO_OPTIONS,
   refusalText,
   type OptionsField,
   type TaskOptions,
 } from "./taskOptions";
 import type { RepeatChoice } from "./repeat";
+import type { StartChoice } from "./startChoice";
 
 interface Refusal {
   field: OptionsField;
@@ -15,9 +17,9 @@ interface Refusal {
 
 /** The create dialog's options row: folded away until asked for. A start
  *  time and a rhythm replace each other. */
-export function useTaskOptions() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [options, setOptions] = useState<TaskOptions>(NO_OPTIONS);
+export function useTaskOptions(initial: TaskOptions = NO_OPTIONS) {
+  const [isOpen, setIsOpen] = useState(() => hasOptions(initial));
+  const [options, setOptions] = useState<TaskOptions>(initial);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
 
   function change(next: Partial<TaskOptions>) {
@@ -29,10 +31,10 @@ export function useTaskOptions() {
     isOpen,
     toggle: () => setIsOpen((open) => !open),
     options,
-    setStart: (startAt: Date | null) =>
-      change(startAt ? { startAt, repeat: null } : { startAt }),
+    setStart: (start: StartChoice | null) =>
+      change(start ? { start, repeat: null } : { start }),
     setRepeat: (repeat: RepeatChoice | null) =>
-      change(repeat ? { repeat, startAt: null } : { repeat }),
+      change(repeat ? { repeat, start: null } : { repeat }),
     setDoneWhen: (doneWhen: string) => change({ doneWhen }),
     setGoal: (goal: string) => change({ goal }),
     /** The server's sentence, shown under the part it is about. */

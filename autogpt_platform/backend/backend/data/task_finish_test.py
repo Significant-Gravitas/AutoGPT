@@ -67,6 +67,8 @@ async def test_a_not_done_finish_keeps_the_reason_on_the_task(
     mocker.patch.object(
         task_result, "_is_background_chat", AsyncMock(return_value=True)
     )
+    # The worker tried (it ran tools), so not-done is a real outcome.
+    mocker.patch.object(task_result, "_tool_work_done", AsyncMock(return_value=True))
 
     finish = await task_result.finish_task(
         "run-chat", _USER, _REASON, None, outcome="blocked"
@@ -150,3 +152,46 @@ async def test_a_page_run_that_finished_not_done_settles_failed(
 
     assert status == TaskStatus.FAILED
     assert tasks.update.await_args.kwargs["data"]["status"] == TaskStatus.FAILED
+
+
+async def test_a_title_only_task_finished_not_done_without_trying_is_a_question(
+    tasks: MagicMock, mocker: MockerFixture
+):
+    """QA pass 3, P2: nothing says what to do and nothing was tried, so the
+    worker is sent to ask instead; nothing is saved."""
+    thin = Task.from_db(_row(description=None, goal=None, doneWhen=None))
+    mocker.patch.object(task_result, "work_tasks", AsyncMock(return_value=[thin]))
+    mocker.patch.object(task_result, "_tool_work_done", AsyncMock(return_value=False))
+
+    finish = await task_result.finish_task(
+        "run-chat", _USER, "No instructions, so I did nothing.", None, "blocked"
+    )
+
+    assert finish is not None and finish.needs_question
+    tasks.update.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "fields, tried",
+    [
+        ({"description": "Ask about the March invoices."}, False),
+        ({"goal": "Get the invoices paid"}, False),
+        ({}, True),
+    ],
+)
+async def test_a_task_with_a_brief_or_tool_work_can_finish_not_done(
+    tasks: MagicMock, mocker: MockerFixture, fields, tried
+):
+    working = Task.from_db(_row(**({"description": None} | fields)))
+    mocker.patch.object(task_result, "work_tasks", AsyncMock(return_value=[working]))
+    mocker.patch.object(task_result, "_tool_work_done", AsyncMock(return_value=tried))
+    mocker.patch.object(
+        task_result, "_is_background_chat", AsyncMock(return_value=True)
+    )
+
+    finish = await task_result.finish_task(
+        "run-chat", _USER, _REASON, None, outcome="failed"
+    )
+
+    assert finish is not None and not finish.needs_question
+    assert tasks.update.await_args.kwargs["data"]["failureReason"] == _REASON

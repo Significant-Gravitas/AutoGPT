@@ -18,6 +18,7 @@ import {
 } from "../EmptySession/components/ExpertInfoPanel/components/InfoParts";
 import { BlockNote, BlockRow } from "./blocks";
 import { fileTypeLabel } from "./OverviewTab/helpers";
+import { ResultActions } from "./ResultActions";
 import { ReviewActions } from "./TaskReview/ReviewActions";
 import { documentOf, hostOf, sourceOf } from "./taskBlocks";
 
@@ -47,7 +48,12 @@ export function ResultBlock({
   if (task.repeat || (!outcome && !document)) return null;
 
   return (
-    <InfoGroup label={resultLabel(task)}>
+    <InfoGroup
+      label={resultLabel(task)}
+      action={
+        <ResultActions task={task} text={outcome || null} document={document} />
+      }
+    >
       {outcome ? (
         <BlockNote>
           <Text variant="inbox" tone="text" className="text-pretty">

@@ -19886,7 +19886,7 @@
       "get": {
         "tags": ["v2", "tasks", "tasks"],
         "summary": "List My Tasks",
-        "description": "A page of the caller's tasks, most recently updated first; page on\nwith ``offset`` = ``next_offset`` while ``has_more``.",
+        "description": "A page of the caller's tasks in ``sort`` order; page on with\n``offset`` = ``next_offset`` while ``has_more``.",
         "operationId": "list_tasks",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -19949,10 +19949,10 @@
                 { "type": "string", "maxLength": 200 },
                 { "type": "null" }
               ],
-              "description": "Words in the title",
+              "description": "Words in the title, description, goal, done-when or result",
               "title": "Q"
             },
-            "description": "Words in the title"
+            "description": "Words in the title, description, goal, done-when or result"
           },
           {
             "name": "session_id",
@@ -20011,6 +20011,19 @@
               "title": "Scheduled"
             },
             "description": "Only the tasks waiting for a start time, soonest first"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["updated", "created", "title"],
+              "type": "string",
+              "description": "updated (newest first, the default), created (newest first) or title (A to Z)",
+              "default": "updated",
+              "title": "Sort"
+            },
+            "description": "updated (newest first, the default), created (newest first) or title (A to Z)"
           }
         ],
         "responses": {
@@ -20735,6 +20748,51 @@
               "title": "Session Id"
             },
             "description": "A chat the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/unarchive": {
+      "post": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Unarchive My Task",
+        "description": "Bring an archived task back into view, as it was left. Only its\nvisibility comes back: a rhythm or watch taken off when it was archived\nstays off, and a run stopped then stays stopped.",
+        "operationId": "unarchive_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
           }
         ],
         "responses": {
@@ -41087,6 +41145,7 @@
             "description": "Run the task again and again on this rhythm; its first run is the next fire time. Not with start_at."
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": ["title"],
         "title": "TaskCreateRequest"
@@ -41324,6 +41383,7 @@
             "description": "IANA time zone the crons are read in; omit for the user's."
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": ["crons"],
         "title": "TaskRepeatRequest",
@@ -41496,6 +41556,7 @@
             "description": "A future time for a TODO task to start by itself; null removes the start time. A time without an offset is UTC."
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "TaskUpdateRequest",
         "description": "Fields left out, or sent as null, stay as they are; ``start_at`` sent\nas null removes the start time."

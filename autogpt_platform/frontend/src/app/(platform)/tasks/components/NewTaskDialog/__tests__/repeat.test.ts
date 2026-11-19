@@ -32,12 +32,10 @@ describe("Repeat rhythms", () => {
   it("builds no cron from a time that does not read", () => {
     expect(cronOf(choice({ time: "25:00" }))).toBeNull();
     expect(
-      optionsRequest({
-        startAt: null,
-        repeat: choice({ time: "" }),
-        doneWhen: "",
-        goal: "",
-      }),
+      optionsRequest(
+        { start: null, repeat: choice({ time: "" }), doneWhen: "", goal: "" },
+        Date.now(),
+      ),
     ).toEqual({});
   });
 

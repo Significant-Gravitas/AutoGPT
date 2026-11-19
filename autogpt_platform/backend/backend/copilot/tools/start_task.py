@@ -270,7 +270,9 @@ def worker_prompt_text(
         "name, scope or format is yours to choose. The user is not watching "
         "this chat, so ask with ask_question only when a wrong guess could "
         "not be undone (money, sending, deleting) or you have no workable "
-        "default at all.\n\n"
+        "default at all. A brief that does not say what to do (only a title) "
+        "has none: ask the user one concrete question with ask_question "
+        "(reason goal_ambiguous, no default_guess) before anything else.\n\n"
         "The user follows this task on its page and only skims it, so keep "
         "what you write there short. Three tools write to it, each called as "
         'run_capability(id="tool:<name>", input={...}):\n'
@@ -287,9 +289,10 @@ def worker_prompt_text(
         "summary is two or three short plain sentences, under "
         f"{SUMMARY_HINT_CHARS} characters: what was done and the one thing "
         "the user should know, with any assumption that matters. If you "
-        'delivered none or only part of what was asked, set "outcome": '
+        'tried and delivered none or only part of it, set "outcome": '
         '"blocked" (something stops you) or "failed", and say why in one '
-        "sentence; never report as done what was not.\n\n"
+        "sentence; never report as done what was not. That is not for "
+        "missing details: those are a question.\n\n"
         "Anything longer than that summary (a report, a comparison, drafts, "
         "a plan) is a document: save it with write_workspace_file under a "
         "name that says what it is ('cursor-pricing-brief.md') and pass that "

@@ -27,6 +27,7 @@ from backend.copilot.turn_queue import InflightCapExceeded
 from backend.data.task import (
     LIST_LIMIT_MAX,
     SETTLED_STATUSES,
+    TASK_GONE,
     Task,
     TaskPatch,
     archive_task,
@@ -34,9 +35,15 @@ from backend.data.task import (
     create_task,
     detach_task_session,
     get_task,
+    unarchive_task,
     update_task,
 )
-from backend.data.task_list import SEARCH_MAX_CHARS, TaskFilter, list_task_page
+from backend.data.task_list import (
+    SEARCH_MAX_CHARS,
+    TaskFilter,
+    TaskSort,
+    list_task_page,
+)
 from backend.data.task_record import (
     ActivityInput,
     TaskRecord,
@@ -53,7 +60,13 @@ from backend.data.task_schedule import (
 )
 from backend.util.exceptions import NotFoundError
 
-from .changes import WORKED_STATUSES, check_change, stops_work, user_change_lines
+from .changes import (
+    WORKED_STATUSES,
+    check_change,
+    require_title,
+    stops_work,
+    user_change_lines,
+)
 from .creation import plan_new_start, schedule_new_task
 from .model import (
     TaskCancelRequest,
@@ -80,6 +93,7 @@ UserId = Annotated[str, Security(get_user_id)]
 async def create_my_task(user_id: UserId, body: TaskCreateRequest) -> Task:
     """Create a task. With ``start_at`` it starts by itself then; with
     ``repeat`` it runs again and again from its next fire time."""
+    require_title(body.title)
     start = await plan_new_start(user_id, body)
     task = await create_task(
         user_id=user_id,
@@ -110,7 +124,10 @@ async def list_my_tasks(
     ] = False,
     q: Annotated[
         str | None,
-        Query(max_length=SEARCH_MAX_CHARS, description="Words in the title"),
+        Query(
+            max_length=SEARCH_MAX_CHARS,
+            description="Words in the title, description, goal, done-when or " "result",
+        ),
     ] = None,
     session_id: Annotated[
         str | None, Query(description="Only the tasks linked to this chat")
@@ -124,9 +141,16 @@ async def list_my_tasks(
         bool,
         Query(description="Only the tasks waiting for a start time, soonest first"),
     ] = False,
+    sort: Annotated[
+        TaskSort,
+        Query(
+            description="updated (newest first, the default), created (newest "
+            "first) or title (A to Z)"
+        ),
+    ] = "updated",
 ) -> TaskListResponse:
-    """A page of the caller's tasks, most recently updated first; page on
-    with ``offset`` = ``next_offset`` while ``has_more``."""
+    """A page of the caller's tasks in ``sort`` order; page on with
+    ``offset`` = ``next_offset`` while ``has_more``."""
     page = await list_task_page(
         user_id,
         TaskFilter(
@@ -137,6 +161,7 @@ async def list_my_tasks(
             include_subtasks=include_subtasks,
             scheduled=scheduled,
             search=q,
+            sort=sort,
         ),
         limit,
         offset,
@@ -150,7 +175,7 @@ async def list_my_tasks(
 async def get_my_task(user_id: UserId, task_id: Annotated[str, _TASK_ID]) -> Task:
     task = await get_task(task_id, user_id)
     if task is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     return task
 
 
@@ -161,7 +186,7 @@ async def get_my_task_record(
     """The task with its subtasks, activity, asks, artifacts and evidence."""
     record = await get_task_record(task_id, user_id)
     if record is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     return record
 
 
@@ -175,7 +200,9 @@ async def update_my_task(
     that has not started, moves its start or, sent as null, removes it."""
     before = await get_task(task_id, user_id)
     if before is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
+    if body.title is not None:
+        require_title(body.title)
     check_change(before, body)
     retime = "start_at" in body.model_fields_set
     start_at = requested_start(before, body) if retime else None
@@ -216,13 +243,27 @@ async def archive_my_task(user_id: UserId, task_id: Annotated[str, _TASK_ID]) ->
     keeps working on a task the user can no longer see."""
     before = await get_task(task_id, user_id)
     if before is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     if before.status in WORKED_STATUSES:
         await cancel_task_run(user_id, task_id)
     if not await archive_task(task_id, user_id):
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     # An archived task no longer repeats or watches.
     await clear_task_repeat(task_id, user_id)
+
+
+@router.post("/{task_id}/unarchive", operation_id="unarchive_task")
+async def unarchive_my_task(user_id: UserId, task_id: Annotated[str, _TASK_ID]) -> Task:
+    """Bring an archived task back into view, as it was left. Only its
+    visibility comes back: a rhythm or watch taken off when it was archived
+    stays off, and a run stopped then stays stopped."""
+    if not await unarchive_task(task_id, user_id):
+        raise NotFoundError(TASK_GONE)
+    task = await get_task(task_id, user_id)
+    if task is None:
+        raise NotFoundError(TASK_GONE)
+    await _user_line(task_id, user_id, "You brought it back from the archive")
+    return task
 
 
 @router.post(

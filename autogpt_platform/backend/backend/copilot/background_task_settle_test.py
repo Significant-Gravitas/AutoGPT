@@ -117,3 +117,19 @@ def test_a_task_the_worker_finished_not_done_is_not_handed_over_as_done():
     assert "is done" not in message and "already sees this result" not in message
     assert followup_label(_task("completed"), failed) == "did not finish"
     assert followup_label(_task("completed"), _outcome()) == "completed"
+
+
+def test_a_worker_waiting_on_the_user_hands_its_question_to_the_chat():
+    """QA pass 3, P2: the chat that asked shows the worker's question and
+    says where to answer, instead of a bare 'completed'."""
+    waiting = _outcome(
+        status=TaskStatus.NEEDS_INPUT,
+        result=None,
+        waiting_on="Which supplier, and what should I ask them about the invoices?",
+    )
+
+    message = continuation_message(_task("completed"), waiting)
+
+    assert "Which supplier" in message
+    assert "is waiting on the user" in message
+    assert followup_label(_task("completed"), waiting) == "needs your answer"

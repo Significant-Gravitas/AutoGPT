@@ -2,42 +2,61 @@
 
 import { DateTimeInput } from "@/components/atoms/DateTimeInput/DateTimeInput";
 import { useNowMinute } from "@/hooks/useNowMinute";
-import { useState } from "react";
-import {
-  formatStartTime,
-  fromLocalInputValue,
-  QUICK_STARTS,
-  toLocalInputValue,
-} from "../../../../schedule";
+import { fromLocalInputValue, toLocalInputValue } from "../../../../schedule";
 import { ChoiceMenu } from "../../../ChoiceMenu/ChoiceMenu";
+import {
+  defaultStartOn,
+  DIALOG_QUICK_STARTS,
+  quickLabel,
+  startChipLabel,
+  type StartChoice,
+} from "../../startChoice";
 
 const NOW = "now";
 const PICK = "pick";
-/** "In 5 min" is the sidebar's; the dialog offers the hour and tomorrow. */
-const STARTS = QUICK_STARTS.filter((start) => start.label !== "In 5 min");
-const CHOICES = [
-  { value: NOW, label: "Now" },
-  ...STARTS.map((start) => ({ value: start.label, label: start.label })),
-  { value: PICK, label: "Pick a date and time" },
-];
 
 interface Props {
-  value: Date | null;
-  onChange: (startAt: Date | null) => void;
+  value: StartChoice | null;
+  onChange: (start: StartChoice | null) => void;
 }
 
-/** When the task starts: now (the default), a quick pick, or a date and
- *  time. */
+function startOfToday(now: number) {
+  const day = new Date(now);
+  day.setHours(0, 0, 0, 0);
+  return day;
+}
+
+/** When the task starts: now (the default), a quick pick shown with the
+ *  time it means (worked out again when the task is sent), or a date and
+ *  time from today on. */
 export function StartPicker({ value, onChange }: Props) {
-  const [choice, setChoice] = useState(NOW);
-  const now = useNowMinute(value !== null);
-  const picked = value && choice !== NOW ? choice : NOW;
+  const now = useNowMinute();
+  const choices = [
+    { value: NOW, label: "Now" },
+    ...DIALOG_QUICK_STARTS.map((start) => ({
+      value: start.label,
+      label: quickLabel(start.label, now),
+    })),
+    { value: PICK, label: "Pick a date and time" },
+  ];
+  const picked = value?.kind === "quick" ? value.label : value ? PICK : NOW;
 
   function pick(next: string) {
-    setChoice(next);
-    const quick = STARTS.find((start) => start.label === next);
-    if (quick) onChange(quick.at(Date.now()));
-    else if (next === NOW) onChange(null);
+    if (next === NOW) return onChange(null);
+    if (next === PICK) {
+      if (value?.kind !== "at") onChange({ kind: "picking" });
+      return;
+    }
+    onChange({ kind: "quick", label: next });
+  }
+
+  // A day picked for the first time comes at midnight: start it at the
+  // next round hour today, or 09:00 on a later day.
+  function pickDate(next: string | undefined) {
+    const at = fromLocalInputValue(next);
+    if (!at) return onChange({ kind: "picking" });
+    const first = value?.kind !== "at";
+    onChange({ kind: "at", at: first ? defaultStartOn(at, Date.now()) : at });
   }
 
   return (
@@ -45,17 +64,19 @@ export function StartPicker({ value, onChange }: Props) {
       <ChoiceMenu
         name="Start"
         value={picked}
-        choices={CHOICES}
+        choices={choices}
         isActive={value !== null}
         onChange={pick}
-        display={value ? `Starts ${formatStartTime(value, now)}` : "Starts now"}
+        display={startChipLabel(value, now)}
       />
-      {choice === PICK ? (
+      {value?.kind === "picking" || value?.kind === "at" ? (
         <DateTimeInput
           size="small"
           aria-label="Start time"
-          value={value ? toLocalInputValue(value) : ""}
-          onChange={(next) => onChange(fromLocalInputValue(next))}
+          value={value.kind === "at" ? toLocalInputValue(value.at) : ""}
+          onChange={pickDate}
+          minDate={startOfToday(now)}
+          placeholder="Pick a date"
           wrapperClassName="min-w-48"
         />
       ) : null}

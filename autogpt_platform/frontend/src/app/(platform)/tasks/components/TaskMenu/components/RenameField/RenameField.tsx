@@ -21,6 +21,7 @@ export function RenameField({ taskID, title, onDone, className }: Props) {
   return (
     <input
       aria-label="Task title"
+      dir="auto"
       value={field.text}
       onChange={(e) => field.setText(e.target.value)}
       onKeyDown={field.onKeyDown}

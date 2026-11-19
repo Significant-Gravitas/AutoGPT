@@ -1,3 +1,4 @@
+import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import type { Task } from "@/app/api/__generated__/models/task";
 import type { TaskStatus } from "@/app/api/__generated__/models/taskStatus";
@@ -37,5 +38,26 @@ export function makeSession(
     is_processing: false,
     expert_id: expertID,
     ...extra,
+  };
+}
+
+export function makeExpert(id: string, name: string): Expert {
+  return {
+    id,
+    name,
+    avatar_url: null,
+    role: "Role",
+    tagline: null,
+    bio: null,
+    skills: [],
+    identity: "identity",
+    voice_preferences: "",
+    boundaries: "",
+    protected_soul_rules: [],
+    is_template: false,
+    source_template_id: null,
+    is_archived: false,
+    workflows: [],
+    pod_id: null,
   };
 }

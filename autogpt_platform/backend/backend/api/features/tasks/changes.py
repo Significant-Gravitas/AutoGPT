@@ -22,6 +22,7 @@ STATUS_REFUSED = (
 )
 REOPEN_REFUSED = "It is being worked on. Stop it first, then move it back to To do."
 OWNER_REFUSED = "It is being worked on. Stop it before giving it to someone else."
+TITLE_REQUIRED = "A task needs a title."
 # The words the task UI shows for each status.
 STATUS_WORDS = {
     TaskStatus.TODO: "To do",
@@ -31,6 +32,13 @@ STATUS_WORDS = {
     TaskStatus.FAILED: "Failed",
     TaskStatus.CANCELLED: "Cancelled",
 }
+
+
+def require_title(title: str) -> None:
+    """A title of only spaces is no title: refused as a 422, beside the field,
+    like the request's other validation errors."""
+    if not " ".join(title.split()):
+        raise HTTPException(HTTP_422_UNPROCESSABLE_CONTENT, TITLE_REQUIRED)
 
 
 def check_change(before: Task, body: TaskUpdateRequest) -> None:

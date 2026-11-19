@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from prisma.enums import TaskStatus
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from backend.data.task import (
     DESCRIPTION_MAX_CHARS,
@@ -24,6 +24,8 @@ class TaskRepeatRequest(BaseModel):
     """A rhythm, as repeating tasks take it: 5-field crons, every minute at
     most often."""
 
+    model_config = ConfigDict(extra="forbid")
+
     crons: list[Annotated[str, StringConstraints(max_length=CRON_MAX_CHARS)]] = Field(
         min_length=1, max_length=MAX_REPEAT_CRONS
     )
@@ -35,6 +37,8 @@ class TaskRepeatRequest(BaseModel):
 
 
 class TaskCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str = Field(min_length=1, max_length=TITLE_MAX_CHARS)
     description: str | None = Field(default=None, max_length=DESCRIPTION_MAX_CHARS)
     owner_expert_id: str | None = Field(
@@ -64,6 +68,8 @@ class TaskCreateRequest(BaseModel):
 class TaskUpdateRequest(BaseModel):
     """Fields left out, or sent as null, stay as they are; ``start_at`` sent
     as null removes the start time."""
+
+    model_config = ConfigDict(extra="forbid")
 
     title: str | None = Field(default=None, min_length=1, max_length=TITLE_MAX_CHARS)
     description: str | None = Field(

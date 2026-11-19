@@ -2,6 +2,7 @@ import type { Task } from "@/app/api/__generated__/models/task";
 import { useRef, useState } from "react";
 import { settableStatuses } from "../../helpers";
 import { RUN_ACTIONS, runActionOf } from "../../runActions";
+import { copyTaskLink } from "../../taskLink";
 import { useTaskActions } from "../../useTaskActions";
 
 interface Args {
@@ -14,6 +15,7 @@ export function useTaskMenu({ task, onRename, onArchived }: Args) {
   const actions = useTaskActions(task.id);
   const [isConfirmingArchive, setIsConfirmingArchive] = useState(false);
   const [runDialog, setRunDialog] = useState<"stop" | "retry" | null>(null);
+  const [isDuplicating, setDuplicating] = useState(false);
   const runAction = runActionOf(task.status);
   const statuses = settableStatuses(task.status);
   // Rename moves focus into the title field; the closing menu mustn't take
@@ -57,6 +59,10 @@ export function useTaskMenu({ task, onRename, onArchived }: Args) {
   }
 
   return {
+    isDuplicating,
+    setDuplicating,
+    startDuplicate: () => setDuplicating(true),
+    copyLink: () => void copyTaskLink(task.id),
     startRename,
     onCloseAutoFocus,
     statuses,
@@ -82,3 +88,5 @@ export function useTaskMenu({ task, onRename, onArchived }: Args) {
     isStopping: task.repeat ? actions.isStoppingRun : actions.isStopping,
   };
 }
+
+export type TaskMenuState = ReturnType<typeof useTaskMenu>;

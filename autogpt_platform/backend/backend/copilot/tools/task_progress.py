@@ -48,6 +48,12 @@ NOT_DONE_IN_CHAT = (
     "Saved on the task as not done. End now with one line saying it did not "
     "get done and why; do not claim a result."
 )
+MISSING_BRIEF = (
+    "Not finished: this task says only its title and nothing was tried, so "
+    "it is missing details, not failed. Ask the user one concrete question "
+    "with ask_question (reason goal_ambiguous, no default_guess); the task "
+    "waits on their answer."
+)
 NO_TASK = (
     "This chat is not working on a task, so there is nothing to report on. "
     "Carry on with the work."
@@ -294,6 +300,8 @@ class FinishTaskTool(BaseTool):
             return _error(error_detail(e, session), session)
         if finish is None:
             return _error(NO_TASK, session)
+        if finish.needs_question:
+            return _error(MISSING_BRIEF, session)
         if finish.missing_file:
             return _error(
                 f"This task saved no file named '{file}', so nothing was "

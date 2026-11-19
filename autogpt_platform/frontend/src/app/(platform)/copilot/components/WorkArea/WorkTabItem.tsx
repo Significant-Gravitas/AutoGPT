@@ -8,6 +8,7 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { isRightToLeft } from "./textDirection";
 import type { TabView } from "./WorkTabs";
 
 interface Props {
@@ -59,7 +60,13 @@ export function WorkTabItem({
               tone="inherit"
               className="shrink-0"
             />
-            <span className="min-w-0 overflow-hidden mask-fade-right pr-2 whitespace-nowrap">
+            <span
+              dir="auto"
+              className={cn(
+                "min-w-0 overflow-hidden pr-2 whitespace-nowrap",
+                isRightToLeft(tab.title) ? "text-ellipsis" : "mask-fade-right",
+              )}
+            >
               {tab.title}
             </span>
           </button>

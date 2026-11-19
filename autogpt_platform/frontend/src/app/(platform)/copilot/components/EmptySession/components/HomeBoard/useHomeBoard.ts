@@ -2,6 +2,7 @@ import { useListExperts } from "@/app/api/__generated__/endpoints/experts/expert
 import { listTasks } from "@/app/api/__generated__/endpoints/tasks/tasks";
 import { okData } from "@/app/api/helpers";
 import { pollInterval } from "@/app/(platform)/tasks/helpers";
+import { useTaskSync } from "@/app/(platform)/tasks/taskSync";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { useWorkAreaStore } from "../../../../workArea";
 import { nextOffset, pagedTasksKey, tasksOf } from "./pagedTasks";
@@ -27,7 +28,10 @@ export function useHomeBoard() {
     // A new search keeps the last answer up until the next one lands.
     placeholderData: keepPreviousData,
     refetchInterval: (query) => pollInterval(tasksOf(query.state.data)),
+    // Back to this window: re-read, whatever another tab changed.
+    refetchOnWindowFocus: "always",
   });
+  useTaskSync();
   const expertsQuery = useListExperts({
     query: { select: (res) => okData(res) ?? [] },
   });

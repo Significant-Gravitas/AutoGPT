@@ -35,7 +35,7 @@ export function StopTaskDialog({
     >
       <Dialog.Content>
         <Text variant="body" tone="text" className="break-words">
-          The work on “{title}” stops where it is.{" "}
+          The work on “<bdi>{title}</bdi>” stops where it is.{" "}
           {isRepeating
             ? "It still runs again at its next time."
             : "You can try it again later."}

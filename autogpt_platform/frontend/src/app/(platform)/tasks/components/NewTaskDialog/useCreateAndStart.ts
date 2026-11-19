@@ -8,6 +8,10 @@ import type { TaskCreateRequest } from "@/app/api/__generated__/models/taskCreat
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { addTask, patchTask, replaceTask, restore } from "../../taskCache";
+import { isUnreachable } from "../../taskErrors";
+import { TASK_MUTATION_DEFAULTS } from "../../taskMutations";
+import { announceTaskChange } from "../../taskSync";
+import { showUnreachable } from "../../taskToasts";
 import { startedPatch } from "../../taskPatches";
 import { standInTask } from "./helpers";
 import { showStartFailed } from "./startFailedToast";
@@ -38,6 +42,7 @@ export function useCreateAndStart() {
 
   const createTask = useCreateTask({
     mutation: {
+      ...TASK_MUTATION_DEFAULTS,
       onMutate: async ({ data }) => {
         const standIn = standInTask(data, Date.now());
         const snapshot = await addTask(queryClient, standIn);
@@ -47,6 +52,7 @@ export function useCreateAndStart() {
         if (!context) return;
         if (res.status === 201) {
           replaceTask(queryClient, context.standInID, res.data);
+          announceTaskChange(res.data.id);
         } else {
           restore(queryClient, context.snapshot);
         }
@@ -59,10 +65,12 @@ export function useCreateAndStart() {
   });
   const runTask = useRunTask({
     mutation: {
+      ...TASK_MUTATION_DEFAULTS,
       onMutate: ({ taskId }) => patchTask(queryClient, taskId, startedPatch),
       onError: (_error, _vars, snapshot) => {
         if (snapshot) restore(queryClient, snapshot);
       },
+      onSuccess: (_res, { taskId }) => announceTaskChange(taskId),
       onSettled: rereadLists,
     },
   });
@@ -70,13 +78,20 @@ export function useCreateAndStart() {
   /** The task the server made; or the server's sentence when it refused
    *  what was asked (422), for the dialog to show by its field; or neither,
    *  with a toast saying why. */
-  async function create(request: TaskCreateRequest): Promise<Created> {
+  async function create(
+    request: TaskCreateRequest,
+    retry: () => void,
+  ): Promise<Created> {
     try {
       const res = await createTask.mutateAsync({ data: request });
       if (res.status !== 201) throw new Error("The task was not created.");
       return { task: res.data };
     } catch (error) {
       if (isRefusal(error)) return { refusal: error.message };
+      if (isUnreachable(error)) {
+        showUnreachable(retry);
+        return {};
+      }
       toast({
         title: "Couldn't create the task",
         description: error instanceof Error ? error.message : undefined,

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import prisma.models
 from prisma.enums import TaskStatus
 
-from backend.data.task import Task, get_task
+from backend.data.task import TASK_GONE, Task, get_task
 from backend.data.task_state_meta import (
     REVIEW_KEY,
     REVIEW_NOTE_MAX_CHARS,
@@ -32,7 +32,7 @@ async def set_task_review(
         where={"id": task_id, "userId": user_id, "isArchived": False}
     )
     if row is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     if row.status not in REVIEWABLE_STATUSES[state]:
         raise ConflictError(
             "Only a finished task's result can be accepted."
@@ -53,5 +53,5 @@ async def set_task_review(
         raise ConflictError(f"'{row.title}' changed meanwhile. Try again.")
     task = await get_task(task_id, user_id)
     if task is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     return task

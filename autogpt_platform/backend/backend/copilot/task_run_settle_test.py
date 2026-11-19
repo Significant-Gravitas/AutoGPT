@@ -36,6 +36,7 @@ def run_db(mocker: MockerFixture) -> MagicMock:
 def handoffs(mocker: MockerFixture) -> AsyncMock:
     background = MagicMock()
     background.has_open_handoffs = AsyncMock(return_value=False)
+    background.child_launch_turn = AsyncMock(return_value=None)
     mocker.patch(f"{_MOD}.background_task_db", return_value=background)
     return background.has_open_handoffs
 
@@ -151,3 +152,46 @@ def test_a_turn_that_said_nothing_has_no_last_reply(messages):
     session.messages = messages
 
     assert last_reply(session) is None
+
+
+@pytest.fixture
+def worker(mocker: MockerFixture) -> MagicMock:
+    """A task's background worker chat: launched by turn ``launch``."""
+    background = MagicMock()
+    background.has_open_handoffs = AsyncMock(return_value=False)
+    background.child_launch_turn = AsyncMock(return_value="launch")
+    mocker.patch(f"{_MOD}.background_task_db", return_value=background)
+    record = MagicMock(work_tasks=AsyncMock(return_value=[MagicMock(id="task-7")]))
+    mocker.patch(f"{_MOD}.task_record_db", return_value=record)
+    return background
+
+
+@pytest.mark.asyncio
+async def test_an_answered_workers_chat_settles_its_task_at_the_turns_end(
+    mocker: MockerFixture, run_db: MagicMock, worker: MagicMock
+):
+    """QA pass 3, P2: the worker asked, the user answered in its chat, and the
+    work went on there; nothing else settles that turn."""
+    _chat(mocker, None)
+
+    await settle_task_run_turn(_entry(), None)
+
+    run_db.settle_task_run.assert_awaited_once()
+    assert run_db.settle_task_run.await_args.args[:4] == (
+        "task-7",
+        "chat-w",
+        "user-1",
+        "completed",
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_workers_launch_turn_is_left_to_its_delivery(
+    mocker: MockerFixture, run_db: MagicMock, worker: MagicMock
+):
+    worker.child_launch_turn.return_value = "turn-1"
+    _chat(mocker, None)
+
+    await settle_task_run_turn(_entry(), None)
+
+    run_db.settle_task_run.assert_not_awaited()

@@ -166,10 +166,13 @@ async def test_update_passes_not_found_through_as_an_error(db):
 @pytest.mark.parametrize("archived", [True, False])
 async def test_archive(db, archived):
     db.archive_task = AsyncMock(return_value=archived)
+    # An archived task stops repeating; left real, that reaches the database.
+    schedule = MagicMock(clear_task_repeat=AsyncMock(return_value=False))
 
-    result = await ArchiveTaskTool()._execute(
-        _USER, make_session(_USER), task_id="task-1"
-    )
+    with patch("backend.copilot.tools.tasks.task_schedule_db", return_value=schedule):
+        result = await ArchiveTaskTool()._execute(
+            _USER, make_session(_USER), task_id="task-1"
+        )
 
     expected = TaskArchivedResponse if archived else ErrorResponse
     assert isinstance(result, expected)

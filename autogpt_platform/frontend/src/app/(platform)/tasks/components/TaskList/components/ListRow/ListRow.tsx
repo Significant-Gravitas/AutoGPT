@@ -17,7 +17,8 @@ import { useListMotion } from "../../useListMotion";
 
 interface Props {
   task: Task;
-  owner: TaskOwner;
+  /** Who works it; null while Otto is the only one who can. */
+  owner: TaskOwner | null;
   selected: boolean;
   onOpen: () => void;
   nav: CardNav;
@@ -67,21 +68,24 @@ export function ListRow({ task, owner, selected, onOpen, nav }: Props) {
             schedule={row.schedule}
             queued={row.queued}
           />
-          <span className="grid min-w-0 flex-1">
+          <span className="grid min-w-[40%] flex-1">
             <Text
               as="span"
               variant="inbox-medium"
               tone="ink"
               className="min-w-0 truncate"
               title={task.title}
+              dir="auto"
             >
               {task.title}
             </Text>
             <NowLine task={task} />
           </span>
-          <span className="hidden max-w-40 min-w-0 shrink-0 md:flex">
-            <OwnerChip owner={owner} />
-          </span>
+          {owner ? (
+            <span className="hidden max-w-40 min-w-0 shrink md:flex">
+              <OwnerChip owner={owner} />
+            </span>
+          ) : null}
           <span className="flex shrink-0">
             <StatusPill
               status={task.status}
@@ -95,7 +99,7 @@ export function ListRow({ task, owner, selected, onOpen, nav }: Props) {
               variant="inbox"
               tone="faint"
               tabular
-              className="hidden max-w-40 min-w-0 shrink-0 truncate text-right sm:block"
+              className="hidden max-w-40 min-w-0 shrink truncate text-right sm:block"
               title={row.age}
             >
               {row.age}

@@ -58,7 +58,13 @@ function TaskLines({ tasks }: { tasks: TaskLine[] }) {
             className="shrink-0"
           />
           <span className="flex min-w-0 flex-1 flex-col">
-            <Text variant="inbox" as="span" tone="ink" className="truncate">
+            <Text
+              variant="inbox"
+              as="span"
+              tone="ink"
+              dir="auto"
+              className="truncate"
+            >
               {task.title}
             </Text>
             <Text variant="small" as="span" tone="quiet" className="truncate">

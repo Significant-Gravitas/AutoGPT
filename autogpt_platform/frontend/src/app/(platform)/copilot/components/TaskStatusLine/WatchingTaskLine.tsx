@@ -5,6 +5,7 @@ import { waitingLine } from "@/app/(platform)/tasks/schedule";
 import { useTaskActions } from "@/app/(platform)/tasks/useTaskActions";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
+import { isRightToLeft } from "../WorkArea/textDirection";
 import { ArrowRight01Icon, PauseIcon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "framer-motion";
@@ -66,7 +67,8 @@ export function WatchingTaskLine({
         <span className="flex min-w-0 flex-1 flex-col">
           <OverflowText
             value={title}
-            overflow="fade"
+            dir="auto"
+            overflow={isRightToLeft(title) ? "ellipsis" : "fade"}
             variant="inbox-medium"
             tone="ink"
           />

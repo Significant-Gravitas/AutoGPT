@@ -98,6 +98,12 @@ export function savedForLaterTitle(
     : `Task saved for ${owner}`;
 }
 
+/** The first line is longer than a title can be: the dialog says how it
+ *  is split. */
+export function isLongFirstLine(text: string) {
+  return text.trim().split("\n")[0].trim().length > TITLE_LIMIT;
+}
+
 function shorten(line: string) {
   if (line.length <= TITLE_LIMIT) return line;
   const cut = line.slice(0, TITLE_LIMIT);

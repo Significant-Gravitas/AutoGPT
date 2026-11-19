@@ -17,7 +17,8 @@ import type { CardNav } from "../../useRovingCards";
 
 interface Props {
   task: Task;
-  owner: TaskOwner;
+  /** Who works it; null while Otto is the only one who can. */
+  owner: TaskOwner | null;
   selected: boolean;
   onOpen: () => void;
   nav: CardNav;
@@ -73,14 +74,17 @@ export function BoardCard({ task, owner, selected, onOpen, nav }: Props) {
               variant="inbox-medium"
               tone="ink"
               className="line-clamp-2 min-w-0 break-words"
+              dir="auto"
             >
               {task.title}
             </Text>
           </span>
           <NowLine task={task} className="pl-6" />
-          <span className="flex min-w-0 pl-6">
-            <OwnerChip owner={owner} />
-          </span>
+          {owner ? (
+            <span className="flex min-w-0 pl-6">
+              <OwnerChip owner={owner} />
+            </span>
+          ) : null}
           <span className="flex min-w-0 items-center justify-between gap-2 pl-6">
             <StatusPill
               status={task.status}

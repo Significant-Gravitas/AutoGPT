@@ -14,7 +14,7 @@ import prisma.models
 from prisma.enums import TaskStatus
 from prisma.types import TaskUpdateManyMutationInput
 
-from backend.data.task import OPEN_STATUSES, Task, get_task
+from backend.data.task import OPEN_STATUSES, TASK_GONE, Task, get_task
 from backend.data.task_rhythm import (
     STATUS_BY_RUN_END,
     next_run_at,
@@ -264,12 +264,12 @@ async def _live_row(task_id: str, user_id: str) -> prisma.models.Task:
         where={"id": task_id, "userId": user_id, "isArchived": False}
     )
     if row is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     return row
 
 
 async def _task(task_id: str, user_id: str) -> Task:
     task = await get_task(task_id, user_id)
     if task is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     return task

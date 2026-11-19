@@ -12,7 +12,7 @@ from prisma.enums import TaskStatus
 from starlette.status import HTTP_409_CONFLICT, HTTP_422_UNPROCESSABLE_CONTENT
 
 from backend.copilot.start_time import describe_start, user_timezone
-from backend.data.task import Task
+from backend.data.task import TASK_GONE, Task
 
 from .model import TaskUpdateRequest
 
@@ -21,7 +21,7 @@ def requested_start(before: Task | None, body: TaskUpdateRequest) -> datetime | 
     """The start time the request asks for (None removes it), checked against
     the task as it is. Raises HTTPException when it cannot take one."""
     if before is None:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail=TASK_GONE)
     status = body.status or before.status
     if status != TaskStatus.TODO:
         raise HTTPException(

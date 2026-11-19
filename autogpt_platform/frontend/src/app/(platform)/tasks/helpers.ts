@@ -89,18 +89,23 @@ function boardLaneOf(task: Task): BoardColumn["id"] {
   return laneOf(task);
 }
 
-/** The four lanes, with a Scheduled lane after Needs you, soonest start
- *  first, while any task waits for its start time, and a Watching lane
- *  after it while any task waits for an event. */
-export function buildBoardColumns(tasks: Task[]): BoardColumn[] {
+/** The four lanes, with a Scheduled lane after Needs you (soonest start
+ *  first, unless `keepOrder`: a sort the user picked) while any task waits
+ *  for its start time, and a Watching lane after it while any task waits
+ *  for an event. Every other lane keeps the order the tasks came in. */
+export function buildBoardColumns(
+  tasks: Task[],
+  keepOrder = false,
+): BoardColumn[] {
   const lanes: BoardColumn[] = LANES.map((id) => ({
     id,
     label: LANE_LABELS[id],
     tasks: tasks.filter((t) => boardLaneOf(t) === id),
   }));
-  const scheduled = tasks
-    .filter((t) => boardLaneOf(t) === "scheduled")
-    .toSorted(bySoonestStart);
+  const waitingStart = tasks.filter((t) => boardLaneOf(t) === "scheduled");
+  const scheduled = keepOrder
+    ? waitingStart
+    : waitingStart.toSorted(bySoonestStart);
   const watching = tasks.filter((t) => boardLaneOf(t) === "watching");
   const waiting: BoardColumn[] = [
     ...(scheduled.length > 0

@@ -32,18 +32,30 @@ interface Props {
   onOpenArtifact: (artifact: TaskArtifact) => void;
 }
 
-/** What only the task's full record holds, under its details: its parts,
- *  the outcome, its runs, what happened, what it made, the proof and what
- *  you decided. A block with nothing in it is left out. */
-export function TaskRecordBlocks({ record, experts, onOpenArtifact }: Props) {
+/** How it went, from the full record: the result or what went wrong (with
+ *  Accept and Request changes), each run of a repeating task, and its
+ *  parts. A block with nothing in it is left out. */
+export function OutcomeBlocks({ record, experts, onOpenArtifact }: Props) {
   const { task } = record;
   const subtasks = record.subtasks ?? [];
-  const asks = record.asks ?? [];
-  const decided = answeredAsks(asks);
   const artifacts = record.artifacts ?? [];
 
   return (
     <>
+      <ResultBlock
+        task={task}
+        artifacts={artifacts}
+        isUnverified={!!record.is_unverified}
+        onOpenArtifact={onOpenArtifact}
+      />
+
+      <RunsBlock
+        task={task}
+        runs={record.runs ?? []}
+        artifacts={artifacts}
+        onOpenArtifact={onOpenArtifact}
+      />
+
       {subtasks.length > 0 ? (
         <InfoGroup
           label="Subtasks"
@@ -66,21 +78,20 @@ export function TaskRecordBlocks({ record, experts, onOpenArtifact }: Props) {
           </InfoList>
         </InfoGroup>
       ) : null}
+    </>
+  );
+}
 
-      <ResultBlock
-        task={task}
-        artifacts={artifacts}
-        isUnverified={!!record.is_unverified}
-        onOpenArtifact={onOpenArtifact}
-      />
+/** What happened along the way, from the full record: the activity, what
+ *  it made, the proof and what you decided. */
+export function TrailBlocks({ record, experts, onOpenArtifact }: Props) {
+  const { task } = record;
+  const subtasks = record.subtasks ?? [];
+  const decided = answeredAsks(record.asks ?? []);
+  const artifacts = record.artifacts ?? [];
 
-      <RunsBlock
-        task={task}
-        runs={record.runs ?? []}
-        artifacts={artifacts}
-        onOpenArtifact={onOpenArtifact}
-      />
-
+  return (
+    <>
       <ActivityTrail
         task={task}
         subtasks={subtasks}

@@ -27,6 +27,7 @@ export function NowLine({ task, className }: Props) {
           tone="quiet"
           className="min-w-0 truncate"
           title={line}
+          dir="auto"
         >
           {line}
         </Text>

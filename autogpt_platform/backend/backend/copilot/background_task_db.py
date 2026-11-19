@@ -219,6 +219,19 @@ async def has_open_handoffs(user_id: str, session_id: str) -> bool:
     return bool(rows)
 
 
+async def child_launch_turn(user_id: str, session_id: str) -> str | None:
+    """The turn that launched this chat as background work (its first turn
+    as a child), or None when the chat is not one. A later turn there is the
+    user's: an answer to a question the worker asked."""
+    rows = await db.query_raw_with_schema(
+        """SELECT "childTurnId" FROM {schema_prefix}"ChatBackgroundTask"
+        WHERE "userId"=$1 AND "childSessionId"=$2 LIMIT 1""",
+        user_id,
+        session_id,
+    )
+    return str(rows[0]["childTurnId"]) if rows else None
+
+
 async def _complete_child_whose_work_is_back(
     user_id: str, session_id: str, error: str | None
 ) -> None:

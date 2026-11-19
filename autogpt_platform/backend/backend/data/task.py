@@ -27,6 +27,9 @@ from backend.data.task_text import SUMMARY_MAX_CHARS
 from backend.util.exceptions import NotFoundError
 
 TITLE_MAX_CHARS = 200
+# Said for a task that is missing, archived or someone else's: no id, which
+# would only read as internal to the person who sees it.
+TASK_GONE = "This task no longer exists."
 DESCRIPTION_MAX_CHARS = 10_000
 LINE_MAX_CHARS = 300
 RESULT_MAX_CHARS = SUMMARY_MAX_CHARS
@@ -381,6 +384,16 @@ async def archive_task(task_id: str, user_id: str) -> bool:
     return archived > 0
 
 
+async def unarchive_task(task_id: str, user_id: str) -> bool:
+    """Bring an archived task back into view. False when the user has no
+    archived task with this id."""
+    restored = await prisma.models.Task.prisma().update_many(
+        where={"id": task_id, "userId": user_id, "isArchived": True},
+        data={"isArchived": False},
+    )
+    return restored > 0
+
+
 async def move_session_tasks(
     session_id: str,
     user_id: str,
@@ -489,7 +502,7 @@ async def _require_room_for_subtask(parent_task_id: str, user_id: str) -> None:
 async def _get_or_raise(task_id: str, user_id: str) -> Task:
     task = await get_task(task_id, user_id)
     if task is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     return task
 
 
@@ -498,7 +511,7 @@ async def _require_expert(expert_id: str, user_id: str) -> None:
         where={"id": expert_id, "ownerUserId": user_id, "isArchived": False}
     )
     if expert is None:
-        raise NotFoundError(f"Expert {expert_id} not found")
+        raise NotFoundError("That expert is not on your team.")
 
 
 async def _require_session(session_id: str, user_id: str) -> None:
@@ -506,4 +519,4 @@ async def _require_session(session_id: str, user_id: str) -> None:
         where={"id": session_id, "userId": user_id}
     )
     if session is None:
-        raise NotFoundError(f"Chat {session_id} not found")
+        raise NotFoundError("That chat no longer exists.")

@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { useState } from "react";
 import { taskTabKey, useWorkAreaStore } from "../../workArea";
+import { CopyLinkButton } from "./CopyLinkButton";
 import { TaskControls } from "./TaskControls/TaskControls";
 
 interface Props {
@@ -36,6 +37,7 @@ export function TaskHeader({ task, title }: Props) {
           <Text
             variant="body-medium"
             as="h2"
+            dir="auto"
             className="min-w-0 flex-1 text-pretty break-words"
           >
             {name}
@@ -43,12 +45,13 @@ export function TaskHeader({ task, title }: Props) {
         ) : (
           <Skeleton className="mt-1 h-4 w-2/3" />
         )}
+        {task ? <CopyLinkButton task={task} /> : null}
         {task ? (
           <TaskMenu
             task={task}
             onRename={() => setIsRenaming(true)}
             onArchived={() => close(taskTabKey(task.id))}
-            className="ml-auto shrink-0"
+            className="shrink-0"
           />
         ) : null}
       </div>

@@ -14,13 +14,21 @@ interface Props {
   experts: Expert[];
   selectedID: string | null;
   onOpen: (id: string) => void;
+  /** The user picked an order: every lane keeps it. */
+  keepOrder?: boolean;
 }
 
 /** The tasks as a list: the board's lanes, in the board's order, stacked
  *  one under the other, one row per task. It scrolls down inside the
  *  height it is given, never sideways; up and down move between rows. */
-export function TaskList({ tasks, experts, selectedID, onOpen }: Props) {
-  const groups = buildBoardColumns(tasks).filter(
+export function TaskList({
+  tasks,
+  experts,
+  selectedID,
+  onOpen,
+  keepOrder = false,
+}: Props) {
+  const groups = buildBoardColumns(tasks, keepOrder).filter(
     (column) => column.tasks.length > 0,
   );
   const roving = useRovingCards({

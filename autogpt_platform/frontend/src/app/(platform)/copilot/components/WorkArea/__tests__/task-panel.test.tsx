@@ -205,8 +205,9 @@ describe("Task tab before its record arrives", () => {
     expect(
       await screen.findByRole("heading", { name: "Plan the launch" }),
     ).toBeDefined();
+    const status = screen.getByRole("region", { name: "Status" });
+    expect(within(status).getByText("Working")).toBeDefined();
     const details = screen.getByRole("region", { name: "Details" });
-    expect(within(details).getByText("Working")).toBeDefined();
     expect(within(details).getByText("Leo")).toBeDefined();
     expect(screen.getByText("Keep it friendly.")).toBeDefined();
     expect(

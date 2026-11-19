@@ -11,6 +11,8 @@ export function useTaskRecord(taskID: string) {
         if (res?.status !== 200) return false;
         return isSettled(res.data.task.status) ? false : POLL_MS;
       },
+      // Back to this window: re-read, whatever another tab changed.
+      refetchOnWindowFocus: "always",
     },
   });
   return { record: query.data ?? null };

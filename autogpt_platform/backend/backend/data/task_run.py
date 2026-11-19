@@ -16,7 +16,7 @@ from prisma.enums import TaskStatus
 from prisma.types import TaskUpdateManyMutationInput
 from pydantic import BaseModel
 
-from backend.data.task import LINE_MAX_CHARS, OPEN_STATUSES, Task, get_task
+from backend.data.task import LINE_MAX_CHARS, OPEN_STATUSES, TASK_GONE, Task, get_task
 from backend.data.task_record import EXCERPT_MAX_CHARS, redact, settle_work_tasks
 from backend.data.task_rhythm import is_repeating
 from backend.data.task_schedule_meta import (
@@ -43,6 +43,9 @@ RUNNABLE_STATUSES = [
     TaskStatus.DONE,
     TaskStatus.CANCELLED,
 ]
+# The one answer to a start of a task already being started or worked on:
+# the frontend reads this exact sentence as "already started".
+ALREADY_STARTED = "It is already being worked on."
 # Running one of these again is another try at the same work, so it counts
 # one more attempt.
 RETRY_STATUSES = [TaskStatus.FAILED, TaskStatus.CANCELLED]
@@ -87,9 +90,9 @@ async def claim_task_run(task_id: str, user_id: str) -> TaskRunClaim:
     so two clicks at once start one run."""
     before = await get_task(task_id, user_id)
     if before is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     if before.status not in RUNNABLE_STATUSES:
-        raise ConflictError(f"'{before.title}' is already being worked on.")
+        raise ConflictError(ALREADY_STARTED)
     retry = before.status in RETRY_STATUSES
     data: TaskUpdateManyMutationInput = {
         "status": TaskStatus.IN_PROGRESS,
@@ -117,10 +120,16 @@ async def claim_task_run(task_id: str, user_id: str) -> TaskRunClaim:
         data=data,
     )
     if moved == 0:
-        raise ConflictError(f"'{before.title}' changed while starting. Try again.")
+        # Another start claimed it between the read and the write.
+        now = await get_task(task_id, user_id)
+        if now is None:
+            raise NotFoundError(TASK_GONE)
+        if now.status not in RUNNABLE_STATUSES:
+            raise ConflictError(ALREADY_STARTED)
+        raise ConflictError("It changed while starting. Try again.")
     task = await get_task(task_id, user_id)
     if task is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     return TaskRunClaim(before=before, task=task, retry=retry)
 
 
@@ -268,7 +277,7 @@ async def mark_run_queued(task_id: str, user_id: str) -> Task:
         where={"id": task_id, "userId": user_id, "isArchived": False}
     )
     if row is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     if row.startedAt is not None:
         await prisma.models.Task.prisma().update_many(
             where={
@@ -285,7 +294,7 @@ async def mark_run_queued(task_id: str, user_id: str) -> Task:
         )
     task = await get_task(task_id, user_id)
     if task is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     return task
 
 

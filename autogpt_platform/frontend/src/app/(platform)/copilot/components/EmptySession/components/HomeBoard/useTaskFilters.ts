@@ -1,7 +1,13 @@
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useState } from "react";
-import { ANY_STATUS, ANYONE, isFiltered } from "./taskFilters";
+import {
+  ANY_STATUS,
+  ANYONE,
+  DEFAULT_SORT,
+  isFiltered,
+  isSorted,
+} from "./taskFilters";
 
 const SEARCH_DELAY_MS = 300;
 
@@ -9,10 +15,12 @@ const FILTER_PARSERS = {
   q: parseAsString.withDefault(""),
   owner: parseAsString.withDefault(ANYONE),
   status: parseAsString.withDefault(ANY_STATUS),
+  sort: parseAsString.withDefault(DEFAULT_SORT),
 };
 
 /** The board's search and filters, kept in the address so a reload or a
- *  shared link keeps them. The search box shows exactly what was typed
+ *  shared link keeps them, with the order they are read in. Reset clears
+ *  the search and filters, not the order. The search box shows exactly what was typed
  *  (its own state, not the address read back), and the search is sent
  *  once typing pauses. */
 export function useTaskFilters() {
@@ -38,11 +46,14 @@ export function useTaskFilters() {
     /** What the list is read with: the search as last sent. */
     applied: { ...filters, q },
     isFiltered: isFiltered(filters),
+    isSorted: isSorted(filters),
     setQuery,
     setOwner: (next: string) =>
       void setStored({ owner: next === ANYONE ? null : next }),
     setStatus: (next: string) =>
       void setStored({ status: next === ANY_STATUS ? null : next }),
+    setSort: (next: string) =>
+      void setStored({ sort: next === DEFAULT_SORT ? null : next }),
     reset,
   };
 }

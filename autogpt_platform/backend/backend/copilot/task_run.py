@@ -32,7 +32,7 @@ from backend.data.db_accessors import (
     task_run_db,
     task_schedule_db,
 )
-from backend.data.task import OPEN_STATUSES, Task, TaskPatch
+from backend.data.task import OPEN_STATUSES, TASK_GONE, Task, TaskPatch
 from backend.data.task_record import ActivityInput
 from backend.data.task_run import TaskRunClaim
 from backend.data.task_runs import run_end_data
@@ -91,7 +91,7 @@ async def cancel_task_run(
     settled is returned as it is."""
     task = await task_db().get_task(task_id, user_id)
     if task is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     if task.status not in OPEN_STATUSES:
         return task
     if this_run_only and task.repeat and task.status != TaskStatus.TODO:
@@ -173,10 +173,12 @@ def run_prompt(
 # Nobody waits on a run started from the task's page, so a worker that is
 # stuck finishes as blocked; its summary becomes the task's failure reason.
 BLOCKED_RULE = (
-    "If you cannot do this task (something it needs is not connected, or the "
-    'data does not exist), call finish_task with "outcome": "blocked" and a '
-    "summary of one or two plain sentences saying what blocks you and what "
-    "the user would need to do."
+    "If you tried and cannot do this task (something it needs is not "
+    'connected, or the data does not exist), call finish_task with "outcome": '
+    '"blocked" and a summary of one or two plain sentences saying what blocks '
+    "you and what the user would need to do. That is not for missing details: "
+    "if the task does not say what to do, ask the user one concrete question "
+    "with ask_question."
 )
 
 

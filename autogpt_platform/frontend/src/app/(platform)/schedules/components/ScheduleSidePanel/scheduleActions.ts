@@ -62,9 +62,15 @@ function openAction({ task, workflow, executions, onOpen }: ActionArgs) {
   ];
 }
 
+/** The two buttons of an armed ending, which keep it armed while focused. */
+export function armedLabels(args: Pick<ActionArgs, "task" | "workflow">) {
+  const end = endWords(args);
+  return end ? [end.confirm, "Keep"] : [];
+}
+
 /** How the schedule ends: a workflow schedule is deleted, a repeating or
  *  watching task stops, a task waiting for one start is cancelled. */
-function endWords({ task, workflow }: ActionArgs) {
+function endWords({ task, workflow }: Pick<ActionArgs, "task" | "workflow">) {
   if (workflow) return { first: "Delete", confirm: "Delete this schedule" };
   if (!task) return null;
   if (task.repeat?.watch) {

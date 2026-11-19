@@ -9,13 +9,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkAreaStore } from "../../../workArea";
 import { HomeBoard } from "../components/HomeBoard/HomeBoard";
 import { expectTypingKept } from "@/tests/integrations/typing";
-import { makeTask } from "./taskFixtures";
+import { makeExpert, makeTask } from "./taskFixtures";
 
 const PAGE_ONE: Task[] = [
   makeTask("t1", "Pick a venue for the offsite", "NEEDS_INPUT"),
   makeTask("t2", "Draft the launch email", "IN_PROGRESS", "maria"),
 ];
 const PAGE_TWO: Task[] = [makeTask("t3", "Send the invoice", "DONE")];
+
+const IN_TWO_HOURS = new Date(Date.now() + 2 * 60 * 60_000);
+const IN_ONE_HOUR = new Date(Date.now() + 60 * 60_000);
+/** The server's title order: in the Scheduled lane it is not soonest first. */
+const BY_TITLE: Task[] = [
+  { ...makeTask("a", "Audit the books", "TODO"), start_at: IN_TWO_HOURS },
+  { ...makeTask("b", "Book the hall", "TODO"), start_at: IN_ONE_HOUR },
+  makeTask("c", "Call the caterer", "NEEDS_INPUT"),
+  makeTask("d", "Draft the menu", "NEEDS_INPUT"),
+];
 
 let requests: URLSearchParams[];
 let onUrlUpdate: ReturnType<typeof vi.fn<(event: UrlUpdateEvent) => void>>;
@@ -35,7 +45,7 @@ beforeEach(() => {
   onUrlUpdate = vi.fn<(event: UrlUpdateEvent) => void>();
   useWorkAreaStore.getState().reset();
   server.use(
-    getListExpertsMockHandler200([]),
+    getListExpertsMockHandler200([makeExpert("maria", "Maria")]),
     http.get("/api/proxy/api/tasks", ({ request }) => {
       const params = new URL(request.url).searchParams;
       requests.push(params);
@@ -52,6 +62,7 @@ beforeEach(() => {
         return page([PAGE_ONE[0], ...PAGE_TWO], null);
       }
       if (params.get("statuses") === "DONE") return page(PAGE_TWO, null);
+      if (params.get("sort") === "title") return page(BY_TITLE, null);
       return params.get("offset") === "50"
         ? page(PAGE_TWO, null)
         : page(PAGE_ONE, 50);
@@ -166,6 +177,34 @@ describe("Home Tasks — search, filters and more pages", () => {
       expect(requests.at(-1)?.getAll("statuses")).toEqual(["DONE"]),
     );
     await vi.waitFor(() => expect(titles()).toEqual(["task-row-t3"]));
+  });
+
+  it("sorts by the order picked, kept in the address, and every lane keeps it", async () => {
+    const user = userEvent.setup();
+    renderBoard();
+    await screen.findAllByTestId("board-card");
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Sort: Recently updated. Change sort",
+      }),
+    );
+    await user.click(
+      await screen.findByRole("menuitemradio", { name: "Title A–Z" }),
+    );
+
+    await vi.waitFor(() => expect(requests.at(-1)?.get("sort")).toBe("title"));
+    expect(onUrlUpdate.mock.calls.at(-1)?.[0].searchParams.get("sort")).toBe(
+      "title",
+    );
+    await vi.waitFor(() =>
+      expect(titles()).toEqual([
+        "task-row-c",
+        "task-row-d",
+        "task-row-a",
+        "task-row-b",
+      ]),
+    );
   });
 
   it("reads more with Show more, and patches a task on a later page at once", async () => {

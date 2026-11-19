@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from backend.data.task import (
     DESCRIPTION_MAX_CHARS,
     LINE_MAX_CHARS,
+    TASK_GONE,
     TITLE_MAX_CHARS,
     Task,
     get_task,
@@ -63,7 +64,7 @@ async def create_suggested_task(user_id: str, draft: SuggestedTaskInput) -> Task
     row = await prisma.models.Task.prisma().create(data=data)
     task = await get_task(row.id, user_id)
     if task is None:
-        raise NotFoundError(f"Task {row.id} not found")
+        raise NotFoundError(TASK_GONE)
     return task
 
 
@@ -72,7 +73,7 @@ async def dismiss_task_suggestion(task_id: str, user_id: str) -> Task:
     that was never suggested is refused."""
     task = await get_task(task_id, user_id)
     if task is None:
-        raise NotFoundError(f"Task {task_id} not found")
+        raise NotFoundError(TASK_GONE)
     if not task.is_suggested:
         raise ValueError("Only a suggested task can be dismissed.")
     await prisma.models.Task.prisma().update_many(

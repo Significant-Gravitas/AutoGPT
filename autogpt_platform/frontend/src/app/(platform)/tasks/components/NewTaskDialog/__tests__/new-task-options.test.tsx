@@ -70,11 +70,16 @@ async function openOptions(onCreated = vi.fn()) {
   return onCreated;
 }
 
+// A quick start's item also says the time it means ("In 1 hour · 3:20 PM").
 async function pick(chip: string, item: string) {
   await userEvent.click(screen.getByRole("button", { name: chip }));
-  await userEvent.click(
-    await screen.findByRole("menuitemradio", { name: item }),
+  const items = await screen.findAllByRole("menuitemradio");
+  const match = items.find(
+    (entry) =>
+      entry.textContent === item || entry.textContent?.startsWith(`${item} ·`),
   );
+  if (!match) throw new Error(`No menu item "${item}"`);
+  await userEvent.click(match);
 }
 
 function tomorrowAtNine() {

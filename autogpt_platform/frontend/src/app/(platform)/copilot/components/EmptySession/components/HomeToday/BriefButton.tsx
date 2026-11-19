@@ -8,9 +8,15 @@ import { useIsMobile } from "../../../../useIsMobile";
 import { useWorkAreaStore } from "../../../../workArea";
 import { briefName } from "./helpers";
 
+interface Props {
+  /** For a crowded row: hide the label from sight (it stays the button's
+   *  name), leaving the icon. */
+  labelClassName?: string;
+}
+
 /** Opens the day's brief in the sidebar, with a dot until it has been
  *  opened today. A phone has no sidebar, so there it is left out. */
-export function BriefButton() {
+export function BriefButton({ labelClassName }: Props = {}) {
   const [now] = useState(() => Date.now());
   const day = new Date(now).toDateString();
   const label = briefName(now);
@@ -34,7 +40,7 @@ export function BriefButton() {
       className="relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-surface pr-3 pl-2.5 text-body-sm font-medium whitespace-nowrap text-foreground-ink shadow-(--inbox-shadow-card) transition-[transform,box-shadow] duration-150 ease-out outline-none hover:shadow-(--inbox-shadow-card-hover) focus-visible:ring-2 focus-visible:ring-focus-inbox active:scale-[0.97] motion-reduce:transition-none"
     >
       <Icon icon={Sun03Icon} size={15} tone="inherit" />
-      {label}
+      <span className={labelClassName}>{label}</span>
       {isSeen ? null : (
         <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-info ring-2 ring-canvas">
           <span className="sr-only">New</span>

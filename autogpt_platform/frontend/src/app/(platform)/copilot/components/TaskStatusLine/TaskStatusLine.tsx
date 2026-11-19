@@ -8,6 +8,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
+import { isRightToLeft } from "../WorkArea/textDirection";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
@@ -100,7 +101,8 @@ export function TaskStatusLine({ task }: Props) {
       <div className="flex min-w-0 flex-1 flex-col">
         <OverflowText
           value={title}
-          overflow="fade"
+          dir="auto"
+          overflow={isRightToLeft(title) ? "ellipsis" : "fade"}
           variant="inbox-medium"
           tone="ink"
         />

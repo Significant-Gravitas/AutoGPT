@@ -249,6 +249,8 @@ def followup_label(task: BackgroundTask, outcome: TaskOutcome | None) -> str:
     completed but who finished saying the task was not done did not finish."""
     if _is_not_done(outcome):
         return "did not finish"
+    if _is_waiting(outcome):
+        return "needs your answer"
     return outcome_label(task)
 
 
@@ -295,6 +297,13 @@ def _is_not_done(outcome: TaskOutcome | None) -> TypeGuard[TaskOutcome]:
     )
 
 
+def _is_waiting(outcome: TaskOutcome | None) -> TypeGuard[TaskOutcome]:
+    """A task whose worker ended by asking the user something."""
+    return bool(
+        outcome and outcome.status == TaskStatus.NEEDS_INPUT and outcome.waiting_on
+    )
+
+
 def continuation_message(
     task: BackgroundTask, outcome: TaskOutcome | None = None
 ) -> str:
@@ -321,6 +330,14 @@ def continuation_text(
             f"Result: {outcome.result}{document}\n\n{_HANDED_OVER} If the "
             "user's request has more steps, carry on with them; read the "
             f"worker's chat with {read_more} only if you need more than this."
+        )
+    if _is_waiting(outcome):
+        return (
+            f"The task '{outcome.title}' is waiting on the user (task id "
+            f"{outcome.task_id}): {outcome.waiting_on}\n\nTell them in one "
+            "short line what it needs, and that they answer it on the task "
+            "(its Answer opens the chat doing the work), where the work goes "
+            "on. Do not answer it for them and do not claim a result."
         )
     if _is_not_done(outcome):
         return (

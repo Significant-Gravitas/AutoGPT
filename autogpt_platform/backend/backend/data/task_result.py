@@ -6,10 +6,17 @@ things, so it can answer in a line instead of retelling the work."""
 from typing import Literal
 
 import prisma.models
-from prisma.enums import TaskActor, TaskArtifactKind, TaskEvidenceKind, TaskStatus
+from prisma.enums import (
+    TaskActivityKind,
+    TaskActor,
+    TaskArtifactKind,
+    TaskAskStatus,
+    TaskEvidenceKind,
+    TaskStatus,
+)
 from pydantic import BaseModel
 
-from backend.data.task import RESULT_MAX_CHARS, _line
+from backend.data.task import RESULT_MAX_CHARS, Task, _line
 from backend.data.task_record import work_tasks
 from backend.data.task_rhythm import STATUS_BY_RUN_END
 from backend.data.task_schedule_meta import read_schedule_meta
@@ -29,6 +36,9 @@ class TaskFinish(BaseModel):
     missing_file: bool = False
     # The chat is a background worker: nobody waits on a closing message.
     in_background: bool = False
+    # Finished not done on a task that says only its title, with nothing
+    # tried: refused, so the worker asks the user what to do instead.
+    needs_question: bool = False
 
 
 class TaskOutcome(BaseModel):
@@ -41,6 +51,8 @@ class TaskOutcome(BaseModel):
     failure_reason: str | None = None
     document_title: str | None = None
     document_file_id: str | None = None
+    # The question the task waits on the user for, when it does.
+    waiting_on: str | None = None
 
 
 async def finish_task(
@@ -62,6 +74,8 @@ async def finish_task(
     if not tasks:
         return None
     task = tasks[0]
+    if outcome != "done" and await _missing_a_brief(task, session_id):
+        return TaskFinish(task_id=task.id, outcome=outcome, needs_question=True)
     document = await _saved_file(task.id, file) if file else None
     if file and document is None:
         return TaskFinish(task_id=task.id, missing_file=True)
@@ -100,6 +114,26 @@ async def finish_task(
     )
 
 
+async def _missing_a_brief(task: Task, session_id: str) -> bool:
+    """A task that says only its title (no description, goal or done-when)
+    and that this chat did no tool work on: a not-done finish there is
+    missing details, which is a question for the user, not a failure."""
+    if task.description or task.goal or task.done_when:
+        return False
+    return not await _tool_work_done(task.id, session_id)
+
+
+async def _tool_work_done(task_id: str, session_id: str) -> bool:
+    row = await prisma.models.TaskActivity.prisma().find_first(
+        where={
+            "taskId": task_id,
+            "chatSessionId": session_id,
+            "kind": TaskActivityKind.TOOL,
+        }
+    )
+    return row is not None
+
+
 async def is_worker_chat(session_id: str, user_id: str) -> bool:
     """True for a background worker's chat that is working on a task: the
     user is not looking at it, so it decides more and asks less."""
@@ -120,7 +154,7 @@ async def task_outcome(session_id: str, user_id: str) -> TaskOutcome | None:
     row = await prisma.models.Task.prisma().find_first(
         where={"userId": user_id, "workSessionId": session_id, "isArchived": False},
         order={"updatedAt": "desc"},
-        include={"Artifacts": True},
+        include={"Artifacts": True, "Asks": {"where": {"status": TaskAskStatus.OPEN}}},
     )
     if row is None:
         return None
@@ -138,6 +172,7 @@ async def task_outcome(session_id: str, user_id: str) -> TaskOutcome | None:
         failure_reason=row.failureReason,
         document_title=document.title if document else None,
         document_file_id=document.workspaceFileId if document else None,
+        waiting_on=next((ask.question for ask in row.Asks or []), None),
     )
 
 

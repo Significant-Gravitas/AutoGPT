@@ -1,6 +1,5 @@
 import { OTTO_VALUE } from "@/app/(platform)/tasks/components/NewTaskDialog/helpers";
 import { patchTask, restore } from "@/app/(platform)/tasks/taskCache";
-import { showError } from "@/app/(platform)/tasks/taskToasts";
 import {
   getGetTaskQueryKey,
   getGetTaskRecordQueryKey,
@@ -9,6 +8,8 @@ import {
 } from "@/app/api/__generated__/endpoints/tasks/tasks";
 import type { Task } from "@/app/api/__generated__/models/task";
 import { useQueryClient } from "@tanstack/react-query";
+import { announceTaskChange } from "@/app/(platform)/tasks/taskSync";
+import { SEND_NOW, showTaskFailure } from "../taskErrors";
 
 /** Give the task to Otto or an expert. Shows at once; put back with the
  *  server's reason when it says no (it refuses while the task is worked). */
@@ -17,6 +18,7 @@ export function useOwnerChange(task: Task) {
 
   const update = useUpdateTask({
     mutation: {
+      ...SEND_NOW,
       onMutate: ({ data }) =>
         patchTask(queryClient, task.id, (current) => ({
           ...current,
@@ -24,10 +26,16 @@ export function useOwnerChange(task: Task) {
             ? null
             : (data.owner_expert_id ?? current.owner_expert_id),
         })),
-      onError: (error, _vars, snapshot) => {
+      onError: (error, vars, snapshot) => {
         if (snapshot) restore(queryClient, snapshot);
-        showError("Couldn't change who has it", error);
+        showTaskFailure({
+          taskID: task.id,
+          title: "Couldn't change who has it",
+          error,
+          retry: () => update.mutate(vars),
+        });
       },
+      onSuccess: () => announceTaskChange(task.id),
       onSettled: () => {
         for (const queryKey of [
           getListTasksQueryKey(),

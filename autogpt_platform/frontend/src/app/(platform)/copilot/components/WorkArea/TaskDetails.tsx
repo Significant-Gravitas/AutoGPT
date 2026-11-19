@@ -1,16 +1,7 @@
 "use client";
 
-import { StateIcon } from "@/app/(platform)/tasks/components/StateIcon/StateIcon";
-import { chatHref, ownerOf, statusOf } from "@/app/(platform)/tasks/helpers";
-import {
-  isQueued,
-  QUEUED_LINE,
-  QUEUED_WORD,
-} from "@/app/(platform)/tasks/queue";
-import {
-  SCHEDULE_WORDS,
-  scheduleStateOf,
-} from "@/app/(platform)/tasks/schedule";
+import { chatHref, ownerOf } from "@/app/(platform)/tasks/helpers";
+import { scheduleStateOf } from "@/app/(platform)/tasks/schedule";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { Task } from "@/app/api/__generated__/models/task";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -35,47 +26,17 @@ interface Props {
   experts: Expert[];
 }
 
-/** The task's Details block: where it stands, when it starts if it waits
- *  for a start time, who owns it, the chat doing the work and when it
- *  started. Its goal sits in the About block, where it can be edited. */
+/** The task's Details block: when it starts if it waits for a start time,
+ *  how it repeats, who owns it, the chat doing the work and when it
+ *  started. Where it stands leads the tab in its own Status block. */
 export function TaskDetails({ task, sessionID, experts }: Props) {
-  const status = statusOf(task.status);
   const owner = ownerOf(task, experts);
   const workChat = workChatOf(task, sessionID);
   const schedule = scheduleStateOf(task);
-  // A run waiting for a free turn slot has not started working yet.
-  const queued = isQueued(task);
 
   return (
     <InfoGroup label="Details">
       <InfoList>
-        <BlockRow
-          tile={
-            <StateIcon
-              status={task.status}
-              schedule={schedule}
-              queued={queued}
-            />
-          }
-          title="Status"
-          subtitle={
-            queued
-              ? QUEUED_LINE
-              : isSettled(task.status) || schedule
-                ? null
-                : task.status_text
-          }
-          trailing={
-            <InfoMeta>
-              {queued
-                ? QUEUED_WORD
-                : schedule
-                  ? SCHEDULE_WORDS[schedule]
-                  : status.word}
-              {(task.attempt ?? 1) > 1 ? ` · attempt ${task.attempt}` : ""}
-            </InfoMeta>
-          }
-        />
         {schedule === "scheduled" ? <StartsRow task={task} /> : null}
         {task.repeat ? <RepeatRow task={task} repeat={task.repeat} /> : null}
         <OwnerRow task={task} experts={experts} />

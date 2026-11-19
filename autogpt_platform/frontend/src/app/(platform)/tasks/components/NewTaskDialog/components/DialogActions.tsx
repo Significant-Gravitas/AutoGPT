@@ -2,14 +2,14 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { ArrowDown01Icon, ArrowUp02Icon } from "@hugeicons/core-free-icons";
-import type { useNewTaskDialog } from "../useNewTaskDialog";
+import type { NewTaskForm } from "../useNewTaskDialog";
 import { OwnerPicker } from "./OwnerPicker/OwnerPicker";
 
 export const HINT_ID = "new-task-hint";
 export const OPTIONS_ID = "new-task-options";
 
 interface Props {
-  form: ReturnType<typeof useNewTaskDialog>;
+  form: NewTaskForm;
 }
 
 /** The dialog's bottom row: who does it, the options toggle, and save or
@@ -47,6 +47,17 @@ export function DialogActions({ form }: Props) {
           >
             Describe the task
           </Text>
+        ) : null}
+        {form.canDiscard ? (
+          <Button
+            type="button"
+            variant="ghost-muted"
+            size="xs"
+            shape="pill"
+            onClick={form.discard}
+          >
+            Discard
+          </Button>
         ) : null}
         {form.isTimed ? null : (
           <Button

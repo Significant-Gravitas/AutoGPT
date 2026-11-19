@@ -11,7 +11,7 @@ from prisma.enums import ResourceVisibility, TaskCreator, TaskStatus
 from pytest_mock import MockerFixture
 
 from backend.data import task_review
-from backend.data.task import Task
+from backend.data.task import Task, unarchive_task
 from backend.data.task_list import TaskFilter, list_task_page
 from backend.data.task_record import is_unverified
 from backend.util.exceptions import ConflictError
@@ -97,7 +97,16 @@ async def test_the_list_pages_and_filters_for_the_user(tasks: MagicMock):
     assert query["where"]["userId"] == _USER
     assert query["where"]["status"] == {"in": [TaskStatus.DONE, TaskStatus.FAILED]}
     assert query["where"]["ownerExpertId"] is None
-    assert query["where"]["title"] == {"contains": "launch plan", "mode": "insensitive"}
+    # QA pass 3, M4: the words can be anywhere the task says something.
+    match = {"contains": "launch plan", "mode": "insensitive"}
+    assert query["where"]["OR"] == [
+        {"title": match},
+        {"description": match},
+        {"goal": match},
+        {"doneWhen": match},
+        {"result": match},
+    ]
+    assert query["order"] == [{"updatedAt": "desc"}, {"id": "asc"}]
     assert (query["take"], query["skip"]) == (3, 4)
     assert [t.id for t in page.tasks] == ["t0", "t1"]
     assert (page.has_more, page.next_offset) == (True, 6)
@@ -109,3 +118,29 @@ async def test_the_last_page_says_nothing_follows(tasks: MagicMock):
     page = await list_task_page(_USER, TaskFilter(), limit=50, offset=0)
 
     assert (page.has_more, page.next_offset) == (False, None)
+
+
+@pytest.mark.parametrize(
+    "sort, order",
+    [
+        ("updated", {"updatedAt": "desc"}),
+        ("created", {"createdAt": "desc"}),
+        ("title", {"title": "asc"}),
+    ],
+)
+async def test_the_list_is_ordered_as_asked(tasks: MagicMock, sort, order):
+    """QA pass 3, M3: newest first for the dates, A to Z for title, ties by
+    id so offset pages never overlap."""
+    await list_task_page(_USER, TaskFilter(sort=sort), limit=50, offset=0)
+
+    assert tasks.find_many.await_args.kwargs["order"] == [order, {"id": "asc"}]
+
+
+async def test_unarchiving_brings_back_only_the_users_archived_task(tasks: MagicMock):
+    """QA pass 3, M5: visibility only; nothing else on the task changes."""
+    restored = await unarchive_task("task-1", _USER)
+
+    update = tasks.update_many.await_args.kwargs
+    assert restored
+    assert update["where"] == {"id": "task-1", "userId": _USER, "isArchived": True}
+    assert update["data"] == {"isArchived": False}

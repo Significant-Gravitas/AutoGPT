@@ -39,10 +39,10 @@ describe("Task tab status", () => {
     });
     renderTab();
 
-    const details = await screen.findByRole("region", { name: "Details" });
-    expect(await within(details).findByText("Queued")).toBeDefined();
-    expect(within(details).getByText("Starts when a slot frees")).toBeDefined();
-    expect(within(details).queryByText("Working")).toBeNull();
+    const status = await screen.findByRole("region", { name: "Status" });
+    expect(await within(status).findByText("Queued")).toBeDefined();
+    expect(within(status).getByText("Starts when a slot frees")).toBeDefined();
+    expect(within(status).queryByText("Working")).toBeNull();
   });
 
   it("shows a task that did not deliver as Failed, with what went wrong", async () => {
@@ -53,8 +53,8 @@ describe("Task tab status", () => {
     });
     renderTab();
 
-    const details = await screen.findByRole("region", { name: "Details" });
-    expect(await within(details).findByText("Failed")).toBeDefined();
+    const status = await screen.findByRole("region", { name: "Status" });
+    expect(await within(status).findByText("Failed")).toBeDefined();
     const wrong = await screen.findByRole("region", {
       name: "What went wrong",
     });

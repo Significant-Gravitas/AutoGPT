@@ -50,7 +50,7 @@ export function BoardLane({
             <BoardCard
               key={task.id}
               task={task}
-              owner={ownerOf(task, experts)}
+              owner={experts.length > 0 ? ownerOf(task, experts) : null}
               selected={selectedID === task.id}
               onOpen={() => onOpen(task.id)}
               nav={cardNav(roving, task.id, positionLabel(column, index))}

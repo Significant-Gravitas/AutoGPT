@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 import { useGetV1ListGraphExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetTaskRecord } from "@/app/api/__generated__/endpoints/tasks/tasks";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
@@ -10,7 +8,8 @@ import { okData } from "@/app/api/helpers";
 
 import type { Schedule } from "../../affect/agent-schedules";
 import { executionHistory, parseRowID, taskRunHistory } from "../../helpers";
-import { panelActions } from "./scheduleActions";
+import { armedLabels, panelActions } from "./scheduleActions";
+import { useArmedConfirm } from "./useArmedConfirm";
 
 interface Args {
   row: string | null;
@@ -24,7 +23,6 @@ interface Args {
 /** The open schedule with its last runs (the task's runs, or the workflow's
  *  last executions) and the panel's own actions. */
 export function useScheduleDetail(args: Args) {
-  const [confirming, setConfirming] = useState<string | null>(null);
   const target = args.row ? parseRowID(args.row) : null;
   const task =
     target?.kind === "task"
@@ -42,6 +40,11 @@ export function useScheduleDetail(args: Args) {
     workflow?.graph_id ?? "",
     { page: 1, page_size: 10 },
     { query: { enabled: Boolean(workflow), select: okData } },
+  );
+
+  const { confirming, setConfirming } = useArmedConfirm(
+    args.row,
+    armedLabels({ task, workflow }),
   );
 
   const base = args.schedules.find((s) => s.id === args.row) ?? null;

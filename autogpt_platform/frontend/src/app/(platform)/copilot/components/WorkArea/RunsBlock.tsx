@@ -5,6 +5,7 @@ import type { Task } from "@/app/api/__generated__/models/task";
 import type { TaskArtifact } from "@/app/api/__generated__/models/taskArtifact";
 import type { TaskRun } from "@/app/api/__generated__/models/taskRun";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { useNowMinute } from "@/hooks/useNowMinute";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon, Clock01Icon } from "@hugeicons/core-free-icons";
@@ -31,7 +32,8 @@ function keyOf(run: TaskRun) {
 }
 
 /** Each run of a repeating task, newest first: when it ran (and what
- *  started it, for an event) and how it ended. A click opens the run in
+ *  started it, for an event) and how it ended, a failed one with a red
+ *  mark; the header says when several failed in a row. A click opens the run in
  *  place: its result, the document it wrote and a way into its chat. */
 export function RunsBlock({ task, runs, artifacts, onOpenArtifact }: Props) {
   const isShown = showsRuns(task, runs);
@@ -39,9 +41,20 @@ export function RunsBlock({ task, runs, artifacts, onOpenArtifact }: Props) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   if (!isShown) return null;
   const waiting = task.events_waiting ?? 0;
+  const failedInARow = task.repeat?.failed_in_a_row ?? 0;
 
   return (
-    <InfoGroup label="Runs" count={runs.length}>
+    <InfoGroup
+      label="Runs"
+      count={runs.length}
+      action={
+        failedInARow > 0 ? (
+          <Text variant="small" as="span" tone="error">
+            {failedInARow} failed in a row
+          </Text>
+        ) : null
+      }
+    >
       <InfoList>
         {waiting > 0 ? (
           <BlockRow

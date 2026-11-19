@@ -5,6 +5,7 @@ import { useTaskActions } from "@/app/(platform)/tasks/useTaskActions";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
+import { isRightToLeft } from "../WorkArea/textDirection";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { Clock01Icon, PlayIcon } from "@hugeicons/core-free-icons";
@@ -55,7 +56,8 @@ export function ScheduledTaskLine({
       <div className="flex min-w-0 flex-1 flex-col">
         <OverflowText
           value={title}
-          overflow="fade"
+          dir="auto"
+          overflow={isRightToLeft(title) ? "ellipsis" : "fade"}
           variant="inbox-medium"
           tone="ink"
         />

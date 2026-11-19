@@ -506,3 +506,15 @@ async def test_marking_work_going_done_settles_it_then_stops_it(
         "task-1", USER, TaskPatch(status=status)
     )
     assert order == ["settle", "stop"]
+
+
+def test_missing_details_are_a_question_not_a_failure():
+    """QA pass 3, P2: a title-only task is asked about, never failed for
+    what it does not say."""
+    chat = worker_prompt_text("Call supplier about invoices", "task-1", "")
+    page = task_run.run_prompt(_task(), None)
+
+    for prompt in (chat, page):
+        flat = " ".join(prompt.split())
+        assert "ask the user one concrete question with ask_question" in flat
+        assert "not for missing details" in flat

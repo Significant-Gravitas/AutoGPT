@@ -58,7 +58,7 @@ export function BriefWords({ today, stats, isFollowUp }: Props) {
         ? `Next up is ${next.title}, ${formatUntil(next.next_run_time, new Date(today.now))}. `
         : null}
       {finished > 0
-        ? `This week your team finished ${finished} ${finished === 1 ? "task" : "tasks"}, ${span(stats.workSeconds)} of work.`
+        ? `This week your team finished ${finished} ${finished === 1 ? "task" : "tasks"}${stats.workSeconds > 0 ? `, ${span(stats.workSeconds)} of work` : ""}.`
         : null}
     </p>
   );

@@ -4,8 +4,9 @@ import {
   getListTasksQueryKey,
   useUpdateTask,
 } from "@/app/api/__generated__/endpoints/tasks/tasks";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { announceTaskChange } from "@/app/(platform)/tasks/taskSync";
+import { SEND_NOW, showTaskFailure } from "../taskErrors";
 
 /** The task's own words a person may change in its panel. */
 export type TaskTextField = "description" | "goal" | "done_when";
@@ -41,13 +42,15 @@ function patchCached(
 }
 
 /** Save a task's description, goal or "done when" through PATCH, showing
- *  the new words straight away. */
+ *  the new words straight away. It is sent now or not at all: offline, the
+ *  old words come back at once with a Retry. */
 export function useTaskFieldSave(taskID: string) {
   const queryClient = useQueryClient();
   const keys = [getGetTaskRecordQueryKey(taskID), getGetTaskQueryKey(taskID)];
 
   const update = useUpdateTask({
     mutation: {
+      ...SEND_NOW,
       onMutate: async ({ data }) => {
         const field = (Object.keys(data) as TaskTextField[])[0];
         const text = String(data[field] ?? "");
@@ -59,17 +62,19 @@ export function useTaskFieldSave(taskID: string) {
           before: patchCached(queryClient, key, field, text),
         }));
       },
-      onError: (error, { data }, saved) => {
+      onError: (error, vars, saved) => {
         for (const { key, before } of saved ?? []) {
           if (before) queryClient.setQueryData(key, before);
         }
-        const field = (Object.keys(data) as TaskTextField[])[0];
-        toast({
+        const field = (Object.keys(vars.data) as TaskTextField[])[0];
+        showTaskFailure({
+          taskID,
           title: SAVE_ERRORS[field] ?? "Couldn't save the task",
-          description: error instanceof Error ? error.message : undefined,
-          variant: "destructive",
+          error,
+          retry: () => update.mutate(vars),
         });
       },
+      onSuccess: () => announceTaskChange(taskID),
       onSettled: () => {
         void queryClient.invalidateQueries({
           queryKey: getListTasksQueryKey(),

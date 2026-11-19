@@ -1,21 +1,31 @@
 import type { TaskCreateRequest } from "@/app/api/__generated__/models/taskCreateRequest";
 import { cronOf, type RepeatChoice } from "./repeat";
+import { resolveStart, type StartChoice } from "./startChoice";
 
 /** When and how a new task starts, and what done looks like. A task has
  *  a start time or a rhythm, never both. */
 export interface TaskOptions {
-  startAt: Date | null;
+  start: StartChoice | null;
   repeat: RepeatChoice | null;
   doneWhen: string;
   goal: string;
 }
 
 export const NO_OPTIONS: TaskOptions = {
-  startAt: null,
+  start: null,
   repeat: null,
   doneWhen: "",
   goal: "",
 };
+
+/** Anything set: the options row opens with it. */
+export function hasOptions(options: TaskOptions) {
+  return (
+    isTimed(options) ||
+    options.doneWhen.trim() !== "" ||
+    options.goal.trim() !== ""
+  );
+}
 
 /** Which part of the dialog a refusal is about. */
 export type OptionsField = "start" | "repeat" | "form";
@@ -23,19 +33,21 @@ export type OptionsField = "start" | "repeat" | "form";
 /** A task with a start time or a rhythm waits for it, so it is saved, not
  *  started. */
 export function isTimed(options: TaskOptions) {
-  return options.startAt !== null || options.repeat !== null;
+  return options.start !== null || options.repeat !== null;
 }
 
-/** The fields the options add to the create request; empty ones are left
- *  out. */
+/** The fields the options add to the create request, a quick start worked
+ *  out at `now` (when it is sent); empty ones are left out. */
 export function optionsRequest(
   options: TaskOptions,
+  now: number,
 ): Partial<TaskCreateRequest> {
+  const startAt = resolveStart(options.start, now);
   const cron = options.repeat ? cronOf(options.repeat) : null;
   const doneWhen = options.doneWhen.trim();
   const goal = options.goal.trim();
   return {
-    ...(options.startAt ? { start_at: options.startAt } : {}),
+    ...(startAt ? { start_at: startAt } : {}),
     ...(cron ? { repeat: { crons: [cron] } } : {}),
     ...(doneWhen ? { done_when: doneWhen } : {}),
     ...(goal ? { goal } : {}),

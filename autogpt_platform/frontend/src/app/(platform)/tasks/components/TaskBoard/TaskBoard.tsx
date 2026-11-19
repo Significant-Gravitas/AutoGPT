@@ -14,19 +14,27 @@ interface Props {
   experts: Expert[];
   selectedID: string | null;
   onOpen: (id: string) => void;
+  /** The user picked an order: every lane keeps it. */
+  keepOrder?: boolean;
 }
 
 /** The tasks board: four lanes side by side that scroll sideways, with
  *  cards that glide to their new lane when their status changes. It fills
  *  the height it is given, and every lane is that tall. The arrow keys move
  *  between cards and lanes. */
-export function TaskBoard({ tasks, experts, selectedID, onOpen }: Props) {
+export function TaskBoard({
+  tasks,
+  experts,
+  selectedID,
+  onOpen,
+  keepOrder = false,
+}: Props) {
   const {
     ref: scrollerRef,
     hiddenRight,
     hiddenLeft,
   } = useOverflowRight<HTMLDivElement>();
-  const columns = buildBoardColumns(tasks);
+  const columns = buildBoardColumns(tasks, keepOrder);
   const roving = useRovingCards({
     columns,
     move: moveOnBoard,

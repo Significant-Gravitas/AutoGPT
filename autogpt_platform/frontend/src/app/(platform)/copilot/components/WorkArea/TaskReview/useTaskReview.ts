@@ -1,5 +1,5 @@
 import { patchTask, restore } from "@/app/(platform)/tasks/taskCache";
-import { showError } from "@/app/(platform)/tasks/taskToasts";
+import { announceTaskChange } from "@/app/(platform)/tasks/taskSync";
 import {
   getGetTaskQueryKey,
   getGetTaskRecordQueryKey,
@@ -9,6 +9,7 @@ import {
 } from "@/app/api/__generated__/endpoints/tasks/tasks";
 import type { Task } from "@/app/api/__generated__/models/task";
 import { useQueryClient } from "@tanstack/react-query";
+import { SEND_NOW, showTaskFailure } from "../taskErrors";
 
 /** Accept a finished task's result, or ask for changes, which runs it
  *  again with the note as what to change. Accepting shows at once and is
@@ -35,6 +36,7 @@ export function useTaskReview(taskID: string) {
 
   const accept = useReviewTask({
     mutation: {
+      ...SEND_NOW,
       onMutate: async () => {
         const snapshot = await patchTask(queryClient, taskID, (task) => ({
           ...task,
@@ -43,22 +45,36 @@ export function useTaskReview(taskID: string) {
         markVerified();
         return snapshot;
       },
-      onError: (error, _vars, snapshot) => {
+      onError: (error, vars, snapshot) => {
         if (snapshot) restore(queryClient, snapshot);
-        showError("Couldn't accept the result", error);
+        showTaskFailure({
+          taskID,
+          title: "Couldn't accept the result",
+          error,
+          retry: () => accept.mutate(vars),
+        });
       },
+      onSuccess: () => announceTaskChange(taskID),
       onSettled: refresh,
     },
   });
 
   const requestChanges = useReviewTask({
     mutation: {
+      ...SEND_NOW,
       onSuccess: async (response) => {
         if (response.status !== 200) return;
         const started: Task = response.data;
         await patchTask(queryClient, taskID, () => started);
+        announceTaskChange(taskID);
       },
-      onError: (error) => showError("Couldn't ask for changes", error),
+      onError: (error, vars) =>
+        showTaskFailure({
+          taskID,
+          title: "Couldn't ask for changes",
+          error,
+          retry: () => requestChanges.mutate(vars),
+        }),
       onSettled: refresh,
     },
   });

@@ -17,6 +17,10 @@ import {
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { Task } from "@/app/api/__generated__/models/task";
 
+import { isUnreachable } from "@/app/(platform)/tasks/taskErrors";
+import { TASK_MUTATION_DEFAULTS } from "@/app/(platform)/tasks/taskMutations";
+import { showUnreachable } from "@/app/(platform)/tasks/taskToasts";
+
 import { parseRowID } from "./helpers";
 import {
   patchTasks,
@@ -67,15 +71,14 @@ export function useScheduleActions({ tasks, workflows }: Args) {
     return { previous, done, deleted };
   }
 
-  function optimistic(failure: string) {
+  /** Sent now or not at all: offline, the change fails at once and is put
+   *  back, instead of waiting to replay on reconnect. */
+  function optimistic<TVars>(failure: string, again: (vars: TVars) => void) {
     return {
-      onError: (
-        error: unknown,
-        _vars: unknown,
-        context: Context | undefined,
-      ) => {
+      ...TASK_MUTATION_DEFAULTS,
+      onError: (error: unknown, vars: TVars, context: Context | undefined) => {
         if (context) restore(queryClient, context.previous);
-        failedToast(failure, error);
+        failed(failure, error, () => again(vars));
       },
       onSettled: () => refetchSchedules(queryClient),
     };
@@ -83,7 +86,9 @@ export function useScheduleActions({ tasks, workflows }: Args) {
 
   const pause = usePauseTaskRepeat<unknown, Context>({
     mutation: {
-      ...optimistic("The task could not be paused"),
+      ...optimistic("The task could not be paused", (vars: TaskVars) =>
+        pause.mutate(vars),
+      ),
       onMutate: ({ taskId }) =>
         apply(`Paused ${nameOf(taskId)}`, () =>
           patchTasks(queryClient, setRepeatPaused(taskId, true)),
@@ -93,7 +98,9 @@ export function useScheduleActions({ tasks, workflows }: Args) {
   });
   const resume = useResumeTaskRepeat<unknown, Context>({
     mutation: {
-      ...optimistic("The task could not resume"),
+      ...optimistic("The task could not resume", (vars: TaskVars) =>
+        resume.mutate(vars),
+      ),
       onMutate: ({ taskId }) =>
         apply(`Resumed ${nameOf(taskId)}`, () =>
           patchTasks(queryClient, setRepeatPaused(taskId, false)),
@@ -103,7 +110,9 @@ export function useScheduleActions({ tasks, workflows }: Args) {
   });
   const stopRepeat = useStopTaskRepeat<unknown, Context>({
     mutation: {
-      ...optimistic("The task could not stop repeating"),
+      ...optimistic("The task could not stop repeating", (vars: TaskVars) =>
+        stopRepeat.mutate(vars),
+      ),
       onMutate: ({ taskId }) =>
         apply(
           taskOf(taskId)?.repeat?.watch
@@ -124,7 +133,9 @@ export function useScheduleActions({ tasks, workflows }: Args) {
   });
   const cancel = useCancelTask<unknown, Context>({
     mutation: {
-      ...optimistic("The task could not be cancelled"),
+      ...optimistic("The task could not be cancelled", (vars: TaskVars) =>
+        cancel.mutate(vars),
+      ),
       onMutate: ({ taskId }) =>
         apply(`${nameOf(taskId)} was cancelled`, () =>
           patchTasks(
@@ -137,15 +148,21 @@ export function useScheduleActions({ tasks, workflows }: Args) {
   });
   const recreate = usePostV1CreateExecutionSchedule({
     mutation: {
+      ...TASK_MUTATION_DEFAULTS,
       onSuccess: (_res, vars) => switchedToast(`${vars.data.name} is back`),
-      onError: (error) =>
-        failedToast("The schedule could not be restored", error),
+      onError: (error, vars) =>
+        failed("The schedule could not be restored", error, () =>
+          recreate.mutate(vars),
+        ),
       onSettled: () => refetchSchedules(queryClient),
     },
   });
   const remove = useDeleteV1DeleteExecutionSchedule<unknown, Context>({
     mutation: {
-      ...optimistic("The schedule could not be deleted"),
+      ...optimistic(
+        "The schedule could not be deleted",
+        (vars: { scheduleId: string }) => remove.mutate(vars),
+      ),
       onMutate: ({ scheduleId }) => {
         const schedule = workflows.find((s) => s.id === scheduleId);
         return apply(
@@ -168,14 +185,17 @@ export function useScheduleActions({ tasks, workflows }: Args) {
   });
   const runTask = useRunTask({
     mutation: {
+      ...TASK_MUTATION_DEFAULTS,
       onSuccess: (_res, { taskId }) =>
         startedToast(nameOf(taskId), { task: taskOf(taskId) }),
-      onError: (error) => failedToast("The task could not start", error),
+      onError: (error, vars) =>
+        failed("The task could not start", error, () => runTask.mutate(vars)),
       onSettled: () => refetchSchedules(queryClient),
     },
   });
   const runWorkflow = usePostV1ExecuteGraphAgent({
     mutation: {
+      ...TASK_MUTATION_DEFAULTS,
       onSuccess: (res, { graphId }) =>
         startedToast(
           workflows.find((s) => s.graph_id === graphId)?.name ?? "The workflow",
@@ -186,7 +206,10 @@ export function useScheduleActions({ tasks, workflows }: Args) {
                 : undefined,
           },
         ),
-      onError: (error) => failedToast("The workflow could not start", error),
+      onError: (error, vars) =>
+        failed("The workflow could not start", error, () =>
+          runWorkflow.mutate(vars),
+        ),
       onSettled: () => refetchSchedules(queryClient),
     },
   });
@@ -226,6 +249,15 @@ export function useScheduleActions({ tasks, workflows }: Args) {
   }
 
   return { setPaused, runNow, remove: remove_ };
+}
+
+type TaskVars = { taskId: string };
+
+/** Offline: one "Couldn't reach AutoGPT" toast with Retry; otherwise the
+ *  server's reason. */
+function failed(failure: string, error: unknown, retry: () => void) {
+  if (isUnreachable(error)) return showUnreachable(retry);
+  failedToast(failure, error);
 }
 
 function setRepeatPaused(id: string, paused: boolean) {

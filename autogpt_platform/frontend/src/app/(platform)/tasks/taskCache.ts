@@ -119,6 +119,30 @@ export function replaceTask(
   );
 }
 
+/** The task as this browser last read it: its own read, else any list's. */
+export function cachedTask(
+  queryClient: QueryClient,
+  taskID: string,
+): Task | null {
+  const own = queryClient.getQueryData<getTaskResponse>(
+    getGetTaskQueryKey(taskID),
+  );
+  if (own?.status === 200) return own.data;
+  for (const [, data] of queryClient.getQueriesData<ListCache>({
+    queryKey: getListTasksQueryKey(),
+  })) {
+    const pages = data ? ("pages" in data ? data.pages : [data]) : [];
+    for (const page of pages) {
+      const found =
+        page.status === 200
+          ? page.data.tasks.find((task) => task.id === taskID)
+          : undefined;
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 export function restore(queryClient: QueryClient, snapshot: CacheSnapshot) {
   for (const [queryKey, data] of snapshot) {
     queryClient.setQueryData(queryKey, data);

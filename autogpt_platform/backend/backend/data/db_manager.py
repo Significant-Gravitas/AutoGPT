@@ -924,6 +924,7 @@ class DatabaseManager(AppService):
     )
     background_child_result = _(background_task_db.background_child_result)
     has_open_handoffs = _(background_task_db.has_open_handoffs)
+    child_launch_turn = _(background_task_db.child_launch_turn)
     cancel_background_tasks = _(background_task_db.cancel_background_tasks)
     cancel_queued_background_followup = _(
         background_task_db.cancel_queued_background_followup
@@ -1551,6 +1552,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     release_abandoned_background_turn = d.release_abandoned_background_turn
     background_child_result = d.background_child_result
     has_open_handoffs = d.has_open_handoffs
+    child_launch_turn = d.child_launch_turn
     cancel_background_tasks = d.cancel_background_tasks
     cancel_queued_background_followup = d.cancel_queued_background_followup
     cancel_orphaned_background_tasks = d.cancel_orphaned_background_tasks

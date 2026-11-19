@@ -31,7 +31,7 @@ export function ArchiveTaskDialog({
     >
       <Dialog.Content>
         <Text variant="body" tone="text" className="break-words">
-          “{title}” leaves your task list.
+          “<bdi>{title}</bdi>” leaves your task list.
         </Text>
         <Dialog.Footer>
           <Button variant="ghost-muted" size="small" onClick={onCancel}>
