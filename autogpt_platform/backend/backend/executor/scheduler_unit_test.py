@@ -45,6 +45,7 @@ from backend.executor.scheduler import (
     CopilotTurnJobInfo,
     GraphExecutionJobArgs,
     GraphExecutionJobInfo,
+    GraphScheduleDiagnostics,
     Scheduler,
     _best_effort_unschedule,
     _build_trigger,
@@ -2252,6 +2253,44 @@ def test_embedding_backfill_is_registered_to_run_immediately(monkeypatch):
     assert job.kwargs["max_instances"] == 1
     assert job.kwargs["misfire_grace_time"] is None
     assert job.kwargs["coalesce"] is True
+
+
+def test_graph_schedule_diagnostics_exports_the_stored_trigger():
+    scheduler = Scheduler.__new__(Scheduler)
+    cron = "0 9 * * fri-1/3"
+    graph_job = MagicMock(
+        id="legacy",
+        kwargs=GraphExecutionJobArgs(
+            user_id="user",
+            graph_id="graph",
+            graph_version=1,
+            cron=cron,
+            input_data={},
+        ).model_dump(),
+        next_run_time=datetime(2026, 11, 20, 9, tzinfo=timezone.utc),
+        trigger=CronTrigger.from_crontab(cron, timezone="UTC"),
+    )
+    graph_job.name = "Legacy graph"
+    copilot_job = MagicMock(
+        id="copilot",
+        kwargs=CopilotTurnJobArgs(user_id="user", message="Example").model_dump(),
+        next_run_time=graph_job.next_run_time,
+        trigger=graph_job.trigger,
+    )
+    copilot_job.name = "Copilot turn"
+    with patch.object(
+        scheduler, "_get_schedule_jobs", return_value=[graph_job, copilot_job]
+    ):
+        (record,) = scheduler.get_graph_schedule_diagnostics()
+
+    record = GraphScheduleDiagnostics.model_validate_json(record.model_dump_json())
+    assert record.schedule.id == "legacy"
+    assert record.schedule.cron == cron
+    assert record.schedule.timezone == "UTC"
+    assert record.trigger is not None
+    assert record.trigger.fields["day_of_week"] == "fri"
+    assert record.trigger.fields["hour"] == "9"
+    assert "trigger" not in GraphExecutionJobInfo.model_json_schema()["properties"]
 
 
 class TestScheduleOrgVisibility:

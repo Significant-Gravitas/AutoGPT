@@ -6,8 +6,10 @@ Provides functions to query and manage system diagnostics including executions a
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
+from zoneinfo import ZoneInfoNotFoundError
 
+from apscheduler.triggers.cron import CronTrigger
 from croniter import croniter
 from pika.exceptions import ChannelClosedByBroker
 from prisma.enums import AgentExecutionStatus
@@ -29,6 +31,13 @@ from backend.util.clients import (
     get_scheduler_client,
     read_schedules,
 )
+from backend.util.service import MissingRouteError
+
+if TYPE_CHECKING:
+    from backend.executor.scheduler import (
+        GraphExecutionJobInfo,
+        GraphScheduleDiagnostics,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -384,7 +393,14 @@ async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
     # mis-counted as `validation_failed`. Copilot-turn schedules are
     # session-scoped (not orphan-prone in the same way) and surface in the
     # copilot UI, not in the platform health dashboard.
-    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
+    try:
+        diagnostics = await read_schedules(scheduler.get_graph_schedule_diagnostics())
+    except MissingRouteError:
+        # During a rolling upgrade the scheduler may still be on the old API.
+        diagnostics = None
+        all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
+    else:
+        all_schedules = [record.schedule for record in diagnostics]
 
     # Filter user vs system schedules
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
@@ -420,13 +436,24 @@ async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
         <= twenty_four_hours_from_now
     )
 
-    # Calculate total execution runs (not just unique schedules, exclude orphaned)
-    total_runs_next_hour = _calculate_total_runs(
-        healthy_schedules, now, one_hour_from_now
-    )
-    total_runs_next_24h = _calculate_total_runs(
-        healthy_schedules, now, twenty_four_hours_from_now
-    )
+    total_runs_next_hour = 0
+    total_runs_next_24h = 0
+    if diagnostics is None:
+        total_runs_next_hour = _calculate_total_runs_legacy(
+            healthy_schedules, now, one_hour_from_now
+        )
+        total_runs_next_24h = _calculate_total_runs_legacy(
+            healthy_schedules, now, twenty_four_hours_from_now
+        )
+    else:
+        healthy_ids = {schedule.id for schedule in healthy_schedules}
+        for record in diagnostics:
+            if record.schedule.id in healthy_ids:
+                hour, day = _count_scheduled_runs(
+                    record, now, one_hour_from_now, twenty_four_hours_from_now
+                )
+                total_runs_next_hour += hour
+                total_runs_next_24h += day
 
     return ScheduleHealthMetrics(
         total_schedules=len(all_schedules),
@@ -445,48 +472,61 @@ async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
     )
 
 
-def _calculate_total_runs(
-    schedules: list, start_time: datetime, end_time: datetime
+def _count_scheduled_runs(
+    record: "GraphScheduleDiagnostics",
+    start_time: datetime,
+    hour_end: datetime,
+    day_end: datetime,
+) -> tuple[int, int]:
+    """Count fires in (start_time, hour_end] and (start_time, day_end]."""
+    stored = record.trigger
+    if stored is None:
+        return 0, 0
+    hour_count = day_count = 0
+    hour_end = hour_end.astimezone(timezone.utc)
+    end = day_end.astimezone(timezone.utc)
+    if stored.end_date is not None:
+        end = min(end, stored.end_date.astimezone(timezone.utc))
+
+    try:
+        trigger = CronTrigger(
+            **stored.fields,
+            timezone=record.schedule.timezone,
+            start_date=stored.start_date,
+            end_date=end,
+        )
+        now = start_time.astimezone(timezone.utc) + timedelta(microseconds=1)
+        previous_run = None
+        for _ in range(2000):  # One run per minute for 24 hours is 1440.
+            next_run = trigger.get_next_fire_time(previous_run, now)
+            if next_run is None:
+                break
+            day_count += 1
+            if next_run.astimezone(timezone.utc) <= hour_end:
+                hour_count += 1
+            previous_run = next_run
+            now = next_run
+    except (ValueError, ZoneInfoNotFoundError) as e:
+        logger.warning(
+            f"Failed to calculate runs for cron {record.schedule.cron!r}: {e}"
+        )
+    return hour_count, day_count
+
+
+def _calculate_total_runs_legacy(
+    schedules: list["GraphExecutionJobInfo"], start_time: datetime, end_time: datetime
 ) -> int:
-    """
-    Calculate total number of scheduled executions in time window.
-
-    Args:
-        schedules: List of GraphExecutionJobInfo with cron expressions
-        start_time: Start of time window
-        end_time: End of time window
-
-    Returns:
-        Total number of execution runs across all schedules
-    """
+    """Use the previous forecast with schedulers that do not send trigger settings."""
     total_runs = 0
-
     for schedule in schedules:
         try:
-            # Create cron iterator
-            iter = croniter(schedule.cron, start_time)
-
-            # Count occurrences in window (with safety limit)
-            count = 0
-            max_iterations = 2000  # Safety limit (e.g., every-minute for 24h = 1440)
-
-            while count < max_iterations:
-                try:
-                    next_run = iter.get_next(datetime)
-                    if next_run > end_time:
-                        break
-                    count += 1
-                except Exception:
-                    # Handle edge cases like invalid cron progression
+            runs = croniter(schedule.cron, start_time)
+            for _ in range(2000):
+                if runs.get_next(datetime) > end_time:
                     break
-
-            total_runs += count
-
-        except Exception as e:
-            logger.warning(f"Failed to parse cron expression '{schedule.cron}': {e}")
-            # Skip this schedule if cron is invalid
-            continue
-
+                total_runs += 1
+        except (ValueError, KeyError) as e:
+            logger.warning(f"Failed to calculate runs for cron {schedule.cron!r}: {e}")
     return total_runs
 
 
