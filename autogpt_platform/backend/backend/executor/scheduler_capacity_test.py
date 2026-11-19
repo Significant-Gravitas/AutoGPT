@@ -150,7 +150,6 @@ def test_a_schedule_is_stored_only_within_the_value_limit(
     items: int,
     stored: bool,
 ):
-    # Reading a schedule back costs per JSON value, which few bytes can hold.
     monkeypatch.setattr(scheduler_module.config, "max_schedule_payload_values", 1_000)
     args = GraphExecutionJobArgs(
         **_graph_job_kwargs("new", "u2", "g1") | {"input_data": {"topic": [[]] * items}}

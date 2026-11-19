@@ -5321,7 +5321,7 @@ def _check_schedule_size(kwargs: dict[str, Any]) -> None:
 
 
 def _json_value_count(data: Any) -> int:
-    """Every value in JSON data, containers included: what reading it back costs."""
+    """How many values JSON data holds, containers included."""
     count, pending = 0, [data]
     while pending:
         value = pending.pop()
