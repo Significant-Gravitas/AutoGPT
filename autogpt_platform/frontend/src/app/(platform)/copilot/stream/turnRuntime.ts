@@ -17,7 +17,7 @@ import { createUsageCapturingFetch } from "../tokenDevtool/usageTap";
 import { fetchSse, type SseFrame } from "./sseClient";
 import { TextReveal } from "./textReveal";
 import { applyEntry, type StreamEntry, type WireChunk } from "./turnConverter";
-import { appendErrorMarker, seedTurnLog } from "./turnLog";
+import { appendErrorMarker, seedTurnLog, type PersistedRow } from "./turnLog";
 import { diffRows, formatDiffs, sha256Hex } from "./turnShadow";
 import {
   checkpointOf,
@@ -291,9 +291,7 @@ export class TurnRuntime {
     this.stopped = false;
     this.suppressAttach = false;
     this.queueDeclined = false;
-    // A new send clears the last one's error, and with it one still to come.
     this.error = null;
-    this.sendBehindTurn = null;
     this.providerFailure = null;
     const message = userMessage(`local:${uuidv4({})}`, input);
     const body = streamRequestBody(this.sessionId, message, model);
@@ -834,7 +832,9 @@ export class TurnRuntime {
     for (let i = 0; i < CONTINUATION_PROBES; i++) {
       const view = await this.fetchView();
       if (!view) {
-        if (await this.signedOut()) this.giveUp(new CopilotAuthError());
+        const signedOut = await this.signedOut();
+        if (this.disposed || this.stopped) return;
+        if (signedOut) this.giveUp(new CopilotAuthError());
         else this.retry(lost, end);
         return;
       }
@@ -1253,11 +1253,7 @@ export class TurnRuntime {
       const last = this.segments[index];
       if (
         last?.kind !== "user" ||
-        last.origin !== "sent" ||
-        last.sequence !== null ||
-        !last.persistedId ||
-        locatePrompt(last, rows, null) ||
-        windowStart > promptFloor(this.segments, index, this.ownedFrom)
+        !this.isUnwritten(last, index, rows, windowStart)
       )
         break;
       taken.unshift(last);
@@ -1265,6 +1261,22 @@ export class TurnRuntime {
     }
     if (taken.length && this.segments.length === 0) this.ownedFrom = null;
     return taken;
+  }
+
+  // A send whose row the session lacks, in a window that reaches its place.
+  private isUnwritten(
+    prompt: UserSegment,
+    index: number,
+    rows: readonly PersistedRow[],
+    windowStart: number,
+  ) {
+    return (
+      prompt.origin === "sent" &&
+      prompt.sequence === null &&
+      !!prompt.persistedId &&
+      !locatePrompt(prompt, rows, null) &&
+      windowStart <= promptFloor(this.segments, index, this.ownedFrom)
+    );
   }
 
   private putBack(prompts: readonly UserSegment[]) {

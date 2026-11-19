@@ -30,7 +30,10 @@ describe("persistedPromptId", () => {
       /_CLIENT_MESSAGE_NAMESPACE = uuid\.UUID\("([0-9a-f-]{36})"\)/.exec(
         source,
       )?.[1];
-    expect(source).toMatch(
+    expect(
+      source,
+      "scoped_client_message_id's uuid5 name changed: make persistedPromptId build the same one",
+    ).toMatch(
       /uuid\.uuid5\(\s*_CLIENT_MESSAGE_NAMESPACE,\s*f"\{user_id\}:\{session_id\}:\{client_message_id\}",?\s*\)/,
     );
     expect(namespace).toBeDefined();

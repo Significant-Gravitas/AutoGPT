@@ -46,8 +46,9 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
 }
 
 /**
- * The server answered and has no session token: signed out, not offline.
- * `retryable` means the token service failed, and a later lookup may work.
+ * No usable session token. Without `retryable`, the server answered that
+ * there is no session: signed out, not offline. With it, the token service
+ * failed instead, and a later lookup may work.
  */
 export class CopilotAuthError extends Error {
   constructor(readonly retryable = false) {

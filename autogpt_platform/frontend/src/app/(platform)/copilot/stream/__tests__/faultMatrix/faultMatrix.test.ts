@@ -442,6 +442,22 @@ describe("a send", () => {
   );
 
   cell(
+    "S18s",
+    "lost, then stopped while its sign-out check waits, stays stopped without the sign-in error",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.viewsDown = true;
+      tab.send(P1);
+      // After the send's own token lookup: its recovery's lookups find no session.
+      auth.signedIn = false;
+      await advance(500);
+      tab.runtime.stop();
+      await advance(120_000);
+      expectScreen({ error: null, notice: null, toasts: 0 });
+    },
+  );
+
+  cell(
     "S18b",
     "lost while the token service is down keeps trying, and is reported once it is back",
     async () => {
@@ -729,13 +745,19 @@ describe("two tabs on one chat", () => {
       await advance(3_000);
       server.publish();
       await advance(30_000);
-      expectScreen({ error: "Failed to fetch" }, stale);
+      expectScreen(
+        {
+          error: "Failed to fetch",
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`],
+        },
+        stale,
+      );
     },
   );
 
   cell(
     "M3n",
-    "a stale tab's lost send puts no error on the turn of the message sent after it",
+    "a stale tab's lost send still reports its own failure after the message sent after it lands",
     async () => {
       const stale = openTab();
       tab.send(P1);
@@ -752,7 +774,7 @@ describe("two tabs on one chat", () => {
       await advance(5_000);
       server.publish();
       await advance(30_000);
-      expectScreen({ error: null }, stale);
+      expectScreen({ error: "Failed to fetch" }, stale);
     },
   );
 
