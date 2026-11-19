@@ -39,7 +39,13 @@ function makeAgent(overrides: Partial<LibraryAgent>): LibraryAgent {
   };
 }
 
-function setupHandlers(agents: LibraryAgent[], favorites: LibraryAgent[] = []) {
+function setupHandlers(
+  agents: LibraryAgent[],
+  favorites: LibraryAgent[] = [],
+  folders: ReturnType<
+    typeof getGetV2ListLibraryFoldersResponseMock
+  >["folders"] = [],
+) {
   server.use(
     getGetV2ListLibraryAgentsMockHandler({
       ...getGetV2ListLibraryAgentsResponseMock(),
@@ -63,9 +69,9 @@ function setupHandlers(agents: LibraryAgent[], favorites: LibraryAgent[] = []) {
     }),
     getGetV2ListLibraryFoldersMockHandler(
       getGetV2ListLibraryFoldersResponseMock({
-        folders: [],
+        folders,
         pagination: {
-          total_items: 0,
+          total_items: folders.length,
           total_pages: 1,
           current_page: 1,
           page_size: 20,
@@ -269,5 +275,26 @@ describe("LibraryAgentList — Scheduled status filter", () => {
     expect(
       await screen.findByText("No workflows match this filter"),
     ).toBeDefined();
+  });
+
+  test("a filter that matches no workflows still shows its folders", async () => {
+    const agent = makeAgent({
+      id: "a-idle",
+      graph_id: "g-idle",
+      name: "Idle Workflow",
+    });
+    const folder = {
+      ...getGetV2ListLibraryFoldersResponseMock().folders[0],
+      id: "folder-morning",
+      name: "Morning routines",
+    };
+    setupHandlers([agent], [], [folder]);
+
+    renderList("scheduled", "all");
+
+    expect(
+      await screen.findByText("No workflows match this filter"),
+    ).toBeDefined();
+    expect(await screen.findByText("Morning routines")).toBeDefined();
   });
 });

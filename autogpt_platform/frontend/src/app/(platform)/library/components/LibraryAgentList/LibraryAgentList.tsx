@@ -167,6 +167,16 @@ export function LibraryAgentList({
       (statusFilter === "scheduled" || statusFilter === "idle")
     );
 
+  // The no-match message, shown on its own when there are no folders — and
+  // above the folder grid when there are, so a filter that matches nothing
+  // at root never hides folders that may hold matching workflows.
+  const noMatchMessage = (
+    <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-foreground-tertiary">
+      <Icon icon={Search01Icon} className="h-10 w-10" />
+      <Text variant="body">No workflows match this filter</Text>
+    </div>
+  );
+
   return (
     <>
       {!selectedFolderId &&
@@ -240,80 +250,80 @@ export function LibraryAgentList({
           </div>
         ) : isPristineEmpty ? (
           <LibraryEmptyState />
-        ) : isFilterNoMatch ? (
-          <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-foreground-tertiary">
-            <Icon icon={Search01Icon} className="h-10 w-10" />
-            <Text variant="body">No workflows match this filter</Text>
-          </div>
+        ) : isFilterNoMatch && hasNoFolders ? (
+          noMatchMessage
         ) : (
-          <InfiniteScroll
-            isFetchingNextPage={isFetchingNextPage}
-            fetchNextPage={fetchNextPage}
-            hasNextPage={hasNextPage}
-            loader={<LoadingSpinner size="medium" />}
-          >
-            <LayoutGroup>
-              <AnimatePresence mode="popLayout">
-                <motion.div
-                  key={`${activeTab}-${selectedFolderId || "all"}`}
-                  className="grid grid-cols-1 gap-6 sm:grid-cols-[repeat(auto-fill,minmax(21rem,1fr))]"
-                  variants={activeContainerVariants}
-                  initial="hidden"
-                  animate="show"
-                  exit="exit"
-                >
-                  {showFolders &&
-                    foldersData?.folders.map((folder, i) => (
+          <>
+            {isFilterNoMatch && noMatchMessage}
+            <InfiniteScroll
+              isFetchingNextPage={isFetchingNextPage}
+              fetchNextPage={fetchNextPage}
+              hasNextPage={hasNextPage}
+              loader={<LoadingSpinner size="medium" />}
+            >
+              <LayoutGroup>
+                <AnimatePresence mode="popLayout">
+                  <motion.div
+                    key={`${activeTab}-${selectedFolderId || "all"}`}
+                    className="grid grid-cols-1 gap-6 sm:grid-cols-[repeat(auto-fill,minmax(21rem,1fr))]"
+                    variants={activeContainerVariants}
+                    initial="hidden"
+                    animate="show"
+                    exit="exit"
+                  >
+                    {showFolders &&
+                      foldersData?.folders.map((folder, i) => (
+                        <motion.div
+                          key={folder.id}
+                          initial={activeInitial}
+                          animate={activeAnimate}
+                          transition={{
+                            ...activeTransition,
+                            delay: i * 0.04,
+                          }}
+                        >
+                          <LibraryFolder
+                            id={folder.id}
+                            name={folder.name}
+                            agentCount={folder.agent_count ?? 0}
+                            color={folder.color ?? undefined}
+                            icon={folder.icon ?? "📁"}
+                            onAgentDrop={handleAgentDrop}
+                            onClick={() => onFolderSelect(folder.id)}
+                            onEdit={() => setEditingFolder(folder)}
+                            onDelete={() => setDeletingFolder(folder)}
+                          />
+                        </motion.div>
+                      ))}
+                    {agents.map((agent, i) => (
                       <motion.div
-                        key={folder.id}
+                        key={agent.id}
                         initial={activeInitial}
                         animate={activeAnimate}
                         transition={{
                           ...activeTransition,
-                          delay: i * 0.04,
+                          delay:
+                            ((showFolders
+                              ? (foldersData?.folders.length ?? 0)
+                              : 0) +
+                              i) *
+                            0.04,
                         }}
                       >
-                        <LibraryFolder
-                          id={folder.id}
-                          name={folder.name}
-                          agentCount={folder.agent_count ?? 0}
-                          color={folder.color ?? undefined}
-                          icon={folder.icon ?? "📁"}
-                          onAgentDrop={handleAgentDrop}
-                          onClick={() => onFolderSelect(folder.id)}
-                          onEdit={() => setEditingFolder(folder)}
-                          onDelete={() => setDeletingFolder(folder)}
+                        <LibraryAgentCard
+                          agent={agent}
+                          statusInfo={getAgentStatus(
+                            agentStatusMap,
+                            agent.graph_id,
+                          )}
                         />
                       </motion.div>
                     ))}
-                  {agents.map((agent, i) => (
-                    <motion.div
-                      key={agent.id}
-                      initial={activeInitial}
-                      animate={activeAnimate}
-                      transition={{
-                        ...activeTransition,
-                        delay:
-                          ((showFolders
-                            ? (foldersData?.folders.length ?? 0)
-                            : 0) +
-                            i) *
-                          0.04,
-                      }}
-                    >
-                      <LibraryAgentCard
-                        agent={agent}
-                        statusInfo={getAgentStatus(
-                          agentStatusMap,
-                          agent.graph_id,
-                        )}
-                      />
-                    </motion.div>
-                  ))}
-                </motion.div>
-              </AnimatePresence>
-            </LayoutGroup>
-          </InfiniteScroll>
+                  </motion.div>
+                </AnimatePresence>
+              </LayoutGroup>
+            </InfiniteScroll>
+          </>
         )}
       </div>
 

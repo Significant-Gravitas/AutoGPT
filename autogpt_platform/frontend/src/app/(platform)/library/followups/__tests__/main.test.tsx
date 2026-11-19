@@ -593,7 +593,9 @@ describe("FollowupsPage", () => {
     // 10 s margin before it fires.
     const answered = outage.reads();
     await act(async () => {
-      vi.advanceTimersByTime(outage.lastAnsweredAt() + 5_000 - Date.now());
+      vi.advanceTimersByTime(
+        Math.max(0, outage.lastAnsweredAt() + 5_000 - Date.now()),
+      );
     });
     expect(queryClient.isFetching()).toBe(0);
     expect(outage.reads()).toBe(answered);

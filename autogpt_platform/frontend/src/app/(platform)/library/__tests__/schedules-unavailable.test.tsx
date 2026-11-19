@@ -21,6 +21,7 @@ import {
   getGetV2ListLibraryFoldersResponseMock,
 } from "@/app/api/__generated__/endpoints/folders/folders.msw";
 import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
+import { getGetV1ListExecutionSchedulesForAUserQueryKey } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import LibraryPage from "../page";
 
@@ -144,13 +145,22 @@ function testClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
-// Every library read the page started has been answered and handled.
+// Every library read the page started has been answered and handled —
+// including the scheduler probe, a separate schedules query the library
+// reads do not cover.
 async function libraryReadsSettled(queryClient: QueryClient) {
   await waitFor(() =>
     expect(
       queryClient.isFetching({
         predicate: (query) =>
           String(query.queryKey[0]).startsWith("/api/library/agents"),
+      }),
+    ).toBe(0),
+  );
+  await waitFor(() =>
+    expect(
+      queryClient.isFetching({
+        queryKey: getGetV1ListExecutionSchedulesForAUserQueryKey(),
       }),
     ).toBe(0),
   );
