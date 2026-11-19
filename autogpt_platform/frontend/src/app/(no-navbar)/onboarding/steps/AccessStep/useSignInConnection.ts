@@ -10,18 +10,23 @@ const LOOKUP_TIMEOUT_MS = 5000;
  * would offer, as a Google or Microsoft sign-in that connects leaves it. Then
  * the step is left out.
  */
-export function useSignInConnection(provider: string | null) {
+export function useSignInConnection(
+  userID: string | null,
+  provider: string | null,
+) {
   const access = provider ? ACCESS_PROVIDERS[provider] : undefined;
   const saved = useQuery({
-    queryKey: ["onboarding", "sign-in-connection", provider],
+    // Per account, like the provider lookup: kept for good, it must never
+    // answer for whoever signs in next in this tab.
+    queryKey: ["onboarding", "sign-in-connection", userID, provider],
     queryFn: () => listConnections(provider ?? ""),
-    enabled: !!access,
+    enabled: !!access && userID !== null,
     staleTime: Infinity,
     retry: false,
   });
   return {
     // A failed lookup only keeps the step, which offers the connection.
-    isReady: !access || !saved.isPending,
+    isReady: !access || userID === null || !saved.isPending,
     isConnected: !!access && !!saved.data && access.isConnected(saved.data),
   };
 }
