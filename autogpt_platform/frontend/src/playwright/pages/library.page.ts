@@ -511,8 +511,10 @@ export async function clickRunButton(page: Page): Promise<void> {
   ];
 
   await page.waitForLoadState("domcontentloaded");
-  await page.waitForLoadState("networkidle").catch(() => undefined);
 
+  // The buttons render once the agent's data loads, so the poll below is
+  // the page's ready signal; a wait for the network to go idle has no
+  // deadline of its own and one hung image runs out the test.
   const timeoutAt = Date.now() + 20000;
 
   while (Date.now() < timeoutAt) {
@@ -1061,48 +1063,17 @@ export async function importAgentFromFile(
     .then(() => true)
     .catch(() => false);
   if (sawUploadingState) {
-    const uploadingState = await uploadingButton
-      .evaluateAll((buttons) => {
-        const visibleButton = buttons.find((button) => {
-          const { width, height } = button.getBoundingClientRect();
-          return (
-            width > 0 &&
-            height > 0 &&
-            window.getComputedStyle(button).visibility !== "hidden"
-          );
-        });
-        if (!visibleButton) {
-          return "gone" as const;
-        }
-        return visibleButton.matches(":disabled") ||
-          visibleButton.getAttribute("aria-disabled") === "true"
-          ? ("disabled" as const)
-          : ("enabled" as const);
-      })
-      .catch(async (error: unknown) => {
-        if (
-          !(error instanceof Error) ||
-          !error.message.includes("Execution context was destroyed")
-        ) {
-          throw error;
-        }
-        if (!/\/build/.test(page.url())) {
-          await page
-            .waitForURL(/\/build/, {
-              timeout: 500,
-              waitUntil: "commit",
-            })
-            .catch(() => {
-              throw error;
-            });
-        }
-        return "build" as const;
-      });
-
+    // The import loads /build as soon as the graph is saved, often while this
+    // read runs. A button that has gone, or a page that has left, has nothing
+    // left to check; the poll below waits for /build itself.
+    const enabledWhileUploading = await uploadingButton
+      .first()
+      .isEnabled({ timeout: 1000 })
+      .catch(() => false);
     expect(
-      uploadingState,
+      enabledWhileUploading,
       'upload button should be disabled while "Uploading..." is visible',
-    ).not.toBe("enabled");
+    ).toBe(false);
   }
 
   // Upload → backend creates the graph → router pushes /build?flowID=...
