@@ -62,6 +62,9 @@ TimezoneLiteral = Literal[
 
 logger = logging.getLogger(__name__)
 
+# A custom format's length is capped like the other blocks' free-text formats.
+MAX_STRFTIME_FORMAT_LENGTH = 1_000
+
 
 def _get_timezone(
     format_type: Any,  # Any format type with timezone and use_user_timezone attributes
@@ -207,7 +210,7 @@ class GetCurrentTimeBlock(Block):
             current_time = full_iso.split("T")[1] if "T" in full_iso else full_iso
             current_time = f"T{current_time}"  # Add T prefix for ISO 8601 time format
         else:  # TimeStrftimeFormat
-            current_time = dt.strftime(input_data.format_type.format)
+            current_time = _strftime(dt, input_data.format_type.format)
 
         yield "time", current_time
 
@@ -318,7 +321,7 @@ class GetCurrentDateBlock(Block):
             # ISO 8601 date format is YYYY-MM-DD
             date_str = current_date.date().isoformat()
         else:  # DateStrftimeFormat
-            date_str = current_date.strftime(input_data.format_type.format)
+            date_str = _strftime(current_date, input_data.format_type.format)
 
         yield "date", date_str
 
@@ -422,7 +425,7 @@ class GetCurrentDateAndTimeBlock(Block):
                 dt, input_data.format_type.include_microseconds
             )
         else:  # StrftimeFormat
-            current_date_time = dt.strftime(input_data.format_type.format)
+            current_date_time = _strftime(dt, input_data.format_type.format)
 
         yield "date_time", current_date_time
 
@@ -523,3 +526,12 @@ class CountdownTimerBlock(Block):
             if total_seconds > 0:
                 await asyncio.sleep(total_seconds)
             yield "output_message", input_data.input_message
+
+
+def _strftime(dt: datetime, format: str) -> str:
+    if len(format) > MAX_STRFTIME_FORMAT_LENGTH:
+        raise ValueError(
+            f"The custom format is {len(format)} characters long; "
+            f"at most {MAX_STRFTIME_FORMAT_LENGTH} are allowed"
+        )
+    return dt.strftime(format)
