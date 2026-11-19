@@ -18,6 +18,42 @@ def _make_input(**kwargs: Any) -> BusinessUnderstandingInput:
     return BusinessUnderstandingInput.model_validate(kwargs)
 
 
+# ─── merge_business_understanding_data: list fields ─────────────────────
+
+
+def test_merge_list_field_appends_new_items_once_in_order():
+    existing = {"business": {"pain_points": ["a", {"legacy": 1}, "b"]}}
+
+    result = merge_business_understanding_data(
+        existing, _make_input(pain_points=["b", "c", "a", "c", "d"])
+    )
+
+    assert result["business"]["pain_points"] == ["a", {"legacy": 1}, "b", "c", "d"]
+
+
+def test_merge_list_field_does_not_compare_each_item_with_every_stored_one():
+    comparisons = 0
+
+    class CountingStr(str):
+        def __eq__(self, other: object) -> bool:
+            nonlocal comparisons
+            comparisons += 1
+            return str.__eq__(self, other)
+
+        __hash__ = str.__hash__
+
+    item_count = 2_000
+    stored = [CountingStr(f"stored {i}") for i in range(item_count)]
+    new = [f"new {i}" for i in range(item_count)]
+
+    result = merge_business_understanding_data(
+        {"business": {"pain_points": stored}}, _make_input(pain_points=new)
+    )
+
+    assert comparisons < item_count
+    assert result["business"]["pain_points"] == [*stored, *new]
+
+
 # ─── merge_business_understanding_data: themed prompts ─────────────────
 
 

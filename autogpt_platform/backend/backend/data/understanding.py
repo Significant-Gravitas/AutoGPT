@@ -200,16 +200,18 @@ class BusinessUnderstanding(pydantic.BaseModel):
         )
 
 
-def _merge_lists(existing: list | None, new: list | None) -> list | None:
+def _merge_lists(existing: list | None, new: list[str] | None) -> list | None:
     """Merge two lists, removing duplicates while preserving order."""
     if new is None:
         return existing
     if existing is None:
         return new
-    # Preserve order, add new items that don't exist
     merged = list(existing)
+    # A stored row may hold non-string legacy items, which no new string equals.
+    seen = {item for item in merged if isinstance(item, str)}
     for item in new:
-        if item not in merged:
+        if item not in seen:
+            seen.add(item)
             merged.append(item)
     return merged
 
