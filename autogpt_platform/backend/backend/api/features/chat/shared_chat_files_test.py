@@ -10,6 +10,7 @@ the share lookups and the allowlist build all run.
 import json
 from contextlib import ExitStack
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -206,6 +207,16 @@ class _Database:
         stack = ExitStack()
         for model, client in tables.items():
             stack.enter_context(patch.object(model, "prisma", return_value=client))
+        stack.enter_context(
+            patch(
+                "backend.copilot.db._newest_rows_within",
+                AsyncMock(
+                    side_effect=lambda _s, limit, *_: SimpleNamespace(
+                        rows=limit, cut=False, size=0
+                    )
+                ),
+            )
+        )
         return stack
 
 

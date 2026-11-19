@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -27,8 +28,10 @@ from prisma.models import (
 from backend.blocks._base import BlockType
 from backend.copilot.model import ChatMessage
 from backend.copilot.sharing.db import (
+    _build_shared_chat_files,
     _build_shared_execution_file_allowlist,
     _collect_execution_ids_from_messages,
+    _count_referenced_workspace_files,
     _file_referenced_in_session,
     disable_chat_session_share,
     enable_chat_session_share,
@@ -215,6 +218,14 @@ def mock_prisma_calls():
         patch.object(PrismaChatMessage, "prisma") as msg_prisma,
         patch.object(UserWorkspace, "prisma") as workspace_prisma,
         patch.object(UserWorkspaceFile, "prisma") as workspace_file_prisma,
+        patch(
+            "backend.copilot.db._newest_rows_within",
+            AsyncMock(
+                side_effect=lambda _s, limit, *_: SimpleNamespace(
+                    rows=limit, cut=False, size=0
+                )
+            ),
+        ),
     ):
         msg_prisma.return_value.count = AsyncMock(return_value=0)
         msg_prisma.return_value.find_many = AsyncMock(return_value=[])
@@ -600,6 +611,49 @@ class TestEnableChatShareState:
         assert state.share_token == "token-A"
 
 
+def _paged(*pages: list[Any]) -> Any:
+    """The chat's rows as the pager hands them over, a page at a time."""
+
+    async def iterate(_session_id: str, *, role: str | None = None, tx: Any = None):
+        for page in pages:
+            yield [row for row in page if role is None or row.role == role]
+
+    return patch("backend.copilot.sharing.db.iter_chat_message_pages", iterate)
+
+
+@pytest.mark.asyncio
+async def test_the_share_scans_read_the_chat_a_page_at_a_time(mock_prisma_calls):
+    file_a = "11111111-2222-3333-4444-555555555555"
+    file_b = "66666666-7777-8888-9999-000000000000"
+    first = _mock_tool_msg('{"type":"execution_started","execution_id":"exec-A"}')
+    first.toolCalls = {"result": f"workspace://{file_a}"}
+    second = _mock_tool_msg('{"type":"execution_started","execution_id":"exec-B"}')
+    second.toolCalls = {"result": f"workspace://{file_b}"}
+    mock_prisma_calls["message"].return_value.find_many = AsyncMock(
+        side_effect=AssertionError("the chat was read in one go")
+    )
+    mock_prisma_calls["workspace"].return_value.find_unique = AsyncMock(
+        return_value=SimpleNamespace(id="ws-1")
+    )
+    mock_prisma_calls["workspace_file"].return_value.find_many = AsyncMock(
+        side_effect=lambda where: [
+            SimpleNamespace(id=file_id, name="a.csv", path="/a.csv", metadata={})
+            for file_id in where["id"]["in"]
+        ]
+    )
+    mock_prisma_calls["file"].return_value.create = AsyncMock()
+
+    with _paged([first], [second]):
+        runs = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
+        counted = await _count_referenced_workspace_files(
+            session_id=SESSION_ID, user_id=USER_ID
+        )
+        built = await _build_shared_chat_files(SESSION_ID, "token", USER_ID)
+
+    assert runs == {"exec-A", "exec-B"}
+    assert (counted, built) == (2, 2)
+
+
 def _mock_tool_msg(content: str):
     """Build a minimal tool-role ChatMessage row for scanner tests."""
     from prisma.models import ChatMessage as PrismaChatMessage
@@ -670,8 +724,7 @@ class TestCollectExecutionIdsFromMessages:
         msg = _mock_tool_msg(
             '{"type":"execution_started","execution_id":"exec-A","graph_id":"g1"}'
         )
-        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
-            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
+        with _paged([msg]):
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == {"exec-A"}
 
@@ -681,10 +734,7 @@ class TestCollectExecutionIdsFromMessages:
         m1 = _mock_tool_msg('{"type":"execution_started","execution_id":"exec-A"}')
         m2 = _mock_tool_msg('{"type":"execution_started","execution_id":"exec-A"}')
         m3 = _mock_tool_msg('{"type":"execution_started","execution_id":"exec-B"}')
-        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
-            msg_mock.prisma.return_value.find_many = AsyncMock(
-                return_value=[m1, m2, m3]
-            )
+        with _paged([m1, m2, m3]):
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == {"exec-A", "exec-B"}
 
@@ -694,8 +744,7 @@ class TestCollectExecutionIdsFromMessages:
         msg = _mock_tool_msg(
             '{"type":"web_fetch","url":"https://example.com","status_code":200}'
         )
-        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
-            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
+        with _paged([msg]):
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == set()
 
@@ -703,8 +752,7 @@ class TestCollectExecutionIdsFromMessages:
     async def test_ignores_malformed_json_tool_content(self):
         """Tool content that isn't valid JSON shouldn't crash the scan."""
         msg = _mock_tool_msg("not-json-at-all {{")
-        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
-            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
+        with _paged([msg]):
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == set()
 
@@ -712,8 +760,7 @@ class TestCollectExecutionIdsFromMessages:
     async def test_ignores_execution_started_with_missing_id(self):
         """Defense-in-depth — a malformed payload without execution_id."""
         msg = _mock_tool_msg('{"type":"execution_started"}')
-        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
-            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
+        with _paged([msg]):
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == set()
 
@@ -729,8 +776,7 @@ class TestCollectExecutionIdsFromMessages:
             '"message":"Agent X completed.",'
             '"execution":{"execution_id":"exec-sync","status":"COMPLETED"}}'
         )
-        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
-            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
+        with _paged([msg]):
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == {"exec-sync"}
 
@@ -739,8 +785,7 @@ class TestCollectExecutionIdsFromMessages:
         """Failed / terminated real executions can be recovered on re-share
         when the runtime hook missed the original link attempt."""
         msg = _mock_tool_msg('{"type":"error","execution_id":"exec-failed"}')
-        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
-            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
+        with _paged([msg]):
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == {"exec-failed"}
 
@@ -750,8 +795,7 @@ class TestCollectExecutionIdsFromMessages:
         msg = _mock_tool_msg(
             '{"type":"execution_started","execution_id":"schedule-id","status":"SCHEDULED"}'
         )
-        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
-            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
+        with _paged([msg]):
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == set()
 
@@ -759,8 +803,7 @@ class TestCollectExecutionIdsFromMessages:
     async def test_ignores_agent_output_with_missing_execution_block(self):
         """An agent_output without a nested execution block is a no-op."""
         msg = _mock_tool_msg('{"type":"agent_output","message":"done"}')
-        with patch("backend.copilot.sharing.db.PrismaChatMessage") as msg_mock:
-            msg_mock.prisma.return_value.find_many = AsyncMock(return_value=[msg])
+        with _paged([msg]):
             ids = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         assert ids == set()
 
