@@ -40,18 +40,17 @@ export function ChatErrorBanner({ error, onResend }: Props) {
           {note}
         </Text>
       ) : null}
-      {action === "resend" ? (
-        onResend ? (
-          <Button
-            variant="secondary"
-            size="small"
-            className="mt-3"
-            onClick={onResend}
-          >
-            {ACTION_LABELS.resend}
-          </Button>
-        ) : null
-      ) : action ? (
+      {action === "resend" && onResend ? (
+        <Button
+          variant="secondary"
+          size="small"
+          className="mt-3"
+          onClick={onResend}
+        >
+          {ACTION_LABELS.resend}
+        </Button>
+      ) : null}
+      {action && action !== "resend" ? (
         <Button
           as="NextLink"
           href={hrefFor(action)}

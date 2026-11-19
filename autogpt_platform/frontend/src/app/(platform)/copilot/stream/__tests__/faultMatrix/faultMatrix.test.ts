@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CONTINUATION_PROBES } from "../../turnRuntime";
+import { CONTINUATION_PROBES, SendInFlightError } from "../../turnRuntime";
 import { FaultServer } from "./faultServer";
 import { Tab, type Screen } from "./tab";
 
@@ -534,7 +534,24 @@ describe("a send", () => {
     "whose request hung, once reported, is sent again under its first id and answered once",
     async () => {
       server.postMode = "hang-before-send";
-      tab.send(P1);
+      void tab.runtime.send(
+        {
+          parts: [
+            { type: "text", text: P1 },
+            {
+              type: "file",
+              mediaType: "application/pdf",
+              filename: "report.pdf",
+              url: "/api/proxy/api/workspace/files/file-1/download",
+            },
+            {
+              type: "data-workspace-folder",
+              data: { id: "folder-1", name: "Reports", fileCount: 2 },
+            },
+          ],
+        },
+        undefined,
+      );
       await advance(40_000);
       expectScreen({ error: UNCONFIRMED });
       server.postMode = "stream";
@@ -543,24 +560,103 @@ describe("a send", () => {
       server.publish();
       await advance(30_000);
       expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
-      expect(server.postedIds).toHaveLength(2);
-      expect(server.postedIds[1]).toBe(server.postedIds[0]);
+      // The same request again: its id, its file and its folder.
+      const [first, again] = server.posts;
+      expect(server.posts).toHaveLength(2);
+      expect(again.message_id).toBe(first.message_id);
+      expect(first.file_ids).toEqual(["file-1"]);
+      expect(again.file_ids).toEqual(first.file_ids);
+      expect(first.folder_ids).toEqual(["folder-1"]);
+      expect(again.folder_ids).toEqual(first.folder_ids);
     },
   );
 
   cell(
     "S19p",
-    "reported while a later send waits on its answer, is not sent again until that send is answered",
+    "reported while a later send waits on its answer, is sent again once that send is answered",
     async () => {
       server.postMode = "hang-before-send";
       tab.send(P1);
-      // A later send goes out while P1's checks run, and waits on its answer.
+      // A later send goes out while P1's checks run, and its answer is slow.
       await advance(30_500);
+      server.postMode = "stream";
+      server.respondAfterMs = 6_000;
       tab.send(P2);
-      await advance(10_000);
+      await advance(5_000);
       expectScreen({ error: UNCONFIRMED });
       expect(tab.runtime.resendUnconfirmed(undefined)).toBeNull();
       expect(tab.screen().chat).toEqual([`user: ${P1}`, `user: ${P2}`]);
+      // P2's answer arrives and its turn ends; then P1 goes out again.
+      await advance(2_000);
+      server.publish();
+      await advance(10_000);
+      expect(tab.runtime.resendUnconfirmed(undefined)).not.toBeNull();
+      await advance(0);
+      server.publish();
+      await advance(30_000);
+      expectScreen({
+        error: null,
+        chat: [`user: ${P2}`, ANSWER, `user: ${P1}`, ANSWER],
+      });
+    },
+  );
+
+  cell(
+    "S19b",
+    "sent again before its late first request reaches the server, starts one turn with one prompt row",
+    async () => {
+      server.postMode = "late-after-receive";
+      tab.send(P1);
+      await advance(38_000);
+      expectScreen({ error: UNCONFIRMED });
+      server.postMode = "stream";
+      tab.runtime.resendUnconfirmed(undefined);
+      await advance(0);
+      // The first request reaches the server at 40 s, after the resend.
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+      expect(server.turns).toHaveLength(1);
+      expect(server.history.filter((row) => row.content === P1)).toHaveLength(
+        1,
+      );
+    },
+  );
+
+  cell(
+    "S19l",
+    "whose late request was answered after it was reported, no longer offers to send it again",
+    async () => {
+      server.postMode = "late-after-receive";
+      tab.send(P1);
+      await advance(38_000);
+      expectScreen({ error: UNCONFIRMED });
+      // The server took it at 40 s and answered; the page reads the chat.
+      await advance(4_000);
+      server.publish();
+      await advance(1_000);
+      tab.runtime.observe(server.view());
+      await advance(1_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+      expect(tab.runtime.resendUnconfirmed(undefined)).toBeNull();
+    },
+  );
+
+  cell(
+    "S19u",
+    "while its resend waits on an answer, refuses a new send rather than dropping it",
+    async () => {
+      server.postMode = "hang-before-send";
+      tab.send(P1);
+      await advance(40_000);
+      expectScreen({ error: UNCONFIRMED });
+      tab.runtime.resendUnconfirmed(undefined);
+      await advance(0);
+      await expect(tab.runtime.send({ text: P2 }, undefined)).rejects.toThrow(
+        SendInFlightError,
+      );
+      expect(tab.screen().chat).toEqual([`user: ${P1}`]);
     },
   );
 
@@ -575,11 +671,13 @@ describe("a send", () => {
       // The server takes the first request at 40 s and starts its turn.
       await advance(4_000);
       server.postMode = "stream";
-      tab.runtime.resendUnconfirmed(undefined);
+      expect(tab.runtime.resendUnconfirmed(undefined)).not.toBeNull();
       await advance(0);
       server.publish();
       await advance(30_000);
       expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+      expect(server.posts).toHaveLength(2);
+      expect(server.posts[1].message_id).toBe(server.posts[0].message_id);
     },
   );
 

@@ -322,6 +322,7 @@ export class TurnRuntime {
     const prompt = this.segments[index];
     if (prompt?.kind !== "user" || prompt.sequence !== null) return null;
     this.segments.splice(index, 1);
+    // With the model chosen now, as any send is, not the first request's.
     void this.postPrompt(prompt.message, model, prompt.clientMessageId);
     return prompt.message;
   }
@@ -331,7 +332,9 @@ export class TurnRuntime {
     model: CopilotLlmModel | undefined,
     clientMessageId: string | null,
   ) {
-    if (this.isPostPending()) return;
+    // One request at a time: a send dropped here would be lost, so its
+    // caller hears of it and keeps the message.
+    if (this.isPostPending()) throw new SendInFlightError();
     this.stopped = false;
     this.suppressAttach = false;
     this.queueDeclined = false;
@@ -434,8 +437,17 @@ export class TurnRuntime {
       this.settleTail(view, rows);
       this.decideSendsBehindTurn();
     }
+    this.dropConfirmedError();
     this.followQueue(view);
     this.emitNow();
+  }
+
+  // A prompt reported as unconfirmed that the session now holds was sent.
+  private dropConfirmedError() {
+    const error = this.error;
+    if (!(error instanceof UnconfirmedSendError)) return;
+    const prompt = this.segments.find((s) => s.key === error.prompt);
+    if (prompt?.kind === "user" && prompt.sequence !== null) this.error = null;
   }
 
   // ── Connection ─────────────────────────────────────────────────────────
@@ -1884,6 +1896,16 @@ export class UnconfirmedSendError extends Error {
   constructor(readonly prompt: string | null = null) {
     super("The connection stalled before the server confirmed your message.");
     this.name = "UnconfirmedSendError";
+  }
+}
+
+/** A send while another still waits on its answer, refused rather than lost. */
+export class SendInFlightError extends Error {
+  constructor() {
+    super(
+      "Another message is still being sent. Send this one again in a moment.",
+    );
+    this.name = "SendInFlightError";
   }
 }
 

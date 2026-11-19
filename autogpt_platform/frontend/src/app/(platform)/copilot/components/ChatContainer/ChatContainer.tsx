@@ -545,7 +545,11 @@ export const ChatContainer = ({
                 onLoadMore={onLoadMore}
                 onRetry={handleRetry}
                 onResend={
-                  isTurnLocked || isStreaming ? undefined : onResendUnconfirmed
+                  // A send uploading its files would find the one request
+                  // slot taken: it goes first.
+                  isTurnLocked || isStreaming || isUploadingFiles || pendingSend
+                    ? undefined
+                    : onResendUnconfirmed
                 }
                 turnStats={turnStats}
                 queuedMessages={queuedMessages}
