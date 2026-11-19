@@ -83,6 +83,7 @@ export default function SignupScreen() {
           <LegalLine
             optedOut={screen.optedOut}
             onToggleOptOut={screen.toggleOptOut}
+            disabled={screen.isSubmitting}
           />
           <AuthFooter
             prompt="Already have an account? "

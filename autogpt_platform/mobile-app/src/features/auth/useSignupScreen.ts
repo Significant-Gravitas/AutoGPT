@@ -7,6 +7,7 @@ import {
   signUpWithEmail,
 } from "@/lib/auth/nativeSession";
 import { verificationCallbackURL } from "@/lib/auth/sessionHelpers";
+import { sessionMark } from "@/lib/auth/token";
 import { signOut, whenSignedOut } from "@/lib/session";
 import { useMountEffect } from "@/lib/useMountEffect";
 
@@ -52,6 +53,7 @@ export function useSignupScreen() {
   useMountEffect(() => stopCountdown);
 
   function toggleOptOut() {
+    if (isSubmitting) return;
     setOptedOut((value) => !value);
   }
 
@@ -86,10 +88,12 @@ export function useSignupScreen() {
   // Signed in at once: the root layout has already left this screen, so a
   // failure can't be shown here. Signing out puts the person back at the start.
   async function provision() {
+    const mark = sessionMark();
     try {
       await provisionNewAccount(optedOut);
     } catch {
-      await signOut();
+      // Only this account: someone signed in since must stay signed in.
+      if (sessionMark() === mark) await signOut();
     }
   }
 
@@ -131,6 +135,7 @@ export function useSignupScreen() {
   }
 
   function startAgain() {
+    if (isChecking || isResending) return;
     stopCountdown();
     setCooldown(0);
     setPendingEmail(null);

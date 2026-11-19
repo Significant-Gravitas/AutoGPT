@@ -68,6 +68,8 @@ export function CheckInbox({
         prompt="Wrong address? "
         linkLabel="Start again"
         onPress={onStartAgain}
+        // A check or resend still running belongs to this address.
+        disabled={isChecking || isResending}
       />
     </View>
   );

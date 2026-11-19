@@ -6,9 +6,11 @@ import { createStyles, spacing, type } from "@/lib/theme";
 interface Props {
   optedOut: boolean;
   onToggleOptOut: () => void;
+  /** While the account is being created: the choice already went with it. */
+  disabled?: boolean;
 }
 
-export function LegalLine({ optedOut, onToggleOptOut }: Props) {
+export function LegalLine({ optedOut, onToggleOptOut, disabled }: Props) {
   const styles = useStyles();
 
   function openTerms() {
@@ -33,7 +35,12 @@ export function LegalLine({ optedOut, onToggleOptOut }: Props) {
       {optedOut ? (
         <>
           <Text style={styles.strong}>You won&apos;t get marketing emails.</Text>{" "}
-          <Text accessibilityRole="button" onPress={onToggleOptOut} style={styles.link}>
+          <Text
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !!disabled }}
+            onPress={disabled ? undefined : onToggleOptOut}
+            style={styles.link}
+          >
             Undo
           </Text>
           .
@@ -41,7 +48,12 @@ export function LegalLine({ optedOut, onToggleOptOut }: Props) {
       ) : (
         <>
           We may email you product updates and offers;{" "}
-          <Text accessibilityRole="button" onPress={onToggleOptOut} style={styles.link}>
+          <Text
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !!disabled }}
+            onPress={disabled ? undefined : onToggleOptOut}
+            style={styles.link}
+          >
             opt out
           </Text>
           .
