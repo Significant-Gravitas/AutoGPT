@@ -297,7 +297,7 @@ async def test_no_where_on_messages_without_before_sequence(
 @pytest.mark.asyncio
 async def test_byte_budget_lowers_limit_and_reports_has_more():
     """Rows past the byte budget are not fetched; the page says there are more."""
-    size_query = AsyncMock(return_value=[{"fit": 2}])
+    size_query = AsyncMock(return_value=[{"fit": 2, "rows": 3}])
     with (
         patch.object(PrismaChatSession, "prisma") as mock_session_prisma,
         patch("backend.copilot.db.db.query_raw_with_schema", size_query),
@@ -324,6 +324,23 @@ async def test_byte_budget_lowers_limit_and_reports_has_more():
 
 
 @pytest.mark.asyncio
+async def test_byte_budget_keeps_the_limit_when_no_rows_are_stored():
+    with (
+        patch.object(PrismaChatSession, "prisma") as mock_session_prisma,
+        patch(
+            "backend.copilot.db.db.query_raw_with_schema",
+            AsyncMock(return_value=[{"fit": 0, "rows": 0}]),
+        ),
+    ):
+        find_first = AsyncMock(return_value=_make_session(messages=[]))
+        mock_session_prisma.return_value.find_first = find_first
+
+        await get_chat_messages_paginated(SESSION_ID, limit=50)
+
+    assert find_first.call_args.kwargs["include"]["Messages"]["take"] == 51
+
+
+@pytest.mark.asyncio
 async def test_byte_budget_always_leaves_one_row():
     """A newest row larger than the whole budget is still returned, so paging
     never stalls on it."""
@@ -331,7 +348,7 @@ async def test_byte_budget_always_leaves_one_row():
         patch.object(PrismaChatSession, "prisma") as mock_session_prisma,
         patch(
             "backend.copilot.db.db.query_raw_with_schema",
-            AsyncMock(return_value=[{"fit": 0}]),
+            AsyncMock(return_value=[{"fit": 0, "rows": 2}]),
         ),
     ):
         find_first = AsyncMock(

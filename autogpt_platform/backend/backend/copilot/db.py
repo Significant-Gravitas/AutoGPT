@@ -175,7 +175,8 @@ async def _limit_within_byte_budget(
     ``MAX_LOADED_CHAT_MESSAGE_BYTES``.
 
     Sizes are summed in SQL, newest first, so an oversized window is never
-    fetched. Never below one row, so a page always makes progress.
+    fetched. Never below one row, so a page always makes progress, and a
+    window with no stored rows keeps *limit*.
     """
     conditions = ['"sessionId" = $1']
     params: list[Any] = [session_id]
@@ -190,7 +191,10 @@ async def _limit_within_byte_budget(
     params += [limit, MAX_LOADED_CHAT_MESSAGE_BYTES]
     rows = await db.query_raw_with_schema(
         f"""
-        SELECT COUNT(*)::int AS "fit" FROM (
+        SELECT COUNT(*) FILTER (WHERE "running" <= ${len(params)}::bigint)::int
+                   AS "fit",
+               COUNT(*)::int AS "rows"
+        FROM (
             SELECT SUM("size") OVER (ORDER BY "sequence" DESC) AS "running"
             FROM (
                 SELECT "sequence",
@@ -205,10 +209,11 @@ async def _limit_within_byte_budget(
                 LIMIT ${len(params) - 1}::int
             ) newest
         ) sized
-        WHERE "running" <= ${len(params)}::bigint
         """,
         *params,
     )
+    if not rows[0]["rows"]:
+        return limit
     return min(limit, max(1, rows[0]["fit"]))
 
 
