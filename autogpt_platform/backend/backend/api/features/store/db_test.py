@@ -1315,60 +1315,42 @@ def _submission_version(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_delete_store_submission_blocks_cross_org(mocker):
-    """A caller acting in org A must not delete org B's submission, even if
-    they were the original submitting user."""
-    version = _submission_version(owning_org_id="org-B")
-    mock_client = AsyncMock()
-    mock_client.find_unique.return_value = version
+@pytest.mark.parametrize(
+    ("owning_org_id", "allowed"),
+    [("org-B", False), ("org-A", True), (None, True)],
+    ids=["other-org", "same-org", "tenantless-personal-owner"],
+)
+async def test_delete_store_submission_checks_listing_ownership(
+    mocker, owning_org_id, allowed
+):
+    tx = mocker.patch.object(db, "transaction").return_value.__aenter__.return_value
+    listing = _submission_version(owning_org_id).StoreListing
+    listing.id = "sl-1"
+    lock = mocker.patch.object(db, "query_raw_with_schema", new_callable=AsyncMock)
+    lock.return_value = [listing]
+    versions = AsyncMock()
+    versions.delete_many.return_value = 1
+    versions.count.return_value = 1
     mocker.patch.object(
-        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+        prisma.models.StoreListingVersion, "prisma", return_value=versions
     )
 
     result = await db.delete_store_submission(
         user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
     )
 
-    assert result is False
-    mock_client.delete.assert_not_called()
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_delete_store_submission_allows_own_org(mocker):
-    version = _submission_version(owning_org_id="org-A")
-    mock_client = AsyncMock()
-    mock_client.find_unique.return_value = version
-    mock_client.count.return_value = 1  # other versions remain
-    mocker.patch.object(
-        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
-    )
-
-    result = await db.delete_store_submission(
-        user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
-    )
-
-    assert result is True
-    mock_client.delete.assert_called_once()
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_delete_store_submission_tenantless_personal_fallback(mocker):
-    """Pre-backfill listings (owningOrgId NULL) stay deletable by their
-    personal owner even when the caller has an active org."""
-    version = _submission_version(owning_org_id=None, owning_user_id="user-1")
-    mock_client = AsyncMock()
-    mock_client.find_unique.return_value = version
-    mock_client.count.return_value = 1
-    mocker.patch.object(
-        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
-    )
-
-    result = await db.delete_store_submission(
-        user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
-    )
-
-    assert result is True
-    mock_client.delete.assert_called_once()
+    assert result is allowed
+    assert lock.await_args.kwargs["client"] is tx
+    if allowed:
+        versions.delete_many.assert_awaited_once_with(
+            where={
+                "id": "slv-1",
+                "submissionStatus": {"not": prisma.enums.SubmissionStatus.APPROVED},
+            }
+        )
+        versions.count.assert_awaited_once_with(where={"storeListingId": listing.id})
+    else:
+        versions.delete_many.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")

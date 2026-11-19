@@ -860,34 +860,34 @@ async def delete_store_submission_or_raise(
         SubmissionNotFoundError: no such submission, or not the caller's
         InvalidOperationError: the submission is approved
     """
-    # Find the submission version with ownership check
-    version = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": store_listing_version_id}, include={"StoreListing": True}
-    )
-
-    if not version or not version.StoreListing:
-        raise store_exceptions.SubmissionNotFoundError("Submission not found")
-
-    if not _owns_listing(version.StoreListing, user_id, organization_id):
-        raise store_exceptions.SubmissionNotFoundError("Submission not found")
-
-    # Prevent deletion of approved submissions
-    if version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-        raise store_exceptions.InvalidOperationError(
-            "Cannot delete approved store listings"
+    async with transaction() as tx:
+        # Hold the listing until empty-listing cleanup finishes. Otherwise the
+        # cascading delete can remove a replacement that just committed.
+        listings = await query_raw_with_schema(
+            'SELECT l.* FROM {schema_prefix}"StoreListing" l '
+            'JOIN {schema_prefix}"StoreListingVersion" v ON v."storeListingId" = l.id '
+            "WHERE v.id = $1 FOR UPDATE OF l, v",
+            store_listing_version_id,
+            model=prisma.models.StoreListing,
+            client=tx,
         )
+        if not listings or not _owns_listing(listings[0], user_id, organization_id):
+            raise store_exceptions.SubmissionNotFoundError("Submission not found")
 
-    # Delete the version
-    await prisma.models.StoreListingVersion.prisma().delete(where={"id": version.id})
+        versions = prisma.models.StoreListingVersion.prisma(tx)
+        if not await versions.delete_many(
+            where={
+                "id": store_listing_version_id,
+                "submissionStatus": {"not": prisma.enums.SubmissionStatus.APPROVED},
+            }
+        ):
+            raise store_exceptions.InvalidOperationError(
+                "Cannot delete approved store listings"
+            )
 
-    # Clean up empty listing if this was the last version
-    remaining = await prisma.models.StoreListingVersion.prisma().count(
-        where={"storeListingId": version.storeListingId}
-    )
-    if remaining == 0:
-        await prisma.models.StoreListing.prisma().delete(
-            where={"id": version.storeListingId}
-        )
+        listing_id = listings[0].id
+        if not await versions.count(where={"storeListingId": listing_id}):
+            await prisma.models.StoreListing.prisma(tx).delete(where={"id": listing_id})
 
 
 async def create_store_submission(

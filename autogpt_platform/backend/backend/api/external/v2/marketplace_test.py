@@ -209,14 +209,16 @@ def test_a_submission_that_cannot_be_deleted_says_why(
     status: SubmissionStatus,
     expected: int,
 ):
-    version = Mock(
-        id="slv-1",
-        storeListingId="sl-1",
-        submissionStatus=status,
-        StoreListing=Mock(owningOrgId=owning_org_id, owningUserId="user-1"),
+    mocker.patch("backend.api.features.store.db.transaction")
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        new_callable=AsyncMock,
+        return_value=[
+            Mock(id="sl-1", owningOrgId=owning_org_id, owningUserId="user-1")
+        ],
     )
     client = AsyncMock()
-    client.find_unique.return_value = version
+    client.delete_many.return_value = 0 if status == SubmissionStatus.APPROVED else 1
     client.count.return_value = 1
     mocker.patch.object(
         prisma.models.StoreListingVersion, "prisma", return_value=client
