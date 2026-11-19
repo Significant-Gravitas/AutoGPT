@@ -497,6 +497,15 @@ export const ChatContainer = ({
       });
   });
 
+  // Send again waits while anything holds the one request slot: a turn, a
+  // send uploading its files (it goes first), or the lock.
+  const canResend = !(
+    isTurnLocked ||
+    isStreaming ||
+    isUploadingFiles ||
+    pendingSend
+  );
+
   return (
     <CopilotChatActionsProvider
       onSend={guardedOnSend}
@@ -544,13 +553,7 @@ export const ChatContainer = ({
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
                 onRetry={handleRetry}
-                onResend={
-                  // A send uploading its files would find the one request
-                  // slot taken: it goes first.
-                  isTurnLocked || isStreaming || isUploadingFiles || pendingSend
-                    ? undefined
-                    : onResendUnconfirmed
-                }
+                onResend={canResend ? onResendUnconfirmed : undefined}
                 turnStats={turnStats}
                 queuedMessages={queuedMessages}
                 pendingSend={pendingSend}

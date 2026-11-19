@@ -560,7 +560,14 @@ function useCopilotPageChat(
 
   // Only the runtime's sends go unconfirmed; one sent again starts a turn.
   function resendUnconfirmed() {
-    if (!runtimeStream?.resendUnconfirmed()) return;
+    if (!runtimeStream?.resendUnconfirmed()) {
+      toast({
+        title: "Message not sent again",
+        description:
+          "Another message is still sending, or this one arrived after all.",
+      });
+      return;
+    }
     isInflightRef.current = true;
     markUnsettled();
   }

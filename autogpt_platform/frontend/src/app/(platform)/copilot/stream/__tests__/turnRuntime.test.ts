@@ -753,6 +753,15 @@ describe("refusals no retry can change", () => {
     expect(snapshot().phase).toBe("live");
   });
 
+  it("a send reads as in flight in the snapshot that first shows its prompt", () => {
+    void runtime.send({ text: PROMPT }, undefined);
+
+    // The page routes a send made now by this snapshot: an idle one sends it
+    // past the request still open, and the runtime refuses it.
+    expect(snapshot().phase).toBe("connecting");
+    expect(textsOf(render())).toEqual([PROMPT]);
+  });
+
   it("a stop while a send waits out its token retry sends nothing after", async () => {
     tokenFailsFirst(1);
     void runtime.send({ text: PROMPT }, undefined);

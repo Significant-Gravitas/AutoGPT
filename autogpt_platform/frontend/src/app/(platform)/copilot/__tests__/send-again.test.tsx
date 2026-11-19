@@ -2,13 +2,15 @@ import {
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler,
   getGetV2GetPendingReviewsForChatSessionMockHandler,
 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { server } from "@/mocks/mock-server";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import { useCopilotUIStore } from "../store";
+import { getTurnRuntime } from "../stream/turnRuntime";
 import {
   renderHost,
   resetChatRuntimes,
@@ -52,6 +54,13 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
 vi.mock("@/hooks/usePlatformPayment", () => ({
   usePlatformPayment: () => ({ isPaymentEnabled: false, isResolved: true }),
 }));
+vi.mock("@/components/molecules/Toast/use-toast", async (importActual) => {
+  const actual =
+    await importActual<
+      typeof import("@/components/molecules/Toast/use-toast")
+    >();
+  return { ...actual, toast: vi.fn(actual.toast) };
+});
 
 const STREAM = `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`;
 const PENDING = `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/messages/pending`;
@@ -63,15 +72,18 @@ function resetStores() {
   window.localStorage.clear();
 }
 
-beforeEach(resetStores);
+beforeEach(() => {
+  resetStores();
+  vi.mocked(toast).mockClear();
+});
 afterEach(() => {
   resetStores();
   vi.useRealTimers();
 });
 
-it("queues a follow-up typed while Send again's request is out, rather than starting a second turn", async () => {
-  // Fake before the chat mounts, so its liveness tick is on this clock.
-  vi.useFakeTimers({ shouldAdvanceTime: true });
+// Every send stays out, never answered, until the chat is torn down, which
+// aborts it. The first is checked and reported.
+function holdSends() {
   const sent: { message: string; message_id: string }[] = [];
   const queued: string[] = [];
   server.use(
@@ -79,8 +91,6 @@ it("queues a follow-up typed while Send again's request is out, rather than star
     getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler([]),
     http.post(STREAM, async ({ request }) => {
       sent.push((await request.json()) as (typeof sent)[number]);
-      // Never answered: the first is checked and reported, the second stays
-      // out until the chat is torn down, which aborts it.
       await new Promise<void>((resolve) =>
         request.signal.addEventListener("abort", () => resolve(), {
           once: true,
@@ -97,22 +107,57 @@ it("queues a follow-up typed while Send again's request is out, rather than star
       });
     }),
   );
+  return { sent, queued };
+}
+
+async function reportUnconfirmedSend() {
+  // Fake before the chat mounts, so its liveness tick is on this clock.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const requests = holdSends();
   renderHost();
   await typeAndSend("What does example.com say?");
   // Thirty seconds of silence, then the checks that find no row for it.
   await act(() => vi.advanceTimersByTimeAsync(40_000));
+  const sendAgain = await screen.findByRole("button", { name: "Send again" });
+  return { ...requests, sendAgain };
+}
+
+it("queues a follow-up typed while Send again's request is out, rather than starting a second turn", async () => {
+  const { sent, queued, sendAgain } = await reportUnconfirmedSend();
 
   const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-  await user.click(await screen.findByRole("button", { name: "Send again" }));
+  await user.click(sendAgain);
   await waitFor(() => expect(sent).toHaveLength(2));
   // While that request is out the composer queues: what a user does then.
   await user.type(
     screen.getByLabelText(/chat message input/i),
     "And example.org?",
   );
-  await user.click(screen.getByRole("button", { name: "Queue message" }));
+  await user.click(
+    await screen.findByRole("button", { name: "Queue message" }),
+  );
 
   await waitFor(() => expect(queued).toEqual(["And example.org?"]));
   expect(sent).toHaveLength(2);
   expect(sent[1].message_id).toBe(sent[0].message_id);
+});
+
+it("says so when Send again finds nothing left to send", async () => {
+  const { sent, sendAgain } = await reportUnconfirmedSend();
+
+  // A send that lands between the banner's render and the click leaves the
+  // runtime nothing to send again.
+  act(() => {
+    void getTurnRuntime(TEST_SESSION_ID).send(
+      { text: "And example.org?" },
+      undefined,
+    );
+    fireEvent.click(sendAgain);
+  });
+
+  expect(toast).toHaveBeenCalledWith(
+    expect.objectContaining({ title: "Message not sent again" }),
+  );
+  await waitFor(() => expect(sent).toHaveLength(2));
+  expect(sent[1].message).toBe("And example.org?");
 });

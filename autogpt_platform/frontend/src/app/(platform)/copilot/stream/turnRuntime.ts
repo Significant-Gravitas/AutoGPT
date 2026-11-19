@@ -321,6 +321,8 @@ export class TurnRuntime {
     const index = this.segments.findIndex((s) => s.key === error.prompt);
     const prompt = this.segments[index];
     if (prompt?.kind !== "user" || prompt.sequence !== null) return null;
+    // A fresh id would let the server keep a second copy if it took the first.
+    if (prompt.clientMessageId === null) return null;
     this.segments.splice(index, 1);
     // With the model chosen now, as any send is, not the first request's.
     void this.postPrompt(prompt.message, model, prompt.clientMessageId);
@@ -346,20 +348,23 @@ export class TurnRuntime {
     this.segments.push(
       userSegment(message, "sent", this.rowIdOf(body), body.message_id),
     );
-    this.emitNow();
-    await this.open("post", null, this.streamUrl(), {
+    const posted = this.open("post", null, this.streamUrl(), {
       method: "POST",
       body: JSON.stringify(body),
       extraHeaders: { "Content-Type": "application/json" },
       prompt: message.id,
     });
+    // Drawn with its request open, so the render that shows the prompt also
+    // reads the send as in flight: the page queues a send made after it.
+    this.emitNow();
+    await posted;
   }
 
   /** Stop following the turn: abort, mark it stopped, and let the persisted marker reconcile into it. */
   stop() {
     const running = this.runningTurn();
     this.abortConnections();
-    this.cancelRetryTimer();
+    this.clearRetry({ keepCheck: false });
     this.stopped = true;
     this.suppressAttach = true;
     this.queueDeclined = true;
@@ -461,8 +466,7 @@ export class TurnRuntime {
     const running = this.runningTurn();
     if (!running?.log.turnId || running.frozen || this.recovering) return;
     if (this.slot && Date.now() - this.slot.lastFrameAt < LIVENESS_MS) return;
-    this.deferRetryingSend();
-    this.cancelRetryTimer();
+    this.clearRetry({ keepCheck: true });
     this.resume(running);
   }
 
@@ -487,7 +491,7 @@ export class TurnRuntime {
   dispose() {
     this.disposed = true;
     this.abortConnections();
-    this.cancelRetryTimer();
+    this.clearRetry({ keepCheck: false });
     this.checks.clear();
     this.reveal.dispose();
     this.endQueueWatch();
@@ -832,8 +836,7 @@ export class TurnRuntime {
       this.deps.toast(ANOMALY_TOAST);
     }
     const delay = BACKOFF_MS[this.failures - 1] ?? ANOMALY_RETRY_MS;
-    this.deferRetryingSend();
-    this.cancelRetryTimer();
+    this.clearRetry({ keepCheck: true });
     this.retryingSend = check;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
@@ -887,7 +890,7 @@ export class TurnRuntime {
   private giveUp(error: Error) {
     const running = this.runningTurn();
     this.abortConnections();
-    this.cancelRetryTimer();
+    this.clearRetry({ keepCheck: false });
     this.unresolvedPost = null;
     this.sendsBehindTurn = [];
     this.checks.clear();
@@ -1241,8 +1244,7 @@ export class TurnRuntime {
   // Show the persisted rows with a note, and poll until the turn is over.
   private async freeze(key: string) {
     this.abortSlot();
-    this.deferRetryingSend();
-    this.cancelRetryTimer();
+    this.clearRetry({ keepCheck: true });
     const view = await this.fetchView();
     this.updateTurn(key, (seg) => {
       const persisted = view
@@ -1605,7 +1607,9 @@ export class TurnRuntime {
     return null;
   }
 
-  private isPostPending() {
+  /** A send's request is open and has named no turn yet: a send now is
+   *  refused with `SendInFlightError`. */
+  isPostPending() {
     return this.slot?.kind === "post" && this.slot.turnId === null;
   }
 
@@ -1675,16 +1679,13 @@ export class TurnRuntime {
     }
   }
 
-  // Stops the retry timer, and the check it carried with it.
-  private cancelRetryTimer() {
+  // Stops the retry timer. With `keepCheck` the check it carried still decides
+  // its send, from the list; without it, that send's recovery is over.
+  private clearRetry({ keepCheck }: { keepCheck: boolean }) {
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = null;
-    this.retryingSend = null;
-  }
-
-  // The check the retry timer carries still decides its send, from the list.
-  private deferRetryingSend() {
-    if (this.retryingSend) this.sendsBehindTurn.push(this.retryingSend);
+    if (keepCheck && this.retryingSend)
+      this.sendsBehindTurn.push(this.retryingSend);
     this.retryingSend = null;
   }
 

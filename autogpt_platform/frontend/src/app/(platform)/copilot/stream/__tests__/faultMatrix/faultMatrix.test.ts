@@ -514,17 +514,22 @@ describe("a send", () => {
     "whose request hung, stopped during its last check, shows no error",
     async () => {
       server.postMode = "hang-before-send";
+      const readsBefore = server.viewReads;
       tab.send(P1);
       // The stop lands after the check's last read, before its verdict.
-      let stopped = false;
+      let errorAtStop: Error | null | undefined;
       onRead(CONTINUATION_PROBES, () =>
         setTimeout(() => {
-          stopped = true;
+          errorAtStop = tab.runtime.getSnapshot().error;
           tab.runtime.stop();
         }, 0),
       );
       await advance(60_000);
-      expect(stopped).toBe(true);
+      expect(errorAtStop).toBeNull();
+      // Every read was the check's, and none followed the stop: a stop placed
+      // a read early would leave one more read, as the check reads before it
+      // sees the stop.
+      expect(server.viewReads - readsBefore).toBe(CONTINUATION_PROBES);
       expectScreen({ error: null, notice: null });
     },
   );
@@ -824,6 +829,32 @@ describe("a send", () => {
       await advance(100);
       // P2's stream drops before P1's retry fires, and its own retry replaces it.
       server.connections[0].fail();
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: "Failed to fetch" });
+    },
+  );
+
+  cell(
+    "S24w",
+    "lost, its check's read failing, is still reported when the tab's return reconnects a later send's stream before the retry",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.failViews = 1;
+      tab.send(P1);
+      await advance(0);
+      server.postMode = "stream";
+      tab.send(P2);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      // P2's stream drops while the tab is hidden, and the tab is back before
+      // P1's retry fires: the reconnect replaces that retry.
+      setVisibility("hidden");
+      server.connections[0].fail();
+      await advance(100);
+      setVisibility("visible");
       await advance(5_000);
       server.publish();
       await advance(30_000);

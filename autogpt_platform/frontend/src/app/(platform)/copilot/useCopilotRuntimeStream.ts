@@ -40,6 +40,7 @@ import {
 } from "./stream/renderTail";
 import {
   getTurnRuntime,
+  SendInFlightError,
   type RuntimePhase,
   type RuntimeSnapshot,
   type SendInput,
@@ -235,15 +236,26 @@ export function useCopilotRuntimeStream({
     ),
   );
 
-  async function sendMessage(input: SendInput) {
-    if (!runtime || !sessionId) return;
-    const metadata = input.metadata;
+  // What the duplicate-POST guard compares, and what a refused send restores.
+  function recordSubmitted(text: string, metadata: unknown) {
+    if (!sessionId) return;
     useCopilotStreamStore.getState().updateCoord(sessionId, {
-      lastSubmittedMessageText: "text" in input ? input.text : textOf(input),
+      lastSubmittedMessageText: text,
       lastSubmittedKickoffExpertId: getKickoffExpertIdFromMetadata(metadata),
       lastSubmittedKickoffAttemptToken:
         getKickoffAttemptTokenFromMetadata(metadata),
     });
+  }
+
+  async function sendMessage(input: SendInput) {
+    if (!runtime || !sessionId) return;
+    // Refused before the recovery text changes: it is still the text of the
+    // send in flight, which a 429 or 402 puts back in the composer.
+    if (runtime.isPostPending()) throw new SendInFlightError();
+    recordSubmitted(
+      "text" in input ? input.text : textOf(input),
+      input.metadata,
+    );
     await runtime.send(input, copilotModel);
   }
 
@@ -252,15 +264,7 @@ export function useCopilotRuntimeStream({
     if (!runtime || !sessionId) return false;
     const message = runtime.resendUnconfirmed(copilotModel);
     if (!message) return false;
-    useCopilotStreamStore.getState().updateCoord(sessionId, {
-      lastSubmittedMessageText: textOf(message),
-      lastSubmittedKickoffExpertId: getKickoffExpertIdFromMetadata(
-        message.metadata,
-      ),
-      lastSubmittedKickoffAttemptToken: getKickoffAttemptTokenFromMetadata(
-        message.metadata,
-      ),
-    });
+    recordSubmitted(textOf(message), message.metadata);
     return true;
   }
 
