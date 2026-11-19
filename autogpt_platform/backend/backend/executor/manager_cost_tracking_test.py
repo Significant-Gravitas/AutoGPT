@@ -280,12 +280,20 @@ class TestLogSystemCredentialCost:
     @pytest.mark.asyncio
     async def test_skips_own_agent_mail_key(self):
         db_client = _make_db_client()
-        node_exec = _make_node_exec(
-            inputs={"credentials": {"id": "user-cred-123", "provider": "agent_mail"}}
-        )
-        await log_system_credential_cost(
-            node_exec, _make_block(), NodeExecutionStats(), db_client
-        )
+        with patch(
+            "backend.executor.cost_tracking.block_usage_cost",
+            return_value=(1, None),
+        ):
+            node_exec = _make_node_exec(
+                inputs={
+                    "credentials": {"id": "user-cred-123", "provider": "agent_mail"}
+                }
+            )
+            await log_system_credential_cost(
+                node_exec, _make_block(), NodeExecutionStats(), db_client
+            )
+            await drain_pending_cost_logs(timeout=1.0)
+
         db_client.log_platform_cost.assert_not_awaited()
 
     @pytest.mark.asyncio
