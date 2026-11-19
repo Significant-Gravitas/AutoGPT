@@ -27,7 +27,7 @@ export function useLoadingSetup({ waitingFor, onSlow }: Args) {
       setTimedOut(true);
       latestOnSlow.current();
     }, SETUP_LOAD_DEADLINE_MS);
-    // The account arrived: a later wait gets a full deadline of its own.
+    // Once the wait ends, a later wait gets a full deadline of its own.
     return () => {
       clearTimeout(timer);
       setTimedOut(false);

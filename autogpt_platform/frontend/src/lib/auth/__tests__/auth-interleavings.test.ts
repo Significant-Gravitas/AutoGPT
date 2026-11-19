@@ -24,6 +24,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *  (d) at most one session check (start-up lookup, validation or refresh) is in
  *      flight per tab for the current session epoch.
  *  (e) the target a tab sends matches the shared cookie the server checks.
+ *  (f) every session check in flight has a deadline, so none can hold that
+ *      one-check slot for good.
  */
 
 type Kind =
@@ -72,7 +74,6 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast() {} }),
 }));
 
-import { SESSION_CHECK_DEADLINE_MS } from "@/lib/auth/hooks/helpers";
 import { ImpersonationCookie as cookieWriter } from "@/lib/impersonation";
 
 type StoreModule = typeof import("@/lib/auth/hooks/useAuthStore");
@@ -100,17 +101,24 @@ interface Pending {
   answer: unknown;
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
-  // The store's deadline for it passed, so its answer will be dropped.
-  abandoned?: boolean;
+  // A session check's deadline in the store: running from just after the
+  // check goes out, and passed once it fires, after which the answer is
+  // dropped.
+  deadline?: "running" | "passed";
 }
 
 interface Timer {
   id: number;
   tab: Tab;
   run: () => void;
-  // The session check this deadline gives up on when it fires.
+  // The session check this timer is the deadline of.
   deadlineFor?: Pending;
 }
+
+// The name of the timer the store arms for each session check it sends
+// (lib/auth/hooks/session-check-deadline.ts), which tells it from the
+// store's other timers.
+const DEADLINE_TIMER = "sessionCheckDeadline";
 
 const SESSION_CHECKS: Kind[] = [
   "getCurrentUser",
@@ -193,6 +201,8 @@ class World {
   log: string[] = [];
   // Work that ran outside any tab: a continuation escaped the scheduler.
   escaped = 0;
+  // Deadlines armed while no session check of that tab was waiting for one.
+  strayDeadlines = 0;
 
   constructor(seed: number) {
     this.rand = mulberry32(seed);
@@ -316,17 +326,12 @@ class World {
       const tab = this.current;
       if (tab) this.reloadRequests.push(tab);
     };
-    globalThis.setTimeout = ((run: () => void, delay?: number) => {
+    globalThis.setTimeout = ((run: () => void) => {
       const tab = this.current;
       const id = ++this.timerId;
       if (tab) {
-        // The store arms a check's deadline right after sending it.
         const deadlineFor =
-          delay === SESSION_CHECK_DEADLINE_MS
-            ? this.pending.findLast(
-                (p) => p.tab === tab && SESSION_CHECKS.includes(p.kind),
-              )
-            : undefined;
+          run.name === DEADLINE_TIMER ? this.deadlineFor(tab) : undefined;
         this.timers.push({ id, tab, run, deadlineFor });
       } else this.escaped += 1;
       return id;
@@ -379,6 +384,18 @@ class World {
   }
 
   reloadRequests: Tab[] = [];
+
+  // The store arms one deadline per session check, just after sending it and
+  // in the order it sent them, so a new deadline belongs to the tab's oldest
+  // check still without one.
+  private deadlineFor(tab: Tab): Pending | undefined {
+    const check = this.pending.find(
+      (p) => p.tab === tab && SESSION_CHECKS.includes(p.kind) && !p.deadline,
+    );
+    if (check) check.deadline = "running";
+    else this.strayDeadlines += 1;
+    return check;
+  }
 
   // ---- the user and the server ------------------------------------------------
 
@@ -501,7 +518,7 @@ class World {
       const timer = this.pick(this.timers);
       this.timers.splice(this.timers.indexOf(timer), 1);
       this.log.push(`${timer.tab.name}: timer fires`);
-      if (timer.deadlineFor) timer.deadlineFor.abandoned = true;
+      if (timer.deadlineFor) timer.deadlineFor.deadline = "passed";
       await this.inTab(timer.tab, () => timer.run());
     }
 
@@ -567,26 +584,37 @@ class World {
 
   check() {
     expect(this.escaped, "work escaped the scheduler").toBe(0);
+    expect(
+      this.strayDeadlines,
+      "a deadline was armed with no session check waiting for one",
+    ).toBe(0);
     for (const tab of this.tabs) {
       this.enter(tab);
       try {
         const user = tab.store.getState().user;
+        const checks = this.pending.filter(
+          (p) => p.tab === tab && SESSION_CHECKS.includes(p.kind),
+        );
 
         // (d) one session check at a time: start-up's lookups and every
         // validation share it. Requests from an earlier epoch, and checks
         // whose deadline passed, don't count; their answers are dropped.
         const epoch = tab.store.getState().sessionEpoch;
-        const checksInFlight = this.pending.filter(
-          (p) =>
-            p.tab === tab &&
-            p.epoch === epoch &&
-            !p.abandoned &&
-            SESSION_CHECKS.includes(p.kind),
+        const checksInFlight = checks.filter(
+          (p) => p.epoch === epoch && p.deadline !== "passed",
         ).length;
         expect(
           checksInFlight,
           `${tab.name} has ${checksInFlight} session checks in flight`,
         ).toBeLessThanOrEqual(1);
+
+        // (f) every check has its deadline. Failing for every check means the
+        // store's deadline timer no longer has the name DEADLINE_TIMER.
+        const unbounded = checks.filter((p) => !p.deadline).map((p) => p.kind);
+        expect(
+          unbounded,
+          `${tab.name} waits on session checks with no deadline`,
+        ).toEqual([]);
         const headers = tab.imp.getSystemHeaders();
         const actingAs = headers[IMPERSONATION_HEADER_NAME];
         const record = tab.imp.ImpersonationState.read();

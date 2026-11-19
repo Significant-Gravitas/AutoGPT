@@ -78,7 +78,12 @@ describe("Tour chat app shell", () => {
     useCopilotUIStore.getState().clearArtifactPreview();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // A session check the last step started gets its answer before the
+    // sweep, or the sweep runs its deadline instead.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
     vi.unstubAllEnvs();
