@@ -218,6 +218,9 @@ export const useFlow = () => {
   // graph with no nodes has nothing to wait for. When the canvas shows another
   // saved graph, it is emptied first, undo included, so a save can't copy that
   // graph's blocks into this one; an unsaved canvas keeps its blocks for it.
+  // It reruns when only the URL's version changes too: React Query can hand
+  // back an equal graph as the same object, and the load is then recorded
+  // against the new request (a URL without a version showing its latest).
   useEffect(() => {
     if (!graph || (customNodes.length === 0 && graph.nodes?.length)) return;
     if (!graph.nodes?.length && showsAnotherSavedGraph(graph)) {
@@ -227,7 +230,7 @@ export const useFlow = () => {
       useHistoryStore.getState().initializeHistory();
     }
     setLoadedGraph(graph);
-  }, [graph, customNodes, setLoadedGraph]);
+  }, [graph, customNodes, flowVersion, setLoadedGraph]);
 
   // A save waiting for the canvas fails at once if it can't load.
   useEffect(() => {

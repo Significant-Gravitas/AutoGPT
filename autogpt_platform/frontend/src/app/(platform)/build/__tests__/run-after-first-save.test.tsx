@@ -1,4 +1,5 @@
 import { getGetV2GetSpecificBlocksMockHandler200 } from "@/app/api/__generated__/endpoints/default/default.msw";
+import { getGetV1GetSpecificGraphQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import {
   getGetV1GetExecutionDetailsMockHandler200,
   getGetV1GetSpecificGraphMockHandler200,
@@ -709,6 +710,39 @@ describe("builder Run while the workflow it names is still loading", () => {
     expect(backend.updates, "running it saved a new version").toEqual([]);
     expect(backend.executions).toEqual([
       { graphID: GRAPH_ID, graphVersion: 2 },
+    ]);
+  });
+
+  test("Run after moving to a URL without a version runs at once when the canvas already shows the latest version", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    const user = userEvent.setup();
+    const { queryClient } = renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
+    const latestKey = getGetV1GetSpecificGraphQueryKey(GRAPH_ID, {});
+    await waitFor(() => {
+      expect(useGraphStore.getState().loadedGraph?.version).toBe(1);
+      expect(queryClient.getQueryData(latestKey)).toBeDefined();
+    }, NETWORK_WAIT);
+    // React Query hands back the graph object it already has when an equal
+    // one arrives, so the builder can get the very same graph for the latest
+    // version. (The API client's Date fields defeat that today, so the cache
+    // is given the loaded response here, and refetching it is held.)
+    hold("latest graph");
+    queryClient.setQueryData(
+      latestKey,
+      queryClient.getQueryData(
+        getGetV1GetSpecificGraphQueryKey(GRAPH_ID, { version: 1 }),
+      ),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: `Open ${GRAPH_ID} latest` }),
+    );
+    await clickRunOnceItIsEnabled(user);
+    await waitForTheRun();
+
+    expect(backend.updates, "running it saved a new version").toEqual([]);
+    expect(backend.executions).toEqual([
+      { graphID: GRAPH_ID, graphVersion: 1 },
     ]);
   });
 
