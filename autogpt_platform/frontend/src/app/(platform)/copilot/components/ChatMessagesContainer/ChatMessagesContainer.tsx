@@ -365,8 +365,17 @@ export function ChatMessagesContainer({
     // the follow-up just landed and nothing has been produced past it, so
     // the text or tool above it is settled and Thinking is the only sign
     // the assistant picked the follow-up up.
+    // A step-start is skipped too: the backend opens a step seconds before
+    // the model writes anything (at the start of a turn, and before each
+    // model call after a tool), so what decides is the part before it.
+    // Thinking stays up through that wait instead of vanishing, and after
+    // text or reasoning it stays hidden, so nothing flashes between steps.
     let lastIndex = lastMessage.parts.length - 1;
-    while (lastIndex >= 0 && isBookkeepingPart(lastMessage.parts[lastIndex])) {
+    while (
+      lastIndex >= 0 &&
+      (isBookkeepingPart(lastMessage.parts[lastIndex]) ||
+        lastMessage.parts[lastIndex].type === "step-start")
+    ) {
       if (lastMessage.parts[lastIndex].type === PENDING_DRAINED_PART_TYPE)
         return false;
       lastIndex--;
@@ -384,11 +393,6 @@ export function ChatMessagesContainer({
     // reasoning before any answer text).
     if (lastPart.type === "reasoning" && lastPart.text.trim().length > 0)
       return true;
-
-    // step-start is a turn boundary emitted right before the next tool or
-    // text chunk. Treat it as inflight so the bubble transitions straight
-    // into the next part without flashing back to "Thinking...".
-    if (lastPart.type === "step-start") return true;
 
     // A pause is how the turn ends, so nothing more is coming to wait on.
     if (lastPart.type === TURN_PAUSED_PART_TYPE) return true;

@@ -303,6 +303,61 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
   });
 
+  const finishedTool = {
+    type: "tool-find_block",
+    toolCallId: "tool-1",
+    state: "output-available",
+    input: {},
+    output: {},
+  } as Message["parts"][number];
+  const stepStart = { type: "step-start" } as Message["parts"][number];
+
+  it.each([
+    ["a turn that has only opened its first step", [stepStart]],
+    [
+      "a status line followed by the first step",
+      [
+        {
+          type: "data-status",
+          data: { message: "Preparing workspace…" },
+        } as Message["parts"][number],
+        stepStart,
+      ],
+    ],
+    ["the step opened after a finished tool", [finishedTool, stepStart]],
+  ])(
+    "keeps the thinking indicator through %s, until the model writes",
+    (_label, parts) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[{ id: "assistant-stepping", role: "assistant", parts }]}
+          status="streaming"
+        />,
+      );
+
+      expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+    },
+  );
+
+  it("does not bring the thinking indicator back when a step opens after text", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          {
+            id: "assistant-text-then-step",
+            role: "assistant",
+            parts: [{ type: "text", text: "Looking into it." }, stepStart],
+          },
+        ]}
+        status="streaming"
+      />,
+    );
+
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+  });
+
   it("drops the thinking indicator once a streaming turn has landed on a pause", () => {
     render(
       <ChatMessagesContainer
