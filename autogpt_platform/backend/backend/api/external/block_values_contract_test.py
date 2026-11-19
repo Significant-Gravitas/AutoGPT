@@ -8,11 +8,11 @@ Checked against the OpenAPI document each version publishes, the way
 `v2/contract_shape_test.py` checks v2's other rules.
 """
 
-from typing import Any
+from typing import Annotated, Any
 
 import pytest
 from fastapi import FastAPI
-from pydantic import JsonValue, create_model
+from pydantic import Field, JsonValue, create_model
 
 from backend.api.external.v1.app import v1_app
 from backend.api.external.v2.app import v2_app
@@ -67,17 +67,25 @@ NOT_BLOCK_VALUES = {
     "ValidationError.input": "FastAPI's 422 detail, echoing a rejected request value",
 }
 
-# Keywords that restrict a schema. A schema with none of them, such as the
-# `{"title": ...}` that `Any` publishes, accepts any value.
-RESTRICTING_KEYWORDS = {
-    "$ref",
-    "type",
-    "anyOf",
-    "oneOf",
-    "allOf",
-    "enum",
-    "const",
-    "not",
+# Keywords that only annotate a schema. A schema with no other keyword, like `{}`
+# or the `{"title": ...}` that `Any` publishes, accepts any JSON value. Any other
+# keyword can narrow what it accepts, so the walk treats it as narrowing.
+ANNOTATION_KEYWORDS = {
+    "title",
+    "description",
+    "default",
+    "examples",
+    "deprecated",
+    "readOnly",
+    "writeOnly",
+    "$comment",
+}
+
+# Each container: its JSON type, the keyword holding its values' schema, and how
+# a failure message marks a step into it.
+CONTAINERS = {
+    "list": ("array", "items", "[]"),
+    "map": ("object", "additionalProperties", "{}"),
 }
 
 SPECS = {"v1": v1_app, "v2": v2_app}
@@ -132,6 +140,11 @@ def test_every_field_carrying_block_values_accepts_any_json(version: str) -> Non
             ["Probe.field is a map, not a list"],
             id="wrong-container",
         ),
+        pytest.param(
+            Annotated[list[dict[str, Any]], Field(min_length=1)],
+            ["Probe.field is a list restricted by ['minItems']"],
+            id="restricted-container",
+        ),
     ],
 )
 def test_the_walk_checks_the_values_where_their_containers_end(
@@ -148,6 +161,34 @@ def test_the_walk_checks_the_values_where_their_containers_end(
     assert _narrowed(spec, field, ("list", "map"), "Probe.field") == narrowed
 
 
+@pytest.mark.parametrize(
+    "schema, narrowed",
+    [
+        pytest.param({}, [], id="empty"),
+        pytest.param(True, [], id="true"),
+        pytest.param({"description": "x"}, [], id="annotation-only"),
+        *(
+            pytest.param(
+                {keyword: value}, [f"value is restricted by ['{keyword}']"], id=keyword
+            )
+            for keyword, value in [
+                ("maxLength", 1),
+                ("pattern", "x"),
+                ("minimum", 0),
+                ("enum", [1]),
+                ("const", 1),
+                ("not", {}),
+                ("minItems", 1),
+            ]
+        ),
+    ],
+)
+def test_a_value_schema_accepts_any_json_only_with_annotations_alone(
+    schema: Any, narrowed: list[str]
+) -> None:
+    assert _narrowed({}, schema, (), "value") == narrowed
+
+
 def _narrowed(
     spec: dict[str, Any], schema: Any, envelope: tuple[str, ...], at: str
 ) -> list[str]:
@@ -156,35 +197,49 @@ def _narrowed(
         return []
     if schema is False:
         return [f"{at} accepts no value"]
-    if not schema.keys() & RESTRICTING_KEYWORDS:
+    keywords = schema.keys() - ANNOTATION_KEYWORDS
+    if not keywords:
         return []
-    if "$ref" in schema:
+    if keywords == {"$ref"}:
         return _narrowed(spec, _resolve(spec, schema["$ref"]), envelope, at)
-    if branches := schema.get("anyOf") or schema.get("oneOf"):
+    if keywords in ({"anyOf"}, {"oneOf"}):
+        branches = schema.get("anyOf") or schema.get("oneOf")
         # Optional[...] adds a null branch, which narrows nothing a value holds.
         found = [
             _narrowed(spec, b, envelope, at) for b in branches if b != {"type": "null"}
         ]
         return [] if [] in found else [where for f in found for where in f]
-    if parts := schema.get("allOf"):
+    if keywords == {"allOf"}:
+        parts = schema["allOf"]
         return [w for part in parts for w in _narrowed(spec, part, envelope, at)]
     if not envelope:
-        return [f"{at} is {_kind(schema)}"]
+        return [f"{at} is {_kind(schema, keywords)}"]
+    return _container_narrowed(spec, schema, keywords, envelope, at)
+
+
+def _container_narrowed(
+    spec: dict[str, Any],
+    schema: dict[str, Any],
+    keywords: set[str],
+    envelope: tuple[str, ...],
+    at: str,
+) -> list[str]:
+    """Where the outermost container in `envelope`, or what it holds, narrows."""
     container, *inner = envelope
-    if container == "list" and schema.get("type") == "array":
-        return _narrowed(spec, schema.get("items", True), tuple(inner), f"{at}[]")
-    if container == "map" and schema.get("type") == "object":
-        if "properties" not in schema:
-            values = schema.get("additionalProperties", True)
-            return _narrowed(spec, values, tuple(inner), f"{at}{{}}")
-    return [f"{at} is {_kind(schema)}, not a {container}"]
+    json_type, values, step = CONTAINERS[container]
+    if schema.get("type") != json_type or "properties" in schema:
+        return [f"{at} is {_kind(schema, keywords)}, not a {container}"]
+    if extra := sorted(keywords - {"type", values}):
+        return [f"{at} is a {container} restricted by {extra}"]
+    return _narrowed(spec, schema.get(values, True), tuple(inner), f"{at}{step}")
 
 
-def _kind(schema: dict[str, Any]) -> str:
+def _kind(schema: dict[str, Any], keywords: set[str]) -> str:
     if "properties" in schema:
         return "a model with fixed fields"
-    kind = schema.get("type")
-    return {"array": "a list", "object": "a map"}.get(kind, kind or str(schema))
+    if kind := schema.get("type"):
+        return {"array": "a list", "object": "a map"}.get(kind, kind)
+    return f"restricted by {sorted(keywords)}"
 
 
 def _resolve(spec: dict[str, Any], ref: str) -> Any:
