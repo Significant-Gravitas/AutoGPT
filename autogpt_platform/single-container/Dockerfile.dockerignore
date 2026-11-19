@@ -48,3 +48,5 @@ autogpt_platform/frontend/coverage/
 autogpt_platform/frontend/playwright*.config.ts
 autogpt_platform/frontend/vitest.config.mts
 autogpt_platform/frontend/test-runner-jest.config.js
+# The perf scripts import the Playwright page objects; see /.dockerignore.
+autogpt_platform/frontend/scripts/perf/

@@ -87,3 +87,6 @@ autogpt_platform/frontend/coverage/
 autogpt_platform/frontend/playwright*.config.ts
 autogpt_platform/frontend/vitest.config.mts
 autogpt_platform/frontend/test-runner-jest.config.js
+# The perf scripts import the Playwright page objects left out above, and
+# `next build` type-checks every .ts file it gets, so they stay out too.
+autogpt_platform/frontend/scripts/perf/

@@ -1,4 +1,6 @@
+import functools
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -20,6 +22,13 @@ BUILD_INPUTS = (
     "next.config.mjs",
     "src/app/layout.tsx",
 )
+# Static, dynamic and side-effect imports, re-exports and require() calls.
+IMPORT = re.compile(
+    r"""(?:\bfrom\s+|\bimport\s*\(\s*|\brequire\s*\(\s*|^\s*import\s+)["']([^"']+)["']""",
+    re.M,
+)
+CODE = (".ts", ".tsx", ".js", ".mjs", ".cjs", ".mts")
+RESOLVE = ("", *CODE, ".json", "/index.ts", "/index.tsx", "/index.js")
 
 
 def _frontend_images() -> list[Path]:
@@ -46,7 +55,8 @@ def _ignore_file(dockerfile: Path) -> Path:
     return own if own.exists() else REPO / ".dockerignore"
 
 
-def _frontend_context(dockerfile: Path) -> list[str]:
+@functools.cache
+def _frontend_context(dockerfile: Path) -> tuple[str, ...]:
     """The frontend files `dockerfile`'s build gets, as Docker itself filters them."""
     with tempfile.TemporaryDirectory() as tmp:
         probe = Path(tmp, "probe.Dockerfile")
@@ -61,11 +71,48 @@ def _frontend_context(dockerfile: Path) -> list[str]:
             check=True,
             stdout=subprocess.DEVNULL,
         )
-        return sorted(
-            path.relative_to(out).as_posix()
-            for path in out.rglob("*")
-            if path.is_file()
+        return tuple(
+            sorted(
+                path.relative_to(out).as_posix()
+                for path in out.rglob("*")
+                if path.is_file()
+            )
         )
+
+
+def _imports_left_out(files: tuple[str, ...]) -> list[str]:
+    """`file -> import` for each kept file that imports a tracked frontend file
+    the build context leaves out."""
+    tracked = {
+        path[len(FRONTEND) :]
+        for path in subprocess.run(
+            ["git", "ls-files", "-z", FRONTEND],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split("\0")
+        if path
+    }
+    kept = set(files)
+    broken = []
+    for path in files:
+        if not path.endswith(CODE):
+            continue
+        source = (REPO / FRONTEND / path).read_text(encoding="utf-8", errors="replace")
+        for spec in IMPORT.findall(source):
+            if spec.startswith("@/"):
+                target = "src/" + spec[2:]
+            elif spec.startswith("."):
+                target = posixpath.normpath(
+                    posixpath.join(posixpath.dirname(path), spec)
+                )
+            else:
+                continue
+            found = next((target + s for s in RESOLVE if target + s in tracked), None)
+            if found and found not in kept:
+                broken.append(f"{path} -> {spec}")
+    return broken
 
 
 @unittest.skipUnless(shutil.which("docker") or os.environ.get("CI"), "needs Docker")
@@ -87,6 +134,20 @@ class FrontendBuildContextTests(unittest.TestCase):
                         f"{_ignore_file(dockerfile).relative_to(REPO)} and in every "
                         "other ignore file that lists frontend tests. First few: "
                         + ", ".join(leaked[:5])
+                    )
+
+    def test_kept_files_import_nothing_left_out(self):
+        for dockerfile in _frontend_images():
+            with self.subTest(dockerfile=dockerfile.relative_to(REPO).as_posix()):
+                broken = _imports_left_out(_frontend_context(dockerfile))
+                if broken:
+                    self.fail(
+                        f"{len(broken)} imports in the build context of "
+                        f"{dockerfile.relative_to(REPO)} point at files its ignore "
+                        "file leaves out. `next build` type-checks every file it gets "
+                        "(CI's e2e image skips that check, release images don't), so "
+                        "the image fails to build. Leave the importing files out too, "
+                        "or keep what they import. First few: " + ", ".join(broken[:5])
                     )
 
 
