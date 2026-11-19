@@ -51,25 +51,32 @@ describe("formatRelativeReset", () => {
     });
   });
 
-  it("returns hours+minutes when the target is within 24h", () => {
+  it("gives the exact time and how long that is when the target is within 24h", () => {
     const inAFewHours = new Date(Date.now() + 2 * 60 * 60 * 1000 + 5 * 60_000);
     const result = formatRelativeReset(inAFewHours);
-    expect(result.prefix).toBe("Resets in");
-    expect(result.value).toMatch(/^\d+h \d+m$/);
+    expect(result.prefix).toBe("Resets");
+    expect(result.value).toMatch(/^\w{3}, \w{3} \d{1,2}, .+ \(in \d+h \d+m\)$/);
   });
 
-  it("returns a weekday + time label when the target is more than 24h away", () => {
+  it("gives the exact date and time when the target is more than 24h away", () => {
     const inAWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const result = formatRelativeReset(inAWeek);
     expect(result.prefix).toBe("Resets");
-    // Locale-dependent format, but always contains a weekday short name.
-    expect(result.value.length).toBeGreaterThan(3);
+    // Always dated: a customer's week can reset on any day, a week or more out.
+    expect(result.value).toMatch(/^\w{3}, \w{3} \d{1,2}, \d{1,2}:\d{2}/);
+    expect(result.value).not.toContain("(in");
+  });
+
+  it("never shows a time before the reset itself", () => {
+    const reset = new Date(2030, 10, 12, 8, 30, 56);
+    expect(formatRelativeReset(reset).value).toBe("Tue, Nov 12, 8:31 AM");
   });
 
   it("accepts an ISO string as well as a Date instance", () => {
-    const iso = new Date(Date.now() + 30 * 60_000).toISOString();
-    const fromIso = formatRelativeReset(iso);
-    expect(fromIso.prefix).toBe("Resets in");
+    const reset = new Date(Date.now() + 3 * 24 * 60 * 60_000);
+    expect(formatRelativeReset(reset.toISOString())).toEqual(
+      formatRelativeReset(reset),
+    );
   });
 });
 

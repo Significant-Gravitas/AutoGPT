@@ -1,11 +1,14 @@
 """Preview and revalidate an owned Pro-to-Max invoice before charging."""
 
 import time
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import stripe
 from prisma.enums import SubscriptionTier
 
+from backend.copilot.usage_mode import billing_clock_live
+from backend.copilot.usage_windows import month_after
 from backend.data.credit import _get_active_subscription, get_subscription_price_id
 from backend.data.redis_client import get_redis_async
 from backend.data.stripe_client import stripe_call
@@ -62,7 +65,32 @@ async def validate_subscription_upgrade_preview(
         raise UpgradePreviewUnavailable(
             "Your billing details changed. Review the updated charge before paying."
         )
+    if saved.preview.resets_billing_date and _renewal_moved(
+        saved.preview, int(time.time())
+    ):
+        raise UpgradePreviewUnavailable(
+            "The renewal date changed. Review the charge again."
+        )
     return saved
+
+
+def _renewal_moved(preview: SubscriptionUpgradePreview, now: int) -> bool:
+    """Whether a plan confirmed at ``now`` would renew on another day than
+    reviewed.
+
+    The new period starts when the upgrade is confirmed, minutes after it was
+    reviewed. That moves the renewal by the same minutes, except where a
+    short month clamps it: reviewed at 23:55 on 30 January it renews at 23:55
+    on 28 February, confirmed at 00:02 on 31 January it would renew at 00:02
+    on 28 February, almost a day earlier than reviewed.
+    """
+    months = 12 if preview.billing_cycle == "yearly" else 1
+    confirmed_end = _period_end(now, months)
+    return abs(confirmed_end - preview.period_end) > PREVIEW_TTL
+
+
+def _period_end(start: int, months: int) -> int:
+    return month_after(start, months, datetime.fromtimestamp(start, UTC).day)
 
 
 async def _owned_subscription(user_id: str) -> UpgradeSubscription:
@@ -103,25 +131,32 @@ async def _build_preview(
     if price.recurring.interval != interval or price.recurring.interval_count != 1:
         raise UpgradePreviewUnavailable("This price needs a billing review.")
     item = sub.items.data[0]
+    # Once usage limits run on the billing clock, an upgrade starts a fresh
+    # billing month, and the review must show that charge.
+    resets_billing_date = await billing_clock_live()
+    details: stripe.Invoice.CreatePreviewParamsSubscriptionDetails = {
+        "items": [{"id": item.id, "price": price_id, "quantity": item.quantity}],
+        "proration_behavior": "always_invoice",
+        "proration_date": proration_date,
+    }
+    if resets_billing_date:
+        details["billing_cycle_anchor"] = "now"
     invoice = UpgradeInvoicePreview.model_validate(
         await stripe_call(
             stripe.Invoice.create_preview_async,
             customer=sub.customer,
             subscription=sub.id,
-            subscription_details={
-                "items": [
-                    {"id": item.id, "price": price_id, "quantity": item.quantity}
-                ],
-                "proration_behavior": "always_invoice",
-                "proration_date": proration_date,
-            },
+            subscription_details=details,
         )
     )
     if invoice.customer != sub.customer or invoice.currency != price.currency:
         raise UpgradePreviewUnavailable("The invoice could not be verified.")
     if invoice.lines.has_more or not invoice.lines.data:
         raise UpgradePreviewUnavailable("The complete invoice could not be loaded.")
-    period_end = _renewal_date(sub, price, invoice)
+    if resets_billing_date:
+        period_end = _pin_new_period(invoice, price, proration_date)
+    else:
+        period_end = _renewal_date(sub, price, invoice)
     if period_end <= proration_date:
         raise UpgradePreviewUnavailable("The billing period changed. Try again.")
     return StoredUpgradePreview(
@@ -139,8 +174,32 @@ async def _build_preview(
             preview_id,
             proration_date,
             period_end,
-        ),
+        ).model_copy(update={"resets_billing_date": resets_billing_date}),
     )
+
+
+def _pin_new_period(
+    invoice: UpgradeInvoicePreview, price: UpgradePrice, proration_date: int
+) -> int:
+    """Date the new plan's charge from the reviewed moment instead of from
+    when Stripe was asked, and return the renewal date that gives.
+
+    With the billing date reset, Stripe starts the new period at the time of
+    each preview call, so the review and its re-check minutes later would
+    never match though they charge the same. The credit for the old plan's
+    unused time is already fixed by ``proration_date``.
+    """
+    months = 12 if price.recurring.interval == "year" else 1
+    period_end = _period_end(proration_date, months)
+    # Every charge on this invoice is the new plan's: the only other line is
+    # the credit for the old plan's unused time.
+    charges = [line for line in invoice.lines.data if line.amount >= 0]
+    if not charges:
+        raise UpgradePreviewUnavailable("The next billing date could not be verified.")
+    for line in charges:
+        line.period.start = proration_date
+        line.period.end = period_end
+    return period_end
 
 
 def _renewal_date(

@@ -35,6 +35,7 @@ import {
   type AbandonedPlan,
 } from "./components/CheckoutAbandonedPrompt/helpers";
 import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
+import { usePaidResetReturn } from "./components/SubscriptionTab/AutopilotUsageCard/usePaidResetReturn";
 
 type BillingTab = "subscription" | "automation-credits";
 
@@ -83,6 +84,8 @@ function SettingsBillingPage() {
   const [isPlanCheckoutReturn] = useState(
     () => subscriptionStatus === "success",
   );
+
+  usePaidResetReturn();
 
   function handleTabChange(value: string) {
     if (isBillingTab(value)) setActiveTab(value);

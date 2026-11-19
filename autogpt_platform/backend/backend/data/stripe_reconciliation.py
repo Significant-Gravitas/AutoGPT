@@ -28,6 +28,7 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
 )
 from backend.data.stripe_client import stripe_call
+from backend.data.usage_clock_backfill import backfill_billing_clocks
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,18 @@ async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
         or summary.errors
     ):
         await _alert_sweep_incomplete(summary)
+    await _copy_billing_clocks()
     return summary
+
+
+async def _copy_billing_clocks() -> None:
+    """Keep every live subscription's billing period copied for usage limits:
+    the safety net for a renewal or plan change whose webhook was missed. It
+    writes no tier, and its failure doesn't fail the tier sweep."""
+    try:
+        await backfill_billing_clocks()
+    except Exception:
+        logger.exception("reconcile_all_stripe_tiers: billing clock copy failed")
 
 
 async def _alert_sweep_discrepancies(summary: ReconciliationSummary) -> None:

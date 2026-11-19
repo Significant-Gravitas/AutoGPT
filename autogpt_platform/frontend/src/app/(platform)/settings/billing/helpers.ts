@@ -1,3 +1,5 @@
+import { formatExactReset } from "@/services/usageExperience/resetTime";
+
 export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
 const SECTION_BASE_DELAY = 0.04;
@@ -52,29 +54,24 @@ export function formatCents(cents: number): string {
   return CURRENCY_FORMATTER.format(cents / 100);
 }
 
+/** When a usage window resets: the exact date and time in the reader's own
+ *  time zone, rounded up to the minute, with how long that is when it is
+ *  under a day away. Each customer's windows reset on their own billing
+ *  clock, so the date is always shown. */
 export function formatRelativeReset(target: Date | string | undefined | null): {
   prefix: string;
   value: string;
 } {
   if (!target) return { prefix: "Resets", value: "—" };
   const date = target instanceof Date ? target : new Date(target);
-  if (Number.isNaN(date.getTime())) return { prefix: "Resets", value: "—" };
+  const exact = formatExactReset(date);
+  if (!exact) return { prefix: "Resets", value: "—" };
   const diff = date.getTime() - Date.now();
   if (diff <= 0) return { prefix: "Resets", value: "soon" };
   const hours = Math.floor(diff / (1000 * 60 * 60));
-  if (hours < 24) {
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    return { prefix: "Resets in", value: `${hours}h ${minutes}m` };
-  }
-  return {
-    prefix: "Resets",
-    value: date.toLocaleString(undefined, {
-      weekday: "short",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZoneName: "short",
-    }),
-  };
+  if (hours >= 24) return { prefix: "Resets", value: exact };
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  return { prefix: "Resets", value: `${exact} (in ${hours}h ${minutes}m)` };
 }
 
 export function formatShortDate(

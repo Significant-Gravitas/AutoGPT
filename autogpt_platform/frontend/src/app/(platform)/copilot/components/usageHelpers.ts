@@ -1,3 +1,5 @@
+import { ceilToMinute, needsDate } from "@/services/usageExperience/resetTime";
+
 export function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
@@ -25,8 +27,11 @@ export function formatResetTime(
     return `in ${minutes}m`;
   }
 
-  return resetDate.toLocaleString(undefined, {
+  return ceilToMinute(resetDate).toLocaleString(undefined, {
     weekday: "short",
+    ...(needsDate(resetDate, now)
+      ? { month: "short" as const, day: "numeric" as const }
+      : {}),
     hour: "numeric",
     minute: "2-digit",
     timeZoneName: "short",

@@ -1,3 +1,5 @@
+import { ceilToMinute, formatWeekdayDate, needsDate } from "./resetTime";
+
 type BudgetWindow = "daily" | "weekly" | "trial";
 type RecurringWindow = "daily" | "weekly";
 
@@ -76,7 +78,7 @@ export function budgetLowHint(window: BudgetWindow, percentUsed: number) {
 
 export function formatResetClock(date: Date) {
   // Some ICU versions put a narrow no-break space before AM/PM.
-  return date
+  return ceilToMinute(date)
     .toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
     .replace(/ /g, " ");
 }
@@ -99,11 +101,14 @@ export function formatCountdown(date: Date, now = new Date()) {
 }
 
 function formatResetMoment(wait: ResetWait, now: Date) {
-  const clock = formatResetClock(wait.resetsAt);
-  const when =
-    wait.window === "weekly"
-      ? `${formatWeekday(wait.resetsAt)} at ${clock}`
-      : `at ${clock}`;
+  // The day comes from the same rounded-up minute as the clock: a reset at
+  // Thu 23:59:30 is "Friday at 12:00 AM", not Thursday.
+  const shown = ceilToMinute(wait.resetsAt);
+  const clock = formatResetClock(shown);
+  const day = needsDate(shown, now)
+    ? formatWeekdayDate(shown)
+    : formatWeekday(shown);
+  const when = wait.window === "weekly" ? `${day} at ${clock}` : `at ${clock}`;
   return `${when}, ${formatCountdown(wait.resetsAt, now)}`;
 }
 

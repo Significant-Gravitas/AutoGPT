@@ -167,8 +167,10 @@ export function RateLimitResetDialog({
             {wait && (
               <ResetWaitBox
                 meters={meters}
+                window={wait.window}
                 onSendAtReset={onSendAtReset}
                 isScheduling={isSchedulingAtReset}
+                onBought={onClose}
               />
             )}
             {isBillingEnabled && model.targetTier && (

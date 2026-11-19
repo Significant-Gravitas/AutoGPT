@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from datetime import datetime
 from typing import Optional
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import (
+    CoPilotUsageStatus,
     SubscriptionTier,
     get_global_rate_limits,
     get_stripe_sweep_revert_warning,
@@ -19,6 +21,7 @@ from backend.copilot.rate_limit import (
     reset_user_usage,
     set_user_tier,
 )
+from backend.data.usage_reset import ResetPurchase, list_reset_purchases
 from backend.data.user import get_user_by_email, get_user_email_by_id, search_users
 
 logger = logging.getLogger(__name__)
@@ -32,6 +35,30 @@ router = APIRouter(
 )
 
 
+class BillingClockUsage(BaseModel):
+    """What a user's limits look like on their billing clock (SECRT-3441)."""
+
+    # stripe: their Stripe billing period. held: that period ended and Stripe
+    # hasn't confirmed the next. account: monthly from the account's creation
+    # (no Stripe period). trial: the trial's own dates.
+    source: str
+    daily_resets_at: datetime
+    weekly_resets_at: datetime
+    # The whole weekly limit; ``weekly_cost_limit_microdollars`` is its pool,
+    # the part above the days' reserves.
+    weekly_limit_microdollars: int
+    reserve_today_microdollars: int
+    reserve_used_microdollars: int
+    # The limit that stops a turn starting now, if one does.
+    blocked_by: Optional[str] = None
+    # A paid reset is in force: no daily limit until the weekly reset, and
+    # the usage shown is the usage since it.
+    reset_active: bool = False
+    # The latest paid-reset purchases, newest first, with how each was paid
+    # (and its Stripe ids, for a refund). A pending one was never paid.
+    reset_purchases: list[ResetPurchase] = []
+
+
 class UserRateLimitResponse(BaseModel):
     user_id: str
     user_email: Optional[str] = None
@@ -43,6 +70,9 @@ class UserRateLimitResponse(BaseModel):
     # Full per-tier multiplier map incl. admin-managed tiers like ENTERPRISE,
     # unlike the price-filtered /credits/subscription map.
     tier_multipliers: dict[str, float] = {}
+    # Set once limits run on the billing clock; the daily and weekly figures
+    # above are then this clock's windows.
+    billing_clock: Optional[BillingClockUsage] = None
 
 
 class UserTierResponse(BaseModel):
@@ -127,6 +157,27 @@ async def get_user_rate_limit(
         weekly_cost_used_microdollars=usage.weekly.used,
         tier=tier,
         tier_multipliers=multipliers,
+        billing_clock=await _billing_clock_usage(resolved_id, usage),
+    )
+
+
+async def _billing_clock_usage(
+    user_id: str, usage: CoPilotUsageStatus
+) -> BillingClockUsage | None:
+    if not usage.on_billing_clock:
+        return None
+    return BillingClockUsage(
+        source=usage.clock_source or "",
+        daily_resets_at=usage.daily.resets_at,
+        weekly_resets_at=usage.weekly.resets_at,
+        weekly_limit_microdollars=(
+            usage.weekly.limit if usage.weekly_limit is None else usage.weekly_limit
+        ),
+        reserve_today_microdollars=usage.reserve.limit if usage.reserve else 0,
+        reserve_used_microdollars=usage.reserve.used if usage.reserve else 0,
+        blocked_by=usage.blocked_by,
+        reset_active=usage.reset_active,
+        reset_purchases=await list_reset_purchases(user_id),
     )
 
 
@@ -177,6 +228,7 @@ async def reset_user_rate_limit(
         weekly_cost_used_microdollars=usage.weekly.used,
         tier=tier,
         tier_multipliers=multipliers,
+        billing_clock=await _billing_clock_usage(user_id, usage),
     )
 
 

@@ -4,6 +4,11 @@ import {
   formatResetClock,
   formatWeekday,
 } from "@/services/usageExperience/budget";
+import {
+  ceilToMinute,
+  formatWeekdayDate,
+  needsDate,
+} from "@/services/usageExperience/resetTime";
 
 export const SEND_AT_RESET_LABEL = "Send at reset";
 export const SCHEDULE_FAILED_TITLE = "Couldn’t schedule your message";
@@ -58,11 +63,14 @@ export function isJoinedSendTooLong(error: unknown) {
 }
 
 export function scheduledSendLabel(runAt: Date | string, now = new Date()) {
-  const date = new Date(runAt);
+  // Rounded up once, so the day and the clock are of the same minute.
+  const date = ceilToMinute(new Date(runAt));
   const clock = formatResetClock(date);
-  return date.toDateString() === now.toDateString()
-    ? `Sends at ${clock}`
-    : `Sends ${formatWeekday(date)} at ${clock}`;
+  if (date.toDateString() === now.toDateString()) return `Sends at ${clock}`;
+  const day = needsDate(date, now)
+    ? formatWeekdayDate(date)
+    : formatWeekday(date);
+  return `Sends ${day} at ${clock}`;
 }
 
 /** Puts a message back in front of whatever the composer holds now, keeping

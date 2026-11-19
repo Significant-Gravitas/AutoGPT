@@ -91,7 +91,7 @@ def test_a_weekly_limit_names_the_day_it_resets():
 
     assert notice is not None
     assert notice.headline == "Skipped: weekly usage limit reached"
-    assert "resets on Monday at 00:00 UTC" in notice.body
+    assert "resets on Monday 12 October at 00:00 UTC" in notice.body
 
 
 def test_the_reset_is_on_the_owners_clock():
@@ -122,7 +122,26 @@ def test_a_weekly_reset_names_the_owners_day():
     )
 
     assert notice is not None
-    assert "resets on Sunday at 19:00 CDT" in notice.body
+    assert "resets on Sunday 11 October at 19:00 CDT" in notice.body
+
+
+def test_a_reset_on_the_customers_own_clock_is_dated_and_never_shown_early():
+    """A billing-clock reset can fall on any second, over a week of weekdays
+    away: the notice dates it and rounds up, so 08:30:56 reads 08:31."""
+    resets_at = datetime(2026, 11, 12, 8, 30, 56, tzinfo=timezone.utc)
+
+    weekly = skip_notice(
+        _usage("weekly", resets_at), title="Briefing", now=_NOW, run="recurring"
+    )
+    daily = skip_notice(
+        _usage("daily", resets_at), title="Briefing", now=_NOW, run="recurring"
+    )
+
+    assert weekly is not None and daily is not None
+    assert "resets on Thursday 12 November at 08:31 UTC" in weekly.body
+    assert daily.body.endswith("when the limit resets at 08:31 UTC.")
+    # The window is still keyed on the exact second.
+    assert weekly.resumes_at == resets_at
 
 
 def test_an_unknown_timezone_falls_back_to_utc():
