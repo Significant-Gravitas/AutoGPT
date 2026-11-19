@@ -26,9 +26,10 @@ export function useTaskControls(task: Task) {
     /** Waiting for its start time, or missed it: Start now and Cancel. */
     schedule: scheduleStateOf(task),
     view: RUN_ACTIONS[action],
-    isBusy: actions.isStarting || actions.isStopping,
+    isBusy: actions.isStarting || actions.isStopping || actions.isStoppingRun,
     isStarting: actions.isStarting,
-    isStopping: actions.isStopping,
+    // A repeating task's stop ends this run only, which has its own flag.
+    isStopping: task.repeat ? actions.isStoppingRun : actions.isStopping,
     isAskingRetry: mode === "retry",
     isConfirmingStop: mode === "confirm-stop",
     onAction,

@@ -12,7 +12,7 @@ import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/g
 import { useGetV2GetLibraryAgentByGraphId } from "@/app/api/__generated__/endpoints/library/library";
 import { okData } from "@/app/api/helpers";
 
-import { runHref } from "./helpers";
+import { retryRunQuery, runHref, RUN_RETRY_DELAY_MS } from "./helpers";
 import { useRunControls } from "./useRunControls";
 import { useStepTabs } from "./useStepTabs";
 
@@ -35,6 +35,8 @@ export function useRunPage(graphID: string, runID: string) {
         return isLiveStatus(status) ? LIVE_POLL_MS : false;
       },
       refetchOnWindowFocus: false,
+      retry: retryRunQuery,
+      retryDelay: RUN_RETRY_DELAY_MS,
     },
   });
   const run = runQuery.data;
@@ -76,6 +78,7 @@ export function useRunPage(graphID: string, runID: string) {
     cancelSetup: () => setIsSettingUp(false),
     openRun,
     notFound: runQuery.isError || (runQuery.isSuccess && !run),
+    error: runQuery.error,
     retry: () => runQuery.refetch(),
   };
 }

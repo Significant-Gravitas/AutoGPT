@@ -38,6 +38,7 @@ async function bodyOf(request: Request) {
  *  each moving the task the way the API does. */
 function serveTask() {
   server.use(
+    http.get(TASK_URL, () => HttpResponse.json(task)),
     http.get(`${TASK_URL}/record`, () =>
       HttpResponse.json({ task, activity: [], artifacts: [], evidence: [] }),
     ),

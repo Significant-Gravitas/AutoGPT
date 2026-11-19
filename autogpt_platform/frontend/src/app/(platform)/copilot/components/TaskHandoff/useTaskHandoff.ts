@@ -1,6 +1,7 @@
 import { ownerOf } from "@/app/(platform)/tasks/helpers";
 import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetTaskRecord } from "@/app/api/__generated__/endpoints/tasks/tasks";
+import { TaskStatus } from "@/app/api/__generated__/models/taskStatus";
 import { useState } from "react";
 import type { HandoffSnapshot } from "../../helpers/backgroundSubtasks";
 import { useCopilotUIStore } from "../../store";
@@ -34,7 +35,9 @@ export function useTaskHandoff(
   // A handover that saved its run's result shows that one; the task's own
   // result is the latest run's and is cleared while the next run works.
   const result = snapshot?.result ?? record?.task.result;
-  if (!record || !result) {
+  // A task that did not deliver hands nothing over: Otto says so in a line.
+  const didNotDeliver = !snapshot && record?.task.status === TaskStatus.FAILED;
+  if (!record || !result || didNotDeliver) {
     return { isLoading: recordQuery.isPending, handoff: null };
   }
 

@@ -40,6 +40,19 @@ async def settle_task_run_turn(entry: CoPilotExecutionEntry, error: str | None) 
         logger.exception(f"Could not settle the task run of chat {entry.session_id}")
 
 
+async def note_task_run_started(session: ChatSession, user_id: str) -> None:
+    """A turn in a task's run chat is starting: a run that waited for a free
+    slot is worked on now, so the task stops saying it is queued.
+    Best-effort, and one call only for a run chat."""
+    task_id = session.metadata.work_task_id
+    if not task_id:
+        return
+    try:
+        await task_run_db().clear_run_queued(task_id, user_id)
+    except Exception:
+        logger.warning(f"Could not clear the queued mark of task {task_id}")
+
+
 def turn_ending(error: str | None) -> TurnEnding:
     if error is None:
         return "completed"

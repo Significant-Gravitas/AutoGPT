@@ -172,6 +172,7 @@ def test_pause_resume_and_stop_repeating_are_the_callers_and_noted(
 ):
     change = _mock(mocker, store, return_value=_task())
     note = _mock(mocker, "add_activity")
+    _mock(mocker, "get_task", return_value=_task())
 
     response = getattr(client, method)(path)
 

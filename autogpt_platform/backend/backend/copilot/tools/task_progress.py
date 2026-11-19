@@ -12,6 +12,7 @@ from backend.copilot import turn_end
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import task_record_db, task_result_db
 from backend.data.task_record import EvidenceInput
+from backend.data.task_result import FinishOutcome
 from backend.data.task_text import (
     CLAIM_MAX_CHARS,
     PROGRESS_MAX_CHARS,
@@ -33,6 +34,19 @@ FINISHED = "Result saved on the task. The task is finished."
 FINISHED_IN_CHAT = (
     "Result saved on the task. End now with one line of a few words ('Brief "
     "saved.'); the summary already says the rest, so do not repeat or add to it."
+)
+_OUTCOMES: dict[str, FinishOutcome] = {
+    "done": "done",
+    "blocked": "blocked",
+    "failed": "failed",
+}
+NOT_DONE = (
+    "Saved on the task as not done: it shows as failed with your reason, for "
+    "the user to fix and try again."
+)
+NOT_DONE_IN_CHAT = (
+    "Saved on the task as not done. End now with one line saying it did not "
+    "get done and why; do not claim a result."
 )
 NO_TASK = (
     "This chat is not working on a task, so there is nothing to report on. "
@@ -241,6 +255,14 @@ class FinishTaskTool(BaseTool):
                         "Omit when the task made no document."
                     ),
                 },
+                "outcome": {
+                    "type": "string",
+                    "enum": list(_OUTCOMES),
+                    "description": (
+                        "done, or blocked/failed when you delivered none or "
+                        "only part of what was asked; the summary says why."
+                    ),
+                },
             },
             "required": ["summary"],
         }
@@ -251,10 +273,14 @@ class FinishTaskTool(BaseTool):
         session: ChatSession,
         summary: str = "",
         file: str | None = None,
+        outcome: str = "done",
         **kwargs,
     ) -> ToolResponseBase:
         assert user_id is not None  # guaranteed by requires_auth
         summary = summary or _said(kwargs, "result", "message", "text")
+        ended = _OUTCOMES.get((outcome or "done").strip().lower())
+        if ended is None:
+            return _error("outcome is done, blocked or failed.", session)
         file = file or _said(kwargs, "filename", "document", "path") or None
         if not summary.strip():
             return _error("Say what was done in summary.", session)
@@ -262,7 +288,7 @@ class FinishTaskTool(BaseTool):
             return _error(f"{refusal} The detail belongs in the file.", session)
         try:
             finish = await task_result_db().finish_task(
-                session.session_id, user_id, summary, file
+                session.session_id, user_id, summary, file, ended
             )
         except Exception as e:
             return _error(error_detail(e, session), session)
@@ -279,8 +305,12 @@ class FinishTaskTool(BaseTool):
         if finish.in_background:
             # Nobody reads a worker's closing message: the turn ends here.
             turn_end.request_finish(session.session_id)
+        if ended != "done":
+            message = NOT_DONE if finish.in_background else NOT_DONE_IN_CHAT
+        else:
+            message = FINISHED if finish.in_background else FINISHED_IN_CHAT
         return TaskFinishedResponse(
-            message=FINISHED if finish.in_background else FINISHED_IN_CHAT,
+            message=message,
             document=finish.document_title,
             session_id=session.session_id,
         )

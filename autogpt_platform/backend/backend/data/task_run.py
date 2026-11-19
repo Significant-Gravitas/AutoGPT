@@ -26,6 +26,12 @@ from backend.data.task_schedule_meta import (
     read_schedule_meta,
     with_schedule_meta,
 )
+from backend.data.task_state_meta import (
+    RUN_QUEUED_KEY,
+    read_run_queued,
+    run_mark,
+    with_state,
+)
 from backend.data.task_text import clip
 from backend.util.exceptions import ConflictError, NotFoundError
 
@@ -221,6 +227,9 @@ def _settled_status(
         return TaskStatus.CANCELLED, None
     if ending != "completed":
         return TaskStatus.FAILED, _FAILURE_BY_ENDING[ending]
+    if row.failureReason:
+        # The worker finished saying it did not get the work done.
+        return TaskStatus.FAILED, row.failureReason
     if any(child.status in OPEN_STATUSES for child in row.Subtasks or []):
         # Its subtasks report back to this chat, whose next turn settles it.
         return None, None
@@ -247,3 +256,53 @@ def reply_reason(reply: str | None) -> str | None:
     text = " ".join((reply or "").replace("**", "").replace("`", "").split())
     opening = " ".join(_SENTENCE_END.split(text)[:_REPLY_SENTENCES])
     return redact(clip(opening, _REASON_MAX_CHARS))
+
+
+QUEUED_TEXT = "Queued: starts when a slot frees"
+
+
+async def mark_run_queued(task_id: str, user_id: str) -> Task:
+    """The run just started waits for a free slot: say so on the task until
+    its first turn starts (``clear_run_queued``)."""
+    row = await prisma.models.Task.prisma().find_first(
+        where={"id": task_id, "userId": user_id, "isArchived": False}
+    )
+    if row is None:
+        raise NotFoundError(f"Task {task_id} not found")
+    if row.startedAt is not None:
+        await prisma.models.Task.prisma().update_many(
+            where={
+                "id": task_id,
+                "userId": user_id,
+                "status": TaskStatus.IN_PROGRESS,
+            },
+            data={
+                "statusText": QUEUED_TEXT,
+                "metadata": with_state(
+                    row.metadata, RUN_QUEUED_KEY, run_mark(row.startedAt)
+                ),
+            },
+        )
+    task = await get_task(task_id, user_id)
+    if task is None:
+        raise NotFoundError(f"Task {task_id} not found")
+    return task
+
+
+async def clear_run_queued(task_id: str, user_id: str) -> bool:
+    """The queued run's first turn started: the task is worked on now. False
+    when it was not marked queued."""
+    row = await prisma.models.Task.prisma().find_first(
+        where={"id": task_id, "userId": user_id}
+    )
+    if row is None or not read_run_queued(row.metadata, row.startedAt):
+        return False
+    data: TaskUpdateManyMutationInput = {
+        "metadata": with_state(row.metadata, RUN_QUEUED_KEY, None)
+    }
+    if row.statusText == QUEUED_TEXT:
+        data["statusText"] = None
+    await prisma.models.Task.prisma().update_many(
+        where={"id": task_id, "userId": user_id}, data=data
+    )
+    return True

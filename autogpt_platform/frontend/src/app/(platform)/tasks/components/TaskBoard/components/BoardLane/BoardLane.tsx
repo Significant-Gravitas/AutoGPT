@@ -3,6 +3,8 @@ import { NumberTicker } from "@/components/atoms/NumberTicker/NumberTicker";
 import { Text } from "@/components/atoms/Text/Text";
 import { AnimatePresence, motion } from "framer-motion";
 import { ownerOf, type BoardColumn } from "../../../../helpers";
+import { positionLabel } from "../../boardKeys";
+import { cardNav, type RovingCards } from "../../useRovingCards";
 import { BoardCard } from "../BoardCard/BoardCard";
 
 interface Props {
@@ -10,12 +12,19 @@ interface Props {
   experts: Expert[];
   selectedID: string | null;
   onOpen: (id: string) => void;
+  roving: RovingCards;
 }
 
 /** One lane of the board, as tall as the board itself; its cards scroll
  *  inside it. It is never shorter than a few cards, so a short screen
  *  still shows a lane. */
-export function BoardLane({ column, experts, selectedID, onOpen }: Props) {
+export function BoardLane({
+  column,
+  experts,
+  selectedID,
+  onOpen,
+  roving,
+}: Props) {
   const headingID = `task-lane-${column.id}`;
 
   return (
@@ -37,13 +46,14 @@ export function BoardLane({ column, experts, selectedID, onOpen }: Props) {
         className="-m-0.5 scrollbar-none grid min-h-0 flex-1 content-start gap-1.5 overflow-y-auto overscroll-y-contain p-0.5"
       >
         <AnimatePresence initial={false}>
-          {column.tasks.map((task) => (
+          {column.tasks.map((task, index) => (
             <BoardCard
               key={task.id}
               task={task}
               owner={ownerOf(task, experts)}
               selected={selectedID === task.id}
               onOpen={() => onOpen(task.id)}
+              nav={cardNav(roving, task.id, positionLabel(column, index))}
             />
           ))}
         </AnimatePresence>

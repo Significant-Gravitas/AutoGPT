@@ -128,7 +128,7 @@ describe("Schedules page", () => {
     ).toBeNull();
   });
 
-  it("opens a task with its brief, last run and a way to its chat", async () => {
+  it("opens a task with its brief, last run and a way to open it", async () => {
     serveSchedules();
     render(<SchedulesPage />);
 
@@ -140,7 +140,7 @@ describe("Schedules page", () => {
       await screen.findByText("Sum up the week's sales for the team."),
     ).toBeDefined();
     expect(screen.getByText("Shopify did not answer")).toBeDefined();
-    expect(screen.getByText("Open in chat")).toBeDefined();
+    expect(screen.getByText("Open task")).toBeDefined();
   });
 
   it("opens a workflow schedule with Run now and Delete but no Pause", async () => {

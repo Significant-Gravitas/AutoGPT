@@ -13,6 +13,7 @@ from pytest_mock import MockerFixture
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.task import Task, TaskPatch
 from backend.data.task_activity_meta import TaskActivityAccount
+from backend.data.task_list import TaskFilter, TaskPage
 from backend.data.task_record import TaskActivity, TaskRecord
 from backend.util.exceptions import NotFoundError
 
@@ -84,7 +85,7 @@ def test_create_rejects_a_missing_or_oversized_title(mocker: MockerFixture, body
 
 
 def test_list_passes_filters_for_the_caller(mocker: MockerFixture, test_user_id):
-    list_tasks = _mock(mocker, "list_tasks", [_task()])
+    page = _mock(mocker, "list_task_page", TaskPage(tasks=[_task()]))
 
     response = client.get(
         "/tasks",
@@ -93,21 +94,54 @@ def test_list_passes_filters_for_the_caller(mocker: MockerFixture, test_user_id)
 
     assert response.status_code == 200
     assert [t["id"] for t in response.json()["tasks"]] == ["task-1"]
-    list_tasks.assert_awaited_once_with(
-        user_id=test_user_id,
-        status=TaskStatus.IN_PROGRESS,
-        owner_expert_id=None,
-        session_id="chat-1",
-        limit=10,
-        offset=0,
-        include_subtasks=False,
-        scheduled=False,
+    page.assert_awaited_once_with(
+        test_user_id,
+        TaskFilter(statuses=[TaskStatus.IN_PROGRESS], session_id="chat-1"),
+        10,
+        0,
+    )
+
+
+def test_the_list_pages_searches_and_filters_by_owner_and_lane(
+    mocker: MockerFixture, test_user_id
+):
+    """QA B5: past the first 100, a title search, Otto's tasks, a lane."""
+    page = _mock(
+        mocker,
+        "list_task_page",
+        TaskPage(tasks=[_task()], has_more=True, next_offset=200),
+    )
+
+    response = client.get(
+        "/tasks",
+        params=[
+            ("q", "launch plan"),
+            ("owned_by_otto", "true"),
+            ("statuses", "DONE"),
+            ("statuses", "FAILED"),
+            ("limit", "100"),
+            ("offset", "100"),
+        ],
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["has_more"], body["next_offset"]) == (True, 200)
+    page.assert_awaited_once_with(
+        test_user_id,
+        TaskFilter(
+            statuses=[TaskStatus.DONE, TaskStatus.FAILED],
+            owned_by_otto=True,
+            search="launch plan",
+        ),
+        100,
+        100,
     )
 
 
 @pytest.mark.parametrize("params", [{"limit": 0}, {"limit": 101}, {"offset": -1}])
 def test_list_rejects_out_of_range_paging(mocker: MockerFixture, params):
-    _mock(mocker, "list_tasks", [])
+    _mock(mocker, "list_task_page", TaskPage(tasks=[]))
     assert client.get("/tasks", params=params).status_code == 422
 
 
@@ -134,7 +168,7 @@ def test_update_sends_only_what_the_body_sets(mocker: MockerFixture, test_user_i
     )
     # What the user changed lands on the task's activity, as theirs.
     entry = noted.await_args.args[2]
-    assert (entry.text, entry.actor_type) == ("You marked it done", TaskActor.USER)
+    assert (entry.text, entry.actor_type) == ("You moved it to Done", TaskActor.USER)
 
 
 @pytest.mark.parametrize(
@@ -213,11 +247,11 @@ def test_each_activity_line_says_which_account_and_skill_it_used(
 
 
 def test_subtasks_are_listed_only_when_asked_for(mocker: MockerFixture):
-    list_tasks = _mock(mocker, "list_tasks", [])
+    page = _mock(mocker, "list_task_page", TaskPage(tasks=[]))
 
     client.get("/tasks", params={"include_subtasks": "true"})
 
-    assert list_tasks.await_args.kwargs["include_subtasks"] is True
+    assert page.await_args.args[1].include_subtasks is True
 
 
 @pytest.mark.parametrize(
@@ -232,6 +266,7 @@ def test_update_maps_data_layer_errors(mocker: MockerFixture, error, status):
 
 @pytest.mark.parametrize("archived, status", [(True, 204), (False, 404)])
 def test_archive(mocker: MockerFixture, test_user_id, archived, status):
+    _mock(mocker, "get_task", _task())
     archive = _mock(mocker, "archive_task", archived)
     clear = _mock(mocker, "clear_task_repeat", False)
 
@@ -335,9 +370,9 @@ def test_a_start_time_is_refused_before_anything_is_written(
 
 
 def test_scheduled_tasks_can_be_listed_on_their_own(mocker: MockerFixture):
-    list_tasks = _mock(mocker, "list_tasks", [_task(start_at=_LATER)])
+    page = _mock(mocker, "list_task_page", TaskPage(tasks=[_task(start_at=_LATER)]))
 
     response = client.get("/tasks", params={"scheduled": "true"})
 
     assert response.json()["tasks"][0]["start_at"].startswith("2099-01-02")
-    assert list_tasks.await_args.kwargs["scheduled"] is True
+    assert page.await_args.args[1].scheduled is True

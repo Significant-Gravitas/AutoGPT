@@ -5,6 +5,8 @@ import type { Task } from "@/app/api/__generated__/models/task";
 import { Text } from "@/components/atoms/Text/Text";
 import { LayoutGroup, motion } from "framer-motion";
 import { buildBoardColumns } from "../../helpers";
+import { moveInList } from "../TaskBoard/boardKeys";
+import { useRovingCards } from "../TaskBoard/useRovingCards";
 import { ListGroup } from "./components/ListGroup/ListGroup";
 
 interface Props {
@@ -16,11 +18,16 @@ interface Props {
 
 /** The tasks as a list: the board's lanes, in the board's order, stacked
  *  one under the other, one row per task. It scrolls down inside the
- *  height it is given, never sideways. */
+ *  height it is given, never sideways; up and down move between rows. */
 export function TaskList({ tasks, experts, selectedID, onOpen }: Props) {
   const groups = buildBoardColumns(tasks).filter(
     (column) => column.tasks.length > 0,
   );
+  const roving = useRovingCards({
+    columns: groups,
+    move: moveInList,
+    preferredID: selectedID,
+  });
 
   return (
     <motion.div
@@ -43,6 +50,7 @@ export function TaskList({ tasks, experts, selectedID, onOpen }: Props) {
                 experts={experts}
                 selectedID={selectedID}
                 onOpen={onOpen}
+                roving={roving}
               />
             ))
           )}

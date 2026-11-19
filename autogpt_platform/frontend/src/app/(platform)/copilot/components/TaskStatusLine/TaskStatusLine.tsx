@@ -22,6 +22,7 @@ import {
   type StartedTask,
   type TaskLineState,
 } from "./helpers";
+import { QUEUED_LINE, QUEUED_WORD } from "@/app/(platform)/tasks/queue";
 import { isBetweenRuns } from "@/app/(platform)/tasks/schedule";
 import { RepeatingTaskLine } from "./RepeatingTaskLine";
 import { ScheduledTaskLine } from "./ScheduledTaskLine";
@@ -119,7 +120,7 @@ export function TaskStatusLine({ task }: Props) {
             ·
           </Text>
           <OverflowText
-            value={whereItIs(state, line.statusText, line.neverStarted)}
+            value={whereItIs(state, line)}
             overflow="fade"
             variant="inbox"
             tone="quiet"
@@ -185,8 +186,11 @@ export function TaskStatusLine({ task }: Props) {
 /** Where the task is, after its owner's name. */
 function whereItIs(
   state: TaskLineState,
-  statusText: string | null,
-  neverStarted: boolean,
+  line: {
+    statusText: string | null;
+    failureReason: string | null;
+    neverStarted: boolean;
+  },
 ) {
   switch (state) {
     case "needs_input":
@@ -194,11 +198,13 @@ function whereItIs(
     case "done":
       return "Done";
     case "failed":
-      return "Didn't finish";
+      return line.failureReason ? `Failed: ${line.failureReason}` : "Failed";
     case "stopped":
-      return neverStarted ? "Cancelled" : "Stopped";
+      return line.neverStarted ? "Cancelled" : "Stopped";
+    case "queued":
+      return `${QUEUED_WORD} · ${QUEUED_LINE}`;
     case "working":
-      return statusText ?? "Working on it";
+      return line.statusText ?? "Working on it";
   }
 }
 

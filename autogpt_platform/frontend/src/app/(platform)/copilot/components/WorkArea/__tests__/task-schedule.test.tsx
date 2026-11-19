@@ -36,6 +36,7 @@ function scheduled(extra: Partial<Task> = {}): Task {
 
 function serveTask() {
   server.use(
+    http.get(TASK_URL, () => HttpResponse.json(task)),
     http.get(`${TASK_URL}/record`, () =>
       HttpResponse.json({ task, activity: [], artifacts: [], evidence: [] }),
     ),

@@ -136,7 +136,7 @@ async def test_the_third_failed_run_pauses_it_and_says_why(
     assert repeat is not None and repeat.paused and repeat.failed_in_a_row == 3
     texts = [call.args[1].text for call in lines.await_args_list]
     assert texts == [
-        "Failed: The work ran out of time.",
+        "Did not finish: The work ran out of time.",
         "Paused: the last 3 runs failed",
     ]
 

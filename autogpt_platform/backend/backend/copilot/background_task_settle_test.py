@@ -8,6 +8,7 @@ from prisma.enums import TaskStatus
 
 from backend.copilot.background_delivery import (
     continuation_message,
+    followup_label,
     settle_worker_tasks,
 )
 from backend.copilot.background_task import BackgroundTask
@@ -98,3 +99,21 @@ def test_without_a_result_the_chat_reads_the_workers_reply_and_stays_short(outco
     assert 'get_sub_session_result(sub_session_id="worker-chat")' in message
     assert "say so rather than claiming a result" in message
     assert "at most 3 short lines" in message
+
+
+def test_a_task_the_worker_finished_not_done_is_not_handed_over_as_done():
+    """QA A1: the worker's turn completed, but its finish said it did not get
+    the work done; the chat that asked must not hear a success."""
+    failed = _outcome(
+        status=TaskStatus.FAILED,
+        result="No web search here, so 0 of 25 companies were listed.",
+        failure_reason="No web search here, so 0 of 25 companies were listed.",
+    )
+
+    message = continuation_message(_task("completed"), failed)
+
+    assert "did not get done" in message
+    assert "No web search here" in message
+    assert "is done" not in message and "already sees this result" not in message
+    assert followup_label(_task("completed"), failed) == "did not finish"
+    assert followup_label(_task("completed"), _outcome()) == "completed"

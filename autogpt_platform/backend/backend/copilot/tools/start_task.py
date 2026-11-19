@@ -286,7 +286,10 @@ def worker_prompt_text(
         '- tool:finish_task {"summary": "...", "file": "..."}: last. The '
         "summary is two or three short plain sentences, under "
         f"{SUMMARY_HINT_CHARS} characters: what was done and the one thing "
-        "the user should know, with any assumption that matters.\n\n"
+        "the user should know, with any assumption that matters. If you "
+        'delivered none or only part of what was asked, set "outcome": '
+        '"blocked" (something stops you) or "failed", and say why in one '
+        "sentence; never report as done what was not.\n\n"
         "Anything longer than that summary (a report, a comparison, drafts, "
         "a plan) is a document: save it with write_workspace_file under a "
         "name that says what it is ('cursor-pricing-brief.md') and pass that "

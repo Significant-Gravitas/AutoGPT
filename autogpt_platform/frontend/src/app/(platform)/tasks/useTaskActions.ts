@@ -11,29 +11,27 @@ import {
   useUpdateTask,
 } from "@/app/api/__generated__/endpoints/tasks/tasks";
 import type { TaskStatus } from "@/app/api/__generated__/models/taskStatus";
-import type { TaskUpdateRequest } from "@/app/api/__generated__/models/taskUpdateRequest";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  patchTask,
+  restore,
+  type CacheSnapshot,
+  type TaskPatch,
+} from "./taskCache";
+import {
+  archivedPatch,
+  cancelledPatch,
+  notRepeatingPatch,
+  pausedPatch,
+  runStoppedPatch,
+  startedPatch,
+  updatePatch,
+} from "./taskPatches";
+import { showError, updateErrorTitle } from "./taskToasts";
 
-function showError(title: string, error: unknown) {
-  toast({
-    title,
-    description: error instanceof Error ? error.message : undefined,
-    variant: "destructive",
-  });
-}
-
-function updateErrorTitle(data: TaskUpdateRequest) {
-  if ("start_at" in data) {
-    return data.start_at
-      ? "Couldn't change the start time"
-      : "Couldn't remove the start time";
-  }
-  return data.title ? "Couldn't rename the task" : "Couldn't change the status";
-}
-
-/** Rename, move, archive, start, stop, cancel or re-time one task, then
- *  re-read the list, the task and its record.
+/** Rename, move, archive, start, stop, cancel or re-time one task. Each
+ *  change shows at once in the lists and the task's own caches, is put
+ *  back with a toast if the server says no, and is re-read either way.
  *  The callbacks sit on the mutation, not the call, so they still run when
  *  the field or menu that started it has gone. */
 export function useTaskActions(taskID: string) {
@@ -49,55 +47,77 @@ export function useTaskActions(taskID: string) {
     });
   }
 
+  function optimistic<TVars>(
+    patchOf: (vars: TVars) => TaskPatch,
+    errorTitle: (vars: TVars) => string,
+  ) {
+    return {
+      onMutate: (vars: TVars) => patchTask(queryClient, taskID, patchOf(vars)),
+      onError: (
+        error: unknown,
+        vars: TVars,
+        snapshot: CacheSnapshot | undefined,
+      ) => {
+        if (snapshot) restore(queryClient, snapshot);
+        showError(errorTitle(vars), error);
+      },
+      onSettled: refresh,
+    };
+  }
+
   const update = useUpdateTask({
-    mutation: {
-      onSuccess: refresh,
-      onError: (error, { data }) => showError(updateErrorTitle(data), error),
-    },
+    mutation: optimistic(
+      ({ data }) => updatePatch(data),
+      ({ data }) => updateErrorTitle(data),
+    ),
   });
   const archive = useArchiveTask({
-    mutation: {
-      onSuccess: refresh,
-      onError: (error) => showError("Couldn't archive the task", error),
-    },
+    mutation: optimistic(
+      () => archivedPatch,
+      () => "Couldn't archive the task",
+    ),
   });
-
   const runTask = useRunTask({
-    mutation: {
-      onSuccess: refresh,
-      onError: (error) => showError("Couldn't start the task", error),
-    },
+    mutation: optimistic(
+      () => startedPatch,
+      () => "Couldn't start the task",
+    ),
   });
   const cancelTask = useCancelTask({
-    mutation: {
-      onSuccess: refresh,
-      onError: (error) => showError("Couldn't stop the task", error),
-    },
+    mutation: optimistic(
+      () => cancelledPatch,
+      () => "Couldn't stop the task",
+    ),
+  });
+  const cancelRun = useCancelTask({
+    mutation: optimistic(
+      () => runStoppedPatch,
+      () => "Couldn't stop this run",
+    ),
   });
   const cancelStart = useCancelTask({
-    mutation: {
-      onSuccess: refresh,
-      onError: (error) => showError("Couldn't cancel the task", error),
-    },
+    mutation: optimistic(
+      () => cancelledPatch,
+      () => "Couldn't cancel the task",
+    ),
   });
-
   const pauseRepeat = usePauseTaskRepeat({
-    mutation: {
-      onSuccess: refresh,
-      onError: (error) => showError("Couldn't pause the task", error),
-    },
+    mutation: optimistic(
+      () => pausedPatch(true),
+      () => "Couldn't pause the task",
+    ),
   });
   const resumeRepeat = useResumeTaskRepeat({
-    mutation: {
-      onSuccess: refresh,
-      onError: (error) => showError("Couldn't resume the task", error),
-    },
+    mutation: optimistic(
+      () => pausedPatch(false),
+      () => "Couldn't resume the task",
+    ),
   });
   const stopRepeat = useStopTaskRepeat({
-    mutation: {
-      onSuccess: refresh,
-      onError: (error) => showError("Couldn't stop it", error),
-    },
+    mutation: optimistic(
+      () => notRepeatingPatch,
+      () => "Couldn't stop it",
+    ),
   });
 
   function rename(title: string) {
@@ -127,7 +147,7 @@ export function useTaskActions(taskID: string) {
 
   /** A repeating task: stop only the run going now; it keeps repeating. */
   function stopRun(onStopped?: () => void) {
-    cancelTask.mutate(
+    cancelRun.mutate(
       { taskId: taskID, data: { this_run_only: true } },
       { onSuccess: () => onStopped?.() },
     );
@@ -170,7 +190,10 @@ export function useTaskActions(taskID: string) {
     run,
     stop,
     isStarting: runTask.isPending,
+    /** Stop: the whole task. */
     isStopping: cancelTask.isPending,
+    /** Stop this run: a repeating task's run going now. */
+    isStoppingRun: cancelRun.isPending,
     isCancelling: cancelStart.isPending,
     isPending: update.isPending || archive.isPending,
   };

@@ -123,7 +123,11 @@ async def test_finishing_saves_the_summary_and_names_the_document(store, session
     assert isinstance(result, TaskFinishedResponse)
     assert result.document == "brief.md"
     store.finish_task.assert_awaited_once_with(
-        session.session_id, _USER, "Brief ready: Pro is $20 a month.", "brief.md"
+        session.session_id,
+        _USER,
+        "Brief ready: Pro is $20 a month.",
+        "brief.md",
+        "done",
     )
 
 
@@ -192,3 +196,35 @@ async def test_a_refused_finish_does_not_end_the_turn(store, session):
     )
     await FinishTaskTool()._execute(_USER, session, summary="Done.", file="ghost.md")
     assert not turn_end.is_ending(session.session_id)
+
+
+@pytest.mark.parametrize("outcome", ["blocked", "failed", "Blocked"])
+async def test_a_worker_can_finish_saying_it_did_not_get_it_done(
+    store, session, outcome
+):
+    """QA A1: the outcome reaches the data layer, which settles the task
+    FAILED with the summary as its reason, and the worker hears it was saved
+    as not done."""
+    store.finish_task.return_value = TaskFinish(
+        task_id="task-1", outcome=outcome.lower(), in_background=True
+    )
+    reason = "No web search here, so 0 of 25 companies were listed."
+
+    result = await FinishTaskTool()._execute(
+        _USER, session, summary=reason, outcome=outcome
+    )
+
+    assert isinstance(result, TaskFinishedResponse)
+    assert "not done" in result.message
+    store.finish_task.assert_awaited_once_with(
+        session.session_id, _USER, reason, None, outcome.lower()
+    )
+
+
+async def test_an_unknown_outcome_is_refused(store, session):
+    result = await FinishTaskTool()._execute(
+        _USER, session, summary="Done.", outcome="partly"
+    )
+
+    assert isinstance(result, ErrorResponse)
+    store.finish_task.assert_not_awaited()

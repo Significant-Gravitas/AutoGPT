@@ -22,7 +22,7 @@ from backend.copilot.active_turns import inflight_turn_limit_message
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.task_due import start_scheduled_now
-from backend.copilot.task_run import cancel_task_run, start_task_run
+from backend.copilot.task_run import cancel_task_run, settle_by_hand, start_task_run
 from backend.copilot.turn_queue import InflightCapExceeded
 from backend.data.task import (
     LIST_LIMIT_MAX,
@@ -34,15 +34,16 @@ from backend.data.task import (
     create_task,
     detach_task_session,
     get_task,
-    list_tasks,
     update_task,
 )
+from backend.data.task_list import SEARCH_MAX_CHARS, TaskFilter, list_task_page
 from backend.data.task_record import (
     ActivityInput,
     TaskRecord,
     add_activity,
     get_task_record,
 )
+from backend.data.task_review import set_task_review
 from backend.data.task_schedule import (
     clear_task_repeat,
     pause_task_repeat,
@@ -52,10 +53,13 @@ from backend.data.task_schedule import (
 )
 from backend.util.exceptions import NotFoundError
 
+from .changes import WORKED_STATUSES, check_change, stops_work, user_change_lines
+from .creation import plan_new_start, schedule_new_task
 from .model import (
     TaskCancelRequest,
     TaskCreateRequest,
     TaskListResponse,
+    TaskReviewRequest,
     TaskRunRequest,
     TaskUpdateRequest,
 )
@@ -74,7 +78,10 @@ UserId = Annotated[str, Security(get_user_id)]
 
 @router.post("", operation_id="create_task", status_code=HTTP_201_CREATED)
 async def create_my_task(user_id: UserId, body: TaskCreateRequest) -> Task:
-    return await create_task(
+    """Create a task. With ``start_at`` it starts by itself then; with
+    ``repeat`` it runs again and again from its next fire time."""
+    start = await plan_new_start(user_id, body)
+    task = await create_task(
         user_id=user_id,
         title=body.title,
         description=body.description,
@@ -84,13 +91,27 @@ async def create_my_task(user_id: UserId, body: TaskCreateRequest) -> Task:
         goal=body.goal,
         done_when=body.done_when,
     )
+    if start is None:
+        return task
+    return await schedule_new_task(task, user_id, start)
 
 
 @router.get("", operation_id="list_tasks")
 async def list_my_tasks(
     user_id: UserId,
     status: TaskStatus | None = None,
+    statuses: Annotated[
+        list[TaskStatus] | None,
+        Query(description="Only tasks in any of these statuses (a board lane)"),
+    ] = None,
     owner_expert_id: str | None = None,
+    owned_by_otto: Annotated[
+        bool, Query(description="Only the tasks Otto owns (no expert)")
+    ] = False,
+    q: Annotated[
+        str | None,
+        Query(max_length=SEARCH_MAX_CHARS, description="Words in the title"),
+    ] = None,
     session_id: Annotated[
         str | None, Query(description="Only the tasks linked to this chat")
     ] = None,
@@ -104,17 +125,25 @@ async def list_my_tasks(
         Query(description="Only the tasks waiting for a start time, soonest first"),
     ] = False,
 ) -> TaskListResponse:
-    tasks = await list_tasks(
-        user_id=user_id,
-        status=status,
-        owner_expert_id=owner_expert_id,
-        session_id=session_id,
-        limit=limit,
-        offset=offset,
-        include_subtasks=include_subtasks,
-        scheduled=scheduled,
+    """A page of the caller's tasks, most recently updated first; page on
+    with ``offset`` = ``next_offset`` while ``has_more``."""
+    page = await list_task_page(
+        user_id,
+        TaskFilter(
+            statuses=statuses or ([status] if status else []),
+            owner_expert_id=owner_expert_id,
+            owned_by_otto=owned_by_otto,
+            session_id=session_id,
+            include_subtasks=include_subtasks,
+            scheduled=scheduled,
+            search=q,
+        ),
+        limit,
+        offset,
     )
-    return TaskListResponse(tasks=tasks)
+    return TaskListResponse(
+        tasks=page.tasks, has_more=page.has_more, next_offset=page.next_offset
+    )
 
 
 @router.get("/{task_id}", operation_id="get_task")
@@ -140,55 +169,56 @@ async def get_my_task_record(
 async def update_my_task(
     user_id: UserId, task_id: Annotated[str, _TASK_ID], body: TaskUpdateRequest
 ) -> Task:
-    """Edit the task. ``start_at`` schedules a task that has not started,
-    moves its start or, sent as null, removes it."""
+    """Edit the task: its title, description, goal, what done looks like, its
+    owner, and its status (To do, Done or Cancelled; Done or Cancelled on a
+    task being worked on stops its work first). ``start_at`` schedules a task
+    that has not started, moves its start or, sent as null, removes it."""
     before = await get_task(task_id, user_id)
+    if before is None:
+        raise NotFoundError(f"Task {task_id} not found")
+    check_change(before, body)
     retime = "start_at" in body.model_fields_set
     start_at = requested_start(before, body) if retime else None
-    task = await update_task(
-        task_id, user_id, TaskPatch(**body.model_dump(exclude={"start_at"}))
-    )
+    task = await _apply_edit(user_id, task_id, before, body)
     if task.repeat and task.status in SETTLED_STATUSES:
         # Marked done or cancelled by hand: it stops repeating.
         await clear_task_repeat(task_id, user_id)
         task = await get_task(task_id, user_id) or task
     if retime:
         task = await set_task_start(task_id, user_id, start_at)
-    line = _user_change(before, task) or await start_change_line(before, task)
-    if line:
-        await add_activity(
-            task_id,
-            user_id,
-            ActivityInput(
-                kind=TaskActivityKind.STATUS,
-                text=line,
-                actor_type=TaskActor.USER,
-                is_milestone=True,
-            ),
-        )
+    start_line = await start_change_line(before, task)
+    for line in [*user_change_lines(before, task), *filter(None, [start_line])]:
+        await _user_line(task_id, user_id, line)
     return task
 
 
-def _user_change(before: Task | None, after: Task) -> str | None:
-    """What the user just changed, as one activity line."""
-    if before is None:
-        return None
-    if before.status != after.status:
-        words = after.status.value.replace("_", " ").lower()
-        return f"You marked it {words}"
-    if before.goal != after.goal or before.done_when != after.done_when:
-        return "You changed the goal"
-    if before.title != after.title:
-        return f"You renamed it to {after.title}"
-    if before.owner_expert_id != after.owner_expert_id:
-        return "You changed who owns it"
-    return None
+async def _apply_edit(
+    user_id: str, task_id: str, before: Task, body: TaskUpdateRequest
+) -> Task:
+    """Write the edit. Done or Cancelled on a task being worked on settles it
+    and stops its run first (``settle_by_hand``), so the run cannot flip it
+    back; the rest of the edit follows."""
+    patch = TaskPatch(**body.model_dump(exclude={"start_at"}))
+    if body.status is None or not stops_work(before, body):
+        return await update_task(task_id, user_id, patch)
+    task = await settle_by_hand(user_id, task_id, body.status)
+    rest = patch.model_copy(update={"status": None})
+    if rest == TaskPatch():
+        return task
+    return await update_task(task_id, user_id, rest)
 
 
 @router.delete(
     "/{task_id}", operation_id="archive_task", status_code=HTTP_204_NO_CONTENT
 )
 async def archive_my_task(user_id: UserId, task_id: Annotated[str, _TASK_ID]) -> None:
+    """Archive the task; one being worked on is stopped first, so nothing
+    keeps working on a task the user can no longer see."""
+    before = await get_task(task_id, user_id)
+    if before is None:
+        raise NotFoundError(f"Task {task_id} not found")
+    if before.status in WORKED_STATUSES:
+        await cancel_task_run(user_id, task_id)
     if not await archive_task(task_id, user_id):
         raise NotFoundError(f"Task {task_id} not found")
     # An archived task no longer repeats or watches.
@@ -215,9 +245,51 @@ async def run_my_task(
     """Start work on a task that is not being worked on, in a chat of its
     own; the task settles when that chat's work ends. A scheduled or missed
     task starts now and loses its start time."""
+    instructions = body.instructions if body else None
+    return await _run(user_id, task_id, instructions, http_request, ctx)
+
+
+@router.post(
+    "/{task_id}/review",
+    operation_id="review_task",
+    responses={
+        402: {"description": "Subscription required"},
+        404: {"description": "Task not found"},
+        409: {"description": "The task's result cannot be reviewed now"},
+        422: {"description": "Changes were asked for without saying what"},
+        429: {"description": "Usage limit or concurrent-turn limit reached"},
+    },
+)
+async def review_my_task(
+    user_id: UserId,
+    task_id: Annotated[str, _TASK_ID],
+    body: TaskReviewRequest,
+    http_request: Request,
+    ctx: Annotated[RequestContext, Security(get_request_context)],
+) -> Task:
+    """Accept the task's result, or ask for changes: the note is kept on the
+    task and the task runs again with it as what to change."""
+    if body.decision == "accept":
+        task = await set_task_review(task_id, user_id, "accepted")
+        await _user_line(task_id, user_id, "You accepted the result")
+        return task
+    note = " ".join((body.note or "").split())
+    if not note:
+        raise HTTPException(status_code=422, detail="Say what to change.")
+    await set_task_review(task_id, user_id, "changes_requested", note)
+    await _user_line(task_id, user_id, f"You asked for changes: {note}")
+    return await _run(user_id, task_id, note, http_request, ctx)
+
+
+async def _run(
+    user_id: str,
+    task_id: str,
+    instructions: str | None,
+    http_request: Request,
+    ctx: RequestContext,
+) -> Task:
     await enforce_payment_paywall(user_id)
     await enforce_platform_allowance(user_id)
-    instructions = body.instructions if body else None
     try:
         if not instructions:
             started = await start_scheduled_now(user_id, task_id)

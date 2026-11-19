@@ -1,12 +1,8 @@
 import type { Expert } from "@/app/api/__generated__/models/expert";
-import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
-import { OwnerPicker } from "./components/OwnerPicker/OwnerPicker";
+import { DialogActions, OPTIONS_ID } from "./components/DialogActions";
+import { Refusal, TaskOptions } from "./components/TaskOptions/TaskOptions";
 import { useNewTaskDialog } from "./useNewTaskDialog";
-
-const HINT_ID = "new-task-hint";
 
 interface Props {
   isOpen: boolean;
@@ -15,6 +11,8 @@ interface Props {
   onCreated?: (id: string) => void;
 }
 
+/** Write a task, pick who takes it, and, under Options, when it starts or
+ *  how often it runs and what done looks like. */
 export function NewTaskDialog({
   isOpen,
   onOpenChange,
@@ -22,6 +20,7 @@ export function NewTaskDialog({
   onCreated,
 }: Props) {
   const form = useNewTaskDialog({ experts, onOpenChange, onCreated });
+  const refusal = form.options.refusal;
 
   return (
     <Dialog
@@ -47,47 +46,13 @@ export function NewTaskDialog({
             autoFocus
             className="[field-sizing:content] max-h-60 min-h-12 w-full resize-none bg-transparent px-1 text-body text-foreground-ink placeholder:text-foreground-faint focus:outline-none"
           />
-          <div className="flex items-center justify-between gap-2">
-            <OwnerPicker
-              value={form.owner}
-              choices={form.choices}
-              onChange={form.pickOwner}
-            />
-            <span className="flex items-center gap-2">
-              {form.isEmpty ? (
-                <Text
-                  as="span"
-                  id={HINT_ID}
-                  variant="small"
-                  tone="faint"
-                  aria-live="polite"
-                >
-                  Describe the task
-                </Text>
-              ) : null}
-              <Button
-                type="button"
-                variant="ghost-muted"
-                size="xs"
-                shape="pill"
-                disabled={!form.canSubmit}
-                onClick={form.saveForLater}
-              >
-                Save for later
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                size="icon-sm"
-                shape="pill"
-                aria-label="Create and start task"
-                leadingIcon={ArrowUp02Icon}
-                disabled={!form.canSubmit}
-                loading={form.isSubmitting}
-                aria-describedby={form.isEmpty ? HINT_ID : undefined}
-              />
-            </span>
-          </div>
+          {form.options.isOpen ? (
+            <div id={OPTIONS_ID}>
+              <TaskOptions state={form.options} />
+            </div>
+          ) : null}
+          {refusal?.field === "form" ? <Refusal text={refusal.text} /> : null}
+          <DialogActions form={form} />
         </form>
       </Dialog.Content>
     </Dialog>

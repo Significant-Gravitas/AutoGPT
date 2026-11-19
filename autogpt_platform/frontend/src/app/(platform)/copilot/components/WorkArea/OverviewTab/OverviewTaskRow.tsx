@@ -2,6 +2,7 @@
 
 import { StateIcon } from "@/app/(platform)/tasks/components/StateIcon/StateIcon";
 import { ownerOf } from "@/app/(platform)/tasks/helpers";
+import { isQueued, QUEUED_LINE } from "@/app/(platform)/tasks/queue";
 import {
   isScheduled,
   scheduleStateOf,
@@ -24,6 +25,7 @@ interface Props {
 export function OverviewTaskRow({ task, experts, onOpen }: Props) {
   const countdown = useStartCountdown(isScheduled(task) ? task.start_at : null);
   const schedule = scheduleStateOf(task);
+  const queued = isQueued(task);
   const repeat = isScheduled(task) ? task.repeat : null;
   const subtitle = repeat
     ? waitingLine(repeat, countdown?.label)
@@ -31,11 +33,15 @@ export function OverviewTaskRow({ task, experts, onOpen }: Props) {
       ? `${countdown.label} · ${countdown.exact}`
       : schedule === "missed"
         ? "Missed its start time"
-        : (task.status_text ?? ownerOf(task, experts).name);
+        : queued
+          ? QUEUED_LINE
+          : (task.status_text ?? ownerOf(task, experts).name);
 
   return (
     <BlockRow
-      tile={<StateIcon status={task.status} schedule={schedule} />}
+      tile={
+        <StateIcon status={task.status} schedule={schedule} queued={queued} />
+      }
       title={task.title}
       subtitle={subtitle}
       onClick={onOpen}

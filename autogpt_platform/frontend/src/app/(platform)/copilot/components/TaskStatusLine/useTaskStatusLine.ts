@@ -8,6 +8,7 @@ import {
   AUTOPILOT_AVATAR_URL,
   AUTOPILOT_NAME,
 } from "@/components/molecules/AutopilotAvatar/helpers";
+import { isQueued } from "@/app/(platform)/tasks/queue";
 import { scheduleStateOf } from "@/app/(platform)/tasks/schedule";
 import {
   isSettled,
@@ -35,7 +36,9 @@ export function useTaskStatusLine(started: StartedTask) {
   });
   const task = taskQuery.data?.status === 200 ? taskQuery.data.data : null;
   const status = task?.status ?? started.status;
-  const state = taskLineStateOf(status);
+  const workState = taskLineStateOf(status);
+  const state =
+    workState === "working" && task && isQueued(task) ? "queued" : workState;
   // Waiting for its start time, or missed it: the card offers Start now.
   const repeat: StartedRepeat | null = task
     ? task.repeat
@@ -96,6 +99,8 @@ export function useTaskStatusLine(started: StartedTask) {
     title: task?.title ?? started.title,
     // Where it is in the worker's own words, once it has said so.
     statusText: task?.status_text ?? null,
+    /** Why a task that did not deliver failed, in the worker's words. */
+    failureReason: task?.failure_reason ?? null,
     subtasks:
       task && (task.subtask_count ?? 0) > 0
         ? { done: task.subtasks_done ?? 0, total: task.subtask_count ?? 0 }

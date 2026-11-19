@@ -75,7 +75,7 @@ from backend.copilot.response_model import (
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
-from backend.copilot.task_run_settle import settle_task_run_turn
+from backend.copilot.task_run_settle import note_task_run_started, settle_task_run_turn
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
 from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
@@ -826,6 +826,7 @@ class CoPilotProcessor:
                 raise RuntimeError("codex_session_route_mismatch")
 
             session = await _normalize_private_expert_session_tenancy(session)
+            await note_task_run_started(session, session.user_id)
             # The allowance, budget and tier checks that set up the turn share
             # one read of the trial and one of the usage state; closed at the
             # model's first output, so tools running after it read afresh.

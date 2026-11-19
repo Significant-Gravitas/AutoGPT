@@ -6,6 +6,7 @@ import {
   AUTOPILOT_AVATAR_URL,
   AUTOPILOT_NAME,
 } from "@/components/molecules/AutopilotAvatar/helpers";
+import { canChangeByItself } from "./poll";
 import { bySoonestStart, isMissed, isScheduled, isWatching } from "./schedule";
 
 /** The lanes every surface sorts a task into: board columns and pills. */
@@ -35,15 +36,17 @@ const STATUS_VIEWS: Record<TaskStatus, StatusView> = {
   CANCELLED: { lane: "cancelled", word: "Cancelled", tone: "quiet" },
 };
 
-/** The order the status menu lists them in. */
-export const STATUS_ORDER: TaskStatus[] = [
+/** What a person can set by hand: reopen it, finish it or drop it. The
+ *  work itself sets the rest; a failed task is tried again instead. */
+const SETTABLE_STATUSES: TaskStatus[] = [
   TaskStatus.TODO,
-  TaskStatus.IN_PROGRESS,
-  TaskStatus.NEEDS_INPUT,
   TaskStatus.DONE,
-  TaskStatus.FAILED,
   TaskStatus.CANCELLED,
 ];
+
+export function settableStatuses(status: TaskStatus): TaskStatus[] {
+  return status === TaskStatus.FAILED ? [] : SETTABLE_STATUSES;
+}
 
 export function statusOf(status: TaskStatus): StatusView {
   return STATUS_VIEWS[status] ?? STATUS_VIEWS.TODO;
@@ -64,10 +67,11 @@ export function isSettled(status: TaskStatus) {
 
 export const POLL_MS = 5_000;
 
-/** Re-read every few seconds while any task can still move on its own. */
-export function pollInterval(tasks: Task[] | undefined) {
+/** Re-read every few seconds while any task can move on its own: one being
+ *  worked, or one about to start. A plain to-do waits for the user. */
+export function pollInterval(tasks: Task[] | undefined, now = Date.now()) {
   if (!tasks) return false;
-  return tasks.some((t) => !isSettled(t.status)) ? POLL_MS : false;
+  return tasks.some((t) => canChangeByItself(t, now)) ? POLL_MS : false;
 }
 
 export interface BoardColumn {

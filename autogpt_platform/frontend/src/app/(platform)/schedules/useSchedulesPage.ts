@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import {
   useGetV1ListExecutionSchedulesForAUser,
@@ -10,14 +10,16 @@ import { useListTasks } from "@/app/api/__generated__/endpoints/tasks/tasks";
 import { okData } from "@/app/api/helpers";
 
 import { buildSchedules } from "./helpers";
+import { TASK_LIST_PARAMS } from "./scheduleCache";
+import { useMinuteClock } from "./useMinuteClock";
 import { useScheduleTabs } from "./useScheduleTabs";
-
-export const TASK_LIST_PARAMS = { limit: 100, include_subtasks: false };
 
 /** Every schedule the user has: repeating, watching and once-only tasks, and
  *  workflow schedules, with their coming run times. */
 export function useSchedulesPage() {
-  const [loadedAt] = useState(() => Date.now());
+  // "Now" for how long a task at work has been running: a minute's clock,
+  // resting while the tab is hidden, so it never freezes at page load.
+  const now = useMinuteClock();
   const tabs = useScheduleTabs();
 
   const tasksQuery = useListTasks(TASK_LIST_PARAMS, {
@@ -41,9 +43,9 @@ export function useSchedulesPage() {
         tasks: tasks ?? [],
         workflows: workflows ?? [],
         upcoming: upcoming ?? [],
-        now: loadedAt,
+        now,
       }),
-    [tasks, workflows, upcoming, loadedAt],
+    [tasks, workflows, upcoming, now],
   );
 
   // The coming times only add to the list: it shows without them, each

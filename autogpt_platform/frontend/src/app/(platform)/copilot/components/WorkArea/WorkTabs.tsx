@@ -7,7 +7,6 @@ import {
   Add01Icon,
   ArrowLeftDoubleIcon,
   ArrowRightDoubleIcon,
-  Cancel01Icon,
   CheckListIcon,
   File02Icon,
   FlowIcon,
@@ -20,6 +19,7 @@ import {
 import type { IconSvgElement } from "@hugeicons/react";
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { useOverflowRight } from "@/app/(platform)/tasks/components/TaskBoard/useOverflowRight";
+import { WorkTabItem } from "./WorkTabItem";
 
 export interface TabView {
   key: string;
@@ -117,64 +117,19 @@ export function WorkTabs({
           hiddenRight && "mask-fade-right",
         )}
       >
-        {tabs.map((tab) => {
-          const isActive = tab.key === activeKey;
-          return (
-            <span
-              key={tab.key}
-              data-on={isActive || undefined}
-              className={cn(
-                "group/tab relative flex min-w-[5.75rem] shrink rounded-lg transition-colors duration-150 ease-out motion-reduce:transition-none",
-                isActive
-                  ? "bg-surface shadow-(--inbox-shadow-card)"
-                  : "hover:bg-surface-wash",
-              )}
-            >
-              <button
-                ref={(element) => {
-                  if (element) buttons.current.set(tab.key, element);
-                  else buttons.current.delete(tab.key);
-                }}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                tabIndex={isActive ? 0 : -1}
-                title={tab.title}
-                onClick={() => onSelect(tab.key)}
-                className={cn(
-                  "inline-flex h-7 w-full max-w-[9.75rem] min-w-0 items-center gap-1.5 rounded-lg pr-7 pl-2.5 text-body-sm transition-colors duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:ring-inset motion-reduce:transition-none",
-                  isActive
-                    ? "text-foreground-ink"
-                    : "text-foreground-text group-hover/tab:text-foreground-ink",
-                )}
-              >
-                <Icon
-                  icon={tab.icon}
-                  size={14}
-                  tone="inherit"
-                  className="shrink-0"
-                />
-                <span className="min-w-0 overflow-hidden mask-fade-right pr-2 whitespace-nowrap">
-                  {tab.title}
-                </span>
-              </button>
-              <button
-                type="button"
-                tabIndex={-1}
-                aria-label={`Close ${tab.title}`}
-                onClick={() => onClose(tab.key)}
-                className={cn(
-                  "absolute top-1.5 right-1 flex size-4 items-center justify-center rounded-sm text-foreground-text transition-opacity duration-100 ease-out outline-none hover:bg-surface-wash hover:text-foreground-ink",
-                  isActive
-                    ? "opacity-100"
-                    : "opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100",
-                )}
-              >
-                <Icon icon={Cancel01Icon} size={10} tone="inherit" />
-              </button>
-            </span>
-          );
-        })}
+        {tabs.map((tab) => (
+          <WorkTabItem
+            key={tab.key}
+            tab={tab}
+            isActive={tab.key === activeKey}
+            buttonRef={(element) => {
+              if (element) buttons.current.set(tab.key, element);
+              else buttons.current.delete(tab.key);
+            }}
+            onSelect={onSelect}
+            onClose={onClose}
+          />
+        ))}
       </div>
       {onNew ? (
         <button

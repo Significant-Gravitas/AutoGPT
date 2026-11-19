@@ -14,7 +14,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tools.start_task import BRIEF_MAX_CHARS, worker_prompt_text
 from backend.copilot.turn_queue import InflightCapExceeded
 from backend.data.task import Task, TaskPatch
-from backend.data.task_run import TaskRunClaim
+from backend.data.task_run import QUEUED_TEXT, TaskRunClaim
 from backend.data.task_schedule_meta import TaskRepeat
 from backend.util.exceptions import ConflictError, ExpertNotFoundError, NotFoundError
 
@@ -60,6 +60,9 @@ def deps(mocker: MockerFixture) -> _Deps:
     run, tasks, record = MagicMock(), MagicMock(), MagicMock()
     run.claim_task_run = AsyncMock(return_value=_claim())
     run.undo_task_run = AsyncMock()
+    run.mark_run_queued = AsyncMock(
+        return_value=_task(status=TaskStatus.IN_PROGRESS, is_queued=True)
+    )
     tasks.attach_task_session = AsyncMock()
     tasks.update_task = AsyncMock(
         side_effect=lambda task_id, user_id, patch: _task(
@@ -150,10 +153,10 @@ def test_the_brief_falls_back_to_the_goal_then_the_title():
     )
 
 
-def test_a_page_run_is_told_not_to_finish_a_task_it_cannot_do():
+def test_a_page_run_is_told_to_finish_a_task_it_cannot_do_as_blocked():
     prompt = task_run.run_prompt(_task(), "Use the Q3 numbers.")
 
-    assert "do not call finish_task" in prompt
+    assert 'call finish_task with "outcome": "blocked"' in prompt
     assert prompt.index("Use the Q3 numbers.") < prompt.index(task_run.BLOCKED_RULE)
 
 
@@ -443,3 +446,63 @@ async def test_cancelling_a_repeating_task_stops_it_repeating(
     await task_run.cancel_task_run(USER, "task-1")
 
     schedule.clear_task_repeat.assert_awaited_once_with("task-1", USER)
+
+
+@pytest.mark.asyncio
+async def test_a_run_waiting_for_a_free_slot_says_it_is_queued(deps: _Deps):
+    """A5: queued past the running cap, the task must not read as Working."""
+    deps.schedule.side_effect = ConcurrentTurnLimitError("busy", cap=5, used=5)
+    deps.run.mark_run_queued = AsyncMock(
+        return_value=_task(
+            status=TaskStatus.IN_PROGRESS,
+            status_text=QUEUED_TEXT,
+            is_queued=True,
+        )
+    )
+
+    task = await task_run.start_task_run(USER, "task-1")
+
+    deps.run.mark_run_queued.assert_awaited_once_with("task-1", USER)
+    assert task.is_queued and task.status_text == "Queued: starts when a slot frees"
+
+
+@pytest.mark.asyncio
+async def test_a_run_that_starts_at_once_is_not_queued(deps: _Deps):
+    deps.run.mark_run_queued = AsyncMock()
+
+    task = await task_run.start_task_run(USER, "task-1")
+
+    deps.run.mark_run_queued.assert_not_awaited()
+    assert not task.is_queued
+
+
+@pytest.mark.asyncio
+async def test_a_busy_work_chat_is_a_conflict_not_a_crash(deps: _Deps):
+    """A8: a 409 with words for the user, not a bare RuntimeError."""
+    deps.schedule.return_value = None
+
+    with pytest.raises(ConflictError, match="busy"):
+        await task_run.start_task_run(USER, "task-1")
+
+    deps.run.undo_task_run.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [TaskStatus.DONE, TaskStatus.CANCELLED])
+async def test_marking_work_going_done_settles_it_then_stops_it(
+    deps: _Deps, stops: SimpleNamespace, status
+):
+    """QA A2: settled first, so the stopped turn's end cannot flip it back."""
+    order: list[str] = []
+    deps.tasks.update_task.side_effect = lambda *a: order.append("settle") or _task(
+        status=status, work_session_id="chat-w"
+    )
+    stops.cancel.side_effect = lambda *a: order.append("stop")
+
+    task = await task_run.settle_by_hand(USER, "task-1", status)
+
+    assert task.status == status
+    deps.tasks.update_task.assert_awaited_once_with(
+        "task-1", USER, TaskPatch(status=status)
+    )
+    assert order == ["settle", "stop"]

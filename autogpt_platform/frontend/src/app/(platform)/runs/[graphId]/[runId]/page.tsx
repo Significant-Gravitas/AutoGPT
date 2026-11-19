@@ -3,8 +3,8 @@
 import { useParams } from "next/navigation";
 
 import { RunSetup } from "@/app/(platform)/copilot/components/WorkArea/WorkflowRunTab/components/RunSetup";
-import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
+import { RunNotFound } from "../../components/RunNotFound";
 import { RunScreen } from "../../components/RunScreen";
 import { StepSidePanel } from "../../components/StepSidePanel";
 import { useRunPage } from "../../useRunPage";
@@ -16,15 +16,7 @@ export default function RunPage() {
   const page = useRunPage(params.graphId, params.runId);
 
   if (page.notFound) {
-    return (
-      <div className="mx-auto w-full max-w-3xl p-6">
-        <ErrorCard
-          context="this run"
-          httpError={{ message: "We couldn't find this run." }}
-          onRetry={page.retry}
-        />
-      </div>
-    );
+    return <RunNotFound error={page.error} onRetry={page.retry} />;
   }
 
   return (

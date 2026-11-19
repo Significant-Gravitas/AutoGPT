@@ -18,6 +18,7 @@ import {
 } from "../EmptySession/components/ExpertInfoPanel/components/InfoParts";
 import { BlockNote, BlockRow } from "./blocks";
 import { fileTypeLabel } from "./OverviewTab/helpers";
+import { ReviewActions } from "./TaskReview/ReviewActions";
 import { documentOf, hostOf, sourceOf } from "./taskBlocks";
 
 function resultLabel(task: Task) {
@@ -31,9 +32,10 @@ interface ResultProps {
   onOpenArtifact: (artifact: TaskArtifact) => void;
 }
 
-/** How the task ended: a short summary to read at a glance, and under it
- *  the document that holds the full result. A repeating or watching task
- *  has none: each of its runs holds its own result in the Runs list. */
+/** How the task ended: a short summary to read at a glance, Accept or
+ *  Request changes under a finished one, and the document that holds the
+ *  full result. A repeating or watching task has none: each of its runs
+ *  holds its own result in the Runs list. */
 export function ResultBlock({
   task,
   artifacts,
@@ -51,11 +53,12 @@ export function ResultBlock({
           <Text variant="inbox" tone="text" className="text-pretty">
             {outcome}
           </Text>
-          {isUnverified ? (
+          {isUnverified && task.review?.state !== "accepted" ? (
             <Text as="span" variant="small" tone="waiting">
               Not verified yet
             </Text>
           ) : null}
+          <ReviewActions task={task} />
         </BlockNote>
       ) : null}
       {document ? (

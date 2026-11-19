@@ -185,7 +185,7 @@ async def test_a_turn_that_ends_without_a_result_fails_the_task(
         assert status == TaskStatus.FAILED
         assert record is not None
         assert record.task.failure_reason == reason
-        assert record.activity[0].text == f"Failed: {reason}"
+        assert record.activity[0].text == f"Did not finish: {reason}"
     finally:
         await _cleanup(user_id)
 

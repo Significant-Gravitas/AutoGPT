@@ -235,7 +235,13 @@ from backend.data.task_record import (
     work_tasks,
 )
 from backend.data.task_result import finish_task, is_worker_chat, task_outcome
-from backend.data.task_run import claim_task_run, settle_task_run, undo_task_run
+from backend.data.task_run import (
+    claim_task_run,
+    clear_run_queued,
+    mark_run_queued,
+    settle_task_run,
+    undo_task_run,
+)
 from backend.data.task_schedule import (
     cancel_scheduled_tasks,
     clear_task_repeat,
@@ -676,6 +682,8 @@ class DatabaseManager(AppService):
     claim_task_run = _(claim_task_run)
     undo_task_run = _(undo_task_run)
     settle_task_run = _(settle_task_run)
+    mark_run_queued = _(mark_run_queued)
+    clear_run_queued = _(clear_run_queued)
     # A task with a start time; the due-task sweep runs in the scheduler.
     set_task_start = _(set_task_start)
     count_scheduled_tasks = _(count_scheduled_tasks)
@@ -1347,6 +1355,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     claim_task_run = d.claim_task_run
     undo_task_run = d.undo_task_run
     settle_task_run = d.settle_task_run
+    mark_run_queued = d.mark_run_queued
+    clear_run_queued = d.clear_run_queued
     set_task_start = d.set_task_start
     count_scheduled_tasks = d.count_scheduled_tasks
     cancel_scheduled_tasks = d.cancel_scheduled_tasks

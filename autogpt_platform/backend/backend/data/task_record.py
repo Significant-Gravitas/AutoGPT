@@ -43,6 +43,7 @@ from backend.data.task_rhythm import RUN_END_BY_STATUS, is_repeating, rearmed
 from backend.data.task_runs import TaskRun, list_task_runs, run_end_data
 from backend.data.task_schedule_meta import with_schedule_meta
 from backend.data.task_text import (
+    clip,
     file_key,
     recorded_tool_names,
     short_result,
@@ -744,9 +745,11 @@ async def answer_session_asks(session_id: str, user_id: str, answer: str) -> int
 
 _SETTLED_LINE = {
     TaskStatus.DONE: (TaskActivityKind.DONE, "Finished"),
-    TaskStatus.FAILED: (TaskActivityKind.FAILED, "Failed"),
+    TaskStatus.FAILED: (TaskActivityKind.FAILED, "Did not finish"),
     TaskStatus.CANCELLED: (TaskActivityKind.STATUS, "Cancelled"),
 }
+# The reason on the settle line is cut short; the task keeps it whole.
+_SETTLED_REASON_CHARS = 120
 
 
 async def settle_work_tasks(
@@ -800,7 +803,12 @@ async def _settle_row(
     failure_reason: str | None,
 ) -> None:
     """Settle one task with its run's outcome; a repeating one goes back to
-    waiting for its next run (``task_rhythm.rearmed``), its outcome kept."""
+    waiting for its next run (``task_rhythm.rearmed``), its outcome kept. A
+    worker that finished saying it did not get the work done
+    (``task_result.finish_task``) left a failure reason on the open task:
+    a turn that ended normally then settles FAILED with that reason."""
+    if status == TaskStatus.DONE and row.failureReason:
+        status, failure_reason = TaskStatus.FAILED, row.failureReason
     now = datetime.now(UTC)
     # A summary the worker left (``task_result.finish_task``) stands; a bare
     # reply is cut down to its opening.
@@ -829,15 +837,11 @@ async def _settle_row(
         where={"taskId": row.id, "status": TaskAskStatus.OPEN},
         data={"status": TaskAskStatus.WITHDRAWN},
     )
-    kind, word = _SETTLED_LINE[status]
-    reason = (
-        f": {failure_reason}" if status == TaskStatus.FAILED and failure_reason else ""
-    )
     await _append(
         row.id,
         ActivityInput(
-            kind=kind,
-            text=f"{word}{reason}",
+            kind=_SETTLED_LINE[status][0],
+            text=_settled_text(status, failure_reason),
             chat_session_id=session_id,
             is_milestone=True,
             data=run_end_data(ended, final if status == TaskStatus.DONE else None),
@@ -852,6 +856,15 @@ async def _settle_row(
                 is_milestone=True,
             ),
         )
+
+
+def _settled_text(status: TaskStatus, failure_reason: str | None) -> str:
+    """How the run ended, as its last activity line: "Finished", "Did not
+    finish: <reason, cut short>" or "Cancelled"."""
+    word = _SETTLED_LINE[status][1]
+    if status != TaskStatus.FAILED or not failure_reason:
+        return word
+    return f"{word}: {clip(failure_reason, _SETTLED_REASON_CHARS)}"
 
 
 async def _subtask_ids(task_id: str) -> list[str]:
@@ -912,9 +925,12 @@ async def get_task_record(task_id: str, user_id: str) -> TaskRecord | None:
 
 
 def is_unverified(task: Task, evidence: list[TaskEvidence]) -> bool:
-    """Done against a stated done-when, with nothing verified to show for it."""
+    """Done against a stated done-when, with nothing verified to show for it
+    and not accepted by the user."""
+    accepted = task.review is not None and task.review.state == "accepted"
     return (
         task.status == TaskStatus.DONE
         and bool(task.done_when)
+        and not accepted
         and not any(item.verified for item in evidence)
     )

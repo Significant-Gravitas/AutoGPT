@@ -368,7 +368,11 @@ from ._test_data import make_session
 # start_task's repeat_crons, for repeating tasks (2026-11-17):
 #     merged tree                                 90,202
 #     + headroom                      +300        90,502
-_CHAR_BUDGET = 90_502
+# finish_task's outcome (done/blocked/failed), so a task that delivered
+# nothing settles Failed, not Done (QA A1, 2026-11-19):
+#     merged tree                                 90,617
+#     + headroom                      +300        90,917
+_CHAR_BUDGET = 90_917
 
 
 @pytest.fixture(scope="module")

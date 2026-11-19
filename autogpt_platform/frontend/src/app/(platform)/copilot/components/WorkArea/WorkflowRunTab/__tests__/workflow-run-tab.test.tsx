@@ -1,9 +1,11 @@
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { getGetV2GetLibraryAgentByGraphIdResponseMock } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
+import { useWorkAreaStore } from "../../../../workArea";
 import { WorkflowRunTab } from "../WorkflowRunTab";
 import type { WorkflowTab } from "../useWorkflowRun";
 
@@ -273,5 +275,46 @@ describe("Workflow run tab", () => {
     ).toBe(true);
     expect(runStatus()).toBe("Running");
     expect(screen.getByText("Stop", { selector: "button" })).toBeDefined();
+  });
+
+  describe("a run that cannot be read", () => {
+    const real = useWorkAreaStore.getState().openWorkflowRun;
+    afterEach(() => useWorkAreaStore.setState({ openWorkflowRun: real }));
+
+    it.each([404, 422, 500])(
+      "goes back to the list of runs quickly after a %i",
+      async (status) => {
+        const openWorkflowRun = vi.fn();
+        useWorkAreaStore.setState({ openWorkflowRun });
+        serve([runMeta("run-2", "COMPLETED")], null);
+        server.use(
+          http.get(`${BASE}/executions/:execID`, () =>
+            HttpResponse.json({ detail: "Not found" }, { status }),
+          ),
+        );
+        // The app's own retry defaults, which the test client turns off.
+        render(
+          <WorkflowRunTab
+            tab={{
+              key: `workflow:${GRAPH}`,
+              kind: "workflow",
+              graphID: GRAPH,
+              graphVersion: 1,
+              executionID: "missing",
+              title: "Morning digest",
+            }}
+          />,
+          { queryClient: new QueryClient() },
+        );
+
+        await vi.waitFor(
+          () =>
+            expect(openWorkflowRun).toHaveBeenCalledWith(
+              expect.objectContaining({ executionID: null }),
+            ),
+          { timeout: 2500 },
+        );
+      },
+    );
   });
 });

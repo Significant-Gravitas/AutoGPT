@@ -2,6 +2,7 @@ import type { Task } from "@/app/api/__generated__/models/task";
 import { useNowMinute } from "@/hooks/useNowMinute";
 import { useState } from "react";
 import { isSettled, statusAge } from "../../helpers";
+import { isQueued } from "../../queue";
 import { isScheduled, scheduleStateOf, waitingLine } from "../../schedule";
 import { useStartCountdown } from "../../useStartCountdown";
 
@@ -25,6 +26,7 @@ export function useTaskRow(task: Task) {
           ? countdown.label
           : statusAge(task, now),
     schedule: scheduleStateOf(task),
+    queued: isQueued(task),
     isRenaming,
     startRename: () => setIsRenaming(true),
     stopRename: () => setIsRenaming(false),

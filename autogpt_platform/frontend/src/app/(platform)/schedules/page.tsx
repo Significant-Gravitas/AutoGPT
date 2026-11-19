@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { AgentSchedulesScreen } from "./affect/agent-schedules";
 import { ScheduleSidePanel } from "./components/ScheduleSidePanel/ScheduleSidePanel";
 import { useScheduleDetail } from "./components/ScheduleSidePanel/useScheduleDetail";
-import { ERROR_LABELS, LABELS } from "./helpers";
+import { askOttoHref, ERROR_LABELS, EXAMPLE_SCHEDULE, LABELS } from "./helpers";
 import { useScheduleActions } from "./useScheduleActions";
 import { useSchedulesPage } from "./useSchedulesPage";
 
@@ -14,15 +14,18 @@ import { useSchedulesPage } from "./useSchedulesPage";
 export default function SchedulesPage() {
   const router = useRouter();
   const page = useSchedulesPage();
-  const actions = useScheduleActions({ workflows: page.workflows });
+  const actions = useScheduleActions({
+    tasks: page.tasks,
+    workflows: page.workflows,
+  });
   const detail = useScheduleDetail({
     row: page.tabs.isOpen ? page.tabs.active : null,
     schedules: page.schedules,
     tasks: page.tasks,
     workflows: page.workflows,
-    onDelete: (row) => {
+    onRemove: (row) => {
       page.tabs.close(row);
-      actions.deleteSchedule(row);
+      actions.remove(row);
     },
     onOpen: (href) => router.push(href),
   });
@@ -39,7 +42,9 @@ export default function SchedulesPage() {
           loading={page.isLoading}
           empty={page.isEmpty || Boolean(page.error)}
           onEmptyAction={
-            page.error ? page.retry : () => router.push("/copilot")
+            page.error
+              ? page.retry
+              : () => router.push(askOttoHref(EXAMPLE_SCHEDULE))
           }
         />
       </div>

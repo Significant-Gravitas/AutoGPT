@@ -1,7 +1,8 @@
 from datetime import datetime
+from typing import Annotated, Literal
 
 from prisma.enums import TaskStatus
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from backend.data.task import (
     DESCRIPTION_MAX_CHARS,
@@ -9,10 +10,28 @@ from backend.data.task import (
     TITLE_MAX_CHARS,
     Task,
 )
+from backend.data.task_rhythm import MAX_REPEAT_CRONS
+from backend.data.task_state_meta import REVIEW_NOTE_MAX_CHARS
 
 # Ids are UUIDs; the bound only keeps junk out of the lookup.
 ID_MAX_CHARS = 64
 INSTRUCTIONS_MAX_CHARS = 2_000
+# A 5-field cron is short; the bound only keeps junk out.
+CRON_MAX_CHARS = 100
+
+
+class TaskRepeatRequest(BaseModel):
+    """A rhythm, as repeating tasks take it: 5-field crons, every minute at
+    most often."""
+
+    crons: list[Annotated[str, StringConstraints(max_length=CRON_MAX_CHARS)]] = Field(
+        min_length=1, max_length=MAX_REPEAT_CRONS
+    )
+    timezone: str | None = Field(
+        default=None,
+        max_length=64,
+        description="IANA time zone the crons are read in; omit for the user's.",
+    )
 
 
 class TaskCreateRequest(BaseModel):
@@ -30,6 +49,16 @@ class TaskCreateRequest(BaseModel):
     )
     goal: str | None = Field(default=None, max_length=LINE_MAX_CHARS)
     done_when: str | None = Field(default=None, max_length=LINE_MAX_CHARS)
+    start_at: datetime | None = Field(
+        default=None,
+        description="A future time for the task to start by itself. A time "
+        "without an offset is UTC. Not with repeat.",
+    )
+    repeat: TaskRepeatRequest | None = Field(
+        default=None,
+        description="Run the task again and again on this rhythm; its first "
+        "run is the next fire time. Not with start_at.",
+    )
 
 
 class TaskUpdateRequest(BaseModel):
@@ -72,5 +101,18 @@ class TaskCancelRequest(BaseModel):
     )
 
 
+class TaskReviewRequest(BaseModel):
+    decision: Literal["accept", "request_changes"]
+    note: str | None = Field(
+        default=None,
+        max_length=REVIEW_NOTE_MAX_CHARS,
+        description="What to change; required to ask for changes.",
+    )
+
+
 class TaskListResponse(BaseModel):
     tasks: list[Task]
+    has_more: bool = Field(default=False, description="More tasks follow this page.")
+    next_offset: int | None = Field(
+        default=None, description="The offset of the next page, when there is one."
+    )

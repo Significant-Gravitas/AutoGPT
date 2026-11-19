@@ -4,6 +4,10 @@ import {
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV2GetLibraryAgentByGraphId } from "@/app/api/__generated__/endpoints/library/library";
 import { okData } from "@/app/api/helpers";
+import {
+  retryRunQuery,
+  RUN_RETRY_DELAY_MS,
+} from "@/app/(platform)/runs/helpers";
 import { useEffect } from "react";
 import { useWorkAreaStore, type WorkTab } from "../../../workArea";
 import { isLiveStatus, LIVE_POLL_MS } from "./runs";
@@ -55,6 +59,10 @@ export function useWorkflowRun(tab: WorkflowTab) {
         return isLiveStatus(status) ? LIVE_POLL_MS : false;
       },
       refetchOnWindowFocus: false,
+      // A 4xx will not turn into a run on a retry; the tab goes back to
+      // the list at once instead of after three backed-off retries.
+      retry: retryRunQuery,
+      retryDelay: RUN_RETRY_DELAY_MS,
     },
   });
   const run = runQuery.data;

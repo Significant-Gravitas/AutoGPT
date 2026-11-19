@@ -19886,6 +19886,7 @@
       "get": {
         "tags": ["v2", "tasks", "tasks"],
         "summary": "List My Tasks",
+        "description": "A page of the caller's tasks, most recently updated first; page on\nwith ``offset`` = ``next_offset`` while ``has_more``.",
         "operationId": "list_tasks",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -19902,6 +19903,23 @@
             }
           },
           {
+            "name": "statuses",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/TaskStatus" }
+                },
+                { "type": "null" }
+              ],
+              "description": "Only tasks in any of these statuses (a board lane)",
+              "title": "Statuses"
+            },
+            "description": "Only tasks in any of these statuses (a board lane)"
+          },
+          {
             "name": "owner_expert_id",
             "in": "query",
             "required": false,
@@ -19909,6 +19927,32 @@
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Owner Expert Id"
             }
+          },
+          {
+            "name": "owned_by_otto",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only the tasks Otto owns (no expert)",
+              "default": false,
+              "title": "Owned By Otto"
+            },
+            "description": "Only the tasks Otto owns (no expert)"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 200 },
+                { "type": "null" }
+              ],
+              "description": "Words in the title",
+              "title": "Q"
+            },
+            "description": "Words in the title"
           },
           {
             "name": "session_id",
@@ -19994,6 +20038,7 @@
       "post": {
         "tags": ["v2", "tasks", "tasks"],
         "summary": "Create My Task",
+        "description": "Create a task. With ``start_at`` it starts by itself then; with\n``repeat`` it runs again and again from its next fire time.",
         "operationId": "create_task",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -20075,6 +20120,7 @@
       "delete": {
         "tags": ["v2", "tasks", "tasks"],
         "summary": "Archive My Task",
+        "description": "Archive the task; one being worked on is stopped first, so nothing\nkeeps working on a task the user can no longer see.",
         "operationId": "archive_task",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -20152,7 +20198,7 @@
       "patch": {
         "tags": ["v2", "tasks", "tasks"],
         "summary": "Update My Task",
-        "description": "Edit the task. ``start_at`` schedules a task that has not started,\nmoves its start or, sent as null, removes it.",
+        "description": "Edit the task: its title, description, goal, what done looks like, its\nowner, and its status (To do, Done or Cancelled; Done or Cancelled on a\ntask being worked on stops its work first). ``start_at`` schedules a task\nthat has not started, moves its start or, sent as null, removes it.",
         "operationId": "update_task",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -20480,6 +20526,60 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/review": {
+      "post": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Review My Task",
+        "description": "Accept the task's result, or ask for changes: the note is kept on the\ntask and the task runs again with it as what to change.",
+        "operationId": "review_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskReviewRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": { "description": "Subscription required" },
+          "404": { "description": "Task not found" },
+          "409": { "description": "The task's result cannot be reviewed now" },
+          "422": {
+            "description": "Changes were asked for without saying what"
+          },
+          "429": {
+            "description": "Usage limit or concurrent-turn limit reached"
           }
         }
       }
@@ -40681,6 +40781,19 @@
             "title": "Events Waiting",
             "description": "Events a watching task still has to run, after the run that is going now; they run one after another.",
             "default": 0
+          },
+          "is_queued": {
+            "type": "boolean",
+            "title": "Is Queued",
+            "description": "Started, but its run waits for a free slot (the user's running cap); false once the run really starts.",
+            "default": false
+          },
+          "review": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskReview" },
+              { "type": "null" }
+            ],
+            "description": "The user's word on the latest result: accepted, or changes asked for."
           }
         },
         "type": "object",
@@ -40957,6 +41070,21 @@
               { "type": "null" }
             ],
             "title": "Done When"
+          },
+          "start_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Start At",
+            "description": "A future time for the task to start by itself. A time without an offset is UTC. Not with repeat."
+          },
+          "repeat": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskRepeatRequest" },
+              { "type": "null" }
+            ],
+            "description": "Run the task again and again on this rhythm; its first run is the next fire time. Not with start_at."
           }
         },
         "type": "object",
@@ -41057,6 +41185,17 @@
             "items": { "$ref": "#/components/schemas/Task" },
             "type": "array",
             "title": "Tasks"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "More tasks follow this page.",
+            "default": false
+          },
+          "next_offset": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Next Offset",
+            "description": "The offset of the next page, when there is one."
           }
         },
         "type": "object",
@@ -41166,6 +41305,68 @@
         "required": ["label"],
         "title": "TaskRepeat",
         "description": "A task that runs again and again: after each run it goes back to\nwaiting, with ``Task.startAt`` at the next fire time of ``crons``, or, for\na task that ``watch``es, with no start until the next event."
+      },
+      "TaskRepeatRequest": {
+        "properties": {
+          "crons": {
+            "items": { "type": "string", "maxLength": 100 },
+            "type": "array",
+            "maxItems": 24,
+            "minItems": 1,
+            "title": "Crons"
+          },
+          "timezone": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Timezone",
+            "description": "IANA time zone the crons are read in; omit for the user's."
+          }
+        },
+        "type": "object",
+        "required": ["crons"],
+        "title": "TaskRepeatRequest",
+        "description": "A rhythm, as repeating tasks take it: 5-field crons, every minute at\nmost often."
+      },
+      "TaskReview": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": ["accepted", "changes_requested"],
+            "title": "State"
+          },
+          "note": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Note",
+            "description": "What to change, when changes were asked for."
+          },
+          "at": { "type": "string", "format": "date-time", "title": "At" }
+        },
+        "type": "object",
+        "required": ["state", "at"],
+        "title": "TaskReview",
+        "description": "The user's word on a task's result."
+      },
+      "TaskReviewRequest": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": ["accept", "request_changes"],
+            "title": "Decision"
+          },
+          "note": {
+            "anyOf": [
+              { "type": "string", "maxLength": 1000 },
+              { "type": "null" }
+            ],
+            "title": "Note",
+            "description": "What to change; required to ask for changes."
+          }
+        },
+        "type": "object",
+        "required": ["decision"],
+        "title": "TaskReviewRequest"
       },
       "TaskRun": {
         "properties": {

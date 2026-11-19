@@ -87,6 +87,7 @@ describe("Home — the brief starts itself", () => {
     serve([]);
     const first = renderHome();
 
+    // The brief opens in front; a Profile tab may sit beside it.
     await waitFor(() =>
       expect(useWorkAreaStore.getState().activeKey).toBe(BRIEF_TAB_KEY),
     );
@@ -101,7 +102,10 @@ describe("Home — the brief starts itself", () => {
     renderHome();
 
     await homeLoaded(reads);
-    expect(useWorkAreaStore.getState().tabs).toEqual([]);
+    // The brief stays closed; Home may still offer its Profile tab.
+    const { tabs, activeKey } = useWorkAreaStore.getState();
+    expect(tabs.map((tab) => tab.kind)).not.toContain("brief");
+    expect(activeKey).not.toBe(BRIEF_TAB_KEY);
   });
 
   it("opens again on a new day", async () => {

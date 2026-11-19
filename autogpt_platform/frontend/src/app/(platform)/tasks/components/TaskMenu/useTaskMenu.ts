@@ -1,6 +1,6 @@
 import type { Task } from "@/app/api/__generated__/models/task";
 import { useRef, useState } from "react";
-import { STATUS_ORDER } from "../../helpers";
+import { settableStatuses } from "../../helpers";
 import { RUN_ACTIONS, runActionOf } from "../../runActions";
 import { useTaskActions } from "../../useTaskActions";
 
@@ -15,6 +15,7 @@ export function useTaskMenu({ task, onRename, onArchived }: Args) {
   const [isConfirmingArchive, setIsConfirmingArchive] = useState(false);
   const [runDialog, setRunDialog] = useState<"stop" | "retry" | null>(null);
   const runAction = runActionOf(task.status);
+  const statuses = settableStatuses(task.status);
   // Rename moves focus into the title field; the closing menu mustn't take
   // it back to its trigger.
   const renamePicked = useRef(false);
@@ -31,7 +32,7 @@ export function useTaskMenu({ task, onRename, onArchived }: Args) {
   }
 
   function pickStatus(value: string) {
-    const status = STATUS_ORDER.find((s) => s === value);
+    const status = statuses.find((s) => s === value);
     if (!status || status === task.status) return;
     actions.setStatus(status);
   }
@@ -58,6 +59,7 @@ export function useTaskMenu({ task, onRename, onArchived }: Args) {
   return {
     startRename,
     onCloseAutoFocus,
+    statuses,
     pickStatus,
     askArchive: () => setIsConfirmingArchive(true),
     keep: () => setIsConfirmingArchive(false),
@@ -77,6 +79,6 @@ export function useTaskMenu({ task, onRename, onArchived }: Args) {
     stopRepeating: actions.stopRepeating,
     retry: (instructions: string) => actions.run(instructions, closeRunDialog),
     isStarting: actions.isStarting,
-    isStopping: actions.isStopping,
+    isStopping: task.repeat ? actions.isStoppingRun : actions.isStopping,
   };
 }

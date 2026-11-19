@@ -7,11 +7,13 @@ import {
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import type { OwnerChoice } from "../../helpers";
+import { AddExpertItem } from "./AddExpertItem";
 
 interface Props {
   value: OwnerChoice;
@@ -19,7 +21,8 @@ interface Props {
   onChange: (value: string) => void;
 }
 
-/** Who does the task: Otto, or an expert on the team. */
+/** Who does the task: Otto, or an expert on the team. With no expert yet,
+ *  it says where to add one. */
 export function OwnerPicker({ value, choices, onChange }: Props) {
   return (
     <DropdownMenu>
@@ -36,7 +39,10 @@ export function OwnerPicker({ value, choices, onChange }: Props) {
           {value.label}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+      <DropdownMenuContent
+        align="start"
+        className="max-h-72 max-w-72 overflow-y-auto"
+      >
         <DropdownMenuRadioGroup value={value.value} onValueChange={onChange}>
           {choices.map((choice) => (
             <DropdownMenuRadioItem key={choice.value} value={choice.value}>
@@ -47,6 +53,12 @@ export function OwnerPicker({ value, choices, onChange }: Props) {
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
+        {choices.length === 1 ? (
+          <>
+            <DropdownMenuSeparator />
+            <AddExpertItem />
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

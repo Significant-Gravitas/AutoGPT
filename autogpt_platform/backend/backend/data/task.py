@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from backend.data.db import transaction
 from backend.data.task_schedule_meta import TaskRepeat, read_schedule_meta
+from backend.data.task_state_meta import TaskReview, read_review, read_run_queued
 from backend.data.task_text import SUMMARY_MAX_CHARS
 from backend.util.exceptions import NotFoundError
 
@@ -111,6 +112,16 @@ class Task(BaseModel):
         description="Events a watching task still has to run, after the run "
         "that is going now; they run one after another.",
     )
+    is_queued: bool = Field(
+        default=False,
+        description="Started, but its run waits for a free slot (the user's "
+        "running cap); false once the run really starts.",
+    )
+    review: TaskReview | None = Field(
+        default=None,
+        description="The user's word on the latest result: accepted, or "
+        "changes asked for.",
+    )
 
     @classmethod
     def from_db(cls, row: prisma.models.Task) -> "Task":
@@ -140,6 +151,9 @@ class Task(BaseModel):
             and read_schedule_meta(row.metadata).missed,
             repeat=read_schedule_meta(row.metadata).repeat,
             events_waiting=len(read_schedule_meta(row.metadata).events),
+            is_queued=row.status == TaskStatus.IN_PROGRESS
+            and read_run_queued(row.metadata, row.startedAt),
+            review=read_review(row.metadata, row.startedAt),
             id=row.id,
             user_id=row.userId,
             title=row.title,
@@ -321,6 +335,10 @@ async def update_task(task_id: str, user_id: str, patch: TaskPatch) -> Task:
     if patch.status is not None and patch.status != current.status:
         data["status"] = patch.status
         data.update(_status_times(current, patch.status, datetime.now(UTC)))
+        if patch.status in OPEN_STATUSES and patch.failure_reason is None:
+            # An open task with a failure reason reads as a worker's not-done
+            # finish when it settles (``task_record.settle_work_tasks``).
+            data["failureReason"] = None
     if not data:
         return current
 

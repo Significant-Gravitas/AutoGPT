@@ -1,4 +1,5 @@
 import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import {
   formatCost,
   formatWhen,
@@ -21,6 +22,22 @@ const STATUS_KEYS = {
   idle: "idle",
   waiting: "idle",
 } as const;
+
+/** A run that answers 4xx (gone, never a run, a malformed id) will not
+ *  appear on a retry: stop at once. A server error gets one quick retry. */
+export function retryRunQuery(failureCount: number, error: unknown): boolean {
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+    return false;
+  }
+  return failureCount < 1;
+}
+
+export const RUN_RETRY_DELAY_MS = 400;
+
+/** Whether the run could not be read because of the server, not the id. */
+export function isServerFailure(error: unknown): boolean {
+  return !(error instanceof ApiError) || error.status >= 500;
+}
 
 /** The page for one run, beside the chat or on its own. */
 export function runHref(graphID: string, runID: string): string {

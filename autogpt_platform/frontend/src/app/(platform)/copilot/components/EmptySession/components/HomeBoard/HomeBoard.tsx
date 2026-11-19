@@ -1,23 +1,24 @@
 "use client";
 
-import { TaskBoard } from "@/app/(platform)/tasks/components/TaskBoard/TaskBoard";
-import { TaskList } from "@/app/(platform)/tasks/components/TaskList/TaskList";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
-import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { BriefButton } from "../HomeToday/BriefButton";
 import { BoardViewSwitch } from "./BoardViewSwitch";
+import { BoardBody } from "./components/BoardBody";
+import { TaskFiltersBar } from "./components/TaskFiltersBar";
 import { CreateTask } from "./CreateTask";
 import { useBoardView } from "./useBoardView";
 import { useHomeBoard } from "./useHomeBoard";
+import { useTaskLink } from "./useTaskLink";
 
 /** Home's Tasks tab: every task as a board or a list that fills the page,
  *  under a heading row with the layout switch, the day's brief and Create
- *  task. A task opens beside the page, in the sidebar. */
+ *  task, and a row to search and filter them. A task opens beside the
+ *  page, in the sidebar. */
 export function HomeBoard() {
   const board = useHomeBoard();
   const { view, setView } = useBoardView();
-  const Tasks = view === "list" ? TaskList : TaskBoard;
+  useTaskLink();
+  const { filters } = board;
 
   return (
     <section
@@ -34,24 +35,16 @@ export function HomeBoard() {
           <CreateTask />
         </span>
       </div>
-      {board.isError ? (
-        <ErrorCard
-          context="tasks"
-          httpError={{ message: "Your tasks could not be loaded." }}
-          onRetry={() => void board.refetch()}
-        />
-      ) : board.isLoading ? (
-        <div className="flex justify-center py-10">
-          <LoadingSpinner size="small" />
-        </div>
-      ) : (
-        <Tasks
-          tasks={board.tasks}
-          experts={board.experts}
-          selectedID={board.selectedID}
-          onOpen={board.openTask}
-        />
-      )}
+      <TaskFiltersBar
+        filters={filters.filters}
+        experts={board.experts}
+        isFiltered={filters.isFiltered}
+        onQuery={filters.setQuery}
+        onOwner={filters.setOwner}
+        onStatus={filters.setStatus}
+        onReset={filters.reset}
+      />
+      <BoardBody board={board} view={view} />
     </section>
   );
 }

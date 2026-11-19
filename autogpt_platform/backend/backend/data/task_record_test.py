@@ -409,7 +409,7 @@ async def test_a_finished_worker_leaves_the_result_and_a_failed_one_the_reason(
         assert done_now.activity[0].kind == TaskActivityKind.DONE
         assert failed_now and failed_now.task.status == TaskStatus.FAILED
         assert failed_now.task.failure_reason == "The work ran out of time."
-        assert failed_now.so_far[0] == "Failed: The work ran out of time."
+        assert failed_now.so_far[0] == "Did not finish: The work ran out of time."
         assert waiting_now and waiting_now.status == TaskStatus.NEEDS_INPUT
     finally:
         await _cleanup(user_id)

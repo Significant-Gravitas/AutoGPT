@@ -284,6 +284,51 @@ export const CARD_FIXTURES: Record<string, CardFixture> = Object.fromEntries([
     },
     "Draft the launch email",
   ),
+  ...["start_task", "start_later"].map((tool) =>
+    card(
+      tool,
+      {
+        type: "task_started",
+        in_background: true,
+        task: { id: "task-2", title: "Find design partners", status: "TODO" },
+      },
+      "Find design partners",
+    ),
+  ),
+  card(
+    "update_task",
+    {
+      type: "task_updated",
+      task: { id: "task-3", title: "Rename the brief", status: "TODO" },
+    },
+    "Rename the brief",
+  ),
+  card(
+    "get_task",
+    {
+      type: "task_details",
+      task: { id: "task-4", title: "Check the invoices", status: "DONE" },
+    },
+    "Check the invoices",
+  ),
+  card(
+    "list_tasks",
+    {
+      type: "task_list",
+      tasks: [{ id: "task-5", title: "Plan the offsite", status: "TODO" }],
+    },
+    "Plan the offsite",
+  ),
+  card(
+    "archive_task",
+    { type: "task_archived", task_id: "task-6" },
+    "Task archived.",
+  ),
+  card(
+    "finish_task",
+    { type: "task_finished", document: "Partners.md" },
+    "Saved the result in Partners.md.",
+  ),
   card(
     "list_folders",
     { folders: [{ name: "Marketing", agent_count: 3 }] },

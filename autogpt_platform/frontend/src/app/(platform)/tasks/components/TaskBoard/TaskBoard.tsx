@@ -4,8 +4,10 @@ import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { Task } from "@/app/api/__generated__/models/task";
 import { LayoutGroup } from "framer-motion";
 import { buildBoardColumns } from "../../helpers";
+import { moveOnBoard } from "./boardKeys";
 import { BoardLane } from "./components/BoardLane/BoardLane";
 import { useOverflowRight } from "./useOverflowRight";
+import { useRovingCards } from "./useRovingCards";
 
 interface Props {
   tasks: Task[];
@@ -16,7 +18,8 @@ interface Props {
 
 /** The tasks board: four lanes side by side that scroll sideways, with
  *  cards that glide to their new lane when their status changes. It fills
- *  the height it is given, and every lane is that tall. */
+ *  the height it is given, and every lane is that tall. The arrow keys move
+ *  between cards and lanes. */
 export function TaskBoard({ tasks, experts, selectedID, onOpen }: Props) {
   const {
     ref: scrollerRef,
@@ -24,6 +27,11 @@ export function TaskBoard({ tasks, experts, selectedID, onOpen }: Props) {
     hiddenLeft,
   } = useOverflowRight<HTMLDivElement>();
   const columns = buildBoardColumns(tasks);
+  const roving = useRovingCards({
+    columns,
+    move: moveOnBoard,
+    preferredID: selectedID,
+  });
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col palette-classic">
@@ -40,6 +48,7 @@ export function TaskBoard({ tasks, experts, selectedID, onOpen }: Props) {
                 experts={experts}
                 selectedID={selectedID}
                 onOpen={onOpen}
+                roving={roving}
               />
             ))}
           </div>

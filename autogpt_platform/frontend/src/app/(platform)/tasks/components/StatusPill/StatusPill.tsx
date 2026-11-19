@@ -3,6 +3,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import type { Tone } from "@/components/styles/tones";
 import { statusOf } from "../../helpers";
+import { QUEUED_WORD } from "../../queue";
 import { SCHEDULE_WORDS, type ScheduleState } from "../../schedule";
 
 const PILL_FILL: Record<TaskStatus, string> = {
@@ -49,18 +50,31 @@ interface Props {
   status: TaskStatus;
   /** A to-do waiting for its start time, or one that missed it. */
   schedule?: ScheduleState | null;
+  /** Started, but waiting for a free slot (`isQueued`). */
+  queued?: boolean;
   className?: string;
 }
 
+const QUEUED_VIEW = {
+  word: QUEUED_WORD,
+  tone: "quiet",
+  fill: "bg-surface-wash",
+} as const;
+
 /** A task's one status word on a soft tint of its colour. */
-export function StatusPill({ status, schedule, className }: Props) {
-  const timed = schedule ? SCHEDULE_VIEWS[schedule] : null;
+export function StatusPill({ status, schedule, queued, className }: Props) {
+  const timed = queued
+    ? QUEUED_VIEW
+    : schedule
+      ? SCHEDULE_VIEWS[schedule]
+      : null;
   const view = timed ?? statusOf(status);
   return (
     <span
       data-testid="task-status"
       data-status={status}
       data-schedule={schedule ?? undefined}
+      data-queued={queued || undefined}
       className={cn(
         "inline-flex h-5 shrink-0 items-center rounded-control px-1.5",
         timed ? timed.fill : PILL_FILL[status],

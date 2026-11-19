@@ -222,7 +222,8 @@ async def _deliver(task: BackgroundTask) -> None:
         metadata = task_metadata(task, "followup", envelope)
         metadata["background_task_notice"] = task.id
         metadata["display_content"] = (
-            f"Background subtask {outcome_label(task)}. Otto is following up."
+            f"Background subtask {followup_label(task, outcome)}. "
+            "Otto is following up."
         )
         if _is_handed_over(outcome):
             # The chat shows this task's result itself, from its record.
@@ -241,6 +242,14 @@ async def _deliver(task: BackgroundTask) -> None:
         await invalidate_session_cache(task.parent_session_id)
     if queued == "queued":
         await dispatch_next_for_user(task.user_id)
+
+
+def followup_label(task: BackgroundTask, outcome: TaskOutcome | None) -> str:
+    """How the work ended, for the line the chat shows: a worker whose turn
+    completed but who finished saying the task was not done did not finish."""
+    if _is_not_done(outcome):
+        return "did not finish"
+    return outcome_label(task)
 
 
 def outcome_label(task: BackgroundTask) -> str:
@@ -279,6 +288,13 @@ def _is_handed_over(outcome: TaskOutcome | None) -> TypeGuard[TaskOutcome]:
     return bool(outcome and outcome.status == TaskStatus.DONE and outcome.result)
 
 
+def _is_not_done(outcome: TaskOutcome | None) -> TypeGuard[TaskOutcome]:
+    """A task that settled FAILED with a reason: the worker said why."""
+    return bool(
+        outcome and outcome.status == TaskStatus.FAILED and outcome.failure_reason
+    )
+
+
 def continuation_message(
     task: BackgroundTask, outcome: TaskOutcome | None = None
 ) -> str:
@@ -305,6 +321,15 @@ def continuation_text(
             f"Result: {outcome.result}{document}\n\n{_HANDED_OVER} If the "
             "user's request has more steps, carry on with them; read the "
             f"worker's chat with {read_more} only if you need more than this."
+        )
+    if _is_not_done(outcome):
+        return (
+            f"The task '{outcome.title}' did not get done (task id "
+            f"{outcome.task_id}): {outcome.failure_reason}\n\nTell the user in "
+            "one short line that it did not get done and why, and that they "
+            "can fix that and try it again from the task. Do not claim a "
+            f"result. Read the worker's chat with {read_more} only if you need "
+            "more than this."
         )
     return (
         f"Background subtask {label}: "

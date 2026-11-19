@@ -33,6 +33,8 @@ export interface StartedWatch {
 
 export type TaskLineState =
   | "working"
+  /** A run waiting for a free turn slot before it starts working. */
+  | "queued"
   | "needs_input"
   | "done"
   | "failed"

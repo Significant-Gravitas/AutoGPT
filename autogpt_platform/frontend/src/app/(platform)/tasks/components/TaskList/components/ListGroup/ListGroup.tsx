@@ -3,6 +3,8 @@ import { NumberTicker } from "@/components/atoms/NumberTicker/NumberTicker";
 import { Text } from "@/components/atoms/Text/Text";
 import { AnimatePresence } from "framer-motion";
 import { ownerOf, type BoardColumn } from "../../../../helpers";
+import { positionLabel } from "../../../TaskBoard/boardKeys";
+import { cardNav, type RovingCards } from "../../../TaskBoard/useRovingCards";
 import { ListRow } from "../ListRow/ListRow";
 
 interface Props {
@@ -10,11 +12,18 @@ interface Props {
   experts: Expert[];
   selectedID: string | null;
   onOpen: (id: string) => void;
+  roving: RovingCards;
 }
 
 /** One lane of the board as a group in the list: its name, how many, and
  *  a row per task. */
-export function ListGroup({ column, experts, selectedID, onOpen }: Props) {
+export function ListGroup({
+  column,
+  experts,
+  selectedID,
+  onOpen,
+  roving,
+}: Props) {
   const headingID = `task-group-${column.id}`;
 
   return (
@@ -33,13 +42,14 @@ export function ListGroup({ column, experts, selectedID, onOpen }: Props) {
       </header>
       <ul className="grid min-w-0 gap-1">
         <AnimatePresence initial={false}>
-          {column.tasks.map((task) => (
+          {column.tasks.map((task, index) => (
             <ListRow
               key={task.id}
               task={task}
               owner={ownerOf(task, experts)}
               selected={selectedID === task.id}
               onOpen={() => onOpen(task.id)}
+              nav={cardNav(roving, task.id, positionLabel(column, index))}
             />
           ))}
         </AnimatePresence>

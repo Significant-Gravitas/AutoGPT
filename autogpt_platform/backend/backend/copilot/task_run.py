@@ -43,6 +43,9 @@ logger = logging.getLogger(__name__)
 
 # Marks the first message of a task's run chat, for the record and analytics.
 TASK_RUN_KEY = "task_run_id"
+BUSY_CHAT_MESSAGE = (
+    "The task's chat is busy with another message. Try again in a moment."
+)
 
 
 async def start_task_run(
@@ -68,9 +71,10 @@ async def start_task_run(
             user_id, claim.task, organization_id=organization_id, team_id=team_id
         )
         task = await _make_work_chat(claim.task, session.session_id, user_id)
-        await _send_first_message(
+        queued = await _send_first_message(
             session, user_id, run_prompt(task, instructions, claim), impersonated
         )
+        task = queued or task
     except BaseException:
         await asyncio.shield(_undo(claim, user_id, session))
         raise
@@ -118,6 +122,20 @@ async def cancel_task_run(
     return task
 
 
+async def settle_by_hand(user_id: str, task_id: str, status: TaskStatus) -> Task:
+    """The user marked a task that is being worked on DONE or CANCELLED:
+    settle it first, so the stopped turn's end finds nothing left to settle
+    and cannot flip it back, then stop its work. A repeating task stops
+    repeating. The caller notes the change on the task's activity."""
+    task = await task_db().update_task(task_id, user_id, TaskPatch(status=status))
+    if task.repeat:
+        await task_schedule_db().clear_task_repeat(task_id, user_id)
+        task = await task_db().get_task(task_id, user_id) or task
+    if task.work_session_id:
+        await _stop_work(user_id, task.work_session_id)
+    return task
+
+
 async def _stop_this_run(user_id: str, task: Task) -> Task:
     """Back to waiting first, so the stopped turn's end finds nothing to
     settle; then stop the run's work."""
@@ -153,11 +171,12 @@ def run_prompt(
 
 
 # Nobody waits on a run started from the task's page, so a worker that is
-# stuck says so in its last words, which become the task's failure reason.
+# stuck finishes as blocked; its summary becomes the task's failure reason.
 BLOCKED_RULE = (
     "If you cannot do this task (something it needs is not connected, or the "
-    "data does not exist), do not call finish_task: end with one or two plain "
-    "sentences saying what blocks you and what the user would need to do."
+    'data does not exist), call finish_task with "outcome": "blocked" and a '
+    "summary of one or two plain sentences saying what blocks you and what "
+    "the user would need to do."
 )
 
 
@@ -237,9 +256,12 @@ async def _make_work_chat(task: Task, session_id: str, user_id: str) -> Task:
 
 async def _send_first_message(
     session: ChatSession, user_id: str, prompt: str, impersonated: bool
-) -> None:
+) -> Task | None:
     """Start the chat's first turn as a sent message would, or queue it when
-    the user is at the running cap; past the hard cap this raises."""
+    the user is at the running cap; past the hard cap this raises. Returns
+    the task marked queued when the turn waits for a slot, else None. The
+    mark goes on before the turn is queued, so a turn that starts at once
+    still finds it to clear (``task_run_settle.note_task_run_started``)."""
     metadata = {TASK_RUN_KEY: session.metadata.work_task_id}
     permissions = resolve_session_permissions(session)
     try:
@@ -259,6 +281,10 @@ async def _send_first_message(
             impersonated=impersonated,
         )
     except ConcurrentTurnLimitError:
+        task_id = session.metadata.work_task_id
+        queued = (
+            await task_run_db().mark_run_queued(task_id, user_id) if task_id else None
+        )
         await turn_queue.try_enqueue_turn(
             user_id=user_id,
             inflight_cap=get_inflight_turn_limit(),
@@ -272,9 +298,10 @@ async def _send_first_message(
             ),
             impersonated=impersonated,
         )
-        return
+        return queued
     if turn_id is None:
-        raise RuntimeError("The task's chat is already busy.")
+        raise ConflictError(BUSY_CHAT_MESSAGE)
+    return None
 
 
 async def _stop_work(user_id: str, session_id: str) -> None:

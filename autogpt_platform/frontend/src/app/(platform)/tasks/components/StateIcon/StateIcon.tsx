@@ -10,6 +10,7 @@ import {
   RepeatIcon,
   Tick02Icon,
   FlashIcon,
+  HourglassIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import type { Tone } from "@/components/styles/tones";
@@ -35,26 +36,32 @@ interface Props {
   status: TaskStatus;
   /** A to-do waiting for its start time, or one that missed it. */
   schedule?: ScheduleState | null;
+  /** Started, but waiting for a free slot (`isQueued`). */
+  queued?: boolean;
   className?: string;
 }
 
 /** The mark before a task's title: a turning ring while it works, a dot
- *  while it waits, a clock while it waits for its start time, a check, a
+ *  while it waits, a clock while it waits for its start time, an hourglass
+ *  while it waits for a free slot, a check, a
  *  warning or a cross once it settles. It sits beside the status word, so
  *  it is decoration only. */
-export function StateIcon({ status, schedule, className }: Props) {
+export function StateIcon({ status, schedule, queued, className }: Props) {
   return (
     <span
       aria-hidden
       data-testid="task-state-icon"
       data-status={status}
       data-schedule={schedule ?? undefined}
+      data-queued={queued || undefined}
       className={cn(
         "inline-flex size-4 shrink-0 items-center justify-center",
         className,
       )}
     >
-      {schedule ? (
+      {queued ? (
+        <Icon icon={HourglassIcon} size={14} tone="quiet" />
+      ) : schedule ? (
         <Icon
           icon={SCHEDULE_ICONS[schedule]}
           size={14}

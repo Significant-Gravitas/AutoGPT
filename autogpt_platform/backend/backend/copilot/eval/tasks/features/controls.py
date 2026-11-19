@@ -17,6 +17,7 @@ from backend.copilot.eval.tasks.models import (
     CheckResult,
     Expected,
     Run,
+    ToolCall,
     Turn,
     WorkerBrief,
 )
@@ -172,21 +173,27 @@ def worker_case(case: FeatureCase, task: Task) -> Case:
 
 def settled_as(run: Run) -> str:
     """How production would settle the run when the worker's turn ended:
-    DONE when it left a result, NEEDS_INPUT when it ended on a question,
-    FAILED otherwise."""
-    calls = [c for t in run.turns for c in t.tool_calls if not c.refused]
-    if any(c.name == "finish_task" and not c.failed for c in calls):
-        return TaskStatus.DONE.value
+    DONE when it left a result, FAILED when that result says it was not done
+    (``finish_task`` outcome blocked or failed), NEEDS_INPUT when it ended on
+    a question, FAILED otherwise."""
+    finish = _last_finish(run)
+    if finish is not None:
+        done = _finish_outcome(finish) == "done"
+        return (TaskStatus.DONE if done else TaskStatus.FAILED).value
     if run.turns and run.turns[-1].ended_by == "question":
         return TaskStatus.NEEDS_INPUT.value
     return TaskStatus.FAILED.value
 
 
 def settled_reason(run: Run) -> str | None:
-    """The failure reason production would store for a run that left no
-    result: the worker's last words (``task_run.reply_reason``)."""
+    """The failure reason production would store: a not-done finish's
+    summary, or for a run that left no result the worker's last words
+    (``task_run.reply_reason``)."""
     if settled_as(run) != TaskStatus.FAILED.value or not run.turns:
         return None
+    finish = _last_finish(run)
+    if finish is not None:
+        return str((finish.arguments or {}).get("summary") or "") or None
     last = run.turns[-1]
     said = last.final_reply or (last.reply.split("\n\n")[-1] if last.reply else "")
     return reply_reason(said) or NO_RESULT_REASON
@@ -225,3 +232,13 @@ def _result_text(run: Run) -> str:
     calls = [c for t in run.turns for c in t.tool_calls if not c.refused]
     kept = [c for c in calls if c.name in ("finish_task", "write_workspace_file")]
     return " ".join(str(v) for c in kept for v in c.arguments.values())
+
+
+def _last_finish(run: Run) -> ToolCall | None:
+    calls = [c for t in run.turns for c in t.tool_calls if not c.refused]
+    finishes = [c for c in calls if c.name == "finish_task" and not c.failed]
+    return finishes[-1] if finishes else None
+
+
+def _finish_outcome(call: ToolCall) -> str:
+    return str((call.arguments or {}).get("outcome") or "done").strip().lower()

@@ -1,19 +1,18 @@
-import {
-  getListTasksQueryKey,
-  useCreateTask,
-  useRunTask,
-} from "@/app/api/__generated__/endpoints/tasks/tasks";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { isKey } from "@/lib/keyboard";
-import { useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import {
   buildCreateRequest,
   OTTO_VALUE,
   ownerChoices,
   resolveChoice,
+  savedForLaterTitle,
 } from "./helpers";
+import { rhythmOf } from "./repeat";
+import { isTimed, optionsRequest } from "./taskOptions";
+import { useCreateAndStart } from "./useCreateAndStart";
+import { useTaskOptions } from "./useTaskOptions";
 
 interface Args {
   experts: Expert[];
@@ -22,66 +21,48 @@ interface Args {
 }
 
 export function useNewTaskDialog({ experts, onOpenChange, onCreated }: Args) {
-  const queryClient = useQueryClient();
   const [text, setText] = useState("");
   const [picked, setPicked] = useState(OTTO_VALUE);
-  const createTask = useCreateTask({
-    mutation: {
-      onSuccess: () =>
-        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
-    },
-  });
-  const runTask = useRunTask({
-    mutation: {
-      onSettled: () =>
-        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
-    },
-  });
+  const options = useTaskOptions();
+  const creation = useCreateAndStart();
   const choices = ownerChoices(experts);
   const owner = resolveChoice(choices, picked);
   const isEmpty = text.trim().length === 0;
-  const isSubmitting = createTask.isPending || runTask.isPending;
-  const canSubmit = !isEmpty && !isSubmitting;
+  const canSubmit = !isEmpty && !creation.isCreating;
+  const timed = isTimed(options.options);
 
+  /** Closing forgets what was typed, who was picked and the options. */
   function close() {
     onOpenChange(false);
     setText("");
+    setPicked(OTTO_VALUE);
+    options.reset();
   }
 
-  /** Create the task and, unless it is saved for later, start it. */
+  /** Create the task and, unless it waits for a time or is saved for
+   *  later, start it. The dialog closes as soon as the task exists. */
   async function submit(e?: FormEvent, start = true) {
     e?.preventDefault();
     if (!canSubmit) return;
-    let taskID: string;
-    try {
-      const res = await createTask.mutateAsync({
-        data: buildCreateRequest(text, owner),
-      });
-      if (res.status !== 201) throw new Error("The task was not created.");
-      taskID = res.data.id;
-    } catch (error) {
-      showError("Couldn't create the task", error);
-      return;
-    }
-    const started = start && (await startTask(taskID));
-    toast({
-      title: started
-        ? `Task started for ${owner.label}`
-        : `Task saved for ${owner.label}`,
+    const label = owner.label;
+    const { repeat } = options.options;
+    const created = await creation.create({
+      ...buildCreateRequest(text, owner),
+      ...optionsRequest(options.options),
     });
+    if (created.refusal) return options.refuse(created.refusal);
+    if (!created.task) return;
     close();
-    onCreated?.(taskID);
-  }
-
-  async function startTask(taskID: string) {
-    try {
-      await runTask.mutateAsync({ taskId: taskID, data: null });
-      return true;
-    } catch (error) {
-      // The task exists either way; its tab can start it.
-      showError("Created the task, but couldn't start it", error);
-      return false;
-    }
+    onCreated?.(created.task.id);
+    if (start && !timed) return void creation.start(created.task.id, label);
+    toast({
+      title: savedForLaterTitle(
+        label,
+        created.task,
+        repeat ? rhythmOf(repeat) : null,
+        Date.now(),
+      ),
+    });
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -96,20 +77,14 @@ export function useNewTaskDialog({ experts, onOpenChange, onCreated }: Args) {
     choices,
     owner,
     pickOwner: setPicked,
+    options,
+    isTimed: timed,
     canSubmit,
     isEmpty,
-    isSubmitting,
+    isSubmitting: creation.isCreating,
     submit,
     saveForLater: () => void submit(undefined, false),
     onKeyDown,
     close,
   };
-}
-
-function showError(title: string, error: unknown) {
-  toast({
-    title,
-    description: error instanceof Error ? error.message : undefined,
-    variant: "destructive",
-  });
 }

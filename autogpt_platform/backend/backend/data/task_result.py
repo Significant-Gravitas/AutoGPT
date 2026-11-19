@@ -3,21 +3,27 @@ document that holds the full result. The worker says both with
 ``finish_task``; the chat that started the task is then told the same two
 things, so it can answer in a line instead of retelling the work."""
 
+from typing import Literal
+
 import prisma.models
 from prisma.enums import TaskActor, TaskArtifactKind, TaskEvidenceKind, TaskStatus
 from pydantic import BaseModel
 
-from backend.data.task import RESULT_MAX_CHARS
+from backend.data.task import RESULT_MAX_CHARS, _line
 from backend.data.task_record import work_tasks
 from backend.data.task_rhythm import STATUS_BY_RUN_END
 from backend.data.task_schedule_meta import read_schedule_meta
 from backend.data.task_text import clip, file_key
+
+# How the worker says its task came out: anything but done settles FAILED.
+FinishOutcome = Literal["done", "blocked", "failed"]
 
 
 class TaskFinish(BaseModel):
     """What ``finish_task`` saved."""
 
     task_id: str
+    outcome: FinishOutcome = "done"
     document_title: str | None = None
     # The file named as the full result is not one this task saved.
     missing_file: bool = False
@@ -38,12 +44,20 @@ class TaskOutcome(BaseModel):
 
 
 async def finish_task(
-    session_id: str, user_id: str, summary: str, file: str | None = None
+    session_id: str,
+    user_id: str,
+    summary: str,
+    file: str | None = None,
+    outcome: FinishOutcome = "done",
 ) -> TaskFinish | None:
     """Save the result of the task this chat is working on: the summary, and
     the file that holds the full result, which becomes the task's document
     with proof that it was saved. Nothing is saved when the named file is
-    not one of the task's own. None when this chat is working on no task."""
+    not one of the task's own. None when this chat is working on no task.
+
+    A not-done ``outcome`` keeps the summary as the task's failure reason
+    too: the task then settles FAILED when the turn ends (``settle_work_tasks``
+    reads an open task with a failure reason as a not-done finish)."""
     tasks = await work_tasks(session_id, user_id)
     if not tasks:
         return None
@@ -53,11 +67,15 @@ async def finish_task(
         return TaskFinish(task_id=task.id, missing_file=True)
     await prisma.models.Task.prisma().update(
         where={"id": task.id},
-        data={"result": clip(summary, RESULT_MAX_CHARS), "nextStep": None},
+        data={
+            "result": clip(summary, RESULT_MAX_CHARS),
+            "failureReason": None if outcome == "done" else _line(summary),
+            "nextStep": None,
+        },
     )
     in_background = await _is_background_chat(session_id)
     if document is None:
-        return TaskFinish(task_id=task.id, in_background=in_background)
+        return TaskFinish(task_id=task.id, outcome=outcome, in_background=in_background)
     await prisma.models.TaskArtifact.prisma().update(
         where={"id": document.id}, data={"kind": TaskArtifactKind.DOCUMENT}
     )
@@ -75,7 +93,10 @@ async def finish_task(
             }
         )
     return TaskFinish(
-        task_id=task.id, document_title=document.title, in_background=in_background
+        task_id=task.id,
+        outcome=outcome,
+        document_title=document.title,
+        in_background=in_background,
     )
 
 

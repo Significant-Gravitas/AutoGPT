@@ -18,6 +18,15 @@ const MIN = 60_000;
 const RUN_SPAN = 10 * MIN;
 
 /** The block's words, in ours: workflows and Otto, never agents. */
+/** What the empty page offers to start with: Otto opens with it typed. */
+export const EXAMPLE_SCHEDULE =
+  "Every Monday at 9am, send me a summary of last week";
+
+/** Otto's new chat (Home) with a message ready in the composer, not sent. */
+export function askOttoHref(text: string): string {
+  return `/home#prompt=${encodeURIComponent(text)}`;
+}
+
 export const LABELS: ScheduleLabels = {
   activity: "Runs around now",
   perTen: "",
@@ -25,9 +34,8 @@ export const LABELS: ScheduleLabels = {
   noScheduleText:
     "Pick a schedule to see its next runs and how the last ones went.",
   empty: "No schedules yet",
-  emptyText:
-    "Ask Otto to do something every day, week or month, or schedule a workflow – it shows up here.",
-  emptyAction: "Ask Otto",
+  emptyText: `Ask Otto to do something every day, week or month, or schedule a workflow. For example: “${EXAMPLE_SCHEDULE}.”`,
+  emptyAction: "Ask Otto this",
 };
 
 /** The empty state's words when the schedules could not be loaded. */

@@ -27,7 +27,7 @@ _END_BY_KIND: dict[TaskActivityKind, RunEnd] = {
 }
 # Lines written before runs were marked, read as the end they say.
 _CANCELLED_TEXTS = ("Cancelled", "You stopped it", "You stopped this run")
-_FAILED_PREFIX = "Failed: "
+_FAILED_PREFIXES = ("Did not finish: ", "Failed: ")
 
 
 class TaskRun(BaseModel):
@@ -117,11 +117,8 @@ def _run_end(row: prisma.models.TaskActivity) -> RunEnd | None:
 def _ended(run: TaskRun, row: prisma.models.TaskActivity, ended: RunEnd) -> TaskRun:
     data = row.data if isinstance(row.data, dict) else {}
     result = data.get("result")
-    reason = (
-        row.text.removeprefix(_FAILED_PREFIX)
-        if ended == "failed" and row.text.startswith(_FAILED_PREFIX)
-        else None
-    )
+    prefix = next((p for p in _FAILED_PREFIXES if row.text.startswith(p)), None)
+    reason = row.text.removeprefix(prefix) if ended == "failed" and prefix else None
     return run.model_copy(
         update={
             "ended_at": row.createdAt,
