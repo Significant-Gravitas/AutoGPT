@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.blocks.mcp.client import (
+    MAX_CONTENT_ITEMS,
     MAX_REPLY_BYTES,
     MAX_TOOL_RESULT_BYTES,
     MAX_TOOLS_PER_SERVER,
@@ -790,9 +791,30 @@ class TestSloppyServerPayloads:
             result = await _client(transport).call_tool("echo", {})
         assert len(result.content) == 3
         assert _client_warnings(caplog) == [
-            f"MCP server {SERVER_URL} returned 3 content item(s) that are not "
+            "MCP server mcp.example.com returned 3 content item(s) that are not "
             "objects; treating them as text"
         ]
+
+    @pytest.mark.parametrize(
+        ("items", "refused"),
+        [(MAX_CONTENT_ITEMS, False), (MAX_CONTENT_ITEMS + 1, True)],
+    )
+    async def test_a_tool_result_is_read_up_to_its_item_limit(
+        self, items: int, refused: bool
+    ):
+        content = [{"type": "text", "text": "x"}] * items
+        transport = _Transport(
+            {
+                "server/discover": [_FakeResponse(200, _rpc_result(DISCOVER_RESULT))],
+                "tools/call": [_FakeResponse(200, _rpc_result({"content": content}))],
+            }
+        )
+        if refused:
+            with pytest.raises(MCPClientError, match="content items"):
+                await _client(transport).call_tool("echo", {})
+        else:
+            result = await _client(transport).call_tool("echo", {})
+            assert len(result.content) == items
 
     async def test_a_tool_list_is_kept_to_its_first_tools(self):
         listed = [
@@ -836,7 +858,7 @@ class TestSloppyServerPayloads:
             tools = await _client(transport).list_tools()
         assert [t.name for t in tools] == ["good"]
         assert _client_warnings(caplog) == [
-            f"Dropped 2 MCP tool(s) from {SERVER_URL} with an invalid x-mcp-header, "
+            "Dropped 2 MCP tool(s) from mcp.example.com with an invalid x-mcp-header, "
             "first 'bad1'"
         ]
 
@@ -888,6 +910,24 @@ class TestReplySize:
                 await client._post(
                     {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, {}
                 )
+
+    async def test_an_oversized_notification_reply_is_a_client_error(self):
+        client = MCPClient(SERVER_URL)
+        with patch("backend.blocks.mcp.client.Requests") as MockRequests:
+            MockRequests.return_value.post = AsyncMock(
+                side_effect=ResponseTooLargeError(MAX_REPLY_BYTES)
+            )
+            with pytest.raises(MCPClientError, match="too large"):
+                await client._send_notification("notifications/initialized")
+
+    async def test_an_oversized_tool_list_reaches_the_caller_as_a_client_error(self):
+        client = MCPClient(SERVER_URL)
+        with patch("backend.blocks.mcp.client.Requests") as MockRequests:
+            MockRequests.return_value.post = AsyncMock(
+                side_effect=ResponseTooLargeError(MAX_REPLY_BYTES)
+            )
+            with pytest.raises(MCPClientError):
+                await client.list_tools()
 
     @pytest.mark.parametrize(
         "module",

@@ -69,6 +69,8 @@ _NO_FALLBACK_STATUSES = frozenset({401, 403, 407, 429})
 _MAX_INPUT_REQUIRED_RETRIES = 3
 # Far above any real server's tool list; the rest of a longer list is ignored.
 MAX_TOOLS_PER_SERVER = 1000
+# Far above any real tool result; a longer one is refused.
+MAX_CONTENT_ITEMS = 10_000
 # ``Requests`` retries throttled/5xx responses forever unless told otherwise.
 # MCP calls run inside graph executions and chat turns, so keep them bounded.
 _HTTP_RETRY_ATTEMPTS = 3
@@ -204,9 +206,10 @@ class MCPClient:
         Such a caller should pass ``False`` and treat the resulting
         ``MCPClientError`` as "could not verify".
         """
-        from backend.blocks.mcp.helpers import normalize_mcp_url
+        from backend.blocks.mcp.helpers import normalize_mcp_url, server_host
 
         self.server_url = normalize_mcp_url(server_url)
+        self._server_host = server_host(self.server_url)
         self.authorization = authorization
         self.follow_redirects = follow_redirects
         self._request_id = 0
@@ -374,9 +377,14 @@ class MCPClient:
             extra_headers=headers,
             max_response_bytes=MAX_REPLY_BYTES,
         )
-        await requests.post(
-            self.server_url, json=notification, allow_redirects=self.follow_redirects
-        )
+        try:
+            await requests.post(
+                self.server_url,
+                json=notification,
+                allow_redirects=self.follow_redirects,
+            )
+        except ResponseTooLargeError as e:
+            raise MCPClientError(f"MCP server reply is too large: {e}") from e
 
     async def _legacy_initialize(self) -> dict[str, Any]:
         result = await self._send_legacy(
@@ -848,7 +856,7 @@ class MCPClient:
         listed = result["tools"]
         if len(listed) > MAX_TOOLS_PER_SERVER:
             logger.warning(
-                f"MCP server {self.server_url} listed {len(listed)} tools; "
+                f"MCP server {self._server_host} listed {len(listed)} tools; "
                 f"keeping the first {MAX_TOOLS_PER_SERVER}"
             )
             listed = listed[:MAX_TOOLS_PER_SERVER]
@@ -876,7 +884,7 @@ class MCPClient:
             )
         if dropped:
             logger.warning(
-                f"Dropped {len(dropped)} MCP tool(s) from {self.server_url} with an "
+                f"Dropped {len(dropped)} MCP tool(s) from {self._server_host} with an "
                 f"invalid x-mcp-header, first {str(dropped[0])[:100]!r}"
             )
         return tools
@@ -890,6 +898,11 @@ class MCPClient:
         """
         if not isinstance(raw, list):
             return []
+        if len(raw) > MAX_CONTENT_ITEMS:
+            raise MCPClientError(
+                f"MCP tool result has {len(raw)} content items; "
+                f"at most {MAX_CONTENT_ITEMS} are read"
+            )
         blocks: list[dict[str, Any]] = []
         wrapped = 0
         for item in raw:
@@ -900,7 +913,7 @@ class MCPClient:
                 blocks.append({"type": "text", "text": str(item)})
         if wrapped:
             logger.warning(
-                f"MCP server {self.server_url} returned {wrapped} content item(s) "
+                f"MCP server {self._server_host} returned {wrapped} content item(s) "
                 "that are not objects; treating them as text"
             )
         return blocks
