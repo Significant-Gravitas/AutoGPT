@@ -160,6 +160,33 @@ async def test_output_moderation_clears_a_completed_output_node(user_and_graph):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_old_stats_the_reader_cant_validate_dont_unmask_the_node(
+    user_and_graph,
+):
+    """from_db drops stats it can't validate, moderation fields included, so
+    stats from an older schema must not be kept next to the mask."""
+    user_id, graph_id = user_and_graph
+    graph_exec_id, node_exec_id = await _run_with_node(
+        user_id, graph_id, AgentOutputBlock().id, "report"
+    )
+    await prisma.models.AgentNodeExecution.prisma().update(
+        where={"id": node_exec_id},
+        data={
+            "executionStatus": ExecutionStatus.COMPLETED,
+            "stats": Json({**PRIOR_STATS, "provider_cost_type": "retired_type"}),
+        },
+    )
+    await upsert_execution_output(node_exec_id, "output", "flagged")
+
+    await _moderate(graph_exec_id, "output")
+
+    node = await get_node_execution(node_exec_id)
+    assert node is not None and node.status == ExecutionStatus.FAILED
+    assert dict(node.output_data) == {"output": [MSG]}
+    assert node.input_data["value"] == MSG
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_input_moderation_clears_a_queued_input_node(user_and_graph):
     user_id, graph_id = user_and_graph
     graph_exec_id, node_exec_id = await _run_with_node(
@@ -224,3 +251,29 @@ async def test_rows_moderation_could_not_clear_are_logged_as_errors(user_and_gra
     assert node_exec_id in logger.error.call_args.args[0]
     node = await get_node_execution(node_exec_id)
     assert node is not None and node.status == ExecutionStatus.QUEUED
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_moderation_never_clears_another_runs_node(user_and_graph):
+    user_id, graph_id = user_and_graph
+    graph_exec_id, _ = await _run_with_node(
+        user_id, graph_id, AgentOutputBlock().id, "report"
+    )
+    _, other_node_exec_id = await _run_with_node(
+        user_id, graph_id, AgentOutputBlock().id, "report"
+    )
+    await prisma.models.AgentNodeExecution.prisma().update(
+        where={"id": other_node_exec_id},
+        data={"executionStatus": ExecutionStatus.COMPLETED},
+    )
+
+    updated = await mark_node_executions_moderated(
+        graph_exec_id, {other_node_exec_id: {"error": MSG}}, [ExecutionStatus.COMPLETED]
+    )
+
+    assert updated == []
+    row = await prisma.models.AgentNodeExecution.prisma().find_unique_or_raise(
+        where={"id": other_node_exec_id}
+    )
+    assert row.executionStatus == ExecutionStatus.COMPLETED
+    assert row.stats == PRIOR_STATS
