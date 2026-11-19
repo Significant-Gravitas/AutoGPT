@@ -16,6 +16,7 @@ from backend.api.features.store import db as store_db
 from backend.api.features.store import exceptions as store_exceptions
 from backend.api.features.store import submission_media
 from backend.blocks.agent import AgentExecutorBlock
+from backend.data.graph import is_graph_published_in_marketplace
 from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
 
@@ -190,17 +191,8 @@ async def test_rejection_serializes_with_approval_of_a_parent_workflow(
     owner = await _seed_creator(tag, avatar_url="")
     parent_graph, child_graph = f"parent-{tag}", f"child-{tag}"
     try:
-        [parent] = await _seed_listing(parent_graph, owner, [PENDING])
-        [child] = await _seed_listing(child_graph, owner, [PENDING])
-        await prisma.models.AgentNode.prisma().create(
-            data={
-                "agentGraphId": parent_graph,
-                "agentGraphVersion": 1,
-                "agentBlockId": AgentExecutorBlock().id,
-                "constantInput": SafeJson(
-                    {"graph_id": child_graph, "graph_version": 1}
-                ),
-            }
+        parent, child = await _seed_parent_with_child(
+            owner, parent_graph, child_graph, PENDING
         )
         monkeypatch.setattr(store_db, "ensure_embedding", AsyncMock())
         waiting_statement = await _overlap_reviews(
@@ -210,7 +202,9 @@ async def test_rejection_serializes_with_approval_of_a_parent_workflow(
                 parent, True, "", "", owner, notify_creator=False
             ),
         )
-        assert '"StoreListing"' in waiting_statement, waiting_statement
+        assert (
+            waiting_statement and '"StoreListing"' in waiting_statement
+        ), waiting_statement
         child_version = (
             await prisma.models.StoreListingVersion.prisma().find_unique_or_raise(
                 where={"id": child}, include={"StoreListing": True}
@@ -220,6 +214,56 @@ async def test_rejection_serializes_with_approval_of_a_parent_workflow(
         assert child_version.StoreListing is not None
         assert child_version.StoreListing.activeVersionId is None
         assert child_version.StoreListing.hasApprovedVersion
+        assert (
+            await store_db.get_store_agent_details(owner, parent_graph)
+        ).active_version_id == parent
+    finally:
+        await _clean_up(owner, [parent_graph, child_graph])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rejection_of_an_approved_child_stands_when_parent_approval_overlaps(
+    server, monkeypatch
+):
+    tag = uuid4().hex[:12]
+    owner = await _seed_creator(tag, avatar_url="")
+    parent_graph, child_graph = f"parent-{tag}", f"child-{tag}"
+    try:
+        parent, child = await _seed_parent_with_child(
+            owner, parent_graph, child_graph, APPROVED
+        )
+        parent_checked_child = asyncio.Event()
+        withdrawal_committed = asyncio.Event()
+
+        async def reject_child():
+            await _reject(child, owner)
+            withdrawal_committed.set()
+
+        async def finish_parent_after_withdrawal(**kwargs):
+            parent_checked_child.set()
+            await withdrawal_committed.wait()
+
+        monkeypatch.setattr(
+            store_db, "ensure_embedding", finish_parent_after_withdrawal
+        )
+        await _overlap_reviews(
+            monkeypatch,
+            reject_child,
+            lambda: store_db.review_store_submission(
+                parent, True, "", "", owner, notify_creator=False
+            ),
+            second_read=parent_checked_child,
+        )
+
+        child_version = (
+            await prisma.models.StoreListingVersion.prisma().find_unique_or_raise(
+                where={"id": child}
+            )
+        )
+        assert child_version.submissionStatus == REJECTED
+        assert not await is_graph_published_in_marketplace(child_graph, 1)
+        with pytest.raises(NotFoundError):
+            await store_db.get_store_agent_details(owner, child_graph)
         assert (
             await store_db.get_store_agent_details(owner, parent_graph)
         ).active_version_id == parent
@@ -264,11 +308,21 @@ async def test_rejection_checks_approval_when_republishing_fallback_media(
             APPROVED if withdraw_at == "never" else REJECTED
         )
         assert row.imageUrls == [published if withdraw_at == "never" else image]
+        if withdraw_at != "never":
+            listing = await prisma.models.StoreListing.prisma().find_unique_or_raise(
+                where={"agentGraphId": graph_id}
+            )
+            assert listing.activeVersionId is None
+            with pytest.raises(NotFoundError):
+                await store_db.get_store_agent_details(owner, graph_id)
     finally:
         await _clean_up(owner, [graph_id])
 
 
-async def _overlap_reviews(monkeypatch, first, second):
+async def _overlap_reviews(
+    monkeypatch, first, second, *, second_read: asyncio.Event | None = None
+):
+    """Release the withdrawal once the other review blocks or reads the child."""
     withdraw = store_db._withdraw_store_version
     first_locked = asyncio.Event()
     waiting_statement = None
@@ -280,7 +334,7 @@ async def _overlap_reviews(monkeypatch, first, second):
             assert waiting_statement, "The second review never waited on the first"
             return fallback
         first_locked.set()
-        while True:
+        while second_read is None or not second_read.is_set():
             await tx.execute_raw("SELECT pg_stat_clear_snapshot()")
             rows = await tx.query_raw(
                 "SELECT query FROM pg_stat_activity WHERE datname = current_database() "
@@ -288,15 +342,17 @@ async def _overlap_reviews(monkeypatch, first, second):
             )
             if rows:
                 waiting_statement = rows[0]["query"]
-                return fallback
+                break
             await asyncio.sleep(0.02)
+        return fallback
 
     monkeypatch.setattr(store_db, "_withdraw_store_version", hold_first_withdrawal)
     async with asyncio.timeout(10), asyncio.TaskGroup() as reviews:
         reviews.create_task(first())
         await first_locked.wait()
         reviews.create_task(second())
-    assert waiting_statement
+    if second_read is None:
+        assert waiting_statement
     return waiting_statement
 
 
@@ -304,6 +360,25 @@ async def _reject(version_id: str, reviewer_id: str):
     await store_db.review_store_submission(
         version_id, False, "", "", reviewer_id, notify_creator=False
     )
+
+
+async def _seed_parent_with_child(
+    owner: str,
+    parent_graph: str,
+    child_graph: str,
+    child_status: prisma.enums.SubmissionStatus,
+) -> tuple[str, str]:
+    [parent] = await _seed_listing(parent_graph, owner, [PENDING])
+    [child] = await _seed_listing(child_graph, owner, [child_status])
+    await prisma.models.AgentNode.prisma().create(
+        data={
+            "agentGraphId": parent_graph,
+            "agentGraphVersion": 1,
+            "agentBlockId": AgentExecutorBlock().id,
+            "constantInput": SafeJson({"graph_id": child_graph, "graph_version": 1}),
+        }
+    )
+    return parent, child
 
 
 async def _seed_creator(tag: str, avatar_url: str | None) -> str:

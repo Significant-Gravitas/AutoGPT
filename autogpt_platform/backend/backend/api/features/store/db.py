@@ -1791,6 +1791,9 @@ async def _publish_approved_media(
     media bucket, and point the rows at the copies. Never fails the review. The
     profile and the version are written separately on purpose: each copy is
     valid on its own, so a failed version write keeps the published avatar.
+
+    On reactivation, the eligibility read authorizes the copy. The URL update
+    succeeds only while the version remains eligible and its source URLs match.
     """
     if not public_media.publishing_enabled():
         return version
@@ -2011,10 +2014,10 @@ async def _approve_sub_agent(
         None,
     )
 
-    # Early return: Approve existing version if found and not already approved
     if matching_version:
         if matching_version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-            return  # Already approved, nothing to do
+            # Reuse the approval so a concurrent moderator withdrawal stays effective.
+            return
 
         # Take the listing lock before writing its version, just as withdrawal does.
         await prisma.models.StoreListing.prisma(tx).update(
