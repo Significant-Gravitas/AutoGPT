@@ -1,3 +1,4 @@
+import time
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -150,6 +151,12 @@ def test_appended_arguments_count_towards_the_bound():
     assert len(render_skill_body(body, "A" * 64_000, [])) == MAX_RENDERED_BODY_CHARS
     with pytest.raises(SkillRenderTooLargeError):
         render_skill_body(body + "x", "A" * 64_000, [])
+
+
+def test_a_long_backslash_run_is_rendered_as_is():
+    started = time.thread_time()
+    assert render_skill_body("\\" * 50_000, "", []) == "\\" * 50_000
+    assert time.thread_time() - started < 2
 
 
 def test_undeclared_dollar_words_are_left_alone():

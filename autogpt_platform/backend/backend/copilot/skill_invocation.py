@@ -52,9 +52,10 @@ _SLUG = re.compile(r"[a-z0-9_-]+")
 _INVOCATION = re.compile(r"^/([A-Za-z0-9][A-Za-z0-9_.:-]*)(?:\s+(.*))?$", re.DOTALL)
 
 # ``(\\*)`` captures the backslashes in front so a single one can escape the
-# placeholder while ``\\`` and longer runs leave it live.
+# placeholder while ``\\`` and longer runs leave it live; a match starts only
+# where a run of backslashes starts.
 _PLACEHOLDER = re.compile(
-    r"(\\*)\$(?:ARGUMENTS\[(\d+)\]|(ARGUMENTS)\b|(\d+)|([A-Za-z_][A-Za-z0-9_]*))"
+    r"(?<!\\)(\\*)\$(?:ARGUMENTS\[(\d+)\]|(ARGUMENTS)\b|(\d+)|([A-Za-z_][A-Za-z0-9_]*))"
 )
 
 
