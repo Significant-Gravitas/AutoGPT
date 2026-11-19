@@ -176,6 +176,19 @@ def test_a_bomb_is_refused_without_a_member_being_read(monkeypatch):
     opened.assert_not_called()
 
 
+def test_entries_that_share_one_member_are_refused_unread(monkeypatch):
+    data = bytearray(_zip({"SKILL.md": SKILL_MD, "notes.md": b"notes"}))
+    second_entry = data.find(b"PK\x01\x02", data.find(b"PK\x01\x02") + 4)
+    struct.pack_into("<I", data, second_entry + 42, 0)
+
+    opened = MagicMock(side_effect=AssertionError("a member was read"))
+    monkeypatch.setattr(zipfile.ZipFile, "open", opened)
+
+    with pytest.raises(SkillPackageError, match="archive entries overlap"):
+        package_from_zip(bytes(data))
+    opened.assert_not_called()
+
+
 def test_reading_stops_once_the_real_bytes_pass_the_total(monkeypatch):
     """The declared sizes are small, so the check before reading passes; the
     bytes the reader returns are what the package total is held against, and

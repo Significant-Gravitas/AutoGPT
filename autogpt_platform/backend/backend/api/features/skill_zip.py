@@ -21,7 +21,12 @@ from backend.copilot.tools.skills import (
     SkillPackageError,
     validate_package,
 )
-from backend.util.zip_member import ZipMemberError, ZipMemberTooLarge, read_member
+from backend.util.zip_member import (
+    ZipMemberError,
+    ZipMemberTooLarge,
+    check_members_disjoint,
+    read_member,
+)
 
 ROOT_SKILL_MD = "SKILL.md"
 # A compressed archive already past the uncompressed cap cannot hold a package
@@ -41,6 +46,10 @@ def package_from_zip(data: bytes) -> SkillPackage:
     except (zipfile.BadZipFile, OSError) as exc:
         raise SkillPackageError(f"upload is not a readable zip archive: {exc}")
     with archive:
+        try:
+            check_members_disjoint(archive)
+        except ZipMemberError as exc:
+            raise SkillPackageError(str(exc))
         members = _unwrapped(_checked_members(archive.infolist()))
         root = members.pop(ROOT_SKILL_MD)
         # A member's CRC is verified as it decompresses, so a corrupt archive
