@@ -1680,6 +1680,8 @@ def review_mocks(mocker):
     mock_slv.return_value.find_unique = AsyncMock(return_value=version)
     mock_slv.return_value.find_first = AsyncMock(return_value=None)
     mock_slv.return_value.update = AsyncMock(side_effect=update_version)
+    mock_slv.return_value.count = AsyncMock(return_value=1)
+    mock_slv.return_value.update_many = AsyncMock(return_value=1)
     mock_listing = mocker.patch("prisma.models.StoreListing.prisma")
     mock_listing.return_value.update = AsyncMock()
     mock_listing.return_value.update_many = AsyncMock(return_value=0)
@@ -2139,7 +2141,7 @@ async def test_reject_publishes_the_media_of_the_reactivated_version(
     mocker, public_media_bucket, review_mocks
 ):
     approved = _approved_version_of_listing_live_at(review_mocks, "version-id")
-    previous = review_mocks.version.model_copy(
+    previous = approved.model_copy(
         update={"id": "previous-id", "imageUrls": [f"{PRIVATE_URL}/old.png"]}
     )
     review_mocks.slv.find_unique.side_effect = lambda where, include=None: (
@@ -2161,6 +2163,19 @@ async def test_reject_publishes_the_media_of_the_reactivated_version(
         )
         in publish.await_args_list
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reactivation_skips_media_for_a_withdrawn_version(
+    mocker, public_media_bucket, review_mocks
+):
+    review_mocks.slv.find_unique.return_value = review_mocks.version.model_copy(
+        update={"submissionStatus": prisma.enums.SubmissionStatus.REJECTED}
+    )
+    publish = _publish_mock(mocker, return_value={})
+    await db._publish_reactivated_media("version-id")
+    publish.assert_not_awaited()
+    review_mocks.slv.update_many.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")

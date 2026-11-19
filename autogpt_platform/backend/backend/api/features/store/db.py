@@ -1722,6 +1722,10 @@ async def review_store_submission(
 async def _withdraw_store_version(
     tx: prisma.Prisma, version: prisma.models.StoreListingVersion
 ) -> str | None:
+    """Return the reactivated version ID or None.
+
+    Clear the listing's flag only when no other undeleted approval remains.
+    """
     # Serialize reviews of a listing before choosing a replacement for its live version.
     rows = await query_raw_with_schema(
         'SELECT l."activeVersionId", v."submissionStatus"::text AS "submissionStatus" '
@@ -1779,6 +1783,8 @@ async def _withdraw_store_version(
 
 async def _publish_approved_media(
     version: prisma.models.StoreListingVersion,
+    *,
+    reactivation_filter: prisma.types.StoreListingVersionWhereInput | None = None,
 ) -> prisma.models.StoreListingVersion:
     """
     Copy an approved version's media and its creator's avatar to the public site
@@ -1792,16 +1798,26 @@ async def _publish_approved_media(
         assert version.StoreListing is not None
         owner_id = version.StoreListing.owningUserId
         await publish_creator_avatar(owner_id)
+        owner_ids = await _listing_media_owner_ids(version.StoreListing)
+        versions = prisma.models.StoreListingVersion.prisma()
+        if reactivation_filter is not None and not await versions.count(
+            where=reactivation_filter
+        ):
+            return version
         published = await public_media.publish_urls(
             [*version.imageUrls, version.videoUrl, version.agentOutputDemoUrl],
-            await _listing_media_owner_ids(version.StoreListing),
+            owner_ids,
         )
 
         media_update = _published_media_update(version, published)
         if not media_update:
             return version
 
-        updated = await prisma.models.StoreListingVersion.prisma().update(
+        if reactivation_filter is not None:
+            if await versions.update_many(where=reactivation_filter, data=media_update):
+                return version.model_copy(update=dict(media_update))
+            return version
+        updated = await versions.update(
             where={"id": version.id},
             data=media_update,
             include={"StoreListing": True, "Reviewer": True},
@@ -1823,8 +1839,17 @@ async def _publish_reactivated_media(version_id: str) -> None:
     except Exception:
         logger.exception(f"Failed to load store listing version {version_id}")
         return
-    if version:
-        await _publish_approved_media(version)
+    if version and version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
+        await _publish_approved_media(
+            version,
+            reactivation_filter={
+                **installable_store_version_where(),
+                "id": version.id,
+                "imageUrls": {"equals": version.imageUrls},
+                "videoUrl": version.videoUrl,
+                "agentOutputDemoUrl": version.agentOutputDemoUrl,
+            },
+        )
 
 
 def _published_media_update(
@@ -1991,15 +2016,19 @@ async def _approve_sub_agent(
         if matching_version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
             return  # Already approved, nothing to do
 
-        await prisma.models.StoreListingVersion.prisma(tx).update(
-            where={"id": matching_version.id},
+        # Take the listing lock before writing its version, just as withdrawal does.
+        await prisma.models.StoreListing.prisma(tx).update(
+            where={"id": listing.id}, data={"hasApprovedVersion": True}
+        )
+        await prisma.models.StoreListingVersion.prisma(tx).update_many(
+            where={
+                "id": matching_version.id,
+                "submissionStatus": {"not": prisma.enums.SubmissionStatus.APPROVED},
+            },
             data={
                 "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
                 "reviewedAt": datetime.now(tz=timezone.utc),
             },
-        )
-        await prisma.models.StoreListing.prisma(tx).update(
-            where={"id": listing.id}, data={"hasApprovedVersion": True}
         )
         return
 
