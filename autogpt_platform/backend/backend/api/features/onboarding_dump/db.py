@@ -20,19 +20,25 @@ async def get_dump(user_id: str) -> OnboardingBrainDump | None:
     return await OnboardingBrainDump.prisma().find_unique(where={"userId": user_id})
 
 
-async def owns_dump(user_id: str, recording_id: str) -> bool:
-    """Whether ``recording_id`` is still the take the row belongs to.
+async def owns_dump(
+    user_id: str, recording_id: str, transcript: str | None = None
+) -> bool:
+    """Whether ``recording_id`` is still the take the row belongs to, and,
+    given *transcript*, still holds the words a job was started with.
 
     Row writes carry their own ``recordingId`` guard, but the business
     understanding is shared user context with no take on it. A background
     job for a superseded take has to be told to stop before it writes
     there, and this is what tells it. A take given up for a newer one
-    (``superseded``) is not, though it is still on the row.
+    (``superseded``) is not, though it is still on the row. Nor is a take
+    corrected since the job started (``reopen_for_correction``): its words
+    changed, and the job of the corrected words writes instead.
     """
     dump = await get_dump(user_id)
     return (
         dump is not None
         and dump.recordingId == recording_id
+        and (transcript is None or dump.transcript == transcript)
         and not (
             dump.status == BrainDumpStatus.failed and dump.errorCode == SUPERSEDED_TAKE
         )
@@ -184,6 +190,51 @@ async def update_dump(user_id: str, recording_id: str, **fields: Any) -> bool:
         data=fields,
     )
     return updated == 1
+
+
+async def update_take_words(
+    user_id: str, recording_id: str, transcript: str, **fields: Any
+) -> bool:
+    """:func:`update_dump`, only while the take still holds *transcript*: a
+    job of a take corrected since it started writes nothing."""
+    updated = await OnboardingBrainDump.prisma().update_many(
+        where={
+            "userId": user_id,
+            "recordingId": recording_id,
+            "transcript": transcript,
+        },
+        data=fields,
+    )
+    return updated == 1
+
+
+# What a correction of a finished take clears with its words: the plan the
+# first words built, which the corrected words build again.
+_PLAN_RESET: dict[str, Any] = {
+    "greeting": None,
+    "suggestedPrompts": Json([]),
+    "recommendedProviders": Json(None),
+    "recommendedExperts": Json(None),
+    "greetingSeen": False,
+    "errorCode": None,
+    "errorReason": None,
+}
+
+
+async def reopen_for_correction(
+    user_id: str, recording_id: str, transcript: str
+) -> bool:
+    """Move a ``completed`` take back to ``transcribed`` with *transcript* in
+    place of its words and its plan cleared, once: the status is part of the
+    ``WHERE``, so of two corrections one wins. True for the one that did."""
+    return await claim_transition(
+        user_id,
+        recording_id,
+        expected=BrainDumpStatus.completed,
+        new=BrainDumpStatus.transcribed,
+        transcript=transcript,
+        **_PLAN_RESET,
+    )
 
 
 async def store_greeting(

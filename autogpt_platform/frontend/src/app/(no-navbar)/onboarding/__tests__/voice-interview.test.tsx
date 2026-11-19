@@ -3662,6 +3662,126 @@ describe("onboarding interview by voice: the ending screens", () => {
     });
   });
 
+  it("keeps a live-closed card editable while its plan builds, and leads on at once when nothing changed", async () => {
+    callStates[CALL_ID] = [
+      callRecord({
+        ending: "02-profile-card",
+        details: DETAILS,
+        interview: "taken",
+      }),
+    ];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "finished");
+
+    const confirm = await screen.findByRole("button", { name: "That's me" });
+    expect(screen.getByText("Is this you?")).toBeDefined();
+    expect(screen.queryByText("Here's what Otto has")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Edit your team" }),
+    ).toBeDefined();
+
+    await userEvent.setup().click(confirm);
+
+    await expectPlanStep();
+    // Handed off as it closed: nothing more to send.
+    expect(finishes).toEqual([]);
+  });
+
+  it("sends a live-closed card's edits as a correction, keeping the card up while the build is not ready", async () => {
+    callStates[CALL_ID] = [
+      callRecord({
+        ending: "02-profile-card",
+        details: DETAILS,
+        interview: "taken",
+      }),
+    ];
+    let notReady = 2;
+    server.use(
+      http.post(`${VOICE}/:callId/finish`, async ({ params, request }) => {
+        finishes.push(String(params.callId));
+        finishBodies.push(await request.text());
+        if (notReady-- > 0) {
+          return HttpResponse.json(
+            { detail: { code: "take_not_ready" } },
+            { status: 409 },
+          );
+        }
+        return HttpResponse.json(ACCEPTED);
+      }),
+    );
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    const user = userEvent.setup();
+
+    endCall(socket, "finished");
+    await user.click(
+      await screen.findByRole("button", { name: "Edit your team" }),
+    );
+    const team = screen.getByRole("textbox", { name: "Your team" });
+    await user.clear(team);
+    await user.type(team, "just me");
+    await user.click(screen.getByRole("button", { name: "That's me" }));
+
+    // While the build is not ready the card stays, with the edit on it.
+    await waitFor(() => expect(finishes.length).toBeGreaterThan(0));
+    expect(screen.getByText("just me")).toBeDefined();
+    await expectPlanStep();
+    const corrections =
+      "Not right: Your team: a crew of six\nAlso: Your team: just me";
+    expect(finishBodies.map((body) => JSON.parse(body))).toEqual([
+      { corrections },
+      { corrections },
+      { corrections },
+    ]);
+  });
+
+  it("offers going on without the edits when their correction is refused", async () => {
+    callStates[CALL_ID] = [
+      callRecord({
+        ending: "02-profile-card",
+        details: DETAILS,
+        interview: "taken",
+      }),
+    ];
+    server.use(
+      http.post(`${VOICE}/:callId/finish`, async ({ params, request }) => {
+        finishes.push(String(params.callId));
+        finishBodies.push(await request.text());
+        return HttpResponse.json(
+          { detail: "Too many", retry_after_seconds: 600 },
+          { status: 429, headers: { "Retry-After": "600" } },
+        );
+      }),
+    );
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    const user = userEvent.setup();
+
+    endCall(socket, "finished");
+    await user.click(
+      await screen.findByRole("button", { name: "Edit your tools" }),
+    );
+    await user.type(screen.getByRole("textbox", { name: "Your tools" }), "!");
+    await user.click(screen.getByRole("button", { name: "That's me" }));
+
+    expect(await screen.findByRole("alert")).toBeDefined();
+    // The card stays, with the edit, beside the way on without it.
+    expect(screen.getByRole("button", { name: "That's me" })).toBeDefined();
+    await user.click(
+      screen.getByRole("button", { name: "Continue without my changes" }),
+    );
+
+    await expectPlanStep();
+    expect(finishes).toEqual([CALL_ID]);
+    expect(tracked("ending_action")).toContainEqual({
+      mode: "voice",
+      ending: "team",
+      action: "without_changes",
+    });
+  });
+
   it("ignores a details message of another shape", async () => {
     render(<OnboardingPage />);
     const socket = await liveCall();

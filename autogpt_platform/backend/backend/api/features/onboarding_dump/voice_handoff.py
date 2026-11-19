@@ -5,9 +5,8 @@ The relay stops at the transcript (``voice_relay.postcall``): it leaves the
 call ``transcribed``, with its transcript of record and no answer, pending in
 ``voice:postcall:pending``. The onboarding pipeline runs here, in the one
 process that holds its keys and its imports. A call is owed a hand-off
-(:func:`owed`) once its transcript is made and its arm of the ending
-experiment hands off as the call closes; a confirm arm's call waits for the
-person's finish.
+(:func:`owed`) once its transcript is made, whatever its arm of the ending
+experiment.
 
 Three things hand a call off, all under the call's one claim
 (``voice:postcall:claim:<call id>``), and each re-reads the record once it
@@ -17,10 +16,10 @@ holds the claim, so a call is handed off once:
   of an owed call in the background (:func:`settle_if_owed`), as the typed
   start hands off an interview that is over, and answer ``handing_off``
   meanwhile;
-- the person's finish (``voice.finish_call``), for a confirm or a retry;
+- the person's finish (``voice.finish_call``), for a retry, or to take the
+  interview with a call cut off or hung up;
 - a sweep in each replica (:func:`sweeping`), every ``HANDOFF_SWEEP_S``, for
-  an owed call nobody is polling, and for a confirm arm's call left
-  unconfirmed for ``UNCONFIRMED_HANDOFF_S``, handed off as if confirmed.
+  an owed call nobody is polling.
 
 A hand-off holds the claim for ``HANDOFF_CLAIM_TTL_S`` at a time, renews it
 while it runs, and writes nothing once it has lost it (:class:`HandOffClaim`).
@@ -38,10 +37,9 @@ to finish, their pipeline jobs included (:func:`settle`).
 
 The call's status follows the answer: ``handed_off`` once the pipeline took
 the words or another take owns the interview, ``failed`` with the answer
-while the interview stays open, or ``transcribed`` while a confirm arm waits
-for the person. A call whose words the pipeline accepted takes the person's
-interview when it ran to its close (:data:`RAN_TO_ITS_CLOSE`), or when the
-person confirmed it. A call that was cut off, or that the person hung up, is
+while the interview stays open. A call whose words the pipeline accepted
+takes the person's interview when it ran to its close
+(:data:`RAN_TO_ITS_CLOSE`), or when the person finished it. A call that was cut off, or that the person hung up, is
 handed off all the same, so the person has a Home if they never come back,
 but leaves the interview open: the person's finish of it takes the
 interview, and a later call, or the typed interview, replaces its take as any
@@ -81,10 +79,6 @@ from backend.api.features.onboarding_dump.interview import (
     start_owed_typed_hand_off,
     superseded_take,
     voice_hand_off_closes_interview,
-)
-from backend.api.features.onboarding_dump.interview_endings import (
-    UNCONFIRMED_HANDOFF_S,
-    hands_off_on_close,
 )
 from backend.api.features.onboarding_dump.models import FinalizeResponse
 from backend.copilot.onboarding_interview import InterviewEndReason
@@ -143,7 +137,7 @@ HANDOFFS = Counter(
     "retry, gave_up, settled: nothing was owed under the claim, held: another "
     "hand-off held the call, lost_claim: the claim lapsed mid-way, waiting: a "
     "later call was still to settle) and what started them (status, sweep, "
-    "unconfirmed, settle: the later call settled without words)",
+    "settle: the later call settled without words)",
     ["outcome", "trigger"],
 )
 HANDOFF_SECONDS = Histogram(
@@ -208,8 +202,6 @@ def failed_hand_off(code: str) -> FinalizeResponse:
 
 def call_status_after(closure: InterviewClosure) -> CallStatus:
     """The call's status once its hand-off has answered."""
-    if closure.hand_off is None:
-        return locks.TRANSCRIBED
     if voice_hand_off_closes_interview(closure.hand_off):
         return locks.HANDED_OFF
     return locks.FAILED
@@ -218,13 +210,11 @@ def call_status_after(closure: InterviewClosure) -> CallStatus:
 async def record_hand_off(
     redis: AsyncRedisClient, call_id: str, closure: InterviewClosure, *, uid: str
 ) -> CallStatus:
-    """Record a hand-off's answer on the call of *uid*'s, naming them. Returns
-    the call's status. A call answered ``handed_off`` or ``failed`` leaves the
-    pending set; one still waiting for a confirm stays in it. A call answered
-    without words of record is no take, so the take before it, waiting on
-    it, is handed off now (:func:`settle_the_take_before`)."""
+    """Record a hand-off's answer on the call of *uid*'s, naming them, and
+    take the call out of the pending set. Returns the call's status. A call
+    answered without words of record is no take, so the take before it,
+    waiting on it, is handed off now (:func:`settle_the_take_before`)."""
     status = call_status_after(closure)
-    hand_off = closure.hand_off
     await locks.forget_call_fields(
         redis,
         call_id,
@@ -232,16 +222,13 @@ async def record_hand_off(
             "uid": uid,
             "status": status,
             "ending": closure.ending,
-            "hand_off": hand_off.model_dump(mode="json") if hand_off else None,
+            "hand_off": closure.hand_off.model_dump(mode="json"),
         },
-        *(() if hand_off else ("hand_off",)),
     )
-    if status in (locks.HANDED_OFF, locks.FAILED):
-        await locks.remove_postcall_pending(redis, call_id)
-    if hand_off is not None:
-        record = await _read_quietly(redis, call_id)
-        if record is not None and call_words(record) == "no_words":
-            await settle_the_take_before(redis, record)
+    await locks.remove_postcall_pending(redis, call_id)
+    record = await _read_quietly(redis, call_id)
+    if record is not None and call_words(record) == "no_words":
+        await settle_the_take_before(redis, record)
     return status
 
 
@@ -349,7 +336,6 @@ async def hand_off_call(
     background_tasks: BackgroundTasks,
     *,
     claim: HandOffClaim,
-    confirmed: bool = False,
     by_person: bool = False,
     corrections: str | None = None,
 ) -> InterviewClosure:
@@ -358,9 +344,10 @@ async def hand_off_call(
     or 503) is recorded as a failed answer, then raised.
 
     The person's arm of the ending experiment is the one their call carries
-    (``CallRecord.ending``). *confirmed* hands the words off whatever the arm,
-    as a confirm does; *by_person* is the person's own finish of the call,
-    which makes an accepted take the interview's whatever ended the call.
+    (``CallRecord.ending``), stamped with the answer. *by_person* is the
+    person's own finish of the call, which makes an accepted take the
+    interview's whatever ended the call; its *corrections* go after the
+    words as the person's own.
     An accepted take that may take the interview claims it on the call's
     record first (:func:`locks.claim_interview`): a claim that wins is written
     on the person's onboarding row, and one the person's typing beat answers
@@ -386,7 +373,6 @@ async def hand_off_call(
             own,
             reason=interview_reason(record.end_reason),
             ending=record.ending,
-            confirmed=confirmed,
             corrections=corrections,
             first_task=record.first_task,
             # A failure the finish hands off again accepted nothing, so a take
@@ -443,13 +429,11 @@ async def hand_off_call(
 
 
 def _accepted(closure: InterviewClosure) -> bool:
-    hand_off = closure.hand_off
-    return hand_off is not None and hand_off.status != BrainDumpStatus.failed
+    return closure.hand_off.status != BrainDumpStatus.failed
 
 
 def _superseded(closure: InterviewClosure) -> bool:
-    hand_off = closure.hand_off
-    return hand_off is not None and hand_off.error_code == SUPERSEDED
+    return closure.hand_off.error_code == SUPERSEDED
 
 
 async def _give_the_row_up(record: CallRecord) -> bool:
@@ -464,29 +448,12 @@ async def _give_the_row_up(record: CallRecord) -> bool:
 
 def owed(record: CallRecord) -> bool:
     """Whether *record*'s call is owed a hand-off: it names its owner, its
-    transcript of record is made, no answer is recorded, and its arm hands
-    off as the call closes."""
+    transcript of record is made, and no answer is recorded."""
     return (
         bool(record.uid)
         and record.status == locks.TRANSCRIBED
         and record.transcript_of_record is not None
         and record.hand_off is None
-        and hands_off_on_close(record.ending)
-    )
-
-
-def unconfirmed_too_long(record: CallRecord, now: float) -> bool:
-    """Whether *record*'s call, naming its owner, is a confirm arm's call the
-    person left unconfirmed for ``UNCONFIRMED_HANDOFF_S`` since its
-    transcript was made."""
-    return (
-        bool(record.uid)
-        and record.status == locks.TRANSCRIBED
-        and record.transcript_of_record is not None
-        and record.hand_off is None
-        and not hands_off_on_close(record.ending)
-        and record.transcribed_at is not None
-        and now - record.transcribed_at >= UNCONFIRMED_HANDOFF_S
     )
 
 
@@ -522,17 +489,13 @@ def settle_if_owed(
     return task
 
 
-async def hand_off_owed(call_id: str, *, trigger: str, confirmed: bool = False) -> str:
+async def hand_off_owed(call_id: str, *, trigger: str) -> str:
     """Hand off *call_id*'s call under its claim if it is still owed a
     hand-off and its backoff has passed, then run the pipeline's jobs for
     it. Returns how it ended.
 
     The record is read again once the claim is held, so two polls, two
     replicas, or a poll and the sweep run one hand-off between them.
-    *confirmed* hands off a confirm arm's call left unconfirmed for
-    ``UNCONFIRMED_HANDOFF_S``, as a confirm would; it is not the person's
-    own finish, so it takes the interview only for a call that ran to its
-    close.
     """
     redis = await get_redis_async()
     holder = f"handoff:{uuid.uuid4().hex}"
@@ -552,9 +515,7 @@ async def hand_off_owed(call_id: str, *, trigger: str, confirmed: bool = False) 
     claim = HandOffClaim(redis, call_id, holder)
     try:
         async with claim.renewed():
-            outcome = await _hand_off_held(
-                redis, call_id, background, claim=claim, confirmed=confirmed
-            )
+            outcome = await _hand_off_held(redis, call_id, background, claim=claim)
     finally:
         await release_quietly(redis, call_id, holder)
     HANDOFFS.labels(outcome=outcome, trigger=trigger).inc()
@@ -588,20 +549,12 @@ async def _hand_off_held(
     background: BackgroundTasks,
     *,
     claim: HandOffClaim,
-    confirmed: bool,
 ) -> str:
     record = await locks.read_call(redis, call_id)
-    now = time.time()
-    if (
-        record is None
-        or not (owed(record) or (confirmed and unconfirmed_too_long(record, now)))
-        or not retry_due(record, now)
-    ):
+    if record is None or not owed(record) or not retry_due(record, time.time()):
         return SETTLED
     try:
-        closure = await hand_off_call(
-            redis, record, background, claim=claim, confirmed=confirmed
-        )
+        closure = await hand_off_call(redis, record, background, claim=claim)
     except LostClaim:
         logger.warning(f"Voice call {call_id}: hand-off claim lost; nothing written")
         return LOST_CLAIM
@@ -663,9 +616,7 @@ async def _failed_attempt(
 
 async def sweep(stop: asyncio.Event | None = None) -> list[str]:
     """Hand off, one at a time, every pending call owed a hand-off whose
-    backoff has passed, and every confirm arm's call left unconfirmed for
-    ``UNCONFIRMED_HANDOFF_S``, then every typed interview whose hand-off is
-    owed (``interview.hand_off_owed_typed_interviews``); *stop* ends it
+    backoff has passed, then every typed interview whose hand-off is owed (``interview.hand_off_owed_typed_interviews``); *stop* ends it
     between them. A call that raises is passed over, so one that raises on
     every sweep holds up neither the calls after it nor the typed pass.
     Returns the calls this sweep handed off."""
@@ -691,14 +642,9 @@ async def sweep(stop: asyncio.Event | None = None) -> list[str]:
 async def _sweep_call(redis: AsyncRedisClient, call_id: str, now: float) -> bool:
     """Hand *call_id* off if it is owed one now; whether this sweep did."""
     record = await locks.read_call(redis, call_id)
-    if record is None or not retry_due(record, now):
+    if record is None or not retry_due(record, now) or not owed(record):
         return False
-    if owed(record):
-        outcome = await hand_off_owed(call_id, trigger="sweep")
-    elif unconfirmed_too_long(record, now):
-        outcome = await hand_off_owed(call_id, trigger="unconfirmed", confirmed=True)
-    else:
-        return False
+    outcome = await hand_off_owed(call_id, trigger="sweep")
     return outcome not in (HELD, SETTLED, WAITING)
 
 

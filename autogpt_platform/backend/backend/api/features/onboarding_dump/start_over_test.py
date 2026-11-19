@@ -230,8 +230,8 @@ async def test_a_start_over_retires_the_earlier_typed_interview(
     allowance: AsyncMock,
     dumps: DumpStore,
 ):
-    """A typed interview closed on a confirm arm, never confirmed: nothing of
-    it ran, and its hand-off can never run after the start-over."""
+    """A typed interview closed and not yet handed off: nothing of it ran,
+    and its hand-off can never run after the start-over."""
     stored.session.metadata.onboarding_interview_stage = INTERVIEW_STAGE_CLOSED
     stored.session.metadata.onboarding_interview_ending = PROFILE_CARD
     rig.interviews.typed = stored.session
@@ -436,9 +436,9 @@ async def test_a_waiting_calls_words_never_reach_the_new_interview(
     allowance: AsyncMock,
     dumps: DumpStore,
 ):
-    """A call on a confirm arm whose words still wait for the person, beside
-    a typed interview that closed: starting over gives its words up, so a
-    late confirm, or the sweep, leaves the dump row alone."""
+    """A call whose words are not handed off yet, beside a typed interview
+    that closed: starting over gives its words up, so a late finish, or the
+    sweep, leaves the dump row alone."""
     stored.session.metadata.onboarding_interview_stage = INTERVIEW_STAGE_HANDED_OFF
     rig.interviews.typed = stored.session
     waiting = await rig.call(ending=PROFILE_CARD)
@@ -546,7 +546,7 @@ async def test_a_call_start_over_whose_room_cannot_be_registered_sets_nothing_as
 # ---------- a call taking the interview meanwhile ----------
 
 
-def _closed_on_a_confirm_arm(rig: Rig, stored: StoredInterview) -> None:
+def _closed_not_handed_off(rig: Rig, stored: StoredInterview) -> None:
     stored.session.metadata.onboarding_interview_stage = INTERVIEW_STAGE_CLOSED
     stored.session.metadata.onboarding_interview_ending = PROFILE_CARD
     rig.interviews.typed = stored.session
@@ -558,7 +558,7 @@ async def test_a_call_that_took_the_interview_after_the_read_refuses_the_start_o
     """The read saw the call's words unclaimed; the call's hand-off claimed
     the interview before the start-over did. The claim that stands decides,
     and nothing is set aside."""
-    _closed_on_a_confirm_arm(rig, stored)
+    _closed_not_handed_off(rig, stored)
     waiting = await rig.call(ending=PROFILE_CARD)
     plan = await interview.read_start_over(USER, stored.session.session_id)
     assert plan is not None and plan.unclaimed_calls == (waiting,)
@@ -589,7 +589,7 @@ async def test_a_call_whose_words_are_taking_the_interview_refuses_the_start_ove
     """A call's hand-off claimed the interview and has not yet written it on
     the onboarding row: the start-over is refused, so the row write that
     follows can never land on the new interview."""
-    _closed_on_a_confirm_arm(rig, stored)
+    _closed_not_handed_off(rig, stored)
     taking = await rig.call(ending=PROFILE_CARD)
     await locks.claim_interview(rig.redis, taking, locks.INTERVIEW_TAKEN)
     assert (await rig.read(taking)).hand_off is None
@@ -637,7 +637,7 @@ async def test_a_start_over_while_a_call_is_not_settled_is_refused_until_it_sett
     allowance: AsyncMock,
     status: str | None,
 ):
-    _closed_on_a_confirm_arm(rig, stored)
+    _closed_not_handed_off(rig, stored)
     running = await _call_still_running(rig, status)
 
     with pytest.raises(HTTPException) as refused:
@@ -669,7 +669,7 @@ async def test_a_start_over_while_a_call_is_not_settled_is_refused_until_it_sett
 async def test_applying_a_plan_that_names_a_call_not_settled_sets_nothing_aside(
     rig: Rig, stored: StoredInterview
 ):
-    _closed_on_a_confirm_arm(rig, stored)
+    _closed_not_handed_off(rig, stored)
     settled = await rig.call(ending=PROFILE_CARD)
     running = await _call_still_running(rig)
     plan = interview.StartOver(
@@ -722,6 +722,39 @@ async def test_a_start_over_whose_retired_take_cannot_be_recorded_sets_nothing_a
     opening["open"].assert_not_awaited()
 
     mocker.stop(unwritable)
+    await interview.start_onboarding_interview(
+        USER, start_over=stored.session.session_id
+    )
+
+    assert rig.interviews.typed is fresh.session
+    assert await rig.redis.get(interview.retired_take_key(USER)) == earlier
+    await _type(fresh)
+    await _close_typed(fresh)
+    assert dumps.row.recordingId == f"interview-{fresh.session.session_id}"
+    assert dumps.row.status == BrainDumpStatus.completed
+
+
+async def test_a_start_over_after_a_corrected_interview_retires_its_take(
+    rig: Rig,
+    stored: StoredInterview,
+    opening: dict[str, MagicMock],
+    allowance: AsyncMock,
+    dumps: DumpStore,
+    jobs: dict[str, AsyncMock],
+    mocker: MockerFixture,
+):
+    """A profile card's edits re-ran the take under its own id; starting over
+    retires that take, and the new interview's take replaces it."""
+    rig.interviews.typed = stored.session
+    await _close_typed(stored)
+    earlier = f"interview-{stored.session.session_id}"
+    await _close_typed(stored, corrections="Also: we do snow removal")
+    assert dumps.row is not None and dumps.row.recordingId == earlier
+    assert dumps.row.transcript.endswith("Also: we do snow removal")
+    # The corrected take is still in its second run.
+    dumps.row.status = BrainDumpStatus.extracting
+    fresh = _next_typed_interview(mocker, opening, rig.interviews)
+
     await interview.start_onboarding_interview(
         USER, start_over=stored.session.session_id
     )

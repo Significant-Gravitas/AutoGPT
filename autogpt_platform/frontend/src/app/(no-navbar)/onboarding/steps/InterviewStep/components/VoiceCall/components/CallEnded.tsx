@@ -23,11 +23,13 @@ interface Props {
   arm: EndingArm | null;
   endingData: EndingData;
   isTesterPick: boolean;
-  // The call's take is handed off already: the ending asks nothing again.
+  // The step opened on a call already over: the ending asks nothing again.
   isSettled: boolean;
   // The way to do the interview over, under a call that took it.
   startOver: ReactNode;
   onConfirm: (corrections: string | null) => void;
+  // The ending's edits could not be saved: the way on without them.
+  onLeaveWithoutChanges?: () => void;
   onMeetTeam: () => void;
   onRetry: () => void;
   onCallAgain: () => void;
@@ -48,6 +50,7 @@ export function CallEnded({
   isSettled,
   startOver,
   onConfirm,
+  onLeaveWithoutChanges,
   onMeetTeam,
   onRetry,
   onCallAgain,
@@ -165,6 +168,7 @@ export function CallEnded({
             isTesterPick={isTesterPick}
             isSettled={isSettled}
             onConfirm={onConfirm}
+            onLeaveWithoutChanges={onLeaveWithoutChanges}
             fallback={meetButton}
             startOver={startOver}
           />

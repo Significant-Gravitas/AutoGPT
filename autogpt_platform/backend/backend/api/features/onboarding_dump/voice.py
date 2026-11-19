@@ -41,8 +41,8 @@ Redis for a day, with the arm on it for the hand-off, and makes its
 transcript of record once it ends. Then the person's own routes read the
 call's state (:func:`call_status`, :func:`latest_call`, which name where a
 live call is rejoined), which also starts the call's hand-off here once it is
-owed one (``voice_handoff``), confirm its hand-off or hand it off again
-(:func:`finish_call`), and end a call of theirs live elsewhere, or one whose
+owed one (``voice_handoff``), finish it, hand it off again or correct its
+take (:func:`finish_call`), and end a call of theirs live elsewhere, or one whose
 start they gave up on (:func:`end_call`). Another person's call is 404 on
 every one of them.
 """
@@ -67,9 +67,12 @@ from backend.api.features.onboarding_dump.interview import (
     apply_start_over,
     call_that_took_the_interview,
     call_words,
+    correct_the_take,
     interview_enabled,
+    interview_recording_id,
     read_start_over,
     superseded_take,
+    with_corrections,
 )
 from backend.api.features.onboarding_dump.interview_endings import (
     MODE_ENDINGS,
@@ -502,32 +505,38 @@ async def finish_call(
     *,
     corrections: str | None = None,
 ) -> FinalizeResponse:
-    """The person's confirm of their call, or their retry of its hand-off.
+    """The person's finish of their call: their retry of its hand-off, their
+    taking of the interview with a call cut off or hung up, or the profile
+    card's edits.
 
     A call that took the interview or that another take beat, one whose words
     the pipeline ruled on, or one whose transcript could not be made is
     answered as it stands, so a second click costs nothing; so is a call the
     person's typing superseded, answered ``superseded`` without the pipeline.
-    A call waiting for its confirm, one whose hand-off the pipeline never
+    A call still owed its hand-off, one whose hand-off the pipeline never
     ruled on, or one cut off or hung up with its words accepted hands its
     transcript of record off now, with *corrections* after it as the person's
-    own words,
-    and its accepted take becomes the interview's. The record is read again
-    once this finish holds the call, so a finish that ran meanwhile is
-    answered, never repeated. The pipeline's jobs run after the response.
+    own words, and its accepted take becomes the interview's. A call whose
+    take already took the interview has it corrected with *corrections*
+    instead, once (:func:`_correct_the_call`). The record is read again once
+    this finish holds the call, so a finish that ran meanwhile is answered,
+    never repeated. The pipeline's jobs run after the response.
 
     Raises:
         HTTPException: 404 for a call that is not theirs; 409
             ``call_not_ready`` while its words are not ready or another finish
-            of it is running; 429 and 503 as the pipeline refuses a hand-off,
-            or 503 while the call cannot be read.
+            of it is running, and ``take_not_ready`` while the take a
+            correction corrects is still in the pipeline; 429 and 503 as the
+            pipeline refuses a hand-off or the budget a correction, or 503
+            while the call cannot be read.
     """
     redis = await _bounded(get_redis_async())
     record = await _their_call(redis, user_id, call_id)
     answered = _answer_as_it_stands(record)
-    if answered is not None:
+    if answered is not None and not _correctable(record, corrections):
         return answered
-    _refuse_unless_ready(record)
+    if answered is None:
+        _refuse_unless_ready(record)
     holder = f"finish:{uuid.uuid4().hex}"
     try:
         claimed = await _bounded(
@@ -545,6 +554,11 @@ async def finish_call(
         # Another finish, or the call's job, may have answered since the read
         # above, and the words are judged once.
         record = await _their_call(redis, user_id, call_id)
+        if _correctable(record, corrections):
+            async with claim.renewed():
+                return await _correct_the_call(
+                    redis, record, corrections, background_tasks, claim=claim
+                )
         answered = _answer_as_it_stands(record)
         if answered is not None:
             return answered
@@ -555,19 +569,71 @@ async def finish_call(
                 record,
                 background_tasks,
                 claim=claim,
-                confirmed=True,
                 by_person=True,
                 corrections=corrections,
             )
+            # A take another hand-off made without the edits is corrected
+            # with them now.
+            record = await _their_call(redis, user_id, call_id)
+            if _correctable(record, corrections):
+                return await _correct_the_call(
+                    redis, record, corrections, background_tasks, claim=claim
+                )
     except (LostClaim, LaterCallUnsettled):
         # Another hand-off took the call over, or a later call of the
         # person's could still become a take: the words are not ready.
         raise HTTPException(status_code=409, detail={"code": CALL_NOT_READY}) from None
     finally:
         await _quietly(locks.release_postcall(redis, call_id, holder))
-    if closure.hand_off is None:
-        raise RuntimeError(f"Voice call {call_id} was not handed off")
     return closure.hand_off
+
+
+def _correctable(record: CallRecord, corrections: str | None) -> bool:
+    """Whether a finish with *corrections* corrects *record*'s take: the
+    call's accepted take took the interview, the edits are not already its
+    words, and the call was not corrected before."""
+    transcript = record.transcript_of_record
+    return (
+        bool((corrections or "").strip())
+        and record.took_interview
+        and record.accepted
+        and not record.corrected
+        and transcript is not None
+        and with_corrections(transcript, corrections) != transcript
+    )
+
+
+async def _correct_the_call(
+    redis: AsyncRedisClient,
+    record: CallRecord,
+    corrections: str | None,
+    background_tasks: BackgroundTasks,
+    *,
+    claim: HandOffClaim,
+) -> FinalizeResponse:
+    """Correct the take *record*'s call handed off with the profile card's
+    *corrections*, under the finish's *claim* (``interview.correct_the_take``):
+    the call's record says it was corrected, once. A correction there is
+    nothing to make for is answered with the call's take as it stands."""
+
+    async def mark_corrected() -> bool:
+        await claim.check()
+        return await locks.claim_correction(redis, record.call_id)
+
+    corrected = await correct_the_take(
+        record.uid,
+        interview_recording_id(record.call_id),
+        record.transcript_of_record or "",
+        corrections,
+        background_tasks,
+        input_mode=BrainDumpInputMode.voice,
+        mark_corrected=mark_corrected,
+    )
+    if corrected is not None:
+        return corrected
+    if record.hand_off is None:
+        raise RuntimeError(f"Voice call {record.call_id} has no take to answer")
+    return record.hand_off
 
 
 async def end_call(user_id: str, call_id: str) -> None:

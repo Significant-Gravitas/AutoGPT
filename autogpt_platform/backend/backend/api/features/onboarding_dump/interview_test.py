@@ -19,7 +19,6 @@ from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import interview, quality, service
 from backend.api.features.onboarding_dump.interview_endings import (
-    UNCONFIRMED_HANDOFF_S,
     InterviewEnding,
     TextPick,
 )
@@ -996,26 +995,29 @@ async def test_an_end_signal_close_stamps_the_arm_and_hands_off_by_it(
 @pytest.mark.parametrize(
     "arm",
     [
-        InterviewEnding.PROFILE_CARD,
+        InterviewEnding.PROFILE_CARD.value,
+        # An arm of an earlier release, still stored for people enrolled then.
+        "09-first-task",
     ],
 )
-async def test_an_end_signal_close_on_a_confirm_arm_keeps_its_ending_screen(
+async def test_an_end_signal_close_hands_off_the_profile_card_and_a_dropped_arm_too(
     stored: StoredInterview,
     dumps: DumpStore,
     ending: AsyncMock,
     turn_over: AsyncMock,
-    arm: InterviewEnding,
+    jobs: dict[str, AsyncMock],
+    arm: str,
 ):
-    """The arm is stamped, and the answers wait for the person's confirm."""
-    ending.return_value = arm.value
+    """No arm waits for a confirm: the plan build starts as it closes."""
+    ending.return_value = arm
     _closed_by_end_signal(stored, "Answer order emails in Gmail")
 
     await interview.close_after_turn(USER_ID, stored.session.session_id)
 
-    assert stored.endings == [arm.value]
-    assert stored.stages == []
-    assert stored.session.metadata.onboarding_interview_stage == INTERVIEW_STAGE_CLOSED
-    assert dumps.row is None
+    assert stored.endings == [arm]
+    assert stored.stages == [INTERVIEW_STAGE_HANDED_OFF]
+    assert dumps.row is not None
+    jobs["greeting"].assert_awaited_once_with(SAID)
 
 
 @pytest.mark.asyncio
@@ -1059,46 +1061,24 @@ async def test_a_cap_turn_the_end_signal_closed_is_closed_even_short_of_the_cap(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "arm",
-    [
-        InterviewEnding.PROFILE_CARD,
-    ],
+    "arm", [InterviewEnding.COVERAGE_RING.value, InterviewEnding.PROFILE_CARD.value]
 )
-async def test_a_request_ahead_of_the_turn_s_settle_leaves_the_close_to_the_arm(
+async def test_a_request_ahead_of_the_turn_s_settle_stamps_the_arm_and_hands_off(
     stored: StoredInterview,
     dumps: DumpStore,
     ending: AsyncMock,
     jobs: dict[str, AsyncMock],
-    arm: InterviewEnding,
+    arm: str,
 ):
     """Otto's end signal closed the interview, and a request came in before
     the turn's settle stamped the arm, or after a restart lost it. The
-    fallback closes it as the settle would, so a confirm arm keeps its
-    ending screen instead of being handed off as if the person confirmed."""
-    ending.return_value = arm.value
+    fallback closes it as the settle would."""
+    ending.return_value = arm
     _closed_by_end_signal(stored, "Answer order emails in Gmail")
 
     await interview.hand_off_closed_interview(USER_ID, stored.session.session_id)
 
-    assert stored.endings == [arm.value]
-    assert stored.stages == []
-    assert dumps.row is None
-    jobs["greeting"].assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_a_request_ahead_of_the_turn_s_settle_hands_off_an_automatic_arm(
-    stored: StoredInterview,
-    dumps: DumpStore,
-    ending: AsyncMock,
-    jobs: dict[str, AsyncMock],
-):
-    ending.return_value = InterviewEnding.COVERAGE_RING.value
-    _closed_by_end_signal(stored, "Answer order emails in Gmail")
-
-    await interview.hand_off_closed_interview(USER_ID, stored.session.session_id)
-
-    assert stored.endings == [InterviewEnding.COVERAGE_RING.value]
+    assert stored.endings == [arm]
     assert stored.stages == [INTERVIEW_STAGE_HANDED_OFF]
     assert dumps.row is not None
     jobs["greeting"].assert_awaited_once_with(SAID)
@@ -1286,25 +1266,19 @@ async def test_an_automatic_arm_is_handed_off_as_the_interview_closes(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "arm",
-    [
-        InterviewEnding.PROFILE_CARD,
-    ],
-)
-async def test_a_confirm_arm_closes_and_waits_for_the_confirm(
-    stored: StoredInterview, dumps: DumpStore, ending: AsyncMock, arm
+async def test_the_profile_card_is_handed_off_as_the_interview_closes(
+    stored: StoredInterview, dumps: DumpStore, ending: AsyncMock
 ):
-    ending.return_value = arm.value
+    ending.return_value = InterviewEnding.PROFILE_CARD.value
 
     closure = await _close(stored.session.session_id)
 
-    assert closure.ending == arm.value
-    assert closure.hand_off is None
-    # Closed, so no later turn is taken, and stamped with the arm.
-    assert stored.stages == [INTERVIEW_STAGE_CLOSED]
-    assert stored.endings == [arm.value]
-    assert dumps.row is None
+    assert closure.ending == InterviewEnding.PROFILE_CARD.value
+    assert closure.hand_off.status == BrainDumpStatus.transcribed
+    assert stored.stages == [INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF]
+    assert stored.endings == [InterviewEnding.PROFILE_CARD.value]
+    assert dumps.row is not None and dumps.row.transcript == SAID
+    assert dumps.row.status == BrainDumpStatus.completed
 
 
 @pytest.mark.asyncio
@@ -1322,8 +1296,8 @@ async def test_a_testers_pick_is_stamped_in_place_of_the_experiments_arm(
     assert stored.endings == [InterviewEnding.PROFILE_CARD.value]
     # A pick is no enrolment: the experiment is never read under it.
     ending.assert_not_awaited()
-    # And it ends as its arm does: on the person's confirm.
-    assert closure.hand_off is None
+    # Handed off as it closes, as every arm is.
+    assert closure.hand_off.status == BrainDumpStatus.transcribed
 
 
 @pytest.mark.asyncio
@@ -1343,14 +1317,14 @@ async def test_a_testers_pick_that_cannot_be_read_stamps_no_arm_and_enrols_nobod
 
 
 @pytest.mark.asyncio
-async def test_the_confirm_hands_off_with_the_person_s_corrections(
+async def test_a_finish_before_the_close_hands_off_with_the_person_s_corrections(
     stored: StoredInterview,
     dumps: DumpStore,
     ending: AsyncMock,
     jobs: dict[str, AsyncMock],
+    corrections_store,
 ):
     ending.return_value = InterviewEnding.PROFILE_CARD.value
-    await _close(stored.session.session_id)
 
     response, _ = await _finalize(
         stored.session.session_id, corrections="We have eight staff, not five."
@@ -1361,10 +1335,228 @@ async def test_the_confirm_hands_off_with_the_person_s_corrections(
     assert dumps.row is not None
     assert dumps.row.status == BrainDumpStatus.completed
     assert dumps.row.transcript == words
+    # One run, on the corrected words: nothing to correct afterwards.
     jobs["greeting"].assert_awaited_once_with(words)
+    assert await corrections_store.keys("*") == []
     assert stored.stages == [INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF]
-    # The arm was read once, when the interview closed, and kept.
     ending.assert_awaited_once()
+
+
+# ---------- a profile card's edits after the hand-off ----------
+
+
+@pytest.fixture
+def corrections_store(mocker: MockerFixture):
+    from fakeredis.aioredis import FakeRedis
+
+    redis = FakeRedis(decode_responses=True)
+    mocker.patch.object(interview, "get_redis_async", new=AsyncMock(return_value=redis))
+    return redis
+
+
+CORRECTION = "Not right: Your team: five\nAlso: Your team: eight staff"
+
+
+@pytest.mark.asyncio
+async def test_edits_after_the_hand_off_correct_the_take_and_run_the_plan_again(
+    stored: StoredInterview,
+    dumps: DumpStore,
+    ending: AsyncMock,
+    jobs: dict[str, AsyncMock],
+    extraction: dict[str, AsyncMock],
+    personalization_admission: AsyncMock,
+    corrections_store,
+):
+    ending.return_value = InterviewEnding.PROFILE_CARD.value
+    await _close(stored.session.session_id)
+    assert dumps.row is not None
+    take = dumps.row.recordingId
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting is not None
+    admitted = personalization_admission.await_count
+
+    response, _ = await _finalize(stored.session.session_id, corrections=CORRECTION)
+
+    words = f"{SAID}\n{CORRECTION}"
+    assert response.status == BrainDumpStatus.transcribed
+    # The same take, its words corrected, its plan built again from them.
+    assert dumps.row.recordingId == take
+    assert dumps.row.transcript == words
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.statuses[-3:] == [
+        BrainDumpStatus.transcribed,
+        BrainDumpStatus.extracting,
+        BrainDumpStatus.completed,
+    ]
+    assert [c.args[0] for c in jobs["greeting"].await_args_list] == [SAID, words]
+    assert [c.args[0] for c in jobs["providers"].await_args_list] == [SAID, words]
+    # Admitted against the personalization budget, never judged again.
+    assert personalization_admission.await_count == admitted + 1
+    assert extraction["upsert_business_understanding"].await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_a_take_is_corrected_once(
+    stored: StoredInterview,
+    dumps: DumpStore,
+    ending: AsyncMock,
+    jobs: dict[str, AsyncMock],
+    corrections_store,
+):
+    ending.return_value = InterviewEnding.PROFILE_CARD.value
+    await _close(stored.session.session_id)
+    await _finalize(stored.session.session_id, corrections=CORRECTION)
+    assert dumps.row is not None
+    corrected = dumps.row.transcript
+
+    again, _ = await _finalize(stored.session.session_id, corrections="Also: vans")
+
+    assert again.status == BrainDumpStatus.completed
+    assert dumps.row.transcript == corrected
+    assert jobs["greeting"].await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status",
+    [
+        BrainDumpStatus.recording_uploaded,
+        BrainDumpStatus.transcribed,
+        BrainDumpStatus.extracting,
+    ],
+)
+async def test_edits_while_the_take_is_still_in_the_pipeline_are_not_ready(
+    stored: StoredInterview,
+    dumps: DumpStore,
+    ending: AsyncMock,
+    jobs: dict[str, AsyncMock],
+    corrections_store,
+    status: BrainDumpStatus,
+):
+    ending.return_value = InterviewEnding.PROFILE_CARD.value
+    await _close(stored.session.session_id)
+    assert dumps.row is not None
+    dumps.row.status = status
+
+    with pytest.raises(HTTPException) as refused:
+        await _finalize(stored.session.session_id, corrections=CORRECTION)
+
+    assert refused.value.status_code == 409
+    assert refused.value.detail == {"code": interview.TAKE_NOT_READY}
+    assert dumps.row.transcript == SAID
+    assert await corrections_store.keys("*") == []
+    jobs["greeting"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [429, 503])
+async def test_a_budget_refusal_of_a_correction_changes_nothing(
+    stored: StoredInterview,
+    dumps: DumpStore,
+    ending: AsyncMock,
+    jobs: dict[str, AsyncMock],
+    personalization_admission: AsyncMock,
+    corrections_store,
+    status_code: int,
+):
+    ending.return_value = InterviewEnding.PROFILE_CARD.value
+    await _close(stored.session.session_id)
+    assert dumps.row is not None
+    before = dumps.row.model_copy()
+    personalization_admission.side_effect = HTTPException(status_code=status_code)
+
+    with pytest.raises(HTTPException) as refused:
+        await _finalize(stored.session.session_id, corrections=CORRECTION)
+
+    assert refused.value.status_code == status_code
+    assert dumps.row.transcript == before.transcript
+    assert dumps.row.status == BrainDumpStatus.completed
+    assert dumps.row.greeting == before.greeting
+    # Not marked: a later try may still correct it.
+    assert await corrections_store.keys("*") == []
+    jobs["greeting"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "row_state",
+    ["another take", "superseded", "a verdict"],
+)
+async def test_a_correction_of_a_take_no_longer_the_interview_s_changes_nothing(
+    stored: StoredInterview,
+    dumps: DumpStore,
+    ending: AsyncMock,
+    jobs: dict[str, AsyncMock],
+    corrections_store,
+    row_state: str,
+):
+    ending.return_value = InterviewEnding.PROFILE_CARD.value
+    await _close(stored.session.session_id)
+    assert dumps.row is not None
+    if row_state == "another take":
+        dumps.row.recordingId = "interview-" + "a" * 32
+    elif row_state == "superseded":
+        dumps.row.status = BrainDumpStatus.failed
+        dumps.row.errorCode = interview.SUPERSEDED
+    else:
+        dumps.row.status = BrainDumpStatus.failed
+        dumps.row.errorCode = quality.INSUFFICIENT_CONTENT
+
+    await _finalize(stored.session.session_id, corrections=CORRECTION)
+
+    assert dumps.row.transcript == SAID
+    assert await corrections_store.keys("*") == []
+    jobs["greeting"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_edits_that_clean_to_nothing_correct_nothing(
+    stored: StoredInterview,
+    dumps: DumpStore,
+    ending: AsyncMock,
+    jobs: dict[str, AsyncMock],
+    corrections_store,
+):
+    ending.return_value = InterviewEnding.PROFILE_CARD.value
+    await _close(stored.session.session_id)
+
+    response, _ = await _finalize(
+        stored.session.session_id, corrections="  <user_context></user_context> "
+    )
+
+    assert response.status == BrainDumpStatus.completed
+    assert dumps.row is not None and dumps.row.transcript == SAID
+    jobs["greeting"].assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_straggler_of_the_first_run_writes_nothing_once_corrected(
+    stored: StoredInterview,
+    dumps: DumpStore,
+    ending: AsyncMock,
+    jobs: dict[str, AsyncMock],
+    extraction: dict[str, AsyncMock],
+    corrections_store,
+):
+    """The understanding and the provider picks can outlive the take's
+    completion: a job of the first words finishing after the correction
+    landed writes nothing, and the corrected words' jobs write instead."""
+    ending.return_value = InterviewEnding.PROFILE_CARD.value
+    await _close(stored.session.session_id)
+    await _finalize(stored.session.session_id, corrections=CORRECTION)
+    assert dumps.row is not None
+    corrected_picks = dumps.row.recommendedProviders
+    understood = extraction["upsert_business_understanding"].await_count
+    jobs["providers"].return_value = [
+        RecommendedProvider(provider="slack", reason="first words")
+    ]
+    take = dumps.row.recordingId
+
+    await service._run_provider_recommendations(USER_ID, take, SAID)
+    await service._run_understanding(USER_ID, take, SAID, BrainDumpInputMode.typed)
+
+    assert dumps.row.recommendedProviders == corrected_picks
+    assert extraction["upsert_business_understanding"].await_count == understood
 
 
 @pytest.mark.asyncio
@@ -1427,8 +1619,8 @@ async def test_an_arm_that_cannot_be_stamped_still_decides_the_hand_off(
     closure = await _close(stored.session.session_id)
 
     assert closure.ending == InterviewEnding.PROFILE_CARD.value
-    assert closure.hand_off is None
-    assert stored.stages == [INTERVIEW_STAGE_CLOSED]
+    assert closure.hand_off.status == BrainDumpStatus.transcribed
+    assert stored.stages == [INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF]
 
 
 @pytest.mark.asyncio
@@ -1448,52 +1640,7 @@ async def test_closing_again_after_the_hand_off_changes_nothing(
 
 
 @pytest.mark.asyncio
-async def test_someone_who_left_a_confirm_screen_is_handed_off_by_a_request_an_hour_on(
-    stored: StoredInterview, dumps: DumpStore, ending: AsyncMock
-):
-    ending.return_value = InterviewEnding.PROFILE_CARD.value
-    await _close(stored.session.session_id)
-    assert dumps.row is None
-    stored.session.updated_at = datetime.now(UTC) - timedelta(
-        seconds=UNCONFIRMED_HANDOFF_S
-    )
-
-    await interview.hand_off_closed_interview(USER_ID, stored.session.session_id)
-
-    assert stored.stages == [INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF]
-    assert dumps.row is not None
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "arm",
-    [
-        InterviewEnding.PROFILE_CARD,
-    ],
-)
-async def test_a_reload_of_a_confirm_screen_keeps_it_waiting_for_the_confirm(
-    stored: StoredInterview,
-    dumps: DumpStore,
-    ending: AsyncMock,
-    arm: InterviewEnding,
-):
-    ending.return_value = arm.value
-    await _close(stored.session.session_id)
-
-    await interview.hand_off_closed_interview(USER_ID, stored.session.session_id)
-
-    assert stored.stages == [INTERVIEW_STAGE_CLOSED]
-    assert dumps.row is None
-
-    await _finalize(stored.session.session_id, corrections="Also: Etsy orders")
-
-    assert dumps.row is not None
-    assert dumps.row.transcript == f"{SAID}\nAlso: Etsy orders"
-    assert stored.stages == [INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF]
-
-
-@pytest.mark.asyncio
-async def test_an_interview_at_the_cap_that_never_closed_closes_by_its_arm(
+async def test_an_interview_at_the_cap_that_never_closed_is_closed_and_handed_off(
     stored: StoredInterview, dumps: DumpStore, ending: AsyncMock
 ):
     _at_the_cap(stored.session)
@@ -1501,8 +1648,8 @@ async def test_an_interview_at_the_cap_that_never_closed_closes_by_its_arm(
 
     await interview.hand_off_closed_interview(USER_ID, stored.session.session_id)
 
-    assert stored.stages == [INTERVIEW_STAGE_CLOSED]
-    assert dumps.row is None
+    assert stored.stages == [INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF]
+    assert dumps.row is not None
 
 
 @pytest.mark.asyncio
@@ -1759,36 +1906,24 @@ async def test_a_voice_call_on_an_automatic_arm_is_handed_off_when_it_ends(
 
 
 @pytest.mark.asyncio
-async def test_a_voice_call_on_a_confirm_arm_waits_for_the_confirm(
-    dumps: DumpStore, voice_calls: VoiceCalls
+@pytest.mark.parametrize(
+    "arm", [InterviewEnding.PROFILE_CARD.value, "09-first-task", None]
+)
+async def test_a_voice_call_is_handed_off_as_it_closes_whatever_its_arm(
+    dumps: DumpStore, voice_calls: VoiceCalls, arm: str | None
 ):
     voice_calls.latest = "call-1"
-    arm = InterviewEnding.PROFILE_CARD.value
+    background = BackgroundTasks()
 
     closure = await interview.close_voice_interview(
-        USER_ID, "call-1", SAID, BackgroundTasks(), reason="confirmed", ending=arm
-    )
-
-    assert closure.ending == InterviewEnding.PROFILE_CARD.value
-    assert closure.hand_off is None
-    assert dumps.row is None
-
-    background = BackgroundTasks()
-    confirmed = await interview.close_voice_interview(
-        USER_ID,
-        "call-1",
-        SAID,
-        background,
-        reason="confirmed",
-        ending=arm,
-        confirmed=True,
-        corrections="Eight staff.",
+        USER_ID, "call-1", SAID, background, reason="confirmed", ending=arm
     )
     await background()
 
-    assert confirmed.hand_off is not None
+    assert closure.ending == arm
+    assert closure.hand_off.status == BrainDumpStatus.transcribed
     assert dumps.row is not None
-    assert dumps.row.transcript == f"{SAID}\nEight staff."
+    assert dumps.row.transcript == SAID
 
 
 @pytest.mark.asyncio
@@ -1821,7 +1956,7 @@ async def test_a_voice_call_hands_off_the_persons_words_not_its_end_tools_task(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("arm", [InterviewEnding.PROFILE_CARD])
-async def test_a_voice_confirm_hands_its_corrections_off_as_the_persons_words(
+async def test_a_voice_finish_hands_its_corrections_off_as_the_persons_words(
     dumps: DumpStore,
     ending: AsyncMock,
     jobs: dict[str, AsyncMock],
@@ -1838,7 +1973,6 @@ async def test_a_voice_confirm_hands_its_corrections_off_as_the_persons_words(
         background,
         reason="confirmed",
         ending=arm.value,
-        confirmed=True,
         corrections="Start with the invoices.",
         first_task="Responder correos de pedidos",
     )
@@ -1893,7 +2027,7 @@ async def test_a_voice_call_the_persons_typing_superseded_runs_no_pipeline(
     await locks.claim_interview(voice_calls.redis, "call-1", locks.INTERVIEW_SUPERSEDED)
 
     closure = await interview.close_voice_interview(
-        USER_ID, "call-1", SAID, BackgroundTasks(), reason="confirmed", confirmed=True
+        USER_ID, "call-1", SAID, BackgroundTasks(), reason="confirmed"
     )
 
     assert closure.hand_off == _call_take(interview.SUPERSEDED)
@@ -2140,9 +2274,8 @@ async def test_the_servers_close_after_a_call_took_the_interview_keeps_the_calls
 async def test_the_fallback_after_a_call_took_the_interview_hands_nothing_off(
     stored: StoredInterview, dumps: DumpStore, voice_calls: VoiceCalls
 ):
-    """An interview closed on a confirm arm and left unconfirmed is handed off
-    by the next request, which a call taking the interview answers without a
-    refusal."""
+    """An interview closed but not handed off is handed off by the next
+    request, which a call taking the interview answers without a refusal."""
     stored.session.metadata.onboarding_interview_stage = INTERVIEW_STAGE_CLOSED
     stored.session.metadata.onboarding_interview_ending = (
         InterviewEnding.PROFILE_CARD.value

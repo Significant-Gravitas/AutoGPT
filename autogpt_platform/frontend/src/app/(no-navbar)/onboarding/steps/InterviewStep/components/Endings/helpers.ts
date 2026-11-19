@@ -16,11 +16,6 @@ export const MODE_ARMS: Record<EndingMode, EndingArm[]> = {
   voice: ["02-profile-card"],
 };
 
-// The arms that end on the person's confirm, as the server's CONFIRM_ENDINGS.
-export const CONFIRM_ARMS: ReadonlySet<EndingArm> = new Set<EndingArm>([
-  "02-profile-card",
-]);
-
 export function endingArmOf(value: unknown): EndingArm | null {
   return typeof value === "string" && value in ENDING_NAMES
     ? (value as EndingArm)

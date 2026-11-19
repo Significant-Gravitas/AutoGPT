@@ -249,6 +249,14 @@ class DumpStore:
             self.statuses.append(status)
         return True
 
+    async def update_take_words(
+        self, user_id: str, recording_id: str, transcript: str, **fields: Any
+    ) -> bool:
+        """Mirrors the guarded UPDATE: words the take no longer holds miss."""
+        if self.row is None or self.row.transcript != transcript:
+            return False
+        return await self.update_dump(user_id, recording_id, **fields)
+
     async def clear_audio_paths(self, audio_paths: list[str]) -> int:
         if self.row is None or self.row.audioPath not in audio_paths:
             return 0
@@ -332,6 +340,7 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     mocker.patch(f"{module}.get_dump", new=store.get_dump)
     mocker.patch(f"{module}.start_dump", new=store.start_dump)
     mocker.patch(f"{module}.update_dump", new=store.update_dump)
+    mocker.patch(f"{module}.update_take_words", new=store.update_take_words)
     mocker.patch(f"{module}.mark_failed", new=store.mark_failed)
     mocker.patch(f"{module}.claim_transition", new=store.claim_transition)
     mocker.patch(f"{module}.mark_greeting_seen", new=store.mark_greeting_seen)

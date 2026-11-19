@@ -1,5 +1,5 @@
-"""The ending experiment's arms: where each is offered, and which wait for a
-confirm."""
+"""The ending experiment's arms: where each is offered, and a tester's
+pick."""
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
@@ -10,13 +10,11 @@ from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import interview_endings
 from backend.api.features.onboarding_dump.interview_endings import (
-    CONFIRM_ENDINGS,
     ENDING_EXPERIMENTS,
     MODE_ENDINGS,
     InterviewEnding,
     TextPick,
     assigned_ending,
-    hands_off_on_close,
 )
 from backend.data.experiments import Experiment, ExperimentAssignment
 
@@ -51,28 +49,20 @@ def test_each_mode_has_its_own_experiment() -> None:
     )
 
 
-def test_the_profile_card_ends_on_a_confirm() -> None:
-    assert CONFIRM_ENDINGS == {"02-profile-card"}
-    for ending in InterviewEnding:
-        assert hands_off_on_close(ending.value) is (ending.value not in CONFIRM_ENDINGS)
-
-
-@pytest.mark.parametrize(
-    "variant",
-    [
-        None,
-        "an-arm-this-code-does-not-know",
-        # Arms of an earlier release, still stored for people enrolled then.
-        "03-summary-chips",
-        "04-team-reveal",
-        "08-transcript-highlights",
-        "09-first-task",
-    ],
-)
-def test_anyone_not_enrolled_or_on_a_dropped_arm_is_handed_off_as_it_closes(
-    variant: str | None,
+@pytest.mark.asyncio
+async def test_an_arm_of_an_earlier_release_is_read_as_stored(
+    mocker: MockerFixture,
 ) -> None:
-    assert hands_off_on_close(variant)
+    """A person enrolled on an arm this code dropped keeps it on their
+    interview; every arm hands off as the interview closes, and the step
+    shows it as Default."""
+    mocker.patch.object(
+        interview_endings.experiments,
+        "assign",
+        new=AsyncMock(return_value=_assignment("09-first-task")),
+    )
+
+    assert await assigned_ending("user-1", "voice") == "09-first-task"
 
 
 def _assignment(variant: str) -> ExperimentAssignment:

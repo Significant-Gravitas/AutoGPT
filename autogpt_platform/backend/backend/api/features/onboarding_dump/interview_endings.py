@@ -8,10 +8,9 @@ The arm is read through ``backend.data.experiments``, which stores it on
 first read: it stays the same whether or not the browser may report
 analytics, and the ``analytics.*`` views split by it.
 
-The arms are almost entirely frontend. The backend's part is when the answers
-reach the onboarding pipeline: on the person's confirm for the arms that end
-on one (:data:`CONFIRM_ENDINGS`), as soon as the interview closes for every
-other arm and for anyone not enrolled.
+The arms are frontend: every interview is handed off to the onboarding
+pipeline as it closes, whatever its arm. A profile card's edits reach the
+take afterwards, as a correction of it (``interview.correct_the_take``).
 """
 
 import logging
@@ -47,24 +46,6 @@ MODE_ENDINGS: dict[InterviewMode, frozenset[InterviewEnding]] = {
     "text": frozenset({InterviewEnding.PROFILE_CARD, InterviewEnding.COVERAGE_RING}),
     "voice": frozenset({InterviewEnding.PROFILE_CARD}),
 }
-
-# The arms that end on a screen the person confirms: their answers are
-# handed off on that confirm, with any corrections made there.
-CONFIRM_ENDINGS: frozenset[str] = frozenset({InterviewEnding.PROFILE_CARD.value})
-
-# A confirm arm's interview left unconfirmed this long after it closed is
-# handed off as if confirmed: a call's from its transcript, a typed one's
-# from the interview's last change.
-UNCONFIRMED_HANDOFF_S = 3600.0
-
-
-def hands_off_on_close(ending: str | None) -> bool:
-    """Whether an interview ending on *ending* is handed off as it closes.
-
-    True for every arm but the confirm arms, and for anyone not enrolled
-    (``None``) or on a variant this code does not know.
-    """
-    return ending not in CONFIRM_ENDINGS
 
 
 async def assigned_ending(user_id: str, mode: InterviewMode) -> str | None:

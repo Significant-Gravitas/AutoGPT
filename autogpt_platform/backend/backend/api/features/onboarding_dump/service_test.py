@@ -74,12 +74,16 @@ class DumpStore:
     async def get_dump(self, user_id: str) -> OnboardingBrainDump | None:
         return self.row
 
-    async def owns_dump(self, user_id: str, recording_id: str) -> bool:
+    async def owns_dump(
+        self, user_id: str, recording_id: str, transcript: str | None = None
+    ) -> bool:
         """Mirrors the real read: a take given up for a newer one owns
-        nothing, though it is still on the row."""
+        nothing, though it is still on the row, and nor does a job of words
+        the take no longer holds."""
         return (
             self.row is not None
             and self.row.recordingId == recording_id
+            and (transcript is None or self.row.transcript == transcript)
             and not (
                 self.row.status == BrainDumpStatus.failed
                 and self.row.errorCode == db.SUPERSEDED_TAKE
@@ -155,6 +159,14 @@ class DumpStore:
         if "transcript" in fields:
             self.transcripts.append(fields["transcript"])
         return True
+
+    async def update_take_words(
+        self, user_id: str, recording_id: str, transcript: str, **fields: Any
+    ) -> bool:
+        """Mirrors the guarded UPDATE: words the take no longer holds miss."""
+        if self.row is None or self.row.transcript != transcript:
+            return False
+        return await self.update_dump(user_id, recording_id, **fields)
 
     async def store_greeting(
         self, user_id: str, recording_id: str, greeting: str, prompts: list[Any]
@@ -264,6 +276,7 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     mocker.patch(f"{module}.owns_dump", new=store.owns_dump)
     mocker.patch(f"{module}.start_dump", new=store.start_dump)
     mocker.patch(f"{module}.update_dump", new=store.update_dump)
+    mocker.patch(f"{module}.update_take_words", new=store.update_take_words)
     mocker.patch(f"{module}.mark_failed", new=store.mark_failed)
     mocker.patch(f"{module}.claim_transition", new=store.claim_transition)
     mocker.patch(f"{module}.mark_greeting_seen", new=store.mark_greeting_seen)

@@ -9,11 +9,12 @@ interview takes are in ``backend.copilot.onboarding_interview``.
 
 An interview closes in one place, :func:`close_onboarding_interview`,
 whatever ends it: the reply cap, the scope guard, the end signal, or the
-person on screen (:func:`finalize_onboarding_interview`, the confirm). Every
+person on screen (:func:`finalize_onboarding_interview`, the finish). Every
 dispatched turn settles once it ends (:func:`close_after_turn`), so a turn
-that ended the interview is closed here whichever way it ended it. The
-person's arm of the ending experiment (``interview_endings``) decides when
-the answers are handed off: as it closes, or on the confirm.
+that ended the interview is closed here whichever way it ended it. Every
+interview is handed off as it closes, whatever its arm of the ending
+experiment (``interview_endings``); what the person changes on the profile
+card afterwards corrects the take once (:func:`correct_the_take`).
 
 An interview ends where a brain dump does: with what the user said. So it is
 handed over as a take with no recording to transcribe, ``typed`` for the typed
@@ -36,7 +37,7 @@ refuses a call once the typed interview is over; the typed interview is
 refused while a call of theirs is live, and is over once a call took the
 interview (:func:`refuse_while_a_call_holds_the_interview`). A call takes it
 when its words were accepted and the call ran to its close, or the person
-confirmed it; a call that was cut off, or that the person hung up, leaves
+finished it; a call that was cut off, or that the person hung up, leaves
 the interview open, for a later call or the typed interview to replace its
 take. The take the person made
 last owns the interview: their first typed message after a call ended
@@ -50,8 +51,7 @@ import asyncio
 import logging
 import re
 import time
-from collections.abc import Sequence
-from datetime import UTC, datetime
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Literal
 
 from fastapi import BackgroundTasks, HTTPException
@@ -61,10 +61,8 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from backend.api.features.onboarding_dump import db as dump_db
 from backend.api.features.onboarding_dump import quality, service
 from backend.api.features.onboarding_dump.interview_endings import (
-    UNCONFIRMED_HANDOFF_S,
     InterviewMode,
     assigned_ending,
-    hands_off_on_close,
     text_pick,
 )
 from backend.api.features.onboarding_dump.models import (
@@ -381,7 +379,7 @@ async def call_that_took_the_interview(user_id: str) -> str | None:
     None.
 
     A call takes the interview when the pipeline accepted its words and the
-    call ran to its close, or the person confirmed it; one that was cut off,
+    call ran to its close, or the person finished it; one that was cut off,
     or that the person hung up, leaves the interview open
     (``voice_handoff``). The hand-off writes
     that on the person's onboarding row, which outlives the call's record,
@@ -917,8 +915,8 @@ async def close_after_turn(
     open, so the user can send again. Whatever the reason, a turn in which
     Otto's end signal closed the interview is closed here as confirmed
     (``reason="confirmed"``): the end signal only moves the stage, so this is
-    where its ending arm is stamped, and an arm that ends on a confirm keeps
-    its ending screen. An interview already handed off is left alone.
+    where its ending arm is stamped and its hand-off made. An interview
+    already handed off is left alone.
 
     A wait that runs out, or a restart that ends it, leaves the close to the
     next request on the interview (:func:`admit_onboarding_interview_turn`).
@@ -958,18 +956,12 @@ async def hand_off_closed_interview(user_id: str, session_id: str) -> None:
     handed off; any other interview is left alone.
 
     One that used up its replies but never closed is closed now, as the cap
-    closes it, and its arm decides the hand-off. One closed with its arm
-    stamped is handed off by its arm: an automatic arm at once, which covers
-    a hand-off that failed; a confirm arm only once it has gone unconfirmed
-    for ``UNCONFIRMED_HANDOFF_S``, as a call's does, so a reload of its
-    ending screen keeps the person's confirm and corrections. One closed
-    with no arm stamped is closed here as its turn's settle closes it
-    (:func:`close_after_turn`), so the arm is read and decides the hand-off:
-    Otto's end signal closes an interview inside a turn, and a request can
-    arrive before that turn's settle has stamped the arm, or after a restart
-    lost it. A confirm arm then keeps its ending screen, and anyone not
-    enrolled is handed off now. One whose hand-off is owed is handed off as
-    owed, with the corrections its close was handed
+    closes it. One closed but not handed off is handed off now, which covers
+    a hand-off that failed, and a request that arrives before the closing
+    turn's settle stamped its arm, or after a restart lost it: Otto's end
+    signal closes an interview inside a turn, and the close here stamps the
+    arm as the settle would (:func:`close_after_turn`). One whose hand-off is
+    owed is handed off as owed, with the corrections its close was handed
     (:func:`hand_off_owed_typed_interview`).
 
     Background work: its pipeline jobs run here, rather than after a response.
@@ -993,26 +985,9 @@ async def hand_off_closed_interview(user_id: str, session_id: str) -> None:
     if stage == INTERVIEW_STAGE_HANDED_OFF:
         return
     if stage == INTERVIEW_STAGE_CLOSED:
-        if stored.metadata.onboarding_interview_ending is None:
-            await close_onboarding_interview(user_id, session_id, reason="confirmed")
-        else:
-            # The server's own hand-off, not the person's confirm: an
-            # interview a call took is answered superseded, never refused.
-            await close_onboarding_interview(
-                user_id,
-                session_id,
-                reason="user",
-                confirmed=_unconfirmed_too_long(stored),
-            )
+        await close_onboarding_interview(user_id, session_id, reason="confirmed")
     elif interview_reached_cap(session):
         await close_onboarding_interview(user_id, session_id, reason="cap")
-
-
-def _unconfirmed_too_long(stored: ChatSessionInfo) -> bool:
-    """Whether a closed interview has waited ``UNCONFIRMED_HANDOFF_S`` since
-    its last change, its close or later, for a confirm that never came."""
-    waited = datetime.now(UTC) - stored.updated_at
-    return waited.total_seconds() >= UNCONFIRMED_HANDOFF_S
 
 
 class InterviewClosure(BaseModel):
@@ -1023,9 +998,8 @@ class InterviewClosure(BaseModel):
     # The person's arm of the ending experiment; None for anyone not
     # enrolled.
     ending: str | None
-    # The take the answers became, once handed off; None while the arm waits
-    # for the person's confirm.
-    hand_off: FinalizeResponse | None
+    # The take the answers became.
+    hand_off: FinalizeResponse
     # A voice call's answer ``superseded`` because another take owns the
     # interview (:func:`_call_standing`), ruled before the dump row was
     # touched; not one the row gave.
@@ -1037,7 +1011,6 @@ async def close_onboarding_interview(
     session_id: str,
     *,
     reason: InterviewEndReason,
-    confirmed: bool = False,
     corrections: str | None = None,
     background_tasks: BackgroundTasks | None = None,
 ) -> InterviewClosure:
@@ -1046,10 +1019,8 @@ async def close_onboarding_interview(
     Marks the stage ``closed`` first, forward-only, so every later turn is
     refused while the rest runs. Then reads the person's arm of the text
     ending experiment on the server (never from the client), stamps it onto
-    the session once, and starts the hand-off the arm calls for: now for an
-    automatic arm or anyone not enrolled, and for an arm that ends on a
-    confirm only when this call is that confirm (*confirmed*). A confirm's
-    *corrections* reach the hand-off as the person's own words.
+    the session once, and hands the interview off, whatever the arm. A
+    finish's *corrections* reach the hand-off as the person's own words.
 
     Safe to call again: an interview closes and is handed off once, and a
     call on one already handed off describes its take as it stands. It is
@@ -1101,8 +1072,6 @@ async def close_onboarding_interview(
         return InterviewClosure(ending=ending, hand_off=superseded_take())
     if ending is None:
         ending = await _stamp_ending(user_id, session_id, "text")
-    if not (confirmed or hands_off_on_close(ending)):
-        return InterviewClosure(ending=ending, hand_off=None)
     tasks = background_tasks if background_tasks is not None else BackgroundTasks()
     response = await hand_off_interview_transcript(
         user_id,
@@ -1325,8 +1294,7 @@ async def hand_off_owed_typed_interview(user_id: str) -> None:
     What the call's hand-off starts once it gives up the row its take held
     (``voice_handoff``), what a typed request starts for a closed interview
     (:func:`hand_off_closed_interview`), and what the REST API's sweep runs
-    for any left behind. An interview waiting for the person's confirm owes
-    nothing, so this never hands one off ahead of it.
+    for any left behind.
 
     Background work: its pipeline jobs run here, rather than after a response.
     """
@@ -1344,11 +1312,7 @@ async def hand_off_owed_typed_interview(user_id: str) -> None:
         await _forget_the_hand_off(user_id)
         return
     await close_onboarding_interview(
-        user_id,
-        owed.session_id,
-        reason="user",
-        confirmed=True,
-        corrections=owed.corrections,
+        user_id, owed.session_id, reason="user", corrections=owed.corrections
     )
     _, stored = await _read_interview(user_id, owed.session_id)
     if stored.metadata.onboarding_interview_stage == INTERVIEW_STAGE_HANDED_OFF:
@@ -1406,7 +1370,7 @@ def voice_hand_off_closes_interview(response: FinalizeResponse) -> bool:
     ``handed_off``.
 
     It is for an accepted take, which takes the person's interview when the
-    call ran to its close or the person confirmed it
+    call ran to its close or the person finished it
     (``voice_handoff``), and for ``superseded``: another take owns the
     interview and this one must never replace it. Unlike the typed
     interview's, a verdict on the words leaves the interview open, since a
@@ -1451,25 +1415,21 @@ async def close_voice_interview(
     *,
     reason: InterviewEndReason,
     ending: str | None = None,
-    confirmed: bool = False,
     corrections: str | None = None,
     first_task: str | None = None,
     unanswered: bool = False,
 ) -> InterviewClosure:
     """The voice interview's hand-off: what the REST API runs once the relay
     has made a call's transcript of record (``voice_handoff``), and what the
-    call's finish route runs for a confirm or a retry.
+    call's finish route runs for a retry.
 
     *transcript* is the person's side of the call's transcript of record, one
     turn per line, and *call_id* names the take it becomes: each call is a
     take of its own, so a later call replaces an earlier one's take as any
-    re-take does. The person's arm of the voice ending experiment, *ending*,
-    decides when: an automatic arm, or no enrolment, hands the words to the
-    onboarding pipeline now; an arm that ends on a confirm leaves that to the
-    confirm, which calls this again with *confirmed* and any *corrections*
-    made on its screen. Until then the call's record keeps the transcript.
-    The arm is read by the call's start route, where flags are read, and
-    comes with the call's record.
+    re-take does. The words go to the onboarding pipeline now, whatever the
+    person's arm of the voice ending experiment, *ending*, with a finish's
+    *corrections* after them. The arm is read by the call's start route,
+    where flags are read, and comes with the call's record.
     *first_task* is the task the call's end tool carried; the hand-off goes on
     the person's own words, as the typed interview's does, and the call's
     record keeps the task.
@@ -1480,8 +1440,8 @@ async def close_voice_interview(
     ended, or their typed interview is over (:func:`_call_standing`). While a
     later call of theirs could still become a take, this raises
     :class:`LaterCallUnsettled` and hands nothing off. A call where nothing
-    was said is answered ``no_usable_speech`` whatever the arm, as there is
-    nothing to confirm.
+    was said is answered ``no_usable_speech``, as there is nothing to hand
+    off.
     Whether the answer is over for the call is
     :func:`voice_hand_off_closes_interview`; whether it takes the interview
     is the call's hand-off's to claim (``voice_handoff``).
@@ -1503,14 +1463,12 @@ async def close_voice_interview(
     if standing == "waiting":
         raise LaterCallUnsettled
     if not transcript.strip():
-        # Nothing was said, so nothing to confirm or correct: corrections
-        # alone never make a call a take (:func:`call_words`).
+        # Nothing was said, so nothing to correct: corrections alone never
+        # make a call a take (:func:`call_words`).
         return InterviewClosure(
             ending=None, hand_off=_nothing_said(BrainDumpInputMode.voice)
         )
     words = with_corrections(transcript, corrections)
-    if not (confirmed or hands_off_on_close(ending)):
-        return InterviewClosure(ending=ending, hand_off=None)
     logger.info(f"Voice onboarding interview {call_id[:12]} handed off: {reason}")
     response = await _hand_off_call_words(
         user_id, call_id, words, background_tasks, unanswered=unanswered
@@ -1661,12 +1619,13 @@ async def finalize_onboarding_interview(
     *,
     corrections: str | None = None,
 ) -> FinalizeResponse:
-    """The person's confirm: close the interview, if it is still open, and
-    hand it to the brain-dump pipeline now, whatever the arm.
+    """The person's finish: close the interview, if it is still open, and
+    hand it to the brain-dump pipeline now.
 
-    What an ending screen's confirm calls, with any corrections the person
+    What an ending screen's button calls, with any corrections the person
     made on it, and what a route calls when the person ends the interview on
-    screen. Runs through :func:`close_onboarding_interview`, so it is
+    screen. Corrections made once the interview's take was handed off
+    correct that take (:func:`correct_the_take`). Runs through :func:`close_onboarding_interview`, so it is
     idempotent the same way: an interview already handed off is not handed
     off again, so a newer take the user made since is never replaced by it,
     and the response describes the take as it stands. Only the session's
@@ -1680,7 +1639,7 @@ async def finalize_onboarding_interview(
         HTTPException: whatever :func:`refuse_while_a_call_holds_the_interview`
             and :func:`supersede_the_latest_call` raise while a voice call
             holds the interview: the step then shows the call, not the typed
-            interview's ending.
+            interview's ending; and whatever :func:`correct_the_take` raises.
     """
     await refuse_while_a_call_holds_the_interview(user_id)
     await supersede_the_latest_call(user_id)
@@ -1688,13 +1647,49 @@ async def finalize_onboarding_interview(
         user_id,
         session_id,
         reason="user",
-        confirmed=True,
         corrections=corrections,
         background_tasks=background_tasks,
     )
-    if closure.hand_off is None:
-        raise RuntimeError(f"Onboarding interview {session_id} was not handed off")
-    return closure.hand_off
+    if (
+        not _own_corrections(corrections)
+        or closure.hand_off.status == BrainDumpStatus.failed
+    ):
+        return closure.hand_off
+    session, _ = await _read_interview(user_id, session_id)
+    tasks = background_tasks if background_tasks is not None else BackgroundTasks()
+    corrected = await correct_the_take(
+        user_id,
+        interview_recording_id(session_id),
+        interview_transcript(session.messages),
+        corrections,
+        tasks,
+        input_mode=BrainDumpInputMode.typed,
+        mark_corrected=lambda: _mark_typed_corrected(session_id),
+    )
+    if background_tasks is None:
+        await tasks()
+    return corrected or closure.hand_off
+
+
+# A typed interview whose take a profile card's edits corrected
+# (:func:`correct_the_take`), kept as long as an owed hand-off could still
+# bring the take back.
+CORRECTED_KEY = "onboarding:interview:corrected:{session_id}"
+CORRECTED_TTL_S = 30 * 24 * 3600
+
+
+async def _mark_typed_corrected(session_id: str) -> bool:
+    """Record that the typed interview *session_id* was corrected,
+    set-if-absent; True for the call that set it."""
+    redis = await get_redis_async()
+    return bool(
+        await redis.set(
+            CORRECTED_KEY.format(session_id=session_id),
+            "1",
+            nx=True,
+            ex=CORRECTED_TTL_S,
+        )
+    )
 
 
 async def _read_interview(
@@ -1756,6 +1751,60 @@ def with_corrections(transcript: str, corrections: str | None) -> str:
     if room <= 0 or not transcript.strip():
         return extra[:MAX_TYPED_CHARS]
     return f"{transcript[:room]}\n{extra}"
+
+
+# The 409 code of a correction while the take it corrects is still in the
+# pipeline: asked again, it re-runs once the take is finished.
+TAKE_NOT_READY = "take_not_ready"
+
+
+async def correct_the_take(
+    user_id: str,
+    recording_id: str,
+    transcript: str,
+    corrections: str | None,
+    background_tasks: BackgroundTasks,
+    *,
+    input_mode: BrainDumpInputMode,
+    mark_corrected: Callable[[], Awaitable[bool]],
+) -> FinalizeResponse | None:
+    """Correct the interview's take *recording_id*, already handed off, with
+    what the person changed on the profile card: its words become
+    *transcript* then *corrections* (:func:`with_corrections`), and the
+    pipeline runs again on them, under the same take
+    (``service.rerun_corrected_take``).
+
+    At most once per interview: *mark_corrected* records that it was
+    corrected, set-if-absent, and only the call that set it re-runs. None
+    when there is nothing to correct and the finish answers as it stands:
+    no corrections left once cleaned, no words, the row holding another
+    take or this one failed (given up, superseded, a verdict), the take's
+    words already the corrected ones, or the interview corrected before.
+
+    Raises:
+        HTTPException: 409 ``take_not_ready`` while the take is still in the
+            pipeline; 429 and 503 as the personalization budget refuses the
+            re-run, which changes nothing.
+    """
+    if not _own_corrections(corrections) or not transcript.strip():
+        return None
+    words = with_corrections(transcript, corrections).strip()[:MAX_TYPED_CHARS]
+    words = words.strip()
+    row = await dump_db.get_dump(user_id)
+    if row is None or row.recordingId != recording_id or row.transcript == words:
+        return None
+    if row.status in _TAKE_STILL_RUNS:
+        raise HTTPException(status_code=409, detail={"code": TAKE_NOT_READY})
+    if row.status != BrainDumpStatus.completed:
+        return None
+    return await service.rerun_corrected_take(
+        user_id,
+        recording_id,
+        words,
+        background_tasks,
+        input_mode=input_mode,
+        mark_corrected=mark_corrected,
+    )
 
 
 def interview_recording_id(interview_id: str) -> str:

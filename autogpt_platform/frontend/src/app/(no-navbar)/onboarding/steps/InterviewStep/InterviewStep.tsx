@@ -103,6 +103,11 @@ export function InterviewStep() {
                 onSend={interview.onSend}
                 onStop={interview.stop}
                 onFinish={interview.finish}
+                onLeaveWithoutChanges={
+                  interview.canLeaveWithoutChanges
+                    ? () => void interview.leaveWithoutChanges()
+                    : undefined
+                }
               />
             ) : (
               <Text variant="body" tone="muted" role="status">

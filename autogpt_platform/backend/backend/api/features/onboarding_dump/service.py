@@ -10,6 +10,7 @@ takes it (``storage.AUDIO_RETENTION``).
 import asyncio
 import logging
 import time
+from collections.abc import Awaitable, Callable
 
 from fastapi import BackgroundTasks, HTTPException
 from prisma import Json
@@ -426,6 +427,46 @@ async def finalize_typed_take(
     )
 
 
+async def rerun_corrected_take(
+    user_id: str,
+    recording_id: str,
+    text: str,
+    background_tasks: BackgroundTasks,
+    *,
+    input_mode: BrainDumpInputMode,
+    mark_corrected: Callable[[], Awaitable[bool]],
+) -> FinalizeResponse | None:
+    """Run the pipeline again on a finished take's corrected words *text*:
+    the take keeps its id, its words are replaced and its plan cleared
+    (``db.reopen_for_correction``), and its jobs are queued on
+    *background_tasks*. The words were judged already, so the quality gate
+    does not judge them again.
+
+    The spend is admitted against the personalization budget before
+    anything is written, so a refusal changes nothing; then
+    *mark_corrected* records the correction, set-if-absent, so only one
+    correction of an interview runs. None when it was corrected before, or
+    the row no longer holds the take ``completed``.
+
+    Raises:
+        HTTPException: 429 over the personalization budget, 503 while it
+            cannot be read.
+    """
+    await enforce_personalization_budget(user_id)
+    if not await mark_corrected():
+        return None
+    words = text.strip()
+    if not await db.reopen_for_correction(user_id, recording_id, words):
+        return None
+    logger.info(
+        f"Brain dump take for user {user_id} corrected; the pipeline runs again"
+    )
+    background_tasks.add_task(
+        _run_background_jobs, user_id, recording_id, words, input_mode
+    )
+    return _pipeline_response(BrainDumpStatus.transcribed, words, input_mode)
+
+
 async def _delete_recordings(audio_paths: list[str | None]) -> None:
     """Delete a transcribed take's recordings, best effort.
 
@@ -644,8 +685,8 @@ async def _run_understanding(
         )
         # Re-checked rather than inferred from the claim: extraction is an
         # LLM call, so the row has had seconds — minutes, for a long
-        # transcript — to change hands since.
-        if not await db.owns_dump(user_id, recording_id):
+        # transcript — to change hands since, or to be corrected.
+        if not await db.owns_dump(user_id, recording_id, transcript):
             logger.info(
                 "Brain dump take for user %s superseded; understanding not stored",
                 user_id,
@@ -664,13 +705,16 @@ async def _run_provider_recommendations(
     It writes only ``recommendedProviders`` — never the dump status — so a
     failure here can't strand the loading screen or mask a good greeting.
     ``generate_recommendations`` never raises; an empty result is stored
-    as the final answer so the client stops polling.
+    as the final answer so the client stops polling. It can outlive the
+    take's completion, so it writes only while the take still holds its
+    words: a take corrected since gets the corrected words' picks.
     """
     recommendations = await recommend.generate_recommendations(transcript)
     try:
-        await db.update_dump(
+        await db.update_take_words(
             user_id,
             recording_id,
+            transcript,
             recommendedProviders=Json([r.model_dump() for r in recommendations]),
         )
     except Exception as e:  # background task, nowhere to raise

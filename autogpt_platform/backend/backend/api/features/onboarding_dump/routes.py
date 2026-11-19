@@ -243,7 +243,7 @@ async def start_onboarding_interview(
     interview, typed or spoken: 409 ``call_in_progress`` while a voice call
     of theirs is live, and 409 ``onboarding_interview_closed`` once a call
     took the interview (its words accepted from a call that ran to its
-    close, or that the person confirmed), each naming the call
+    close, or that the person finished), each naming the call
     (``call_id``). A call that was cut off, or that the person hung up,
     leaves the typed interview open. 429 at its turn budget, 503 while the
     budget, the chat stream or the person's calls cannot be read. A 429 or
@@ -417,7 +417,7 @@ async def get_latest_onboarding_voice_call(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> VoiceCallStatusResponse:
     """The person's latest voice call as it stands, for a step that reloads:
-    live, wrapping up, waiting for their confirm, handed off or failed. 404
+    live, wrapping up, handed off or failed. 404
     when they have no call, or its record has expired."""
     try:
         return await voice.latest_call(user_id)
@@ -456,19 +456,22 @@ async def finish_onboarding_voice_call(
     background_tasks: fastapi.BackgroundTasks,
     request: VoiceCallFinishRequest | None = None,
 ) -> FinalizeResponse:
-    """The person's confirm of their voice call, and "Meet your team".
+    """The person's finish of their voice call: "Meet your team", and the
+    profile card's "That's me" with edits.
 
     Idempotent: a call that took the interview or that another take beat, or
     whose words the pipeline ruled on, is answered as it stands, and a call
-    the person's typing superseded is answered ``superseded``. A call waiting
-    for the confirm, one whose hand-off the pipeline never ruled on, or one
+    the person's typing superseded is answered ``superseded``. A call still
+    owed its hand-off, one whose hand-off the pipeline never ruled on, or one
     cut off or hung up with its words accepted hands its words off now, with
     any ``corrections`` after them, and its accepted take becomes the
-    interview's.
+    interview's. ``corrections`` for a call whose take took the interview
+    correct that take once: the pipeline runs again on the words with them.
     The client reads the answer as it reads the typed interview's finish. 404
-    for a call that is not theirs; 409
-    (``call_not_ready``) while the call's words are not ready. A 429 or 503
-    carries its wait in the body (``retry_after_seconds``).
+    for a call that is not theirs; 409 (``call_not_ready``) while the call's
+    words are not ready, and (``take_not_ready``) while the take a correction
+    corrects is still in the pipeline. A 429 or 503 carries its wait in the
+    body (``retry_after_seconds``).
     """
     try:
         return await voice.finish_call(
@@ -524,7 +527,9 @@ async def finish_onboarding_interview(
     naming the call (``call_id``). A 429 carries its wait in the body
     (``retry_after_seconds``), as the start route's does. Any
     ``corrections`` the person made on the ending screen are handed off after
-    the interview's words, as their own.
+    the interview's words, as their own; for an interview already handed
+    off they correct its take once, and the pipeline runs again on the words
+    with them, 409 ``take_not_ready`` while the take is still in it.
     """
     opened = await find_onboarding_interview_session(user_id)
     if opened is None:

@@ -25,6 +25,11 @@ const TYPING_KEY_PREFIX = "autogpt:onboarding-interview-typing:";
 export const STAGE_READ_INTERVAL_MS = 2_000;
 export const STAGE_READ_WINDOW_MS = 10_000;
 
+// A finish the server cannot take yet (409: the take a profile card's edits
+// correct is still being built) is asked again this often, for this long.
+export const FINISH_RETRY_MS = 2_000;
+export const FINISH_WAIT_MS = 60_000;
+
 export type StartFailure =
   | { kind: "busy"; retryAfterSeconds: number | null }
   | { kind: "unavailable"; retryAfterSeconds: number | null }

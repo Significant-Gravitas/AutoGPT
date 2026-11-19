@@ -104,7 +104,8 @@ type EndingAction =
   | "call_again"
   | "type_instead"
   | "skip"
-  | "start_over";
+  | "start_over"
+  | "without_changes";
 
 interface Args {
   userId: string | null;
@@ -195,6 +196,13 @@ export function useVoiceCall(args: Args) {
   const [details, setDetails] = useState<InterviewDetails | null>(null);
   // What the person changed on the ending screen, kept for a retry.
   const correctionsRef = useRef<string | null>(null);
+  // The edits went with the last finish, so a failure of it can go on
+  // without them.
+  const [hasEdits, setHasEdits] = useState(false);
+  // The ending shown is of a call that was live in this page session, so
+  // its card is still the person's to put right; one the step opened on
+  // shows settled.
+  const [isFreshEnding, setIsFreshEnding] = useState(false);
   // The next call's start sets the person's closed interview aside: the one
   // the ending on screen named, a call's or the typed interview's.
   const startOverRef = useRef<StartOverFrom | null>(null);
@@ -984,6 +992,9 @@ export function useVoiceCall(args: Args) {
     }
     setEnding(next);
     setFinishFailure(null);
+    setIsFreshEnding(
+      conn.shownCallId !== null && conn.endedHere === conn.shownCallId,
+    );
     // A Default call (no arm this code knows) that ended well in this page
     // session has no screen to stop on, once; a call the step opened on
     // shows its ending, so Back never bounces forward.
@@ -1140,11 +1151,33 @@ export function useVoiceCall(args: Args) {
     await argsRef.current.onSkip();
   }
 
+  // The ending's button. A take already handed off leads on at once; the
+  // profile card's edits go to the server first, as a correction of it,
+  // with the card kept up while they wait.
   async function meetTeam(corrections: string | null = null) {
     const conn = connRef.current;
     if (conn.isLeaving || !ending) return;
     correctionsRef.current = corrections;
+    setHasEdits(!!corrections);
     trackEndingAction("confirm");
+    if (ending.kind === "team" && ending.path && !corrections) {
+      conn.isLeaving = true;
+      setIsLeaving(true);
+      await argsRef.current.onLeave(ending.path);
+      return;
+    }
+    if (conn.shownCallId) {
+      await finishCall(conn.shownCallId, { keepsEnding: !!corrections });
+    }
+  }
+
+  // The edits could not be saved: the person goes on without them.
+  async function leaveWithoutChanges() {
+    const conn = connRef.current;
+    if (conn.isLeaving || !ending) return;
+    trackEndingAction("without_changes");
+    correctionsRef.current = null;
+    setHasEdits(false);
     if (ending.kind === "team" && ending.path) {
       conn.isLeaving = true;
       setIsLeaving(true);
@@ -1176,12 +1209,17 @@ export function useVoiceCall(args: Args) {
     await finishCall(conn.shownCallId);
   }
 
-  // The person's word on the call's take: hand off what it kept, or answer
-  // the hand-off as it stands, and read the answer for a call. A finish the
-  // server cannot take yet (409: the call's words, or a later call of the
-  // person's, are not settled) is waited out and asked again, never shown as
-  // an error.
-  async function finishCall(callId: string) {
+  // The person's word on the call's take: hand off what it kept, correct it
+  // with their edits, or answer the hand-off as it stands, and read the
+  // answer for a call. A finish the server cannot take yet (409: the call's
+  // words, a later call of the person's, or the take a correction corrects,
+  // are not settled) is waited out and asked again, never shown as an
+  // error; `keepsEnding` keeps the ending on screen meanwhile, so the edits
+  // on it stay.
+  async function finishCall(
+    callId: string,
+    { keepsEnding = false }: { keepsEnding?: boolean } = {},
+  ) {
     const conn = connRef.current;
     const attempt = ++conn.attempt;
     const poll = ++conn.poll;
@@ -1208,7 +1246,7 @@ export function useVoiceCall(args: Args) {
           return;
         }
       }
-      setPhase("finishing");
+      if (!keepsEnding) setPhase("finishing");
       const isPastWindow = Date.now() >= windowEndsAt;
       setIsPastWindow(isPastWindow);
       await sleep(isPastWindow ? ENDING_SLOW_POLL_MS : ENDING_POLL_MS);
@@ -1492,6 +1530,8 @@ export function useVoiceCall(args: Args) {
     setArm(null);
     setDetails(null);
     correctionsRef.current = null;
+    setHasEdits(false);
+    setIsFreshEnding(false);
     setFinishFailure(null);
     setLevels(null);
   }
@@ -1565,6 +1605,9 @@ export function useVoiceCall(args: Args) {
     details,
     finishFailure,
     isLeaving,
+    isFreshEnding,
+    canLeaveWithoutChanges: hasEdits && finishFailure !== null,
+    leaveWithoutChanges,
     isEndingPickerOn: args.isEndingPickerOn,
     held,
     levels,

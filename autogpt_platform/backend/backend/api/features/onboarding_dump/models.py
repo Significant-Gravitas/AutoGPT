@@ -65,8 +65,7 @@ MAX_RECORDING_BYTES = 50 * 1024 * 1024
 # composer is a paragraph or two, so cap well below that.
 MAX_TYPED_CHARS = 20_000
 
-# What the person may add on an interview's ending screen that ends on a
-# confirm.
+# What the person may change on an interview's ending screen.
 MAX_CORRECTION_CHARS = 2_000
 
 # A voice call's id, as the start route mints it (``voice_relay.tokens``).
@@ -416,8 +415,8 @@ class VoiceCallStartResponse(BaseModel):
 
 
 # A voice call's status, in the order a call moves through them: opening,
-# live, over, its transcript of record being made, made and waiting for the
-# person's confirm, its hand-off running, and handed to the onboarding
+# live, over, its transcript of record being made, made, its hand-off
+# running, and handed to the onboarding
 # pipeline or failed. ``handing_off`` is never stored: the call routes report
 # it for a call whose transcript is made and whose hand-off is owed.
 VoiceCallStatus = Literal[
@@ -443,8 +442,7 @@ class VoiceCallStatusResponse(BaseModel):
     status: VoiceCallStatus
     """``connecting`` and ``live`` while the call runs; ``ended`` and
     ``transcribing`` while its transcript of record is made. Then
-    ``handing_off`` while the onboarding pipeline takes its words, or
-    ``transcribed`` while the person's ending arm waits for their confirm;
+    ``handing_off`` while the onboarding pipeline takes its words;
     ``handed_off`` once the pipeline took the call's words or another take
     beat them (``hand_off`` says which); or ``failed``, with ``hand_off``
     saying why, while the interview stays open."""
@@ -539,7 +537,7 @@ def start_over_of(
 
 
 class InterviewFinishRequest(BaseModel):
-    """The person's confirm of their typed interview."""
+    """The person's finish of their typed interview."""
 
     corrections: str | None = Field(default=None, max_length=MAX_CORRECTION_CHARS)
     """What they changed on the ending screen, handed off as their own words
@@ -547,7 +545,7 @@ class InterviewFinishRequest(BaseModel):
 
 
 class VoiceCallFinishRequest(BaseModel):
-    """The person's confirm of a voice call."""
+    """The person's finish of a voice call."""
 
     corrections: str | None = Field(default=None, max_length=MAX_CORRECTION_CHARS)
     """What they changed on the ending screen, handed off as their own words

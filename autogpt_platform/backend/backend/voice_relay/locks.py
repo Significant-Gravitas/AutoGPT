@@ -415,6 +415,15 @@ async def claim_interview(
     return None
 
 
+async def claim_correction(redis: AsyncRedisClient, call_id: str) -> bool:
+    """Record on the call's record that its take was corrected, once:
+    set-if-absent on the one record, so of two corrections one wins. True
+    for the claim that set it."""
+    return bool(
+        await cast(Any, redis.hsetnx(call_record_key(call_id), "corrected", "true"))
+    )
+
+
 async def interview_of(
     redis: AsyncRedisClient, call_id: str
 ) -> VoiceCallInterview | None:
@@ -530,6 +539,9 @@ class CallRecord(BaseModel):
     # Whether the call's words took the person's interview or their typing
     # superseded them, as first claimed (:func:`claim_interview`).
     interview: VoiceCallInterview | None = None
+    # Whether the person's edits on the profile card corrected the call's
+    # take, which happens once (:func:`claim_correction`).
+    corrected: bool = False
     # Attempts at the transcript job, and at the hand-off, and when the
     # hand-off's next attempt is due, in seconds since the epoch.
     postcall_attempts: int = 0
@@ -573,6 +585,7 @@ _JSON_FIELDS = frozenset(
         "end_tool",
         "duplex",
         "transcribed_from_upload",
+        "corrected",
         "postcall_attempts",
         "handoff_attempts",
     }

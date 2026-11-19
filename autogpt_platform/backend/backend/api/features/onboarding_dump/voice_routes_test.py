@@ -853,7 +853,7 @@ async def test_finishing_a_call_whose_words_were_turned_away_answers_the_verdict
         ("failed", _take(quality.QUALITY_CHECK_UNAVAILABLE)),
         ("failed", _take("rate_limited")),
     ],
-    ids=["confirm", "judge-unavailable", "rate-limited"],
+    ids=["owed", "judge-unavailable", "rate-limited"],
 )
 async def test_a_finish_hands_off_a_call_the_pipeline_never_ruled_on(
     redis,
@@ -881,11 +881,7 @@ async def test_a_finish_hands_off_a_call_the_pipeline_never_ruled_on(
     assert (record.call_id, record.uid) == (CALL, test_user_id)
     kwargs = hand_off.await_args.kwargs
     # The person's own finish, under the finish's hold on the call.
-    assert (kwargs["confirmed"], kwargs["by_person"], kwargs["corrections"]) == (
-        True,
-        True,
-        "Eight staff.",
-    )
+    assert (kwargs["by_person"], kwargs["corrections"]) == (True, "Eight staff.")
     assert isinstance(kwargs["claim"], voice_handoff.HandOffClaim)
     assert kwargs["claim"].call_id == CALL
     # The finish gave the call back once it was done with it.
@@ -1277,7 +1273,7 @@ async def test_a_call_owed_its_hand_off_reads_handing_off_and_starts_it(
     hand_off.assert_awaited_once_with(CALL, trigger="status")
 
 
-async def test_a_confirm_arms_call_reads_transcribed_and_starts_nothing(
+async def test_a_profile_card_call_is_handed_off_as_it_closes_too(
     redis, test_user_id, mocker: MockerFixture
 ):
     hand_off = mocker.patch.object(voice_handoff, "hand_off_owed", new=AsyncMock())
@@ -1291,6 +1287,9 @@ async def test_a_confirm_arms_call_reads_transcribed_and_starts_nothing(
 
     body = (await request("GET", f"/{CALL}")).json()
 
-    assert body["status"] == "transcribed"
-    await asyncio.sleep(0.05)
-    hand_off.assert_not_awaited()
+    assert body["status"] == "handing_off"
+    for _ in range(50):
+        if hand_off.await_count:
+            break
+        await asyncio.sleep(0.01)
+    hand_off.assert_awaited_once_with(CALL, trigger="status")

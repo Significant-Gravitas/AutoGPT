@@ -111,7 +111,11 @@ export function VoiceCall({ call }: Props) {
           isTesterPick={
             call.isEndingPickerOn && !!arm && readEndingPick("voice") === arm
           }
-          isSettled={call.ending.kind === "team" && call.ending.path === "A"}
+          isSettled={
+            call.ending.kind === "team" &&
+            call.ending.path === "A" &&
+            !call.isFreshEnding
+          }
           startOver={
             <StartOver
               canCall
@@ -124,6 +128,11 @@ export function VoiceCall({ call }: Props) {
             />
           }
           onConfirm={(corrections) => void call.meetTeam(corrections)}
+          onLeaveWithoutChanges={
+            call.canLeaveWithoutChanges
+              ? () => void call.leaveWithoutChanges()
+              : undefined
+          }
           onMeetTeam={() => void call.meetTeam()}
           onRetry={() => void call.retryFinish()}
           onCallAgain={call.callAgain}

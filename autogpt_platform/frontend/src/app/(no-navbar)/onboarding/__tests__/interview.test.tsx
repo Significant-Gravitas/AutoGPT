@@ -53,6 +53,8 @@ vi.mock("../steps/InterviewStep/helpers", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../steps/InterviewStep/helpers")>()),
   STAGE_READ_INTERVAL_MS: 50,
   STAGE_READ_WINDOW_MS: 400,
+  FINISH_RETRY_MS: 20,
+  FINISH_WAIT_MS: 2_000,
 }));
 
 vi.mock("@/services/environment", async (importOriginal) => {
@@ -1192,6 +1194,98 @@ describe("onboarding interview: the ending screens", () => {
     await userEvent.setup().click(confirm);
     await expectPlanStep();
     expect(finishBodies).toEqual([""]);
+  });
+
+  const CARD_DETAILS = {
+    business: "Fernbrook Gardens",
+    team: "a crew of six",
+  };
+
+  // An interview open on screen that Otto's goodbye closes, on the card.
+  function closesOnTheCard() {
+    serverInterview = {
+      messages: [KICKOFF_ROW, GREETING_ROW, ANSWER_ROW, SUMMARY_ROW],
+      stage: null,
+      activeTurn: null,
+      ending: "02-profile-card",
+    };
+    startsWith({ session_id: SESSION_ID, turn_id: null, stage: null });
+    server.use(
+      ...interviewHandlers({
+        replyText: GOODBYE,
+        // Closed and handed off as the goodbye turn ends.
+        stageAfterReply: "handed_off",
+      }),
+      getGetOnboardingInterviewDetailsMockHandler200({
+        details: CARD_DETAILS,
+      }),
+    );
+  }
+
+  async function editTheTeam(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(
+      await screen.findByRole("button", { name: "Edit your team" }),
+    );
+    const team = screen.getByRole("textbox", { name: "Your team" });
+    await user.clear(team);
+    await user.type(team, "just me");
+  }
+
+  it("keeps a card that closed on screen editable, and sends its edits as a correction that waits out the build", async () => {
+    closesOnTheCard();
+    finishAnswers = [
+      { status: 409, body: { detail: { code: "take_not_ready" } } },
+    ];
+    const user = userEvent.setup();
+
+    render(<OnboardingPage />);
+    await sendAnswer("Yes, that's right.");
+    await editTheTeam(user);
+    expect(screen.queryByText("Here's what Otto has")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "That's me" }));
+
+    await expectPlanStep();
+    const corrections =
+      "Not right: Your team: a crew of six\nAlso: Your team: just me";
+    expect(finishBodies.map((body) => JSON.parse(body))).toEqual([
+      { corrections },
+      { corrections },
+    ]);
+  });
+
+  it("goes on with no correction when the card that closed on screen is right", async () => {
+    closesOnTheCard();
+
+    render(<OnboardingPage />);
+    await sendAnswer("Yes, that's right.");
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "That's me" }));
+
+    await expectPlanStep();
+    expect(finishBodies).toEqual([""]);
+  });
+
+  it("offers going on without the edits when their correction is refused, and does", async () => {
+    closesOnTheCard();
+    finishAnswers = [
+      { status: 429, body: { detail: "Too many", retry_after_seconds: 600 } },
+    ];
+    const user = userEvent.setup();
+
+    render(<OnboardingPage />);
+    await sendAnswer("Yes, that's right.");
+    await editTheTeam(user);
+    await user.click(screen.getByRole("button", { name: "That's me" }));
+
+    expect(await screen.findByRole("alert")).toBeDefined();
+    expect(screen.getByRole("button", { name: "That's me" })).toBeDefined();
+    await user.click(
+      screen.getByRole("button", { name: "Continue without my changes" }),
+    );
+
+    await expectPlanStep();
+    expect(finishBodies.at(-1)).toBe("");
   });
 
   it("offers the picker on an open interview only to testers", async () => {

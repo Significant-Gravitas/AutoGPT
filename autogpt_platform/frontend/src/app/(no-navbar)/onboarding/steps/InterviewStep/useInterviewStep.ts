@@ -38,6 +38,8 @@ import {
   startBody,
 } from "./components/Endings/helpers";
 import {
+  FINISH_RETRY_MS,
+  FINISH_WAIT_MS,
   finishFailureOf,
   finishPathOf,
   forgetTyping,
@@ -91,6 +93,13 @@ export function useInterviewStep() {
   const [hasAskedToFinish, setHasAskedToFinish] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const [finishFailure, setFinishFailure] = useState<StartFailure | null>(null);
+  // The last finish carried the profile card's edits, so a failure of it can
+  // go on without them.
+  const [hasEdits, setHasEdits] = useState(false);
+  // The interview was open in this page session, so the card it closes on
+  // is still the person's to put right; one the step opened on closed shows
+  // settled.
+  const [wasOpenHere, setWasOpenHere] = useState(false);
   const isLeavingRef = useRef(false);
   const handledRefusalRef = useRef<Error | undefined>(undefined);
   const startedRef = useRef(false);
@@ -197,6 +206,7 @@ export function useInterviewStep() {
   // Either mode's interview is over: the typed one closed, or a call took
   // it.
   const isOver = shown === "voice" ? voice.isOver : isTypedOver;
+  if (session && !isTypedOver && !wasOpenHere) setWasOpenHere(true);
 
   const mode: InterviewMode | null =
     shown === null
@@ -444,30 +454,43 @@ export function useInterviewStep() {
     await microphone.refresh();
   }
 
+  // The person ends the interview, or goes on from its ending, with the
+  // profile card's edits when there are any. A correction the server cannot
+  // take yet (409: the take is still being built) is waited out and asked
+  // again, for a while.
   async function finish(corrections: string | null = null) {
     if (isLeavingRef.current) return;
     isLeavingRef.current = true;
     setIsLeaving(true);
     setHasAskedToFinish(true);
+    setHasEdits(!!corrections);
     setFinishFailure(null);
     let path: "A" | "B" | null = null;
     let failure: StartFailure | null = null;
-    try {
-      const response = await finishOnboardingInterview(
-        corrections ? { corrections } : undefined,
-      );
-      path = response.status === 200 ? finishPathOf(response.data) : null;
-    } catch (finishError) {
-      // Refused because a voice call holds the interview: the call shows,
-      // as it does for the typed start.
-      const heldBy = refusalOf(finishError).heldBy;
-      if (heldBy?.callId) {
-        isLeavingRef.current = false;
-        setIsLeaving(false);
-        showCallThatHolds(heldBy);
-        return;
+    const waitEndsAt = Date.now() + FINISH_WAIT_MS;
+    for (;;) {
+      try {
+        const response = await finishOnboardingInterview(
+          corrections ? { corrections } : undefined,
+        );
+        path = response.status === 200 ? finishPathOf(response.data) : null;
+        break;
+      } catch (finishError) {
+        // Refused because a voice call holds the interview: the call shows,
+        // as it does for the typed start.
+        const refusal = refusalOf(finishError);
+        if (refusal.heldBy?.callId) {
+          isLeavingRef.current = false;
+          setIsLeaving(false);
+          showCallThatHolds(refusal.heldBy);
+          return;
+        }
+        if (refusal.status !== 409 || Date.now() >= waitEndsAt) {
+          failure = finishFailureOf(finishError);
+          break;
+        }
       }
-      failure = finishFailureOf(finishError);
+      await pause(FINISH_RETRY_MS);
     }
     if (path === null) {
       isLeavingRef.current = false;
@@ -476,6 +499,12 @@ export function useInterviewStep() {
       return;
     }
     await leaveToTeam(path, "text");
+  }
+
+  // The edits could not be saved: the person goes on without them.
+  async function leaveWithoutChanges() {
+    trackTypedEndingAction("without_changes");
+    await finish(null);
   }
 
   // Both modes leave the step the same way, on the path the hand-off's
@@ -587,7 +616,7 @@ export function useInterviewStep() {
       data: { details },
       isTesterPick:
         isEndingPickerOn && !!typedArm && readEndingPick("text") === typedArm,
-      isSettled: isTypedSettled,
+      isSettled: isTypedSettled && !wasOpenHere,
     },
     typedStartOver: {
       canCall:
@@ -630,6 +659,8 @@ export function useInterviewStep() {
     isLeaving,
     finishFailure,
     finish,
+    canLeaveWithoutChanges: hasEdits && finishFailure !== null,
+    leaveWithoutChanges,
     skip,
   };
 }

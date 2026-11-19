@@ -38,6 +38,8 @@ interface Props {
   onSend: (message: string) => Promise<void>;
   onStop: () => void;
   onFinish: (corrections?: string | null) => Promise<void>;
+  // The ending's edits could not be saved: the way on without them.
+  onLeaveWithoutChanges?: () => void;
 }
 
 export function InterviewChat({
@@ -58,6 +60,7 @@ export function InterviewChat({
   onSend,
   onStop,
   onFinish,
+  onLeaveWithoutChanges,
 }: Props) {
   return (
     <CopilotChatActionsProvider onSend={onSend}>
@@ -95,6 +98,7 @@ export function InterviewChat({
                 isSettled={ending.isSettled}
                 startOver={startOver}
                 onConfirm={(corrections) => void onFinish(corrections)}
+                onLeaveWithoutChanges={onLeaveWithoutChanges}
                 fallback={
                   <Button
                     variant="primary"

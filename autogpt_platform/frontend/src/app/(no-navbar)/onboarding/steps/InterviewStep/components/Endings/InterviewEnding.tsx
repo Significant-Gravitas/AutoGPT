@@ -8,7 +8,6 @@ import { CoverageRing } from "./components/CoverageRing";
 import { ProfileCardEnding } from "./components/ProfileCardEnding";
 import { SettledEnding } from "./components/SettledEnding";
 import {
-  CONFIRM_ARMS,
   type EndingArm,
   ENDING_NAMES,
   profileRowsOf,
@@ -24,10 +23,12 @@ interface Props {
   data: EndingData;
   isLeaving: boolean;
   isTesterPick: boolean;
-  // The interview is handed off already: a confirm arm shows what was
-  // confirmed, and asks nothing again.
+  // The step opened on an interview already over: the profile card shows
+  // read-only, and asks nothing again.
   isSettled?: boolean;
   onConfirm: (corrections: string | null) => void;
+  // The edits could not be saved: the way on without them.
+  onLeaveWithoutChanges?: () => void;
   // Today's ending, for anyone not enrolled, an arm with no screen here, and
   // an arm whose data did not come.
   fallback: ReactNode;
@@ -44,14 +45,15 @@ export function InterviewEnding({
   isTesterPick,
   isSettled = false,
   onConfirm,
+  onLeaveWithoutChanges,
   fallback,
   startOver,
 }: Props) {
-  const isSettledConfirm = isSettled && !!arm && CONFIRM_ARMS.has(arm);
-  const settled = isSettledConfirm
+  const isSettledCard = isSettled && arm === "02-profile-card";
+  const settled = isSettledCard
     ? settledViewOf(arm, data.details ?? null)
     : null;
-  const screen = isSettledConfirm
+  const screen = isSettledCard
     ? settled && (
         <SettledEnding
           view={settled}
@@ -63,6 +65,16 @@ export function InterviewEnding({
   return (
     <div className="flex w-full flex-col items-center gap-3">
       {screen ?? fallback}
+      {onLeaveWithoutChanges && (
+        <Button
+          variant="secondary"
+          size="small"
+          disabled={isLeaving}
+          onClick={onLeaveWithoutChanges}
+        >
+          Continue without my changes
+        </Button>
+      )}
       {startOver}
       {arm && isTesterPick && (
         <Text variant="small" tone="muted" align="center">
@@ -78,7 +90,14 @@ function armScreen({
   data,
   isLeaving,
   onConfirm,
-}: Omit<Props, "isTesterPick" | "isSettled" | "startOver" | "fallback">) {
+}: Omit<
+  Props,
+  | "isTesterPick"
+  | "isSettled"
+  | "startOver"
+  | "fallback"
+  | "onLeaveWithoutChanges"
+>) {
   const details = data.details ?? null;
   switch (arm) {
     case "02-profile-card": {
