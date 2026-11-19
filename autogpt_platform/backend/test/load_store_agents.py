@@ -462,7 +462,8 @@ async def main():
         print("=" * 60)
 
     finally:
-        await platform_db.disconnect()
+        if platform_db.is_connected():
+            await platform_db.disconnect()
         await db.disconnect()
 
 

@@ -27,8 +27,9 @@ address), which sign-up finds; one that is not banned leaves none.
 An account whose agents live in an org another member is active in, closed by
 a request made by email: the org-home and team agents (which every member, or
 the team, can open, though nobody has added or run them) go to the
-placeholder with their org and team, while an org whose only other member is
-suspended goes with the account.
+placeholder with their org and team, as does its listing there, while an org
+whose only other member is suspended goes with the account and that member's
+listing in it moves to their own personal org.
 
 An account that registered an OAuth app another account still has a live
 grant to is not erased until the operator moves or disables the app.
@@ -123,20 +124,23 @@ async def _listing(
     *,
     status=prisma.enums.SubmissionStatus.APPROVED,
     image_urls: list[str] | None = None,
+    org_id: str | None = None,
 ) -> str:
-    """A listing of `graph`; the version ID."""
+    """A listing of `graph`, in `org_id` or the owner's personal org; the
+    version ID."""
+    org_id = org_id or (await tenancy_for_new_row(owner_id, None))[0]
     listing = await prisma.models.StoreListing.prisma().create(
         data={
             "slug": f"deletion-{graph.id}",
             "agentGraphId": graph.id,
             "owningUserId": owner_id,
-            "owningOrgId": (await tenancy_for_new_row(owner_id, None))[0],
+            "owningOrgId": org_id,
             "hasApprovedVersion": status == prisma.enums.SubmissionStatus.APPROVED,
         }
     )
     version = await prisma.models.StoreListingVersion.prisma().create(
         data={
-            "organizationId": "org-test",
+            "organizationId": org_id,
             "agentGraphId": graph.id,
             "agentGraphVersion": graph.version,
             "name": "Deletion test agent",
@@ -526,6 +530,13 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
     )
     assert version.StoreListing.isDeleted
     assert version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
+    # Its org went with the account, so the listing and its versions are in the
+    # placeholder's own org.
+    placeholder_org, _ = await tenancy_for_new_row(DELETED_USER_ID, None)
+    assert (version.StoreListing.owningOrgId, version.organizationId) == (
+        placeholder_org,
+        placeholder_org,
+    )
     assert await prisma.models.StoreListingReview.prisma().count(
         where={"storeListingVersionId": own_version}
     )
@@ -661,6 +672,16 @@ async def test_agents_another_org_member_can_open_go_to_the_placeholder(
     lapsed = await prisma.models.AgentGraph.prisma().create(
         data={"userId": user_id, "name": "Lapsed", "organizationId": lapsed_org}
     )
+    # Published there by the suspended member, and by the account in the org
+    # that stays.
+    colleagues_version = await _listing(
+        colleague,
+        await prisma.models.AgentGraph.prisma().create(
+            data={"userId": colleague, "name": "Theirs", "organizationId": lapsed_org}
+        ),
+        org_id=lapsed_org,
+    )
+    shared_version = await _listing(user_id, org_home, org_id=shared_org)
     personal = await prisma.models.AgentGraph.prisma().create(
         data={"organizationId": "org-test", "userId": user_id, "name": "Personal agent"}
     )
@@ -695,6 +716,20 @@ async def test_agents_another_org_member_can_open_go_to_the_placeholder(
     assert await prisma.models.OrgMember.prisma().count(
         where={"orgId": shared_org, "userId": colleague}
     )
+    colleagues_org, _ = await tenancy_for_new_row(colleague, None)
+    for version_id, owner, org_id in (
+        (shared_version, DELETED_USER_ID, shared_org),
+        (colleagues_version, colleague, colleagues_org),
+    ):
+        version = await prisma.models.StoreListingVersion.prisma().find_unique_or_raise(
+            where={"id": version_id}, include={"StoreListing": True}
+        )
+        assert version.StoreListing
+        assert version.StoreListing.owningUserId == owner
+        assert (version.StoreListing.owningOrgId, version.organizationId) == (
+            org_id,
+            org_id,
+        )
 
     await _erase_rows(colleague)
 
