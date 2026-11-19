@@ -1798,13 +1798,21 @@ class ExecutionProcessor:
                         queued_node_exec.pre_flight_charge = block_pre_flight
                         with execution_stats_lock:
                             execution_stats.cost += cost
-                        # Check if we crossed the low balance threshold
-                        billing.handle_low_balance(
-                            db_client=db_client,
-                            user_id=graph_exec.user_id,
-                            current_balance=remaining_balance,
-                            transaction_cost=cost,
-                        )
+                        # Check if we crossed the low balance threshold.
+                        # The charge has landed, so a failed check is logged
+                        # instead of failing the run and keeping the charge.
+                        try:
+                            billing.handle_low_balance(
+                                db_client=db_client,
+                                user_id=graph_exec.user_id,
+                                current_balance=remaining_balance,
+                                transaction_cost=cost,
+                            )
+                        except Exception:
+                            log_metadata.exception(
+                                f"Low-balance check failed after charging node "
+                                f"{queued_node_exec.node_exec_id}"
+                            )
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
