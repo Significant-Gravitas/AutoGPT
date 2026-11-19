@@ -235,57 +235,77 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
   });
 
   describe("AutoPilot reply timing", () => {
-    it("records the time from the send to the first answer text", async () => {
-      const { hold, release } = createStreamHold(3);
-      server.use(
-        copilotStreamHandler({
-          baseUrl: TEST_BACKEND_BASE_URL,
-          sessionId: TEST_SESSION_ID,
-          chunks: assistantTextChunks("The answer is 42."),
-          hold,
-        }),
-      );
+    it.each([false, true])(
+      "records the time from send to first text (expert: %s)",
+      async (isExpert) => {
+        const { hold, release } = createStreamHold(3);
+        const expertId = "ec7e193e-a845-4acf-b273-ec736ea8ad36";
+        server.use(
+          http.get("*/api/experts/identities", () =>
+            HttpResponse.json([
+              {
+                id: expertId,
+                name: "Maria",
+                avatar_url: null,
+                role: "Operations expert",
+                is_archived: false,
+              },
+            ]),
+          ),
+          copilotStreamHandler({
+            baseUrl: TEST_BACKEND_BASE_URL,
+            sessionId: TEST_SESSION_ID,
+            chunks: assistantTextChunks("The answer is 42."),
+            hold,
+          }),
+        );
 
-      renderHost();
-      const sent = await sendAndClock("what is the answer?");
-      await screen.findByRole("button", { name: /stop/i });
-      await sleep(HELD_MS);
-      expect(replySpans()).toHaveLength(0);
+        renderHost({
+          sessionOverride: {
+            expert_id: isExpert ? expertId : null,
+          },
+        });
+        const sent = await sendAndClock("what is the answer?");
+        await screen.findByRole("button", { name: /stop/i });
+        await sleep(HELD_MS);
+        expect(replySpans()).toHaveLength(0);
 
-      const releasedAt = performance.now();
-      release();
-      expect(await screen.findByText("The answer is 42.")).toBeDefined();
-      const span = await recordedReply();
-      const recordedBy = performance.now();
+        const releasedAt = performance.now();
+        release();
+        expect(await screen.findByText("The answer is 42.")).toBeDefined();
+        const span = await recordedReply();
+        const recordedBy = performance.now();
 
-      expect(span.options).toMatchObject({
-        name: "copilot reply",
-        op: "copilot.reply",
-        forceTransaction: true,
-      });
-      expect(attributesOf(span)).toMatchObject({
-        "copilot.reply.outcome": "answered",
-        "copilot.reply.first_output_kind": "text",
-        "copilot.reply.new_chat": false,
-        "copilot.reply.expert": false,
-        "copilot.reply.stream_client": STREAM_CLIENT[path],
-      });
-      const firstText = msOf(span, "first_text_ms");
-      expect(msOf(span, "first_output_ms")).toBe(firstText);
-      // From the click, not from the stream or the render: it spans the hold.
-      expect(firstText).toBeGreaterThanOrEqual(releasedAt - sent.after - 1);
-      expect(firstText).toBeLessThanOrEqual(recordedBy - sent.before + 1);
-      // The span starts at the send and ends at the text.
-      const startTime = span.options.startTime ?? 0;
-      expect(startTime).toBeGreaterThanOrEqual(
-        performance.timeOrigin + sent.before,
-      );
-      expect(startTime).toBeLessThanOrEqual(
-        performance.timeOrigin + sent.after,
-      );
-      expect(span.ended).toBe(true);
-      expect((span.endTime ?? 0) - startTime).toBeCloseTo(firstText, -1);
-    });
+        expect(span.options).toMatchObject({
+          name: "copilot reply",
+          op: "copilot.reply",
+          forceTransaction: true,
+        });
+        expect(attributesOf(span)).toMatchObject({
+          "copilot.reply.outcome": "answered",
+          "copilot.reply.first_output_kind": "text",
+          "copilot.reply.new_chat": false,
+          "copilot.reply.expert": isExpert,
+          "copilot.reply.queued": false,
+          "copilot.reply.stream_client": STREAM_CLIENT[path],
+        });
+        const firstText = msOf(span, "first_text_ms");
+        expect(msOf(span, "first_output_ms")).toBe(firstText);
+        // From the click, not from the stream or the render: it spans the hold.
+        expect(firstText).toBeGreaterThanOrEqual(releasedAt - sent.after - 1);
+        expect(firstText).toBeLessThanOrEqual(recordedBy - sent.before + 1);
+        // The span starts at the send and ends at the text.
+        const startTime = span.options.startTime ?? 0;
+        expect(startTime).toBeGreaterThanOrEqual(
+          performance.timeOrigin + sent.before,
+        );
+        expect(startTime).toBeLessThanOrEqual(
+          performance.timeOrigin + sent.after,
+        );
+        expect(span.ended).toBe(true);
+        expect((span.endTime ?? 0) - startTime).toBeCloseTo(firstText, -1);
+      },
+    );
 
     it("times every send that starts a turn", async () => {
       server.use(
@@ -367,10 +387,14 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     );
 
     it("ends a turn that shows no answer text as no_text", async () => {
+      let now = 100;
+      const clock = vi.spyOn(performance, "now").mockReturnValue(100);
+      const { hold, release } = createStreamHold(5);
       server.use(
         copilotStreamHandler({
           baseUrl: TEST_BACKEND_BASE_URL,
           sessionId: TEST_SESSION_ID,
+          hold,
           chunks: [
             { type: "start", messageId: "msg-1" },
             { type: "start-step" },
@@ -381,15 +405,45 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         }),
       );
 
-      renderHost();
-      await typeAndSend("look it up");
-      const attributes = attributesOf(await recordedReply());
+      try {
+        renderHost();
+        await typeAndSend("look it up");
+        await screen.findAllByText(/searched the web/i);
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        await act(async () => release());
+        await act(() => vi.advanceTimersByTimeAsync(10));
+        expect(replySpans()).toHaveLength(0);
 
-      expect(attributes).toMatchObject({
-        "copilot.reply.outcome": "no_text",
-        "copilot.reply.first_output_kind": "tool",
-      });
-      expect(attributes).not.toHaveProperty("copilot.reply.first_text_ms");
+        for (
+          let elapsed = 0;
+          elapsed < 5000 && replySpans().length === 0;
+          elapsed += SETTLE_GRACE_MS
+        ) {
+          now += SETTLE_GRACE_MS;
+          clock.mockReturnValue(now);
+          await act(() => vi.advanceTimersByTimeAsync(SETTLE_GRACE_MS));
+        }
+        expect(replySpans()).toHaveLength(1);
+        const [span] = replySpans();
+        expect(span.ended).toBe(true);
+        expect(attributesOf(span)).toMatchObject({
+          "copilot.reply.outcome": "no_text",
+          "copilot.reply.first_output_kind": "tool",
+        });
+        expect(attributesOf(span)).not.toHaveProperty(
+          "copilot.reply.first_text_ms",
+        );
+      } finally {
+        release();
+        cleanup();
+        resetChatRuntimes();
+        if (vi.isFakeTimers()) {
+          await act(() => vi.advanceTimersByTimeAsync(1));
+          vi.clearAllTimers();
+          vi.useRealTimers();
+        }
+        clock.mockRestore();
+      }
     });
 
     it("times a reply to the text of the turn the server starts after it", async () => {
@@ -548,10 +602,14 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       release();
       await screen.findByText("First answer.", undefined, { timeout: 5000 });
       await waitForTurnOver();
-      await sleep(HELD_MS);
+      cleanup();
+      await flushReplyReports();
 
       const [span] = await recordedReplies(1);
-      expect(attributesOf(span)["copilot.reply.outcome"]).toBe("answered");
+      expect(attributesOf(span)).toMatchObject({
+        "copilot.reply.outcome": "answered",
+        "copilot.reply.queued": false,
+      });
     });
 
     it("ends a reply that errors before its text as abandoned", async () => {

@@ -27,12 +27,13 @@ interface Args extends ReplyView {
 export function useReplyTiming({ streamClient, sendMessage, ...view }: Args) {
   const trackingRef = useRef<ReplyTracking | null>(null);
   const viewRef = useRef(view);
+  const recheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useInsertionEffect(() => {
     viewRef.current = view;
   });
 
   function begin(timing: ReplyTimingStart) {
-    updateReply(trackingRef, viewRef, (tracking) =>
+    updateReply(trackingRef, viewRef, recheckTimerRef, (tracking) =>
       abandonReply(tracking, performance.now()),
     );
     try {
@@ -49,14 +50,12 @@ export function useReplyTiming({ streamClient, sendMessage, ...view }: Args) {
   // A send that returns without a turn ever showing was suppressed; one
   // whose turn was over before any render saw it running ends here too.
   function markReturned(timing: ReplyTimingStart) {
-    updateReply(trackingRef, viewRef, (tracking) => ({
-      tracking:
-        tracking.start === timing
-          ? { ...tracking, hasReturned: true }
-          : tracking,
+    if (trackingRef.current?.start !== timing) return;
+    updateReply(trackingRef, viewRef, recheckTimerRef, (tracking) => ({
+      tracking: { ...tracking, hasReturned: true },
       record: null,
+      recheckInMs: 0,
     }));
-    setTimeout(() => checkReply(trackingRef, viewRef), 0);
   }
 
   function sendTimedMessage(input: SendInput, timing?: ReplyTimingStart) {
@@ -66,7 +65,7 @@ export function useReplyTiming({ streamClient, sendMessage, ...view }: Args) {
     });
   }
 
-  useEffect(() => checkReply(trackingRef, viewRef));
+  useEffect(() => checkReply(trackingRef, viewRef, recheckTimerRef));
   // A chat switch unmounts the host and gives up its reply. Strict Mode's
   // development remount comes at once, so it cancels the give-up: a new
   // chat's first send is dispatched from this host's mount effect.
@@ -74,8 +73,9 @@ export function useReplyTiming({ streamClient, sendMessage, ...view }: Args) {
   useMountEffect(() => {
     if (unmountTimerRef.current) clearTimeout(unmountTimerRef.current);
     return () => {
+      clearRecheck(recheckTimerRef);
       unmountTimerRef.current = setTimeout(() => {
-        updateReply(trackingRef, viewRef, (tracking) =>
+        updateReply(trackingRef, viewRef, recheckTimerRef, (tracking) =>
           abandonReply(tracking, performance.now()),
         );
       }, 0);
@@ -88,16 +88,21 @@ export function useReplyTiming({ streamClient, sendMessage, ...view }: Args) {
 function updateReply(
   trackingRef: RefObject<ReplyTracking | null>,
   viewRef: RefObject<ReplyView>,
+  recheckTimerRef: RefObject<ReturnType<typeof setTimeout> | null>,
   step: (tracking: ReplyTracking) => ReplyStep,
 ) {
+  clearRecheck(recheckTimerRef);
   const tracking = trackingRef.current;
   if (!tracking) return;
   try {
     const { tracking: next, record, recheckInMs } = step(tracking);
     trackingRef.current = next;
     if (record) setTimeout(() => recordReplySpan(record), 0);
-    if (recheckInMs) {
-      setTimeout(() => checkReply(trackingRef, viewRef), recheckInMs);
+    if (next && recheckInMs !== undefined) {
+      recheckTimerRef.current = setTimeout(() => {
+        recheckTimerRef.current = null;
+        checkReply(trackingRef, viewRef, recheckTimerRef);
+      }, recheckInMs);
     }
   } catch {
     trackingRef.current = null;
@@ -107,10 +112,19 @@ function updateReply(
 function checkReply(
   trackingRef: RefObject<ReplyTracking | null>,
   viewRef: RefObject<ReplyView>,
+  recheckTimerRef: RefObject<ReturnType<typeof setTimeout> | null>,
 ) {
-  updateReply(trackingRef, viewRef, (tracking) =>
+  updateReply(trackingRef, viewRef, recheckTimerRef, (tracking) =>
     advanceReply(tracking, viewRef.current, performance.now()),
   );
+}
+
+function clearRecheck(
+  timerRef: RefObject<ReturnType<typeof setTimeout> | null>,
+) {
+  if (timerRef.current === null) return;
+  clearTimeout(timerRef.current);
+  timerRef.current = null;
 }
 
 async function dispatchAndSettle(
