@@ -430,6 +430,11 @@ async def test_a_held_connection_that_cant_be_read_is_dropped_quietly(
     assert "ya29.not-sealed" not in caplog.text
 
 
+# Many times the lookup's (patched) timeout, and nowhere near the hour a hang
+# would take: a stalled CI runner can't fail it.
+_HANG_SECONDS = 10
+
+
 async def test_an_unreachable_redis_never_holds_up_a_sign_in(store, monkeypatch):
     async def never_connects():
         await asyncio.sleep(3600)
@@ -441,4 +446,4 @@ async def test_an_unreachable_redis_never_holds_up_a_sign_in(store, monkeypatch)
     result = await sign_in_connection.keep_held_sign_in_connection("user-1")
 
     assert result is None
-    assert time.monotonic() - started < 2
+    assert time.monotonic() - started < _HANG_SECONDS

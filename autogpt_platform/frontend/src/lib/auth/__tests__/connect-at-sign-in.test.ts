@@ -117,8 +117,9 @@ describe("connectAtSignInScopes", () => {
     expect(lookups).toBe(2);
   });
 
-  it("holds a sign-in up for two seconds at most when the backend stalls", async () => {
+  it("gives up on a stalled backend after two seconds", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
+    const timeouts = vi.spyOn(AbortSignal, "timeout");
     server.use(
       http.get("*/api/auth/sign-in-connection", async () => {
         await delay("infinite");
@@ -127,10 +128,11 @@ describe("connectAtSignInScopes", () => {
     );
     const { connectAtSignInScopes } = await load();
 
-    const started = performance.now();
+    // A backend that never answers: the lookup ends at its timeout instead,
+    // well inside this test's own.
     expect(await connectAtSignInScopes("google")).toBeNull();
-    expect(performance.now() - started).toBeLessThan(3_000);
-  });
+    expect(timeouts).toHaveBeenCalledWith(2_000);
+  }, 15_000);
 });
 
 describe("assertSignInScopes", () => {
