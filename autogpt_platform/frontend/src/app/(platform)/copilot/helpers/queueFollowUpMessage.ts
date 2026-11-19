@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { environment } from "@/services/environment";
 import { v4 as uuidv4 } from "uuid";
 
@@ -61,6 +62,11 @@ export async function queueFollowUpMessage(
 
   if (res.status === 409) {
     throw new QueueFollowUpNotActiveError();
+  }
+
+  if (res.status === 402) {
+    const body = await res.json().catch(() => null);
+    throw new ApiError("A plan is required to send", 402, body);
   }
 
   if (res.status === 503) {

@@ -130,6 +130,19 @@ describe("queueFollowUpMessage", () => {
     );
   });
 
+  it("preserves the payment refusal before a message can be queued", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Payment required" }), {
+        status: 402,
+      }),
+    );
+
+    await expect(queueFollowUpMessage("sess-1", "hi")).rejects.toMatchObject({
+      name: "ApiError",
+      status: 402,
+    });
+  });
+
   it("throws on 429 rate-limit response", async () => {
     const fetchMock = vi.mocked(global.fetch);
     fetchMock.mockResolvedValueOnce(
