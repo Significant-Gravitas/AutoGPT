@@ -1103,9 +1103,10 @@ def _extract_openai_compat_cache_tokens(response: Any) -> tuple[int, int]:
     Provider quirks this navigates:
       * Standard OpenAI: ``usage.prompt_tokens_details.cached_tokens``
       * OpenRouter routing to Anthropic: cache writes surface as
-        ``prompt_tokens_details.model_extra["cache_write_tokens"]``
+        ``prompt_tokens_details.cache_write_tokens``, a declared field since
+        openai 2.x (``model_extra["cache_write_tokens"]`` before)
       * Anthropic-via-OpenAI-compat (rare): writes under
-        ``cache_creation_input_tokens`` on the same ``model_extra`` blob
+        ``cache_creation_input_tokens`` on the ``model_extra`` blob
 
     Returns ``(0, 0)`` when no usage object is present so cost
     computation degrades gracefully on providers that don't return it.
@@ -1119,7 +1120,8 @@ def _extract_openai_compat_cache_tokens(response: Any) -> tuple[int, int]:
     cache_read = int(getattr(ptd, "cached_tokens", 0) or 0)
     ptd_extras = getattr(ptd, "model_extra", None) or {}
     cache_creation = int(
-        ptd_extras.get("cache_write_tokens")
+        getattr(ptd, "cache_write_tokens", None)
+        or ptd_extras.get("cache_write_tokens")
         or ptd_extras.get("cache_creation_input_tokens")
         or 0
     )

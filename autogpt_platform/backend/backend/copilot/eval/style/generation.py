@@ -463,8 +463,7 @@ def usage_of(model: str, completion: ChatCompletion) -> Usage:
         return Usage(model=model)
     details = reported.prompt_tokens_details
     cached = (details.cached_tokens or 0) if details else 0
-    extras = (details.model_extra or {}) if details else {}
-    written = extras.get("cache_write_tokens") or 0
+    written = (details.cache_write_tokens or 0) if details else 0
     return to_usage(
         model,
         input_tokens=reported.prompt_tokens - cached - written,

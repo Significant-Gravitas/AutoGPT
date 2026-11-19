@@ -34,6 +34,7 @@ def _completion(
     *,
     cost: float | None = 0.01,
     cached: int = 0,
+    written: int = 0,
 ) -> ChatCompletion:
     message: dict = {"role": "assistant", "content": text}
     if tool_calls:
@@ -46,10 +47,13 @@ def _completion(
             for call_id, name, args in tool_calls
         ]
     usage: dict = {
-        "prompt_tokens": 100 + cached,
+        "prompt_tokens": 100 + cached + written,
         "completion_tokens": 20,
-        "total_tokens": 120 + cached,
-        "prompt_tokens_details": {"cached_tokens": cached},
+        "total_tokens": 120 + cached + written,
+        "prompt_tokens_details": {
+            "cached_tokens": cached,
+            "cache_write_tokens": written,
+        },
     }
     if cost is not None:
         usage["cost"] = cost
@@ -206,6 +210,17 @@ def test_usage_of_prices_openrouter_cost_and_splits_cached_tokens():
     usage = usage_of("anthropic/claude-x", _completion("t", cost=0.5, cached=60))
     assert (usage.input_tokens, usage.cache_read_tokens) == (100, 60)
     assert usage.cost_usd == 0.5
+
+
+def test_usage_of_splits_openrouter_cache_writes_out_of_the_input():
+    usage = usage_of(
+        "anthropic/claude-x", _completion("t", cost=0.5, cached=60, written=40)
+    )
+    assert (
+        usage.input_tokens,
+        usage.cache_read_tokens,
+        usage.cache_creation_tokens,
+    ) == (100, 60, 40)
 
 
 def test_usage_of_falls_back_to_the_rate_card_for_anthropic_models():

@@ -211,6 +211,17 @@ def falkordb_available() -> bool:
     return True
 
 
+@pytest.fixture
+def placeholder_llm_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-empty LLM key for code that builds graphiti's OpenAI client.
+
+    A community rebuild or a warm-context refresh builds that client before
+    any graph work, and openai 2.x refuses an empty key as it does. These
+    tests never reach the LLM; a deployment always resolves a key
+    (``GraphitiConfig.resolve_llm_api_key``)."""
+    monkeypatch.setattr(graphiti_config, "llm_api_key", "test-llm-key")
+
+
 def _new_test_group_id() -> str:
     """Mint a unique group_id for the current test.
 
@@ -238,6 +249,7 @@ async def _drop_database(driver: AutoGPTFalkorDriver) -> None:
 @pytest_asyncio.fixture(loop_scope="function")
 async def clean_graph(
     falkordb_available: bool,
+    placeholder_llm_key: None,
 ) -> AsyncIterator[tuple[AutoGPTFalkorDriver, str]]:
     """A per-test FalkorDB driver scoped to a fresh group_id.
 
@@ -275,6 +287,7 @@ async def clean_graph(
 async def scope_graph(
     falkordb_available: bool,
     live_lock: Redis,
+    placeholder_llm_key: None,
 ) -> AsyncIterator[tuple[AutoGPTFalkorDriver, MemoryScope]]:
     """A fresh account scope and a driver on that scope's own database.
 
