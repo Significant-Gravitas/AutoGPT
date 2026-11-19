@@ -37,10 +37,12 @@ export function formatTierLabel(
   tier: string | null | undefined,
 ): string | null {
   if (!tier || tier === "NO_TIER") return null;
+  if (tier === "BUSINESS") return "Team";
+  if (tier === "TRIAL") return "Free trial";
   return tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
 }
 
-export const TIER_BADGE_CLASS_NAME = "bg-[rgb(224,237,255)]";
+export const TIER_BADGE_CLASS_NAME = "bg-info/15";
 
 interface UsageWindowLike {
   percent_used?: number | null;
@@ -49,6 +51,13 @@ interface UsageWindowLike {
 interface UsageLike {
   daily?: UsageWindowLike | null;
   weekly?: UsageWindowLike | null;
+}
+
+/** Whether a chat on this connection spends the AutoPilot budget. ChatGPT and
+ *  Microsoft 365 Copilot turns are paid by the user's own subscription; any
+ *  other value, including one not loaded yet, counts as the platform. */
+export function spendsPlatformBudget(authProvider: string | null | undefined) {
+  return authProvider !== "codex" && authProvider !== "microsoft_365_copilot";
 }
 
 export function isUsageExhausted(usage: UsageLike | null | undefined): boolean {

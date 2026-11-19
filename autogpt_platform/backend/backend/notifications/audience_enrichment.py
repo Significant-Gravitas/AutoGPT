@@ -258,11 +258,11 @@ def checkout_fields(
     stripe_country: str | None = None,
     ip_country: str | None = None,
     status: str = SubscriptionStatus.SIGNED.value,
-    role: OnboardingRole | None = None,
 ) -> Fields:
-    """Every field a checkout opener gets. Merge it with what MailerLite holds
-    (`merge_with_held`) before writing. Without a `role` picked yet, the role
-    MailerLite holds is left alone."""
+    """Every field a checkout opener gets but the role, which the caller adds
+    once there is one (`role_fields`); without it, the role MailerLite holds
+    is left alone. Merge it with what MailerLite holds (`merge_with_held`)
+    before writing."""
     tz_country = timezone_country(timezone)
     candidates = {
         "stripe": country_code(stripe_country),
@@ -282,8 +282,6 @@ def checkout_fields(
     method = signin_method(signin_providers)
     if method:
         fields[SubscriberField.SIGNIN_METHOD] = method
-    if role:
-        fields.update(role_fields(role))
     for source in COUNTRY_SOURCES:
         code = candidates[source]
         if code:
@@ -294,7 +292,7 @@ def checkout_fields(
     return fields
 
 
-_COUNTRY_FIELDS = (
+COUNTRY_FIELDS = (
     SubscriberField.COUNTRY,
     SubscriberField.COUNTRY_CODE,
     SubscriberField.COUNTRY_SOURCE,
@@ -341,6 +339,6 @@ def merge_with_held(
     held_rank = _SOURCE_RANK.get(str(held.get(SubscriberField.COUNTRY_SOURCE.value)), 0)
     ours_rank = _SOURCE_RANK.get(str(merged.get(SubscriberField.COUNTRY_SOURCE)), 0)
     if held_rank > ours_rank:
-        for field in _COUNTRY_FIELDS:
+        for field in COUNTRY_FIELDS:
             merged.pop(field, None)
     return merged

@@ -1,5 +1,6 @@
 import os
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -7,6 +8,7 @@ import pytest
 import pytest_asyncio
 from prisma.models import SubscriptionTrialClaim, User
 
+from backend.copilot import rate_limit, usage_activation
 from backend.data import db
 from backend.data.subscription_trial import reserve_subscription_trial
 from backend.data.subscription_trial_config import AcceptedTrialOffer
@@ -25,11 +27,11 @@ async def enrollment():
         15432,
         "/trial_test",
     )
-    ci = os.environ.get("GITHUB_ACTIONS") == "true" and (
-        target.hostname,
-        target.port,
-        target.path,
-    ) == ("localhost", 5432, "/postgres")
+    ci = (
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and (target.hostname, target.port) == ("localhost", 5432)
+        and target.path in ("/postgres", "/ci_copilot")
+    )
     assert (
         local or ci
     ), "Trial integration tests require an approved disposable database"
@@ -65,3 +67,21 @@ async def enrollment():
     )
     if owns_connection:
         await db.disconnect()
+
+
+@pytest.fixture
+def usage_now(monkeypatch: pytest.MonkeyPatch) -> datetime:
+    return pin_usage_clock(monkeypatch)
+
+
+def pin_usage_clock(monkeypatch: pytest.MonkeyPatch) -> datetime:
+    """Name every usage counter key from today's noon UTC.
+
+    A run crossing midnight would split the counters over two day keys, and one
+    written in a day's last second gets a 1 s TTL."""
+    now = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0)
+    clock = MagicMock(wraps=datetime)
+    clock.now.return_value = now
+    monkeypatch.setattr(rate_limit, "datetime", clock)
+    monkeypatch.setattr(usage_activation, "datetime", clock)
+    return now

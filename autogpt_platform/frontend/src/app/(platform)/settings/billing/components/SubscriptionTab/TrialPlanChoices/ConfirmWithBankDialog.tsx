@@ -24,7 +24,7 @@ export function ConfirmWithBankDialog({ page, onClose }: Props) {
     >
       <Dialog.Content>
         {page ? (
-          <Text variant="body" unmask={false}>
+          <Text variant="body">
             Your bank wants to confirm the {formatChoicePrice(page.plan)}{" "}
             payment for {page.plan.label}. Pay on Stripe&apos;s secure page and{" "}
             {page.plan.label} starts right away. Until then your trial stays as

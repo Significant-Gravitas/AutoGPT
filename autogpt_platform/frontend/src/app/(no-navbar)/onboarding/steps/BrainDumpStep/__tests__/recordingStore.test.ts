@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearRecording,
+  clearSkippedRecordings,
   getMeta,
   getMetaById,
   getParts,
@@ -341,7 +342,38 @@ describe("recordingStore", () => {
     await saveMeta(meta({ recordingId: "old", startedAt: 100 }));
     await saveMeta(meta({ recordingId: "new", startedAt: 300 }));
 
-    expect((await getMeta())?.recordingId).toBe("new");
+    expect((await getMeta(undefined))?.recordingId).toBe("new");
+  });
+
+  // The store is shared by everyone signed in on this browser.
+  it("offers only takes recorded by the signed-in account", async () => {
+    await saveMeta(meta({ recordingId: "mine", startedAt: 100, userID: "u1" }));
+    await saveMeta(
+      meta({ recordingId: "theirs", startedAt: 300, userID: "u2" }),
+    );
+
+    expect((await getMeta("u1"))?.recordingId).toBe("mine");
+    expect(await getMeta("u3")).toBeNull();
+  });
+
+  it("clears only the account's skipped takes once onboarding is done", async () => {
+    for (const recordingId of ["skipped", "live", "theirs"]) {
+      await savePart(part({ recordingId, partIndex: 0 }));
+    }
+    await saveMeta(
+      meta({ recordingId: "skipped", userID: "u1", skipped: true }),
+    );
+    await saveMeta(meta({ recordingId: "live", userID: "u1" }));
+    await saveMeta(
+      meta({ recordingId: "theirs", userID: "u2", skipped: true }),
+    );
+
+    await clearSkippedRecordings("u1");
+
+    expect(await getParts("skipped")).toEqual([]);
+    expect(await getMetaById("skipped")).toBeNull();
+    expect(await getParts("live")).toHaveLength(1);
+    expect(await getParts("theirs")).toHaveLength(1);
   });
 
   // Two tabs: one finished its dump, the other is still going. The
@@ -353,7 +385,7 @@ describe("recordingStore", () => {
       meta({ recordingId: "done", startedAt: 300, finalized: true }),
     );
 
-    expect((await getMeta())?.recordingId).toBe("live");
+    expect((await getMeta(undefined))?.recordingId).toBe("live");
   });
 
   it("falls back to the newest take when every take is finalized", async () => {
@@ -364,11 +396,11 @@ describe("recordingStore", () => {
       meta({ recordingId: "second", startedAt: 300, finalized: true }),
     );
 
-    expect((await getMeta())?.recordingId).toBe("second");
+    expect((await getMeta(undefined))?.recordingId).toBe("second");
   });
 
   it("returns null when nothing was ever recorded", async () => {
-    expect(await getMeta()).toBeNull();
+    expect(await getMeta(undefined)).toBeNull();
     expect(await getMetaById("rec-1")).toBeNull();
   });
 
@@ -407,7 +439,7 @@ describe("recordingStore", () => {
     await savePart(part({ partIndex: 0 }));
     await saveMeta(meta());
     await getParts("rec-1");
-    await getMeta();
+    await getMeta(undefined);
     await clearRecording("rec-1");
 
     expect(fakeIndexedDB.openConnections.size).toBe(0);
@@ -469,7 +501,7 @@ describe("recordingStore", () => {
     expect(parts.map((p) => p.id)).toEqual([legacyPart.id]);
     // The v1 "current" row is gone rather than migrated, so recovery does
     // not offer a take keyed by something the new code cannot address.
-    expect(await getMeta()).toBeNull();
+    expect(await getMeta(undefined)).toBeNull();
 
     await saveMeta(meta({ recordingId: "rec-legacy" }));
     expect((await getMetaById("rec-legacy"))?.recordingId).toBe("rec-legacy");

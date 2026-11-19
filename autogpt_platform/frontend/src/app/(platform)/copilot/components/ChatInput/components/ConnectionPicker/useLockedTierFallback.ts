@@ -7,7 +7,8 @@ import { tierLock } from "./helpers";
 // A plan that lapsed with Advanced chosen leaves "advanced" stored, and every
 // send is then refused. The server locks Advanced only on a definite "not entitled".
 export function useLockedTierFallback(active: AIConnectionOffer | undefined) {
-  const { copilotLlmModel, setCopilotLlmModel } = useCopilotUIStore();
+  const copilotLlmModel = useCopilotUIStore((s) => s.copilotLlmModel);
+  const setCopilotLlmModel = useCopilotUIStore((s) => s.setCopilotLlmModel);
   const advancedLocked = Boolean(tierLock(active, "advanced"));
   useEffect(() => {
     if (advancedLocked && copilotLlmModel === "advanced")

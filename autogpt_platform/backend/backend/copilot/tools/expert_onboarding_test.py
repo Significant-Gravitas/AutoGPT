@@ -123,6 +123,49 @@ async def test_step_without_options_is_open_ended(
 
 
 @pytest.mark.asyncio
+async def test_step_can_take_several_answers(
+    tool: ExpertOnboardingTool, session: ChatSession
+):
+    result = await tool._execute(
+        user_id="test-user",
+        session=session,
+        greeting="Hi.",
+        steps=[
+            {
+                "question": "Which services?",
+                "options": ["Linear", "GitHub"],
+                "allow_multiple": True,
+            },
+            # Models sometimes send the flag as a string.
+            {
+                "question": "Which channels?",
+                "options": ["Email", "Slack"],
+                "allow_multiple": "true",
+            },
+            {"question": "Which outcome?", "options": ["Briefs", "Reports"]},
+        ],
+    )
+
+    assert isinstance(result, ExpertOnboardingResponse)
+    assert [step.allow_multiple for step in result.steps] == [True, True, False]
+
+
+@pytest.mark.asyncio
+async def test_open_ended_step_drops_the_multi_select_flag(
+    tool: ExpertOnboardingTool, session: ChatSession
+):
+    result = await tool._execute(
+        user_id="test-user",
+        session=session,
+        greeting="Hi.",
+        steps=[{"question": "Anything else?", "allow_multiple": True}],
+    )
+
+    assert isinstance(result, ExpertOnboardingResponse)
+    assert result.steps[0].allow_multiple is False
+
+
+@pytest.mark.asyncio
 async def test_missing_keyword_falls_back_to_index(
     tool: ExpertOnboardingTool, session: ChatSession
 ):

@@ -4,10 +4,12 @@ import { describe, expect, it } from "vitest";
 import { makePromotedUserBubble } from "../../../helpers/makePromotedBubble";
 import {
   asMidTurnFallbackRow,
+  buildMessageIndexById,
   isMidTurnFallbackRow,
   isMidTurnSegmentRow,
   messagesCarryDrainedText,
   splitMessagesAtDrainHints,
+  turnMessagesForRow,
 } from "../midTurnSplit";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
@@ -433,5 +435,57 @@ describe("splitMessagesAtDrainHints", () => {
       "midturn-pm-1",
       "a1",
     ]);
+  });
+});
+
+describe("splitMessagesAtDrainHints — row identity", () => {
+  it("returns the same segment rows for an unchanged message", () => {
+    const drained = assistant("assistant-1", [
+      toolPart("search"),
+      hintPart([{ id: "p1", content: "also check Friday" }]),
+      textPart("Done."),
+    ]);
+    const first = splitMessagesAtDrainHints([PROMPT, drained]);
+    const second = splitMessagesAtDrainHints([
+      PROMPT,
+      drained,
+      user("user-2", "thanks"),
+    ]);
+
+    expect(first.map((row) => row.id)).toEqual(
+      second.slice(0, first.length).map((row) => row.id),
+    );
+    first.forEach((row, i) => expect(second[i]).toBe(row));
+  });
+});
+
+describe("turnMessagesForRow", () => {
+  const answer = assistant("assistant-1", [textPart("Done.")]);
+  const followUp = user("user-2", "thanks");
+  const reply = assistant("assistant-2", [textPart("Any time.")]);
+  const messages = [PROMPT, answer, followUp, reply];
+  const indexById = buildMessageIndexById(messages);
+
+  it("returns the turn the row closes", () => {
+    expect(turnMessagesForRow(messages, answer, indexById)).toEqual([
+      PROMPT,
+      answer,
+    ]);
+    expect(turnMessagesForRow(messages, reply, indexById)).toEqual([
+      followUp,
+      reply,
+    ]);
+  });
+
+  it("falls back to the row alone when it is not a source message", () => {
+    const segment = assistant("assistant-1#seg0", [textPart("Half.")]);
+
+    expect(turnMessagesForRow(messages, segment, indexById)).toEqual([segment]);
+  });
+
+  it("indexes a repeated id at its first position, as findIndex would", () => {
+    const index = buildMessageIndexById([PROMPT, answer, answer]);
+
+    expect(index.get("assistant-1")).toBe(1);
   });
 });

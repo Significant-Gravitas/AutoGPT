@@ -63,6 +63,39 @@ class Journal:
             self._entries.append(entry)
             return entry
 
+    def record_side_call(
+        self, request: Request, model: str, text: str
+    ) -> dict[str, Any]:
+        with self._lock:
+            entry = {
+                "id": self._take_id(),
+                "at": time.time(),
+                "dialect": request.dialect,
+                "path": request.path,
+                "model": model,
+                "script": None,
+                "nonce": None,
+                "tool_results": [],
+                "kind": "side_call",
+                "turn": None,
+                "turns": None,
+                "text": text,
+                "tool_calls": [],
+                "checks": [],
+                "completed": None,
+            }
+            self._entries.append(entry)
+            return entry
+
+    def add_check(
+        self, entry: dict[str, Any], what: str, ok: bool, detail: str
+    ) -> None:
+        """Log something the reply itself checked, e.g. that its hold was
+        released; a journey fails on any check that isn't ok."""
+        with self._lock:
+            check = {"what": what, "ok": ok, "detail": detail}
+            entry["checks"] = [*entry.get("checks", []), check]
+
     def finish(self, entry: dict[str, Any], completed: bool) -> None:
         """Mark whether the whole reply reached the platform."""
         with self._lock:

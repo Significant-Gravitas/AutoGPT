@@ -1,4 +1,5 @@
 import { getWebSocketToken } from "@/lib/auth/actions";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { environment } from "@/services/environment";
 
 interface WorkspaceUploadResponse {
@@ -98,6 +99,11 @@ async function postFileToBackend({
   });
 }
 
+// Keeps the status, so a caller can tell a missing plan (402) from a failure.
+async function uploadError(res: Response): Promise<ApiError> {
+  return new ApiError(await readUploadError(res), res.status, null);
+}
+
 async function readUploadError(res: Response): Promise<string> {
   // A proxy/ingress in front of the backend may still reject an oversized body
   // with a 413 whose payload isn't backend JSON — surface a clear size message
@@ -135,7 +141,7 @@ export async function uploadFileDirect(
       ...(sessionID ? { session_id: sessionID } : {}),
     },
   });
-  if (!res.ok) throw new Error(await readUploadError(res));
+  if (!res.ok) throw await uploadError(res);
   return res.json();
 }
 
@@ -152,7 +158,7 @@ export async function uploadSubmissionMediaDirect(
     file,
     searchParams: purpose === "expert-avatar" ? { purpose } : undefined,
   });
-  if (!res.ok) throw new Error(await readUploadError(res));
+  if (!res.ok) throw await uploadError(res);
   // The endpoint returns the URL as a JSON string.
   const url = (await res.json()) as unknown;
   return typeof url === "string" ? url : String(url);
@@ -167,5 +173,5 @@ export async function uploadOAuthAppLogoDirect(
     path: `/api/oauth/apps/${encodeURIComponent(appId)}/logo/upload`,
     file,
   });
-  if (!res.ok) throw new Error(await readUploadError(res));
+  if (!res.ok) throw await uploadError(res);
 }

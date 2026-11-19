@@ -1,11 +1,12 @@
 import logging
 
 from backend.util.settings import AppEnvironment, BehaveAs, Settings
-from backend.util.url_redaction import RequestURLRedactionFilter
+from backend.util.url_redaction import CredentialHeaderFilter, RequestURLRedactionFilter
 
 settings = Settings()
 
 _request_url_redaction = RequestURLRedactionFilter()
+_credential_header_redaction = CredentialHeaderFilter()
 
 
 def configure_logging():
@@ -20,12 +21,27 @@ def configure_logging():
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     # These log request URLs we don't format: uvicorn the path and query of
-    # every request (the access log, and a line per WebSocket handshake), and
-    # autogpt_libs the URL of every request an admin makes as another user. A
-    # parent logger's filters never see records propagated from its children,
-    # so the filter goes on each logger directly.
-    for name in ("uvicorn.access", "uvicorn.error", "autogpt_libs.auth.dependencies"):
+    # every request (the access log, and a line per WebSocket handshake),
+    # autogpt_libs the URL of every request an admin makes as another user,
+    # websockets, at DEBUG, the target of each handshake (a server's on
+    # uvicorn's error log, a client's on its own), and the REST and RPC error
+    # handlers each failed call's exception, whose message and traceback can
+    # quote an outgoing request's URL. A parent logger's filters never see
+    # records propagated from its children, so the filter goes on each logger.
+    for name in (
+        "uvicorn.access",
+        "uvicorn.error",
+        "autogpt_libs.auth.dependencies",
+        "websockets.client",
+        "websockets.server",
+        "backend.api.utils.exceptions",
+        "backend.util.service",
+    ):
         logging.getLogger(name).addFilter(_request_url_redaction)
+    # websockets logs each handshake's headers there too, the session cookie
+    # and Authorization included.
+    for name in ("uvicorn.error", "websockets.client", "websockets.server"):
+        logging.getLogger(name).addFilter(_credential_header_redaction)
 
 
 def is_structured_logging_enabled() -> bool:
@@ -34,6 +50,9 @@ def is_structured_logging_enabled() -> bool:
         settings.config.behave_as == BehaveAs.LOCAL
         or settings.config.app_env == AppEnvironment.LOCAL
     )
+
+
+_LOGGING_KWARGS = ("exc_info", "stack_info", "stacklevel")
 
 
 class TruncatedLogger:
@@ -50,24 +69,26 @@ class TruncatedLogger:
         self.prefix = prefix
 
     def info(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        self.logger.info(msg, extra=self._get_metadata(**extra))
+        self._log(self.logger.info, msg, extra)
 
     def warning(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        self.logger.warning(msg, extra=self._get_metadata(**extra))
+        self._log(self.logger.warning, msg, extra)
 
     def error(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        self.logger.error(msg, extra=self._get_metadata(**extra))
+        self._log(self.logger.error, msg, extra)
 
     def debug(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        self.logger.debug(msg, extra=self._get_metadata(**extra))
+        self._log(self.logger.debug, msg, extra)
 
     def exception(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        self.logger.exception(msg, extra=self._get_metadata(**extra))
+        self._log(self.logger.exception, msg, extra)
+
+    def _log(self, log, msg: str, extra: dict):
+        # logging's own arguments go to logging; as metadata they lose the traceback.
+        kwargs = {key: extra.pop(key) for key in _LOGGING_KWARGS if key in extra}
+        # Skip this frame and the level method, so the record names the caller.
+        kwargs["stacklevel"] = kwargs.get("stacklevel", 1) + 2
+        log(self._wrap(msg, **extra), extra=self._get_metadata(**extra), **kwargs)
 
     def _get_metadata(self, **extra):
         metadata = {**self.metadata, **extra}

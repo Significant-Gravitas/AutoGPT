@@ -144,7 +144,7 @@ async def test_invalid_page_limit_is_rejected_before_query(limit):
 @pytest.mark.parametrize(
     "execution_id,session_id,activity,description",
     [
-        ("run-1", None, "agent_run", "Agent run"),
+        ("run-1", None, "agent_run", "Workflow run"),
         (None, "chat", "copilot_tools", "Expert tool use"),
         (None, None, "block_usage", "Block usage"),
     ],
@@ -203,7 +203,7 @@ def test_reason_only_usage_does_not_invent_a_block(is_reset, expected):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "name,expected",
-    [("Research digest", "Research digest"), (None, "Agent unavailable")],
+    [("Research digest", "Research digest"), (None, "Workflow unavailable")],
 )
 async def test_legacy_description_uses_safe_enriched_name(monkeypatch, name, expected):
     monkeypatch.setattr(

@@ -16,24 +16,6 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import AutopilotPage from "../page";
 
-const { setFlagStatusMock } = vi.hoisted(() => ({
-  setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? setFlagStatusMock()
-        : actual.useFlagStatus(flag as never),
-  };
-});
-
 const { notFoundMock } = vi.hoisted(() => ({ notFoundMock: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -204,7 +186,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
   notFoundMock.mockReset();
 });
 
@@ -412,10 +393,9 @@ describe("AutopilotPage", () => {
     expect(failures).toBe(2);
   });
 
-  test("404s when experts are switched off", () => {
-    setFlagStatusMock.mockReturnValue({ enabled: false, ready: true });
-
-    expect(() => render(<AutopilotPage />)).toThrow("NEXT_NOT_FOUND");
-    expect(notFoundMock).toHaveBeenCalled();
+  test("loads Otto without a rollout flag", async () => {
+    render(<AutopilotPage />);
+    expect(await screen.findByRole("heading", { name: "Otto" })).toBeDefined();
+    expect(notFoundMock).not.toHaveBeenCalled();
   });
 });

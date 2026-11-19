@@ -3,7 +3,13 @@ from typing import cast
 import tweepy
 from tweepy.client import Response
 
-from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchemaOutput
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockEffect,
+    BlockOutput,
+    BlockSchemaOutput,
+)
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -118,6 +124,7 @@ class TwitterGetQuoteTweetsBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

@@ -8,26 +8,12 @@ const { searchParams } = vi.hoisted(() => ({
   searchParams: { current: new URLSearchParams() },
 }));
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
-  const actual =
-    await importActual<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? { enabled: true, ready: true }
-        : actual.useFlagStatus(flag as never),
-  };
-});
-
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isLoggedIn: true, user: { id: "user-1" } }),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/raise",
   useSearchParams: () => searchParams.current,
   useParams: () => ({}),

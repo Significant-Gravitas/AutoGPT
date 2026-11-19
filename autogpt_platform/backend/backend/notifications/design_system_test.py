@@ -17,7 +17,7 @@ from backend.notifications.design_system_fixtures import URLS, EmailScenario, sc
 from backend.notifications.renderer import RenderedEmail, render
 
 SCENARIOS = scenarios()
-OTTO_PATH = "/autogpt-characters/v1.1/otto/neutral/256.png"
+OTTO_PATH = "/autogpt-characters/v1.1/otto/neutral-transparent/256.png"
 ADDRESS = "3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK"
 
 
@@ -37,7 +37,12 @@ def test_every_transactional_variant_uses_the_shared_frame(rendered):
     assert email.preheader and email.text
     assert "Geist," in document.elements("body")[0]["style"]
     assert "Geist+Mono" in email.html
-    assert any(table.get("width") == "560" for table in document.elements("table"))
+    sheets = [
+        table for table in document.elements("table") if table.get("class") == "sheet"
+    ]
+    assert len(sheets) == 2
+    assert all(table["width"] == "100%" for table in sheets)
+    assert all("width:100%; max-width:560px" in table["style"] for table in sheets)
     for table in document.elements("table"):
         assert table.get("role") == "presentation"
         assert table.get("bgcolor"), table

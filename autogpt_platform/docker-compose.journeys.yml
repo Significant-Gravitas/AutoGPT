@@ -20,9 +20,10 @@ x-scripted-model-env: &scripted-model-env
   CHAT_USE_CLAUDE_CODE_SUBSCRIPTION: "false"
   CHAT_BASE_URL: http://scripted_model:4010/api/v1
   CHAT_API_KEY: "scripted-model-accepts-any-key" # pragma: allowlist secret
-  # Memory (graphiti-memory is a hosted flag) would otherwise send that key to
-  # openrouter.ai and api.openai.com. Kept inside the stack, its calls fail
-  # fast and the turn goes on without memory, as it does on any failure.
+  # Keep memory inside the stack. The fake returns schema-valid empty
+  # extractions and deterministic embeddings so journeys exercise memory
+  # without inventing facts or sending test conversations to an external
+  # provider.
   GRAPHITI_LLM_BASE_URL: http://scripted_model:4010/api/v1
   GRAPHITI_EMBEDDER_BASE_URL: http://scripted_model:4010/api/v1
   GRAPHITI_EMBEDDER_API_KEY: "scripted-model-accepts-any-key" # pragma: allowlist secret

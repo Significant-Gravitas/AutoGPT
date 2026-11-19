@@ -1,0 +1,26 @@
+{% import '_email_ui.j2' as ui with context %}
+<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>{{ ui.head_block(subject) }}</head>
+{{ ui.body_open() }}
+{{ ui.preheader('') }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+{{ ui.sheet_open() }}
+{% call ui.eyebrow(top=28) %}FROM OTTO{% endcall %}
+{% call ui.headline() %}{{ subject }}{% endcall %}
+        <tr><td class="gutter" style="padding:18px 48px 0;">
+          <div style="font-size:15px; line-height:24px; color:#2D2A3E; overflow-wrap:anywhere; word-break:break-word;">{{ content }}</div>
+        </td></tr>
+{% if link %}
+{{ ui.cta('Open the link', link, micro='Button not working? Copy this link into your browser:') }}
+{% call ui.para(top=6, size=12, lh=18) %}
+<a href="{{ link }}" style="color:#4D36AD; text-decoration:underline; font-family:{{ ui.MONO }}; font-size:12px; overflow-wrap:anywhere; word-break:break-word;">{{ link }}</a>
+{% endcall %}
+{% endif %}
+{{ ui.close_row("You asked Otto, or one of your workflows, to email you this. To stop a scheduled one, turn off its schedule.", 'Your workflows', urls.dashboard) }}
+{{ ui.sheet_close() }}
+{{ ui.page_close() }}
+{{ ui.legal_footer("Sent to your AutoGPT account address at your request.", 'Discord', urls.discord) }}
+</td></tr></table>
+</body></html>

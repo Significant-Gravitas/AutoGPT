@@ -67,20 +67,13 @@ function getEnvironmentStr() {
   return `app:${appEnv}-behave:${getBehaveAs().toLowerCase()}`;
 }
 
-function getPreviewStealingDev() {
-  const branch = process.env.NEXT_PUBLIC_PREVIEW_STEALING_DEV || "";
-  const appEnv = getAppEnv();
+function getSentryEnvironment() {
+  const override = process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT?.trim();
+  return override || getEnvironmentStr();
+}
 
-  if (
-    !branch ||
-    branch === "dev" ||
-    branch === "refs/heads/dev" ||
-    appEnv !== AppEnv.DEV
-  ) {
-    return null;
-  }
-
-  return branch;
+function getRevision() {
+  return process.env.NEXT_PUBLIC_REVISION?.trim() || "";
 }
 
 function getPostHogCredentials() {
@@ -90,8 +83,8 @@ function getPostHogCredentials() {
   };
 }
 
-function getLaunchDarklyClientId() {
-  return process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
+function getGAMeasurementID() {
+  return process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "";
 }
 
 function getGoogleAdsID() {
@@ -126,12 +119,22 @@ function isProd() {
   return isCloud() && getAppEnv() === AppEnv.PROD;
 }
 
+// Set alongside AUTH_MICROSOFT_CLIENT_ID and AUTH_MICROSOFT_CLIENT_SECRET, which
+// the browser cannot read, so the button only shows where sign-in works.
+function isMicrosoftLoginEnabled() {
+  return process.env.NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED === "true";
+}
+
 function isCloud() {
   return getBehaveAs() === BehaveAs.CLOUD;
 }
 
 function isLocal() {
   return getBehaveAs() === BehaveAs.LOCAL;
+}
+
+function isGraphMemoryAvailable() {
+  return process.env.NEXT_PUBLIC_GRAPH_MEMORY !== "disabled";
 }
 
 function isServerSide() {
@@ -143,11 +146,16 @@ function isClientSide() {
 }
 
 function isVercelPreview() {
-  // VERCEL_ENV is server-only; next.config.mjs mirrors it into the
-  // NEXT_PUBLIC_ copy so the browser bundle can read it too.
-  return (
-    (process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV) === "preview"
-  );
+  // VERCEL_ENV and VERCEL_TARGET_ENV are server-only; next.config.mjs mirrors
+  // them into NEXT_PUBLIC_ copies so the browser bundle can read them too.
+  // VERCEL_ENV is "preview" for every custom environment (the dev deployment's
+  // "staging") as well as for branch previews, while VERCEL_TARGET_ENV names
+  // the environment itself. Builds that don't carry it fall back to VERCEL_ENV.
+  const vercelEnv =
+    process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV;
+  const targetEnv =
+    process.env.NEXT_PUBLIC_VERCEL_TARGET_ENV || process.env.VERCEL_TARGET_ENV;
+  return vercelEnv === "preview" && (!targetEnv || targetEnv === "preview");
 }
 
 function isVercel() {
@@ -157,7 +165,7 @@ function isVercel() {
 // AutoGPT's own Sentry project. Only our hosted deployments (on Vercel) report
 // to it; a self-hosted build reports nowhere unless its operator sets their own
 // NEXT_PUBLIC_SENTRY_DSN, so no self-hoster sends us errors without opting in.
-const HOSTED_SENTRY_DSN =
+export const HOSTED_SENTRY_DSN =
   "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288";
 
 function getSentryDSN() {
@@ -169,13 +177,6 @@ function getSentryDSN() {
 
 function isSentryEnabled() {
   return Boolean(getSentryDSN());
-}
-
-function areFeatureFlagsEnabled() {
-  return (
-    process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true" &&
-    Boolean(process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID)
-  );
 }
 
 function isPostHogEnabled() {
@@ -194,14 +195,15 @@ export const environment = {
   getAGPTServerApiUrl,
   getAGPTServerBaseUrl,
   getAGPTWsServerUrl,
-  getPreviewStealingDev,
+  getRevision,
   getPostHogCredentials,
-  getLaunchDarklyClientId,
+  getGAMeasurementID,
   getGoogleAdsID,
   getGoogleAdsConversionLabels,
   getCookiebotCBID,
   getCookiebotGeoRegions,
   getSentryDSN,
+  getSentryEnvironment,
   // Assertions
   isServerSide,
   isClientSide,
@@ -210,10 +212,11 @@ export const environment = {
   isDev,
   isProd,
   isCloud,
+  isMicrosoftLoginEnabled,
   isLocal,
+  isGraphMemoryAvailable,
   isVercel,
   isVercelPreview,
   isSentryEnabled,
   isPostHogEnabled,
-  areFeatureFlagsEnabled,
 };

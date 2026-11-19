@@ -19,7 +19,7 @@ describe("AgentListCard", () => {
     );
 
     expect(screen.getByText("Lib Agent")).toBeDefined();
-    expect(screen.getByLabelText("Open agent").getAttribute("href")).toBe(
+    expect(screen.getByLabelText("Open workflow").getAttribute("href")).toBe(
       "/library/agents/lib-1",
     );
   });
@@ -45,7 +45,7 @@ describe("AgentListCard", () => {
     expect(screen.getByText("Scrapes websites")).toBeDefined();
     expect(screen.getByText("1,200 runs")).toBeDefined();
     expect(screen.getByText("4.5")).toBeDefined();
-    expect(screen.getByLabelText("Open agent").getAttribute("href")).toBe(
+    expect(screen.getByLabelText("Open workflow").getAttribute("href")).toBe(
       "/marketplace/agent/creator/scraper",
     );
   });
@@ -56,7 +56,7 @@ describe("AgentListCard", () => {
     );
 
     expect(screen.getByText("Deep Path Agent")).toBeDefined();
-    expect(screen.queryByLabelText("Open agent")).toBeNull();
+    expect(screen.queryByLabelText("Open workflow")).toBeNull();
   });
 
   it("falls back to inline JSON for unnamed agents", () => {
@@ -94,7 +94,7 @@ describe("AgentSavedCard", () => {
   it("falls back to a default name and no links", () => {
     render(<AgentSavedCard output={{}} />);
 
-    expect(screen.getByText("Agent")).toBeDefined();
+    expect(screen.getByText("Workflow")).toBeDefined();
     expect(screen.queryByLabelText("Open in library")).toBeNull();
   });
 
@@ -135,7 +135,7 @@ describe("AgentPreviewCard", () => {
   it("pluralizes the block count and falls back to a default name", () => {
     render(<AgentPreviewCard output={{ node_count: 4 }} />);
 
-    expect(screen.getByText("Agent preview")).toBeDefined();
+    expect(screen.getByText("Workflow preview")).toBeDefined();
     expect(screen.getByText("4 blocks")).toBeDefined();
   });
 });

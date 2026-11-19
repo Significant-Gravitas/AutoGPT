@@ -81,6 +81,9 @@ class Invoice(BaseModel):
     id: str
     status: str | None = None
     created: int
+    customer: str | None = None
+    amount_due: int = 0
+    currency: str | None = None
     billing_reason: str | None = None
     hosted_invoice_url: str | None = None
 

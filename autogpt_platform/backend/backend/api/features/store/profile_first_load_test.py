@@ -15,14 +15,12 @@ from contextvars import ContextVar
 from typing import Literal
 
 import pytest
-import pytest_asyncio
 from prisma.actions import ProfileActions
 from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.store import db as store_db
 from backend.api.features.store import model as store_model
 from backend.api.features.store.routes import get_profile
-from backend.data import db
 from backend.data import profile as profile_module
 from backend.data.db import prisma
 from backend.data.user import get_or_create_user_with_status
@@ -33,17 +31,6 @@ _SEEDS = 200
 
 _Role = Literal["read", "setup", "save"]
 _ROLES: tuple[_Role, ...] = ("read", "setup", "save")
-
-
-@pytest_asyncio.fixture(scope="module", loop_scope="session", autouse=True)
-async def _fresh_connections(server: SpinTestServer):
-    """Start on a fresh connection pool. These tests make inserts fail on
-    purpose (the race's losing side), and a test earlier in the session can
-    leave a pooled connection inside a transaction it never closed: one failure
-    there aborts it for every later query, in this module and after it."""
-    await db.disconnect()
-    await db.connect()
-    yield
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -190,8 +177,8 @@ async def _race(
     return failures, seen
 
 
-def _saved(run: str, seed: int, index: int) -> store_model.Profile:
-    return store_model.Profile(
+def _saved(run: str, seed: int, index: int) -> store_model.ProfileUpdateRequest:
+    return store_model.ProfileUpdateRequest(
         username=f"saved-{run}-{seed}-{index}",
         name=_saved_name(seed, index),
         description="Saved from the profile page",

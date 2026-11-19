@@ -16,12 +16,6 @@ import {
   routerMock,
 } from "./navigation-mock";
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ARTIFACTS_PAGE: "artifacts-page" },
-  useGetFlag: () => true,
-  useFlagStatus: () => ({ enabled: true, ready: true }),
-}));
-
 vi.mock("next/navigation", async () => {
   const { navigationMock } = await import("./navigation-mock");
   return navigationMock();

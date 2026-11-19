@@ -104,7 +104,7 @@ describe("GlobalSearchModal", () => {
     expect(screen.getByText("Charlie chat")).toBeDefined();
 
     // Section headers are rendered for each non-empty bucket.
-    expect(screen.getByText("Agents")).toBeDefined();
+    expect(screen.getByText("Workflows")).toBeDefined();
     expect(screen.getByText("Files")).toBeDefined();
     expect(screen.getByText("Chats")).toBeDefined();
   });

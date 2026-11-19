@@ -141,6 +141,22 @@ describe("latestProviderFailure", () => {
     expect(failure?.credentialId).toBe("cred-1");
   });
 
+  it("recovers a failure stored on a retryable marker too", () => {
+    // The retryable prefix is the backend's COPILOT_RETRYABLE_ERROR_PREFIX.
+    // Matched under a wrong suffix, the marker read as a real reply, and the
+    // scan reported the chat as recovered from the failure it sits on.
+    const failure = latestProviderFailure([
+      { role: "user", content: "hi", metadata: null },
+      {
+        role: "assistant",
+        content: "[__COPILOT_RETRYABLE_ERROR_a9c2__] out of turns",
+        metadata: { [PROVIDER_FAILURE_KEY]: { ...envelope, retryable: true } },
+      },
+    ]);
+    expect(failure?.kind).toBe("usage_limit");
+    expect(failure?.retryable).toBe(true);
+  });
+
   it("takes the newest one, so a recovered-from failure stays history", () => {
     const older = { ...envelope, credentialId: "old" };
     const newer = { ...envelope, credentialId: "new" };
