@@ -1589,10 +1589,7 @@ async def review_store_submission(
     try:
         submission = await prisma.models.StoreListingVersion.prisma().find_unique(
             where={"id": store_listing_version_id},
-            include={
-                "AgentGraph": {"include": AGENT_GRAPH_INCLUDE},
-                "StoreListing": True,
-            },
+            include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
         )
 
         if not submission:
@@ -1600,21 +1597,9 @@ async def review_store_submission(
                 f"Store listing version {store_listing_version_id} not found"
             )
         assert submission.AgentGraph is not None
-        assert submission.StoreListing is not None
         creator_user_id = submission.AgentGraph.userId
 
-        # Check if we're rejecting an already approved agent
-        is_rejecting_approved = (
-            not is_approved
-            and submission.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
-        )
-        # Only pulling the live version moves the listing to another one;
-        # pulling an older approved version leaves what the page serves alone.
-        is_rejecting_active = is_rejecting_approved and (
-            submission.StoreListing.activeVersionId in (None, store_listing_version_id)
-        )
-
-        # If approving, update the listing to indicate it has an approved version
+        sub_graphs = []
         if is_approved:
             if foreign_refs := await foreign_sub_graph_refs(submission.AgentGraph):
                 raise PreconditionFailed(
@@ -1623,7 +1608,10 @@ async def review_store_submission(
                     f"{_format_graph_refs(foreign_refs)}, so it can't be approved."
                 )
             sub_graphs = await get_sub_graphs(submission.AgentGraph)
-            async with transaction() as tx:
+
+        reactivated_id = None
+        async with transaction() as tx:
+            if is_approved:
                 # Handle sub-agent approvals in transaction
                 await asyncio.gather(
                     *[
@@ -1678,72 +1666,35 @@ async def review_store_submission(
                     },
                 )
 
-        # If rejecting the live version, update the StoreListing accordingly
-        if is_rejecting_active:
-            # Check if there are other approved versions
-            other_approved = (
-                await prisma.models.StoreListingVersion.prisma().find_first(
-                    where={
-                        "storeListingId": submission.storeListingId,
-                        "id": {"not": store_listing_version_id},
-                        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-                    },
-                    order={"version": "desc"},
-                )
-            )
-
-            if not other_approved:
-                # No other approved versions, update hasApprovedVersion to False
-                await prisma.models.StoreListing.prisma().update(
-                    where={"id": submission.storeListingId},
-                    data={
-                        "hasApprovedVersion": False,
-                        "ActiveVersion": {"disconnect": True},
-                    },
-                )
             else:
-                # Set the most recent other approved version as active
-                await prisma.models.StoreListing.prisma().update(
-                    where={"id": submission.storeListingId},
-                    data={
-                        "ActiveVersion": {"connect": {"id": other_approved.id}},
-                    },
-                )
-                if public_media.publishing_enabled():
-                    await _publish_reactivated_media(other_approved.id)
+                reactivated_id = await _withdraw_store_version(tx, submission)
 
-        submission_status = (
-            prisma.enums.SubmissionStatus.APPROVED
-            if is_approved
-            else prisma.enums.SubmissionStatus.REJECTED
-        )
-
-        # Update the version with review information
-        update_data: prisma.types.StoreListingVersionUpdateInput = {
-            "submissionStatus": submission_status,
-            "reviewedAt": datetime.now(tz=timezone.utc),
-            "Reviewer": {"connect": {"id": reviewer_id}},
-            "reviewComments": external_comments,
-            "internalComments": internal_comments,
-        }
-
-        # Update the version
-        reviewed_submission = await prisma.models.StoreListingVersion.prisma().update(
-            where={"id": store_listing_version_id},
-            data=update_data,
-            include={
-                "StoreListing": True,  # required for StoreSubmissionAdminView
-                "Reviewer": True,  # used in _send_submission_review_notification
-            },
-        )
-
-        if not reviewed_submission:
-            raise DatabaseError(
-                f"Failed to update store listing version {store_listing_version_id}"
+            reviewed_submission = await prisma.models.StoreListingVersion.prisma(
+                tx
+            ).update(
+                where={"id": store_listing_version_id},
+                data={
+                    "submissionStatus": (
+                        prisma.enums.SubmissionStatus.APPROVED
+                        if is_approved
+                        else prisma.enums.SubmissionStatus.REJECTED
+                    ),
+                    "reviewedAt": datetime.now(tz=timezone.utc),
+                    "Reviewer": {"connect": {"id": reviewer_id}},
+                    "reviewComments": external_comments,
+                    "internalComments": internal_comments,
+                },
+                include={"StoreListing": True, "Reviewer": True},
             )
+            if not reviewed_submission:
+                raise DatabaseError(
+                    f"Failed to update store listing version {store_listing_version_id}"
+                )
 
         if is_approved:
             reviewed_submission = await _publish_approved_media(reviewed_submission)
+        elif reactivated_id and public_media.publishing_enabled():
+            await _publish_reactivated_media(reactivated_id)
 
         if notify_creator:
             try:
@@ -1766,6 +1717,64 @@ async def review_store_submission(
     except Exception as e:
         logger.error(f"Could not create store submission review: {e}")
         raise DatabaseError("Failed to create store submission review") from e
+
+
+async def _withdraw_store_version(
+    tx: prisma.Prisma, version: prisma.models.StoreListingVersion
+) -> str | None:
+    # Serialize reviews of a listing before choosing a replacement for its live version.
+    rows = await query_raw_with_schema(
+        'SELECT l."activeVersionId", v."submissionStatus"::text AS "submissionStatus" '
+        'FROM {schema_prefix}"StoreListing" l JOIN {schema_prefix}"StoreListingVersion" v '
+        'ON v."storeListingId" = l.id WHERE v.id = $1 FOR UPDATE OF l, v',
+        version.id,
+        client=tx,
+    )
+    if (
+        not rows
+        or rows[0]["submissionStatus"] != prisma.enums.SubmissionStatus.APPROVED
+    ):
+        return None
+
+    listings = prisma.models.StoreListing.prisma(tx)
+    if rows[0]["activeVersionId"] == version.id:
+        fallback = await prisma.models.StoreListingVersion.prisma(tx).find_first(
+            where={
+                **installable_store_version_where(),
+                "storeListingId": version.storeListingId,
+                "id": {"not": version.id},
+            },
+            order={"version": "desc"},
+        )
+        await listings.update(
+            where={"id": version.storeListingId},
+            data={
+                "ActiveVersion": (
+                    {"connect": {"id": fallback.id}}
+                    if fallback
+                    else {"disconnect": True}
+                )
+            },
+        )
+        if fallback:
+            return fallback.id
+
+    # Hidden sub-workflows still count as approved without becoming public.
+    await listings.update_many(
+        where={
+            "id": version.storeListingId,
+            "hasApprovedVersion": True,
+            "Versions": {
+                "none": {
+                    "id": {"not": version.id},
+                    "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                    "isDeleted": False,
+                }
+            },
+        },
+        data={"hasApprovedVersion": False},
+    )
+    return None
 
 
 async def _publish_approved_media(

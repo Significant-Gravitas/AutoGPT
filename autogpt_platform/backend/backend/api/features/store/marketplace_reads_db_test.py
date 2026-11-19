@@ -4,6 +4,7 @@ The creator views are SQL and the listing-version filter is a Prisma query,
 so ``db_test.py``'s mocks cannot run either; ``server`` starts the test stack.
 """
 
+import asyncio
 from uuid import uuid4
 
 import prisma.enums
@@ -12,7 +13,7 @@ import pytest
 
 from backend.api.features.store import db as store_db
 from backend.api.features.store import exceptions as store_exceptions
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 APPROVED = prisma.enums.SubmissionStatus.APPROVED
 PENDING = prisma.enums.SubmissionStatus.PENDING
@@ -78,6 +79,98 @@ async def test_a_listing_graph_is_served_only_for_a_listed_version(server):
             await store_db.get_available_graph(approved)
     finally:
         await _clean_up(owner, [graph_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    ("available", "deleted"), [(False, False), (True, True)], ids=["hidden", "deleted"]
+)
+async def test_rejection_serves_the_newest_remaining_public_version(
+    server, available: bool, deleted: bool
+):
+    tag = uuid4().hex[:12]
+    owner = await _seed_creator(tag, avatar_url="")
+    graph_id = f"graph-{tag}"
+    try:
+        _, older, fallback, unlisted, live = await _seed_listing(
+            graph_id, owner, [APPROVED] * 5
+        )
+        await prisma.models.StoreListing.prisma().update(
+            where={"agentGraphId": graph_id},
+            data={"ActiveVersion": {"connect": {"id": live}}},
+        )
+        await prisma.models.StoreListingVersion.prisma().update(
+            where={"id": unlisted},
+            data={"isAvailable": available, "isDeleted": deleted},
+        )
+
+        await _reject(older, owner)
+        assert (
+            await store_db.get_store_agent_details(owner, graph_id)
+        ).active_version_id == live
+
+        await _reject(live, owner)
+        page = await store_db.get_store_agent_details(owner, graph_id)
+        assert page.active_version_id == fallback
+    finally:
+        await _clean_up(owner, [graph_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("listed", [True, False], ids=["published", "hidden-only"])
+async def test_rejection_preserves_hidden_approvals_without_publishing_them(
+    server, listed: bool
+):
+    tag = uuid4().hex[:12]
+    owner = await _seed_creator(tag, avatar_url="")
+    graph_id = f"graph-{tag}"
+    try:
+        first, hidden = await _seed_listing(graph_id, owner, [APPROVED, APPROVED])
+        listings = prisma.models.StoreListing.prisma()
+        await prisma.models.StoreListingVersion.prisma().update_many(
+            where={"id": {"in": [hidden] if listed else [first, hidden]}},
+            data={"isAvailable": False},
+        )
+        if not listed:
+            await listings.update(
+                where={"agentGraphId": graph_id},
+                data={"ActiveVersion": {"disconnect": True}},
+            )
+
+        for version_id, approval_remains in [(first, True), (hidden, False)]:
+            await _reject(version_id, owner)
+            listing = await listings.find_unique_or_raise(
+                where={"agentGraphId": graph_id}
+            )
+            assert listing.activeVersionId is None
+            assert listing.hasApprovedVersion is approval_remains
+    finally:
+        await _clean_up(owner, [graph_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rejection_commits_the_verdict_and_public_pointer_together(server):
+    tag = uuid4().hex[:12]
+    owner = await _seed_creator(tag, avatar_url="")
+    graph_id = f"graph-{tag}"
+    try:
+        live, survivor, newest = await _seed_listing(graph_id, owner, [APPROVED] * 3)
+        with pytest.raises(DatabaseError):
+            await _reject(live, f"missing-reviewer-{tag}")
+        page = await store_db.get_store_agent_details(owner, graph_id)
+        assert page.active_version_id == live
+
+        await asyncio.gather(_reject(live, owner), _reject(newest, owner))
+        page = await store_db.get_store_agent_details(owner, graph_id)
+        assert page.active_version_id == survivor
+    finally:
+        await _clean_up(owner, [graph_id])
+
+
+async def _reject(version_id: str, reviewer_id: str):
+    await store_db.review_store_submission(
+        version_id, False, "", "", reviewer_id, notify_creator=False
+    )
 
 
 async def _seed_creator(tag: str, avatar_url: str | None) -> str:

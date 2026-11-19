@@ -1682,7 +1682,16 @@ def review_mocks(mocker):
     mock_slv.return_value.update = AsyncMock(side_effect=update_version)
     mock_listing = mocker.patch("prisma.models.StoreListing.prisma")
     mock_listing.return_value.update = AsyncMock()
+    mock_listing.return_value.update_many = AsyncMock(return_value=0)
     mock_listing.return_value.find_first = AsyncMock(return_value=listing)
+    locked_review = mocker.patch.object(
+        db,
+        "query_raw_with_schema",
+        new_callable=AsyncMock,
+        return_value=[
+            {"activeVersionId": None, "submissionStatus": version.submissionStatus}
+        ],
+    )
     mocker.patch("prisma.models.AgentGraph.prisma").return_value.update = AsyncMock()
     mock_members = mocker.patch("prisma.models.OrgMember.prisma")
     mock_members.return_value.find_many = AsyncMock(return_value=[])
@@ -1712,6 +1721,7 @@ def review_mocks(mocker):
         slv=mock_slv.return_value,
         profile=mock_profile.return_value,
         listing=mock_listing.return_value,
+        locked_review=locked_review,
         members=mock_members.return_value,
         version=version,
     )
@@ -2128,9 +2138,7 @@ async def test_approve_publishes_media_uploaded_by_org_members(
 async def test_reject_publishes_the_media_of_the_reactivated_version(
     mocker, public_media_bucket, review_mocks
 ):
-    approved = review_mocks.version.model_copy(
-        update={"submissionStatus": prisma.enums.SubmissionStatus.APPROVED}
-    )
+    approved = _approved_version_of_listing_live_at(review_mocks, "version-id")
     previous = review_mocks.version.model_copy(
         update={"id": "previous-id", "imageUrls": [f"{PRIVATE_URL}/old.png"]}
     )
@@ -2159,9 +2167,7 @@ async def test_reject_publishes_the_media_of_the_reactivated_version(
 async def test_reject_completes_when_the_reactivated_version_fails_to_load(
     mocker, public_media_bucket, review_mocks
 ):
-    approved = review_mocks.version.model_copy(
-        update={"submissionStatus": prisma.enums.SubmissionStatus.APPROVED}
-    )
+    approved = _approved_version_of_listing_live_at(review_mocks, "version-id")
     previous = review_mocks.version.model_copy(update={"id": "previous-id"})
 
     def find_unique(where, include=None):
@@ -2180,6 +2186,12 @@ async def test_reject_completes_when_the_reactivated_version_fails_to_load(
 
 
 def _approved_version_of_listing_live_at(review_mocks, active_version_id: str):
+    review_mocks.locked_review.return_value = [
+        {
+            "activeVersionId": active_version_id,
+            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+        }
+    ]
     listing = review_mocks.version.StoreListing.model_copy(
         update={"activeVersionId": active_version_id, "hasApprovedVersion": True}
     )
@@ -2204,6 +2216,7 @@ async def test_rejecting_an_older_approved_version_leaves_the_live_one(
 
     assert result.status == prisma.enums.SubmissionStatus.REJECTED
     review_mocks.listing.update.assert_not_awaited()
+    review_mocks.slv.find_first.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
