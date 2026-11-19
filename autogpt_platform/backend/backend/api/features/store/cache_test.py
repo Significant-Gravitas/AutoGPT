@@ -66,6 +66,11 @@ async def test_a_search_ranked_by_text_alone_answers_while_the_cache_is_unreacha
         patch.object(
             cache_util, "_get_redis", MagicMock(side_effect=ConnectionError("down"))
         ),
+        patch.object(
+            cache_util,
+            "_get_async_redis",
+            AsyncMock(side_effect=ConnectionError("down")),
+        ),
     ):
         response = await _search(f"sheets {uuid.uuid4().hex}")
 

@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import cast, get_args
 from unittest.mock import AsyncMock
@@ -9,6 +10,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api import model as api_model
+from backend.api import ws_api
 from backend.api.conn_manager import ConnectionManager
 from backend.api.test_helpers import override_config
 from backend.api.ws_api import AppEnvironment, WebsocketServer, WSMessage, WSMethod
@@ -20,6 +22,9 @@ from backend.api.ws_api import (
     websocket_router,
 )
 from backend.data.user import DEFAULT_USER_ID
+
+# Only a step that never comes keeps a wait going this long.
+_HANG_SECONDS = 10.0
 
 
 @pytest.fixture(autouse=True)
@@ -801,6 +806,57 @@ async def test_an_unreadable_ban_keeps_an_open_socket(
 
     mock_websocket.close.assert_not_called()
     mock_manager.subscribe_graph_exec.assert_called_once()
+
+
+async def _never_answers(user_id: str) -> bool:
+    await asyncio.Event().wait()
+    raise AssertionError("unreachable")
+
+
+async def _answers_allowed_once_cancelled(user_id: str) -> bool:
+    """A layer under the lookup that swallows the cancellation."""
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        pass
+    return False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ban_lookup",
+    [_never_answers, _answers_allowed_once_cancelled],
+    ids=["never-answers", "swallows-the-cancel"],
+)
+async def test_an_account_check_that_runs_out_of_time_closes_the_socket_to_retry(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker, ban_lookup
+) -> None:
+    """The check never counts as allowed by running out of time: the message
+    isn't handled, and the socket closes with a code the client reconnects
+    on, which runs the connect-time checks."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=ban_lookup)
+    # The lookup never finishes on its own, so the bound decides when the
+    # check gives up, not whether.
+    mocker.patch.object(ws_api, "ACCOUNT_CHECK_TIMEOUT_S", 0.05)
+    mock_websocket.receive_text.side_effect = [
+        WSMessage(
+            method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+            data={"graph_exec_id": "test-graph-exec-1"},
+        ).model_dump_json(),
+        WebSocketDisconnect(),
+    ]
+
+    async with asyncio.timeout(_HANG_SECONDS):
+        await websocket_router(
+            cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+        )
+
+    mock_websocket.close.assert_awaited_once_with(code=1013, reason="Try again")
+    mock_manager.subscribe_graph_exec.assert_not_called()
+    mock_websocket.send_text.assert_not_called()
 
 
 # ---------- get_connection_manager singleton ----------

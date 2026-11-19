@@ -17,15 +17,21 @@ import logging
 import pickle
 import threading
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import cache, wraps
 from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
+from weakref import WeakKeyDictionary
 
 import sentry_sdk
-from redis.cluster import ClusterNode, RedisCluster
+from redis.cluster import RedisCluster
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from backend.util import tracing
-from backend.util.retry import conn_retry
+from backend.util.cache_redis import REDIS_OP_TIMEOUT_S
+from backend.util.cache_redis import get_async_redis as _get_async_redis
+from backend.util.cache_redis import get_redis as _get_redis
 from backend.util.settings import Settings
 
 P = ParamSpec("P")
@@ -48,29 +54,6 @@ _SCAN_BATCH_SIZE = 1000
 #   maxmemory-policy allkeys-lru    # Evict least recently used keys when memory limit reached
 #   maxmemory 2gb                   # Set memory limit (adjust based on your needs)
 #   save ""                         # Disable persistence if using Redis purely for caching
-
-
-@cache
-@conn_retry("Redis", "Acquiring cache connection")
-def _get_redis() -> RedisCluster:
-    """Lazily-initialized shared-cache Redis Cluster client (singleton)."""
-    # Local import breaks the redis_client <-> cache module cycle.
-    from backend.data.redis_client import _address_remap
-
-    c = RedisCluster(
-        startup_nodes=[
-            ClusterNode(settings.config.redis_host, settings.config.redis_port)
-        ],
-        password=settings.config.redis_password or None,
-        decode_responses=False,  # Binary mode for pickle
-        max_connections=50,
-        socket_keepalive=True,
-        socket_connect_timeout=5,
-        retry_on_timeout=True,
-        address_remap=_address_remap,
-    )
-    c.ping()
-    return c
 
 
 class _MissingType:
@@ -96,6 +79,45 @@ class _MissingType:
 # "no entry exists" — distinct from a cached ``None`` value, which is a
 # valid result for callers that opt into caching it.
 _MISSING = _MissingType()
+
+
+class _UnreachableType:
+    """Sentinel for a Redis read that got no answer in time, or failed. Unlike
+    a miss, asking Redis again, or storing the value in it, would only wait
+    again, so the caller computes the value and moves on."""
+
+    def __repr__(self) -> str:
+        return "<UNREACHABLE>"
+
+
+_UNREACHABLE = _UnreachableType()
+
+
+def _is_hit(result: Any) -> bool:
+    return result is not _MISSING and result is not _UNREACHABLE
+
+
+class _KeyLocks:
+    """An ``asyncio.Lock`` per key, made on first use and dropped once nobody
+    holds or waits for it. For one event loop: an asyncio.Lock belongs to one."""
+
+    def __init__(self) -> None:
+        self._locks: dict[Any, asyncio.Lock] = {}
+        self._users: dict[Any, int] = {}
+
+    @asynccontextmanager
+    async def hold(self, key: Any) -> AsyncIterator[None]:
+        lock = self._locks.get(key)
+        if lock is None:
+            lock = self._locks[key] = asyncio.Lock()
+        self._users[key] = self._users.get(key, 0) + 1
+        try:
+            async with lock:
+                yield
+        finally:
+            self._users[key] -= 1
+            if not self._users[key]:
+                del self._users[key], self._locks[key]
 
 
 @dataclass
@@ -191,12 +213,16 @@ def cached(
     Thundering herd safe cache decorator for both sync and async functions.
 
     Uses double-checked locking to prevent multiple threads/coroutines from
-    executing the expensive operation simultaneously during cache misses.
+    executing the expensive operation simultaneously during cache misses. For
+    a coroutine the lock is per key: misses for other arguments don't wait.
 
     Args:
         maxsize: Maximum number of cached entries (only for in-memory cache)
         ttl_seconds: Time to live in seconds. Required - entries must expire.
-        shared_cache: If True, use Redis for cross-process caching
+        shared_cache: If True, use Redis for cross-process caching. A
+            coroutine's reads and writes never block its event loop, and are
+            best effort: when Redis doesn't answer within
+            ``REDIS_OP_TIMEOUT_S``, the value is computed instead.
         refresh_ttl_on_get: If True, refresh TTL when cache entry is accessed (LRU behavior)
         cache_none: If True (default) ``None`` is cached like any other value.
             Set to ``False`` for functions that return ``None`` to signal a
@@ -226,7 +252,9 @@ def cached(
         func_name = target_func.__name__
         signature = inspect.signature(target_func)
         cache_storage: dict[tuple, CachedValue] = {}
-        _event_loop_locks: dict[Any, asyncio.Lock] = {}
+        _key_locks_by_loop: WeakKeyDictionary[asyncio.AbstractEventLoop, _KeyLocks] = (
+            WeakKeyDictionary()
+        )
 
         def _get_from_redis(redis_key: str) -> Any:
             """Get value from Redis, optionally refreshing TTL.
@@ -235,37 +263,83 @@ def cached(
             module-level ``_MISSING`` sentinel on a miss / corrupt entry.
             Callers must compare with ``is _MISSING`` so cached ``None`` values
             are not mistaken for misses.
-
-            Values are expected to carry an HMAC-SHA256 prefix for integrity
-            verification.  Unsigned (legacy) or tampered entries are silently
-            discarded and treated as cache misses, so the caller recomputes and
-            re-stores them with a valid signature.
             """
             try:
                 if refresh_ttl_on_get:
                     cached_bytes = _get_redis().getex(redis_key, ex=ttl_seconds)
                 else:
                     cached_bytes = _get_redis().get(redis_key)
-
-                if cached_bytes and isinstance(cached_bytes, bytes):
-                    payload = _verify_and_strip(cached_bytes)
-                    if payload is None:
-                        logger.warning(
-                            "[SECURITY] Cache HMAC verification failed "
-                            f"for {func_name}, discarding entry: "
-                            "possible tampering or legacy unsigned value"
-                        )
-                        return _MISSING
-                    return pickle.loads(payload)
+                return _decode(cached_bytes)
             except Exception as e:
                 logger.error(f"Redis error during cache check for {func_name}: {e}")
             return _MISSING
+
+        def _decode(cached_bytes: Any) -> Any:
+            """The value a stored entry holds, or ``_MISSING``.
+
+            Values are expected to carry an HMAC-SHA256 prefix for integrity
+            verification.  Unsigned (legacy) or tampered entries are silently
+            discarded and treated as cache misses, so the caller recomputes and
+            re-stores them with a valid signature.
+            """
+            if not cached_bytes or not isinstance(cached_bytes, bytes):
+                return _MISSING
+            payload = _verify_and_strip(cached_bytes)
+            if payload is None:
+                logger.warning(
+                    "[SECURITY] Cache HMAC verification failed "
+                    f"for {func_name}, discarding entry: "
+                    "possible tampering or legacy unsigned value"
+                )
+                return _MISSING
+            return pickle.loads(payload)
 
         def _set_to_redis(redis_key: str, value: Any) -> None:
             """Set HMAC-signed pickled value in Redis with TTL."""
             try:
                 pickled = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
                 _get_redis().setex(redis_key, ttl_seconds, _sign_payload(pickled))
+            except Exception as e:
+                logger.error(f"Redis error storing cache for {func_name}: {e}")
+
+        async def _aget_from_redis(redis_key: str) -> Any:
+            """``_get_from_redis`` for a coroutine: the event loop runs others
+            while Redis answers, and stops waiting after ``REDIS_OP_TIMEOUT_S``.
+            Returns ``_UNREACHABLE`` when Redis didn't answer, or failed."""
+            try:
+                redis = await _get_async_redis()
+                async with asyncio.timeout(REDIS_OP_TIMEOUT_S):
+                    if refresh_ttl_on_get:
+                        cached_bytes = await redis.getex(redis_key, ex=ttl_seconds)
+                    else:
+                        cached_bytes = await redis.get(redis_key)
+            except (TimeoutError, RedisTimeoutError):
+                logger.warning(
+                    f"Redis didn't answer a cache check for {func_name} within "
+                    f"{REDIS_OP_TIMEOUT_S}s; computing it instead"
+                )
+                return _UNREACHABLE
+            except Exception as e:
+                logger.error(f"Redis error during cache check for {func_name}: {e}")
+                return _UNREACHABLE
+            try:
+                return _decode(cached_bytes)
+            except Exception as e:
+                logger.error(f"Unreadable cache entry for {func_name}: {e}")
+                return _MISSING
+
+        async def _aset_to_redis(redis_key: str, value: Any) -> None:
+            """``_set_to_redis`` for a coroutine, bounded the same way."""
+            try:
+                pickled = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+                redis = await _get_async_redis()
+                async with asyncio.timeout(REDIS_OP_TIMEOUT_S):
+                    await redis.set(redis_key, _sign_payload(pickled), ex=ttl_seconds)
+            except (TimeoutError, RedisTimeoutError):
+                logger.warning(
+                    f"Redis didn't store a cache entry for {func_name} within "
+                    f"{REDIS_OP_TIMEOUT_S}s"
+                )
             except Exception as e:
                 logger.error(f"Redis error storing cache for {func_name}: {e}")
 
@@ -298,16 +372,12 @@ def cached(
 
         if inspect.iscoroutinefunction(target_func):
 
-            def _get_cache_lock():
-                """Get or create an asyncio.Lock for the current event loop."""
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-
-                if loop not in _event_loop_locks:
-                    return _event_loop_locks.setdefault(loop, asyncio.Lock())
-                return _event_loop_locks[loop]
+            def _key_locks() -> _KeyLocks:
+                loop = asyncio.get_running_loop()
+                locks = _key_locks_by_loop.get(loop)
+                if locks is None:
+                    locks = _key_locks_by_loop[loop] = _KeyLocks()
+                return locks
 
             @wraps(target_func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs):
@@ -316,39 +386,39 @@ def cached(
 
                 # Fast path: check cache without lock
                 if shared_cache:
-                    result = _get_from_redis(redis_key)
-                    if result is not _MISSING:
-                        return result
+                    result = await _aget_from_redis(redis_key)
                 else:
                     result = _get_from_memory(key)
-                    if result is not _MISSING:
-                        return result
+                if _is_hit(result):
+                    return result
 
-                # Slow path: acquire lock for cache miss/expiry
-                async with _get_cache_lock():
-                    # Double-check: another coroutine might have populated cache
-                    if shared_cache:
-                        result = _get_from_redis(redis_key)
-                        if result is not _MISSING:
-                            return result
-                    else:
-                        result = _get_from_memory(key)
-                        if result is not _MISSING:
+                # Slow path: one caller per key computes it, and misses for
+                # other keys don't wait behind it.
+                async with _key_locks().hold(key):
+                    # Double-check: another coroutine might have populated
+                    # cache. Not when Redis just went unanswered: asking it
+                    # again, or storing the value, would only wait again.
+                    if result is not _UNREACHABLE:
+                        if shared_cache:
+                            result = await _aget_from_redis(redis_key)
+                        else:
+                            result = _get_from_memory(key)
+                        if _is_hit(result):
                             return result
 
                     # Cache miss - execute function
                     logger.debug(f"Cache miss for {func_name}")
-                    result = await target_func(*args, **kwargs)
+                    value = await target_func(*args, **kwargs)
 
                     # Store result (skip ``None`` if the caller opted out of
                     # caching it — used for transient-error sentinels).
-                    if cache_none or result is not None:
+                    if result is not _UNREACHABLE and (cache_none or value is not None):
                         if shared_cache:
-                            _set_to_redis(redis_key, result)
+                            await _aset_to_redis(redis_key, value)
                         else:
-                            _set_to_memory(key, result)
+                            _set_to_memory(key, value)
 
-                    return result
+                    return value
 
             wrapper = async_wrapper
 

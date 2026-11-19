@@ -11,18 +11,74 @@ This module tests the thread-local caching functionality including:
 import asyncio
 import threading
 import time
+import traceback
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
+import redis.connection
 
+from backend.util import cache as cache_module
 from backend.util.cache import (
     _SCAN_BATCH_SIZE,
     cached,
     clear_thread_cache,
     thread_cached,
 )
+from backend.util.cache_test_helpers import cache_key, hold_cache_read
+
+# Only a step that never comes keeps a wait going this long.
+_HANG_SECONDS = 10.0
+
+
+@pytest.fixture(autouse=True)
+def no_redis_round_trip_on_an_event_loop(monkeypatch: pytest.MonkeyPatch):
+    """Fail a test in which the cache's sync Redis client sends a command from
+    a thread running an event loop: every coroutine on that loop then waits
+    for Redis's answer, so one shard that stops answering stops them all. A
+    coroutine reads the cache through ``cache_redis.get_async_redis``, and
+    calls a sync cache method (``cache_clear``, ``cache_delete``) through
+    ``asyncio.to_thread``."""
+    sent_on_a_loop: list[str] = []
+    send = redis.connection.AbstractConnection.send_packed_command
+
+    def guarded_send(self, command, check_health=True):
+        # Noted, not raised: the cache would log a raised error and carry on,
+        # and the client's connect retries would wait it out on the loop.
+        if _runs_an_event_loop():
+            sent_on_a_loop.append(_backend_callers())
+        return send(self, command, check_health)
+
+    monkeypatch.setattr(
+        redis.connection.AbstractConnection, "send_packed_command", guarded_send
+    )
+    yield
+    assert not sent_on_a_loop, (
+        "The cache's sync Redis client ran on an event loop's thread, blocking "
+        "every coroutine on it until Redis answered:\n" + "\n".join(sent_on_a_loop)
+    )
+
+
+def _runs_an_event_loop() -> bool:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
+
+
+def _backend_callers() -> str:
+    frames = [
+        frame
+        for frame in traceback.extract_stack()[:-2]
+        if "/backend/backend/" in frame.filename
+    ]
+    return "  " + " <- ".join(
+        f"{frame.filename.rsplit('/backend/', 1)[-1]}:{frame.lineno} {frame.name}"
+        for frame in reversed(frames[-4:])
+    )
 
 
 class TestThreadCached:
@@ -732,7 +788,7 @@ class TestSharedCache:
             return x + y
 
         # Clear any existing cache
-        shared_async_function.cache_clear()
+        await asyncio.to_thread(shared_async_function.cache_clear)
 
         # First call
         result1 = await shared_async_function(10, 20)
@@ -750,7 +806,7 @@ class TestSharedCache:
         assert call_count == 2
 
         # Cleanup
-        shared_async_function.cache_clear()
+        await asyncio.to_thread(shared_async_function.cache_clear)
 
     def test_shared_cache_ttl_refresh(self):
         """Test TTL refresh functionality with shared cache."""
@@ -951,7 +1007,7 @@ class TestSharedCache:
             return x * x
 
         # Clear any existing cache
-        shared_slow_function.cache_clear()
+        await asyncio.to_thread(shared_slow_function.cache_clear)
 
         # Launch multiple concurrent tasks
         tasks = [shared_slow_function(8) for _ in range(10)]
@@ -963,7 +1019,7 @@ class TestSharedCache:
         assert call_count == 1
 
         # Cleanup
-        shared_slow_function.cache_clear()
+        await asyncio.to_thread(shared_slow_function.cache_clear)
 
     def test_shared_cache_clear_pattern(self):
         """Test pattern-based cache clearing (Redis feature)."""
@@ -1053,7 +1109,7 @@ class TestSharedCache:
             return f"result_{key}"
 
         # Clear cache
-        multi_key_function.cache_clear()
+        await asyncio.to_thread(multi_key_function.cache_clear)
 
         # Launch concurrent tasks with different keys
         keys = ["a", "b", "c", "d", "e"]
@@ -1076,7 +1132,7 @@ class TestSharedCache:
             assert call_counts[key] == 1
 
         # Cleanup
-        multi_key_function.cache_clear()
+        await asyncio.to_thread(multi_key_function.cache_clear)
 
     def test_shared_cache_performance_comparison(self):
         """Compare performance of shared vs local cache."""
@@ -1343,7 +1399,7 @@ class TestCacheNoneHandling:
             call_count += 1
             return None
 
-        maybe_none_redis.cache_clear()
+        await asyncio.to_thread(maybe_none_redis.cache_clear)
 
         assert await maybe_none_redis(1) is None
         assert call_count == 1
@@ -1351,7 +1407,7 @@ class TestCacheNoneHandling:
         assert await maybe_none_redis(1) is None
         assert call_count == 1
 
-        maybe_none_redis.cache_clear()
+        await asyncio.to_thread(maybe_none_redis.cache_clear)
 
 
 class TestCacheKeyBinding:
@@ -1406,3 +1462,153 @@ class TestCacheKeyBinding:
         with pytest.raises(TypeError):
             lookup.cache_delete(**by_name)
         lookup.cache_clear()
+
+
+def _unique(name: str) -> str:
+    # The shared cache is the real Redis, which later runs share.
+    return f"{name}-{uuid.uuid4().hex}"
+
+
+class TestSharedCacheOnAnEventLoop:
+    """A coroutine waiting on Redis is one coroutine waiting: the loop runs
+    the others, a read Redis doesn't answer costs a call the cache's bound,
+    and a slow computation holds up only the callers of its own key."""
+
+    @pytest.mark.asyncio
+    async def test_the_loop_runs_other_coroutines_while_redis_answers_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def held_lookup(question: str) -> str:
+            return f"answer to {question}"
+
+        question = _unique("loop")
+        # Held until released below, so no bound may end the wait first.
+        monkeypatch.setattr(cache_module, "REDIS_OP_TIMEOUT_S", 3 * _HANG_SECONDS)
+        held = hold_cache_read(
+            monkeypatch, cache_key("held_lookup", question=question), _HANG_SECONDS
+        )
+        call = asyncio.create_task(held_lookup(question))
+        try:
+            async with asyncio.timeout(2 * _HANG_SECONDS):
+                await held.started()
+            # This coroutine ran while the read waited on Redis.
+            assert not held.answered
+            held.release()
+            async with asyncio.timeout(_HANG_SECONDS):
+                assert await call == f"answer to {question}"
+        finally:
+            held.release()
+            await asyncio.gather(call, return_exceptions=True)
+
+    @pytest.mark.asyncio
+    async def test_a_read_redis_does_not_answer_in_time_is_computed_instead(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        calls = 0
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def unanswered_lookup(question: str) -> str:
+            nonlocal calls
+            calls += 1
+            return f"answer to {question}"
+
+        question = _unique("unanswered")
+        held = hold_cache_read(
+            monkeypatch,
+            cache_key("unanswered_lookup", question=question),
+            _HANG_SECONDS,
+        )
+        # Redis never answers this read, so the bound decides when the call
+        # stops waiting for it, not whether.
+        monkeypatch.setattr(cache_module, "REDIS_OP_TIMEOUT_S", 0.05)
+        try:
+            async with asyncio.timeout(2 * _HANG_SECONDS):
+                assert await unanswered_lookup(question) == f"answer to {question}"
+            assert not held.answered
+            assert calls == 1
+            # One wait, not three: no second read, and no write to wait on.
+            assert held.commands == ["GET"]
+        finally:
+            held.release()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("shared_cache", [False, True], ids=["memory", "redis"])
+    async def test_a_slow_miss_holds_up_only_callers_of_its_own_key(
+        self, shared_cache: bool
+    ):
+        computing, finish = asyncio.Event(), asyncio.Event()
+
+        @cached(ttl_seconds=30, shared_cache=shared_cache)
+        async def lookup(key: str) -> str:
+            if key.startswith("slow"):
+                computing.set()
+                await finish.wait()
+            return key
+
+        slow_key, fast_key = _unique("slow"), _unique("fast")
+        slow = asyncio.create_task(lookup(slow_key))
+        try:
+            async with asyncio.timeout(_HANG_SECONDS):
+                await computing.wait()
+                assert await lookup(fast_key) == fast_key
+        finally:
+            finish.set()
+            async with asyncio.timeout(_HANG_SECONDS):
+                assert await slow == slow_key
+
+    @pytest.mark.asyncio
+    async def test_another_event_loop_reads_the_cache_through_a_client_of_its_own(
+        self,
+    ):
+        calls = 0
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def lookup(key: str) -> str:
+            nonlocal calls
+            calls += 1
+            return key
+
+        key = _unique("loops")
+        assert await lookup(key) == key
+        # A loop on a thread of its own, as each copilot worker runs one.
+        other = asyncio.new_event_loop()
+        worker = threading.Thread(target=other.run_forever, daemon=True)
+        worker.start()
+        try:
+            read = asyncio.run_coroutine_threadsafe(lookup(key), other)
+            async with asyncio.timeout(_HANG_SECONDS):
+                assert await asyncio.wrap_future(read) == key
+        finally:
+            closed = asyncio.run_coroutine_threadsafe(other.shutdown_asyncgens(), other)
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.wrap_future(closed)
+            other.call_soon_threadsafe(other.stop)
+            await asyncio.to_thread(worker.join, _HANG_SECONDS)
+            other.close()
+        # The other loop read the entry this one stored.
+        assert calls == 1
+
+    @pytest.mark.asyncio
+    async def test_a_key_lock_is_dropped_once_nobody_holds_or_waits_for_it(self):
+        """One lock per key a miss ever took would grow without end."""
+        locks = cache_module._KeyLocks()
+        holding, finish = asyncio.Event(), asyncio.Event()
+
+        async def compute(key: str) -> None:
+            async with locks.hold(key):
+                holding.set()
+                await finish.wait()
+
+        first = asyncio.create_task(compute("key"))
+        await holding.wait()
+        waiter = asyncio.create_task(compute("key"))
+        # Its first step runs until it waits for the lock.
+        await asyncio.sleep(0)
+        waiter.cancel()
+        finish.set()
+        async with asyncio.timeout(_HANG_SECONDS):
+            await first
+            await asyncio.gather(waiter, return_exceptions=True)
+
+        assert locks._locks == {} and locks._users == {}
