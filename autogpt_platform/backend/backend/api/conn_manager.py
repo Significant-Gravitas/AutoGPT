@@ -10,7 +10,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
-from backend.api.ws_outbox import WSBacklog, WSOutbox
+from backend.api.ws_outbox import ENTRY_OVERHEAD_BYTES, WSBacklog, WSOutbox
 from backend.data import redis_client as redis
 from backend.data.db_accessors import execution_db
 from backend.data.event_bus import _assert_no_wildcard
@@ -163,13 +163,16 @@ class ConnectionManager:
         self.active_connections.discard(websocket)
         self._release_user_socket(user_id, websocket)
         # Stop the shard streams before dropping bookkeeping to avoid leaks.
-        for shard, stream in self._ws_streams.pop(websocket, {}).items():
-            await stream.stop()
-            self._release_stream(user_id, shard)
-        # After the streams, which put events into it.
-        outbox = self._outboxes.pop(websocket, None)
-        if outbox is not None:
-            await outbox.stop()
+        try:
+            for shard, stream in self._ws_streams.pop(websocket, {}).items():
+                await stream.stop()
+                self._release_stream(user_id, shard)
+        finally:
+            # Even when a stop is cancelled (the server shutting down), so the
+            # socket's backlog stops counting against the process.
+            outbox = self._outboxes.pop(websocket, None)
+            if outbox is not None:
+                await outbox.stop()
         self._ws_notifications.pop(websocket, None)
         for channel_key in self._ws_subs.pop(websocket, {}):
             subscribers = self.subscriptions.get(channel_key)
@@ -675,11 +678,11 @@ class _ShardStream:
             if handler is None:
                 continue
             # Never awaited here: a send waiting on a slow client would hold
-            # up the next read, a subscribe's confirmation included. Its size
-            # is the payload's memory only, not the queue entry's own.
+            # up the next read, a subscribe's confirmation included.
             data = message.get("data")
             self._outbox.put(
-                partial(self._deliver, channel, handler, data), sys.getsizeof(data)
+                partial(self._deliver, channel, handler, data),
+                sys.getsizeof(data) + ENTRY_OVERHEAD_BYTES,
             )
 
     async def _deliver(

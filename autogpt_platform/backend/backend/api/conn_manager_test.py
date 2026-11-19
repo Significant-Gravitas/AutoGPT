@@ -26,7 +26,7 @@ from backend.api.conn_manager import (
     graph_exec_channel_key,
 )
 from backend.api.model import WSMethod
-from backend.api.ws_outbox import WSBacklog, WSOutbox
+from backend.api.ws_outbox import ENTRY_OVERHEAD_BYTES, WSBacklog, WSOutbox
 from backend.data.execution import GraphExecutionMeta, graph_all_channel
 from backend.data.sharded_pubsub import EventStreamLostError
 
@@ -1871,8 +1871,9 @@ async def test_a_full_process_closes_the_socket_furthest_behind(
             user_id="user-1", graph_id=graph_id, websocket=ws
         )
     stuck_inbox, healthy_inbox = (p.inbox for p in fake_redis.pubsubs)
-    held = 2 * sys.getsizeof(_graph_event("graph-a")["data"])
-    needed = sys.getsizeof(_graph_event("graph-b")["data"])
+    # What each queued event counts: its payload and the queue entry itself.
+    held = 2 * (sys.getsizeof(_graph_event("graph-a")["data"]) + ENTRY_OVERHEAD_BYTES)
+    needed = sys.getsizeof(_graph_event("graph-b")["data"]) + ENTRY_OVERHEAD_BYTES
     monkeypatch.setattr(
         "backend.api.ws_outbox.MAX_QUEUED_BYTES_PER_PROCESS", held + needed - 1
     )
@@ -1892,6 +1893,50 @@ async def test_a_full_process_closes_the_socket_furthest_behind(
         healthy_ws.close.assert_not_awaited()
     finally:
         stuck.reading.set()
+
+
+@pytest.mark.asyncio
+async def test_a_disconnect_cancelled_mid_stop_still_frees_the_sockets_backlog(
+    connection_manager: ConnectionManager,
+    mock_websocket: AsyncMock,
+    fake_redis: _FakeRedis,
+) -> None:
+    """At shutdown a socket's handler is cancelled, maybe while one of its
+    streams is stopping; its outbox must stop anyway, so its backlog stops
+    counting against the process and its send stops waiting."""
+    client = _StuckClient(mock_websocket)
+    await connection_manager.subscribe_graph_execs(
+        user_id="user-1", graph_id="graph-a", websocket=mock_websocket
+    )
+    fake_redis.pubsubs[0].inbox.put_nowait(_graph_event("graph-a"))
+    stopping, release = asyncio.Event(), asyncio.Event()
+
+    async def close_slowly() -> None:
+        stopping.set()
+        await release.wait()
+
+    fake_redis.clients[0].aclose.side_effect = close_slowly
+    disconnecting: asyncio.Task[None] | None = None
+    try:
+        async with asyncio.timeout(_HANG_SECONDS):
+            await client.waited_on.wait()
+        assert connection_manager._backlog.queued_bytes > 0
+        disconnecting = asyncio.create_task(
+            connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
+        )
+        async with asyncio.timeout(_HANG_SECONDS):
+            await stopping.wait()
+        disconnecting.cancel()
+        async with asyncio.timeout(_HANG_SECONDS):
+            await asyncio.wait([disconnecting])
+        assert disconnecting.cancelled()
+        assert connection_manager._backlog.queued_bytes == 0
+        assert mock_websocket not in connection_manager._outboxes
+        assert client.cancelled.is_set()
+    finally:
+        release.set()
+        client.reading.set()
+        await _join(disconnecting)
 
 
 @pytest.mark.asyncio

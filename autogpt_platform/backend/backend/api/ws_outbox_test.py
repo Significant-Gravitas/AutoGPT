@@ -132,6 +132,40 @@ async def test_a_delivery_that_raises_is_skipped_and_later_events_still_go_out(
         await socket.close()
 
 
+async def test_a_delivery_that_swallows_its_cancel_ends_with_nothing_counted() -> None:
+    """A send can swallow the cancel that stops it, as redis-py's wait_for can
+    on Python 3.11. The sender then wakes in a stopped outbox: it must just
+    end, with nothing raised and nothing counted, below zero or above."""
+    backlog = WSBacklog()
+    waiting, swallowed = asyncio.Event(), asyncio.Event()
+
+    async def swallows_its_cancel() -> None:
+        waiting.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            swallowed.set()
+
+    socket = _Socket(backlog)
+    gauge_before = _queued_bytes_gauge()
+    try:
+        socket.outbox.put(swallows_its_cancel, 10)
+        async with asyncio.timeout(_HANG_SECONDS):
+            await waiting.wait()
+        sender = socket.outbox._sender
+        assert sender is not None
+        async with asyncio.timeout(_HANG_SECONDS):
+            await socket.outbox.stop()
+        assert swallowed.is_set()
+        assert sender.done() and not sender.cancelled()
+        assert sender.exception() is None
+        assert socket.outbox.queued_bytes == 0
+        assert backlog.queued_bytes == 0
+        assert _queued_bytes_gauge() == gauge_before
+    finally:
+        await socket.close()
+
+
 @pytest.mark.parametrize("small_bound", ["events", "bytes"], indirect=True)
 async def test_a_client_that_catches_up_within_the_bound_gets_everything(
     small_bound: tuple[int, str],

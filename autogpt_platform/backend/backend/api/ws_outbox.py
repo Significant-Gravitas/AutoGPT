@@ -28,10 +28,13 @@ logger = logging.getLogger(__name__)
 # Redis's 32 MB pub/sub client-output-buffer limit. Both count the event being
 # sent, which is still in memory, so a client behind one very large event is
 # closed if the next would pass the bound; two of the event bus's largest (16
-# MB) still fit. Bytes are payloads only: each queued entry costs some 150-200
-# bytes more, which no bound counts.
+# MB) still fit.
 MAX_QUEUED_EVENTS = 2000
 MAX_QUEUED_BYTES = 32 * 1024 * 1024
+# What a queued entry holds beyond its payload: the delivery and its place in
+# the queue, measured at about 365 bytes with tracemalloc. Counted with each
+# payload, so the byte bounds track the memory an outbox really holds.
+ENTRY_OVERHEAD_BYTES = 400
 # Each socket holds a shard stream, so the shard-stream cap is all that bounds
 # sockets per process: hundreds per shard, which at the per-socket bound alone
 # could reach tens of GB.
