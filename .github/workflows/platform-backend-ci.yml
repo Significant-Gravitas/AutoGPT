@@ -187,7 +187,9 @@ jobs:
   type-check:
     permissions:
       contents: read
-    timeout-minutes: 10
+    # A cold 3.15 run takes about 10 minutes: lupa, pyyaml and zstandard have
+    # no 3.15 wheels yet, so Poetry and the backend install build them.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
