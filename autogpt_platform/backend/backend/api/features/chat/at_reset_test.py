@@ -20,7 +20,7 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from backend.api.features.chat import at_reset as at_reset_routes
-from backend.copilot import at_reset_lock
+from backend.copilot import scheduler_write_lock
 from backend.copilot.at_reset import NoResetAhead
 from backend.copilot.at_reset_lock_fixtures import FakeAtResetRedis
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE, as_model_prompt
@@ -89,7 +89,9 @@ def run_at(mocker: pytest_mock.MockerFixture) -> AsyncMock:
 def job_locks(mocker: pytest_mock.MockerFixture) -> FakeAtResetRedis:
     """Redis, where each chat's at-reset job is locked across replicas."""
     redis = FakeAtResetRedis()
-    mocker.patch.object(at_reset_lock, "get_redis_async", AsyncMock(return_value=redis))
+    mocker.patch.object(
+        scheduler_write_lock, "get_redis_async", AsyncMock(return_value=redis)
+    )
     return redis
 
 
@@ -324,7 +326,7 @@ def test_a_job_it_cannot_lock_is_503_and_left_alone(
 ):
     # Going on without the lock could lose a send another tab just wrote.
     mocker.patch.object(
-        at_reset_lock,
+        scheduler_write_lock,
         "get_redis_async",
         AsyncMock(side_effect=RedisConnectionError("down")),
     )
