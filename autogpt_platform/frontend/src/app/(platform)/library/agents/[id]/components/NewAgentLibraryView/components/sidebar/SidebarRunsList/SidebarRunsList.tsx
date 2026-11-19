@@ -5,6 +5,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import { InfiniteList } from "@/components/molecules/InfiniteList/InfiniteList";
 import {
   TabsLine,
@@ -57,6 +58,9 @@ export function SidebarRunsList({
   const {
     runs,
     schedules,
+    schedulesUnavailable,
+    retrySchedules,
+    retryingSchedules,
     templates,
     triggers,
     triggerAgents,
@@ -129,7 +133,16 @@ export function SidebarRunsList({
             </TabsLineTrigger>
             <TabsLineTrigger value="scheduled">
               Scheduled{" "}
-              <span className="ml-3 inline-block">{schedulesCount}</span>
+              <span className="ml-3 inline-block">
+                {schedulesUnavailable ? (
+                  <>
+                    <span aria-hidden="true">—</span>
+                    <span className="sr-only">Unknown</span>
+                  </>
+                ) : (
+                  schedulesCount
+                )}
+              </span>
             </TabsLineTrigger>
             {triggersCount > 0 && (
               <TabsLineTrigger value="triggers">
@@ -174,7 +187,14 @@ export function SidebarRunsList({
           className="mx-4 mt-0 flex min-h-0 flex-1 flex-col"
         >
           <div className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-border-strong scrollbar-track-transparent flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:flex-col lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto">
-            {schedules.length > 0 ? (
+            <SchedulesUnavailableNotice
+              show={schedulesUnavailable}
+              onRetry={retrySchedules}
+              retrying={retryingSchedules}
+              stacked
+              className="w-full"
+            />
+            {schedulesUnavailable ? null : schedules.length > 0 ? (
               schedules.map((s: GraphExecutionJobInfo) => (
                 <div className="w-[15rem] lg:w-full" key={s.id}>
                   <ScheduleListItem

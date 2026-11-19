@@ -942,17 +942,14 @@ function ScheduleRow({
           </span>
           {/* On a phone the next run moves under the rhythm */}
           <span className="ui-ags-row__nextline ui-ags-num" aria-hidden="true">
-            {s.paused
-              ? labels.paused
-              : next
-                ? `${whenText(next, now)} · ${relText(next, now)}`
-                : ""}
+            {!s.paused && next
+              ? `${whenText(next, now)} · ${relText(next, now)}`
+              : ""}
           </span>
         </span>
         <span className="ui-ags-row__next ui-ags-num">
-          {s.paused ? (
-            <span className="ui-ags-faint">{labels.paused}</span>
-          ) : next ? (
+          {/* A paused schedule shows no next run: its switch already says so */}
+          {!s.paused && next ? (
             <>
               <span>{whenText(next, now)}</span>
               <span className="ui-ags-faint ui-ags-row__rel">
@@ -968,16 +965,15 @@ function ScheduleRow({
             </span>
           )}
         </span>
-        <span
-          className="ui-ags-row__cost ui-ags-num"
-          title={s.cost != null ? money.format(s.cost) : undefined}
-        >
-          {s.cost == null
-            ? ""
-            : s.cost >= 1000
-              ? moneyShort.format(s.cost)
-              : money.format(s.cost)}
-        </span>
+        {/* No column held for a cost we do not have: the name gets the room */}
+        {s.cost == null ? null : (
+          <span
+            className="ui-ags-row__cost ui-ags-num"
+            title={money.format(s.cost)}
+          >
+            {s.cost >= 1000 ? moneyShort.format(s.cost) : money.format(s.cost)}
+          </span>
+        )}
       </button>
       {s.canPause === false ? (
         <span className="ui-ags-switch-slot" aria-hidden="true" />
@@ -1328,7 +1324,7 @@ const css = /* css */ `
 .ui-ags-head { display: flex; flex: none; align-items: center; gap: 10px; height: var(--as-head-h, 48px); padding: 0 12px 0 20px; box-shadow: inset 0 -0.5px 0 var(--line); font-size: 13px; }
 .ui-ags-title { margin: 0; font-size: 13px; font-weight: 500; line-height: 20px; color: var(--ink); }
 .ui-ags-scroll { flex: 1; min-height: 0; overflow-y: auto; }
-.ui-ags-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; max-width: 760px; margin: 0 auto; padding: 24px 24px 48px; }
+.ui-ags-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; max-width: 880px; margin: 0 auto; padding: 24px 24px 48px; }
 .ui-ags-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .ui-ags-label { margin: 0; font-size: 12px; font-weight: 500; line-height: 16px; color: var(--muted); }
 .ui-ags-card { margin: 0; padding: 0; list-style: none; border-radius: var(--aui-radius-lg, 10px); background: var(--card); box-shadow: var(--ags-card-shadow); }
@@ -1382,7 +1378,7 @@ const css = /* css */ `
 .ui-ags-row[data-paused] .ui-ags-row__name { color: var(--text); }
 .ui-ags-row__cadence { flex: 0 100 auto; min-width: 0; overflow: hidden; font-size: 13px; line-height: 20px; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; }
 .ui-ags-row__nextline { display: none; font-size: 12px; line-height: 16px; color: var(--ink); }
-.ui-ags-row__next { display: flex; flex: none; align-items: baseline; justify-content: flex-end; gap: 6px; width: 190px; font-size: 13px; line-height: 20px; color: var(--ink); white-space: nowrap; }
+.ui-ags-row__next { display: flex; flex: none; align-items: baseline; justify-content: flex-end; gap: 6px; width: 170px; font-size: 13px; line-height: 20px; color: var(--ink); white-space: nowrap; }
 .ui-ags-row__rel { font-size: 12px; }
 .ui-ags-row__last { display: flex; flex: none; justify-content: flex-end; width: 78px; }
 .ui-ags-row__cost { flex: none; width: 60px; white-space: nowrap; font-size: 12px; color: var(--muted); text-align: right; }

@@ -1,5 +1,7 @@
+import { useHasSessionCookie } from "@/components/auth/SessionCookieProvider";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
+import { useServerRenderedForm } from "@/hooks/useServerRenderedForm";
 import { getAuthDeepLink, sanitizeAuthNext } from "@/lib/auth-redirect";
 import { providerCallbackPath } from "@/lib/auth/provider-callback";
 import { isBannedNotice } from "@/lib/auth/account-banned";
@@ -28,6 +30,7 @@ export function useLoginPage() {
   useCaptureMarketingPrompt();
 
   const { user, isUserLoading, isLoggedIn } = useAuth();
+  const hasSessionCookie = useHasSessionCookie();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -61,7 +64,10 @@ export function useLoginPage() {
   const verificationNotice = getEmailVerificationNotice(
     searchParams.get(EMAIL_VERIFICATION_NOTICE_PARAM),
   );
-  const signInErrorNotice = getSignInErrorNotice(searchParams.get("error"));
+  const signInErrorNotice = getSignInErrorNotice(
+    searchParams.get("error"),
+    searchParams.get("provider"),
+  );
   const showBannedNotice = isBannedNotice(searchParams);
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in
@@ -82,6 +88,7 @@ export function useLoginPage() {
       password: "",
     },
   });
+  const { formRef, isHydrated } = useServerRenderedForm(form);
 
   async function handleProviderLogin(provider: LoginProvider) {
     setLoadingProvider(provider);
@@ -171,6 +178,7 @@ export function useLoginPage() {
 
   return {
     form,
+    formRef,
     feedback:
       feedback ??
       signInErrorNotice ??
@@ -185,7 +193,10 @@ export function useLoginPage() {
     isMicrosoftLoading: loadingProvider === "microsoft",
     isMicrosoftEnabled: environment.isMicrosoftLoginEnabled(),
     isCloudEnv,
-    isUserLoading,
+    // Without a session cookie the visitor is signed out, so the form shows at
+    // once; with one, it waits for the session check.
+    isCheckingSession: hasSessionCookie && isUserLoading,
+    isHydrated,
     showNotAllowedModal,
     handleSubmit: form.handleSubmit(handleLogin),
     handleProviderLogin,

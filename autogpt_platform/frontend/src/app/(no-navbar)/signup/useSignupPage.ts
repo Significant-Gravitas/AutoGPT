@@ -1,5 +1,7 @@
+import { useHasSessionCookie } from "@/components/auth/SessionCookieProvider";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
+import { useServerRenderedForm } from "@/hooks/useServerRenderedForm";
 import {
   getAuthDeepLink,
   sanitizeAuthNext,
@@ -24,6 +26,7 @@ export function useSignupPage() {
   useCaptureMarketingPrompt();
 
   const { user, isUserLoading, isLoggedIn } = useAuth();
+  const hasSessionCookie = useHasSessionCookie();
   const [hasInitializedAuth, setHasInitializedAuth] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const { toast } = useToast();
@@ -84,10 +87,10 @@ export function useSignupPage() {
     defaultValues: {
       email: "",
       password: "",
-      confirmPassword: "",
       marketingOptOut: false,
     },
   });
+  const { formRef, isHydrated } = useServerRenderedForm(form);
 
   function handleToggleMarketingOptOut() {
     if (isSigningUp) return;
@@ -164,7 +167,6 @@ export function useSignupPage() {
       const result = await signupAction(
         data.email,
         data.password,
-        data.confirmPassword,
         data.marketingOptOut,
         safeNext,
       );
@@ -231,11 +233,15 @@ export function useSignupPage() {
 
   return {
     form,
+    formRef,
     feedback,
     nextUrl: safeNext,
     verificationEmail,
     isLoggedIn: !!user,
-    hasInitializedAuth,
+    // Without a session cookie the visitor is signed out, so the form shows at
+    // once; with one, it waits for the session check.
+    isCheckingSession: hasSessionCookie && !hasInitializedAuth,
+    isHydrated,
     isLoading,
     isGoogleLoading: loadingProvider === "google",
     isMicrosoftLoading: loadingProvider === "microsoft",

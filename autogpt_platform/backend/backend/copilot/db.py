@@ -34,6 +34,7 @@ from .model import (
     ChatSessionGroup,
     ChatSessionInfo,
     ChatSessionMetadata,
+    ChatSessionSaveFields,
     _get_session_lock,
     cache_chat_session,
 )
@@ -459,17 +460,15 @@ async def update_chat_session(
     of the session.
     """
     data: ChatSessionUpdateInput = {"updatedAt": datetime.now(UTC)}
-
-    if credentials is not None:
-        data["credentials"] = SafeJson(credentials)
-    if successful_agent_runs is not None:
-        data["successfulAgentRuns"] = SafeJson(successful_agent_runs)
-    if successful_agent_schedules is not None:
-        data["successfulAgentSchedules"] = SafeJson(successful_agent_schedules)
-    if total_prompt_tokens is not None:
-        data["totalPromptTokens"] = total_prompt_tokens
-    if total_completion_tokens is not None:
-        data["totalCompletionTokens"] = total_completion_tokens
+    data.update(
+        _save_fields_input(
+            credentials=credentials,
+            successful_agent_runs=successful_agent_runs,
+            successful_agent_schedules=successful_agent_schedules,
+            total_prompt_tokens=total_prompt_tokens,
+            total_completion_tokens=total_completion_tokens,
+        )
+    )
     if title is not None:
         data["title"] = title
     if update_tenancy:
@@ -484,6 +483,29 @@ async def update_chat_session(
         data=data,
     )
     return ChatSessionInfo.from_db(session) if session else None
+
+
+def _save_fields_input(
+    *,
+    credentials: dict[str, Any] | None = None,
+    successful_agent_runs: dict[str, Any] | None = None,
+    successful_agent_schedules: dict[str, Any] | None = None,
+    total_prompt_tokens: int | None = None,
+    total_completion_tokens: int | None = None,
+) -> ChatSessionUpdateInput:
+    """The columns of the fields a save rewrites; ``None`` leaves one as is."""
+    data: ChatSessionUpdateInput = {}
+    if credentials is not None:
+        data["credentials"] = SafeJson(credentials)
+    if successful_agent_runs is not None:
+        data["successfulAgentRuns"] = SafeJson(successful_agent_runs)
+    if successful_agent_schedules is not None:
+        data["successfulAgentSchedules"] = SafeJson(successful_agent_schedules)
+    if total_prompt_tokens is not None:
+        data["totalPromptTokens"] = total_prompt_tokens
+    if total_completion_tokens is not None:
+        data["totalCompletionTokens"] = total_completion_tokens
+    return data
 
 
 async def update_chat_session_title(
@@ -656,6 +678,7 @@ async def add_chat_messages_batch(
     session_id: str,
     messages: list[dict[str, Any]],
     start_sequence: int,
+    session_fields: ChatSessionSaveFields | None = None,
 ) -> int:
     """Add multiple messages to a chat session in a batch.
 
@@ -664,6 +687,10 @@ async def add_chat_messages_batch(
     streaming loop and long-running callback race), queries the latest
     sequence and retries with the correct offset. This avoids unnecessary
     upserts and DB queries in the common case (no collision).
+
+    ``session_fields`` are written by the session update inside the rows'
+    transaction, so they land with the rows or not at all (and not without
+    rows: the call returns early when there are none).
 
     Returns:
         The actual ``start_sequence`` used for the (successful) insert.
@@ -743,13 +770,19 @@ async def add_chat_messages_batch(
 
                     messages_data.append(data)
 
+                session_data: ChatSessionUpdateInput = {"updatedAt": now}
+                if session_fields is not None:
+                    session_data.update(
+                        _save_fields_input(**session_fields.model_dump())
+                    )
+
                 # Run create_many and session update in parallel within transaction
                 # Both use the same timestamp for consistency
                 await asyncio.gather(
                     PrismaChatMessage.prisma(tx).create_many(data=messages_data),
                     PrismaChatSession.prisma(tx).update(
                         where={"id": session_id},
-                        data={"updatedAt": now},
+                        data=session_data,
                     ),
                 )
 
@@ -1687,6 +1720,7 @@ async def list_chat_sessions_by_status(
 async def list_recent_chat_sessions(
     *,
     user_id: str,
+    organization_id: str | None,
     expert_id: str | None = None,
     status: str | None = None,
     limit: int = 50,
@@ -1695,14 +1729,21 @@ async def list_recent_chat_sessions(
     """The user's most recently active sessions, newest first.
 
     Backs ``find_session``. Scoped to ``user_id`` in the query itself, so
-    another user's session is invisible rather than merely unlisted. The
+    another user's session is invisible rather than merely unlisted.
+    ``organization_id`` is matched exactly, with none of the carve-outs of
+    ``_own_org_scope``: this read feeds one session's data into another, and
+    that must not cross organizations. ``None`` matches untagged rows only. The
     expert and status filters are applied in the query too, so ``limit``
     bounds the matches rather than the rows scanned — filtering them in
     Python would silently drop matches older than the window. ``skip`` pages
     the caller past rows it has already looked at, for the one filter that
     cannot move into the query (``task`` reads the metadata JSON).
     """
-    where: ChatSessionWhereInput = {"userId": user_id, "archivedAt": None}
+    where: ChatSessionWhereInput = {
+        "userId": user_id,
+        "organizationId": organization_id,
+        "archivedAt": None,
+    }
     if expert_id:
         where["expertId"] = expert_id
     if status:

@@ -5,8 +5,20 @@ import { expect, test } from "./fixtures";
 
 const TIMEZONE = "America/New_York";
 const STORE_VALUE_BLOCK_ID = "1ff065e9-88e8-4358-9d82-8dc91f622ba9";
+const SCHEDULES_UNAVAILABLE =
+  "Schedules are temporarily unavailable — your schedules are safe and will run once it's back.";
+// The schedule lists a restarting scheduler answers 503.
+const SCHEDULE_READS =
+  /\/api\/proxy\/api\/(schedules(\/followups)?|graphs\/[^/]+\/schedules)(\?.*)?$/;
+// Marks the 503s this journey fakes, so a real one still fails it.
+const INJECTED = { name: "x-journey-injected", value: "scheduler-outage" };
 
-test.use({ timezoneId: TIMEZONE });
+test.use({
+  timezoneId: TIMEZONE,
+  expectedResponses: [
+    { status: 503, method: "GET", url: SCHEDULE_READS, header: INJECTED },
+  ],
+});
 
 interface Schedule {
   id: string;
@@ -59,6 +71,31 @@ test.describe("schedules journey", () => {
     expect(edited.cron).toBe("30 18 * * 1,2,3,4,5");
     expectWeekdayAt(edited, 18, 30);
 
+    // The scheduler restarts on every deploy. Meanwhile the pages say its
+    // schedules are unavailable instead of failing or listing none, and they
+    // list them again once it answers, without a reload.
+    const agentPage = page.url();
+    await whileSchedulerIsOut(page, async () => {
+      await page.goto("/library/followups");
+      await expect(page.getByText(SCHEDULES_UNAVAILABLE)).toBeVisible();
+      await expect(page.getByTestId("followups-empty")).toHaveCount(0);
+      await page.goto(agentPage);
+      await expect(page.getByText(SCHEDULES_UNAVAILABLE).first()).toBeVisible();
+      await expect(page.getByText("Something went wrong")).toHaveCount(0);
+    });
+    // Try again, or the recheck after Retry-After if it lands first.
+    const tryAgain = page.getByRole("button", {
+      name: "Try again",
+      exact: true,
+    });
+    await expect(async () => {
+      if (await tryAgain.isVisible()) await tryAgain.click({ timeout: 1_000 });
+      await expect(page.getByText(SCHEDULES_UNAVAILABLE)).toHaveCount(0, {
+        timeout: 1_000,
+      });
+    }).toPass({ timeout: 20_000 });
+    await openSchedule(page, "Evening report");
+
     await page.getByRole("button", { name: "Delete schedule" }).first().click();
     await page.getByRole("button", { name: "Delete Schedule" }).click();
     await expect.poll(() => listSchedules(page, graphId)).toEqual([]);
@@ -70,6 +107,29 @@ test.describe("schedules journey", () => {
     expect(await runs.json()).toMatchObject({ executions: [] });
   });
 });
+
+async function whileSchedulerIsOut(page: Page, check: () => Promise<void>) {
+  await page.route(SCHEDULE_READS, (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          status: 503,
+          headers: { "Retry-After": "15", [INJECTED.name]: INJECTED.value },
+          contentType: "application/json",
+          body: JSON.stringify({
+            message: "Failed to process GET /api/schedules",
+            detail:
+              "Schedules are temporarily unavailable. Try again in a moment.",
+            hint: "Retry in 15 seconds.",
+          }),
+        })
+      : route.fallback(),
+  );
+  try {
+    await check();
+  } finally {
+    await page.unroute(SCHEDULE_READS);
+  }
+}
 
 function nextRunText(page: Page) {
   return page.getByText("Next run", { exact: true }).locator("xpath=..");

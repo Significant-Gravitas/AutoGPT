@@ -39,10 +39,10 @@ _EC = "backend.copilot.expert_context"
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned when schedule_followup became eager, so the prompt names it
-# bare instead of by its ``tool:`` capability id.
+# Last re-pinned when merging dev's seen-capabilities rule (an expand=true
+# describe of a listed id, SECRT-2682) with the tasks prompt changes here.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "e35416421185b27e3b1e8799a9e2aea1ea58fac178c9e5a608a4ecaa1def429f"
+    "3ae948d9e7ad2acd23286db12621541fa6434770f609ad9cccff4aee0bc5f572"
 )
 
 
@@ -222,7 +222,9 @@ class TestBuildExpertIdentitySuffix:
             )
 
         assert "For this session you are Theo" in result
-        mock_db.get_expert.assert_awaited_once()
+        mock_db.get_expert.assert_awaited_once_with(
+            "user-1", "exp-2", include_workflows=False
+        )
         mock_db.resolve_private_expert_tenancy.assert_awaited_once_with(
             "user-1", "exp-2"
         )

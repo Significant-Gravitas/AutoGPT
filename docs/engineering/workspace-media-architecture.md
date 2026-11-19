@@ -278,6 +278,12 @@ stored beside it as `name (1).ext`, `name (2).ext`, and so on.
 
 Tools like `WriteWorkspaceFileTool` don't need to scan because `WorkspaceManager.write_file()` handles it.
 
+Each file goes to ClamAV whole, in one stream. A file ClamAV won't take whole (one over its `StreamMaxLength`) fails the scan with `VirusScanError` and is refused; it is never scanned in pieces. So ClamAV's `StreamMaxLength` and `MaxFileSize` must each be at least the larger of `upload_file_size_limit_mb` (256 MB by default) and `max_file_size_mb` (100 MB by default). So must its `PCREMaxFileSize` (100M by default): ClamAV doesn't run the regular expressions in its signatures on a larger file, so those signatures can't match it. `MaxScanSize` counts an archive plus everything unpacked from it, so it needs more: a 250 MiB zip holding 250 MiB of files goes past 256M. `docker-compose.yml` sets the first three to `256M` and `MaxScanSize` to `1024M`, four times the cap. A deployment that runs its own ClamAV needs the same, and must raise them all if either cap goes above 256 MB.
+
+ClamAV stops scanning a file at many of its limits: these sizes, scan time (`MaxScanTime`), archive nesting (`MaxRecursion`) and others. Without `AlertExceedsMax` it then answers that the file is clean. `docker-compose.yml` turns `AlertExceedsMax` on, so such a file comes back as `Heuristics.Limits.Exceeded.<limit>`, and a file ClamAV reports that way is refused with `VirusDetectedError`, as "too large or complex to scan whole". Not every limit reports that way, so two cases still get through without a full scan: a file over `MaxHTMLNormalize`, for one, is scanned without its HTML normalised, and an encrypted archive passes without its contents being scanned unless `AlertEncrypted` is on, which it isn't here. `MaxScanTime` is set to 300000 ms, above ClamAV's 120 s default: a 250 MiB zip of 1000 files took about 104 s on one CPU and 207 s on half of one.
+
+A scan's deadline grows with the file: 60 seconds plus one per MiB, so a 256 MiB upload has about five minutes to stream and scan, a little more than `MaxScanTime`. Setting `CLAMAV_SERVICE_TIMEOUT` (a whole number of seconds above 0) replaces that with a fixed deadline for every scan.
+
 ### Persistence
 
 | Component | Persists To | Lifecycle |
@@ -415,4 +421,4 @@ async def upload_file(file: UploadFile, user_id: str, workspace_id: str):
 | `clamav_service_host` | ClamAV daemon host | localhost |
 | `clamav_service_port` | ClamAV daemon port | 3310 |
 | `clamav_max_concurrency` | Max concurrent scans to ClamAV daemon | 5 |
-| `clamav_mark_failed_scans_as_clean` | If true, scan failures pass content through instead of rejecting (⚠️ security risk if ClamAV is unreachable) | false |
+| `clamav_mark_failed_scans_as_clean` | If true, accept files above the client-side scan limit (`max_scan_size`, 2 GB) without scanning (⚠️ security risk). ClamAV connection errors and stream refusals still reject files. | false |

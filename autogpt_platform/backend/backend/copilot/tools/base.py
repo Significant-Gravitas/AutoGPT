@@ -6,8 +6,10 @@ import time
 from collections import deque
 from typing import TYPE_CHECKING, Any, Literal, Sequence
 
+import sentry_sdk
 from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
+from prisma.errors import ClientNotConnectedError
 
 from backend.copilot import call_account, task_recorder, tool_timing, turn_end
 from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
@@ -693,8 +695,12 @@ class BaseTool:
         # whether it was dispatched rather than whether it succeeded.
         session.announce_inflight_tool_call(self.name, kwargs)
 
+        # Returned or raised, the result is screened once, below. A raise after
+        # the tool returned Google data still redacts what the judge traces.
+        google_data = False
         try:
             result = await self._execute(user_id, session, **run_kwargs)
+            google_data, outside = result.holds_google_data, result.outside
             if result.type == ResponseType.ERROR:
                 mark_tool_failed()
             if user_id:
@@ -741,23 +747,41 @@ class BaseTool:
                 remember_google_output(output.output)
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
+            # A tool that queried Prisma directly instead of over RPC is a bug
+            # in the tool, not a failed call, so it is reported as an error. A
+            # message, not the exception: its frames hold the tool's arguments.
+            if isinstance(e, ClientNotConnectedError):
+                sentry_sdk.capture_message(
+                    f"{self.name} queried Prisma without a connection",
+                    level="error",
+                )
             tracing.set_status("internal_error")
             mark_tool_raised(e)
-            return StreamToolOutputAvailable(
+            full = ErrorResponse(
+                message=f"An error occurred while executing {self.name}",
+                # AutoPilot's model reads the detail to recover; an
+                # External API client gets no internal detail.
+                error=None if session.external_caller else str(e),
+                session_id=session.session_id,
+            ).model_dump_json()
+            output = StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
-                output=ErrorResponse(
-                    message=f"An error occurred while executing {self.name}",
-                    # AutoPilot's model reads the detail to recover; an
-                    # External API client gets no internal detail.
-                    error=None if session.external_caller else str(e),
-                    session_id=session.session_id,
-                ).model_dump_json(),
+                output=full,
                 success=False,
             )
-        with tracing_google_data(google_call or result.holds_google_data):
+            # The detail can quote what the tool was reading, so it is judged
+            # like an output that declares nothing: whole.
+            outside = None
+        with tracing_google_data(google_call or google_data):
             return await self._screen_read(
-                user_id, session, tool_call_id, kwargs, output, result.outside, full
+                user_id,
+                session,
+                tool_call_id,
+                kwargs,
+                output,
+                outside=outside,
+                full=full,
             )
 
     async def _gate(
