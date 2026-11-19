@@ -15,7 +15,13 @@ import {
 } from "@/lib/api/experts";
 import { isSessionGone, signOut } from "@/lib/session";
 
-import { areaSections, filterTemplates, hiredTeam, hiredTemplateIDs } from "./helpers";
+import {
+  areaSections,
+  filterTemplates,
+  hiredTeam,
+  hiredTemplateIDs,
+  openSeats,
+} from "./helpers";
 import { firstChatAfterHire, latestOrNewSession } from "./openExpertChat";
 import { useHireExpert } from "./useHireExpert";
 
@@ -112,7 +118,7 @@ export function useMarketplaceScreen() {
     matches: filterTemplates(all, query),
     sections,
     team,
-    openSeats: sections.filter((section) => !section.isCovered),
+    openSeats: openSeats(sections),
     openingID,
     openChat,
     isOnTeam: (template: ExpertTemplate) => hiredIDs.has(template.id),

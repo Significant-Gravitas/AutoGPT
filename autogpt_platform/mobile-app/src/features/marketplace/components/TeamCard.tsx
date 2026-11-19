@@ -8,13 +8,13 @@ import type { Expert } from "@/lib/api/experts";
 import { createStyles, radius, useColors, useScheme } from "@/lib/theme";
 
 import { areaColor, seatTint } from "../areaColors";
-import { type Area, type AreaSection, firstName } from "../helpers";
+import { type Area, firstName, type OpenSeat } from "../helpers";
 
 const SEAT_SIZE = 40;
 
 interface Props {
   team: Expert[];
-  openSeats: AreaSection[];
+  openSeats: OpenSeat[];
   openingID: string | null;
   onOpenExpert: (expert: Expert) => void;
   onOpenSeat: (area: Area) => void;

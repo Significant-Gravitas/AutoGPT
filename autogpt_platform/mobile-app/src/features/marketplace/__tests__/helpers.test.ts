@@ -6,6 +6,7 @@ import {
   hireErrorMessage,
   hiredTeam,
   hiredTemplateIDs,
+  openSeats,
   primaryArea,
   whoLine,
   withHiredExpert,
@@ -88,6 +89,17 @@ describe("areaSections", () => {
       ["marketing", [maria, noor]],
       ["sales", [jordan]],
     ]);
+  });
+
+  it("lists templates in no known area last, never as an open seat", () => {
+    const loner = template({ id: "t-loner", name: "Loner", categories: [] });
+    const odd = template({ id: "t-odd", name: "Odd", categories: ["astrology"] });
+    const sections = areaSections([loner, jordan, odd], new Set());
+    expect(sections.map((section) => [section.area, section.templates])).toEqual([
+      ["sales", [jordan]],
+      [null, [loner, odd]],
+    ]);
+    expect(openSeats(sections)).toEqual([{ area: "sales", label: "Sales" }]);
   });
 
   it("puts areas nobody on the team covers first, each part in area order", () => {

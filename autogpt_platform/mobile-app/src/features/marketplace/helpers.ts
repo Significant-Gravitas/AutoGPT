@@ -54,17 +54,26 @@ export function filterTemplates(templates: ExpertTemplate[], query: string) {
 }
 
 export interface AreaSection {
-  area: Area;
+  /** Null for the experts in no area the marketplace knows. */
+  area: Area | null;
   label: string;
   templates: ExpertTemplate[];
   /** Someone on the team was hired from this area. */
   isCovered: boolean;
 }
 
+/** An area nobody on the team covers, shown as an empty seat on the team card. */
+export interface OpenSeat {
+  area: Area;
+  label: string;
+}
+
+const OTHER_LABEL = "More experts";
+
 /**
  * One section per area that has templates, each template under its first
  * area only: areas nobody on the team covers first, then the rest, each part
- * in `AREAS` order.
+ * in `AREAS` order. Templates in no known area come last, so none is hidden.
  */
 export function areaSections(templates: ExpertTemplate[], hiredIDs: ReadonlySet<string>) {
   const sections: AreaSection[] = AREAS.map(({ key, label }) => {
@@ -76,10 +85,21 @@ export function areaSections(templates: ExpertTemplate[], hiredIDs: ReadonlySet<
       isCovered: inArea.some((template) => hiredIDs.has(template.id)),
     };
   }).filter((section) => section.templates.length > 0);
+  const others = templates.filter((template) => primaryArea(template) === null);
   return [
     ...sections.filter((section) => !section.isCovered),
     ...sections.filter((section) => section.isCovered),
+    // Not an area a team can be missing, so it never shows as an open seat.
+    ...(others.length > 0
+      ? [{ area: null, label: OTHER_LABEL, templates: others, isCovered: true }]
+      : []),
   ];
+}
+
+export function openSeats(sections: AreaSection[]): OpenSeat[] {
+  return sections.flatMap(({ area, label, isCovered }) =>
+    area && !isCovered ? [{ area, label }] : [],
+  );
 }
 
 /** "Jordan, finds leads that fit…": the name, then the tagline as the rest of the sentence. */

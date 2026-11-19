@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { type LayoutChangeEvent, Text, View } from "react-native";
 
-import { createStyles, useScheme } from "@/lib/theme";
+import { createStyles, useColors, useScheme } from "@/lib/theme";
 
 import { areaColor, areaTint } from "../areaColors";
 import type { AreaSection as Section } from "../helpers";
@@ -16,18 +16,20 @@ interface Props {
 export function AreaSection({ section, onLayout, children }: Props) {
   const styles = useStyles();
   const scheme = useScheme();
+  const colors = useColors();
+  const { area } = section;
   return (
     <View onLayout={onLayout}>
       <View style={styles.heading}>
         <View style={styles.title}>
-          <View style={[styles.dot, { backgroundColor: areaColor(section.area) }]} />
+          {area ? <View style={[styles.dot, { backgroundColor: areaColor(area) }]} /> : null}
           <Text accessibilityRole="header" style={styles.label}>
             {section.label}
           </Text>
         </View>
         {section.isCovered ? null : <Text style={styles.note}>Your team has no one here</Text>}
       </View>
-      <RowCard background={areaTint(section.area, scheme)}>{children}</RowCard>
+      <RowCard background={area ? areaTint(area, scheme) : colors.panelCard}>{children}</RowCard>
     </View>
   );
 }

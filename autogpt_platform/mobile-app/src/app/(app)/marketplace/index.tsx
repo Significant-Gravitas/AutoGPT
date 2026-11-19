@@ -88,10 +88,10 @@ export default function MarketplaceScreen() {
         />
         {screen.sections.map((section) => (
           <AreaSection
-            key={section.area}
+            key={section.area ?? "other"}
             section={section}
             onLayout={(event: LayoutChangeEvent) => {
-              sectionTops.current[section.area] = event.nativeEvent.layout.y;
+              if (section.area) sectionTops.current[section.area] = event.nativeEvent.layout.y;
             }}
           >
             {section.templates.map(renderRow)}
