@@ -27,6 +27,7 @@ def _owned_session() -> PrismaChatSession:
         isShared=True,
         shareToken="token-A",
         autoShareExecutions=False,
+        organizationId="org-1",
     )
 
 

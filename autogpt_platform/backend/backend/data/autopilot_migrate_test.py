@@ -101,6 +101,7 @@ async def test_apply_is_idempotent_against_database(server):
     )
     await prisma.models.AgentGraph.prisma().create(
         data={
+            "organizationId": "org-test",
             "id": graph_id,
             "version": 1,
             "name": "autopilot-migrate-test",

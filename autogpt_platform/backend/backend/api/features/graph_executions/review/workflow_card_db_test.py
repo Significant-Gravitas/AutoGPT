@@ -100,6 +100,7 @@ class _Run:
     ) -> "_Run":
         await AgentGraph.prisma().create(
             data={
+                "organizationId": "org-test",
                 "id": self.graph_id,
                 "version": 1,
                 "name": "Morning digest",
@@ -118,6 +119,7 @@ class _Run:
         )
         await AgentGraphExecution.prisma().create(
             data={
+                "organizationId": "org-test",
                 "id": self.graph_exec_id,
                 "agentGraphId": self.graph_id,
                 "agentGraphVersion": 1,

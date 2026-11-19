@@ -56,33 +56,6 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             if self._matches_tenancy(webhook, organization_id, team_id):
                 return webhook
 
-        # A legacy row predating tenancy stamping carries NULL org/team and
-        # is invisible to the tenancy-filtered lookup above; re-registering
-        # would duplicate the provider-side webhook. Rehome the legacy row
-        # instead (mirroring the manual-webhook path). A row in a DIFFERENT
-        # concrete tenancy still gets its own webhook below.
-        legacy = await integrations.find_webhook_by_credentials_and_props_any_tenant(
-            user_id=user_id,
-            credentials_id=credentials.id,
-            webhook_type=webhook_type,
-            resource=resource,
-        )
-        if (
-            legacy is not None
-            and legacy.organization_id is None
-            and legacy.team_id is None
-            # Adoption must be event-compatible: the tenancy-scoped lookup
-            # above enforces has_every on events, so mirror it here — a
-            # legacy row subscribed to a different set must not be claimed
-            # (its provider registration wouldn't fire the requested events).
-            and set(events).issubset(set(legacy.events))
-        ):
-            if organization_id is None and team_id is None:
-                return legacy
-            return await integrations.set_webhook_tenancy(
-                legacy.id, organization_id=organization_id, team_id=team_id
-            )
-
         return await self._create_webhook(
             user_id=user_id,
             webhook_type=webhook_type,

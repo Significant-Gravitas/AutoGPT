@@ -129,7 +129,6 @@ async def _load_sessions(
             {
                 "OR": [
                     {"organizationId": organization_id},
-                    {"organizationId": None},
                     {"expertId": {"not": None}},
                 ]
             }

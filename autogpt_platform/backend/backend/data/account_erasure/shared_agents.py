@@ -39,6 +39,7 @@ from backend.data.account_erasure.deleted_user import (
 from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema, transaction
 from backend.data.graph import hand_over_graphs
+from backend.data.org_migration import personal_org_tenancy
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +101,13 @@ _KEPT_LISTINGS = """
      ORDER BY l."id"
 """
 _TRANSFER_LISTING = """
-    UPDATE {schema_prefix}"StoreListing" SET "owningUserId" = $1, "slug" = $2
-     WHERE "id" = $3 AND "owningUserId" = $4
+    UPDATE {schema_prefix}"StoreListing" SET "owningUserId" = $1, "owningOrgId" = $2,
+           "slug" = $3
+     WHERE "id" = $4 AND "owningUserId" = $5
+"""
+_REHOME_VERSIONS = """
+    UPDATE {schema_prefix}"StoreListingVersion" SET "organizationId" = $1
+     WHERE "storeListingId" = ANY($2::text[])
 """
 # A submission still waiting for review would otherwise be published under
 # the placeholder after its author asked to be deleted. REJECTED still counts
@@ -166,8 +172,8 @@ def _clear_store_caches() -> None:
 
 async def _transfer(subject: Subject) -> None:
     uid = subject.user_id
+    placeholder_profile, placeholder_org_id = await _placeholder()
     async with transaction(timeout=_TRANSACTION_TIMEOUT) as tx:
-        placeholder_profile = await ensure_deleted_user(tx)
         await hand_over_graphs(
             subject.shared_graph_ids,
             from_user_id=uid,
@@ -180,17 +186,38 @@ async def _transfer(subject: Subject) -> None:
         for listing in listings:
             slug = await _free_slug(tx, listing.slug, listing.id)
             await execute_raw_with_schema(
-                _TRANSFER_LISTING, DELETED_USER_ID, slug, listing.id, uid, client=tx
+                _TRANSFER_LISTING,
+                DELETED_USER_ID,
+                placeholder_org_id,
+                slug,
+                listing.id,
+                uid,
+                client=tx,
             )
         if subject.kept_listing_ids:
             await execute_raw_with_schema(
                 _WITHDRAW_PENDING, subject.kept_listing_ids, client=tx
+            )
+            await execute_raw_with_schema(
+                _REHOME_VERSIONS,
+                placeholder_org_id,
+                subject.kept_listing_ids,
+                client=tx,
             )
         own_profile = await Profile.prisma(tx).find_unique(where={"userId": uid})
         if own_profile:
             await execute_raw_with_schema(
                 _RELABEL_LIBRARY, placeholder_profile, own_profile.id, uid, client=tx
             )
+
+
+async def _placeholder() -> tuple[str, str]:
+    """The placeholder account's Profile ID and personal org, both made on first
+    use. The listings leave the erased account's org, which is deleted with it."""
+    async with transaction(timeout=_TRANSACTION_TIMEOUT) as tx:
+        profile_id = await ensure_deleted_user(tx)
+    organization_id, _ = await personal_org_tenancy(DELETED_USER_ID)
+    return profile_id, organization_id
 
 
 async def _free_slug(tx: Prisma, slug: str, listing_id: str) -> str:

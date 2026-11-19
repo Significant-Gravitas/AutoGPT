@@ -909,7 +909,7 @@ model BuilderSearchHistory {
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Tenancy
-  organizationId String?
+  organizationId String
 
   @@index([organizationId])
 }
@@ -960,7 +960,7 @@ model ChatSession {
   Expert   Expert? @relation(fields: [expertId], references: [id])
 
   // Tenancy
-  organizationId String?
+  organizationId String
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
   Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -1190,8 +1190,8 @@ model AgentGraph {
   LibraryAgents        LibraryAgent[]
   StoreListingVersions StoreListingVersion[]
 
-  // Tenancy columns (nullable until cutover migration backfills existing data)
-  organizationId String?
+  // Tenancy
+  organizationId String
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
   Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -1253,7 +1253,7 @@ model AgentPreset {
   isDeleted Boolean @default(false)
 
   // Tenancy
-  organizationId String?
+  organizationId String
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
   Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -1377,7 +1377,7 @@ model UserNotificationBatch {
   Notifications NotificationEvent[]
 
   // Tenancy
-  organizationId String?
+  organizationId String
   teamId         String?
 
   // Each user can only have one batch of a notification type at a time
@@ -1475,7 +1475,7 @@ model LibraryAgent {
   ExpertWorkflows ExpertWorkflow[]
 
   // Tenancy
-  organizationId String?
+  organizationId String
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
   Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -1509,7 +1509,7 @@ model LibraryFolder {
   LibraryAgents LibraryAgent[]
 
   // Tenancy
-  organizationId String?
+  organizationId String
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
   Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -2353,8 +2353,8 @@ model AgentGraphExecution {
   SharedExecutionFiles SharedExecutionFile[]
   ChatLinkedShares     ChatLinkedShare[]
 
-  // Tenancy (nullable until cutover migration backfills existing data)
-  organizationId String?
+  // Tenancy
+  organizationId String
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
   Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -2471,7 +2471,7 @@ model PendingHumanReview {
   User User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Tenancy
-  organizationId String?
+  organizationId String
   teamId         String?
 
   @@unique([nodeExecId]) // One pending review per node execution
@@ -2504,7 +2504,7 @@ model IntegrationWebhook {
   AgentPresets AgentPreset[]
 
   // Tenancy
-  organizationId String?
+  organizationId String
   teamId         String?
   visibility     ResourceVisibility @default(PRIVATE)
   Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -2956,11 +2956,12 @@ model StoreListing {
   // Relations
   Versions StoreListingVersion[] @relation("ListingVersions")
 
-  // Tenancy — owningOrgId will be NOT NULL after cutover migration
-  owningOrgId String?
-  OwningOrg   Organization? @relation("OrgStoreListings", fields: [owningOrgId], references: [id])
+  // Tenancy
+  owningOrgId String
+  OwningOrg   Organization  @relation("OrgStoreListings", fields: [owningOrgId], references: [id])
 
   @@unique([owningUserId, slug])
+  @@unique([owningOrgId, slug])
   // Used in the view query
   @@index([isDeleted, hasApprovedVersion])
   @@index([owningOrgId])
@@ -3027,7 +3028,7 @@ model StoreListingVersion {
   // Use contentType=STORE_AGENT and contentId=storeListingVersionId
 
   // Tenancy
-  organizationId String?
+  organizationId String
 
   @@unique([storeListingId, version])
   @@index([storeListingId, submissionStatus, isAvailable])
@@ -3323,7 +3324,7 @@ model APIKey {
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Tenancy
-  organizationId    String?
+  organizationId    String
   teamId            String?
   ownerType         CredentialOwnerType?
   teamIdRestriction String?

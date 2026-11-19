@@ -49,7 +49,9 @@ def _make_library_agent(
             visibility=prisma.enums.ResourceVisibility.PRIVATE,
             Executions=executions,
             Nodes=nodes,
+            organizationId="org-1",
         ),
+        organizationId="org-1",
     )
 
 
@@ -110,6 +112,7 @@ def _store_listing(
         isAvailable=True,
         submissionStatus=prisma.enums.SubmissionStatus.APPROVED,
         storeListingId="sl1",
+        organizationId="org-1",
     )
     profile = prisma.models.Profile(
         id="p1",
@@ -136,6 +139,7 @@ def _store_listing(
         owningUserId="creator",
         ActiveVersion=version if with_active_version else None,
         CreatorProfile=profile,
+        owningOrgId="org-1",
     )
 
 
@@ -239,6 +243,7 @@ def test_from_db_execution_count_override_covers_success_rate():
         isDeleted=False,
         isShared=False,
         visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        organizationId="org-1",
     )
     agent = _make_library_agent(executions=[exec1])
 
@@ -264,6 +269,7 @@ def test_from_db_success_rate_uses_the_included_runs_not_the_full_count():
         isDeleted=False,
         isShared=False,
         visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        organizationId="org-1",
     )
     failed = completed.model_copy(
         update={
@@ -305,6 +311,7 @@ async def test_agent_preset_from_db(test_user_id: str):
                 }
             )
         ],
+        organizationId="org-1",
     )
 
     # Convert to LibraryAgentPreset
@@ -341,6 +348,7 @@ def _preset_row_with_webhook() -> prisma.models.AgentPreset:
                 "id": "wh-1",
                 "createdAt": datetime.datetime.now(),
                 "userId": "u1",
+                "organizationId": "org-1",
                 "provider": "github",
                 "credentialsId": "cred-1",
                 "webhookType": "repo",
@@ -352,6 +360,7 @@ def _preset_row_with_webhook() -> prisma.models.AgentPreset:
                 "visibility": prisma.enums.ResourceVisibility.PRIVATE,
             }
         ),
+        organizationId="org-1",
     )
 
 

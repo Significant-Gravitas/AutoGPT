@@ -62,6 +62,7 @@ def _mock_session(*, auto_share_executions: bool = False) -> PrismaChatSession:
         shareToken="token-A",
         sharedAt=now,
         autoShareExecutions=auto_share_executions,
+        organizationId="org-1",
     )
 
 
@@ -81,6 +82,7 @@ def _mock_execution(
         shareToken="token-exec",
         sharedAt=now,
         sharedVia=shared_via,
+        organizationId="org-1",
     )
 
 

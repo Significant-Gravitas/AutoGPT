@@ -1783,7 +1783,7 @@ async def get_graph(
             graph is not None
             and organization_id is not None
             and graph.userId == user_id
-            and graph.organizationId not in (organization_id, None)
+            and graph.organizationId != organization_id
         ):
             graph = None
 
@@ -2171,9 +2171,9 @@ async def set_graph_active_version(graph_id: str, version: int, user_id: str) ->
     )
 
 
-async def get_graph_version_owners(graph_id: str) -> set[tuple[str, str | None]]:
-    """The user and organization of each of a graph's versions, None standing
-    for an untagged one. Every owner's versions count."""
+async def get_graph_version_owners(graph_id: str) -> set[tuple[str, str]]:
+    """The user and organization of each of a graph's versions. Every owner's
+    versions count."""
     versions = await AgentGraph.prisma().find_many(where={"id": graph_id})
     return {(version.userId, version.organizationId) for version in versions}
 
@@ -2189,10 +2189,10 @@ async def is_graph_version_owner(graph_id: str, version: int, user_id: str) -> b
 
 
 async def assert_graph_within(
-    graph_id: str, user_id: str, organization_ids: Collection[str | None]
+    graph_id: str, user_id: str, organization_id: str
 ) -> None:
     """Refuse to change a graph unless every version of it is *user_id*'s and
-    in *organization_ids*.
+    in *organization_id*.
 
     A version saved or activated on it becomes the active one for all of its
     versions, and moves the library entries and webhook presets that follow
@@ -2202,8 +2202,8 @@ async def assert_graph_within(
     """
     owners = await get_graph_version_owners(graph_id)
     if any(
-        owner != user_id or organization_id not in organization_ids
-        for owner, organization_id in owners
+        owner != user_id or version_organization_id != organization_id
+        for owner, version_organization_id in owners
     ):
         raise NotAuthorizedError(
             f"Graph #{graph_id} has versions by another user or in another "
@@ -2300,14 +2300,8 @@ def _owned_graph_where(
 ) -> AgentGraphWhereInput:
     where: AgentGraphWhereInput = {"id": graph_id, "userId": user_id}
     if organization_id is not None:
-        # Scope the delete to the caller's active org. Tenant-less rows
-        # (created before org tagging, not yet backfilled) stay deletable
-        # by their owner — only rows tagged with a DIFFERENT org are
-        # protected from cross-org deletion.
-        where["OR"] = [
-            {"organizationId": organization_id},
-            {"organizationId": None},
-        ]
+        # Rows tagged with another org are protected from cross-org deletion.
+        where["organizationId"] = organization_id
     return where
 
 

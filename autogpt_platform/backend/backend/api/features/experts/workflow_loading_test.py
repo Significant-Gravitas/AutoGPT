@@ -12,14 +12,21 @@ from backend.api.features.experts.models import Expert
 @pytest.mark.parametrize("with_metrics", [True, False])
 async def test_roster_skips_nodes_but_detail_loads_workflow_chain(with_metrics):
     graph = prisma.models.AgentGraph.model_construct(
-        name="My workflow", description="Created in the library", Nodes=None
+        name="My workflow",
+        description="Created in the library",
+        Nodes=None,
+        organizationId="org-1",
     )
     workflow = prisma.models.ExpertWorkflow.model_construct(
         id="workflow-1",
         storeListingVersionId=None,
         libraryAgentId="library-1",
         LibraryAgent=prisma.models.LibraryAgent.model_construct(
-            agentGraphId="graph-1", name=None, description=None, AgentGraph=graph
+            agentGraphId="graph-1",
+            name=None,
+            description=None,
+            AgentGraph=graph,
+            organizationId="org-1",
         ),
         StoreListingVersion=None,
     )

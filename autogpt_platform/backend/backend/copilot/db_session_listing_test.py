@@ -64,6 +64,7 @@ def _make_prisma_session(session_id: str = "sess-1") -> PrismaChatSession:
         sharedAt=None,
         autoShareExecutions=False,
         visibility=ResourceVisibility.PRIVATE,
+        organizationId="org-1",
     )
 
 
@@ -249,6 +250,7 @@ async def _create_legacy_session_without_kind_key(user_id: str) -> str:
         data=ChatSessionCreateInput(
             id=legacy_id,
             userId=user_id,
+            organizationId="org-test",
             credentials=SafeJson({}),
             successfulAgentRuns=SafeJson({}),
             successfulAgentSchedules=SafeJson({}),

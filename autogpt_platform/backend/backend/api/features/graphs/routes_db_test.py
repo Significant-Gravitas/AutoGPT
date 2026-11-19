@@ -116,6 +116,7 @@ async def test_saving_a_graph_id_that_belongs_to_somebody_else_saves_a_copy(
     )
     await AgentGraph.prisma().create(
         data={
+            "organizationId": "org-test",
             "id": created.id,
             "version": 2,
             "name": "Workflow",

@@ -11,11 +11,9 @@ from backend.data.tenancy import (
     BILLING_ONLY_ORG_ROLE,
     BILLING_ONLY_TEAM_ROLE,
     get_user_team_ids,
-    organization_filter,
     require_role_where_resource_lives,
     resource_role_refusal,
     visibility_filter,
-    writable_organization_ids,
 )
 from backend.util.exceptions import NotAuthorizedError
 
@@ -28,10 +26,7 @@ def test_org_filter_covers_own_orghome_and_team_rows():
     where = visibility_filter("u1", "org-1", ["team-a", "team-b"])
     assert where == {
         "OR": [
-            {
-                "userId": "u1",
-                "OR": [{"organizationId": "org-1"}, {"organizationId": None}],
-            },
+            {"userId": "u1", "organizationId": "org-1"},
             {"organizationId": "org-1", "teamId": None},
             {"organizationId": "org-1", "teamId": {"in": ["team-a", "team-b"]}},
         ]
@@ -42,10 +37,7 @@ def test_org_filter_without_teams_omits_team_clause():
     where = visibility_filter("u1", "org-1", [])
     assert where == {
         "OR": [
-            {
-                "userId": "u1",
-                "OR": [{"organizationId": "org-1"}, {"organizationId": None}],
-            },
+            {"userId": "u1", "organizationId": "org-1"},
             {"organizationId": "org-1", "teamId": None},
         ]
     }
@@ -59,10 +51,7 @@ def test_custom_field_names():
         user_field="owningUserId",
         org_field="owningOrgId",
     )
-    assert where["OR"][0] == {
-        "owningUserId": "u1",
-        "OR": [{"owningOrgId": "org-1"}, {"owningOrgId": None}],
-    }
+    assert where["OR"][0] == {"owningUserId": "u1", "owningOrgId": "org-1"}
 
 
 def _org_member(*, owner=False, admin=False, billing=False) -> SimpleNamespace:
@@ -325,32 +314,3 @@ async def test_org_home_reads_no_team_membership(members):
     assert await resource_role_refusal("u1", "org-1", None) is None
 
     members.teammember.find_first.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "personal, writable", [(True, {"org-1", None}), (False, {"org-1"})]
-)
-async def test_untagged_rows_are_writable_only_from_the_personal_org(
-    mocker, personal: bool, writable: set
-):
-    """They predate org tagging, and the backfill gives them the personal org."""
-    mock_prisma = MagicMock()
-    mock_prisma.orgmember.find_first = AsyncMock(
-        return_value=MagicMock() if personal else None
-    )
-    mocker.patch.object(tenancy, "prisma", mock_prisma)
-
-    assert await writable_organization_ids("u1", "org-1") == writable
-    where = mock_prisma.orgmember.find_first.call_args.kwargs["where"]
-    assert (where["userId"], where["orgId"]) == ("u1", "org-1")
-    assert where["Org"] == {"isPersonal": True, "deletedAt": None}
-
-
-def test_organization_filter_matches_untagged_rows_only_when_asked():
-    assert organization_filter({"org-1"}) == {
-        "OR": [{"organizationId": {"in": ["org-1"]}}]
-    }
-    assert organization_filter({"org-1", None}) == {
-        "OR": [{"organizationId": {"in": ["org-1"]}}, {"organizationId": None}]
-    }

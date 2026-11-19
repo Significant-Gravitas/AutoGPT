@@ -70,6 +70,7 @@ from backend.data.graph import (
     validate_graph_execution_permissions,
 )
 from backend.data.model import CredentialsFieldInfo, SchemaField
+from backend.data.tenancy import tenancy_for_new_row
 from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
 from backend.util.exceptions import (
@@ -1222,11 +1223,13 @@ async def _in_library_from_the_marketplace(graph: GraphModel, user_id: str) -> N
             "slug": f"sub-workflow-{uuid4()}",
             "agentGraphId": graph.id,
             "owningUserId": graph.user_id,
+            "owningOrgId": (await tenancy_for_new_row(graph.user_id, None))[0],
             "hasApprovedVersion": True,
         }
     )
     await StoreListingVersion.prisma().create(
         data={
+            "organizationId": "org-test",
             "storeListingId": listing.id,
             "version": 1,
             "agentGraphId": graph.id,
@@ -1241,6 +1244,7 @@ async def _in_library_from_the_marketplace(graph: GraphModel, user_id: str) -> N
     )
     await LibraryAgent.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": user_id,
             "agentGraphId": graph.id,
             "agentGraphVersion": graph.version,
@@ -3263,6 +3267,7 @@ async def test_get_graph_settings_resolves_against_the_running_version(
         for version in (1, 2, 3):
             await AgentGraph.prisma().create(
                 data={
+                    "organizationId": "org-test",
                     "id": graph_id,
                     "version": version,
                     "name": f"Settings Test v{version}",
@@ -3274,6 +3279,7 @@ async def test_get_graph_settings_resolves_against_the_running_version(
         for version, archived, safe_mode in ((1, False, True), (2, True, False)):
             await LibraryAgent.prisma().create(
                 data={
+                    "organizationId": "org-test",
                     "userId": user_id,
                     "agentGraphId": graph_id,
                     "agentGraphVersion": version,
@@ -3841,7 +3847,7 @@ def test_graph_meta_from_db_carries_org_team():
 async def test_delete_graph_scopes_to_active_org(mocker):
     """Regression: ``delete_graph`` accepted ``organization_id`` but silently
     dropped it from the where clause — an org-scoped delete request executed
-    tenant-blind. Tenant-less (pre-backfill) rows must remain deletable."""
+    tenant-blind."""
     from backend.data.graph import delete_graph
 
     mock_client = AsyncMock()
@@ -3852,11 +3858,11 @@ async def test_delete_graph_scopes_to_active_org(mocker):
     where = mock_client.delete_many.call_args.kwargs["where"]
     assert where["id"] == "g-1"
     assert where["userId"] == "u-1"
-    assert where["OR"] == [{"organizationId": "org-A"}, {"organizationId": None}]
+    assert where["organizationId"] == "org-A"
 
     await delete_graph("g-1", user_id="u-1")
     where = mock_client.delete_many.call_args.kwargs["where"]
-    assert "OR" not in where
+    assert "organizationId" not in where
 
 
 @pytest.mark.asyncio
@@ -3887,10 +3893,7 @@ async def test_get_graph_org_visibility_where_clause(mocker):
     assert where["AND"] == [
         {
             "OR": [
-                {
-                    "userId": "u-1",
-                    "OR": [{"organizationId": "org-1"}, {"organizationId": None}],
-                },
+                {"userId": "u-1", "organizationId": "org-1"},
                 {"organizationId": "org-1", "teamId": None},
                 {"organizationId": "org-1", "teamId": {"in": ["team-a"]}},
             ]
@@ -4386,6 +4389,7 @@ async def test_a_graph_ids_owner_is_the_owner_of_its_first_version(
     owned = await db_create_graph(_graph("owned"), owner.id)
     await AgentGraph.prisma().create(
         data={
+            "organizationId": "org-test",
             "id": owned.id,
             "version": 2,
             "name": "owned",

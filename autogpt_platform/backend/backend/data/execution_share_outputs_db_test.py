@@ -41,6 +41,7 @@ async def _setup() -> tuple[str, str, dict[str, str]]:
     )
     await prisma.models.AgentGraph.prisma().create(
         data={
+            "organizationId": "org-test",
             "id": graph_id,
             "version": 1,
             "name": "share-outputs-test",

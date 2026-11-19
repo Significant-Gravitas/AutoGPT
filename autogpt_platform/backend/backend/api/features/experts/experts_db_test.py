@@ -61,6 +61,7 @@ from backend.data.graph import Graph, GraphSettings, Node
 from backend.data.human_review import get_pending_reviews_for_user
 from backend.data.onboarding import get_user_onboarding
 from backend.data.onboarding_steps import OnboardingStep
+from backend.data.tenancy import tenancy_for_new_row
 from backend.data.user import get_or_create_user
 from backend.executor import utils as execution_utils
 from backend.util.background import _background_tasks
@@ -573,6 +574,9 @@ async def _load_roster_store_assets() -> dict[str, str]:
     instead of being silently substituted by a synthetic listing.
     """
     await store_assets.create_user_and_profile(db_client)
+    organization_id, team_id = await tenancy_for_new_row(
+        store_assets.AUTOGPT_USER_ID, None
+    )
     metadata = await store_assets.load_csv_metadata()
     by_slug = {m["slug"]: m for m in metadata.values() if m["is_available"]}
     expected: dict[str, str] = {}
@@ -584,10 +588,10 @@ async def _load_roster_store_assets() -> dict[str, str]:
             store_assets.AGENTS_DIR / f"agent_{version_id}.json"
         )
         graph_id, graph_version = await store_assets.create_agent_graph(
-            db_client, agent_json, set()
+            db_client, agent_json, set(), organization_id, team_id
         )
         await store_assets.create_store_listing(
-            db_client, graph_id, graph_version, meta
+            db_client, graph_id, graph_version, meta, organization_id
         )
         expected[slug] = version_id
     return expected
@@ -1395,6 +1399,7 @@ async def test_raise_expert_rejects_pending_version_of_approved_graph(
     assert approved is not None
     pending = await prisma.models.StoreListingVersion.prisma().create(
         data={
+            "organizationId": "org-test",
             "version": approved.version + 1,
             "agentGraphId": approved.agentGraphId,
             "agentGraphVersion": approved.agentGraphVersion,
@@ -3529,6 +3534,7 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
         assert library_agent is not None
         preset = await prisma.models.AgentPreset.prisma().create(
             data={
+                "organizationId": "org-test",
                 "userId": test_user.id,
                 "name": "Email trigger",
                 "description": "",
@@ -3539,6 +3545,7 @@ async def test_archive_pauses_detaches_and_revive_reattaches(
         )
         disabled_preset = await prisma.models.AgentPreset.prisma().create(
             data={
+                "organizationId": "org-test",
                 "userId": test_user.id,
                 "name": "Manually disabled trigger",
                 "description": "",
@@ -4267,6 +4274,7 @@ async def test_seed_clears_removed_cadence_after_listing_version_rotation(
 
     current = await prisma.models.StoreListingVersion.prisma().create(
         data={
+            "organizationId": "org-test",
             "version": previous.version + 1,
             "agentGraphId": previous.agentGraphId,
             "agentGraphVersion": previous.agentGraphVersion,
@@ -4463,6 +4471,7 @@ async def test_list_experts_includes_last_run(server: SpinTestServer, test_user)
     assert library_agent is not None
     await prisma.models.AgentGraphExecution.prisma().create(
         data={
+            "organizationId": "org-test",
             "agentGraphId": library_agent.agentGraphId,
             "agentGraphVersion": library_agent.agentGraphVersion,
             "userId": test_user.id,
@@ -4500,6 +4509,7 @@ async def test_last_run_with_a_failed_step_reports_failed(
     assert library_agent is not None
     await prisma.models.AgentGraphExecution.prisma().create(
         data={
+            "organizationId": "org-test",
             "agentGraphId": library_agent.agentGraphId,
             "agentGraphVersion": library_agent.agentGraphVersion,
             "userId": test_user.id,
@@ -7923,6 +7933,7 @@ async def test_reset_declines_an_approval_waiting_in_needs_you(
     card = f"copilot-node-gate-create_routine:{uuid.uuid4()}"
     await prisma.models.PendingHumanReview.prisma().create(
         data={
+            "organizationId": "org-test",
             "nodeExecId": card,
             "userId": test_user.id,
             "chatSessionId": thread,
@@ -7933,6 +7944,7 @@ async def test_reset_declines_an_approval_waiting_in_needs_you(
     other_card = f"copilot-node-gate-create_routine:{uuid.uuid4()}"
     await prisma.models.PendingHumanReview.prisma().create(
         data={
+            "organizationId": "org-test",
             "nodeExecId": other_card,
             "userId": test_user.id,
             "chatSessionId": elsewhere.session_id,

@@ -12,6 +12,7 @@ import pytest
 
 from backend.api.features.store import db as store_db
 from backend.api.features.store import exceptions as store_exceptions
+from backend.data.tenancy import tenancy_for_new_row
 from backend.util.exceptions import NotFoundError
 
 APPROVED = prisma.enums.SubmissionStatus.APPROVED
@@ -105,6 +106,7 @@ async def _seed_listing(
     """One listing with a version per status, the first one active."""
     await prisma.models.AgentGraph.prisma().create(
         data={
+            "organizationId": "org-test",
             "id": graph_id,
             "version": 1,
             "name": graph_id,
@@ -118,6 +120,7 @@ async def _seed_listing(
             "slug": graph_id,
             "agentGraphId": graph_id,
             "owningUserId": owner,
+            "owningOrgId": (await tenancy_for_new_row(owner, None))[0],
             "hasApprovedVersion": APPROVED in statuses,
         }
     )
@@ -125,6 +128,7 @@ async def _seed_listing(
     for number, status in enumerate(statuses, start=1):
         version = await prisma.models.StoreListingVersion.prisma().create(
             data={
+                "organizationId": "org-test",
                 "storeListingId": listing.id,
                 "version": number,
                 "agentGraphId": graph_id,

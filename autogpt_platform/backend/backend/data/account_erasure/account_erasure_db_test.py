@@ -62,6 +62,7 @@ from backend.data.account_erasure.shared_agents import (
 from backend.data.account_erasure.storage import kept_media
 from backend.data.db import execute_raw_with_schema
 from backend.data.graph import get_graph
+from backend.data.tenancy import tenancy_for_new_row
 from backend.data.user import find_orphaned_auth_identities, get_or_create_user
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
@@ -112,7 +113,7 @@ async def _graph(owner_id: str, name: str, sub_graph_id: str | None = None):
         else {}
     )
     return await prisma.models.AgentGraph.prisma().create(
-        data={"userId": owner_id, "name": name, **nodes}
+        data={"userId": owner_id, "organizationId": "org-test", "name": name, **nodes}
     )
 
 
@@ -129,11 +130,13 @@ async def _listing(
             "slug": f"deletion-{graph.id}",
             "agentGraphId": graph.id,
             "owningUserId": owner_id,
+            "owningOrgId": (await tenancy_for_new_row(owner_id, None))[0],
             "hasApprovedVersion": status == prisma.enums.SubmissionStatus.APPROVED,
         }
     )
     version = await prisma.models.StoreListingVersion.prisma().create(
         data={
+            "organizationId": "org-test",
             "agentGraphId": graph.id,
             "agentGraphVersion": graph.version,
             "name": "Deletion test agent",
@@ -215,6 +218,7 @@ async def _uses(other_id: str, graph, creator_id: str) -> None:
     )
     await prisma.models.LibraryAgent.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": other_id,
             "agentGraphId": graph.id,
             "agentGraphVersion": graph.version,
@@ -223,6 +227,7 @@ async def _uses(other_id: str, graph, creator_id: str) -> None:
     )
     await prisma.models.AgentGraphExecution.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": other_id,
             "agentGraphId": graph.id,
             "agentGraphVersion": graph.version,
@@ -259,10 +264,11 @@ async def _holdings(user_id: str) -> list[str]:
         )
     graph = await _graph(user_id, "Own agent")
     folder = await prisma.models.LibraryFolder.prisma().create(
-        data={"userId": user_id, "name": "Mine"}
+        data={"organizationId": "org-test", "userId": user_id, "name": "Mine"}
     )
     await prisma.models.LibraryAgent.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": user_id,
             "agentGraphId": graph.id,
             "agentGraphVersion": graph.version,
@@ -271,6 +277,7 @@ async def _holdings(user_id: str) -> list[str]:
     )
     preset = await prisma.models.AgentPreset.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": user_id,
             "name": "Mine",
             "description": "",
@@ -286,7 +293,11 @@ async def _holdings(user_id: str) -> list[str]:
         }
     )
     batch = await prisma.models.UserNotificationBatch.prisma().create(
-        data={"userId": user_id, "type": prisma.enums.NotificationType.ALERT}
+        data={
+            "organizationId": "org-test",
+            "userId": user_id,
+            "type": prisma.enums.NotificationType.ALERT,
+        }
     )
     event = await prisma.models.NotificationEvent.prisma().create(
         data={
@@ -395,7 +406,11 @@ async def _left_of(user_id: str) -> dict[str, int]:
 async def _chat(user_id: str) -> str:
     """A titled chat with a message, and its title's search embedding."""
     session = await prisma.models.ChatSession.prisma().create(
-        data={"userId": user_id, "title": "Plans for my startup"}
+        data={
+            "organizationId": "org-test",
+            "userId": user_id,
+            "title": "Plans for my startup",
+        }
     )
     await prisma.models.ChatMessage.prisma().create(
         data={"sessionId": session.id, "role": "user", "sequence": 0, "content": "hi"}
@@ -647,7 +662,7 @@ async def test_agents_another_org_member_can_open_go_to_the_placeholder(
         data={"userId": user_id, "name": "Lapsed", "organizationId": lapsed_org}
     )
     personal = await prisma.models.AgentGraph.prisma().create(
-        data={"userId": user_id, "name": "Personal agent"}
+        data={"organizationId": "org-test", "userId": user_id, "name": "Personal agent"}
     )
     # Before: the colleague sees the org agent without any row of its own.
     assert await get_graph(org_home.id, None, colleague, organization_id=shared_org)

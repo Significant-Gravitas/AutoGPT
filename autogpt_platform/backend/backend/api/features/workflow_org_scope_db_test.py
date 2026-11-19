@@ -26,6 +26,7 @@ from backend.data import graph as graph_db
 from backend.data.db import prisma
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.org_migration import create_personal_org
+from backend.data.tenancy import tenancy_for_new_row
 from backend.executor.scheduler import GraphExecutionJobInfo
 
 USER_HEADER = "X-Test-User"
@@ -235,10 +236,12 @@ async def _submit_to_marketplace(user_id: str, graph_id: str, org_id: str) -> No
             "slug": f"briefing-{uuid.uuid4().hex[:8]}",
             "agentGraphId": graph_id,
             "owningUserId": user_id,
+            "owningOrgId": (await tenancy_for_new_row(user_id, None))[0],
         }
     )
     await prisma.storelistingversion.create(
         data={
+            "organizationId": "org-test",
             "storeListingId": listing.id,
             "version": 1,
             "agentGraphId": graph_id,

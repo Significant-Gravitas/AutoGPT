@@ -139,12 +139,8 @@ async def get_chat_messages_by_ids(
 def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
     """AND-clause scoping a user's own sessions to the active org.
 
-    Includes untagged pre-backfill rows (``organizationId`` null) so sessions
-    created before the org migration stay visible and loadable in the user's
-    personal-org context. Mirrors library visibility
-    (``api/features/library/db.py``); exact ``organizationId`` equality would
-    silently hide them. Always paired with a ``userId`` filter, so it only
-    ever widens to the caller's own rows.
+    Always paired with a ``userId`` filter, so it only ever widens to the
+    caller's own rows.
 
     Expert-scoped sessions (``expertId`` set) are exempt from org scoping:
     they are pinned to the owner's personal organization by design (see
@@ -158,7 +154,6 @@ def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
         {
             "OR": [
                 {"organizationId": organization_id},
-                {"organizationId": None},
                 {"expertId": {"not": None}},
             ]
         }
@@ -1031,8 +1026,7 @@ def _visible_sessions_where(
         # Same carve-out as _own_org_scope: the owner's expert sessions are
         # personal-org resources and stay visible under any active org.
         conditions.append(
-            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL'
-            ' OR "expertId" IS NOT NULL)'
+            f'("organizationId" = ${len(params)} OR "expertId" IS NOT NULL)'
         )
     if title_contains:
         params.append(f"%{_escape_like(title_contains)}%")

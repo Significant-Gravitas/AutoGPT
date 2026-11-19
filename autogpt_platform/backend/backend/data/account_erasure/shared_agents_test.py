@@ -47,6 +47,11 @@ def db(monkeypatch):
     monkeypatch.setattr(shared_agents, "execute_raw_with_schema", execute)
     monkeypatch.setattr(shared_agents, "hand_over_graphs", hand_over)
     monkeypatch.setattr(shared_agents, "ensure_deleted_user", ensure)
+    monkeypatch.setattr(
+        shared_agents,
+        "personal_org_tenancy",
+        AsyncMock(return_value=("placeholder-org", "placeholder-team")),
+    )
     monkeypatch.setattr(shared_agents, "clear_store_caches", clear)
     monkeypatch.setattr(
         shared_agents,
@@ -117,7 +122,19 @@ async def test_agents_and_listings_go_to_the_placeholder_in_one_transaction(db):
         tx=db.tx,
     )
     listing = _listing_update(db.execute)
-    assert listing.args[1:] == (DELETED_USER_ID, "weather", "listing-1", USER_ID)
+    assert listing.args[1:] == (
+        DELETED_USER_ID,
+        "placeholder-org",
+        "weather",
+        "listing-1",
+        USER_ID,
+    )
+    versions = next(
+        call
+        for call in db.execute.await_args_list
+        if '"organizationId" = $1' in call.args[0]
+    )
+    assert versions.args[1:] == ("placeholder-org", SUBJECT.kept_listing_ids)
     db.clear.assert_called_once()
 
 
@@ -158,7 +175,7 @@ async def test_a_slug_the_placeholder_already_uses_gets_a_suffix(db):
 
     await shared_agents.transfer_shared_agents(SUBJECT, dry_run=False)
 
-    assert _listing_update(db.execute).args[2] == "weather-3"
+    assert _listing_update(db.execute).args[3] == "weather-3"
 
 
 @pytest.mark.asyncio

@@ -33,6 +33,7 @@ from backend.api.external.v1 import routes as v1_routes
 from backend.data import db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key
+from backend.data.tenancy import tenancy_for_new_row
 
 
 class Setup(BaseModel):
@@ -224,10 +225,12 @@ async def _submit_to_marketplace(user_id: str, graph_id: str, org_id: str) -> No
             "slug": f"weekly-report-{uuid.uuid4().hex[:8]}",
             "agentGraphId": graph_id,
             "owningUserId": user_id,
+            "owningOrgId": (await tenancy_for_new_row(user_id, None))[0],
         }
     )
     await StoreListingVersion.prisma().create(
         data={
+            "organizationId": "org-test",
             "storeListingId": listing.id,
             "version": 1,
             "agentGraphId": graph_id,

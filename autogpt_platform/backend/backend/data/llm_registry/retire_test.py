@@ -61,6 +61,7 @@ async def _seed_node(created_graph_ids: list[str], model_value: str) -> str:
     graph_id = str(uuid.uuid4())
     await prisma.models.AgentGraph.prisma().create(
         data={
+            "organizationId": "org-test",
             "id": graph_id,
             "version": 1,
             "name": "retire-test",
