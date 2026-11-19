@@ -60,5 +60,5 @@ export function useHireExpert({ onHired, onError }: Args) {
     return store.hired.get(templateID) ?? null;
   }
 
-  return { hire, isHiring, justHired };
+  return { hire, isHiring, justHired, hired: store.hired };
 }

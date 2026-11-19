@@ -15,7 +15,7 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 - **Chat panel:** tap the name at the top of a chat; the panel slides in from the right the same way, pushing the chat aside; tap the chat or the back arrow to close it. The chat's header floats over the thread, which fades out under it. In an expert's chat, their profile with Activity (upcoming routines, recent runs, computer state) and Library (files) tabs; in a chat with Otto, the chat's files. Share the chat from its top bar.
 - **Connections:** the expert panel's Connections tab lists the accounts the expert can use (Remove takes away their access, not the account) and what their workflows still need; a chat with Otto lists all your connections under its files. "Add connection" allows an account you have or connects a new service, an MCP server by address included.
 - **Team:** the experts you have hired; tap one to chat. Create a new expert from the header, or hire one from the Marketplace.
-- **Marketplace:** every expert you can hire, with search and areas. Hire from the list or from an expert's page, which shows what they do and their skills; the new expert says hello in their first chat.
+- **Marketplace:** "Hire an expert" shows your team first, with an open seat for each area nobody covers, then the experts grouped by area (uncovered areas first) and a search by job or name; hire with the + on a row or from an expert's page (their area, first skills and all skills), and the new expert says hello in their first chat.
 - **Settings:** the web `/settings` page in a WebView, reached from your avatar at the foot of the drawer.
 - **Themes:** light and dark, following the phone's setting.
 

@@ -1,9 +1,13 @@
 import type { Expert, ExpertTemplate } from "../../../lib/api/experts";
 import {
-  emptyMessage,
+  areaSections,
   filterTemplates,
+  firstName,
   hireErrorMessage,
+  hiredTeam,
   hiredTemplateIDs,
+  primaryArea,
+  whoLine,
   withHiredExpert,
 } from "../helpers";
 
@@ -47,19 +51,96 @@ const kai = template({
 });
 
 describe("filterTemplates", () => {
-  it("returns everything for a blank query and no area", () => {
-    expect(filterTemplates([alex, kai], "   ", null)).toEqual([alex, kai]);
+  it("returns everything for a blank query", () => {
+    expect(filterTemplates([alex, kai], "   ")).toEqual([alex, kai]);
   });
 
-  it("matches name, job title, role and tagline, any case", () => {
-    expect(filterTemplates([alex, kai], "BACKLOG", null)).toEqual([alex]);
-    expect(filterTemplates([alex, kai], "assistant", null)).toEqual([kai]);
-    expect(filterTemplates([alex, kai], " kai ", null)).toEqual([kai]);
+  it("matches job title, role, name and tagline, any case", () => {
+    expect(filterTemplates([alex, kai], "product man")).toEqual([alex]);
+    expect(filterTemplates([alex, kai], "BACKLOG")).toEqual([alex]);
+    expect(filterTemplates([alex, kai], "assistant")).toEqual([kai]);
+    expect(filterTemplates([alex, kai], " kai ")).toEqual([kai]);
+    expect(filterTemplates([alex, kai], "lawyer")).toEqual([]);
   });
 
-  it("narrows by area and query together", () => {
-    expect(filterTemplates([alex, kai], "", "operations")).toEqual([kai]);
-    expect(filterTemplates([alex, kai], "alex", "operations")).toEqual([]);
+  it("finds by role when there is no job title", () => {
+    const ops = template({ id: "t-ops", name: "Ines", role: "Ops lead", job_title: null });
+    expect(filterTemplates([alex, ops], "ops")).toEqual([ops]);
+  });
+});
+
+describe("primaryArea", () => {
+  it("takes the first category the marketplace knows, any case", () => {
+    expect(primaryArea(alex)).toBe("development");
+    expect(primaryArea(template({ categories: ["General", "Sales"] }))).toBe("sales");
+    expect(primaryArea(template({ categories: [] }))).toBeNull();
+  });
+});
+
+describe("areaSections", () => {
+  const jordan = template({ id: "t-jordan", name: "Jordan", categories: ["sales"] });
+  const maria = template({ id: "t-maria", name: "Maria", categories: ["marketing"] });
+  const noor = template({ id: "t-noor", name: "Noor", categories: ["marketing", "sales"] });
+
+  it("lists each template under its first area only, skipping empty areas", () => {
+    const sections = areaSections([jordan, maria, noor], new Set());
+    expect(sections.map((section) => [section.area, section.templates])).toEqual([
+      ["marketing", [maria, noor]],
+      ["sales", [jordan]],
+    ]);
+  });
+
+  it("puts areas nobody on the team covers first, each part in area order", () => {
+    const sections = areaSections([jordan, maria, noor, alex, kai], new Set(["t-maria", "t-kai"]));
+    expect(sections.map((section) => [section.area, section.isCovered])).toEqual([
+      ["sales", false],
+      ["development", false],
+      ["marketing", true],
+      ["support", true],
+    ]);
+  });
+});
+
+describe("whoLine", () => {
+  it("joins the name and the tagline, lowercasing its first letter", () => {
+    expect(whoLine(template({ name: "Jordan", tagline: "Finds leads that fit." }))).toBe(
+      "Jordan, finds leads that fit.",
+    );
+  });
+
+  it("keeps words that open in capitals", () => {
+    expect(whoLine(template({ name: "Maria", tagline: "SEO articles, start to end." }))).toBe(
+      "Maria, SEO articles, start to end.",
+    );
+    expect(whoLine(template({ name: "Kai", tagline: "I sort your inbox." }))).toBe(
+      "Kai, I sort your inbox.",
+    );
+  });
+
+  it("is just the name without a tagline", () => {
+    expect(whoLine(template({ name: "Jordan", tagline: "  " }))).toBe("Jordan");
+    expect(whoLine(template({ name: "Jordan", tagline: null }))).toBe("Jordan");
+  });
+});
+
+describe("firstName", () => {
+  it("takes the first word", () => {
+    expect(firstName(" Maria Lopez ")).toBe("Maria");
+  });
+});
+
+describe("hiredTeam", () => {
+  const hired = expert({ id: "e-maria", source_template_id: "t-maria" });
+  const created = expert({ id: "e-own", source_template_id: null });
+
+  it("keeps the experts hired from the marketplace", () => {
+    expect(hiredTeam([hired, created], new Map())).toEqual([hired]);
+  });
+
+  it("adds a hire the list doesn't have yet, once, with its template", () => {
+    const fresh = expert({ id: "e-jordan", source_template_id: null });
+    const team = hiredTeam([hired], new Map([["t-jordan", fresh], ["t-maria", hired]]));
+    expect(team).toEqual([hired, { ...fresh, source_template_id: "t-jordan" }]);
   });
 });
 
@@ -103,21 +184,5 @@ describe("hireErrorMessage", () => {
     expect(hireErrorMessage(new Error("offline"), "Alex")).toBe(
       "Couldn't hire Alex. Try again.",
     );
-  });
-});
-
-describe("emptyMessage", () => {
-  it("quotes the search", () => {
-    expect(emptyMessage(" tax lawyer ", null)).toEqual({
-      title: "No experts match “tax lawyer”",
-      detail: "Try another word or area.",
-    });
-  });
-
-  it("names the area when there is no search", () => {
-    expect(emptyMessage("", "content")).toEqual({
-      title: "No Content experts yet",
-      detail: "Try another area.",
-    });
   });
 });

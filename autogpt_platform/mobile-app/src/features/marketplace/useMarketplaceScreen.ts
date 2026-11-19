@@ -3,6 +3,8 @@ import { router, useNavigation } from "expo-router";
 import { useRef, useState } from "react";
 
 import { useToast } from "@/components/useToast";
+import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/chatErrors";
+import { ApiError } from "@/lib/api/client";
 import {
   type Expert,
   type ExpertTemplate,
@@ -13,26 +15,29 @@ import {
 } from "@/lib/api/experts";
 import { isSessionGone, signOut } from "@/lib/session";
 
-import { type Area, emptyMessage, filterTemplates, hiredTemplateIDs } from "./helpers";
-import { firstChatAfterHire } from "./openExpertChat";
+import { areaSections, filterTemplates, hiredTeam, hiredTemplateIDs } from "./helpers";
+import { firstChatAfterHire, latestOrNewSession } from "./openExpertChat";
 import { useHireExpert } from "./useHireExpert";
 
 export function useMarketplaceScreen() {
   const templates = useQuery({ queryKey: templateKeys.list, queryFn: listTemplates });
   const experts = useQuery({ queryKey: expertKeys.list, queryFn: listExperts });
   const [query, setQuery] = useState("");
-  const [area, setArea] = useState<Area | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [openingID, setOpeningID] = useState<string | null>(null);
   const { toast, show, hide } = useToast();
   // Marketplace stays mounted in the drawer: someone who left meanwhile stays where they went.
   const navigation = useNavigation();
-  const { hire, isHiring, justHired } = useHireExpert({
+  const { hire, isHiring, justHired, hired } = useHireExpert({
     onHired: handleHired,
     onError: handleError,
   });
-  const hiredIDs = hiredTemplateIDs(experts.data ?? []);
   // State lands a render late; the ref stops a second tap in the same frame.
   const isOpeningChat = useRef(false);
+  const all = templates.data ?? [];
+  const team = hiredTeam(experts.data ?? [], hired);
+  const hiredIDs = hiredTemplateIDs(team);
+  const sections = areaSections(all, hiredIDs);
 
   function handleHired(expert: Expert) {
     show({
@@ -49,20 +54,35 @@ export function useMarketplaceScreen() {
     show({ message, tone: "error" });
   }
 
-  // Only from the toast, so always for an expert hired moments ago.
   async function openChat(expert: Expert) {
     if (isOpeningChat.current) return;
     isOpeningChat.current = true;
-    show({ message: `Opening ${expert.name}'s chat…`, tone: "success" });
+    setOpeningID(expert.id);
+    // Hired moments ago: wait for the chat their hello lands in, which can take a while.
+    const isNew =
+      expert.source_template_id !== null && justHired(expert.source_template_id) !== null;
+    if (isNew) show({ message: `Opening ${expert.name}'s chat…`, tone: "success" });
     try {
-      const sessionID = await firstChatAfterHire(expert.id);
+      const sessionID = isNew
+        ? await firstChatAfterHire(expert.id)
+        : await latestOrNewSession(expert.id);
       hide();
       if (navigation.isFocused()) router.push(`/chat/${sessionID}`);
     } catch (caught) {
-      if (isSessionGone(caught)) void signOut();
-      else show({ message: "Couldn't open that chat. Try again.", tone: "error" });
+      if (isSessionGone(caught)) {
+        void signOut();
+        return;
+      }
+      show({
+        message:
+          caught instanceof ApiError && caught.status === 402
+            ? PLAN_REQUIRED_MESSAGE
+            : "Couldn't open that chat. Try again.",
+        tone: "error",
+      });
     } finally {
       isOpeningChat.current = false;
+      setOpeningID(null);
     }
   }
 
@@ -83,16 +103,19 @@ export function useMarketplaceScreen() {
   }
 
   return {
-    templates: filterTemplates(templates.data ?? [], query, area),
+    hasTemplates: all.length > 0,
     isLoading: templates.isPending,
     isError: templates.isError && !templates.data,
-    empty: emptyMessage(query, area),
     query,
     setQuery,
-    area,
-    setArea,
-    isOnTeam: (template: ExpertTemplate) =>
-      hiredIDs.has(template.id) || justHired(template.id) !== null,
+    isSearching: query.trim() !== "",
+    matches: filterTemplates(all, query),
+    sections,
+    team,
+    openSeats: sections.filter((section) => !section.isCovered),
+    openingID,
+    openChat,
+    isOnTeam: (template: ExpertTemplate) => hiredIDs.has(template.id),
     isHiring,
     hire,
     openTemplate,
