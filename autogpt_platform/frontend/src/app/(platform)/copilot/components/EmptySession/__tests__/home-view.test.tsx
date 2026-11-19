@@ -114,6 +114,7 @@ describe("Home — recent chats", () => {
         sessions: [
           makeSession("session-a", "Weekly report", null, {
             is_processing: true,
+            updated_at: "2026-11-10T09:05:00Z",
           }),
           makeSession("session-b", "Plan the offsite", null),
           makeSession("session-c", "Launch plan", "expert-maria"),

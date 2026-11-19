@@ -16,6 +16,7 @@ import {
 import { isEditableElement } from "@/lib/platform";
 import {
   AddTeamIcon,
+  Calendar03Icon,
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
@@ -57,6 +58,7 @@ const WORKSPACE_LINKS: NavLink[] = [
     icon: Folder01Icon,
     tourTarget: "files",
   },
+  { name: "Schedules", href: "/schedules", icon: Calendar03Icon },
 ];
 
 function isLinkActive(pathname: string | null, href: string) {

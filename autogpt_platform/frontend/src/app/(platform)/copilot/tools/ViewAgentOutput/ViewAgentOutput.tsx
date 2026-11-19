@@ -8,6 +8,7 @@ import {
 } from "@/components/contextual/OutputRenderers";
 import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
 import { isWorkspaceURI, parseWorkspaceURI } from "@/lib/workspace-uri";
+import { OpenWorkflowRun } from "../../components/OpenWorkflowRun/OpenWorkflowRun";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
 import {
@@ -237,6 +238,16 @@ export function ViewAgentOutputTool({ part }: Props) {
           )}
         </ToolAccordion>
       )}
+
+      {part.state === "output-available" &&
+        output &&
+        isAgentOutputResponse(output) && (
+          <OpenWorkflowRun
+            graphID={output.agent_id}
+            executionID={output.execution?.execution_id}
+            title={output.agent_name}
+          />
+        )}
     </div>
   );
 }

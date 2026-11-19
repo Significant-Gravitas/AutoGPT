@@ -21,6 +21,7 @@ from prisma.types import (
 from pydantic import BaseModel, Field
 
 from backend.data.db import transaction
+from backend.data.task_schedule_meta import TaskRepeat, read_schedule_meta
 from backend.data.task_text import SUMMARY_MAX_CHARS
 from backend.util.exceptions import NotFoundError
 
@@ -85,6 +86,31 @@ class Task(BaseModel):
     subtask_count: int = 0
     subtasks_done: int = 0
     artifact_count: int = 0
+    is_suggested: bool = Field(
+        default=False,
+        description="Drafted by Otto for the user to start or dismiss.",
+    )
+    suggested_reason: str | None = None
+    start_at: datetime | None = Field(
+        default=None,
+        description="When a TODO task starts by itself; a TODO task with one is "
+        "scheduled.",
+    )
+    missed_start: bool = Field(
+        default=False,
+        description="A TODO task whose start time passed without it starting; "
+        "it waits to be started or cancelled.",
+    )
+    repeat: TaskRepeat | None = Field(
+        default=None,
+        description="Set on a task that runs again and again; start_at is its "
+        "next run.",
+    )
+    events_waiting: int = Field(
+        default=0,
+        description="Events a watching task still has to run, after the run "
+        "that is going now; they run one after another.",
+    )
 
     @classmethod
     def from_db(cls, row: prisma.models.Task) -> "Task":
@@ -106,6 +132,14 @@ class Task(BaseModel):
                 1 for child in subtasks if child.status == TaskStatus.DONE
             ),
             artifact_count=len(row.Artifacts or []),
+            is_suggested=row.isSuggested,
+            suggested_reason=row.suggestedReason,
+            start_at=row.startAt,
+            missed_start=row.status == TaskStatus.TODO
+            and row.startAt is None
+            and read_schedule_meta(row.metadata).missed,
+            repeat=read_schedule_meta(row.metadata).repeat,
+            events_waiting=len(read_schedule_meta(row.metadata).events),
             id=row.id,
             user_id=row.userId,
             title=row.title,
@@ -215,10 +249,21 @@ async def list_tasks(
     offset: int = 0,
     include_subtasks: bool = True,
     parent_task_id: str | None = None,
+    suggested: bool = False,
+    scheduled: bool = False,
 ) -> list[Task]:
     """The user's live tasks, most recently updated first. Subtasks are left
-    out with ``include_subtasks=False``; ``parent_task_id`` lists one task's."""
-    where: TaskWhereInput = {"userId": user_id, "isArchived": False}
+    out with ``include_subtasks=False``; ``parent_task_id`` lists one task's.
+    Tasks Otto drafted and the user has not started are listed only with
+    ``suggested=True``, which lists nothing else. ``scheduled=True`` lists only
+    the tasks waiting for their start time, soonest first."""
+    where: TaskWhereInput = {
+        "userId": user_id,
+        "isArchived": False,
+        "isSuggested": suggested,
+    }
+    if suggested:
+        where["dismissedAt"] = None
     if parent_task_id:
         where["parentTaskId"] = parent_task_id
     elif not include_subtasks:
@@ -229,10 +274,13 @@ async def list_tasks(
         where["ownerExpertId"] = owner_expert_id
     if session_id:
         where["Sessions"] = {"some": {"chatSessionId": session_id}}
+    if scheduled:
+        where["status"] = TaskStatus.TODO
+        where["startAt"] = {"not": None}
     rows = await prisma.models.Task.prisma().find_many(
         where=where,
         include=_WITH_SESSIONS,
-        order={"updatedAt": "desc"},
+        order={"startAt": "asc"} if scheduled else {"updatedAt": "desc"},
         take=max(1, min(limit, LIST_LIMIT_MAX)),
         skip=max(0, offset),
     )
@@ -323,14 +371,29 @@ async def move_session_tasks(
 ) -> int:
     """Move the chat's live tasks in ``from_statuses`` to ``to_status``, e.g.
     to NEEDS_INPUT when Otto asks the user something. Returns how many moved."""
+    where: TaskWhereInput = {
+        "userId": user_id,
+        "isArchived": False,
+        "status": {"in": from_statuses},
+        "Sessions": {"some": {"chatSessionId": session_id}},
+        # A task waiting for its start time is not this chat's work yet.
+        "startAt": None,
+    }
+    rows = await prisma.models.Task.prisma().find_many(where=where)
+    # Nor is a repeating task waiting, paused, for its next run.
+    ids = [
+        row.id
+        for row in rows
+        if not (
+            row.status == TaskStatus.TODO
+            and read_schedule_meta(row.metadata).repeat is not None
+        )
+    ]
+    if not ids:
+        return 0
+    where["id"] = {"in": ids}
     return await prisma.models.Task.prisma().update_many(
-        where={
-            "userId": user_id,
-            "isArchived": False,
-            "status": {"in": from_statuses},
-            "Sessions": {"some": {"chatSessionId": session_id}},
-        },
-        data={"status": to_status},
+        where=where, data={"status": to_status}
     )
 
 
@@ -361,9 +424,14 @@ def _link(task_id: str, session_id: str) -> TaskSessionCreateInput:
 def _status_times(current: Task, status: TaskStatus, now: datetime) -> TaskUpdateInput:
     if status == TaskStatus.TODO:
         return {"startedAt": None, "completedAt": None}
+    # Only a TODO task waits for a start time.
     if status in (TaskStatus.IN_PROGRESS, TaskStatus.NEEDS_INPUT):
-        return {"startedAt": current.started_at or now, "completedAt": None}
-    return {"completedAt": now}
+        return {
+            "startedAt": current.started_at or now,
+            "completedAt": None,
+            "startAt": None,
+        }
+    return {"completedAt": now, "startAt": None}
 
 
 def _clean_title(title: str) -> str:

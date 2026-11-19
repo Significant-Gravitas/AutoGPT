@@ -6,6 +6,7 @@ from prisma.enums import TaskCreator, TaskStatus
 from pydantic import BaseModel, Field
 
 from backend.data.task import Task
+from backend.data.task_schedule_meta import TaskRepeat
 
 from .models import ResponseType, ToolResponseBase
 
@@ -36,6 +37,13 @@ class TaskInfo(BaseModel):
     open_ask_count: int = 0
     subtask_count: int = 0
     subtasks_done: int = 0
+    start_at: datetime | None = Field(
+        default=None, description="When a TODO task starts by itself."
+    )
+    missed_start: bool = False
+    repeat: TaskRepeat | None = Field(
+        default=None, description="Set when the task runs again and again."
+    )
 
     @classmethod
     def from_task(cls, task: Task) -> "TaskInfo":
@@ -61,6 +69,9 @@ class TaskInfo(BaseModel):
             open_ask_count=task.open_ask_count,
             subtask_count=task.subtask_count,
             subtasks_done=task.subtasks_done,
+            start_at=task.start_at,
+            missed_start=task.missed_start,
+            repeat=task.repeat,
         )
 
 
@@ -102,6 +113,11 @@ class TaskStartedResponse(ToolResponseBase):
     worker_session_id: str | None = None
     worker_session_link: str | None = None
     background_task_id: str | None = None
+    start_at: datetime | None = Field(
+        default=None,
+        description="Set when the task waits for this start time instead of "
+        "starting now.",
+    )
 
 
 class TaskProgressResponse(ToolResponseBase):

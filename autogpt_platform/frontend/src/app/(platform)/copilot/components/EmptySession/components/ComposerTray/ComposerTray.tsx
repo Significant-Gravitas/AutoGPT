@@ -5,6 +5,8 @@ interface Props {
   children: ReactNode;
   recipientPicker: ReactNode;
   connection: ReactNode;
+  /** Sits above the composer card, inside the tray: where the chat runs. */
+  top?: ReactNode;
 }
 
 const RECIPIENT_LINK =
@@ -17,10 +19,16 @@ const CONNECTION_LINK =
 // who the message goes to and what it runs on. The tray's gray is a thin
 // wash, so it is laid over the page's own colour: the tray looks the same
 // and nothing behind it, such as Home's dither trail, shows through.
-export function ComposerTray({ children, recipientPicker, connection }: Props) {
+export function ComposerTray({
+  children,
+  recipientPicker,
+  connection,
+  top,
+}: Props) {
   return (
     <div className="rounded-composer-tray bg-canvas">
       <div className="rounded-composer-tray bg-surface-tray p-1">
+        {top}
         <div className="[&>form]:rounded-none [&>form]:bg-transparent [&>form]:p-0">
           {children}
         </div>

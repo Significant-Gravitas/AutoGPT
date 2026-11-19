@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.copilot.briefing.models import BriefingTasks
 from backend.copilot.constants import AUTOPILOT_NAME, AUTOPILOT_ROLE
 
 
@@ -91,6 +92,9 @@ class HomeBriefing(BaseModel):
     # posted from, plus any run that finished after it. "live": no usable row
     # for today, so the rolling 24h window was recomputed instead.
     source: Literal["persisted", "live"] = "live"
+    # The user's tasks as the stored brief saw them. None on the live path
+    # and on a stored brief written before it covered tasks.
+    tasks: BriefingTasks | None = None
 
 
 class HomeActiveTask(BaseModel):

@@ -213,6 +213,13 @@ from backend.data.task import (
     move_session_tasks,
     update_task,
 )
+from backend.data.task_due import (
+    claim_due_task,
+    get_scheduled_task,
+    hold_due_task,
+    list_due_tasks,
+    mark_task_missed,
+)
 from backend.data.task_record import (
     add_activity,
     add_evidence,
@@ -226,6 +233,21 @@ from backend.data.task_record import (
     work_tasks,
 )
 from backend.data.task_result import finish_task, is_worker_chat, task_outcome
+from backend.data.task_run import claim_task_run, settle_task_run, undo_task_run
+from backend.data.task_schedule import (
+    cancel_scheduled_tasks,
+    clear_task_repeat,
+    count_scheduled_tasks,
+    end_repeat_run,
+    set_task_start,
+)
+from backend.data.task_suggestion import (
+    create_suggested_task,
+    dismiss_task_suggestion,
+    dismissed_suggestion_titles,
+    retire_stale_suggestions,
+)
+from backend.data.task_watch_setup import release_watch_webhook, setup_task_watch
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -647,6 +669,30 @@ class DatabaseManager(AppService):
     finish_task = _(finish_task)
     task_outcome = _(task_outcome)
     is_worker_chat = _(is_worker_chat)
+    # A run started from the task's page, settled when its chat's turn ends.
+    claim_task_run = _(claim_task_run)
+    undo_task_run = _(undo_task_run)
+    settle_task_run = _(settle_task_run)
+    # A task with a start time; the due-task sweep runs in the scheduler.
+    set_task_start = _(set_task_start)
+    count_scheduled_tasks = _(count_scheduled_tasks)
+    cancel_scheduled_tasks = _(cancel_scheduled_tasks)
+    list_due_tasks = _(list_due_tasks)
+    claim_due_task = _(claim_due_task)
+    get_scheduled_task = _(get_scheduled_task)
+    mark_task_missed = _(mark_task_missed)
+    hold_due_task = _(hold_due_task)
+    # A repeating task: stop only its run going now, or stop it repeating.
+    end_repeat_run = _(end_repeat_run)
+    clear_task_repeat = _(clear_task_repeat)
+    # A task that starts on an event: its webhook, set up and let go of.
+    setup_task_watch = _(setup_task_watch)
+    release_watch_webhook = _(release_watch_webhook)
+    # Tasks Otto drafts for the user; the morning job runs in the scheduler.
+    create_suggested_task = _(create_suggested_task)
+    dismiss_task_suggestion = _(dismiss_task_suggestion)
+    dismissed_suggestion_titles = _(dismissed_suggestion_titles)
+    retire_stale_suggestions = _(retire_stale_suggestions)
 
     # ============ Feedback Prompts ============ #
     claim_feedback_prompt = _(claim_feedback_prompt)
@@ -1291,6 +1337,25 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     finish_task = d.finish_task
     task_outcome = d.task_outcome
     is_worker_chat = d.is_worker_chat
+    claim_task_run = d.claim_task_run
+    undo_task_run = d.undo_task_run
+    settle_task_run = d.settle_task_run
+    set_task_start = d.set_task_start
+    count_scheduled_tasks = d.count_scheduled_tasks
+    cancel_scheduled_tasks = d.cancel_scheduled_tasks
+    list_due_tasks = d.list_due_tasks
+    claim_due_task = d.claim_due_task
+    get_scheduled_task = d.get_scheduled_task
+    mark_task_missed = d.mark_task_missed
+    hold_due_task = d.hold_due_task
+    end_repeat_run = d.end_repeat_run
+    clear_task_repeat = d.clear_task_repeat
+    setup_task_watch = d.setup_task_watch
+    release_watch_webhook = d.release_watch_webhook
+    create_suggested_task = d.create_suggested_task
+    dismiss_task_suggestion = d.dismiss_task_suggestion
+    dismissed_suggestion_titles = d.dismissed_suggestion_titles
+    retire_stale_suggestions = d.retire_stale_suggestions
 
     # ============ Feedback Prompts ============ #
     claim_feedback_prompt = d.claim_feedback_prompt

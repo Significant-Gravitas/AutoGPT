@@ -2,6 +2,7 @@ import { useListExperts } from "@/app/api/__generated__/endpoints/experts/expert
 import { useListTasks } from "@/app/api/__generated__/endpoints/tasks/tasks";
 import { pollInterval } from "@/app/(platform)/tasks/helpers";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import type { UIMessage } from "ai";
 import { useWorkAreaStore } from "../../../workArea";
 import { useCopilotUIStore } from "../../../store";
@@ -9,11 +10,17 @@ import { fileItemToArtifactRef } from "../../ContextPanel/components/FilesTab/he
 import { useSessionFiles } from "../../ContextPanel/components/FilesTab/useSessionFiles";
 import { getPendingQuestions } from "../../QuestionDock/helpers";
 import {
+  bySoonestStart,
+  isScheduled,
+  isWatching,
+} from "@/app/(platform)/tasks/schedule";
+import {
   chatUsageOf,
-  decisionsOf,
+  chatWorkflowsOf,
+  finishedTaskCallsOf,
   isPreviewable,
   previewOf,
-  turnStepsOf,
+  type ChatWorkflow,
 } from "./helpers";
 
 const NO_MESSAGES: UIMessage[] = [];
@@ -30,6 +37,7 @@ export function useChatOverview(sessionID: string) {
     (s) => s.artifactPanel.computer != null,
   );
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
+  const openWorkflowRun = useWorkAreaStore((s) => s.openWorkflowRun);
 
   const tasksQuery = useListTasks(
     { session_id: sessionID, limit: 20 },
@@ -43,6 +51,13 @@ export function useChatOverview(sessionID: string) {
       },
     },
   );
+  // A task Otto just started or scheduled shows up without a reload.
+  const taskCalls = finishedTaskCallsOf(messages);
+  const refetchTasks = tasksQuery.refetch;
+  useEffect(() => {
+    if (taskCalls > 0) void refetchTasks();
+  }, [taskCalls, refetchTasks]);
+
   const expertsQuery = useListExperts({
     query: { select: (res) => (res.status === 200 ? res.data : []) },
   });
@@ -68,13 +83,19 @@ export function useChatOverview(sessionID: string) {
   });
 
   const usage = chatUsageOf(messages);
+  const allTasks = tasksQuery.data ?? [];
   const experts = expertsQuery.data ?? [];
 
   return {
     pending: getPendingQuestions(messages),
-    tasks: tasksQuery.data ?? [],
+    tasks: allTasks.filter((task) => !isScheduled(task)),
+    // Repeating tasks come back here after each run; paused ones go last.
+    scheduled: allTasks
+      .filter((task) => isScheduled(task) && !isWatching(task))
+      .toSorted(bySoonestStart),
+    // Tasks started by an event come back here after each run.
+    watching: allTasks.filter((task) => isScheduled(task) && isWatching(task)),
     experts,
-    steps: turnStepsOf(messages),
     outputs,
     preview:
       previewFile && previewQuery.data
@@ -83,13 +104,19 @@ export function useChatOverview(sessionID: string) {
             ...previewOf(previewQuery.data, previewFile.name),
           }
         : null,
+    workflows: chatWorkflowsOf(messages),
+    openWorkflow: (workflow: ChatWorkflow) =>
+      openWorkflowRun({
+        graphID: workflow.graphID,
+        executionID: workflow.runIDs.at(-1) ?? null,
+        title: workflow.title,
+      }),
     uploads: files.uploaded.map((file) => file.item),
     usage,
     teammates: usage.teammateIDs.map(
       (id) => experts.find((expert) => expert.id === id)?.name ?? "An expert",
     ),
     hasComputer,
-    decisions: decisionsOf(messages),
     openFile: (file: (typeof outputs)[number]) =>
       openArtifact(fileItemToArtifactRef(file)),
   };

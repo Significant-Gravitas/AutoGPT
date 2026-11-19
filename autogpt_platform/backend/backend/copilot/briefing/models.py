@@ -44,6 +44,37 @@ class BriefingDecisionItem(BaseModel):
     link: str
 
 
+class BriefingTaskItem(BaseModel):
+    task_id: str
+    title: str
+    # The task's status when the brief was written: DONE, FAILED, NEEDS_INPUT.
+    status: str
+    owner_expert_id: str | None = None
+    # A copy of the owner's display fields, for an expert since archived.
+    owner_name: str | None = None
+    owner_avatar_url: str | None = None
+    # One line: the result, the reason it failed, or what it is waiting on.
+    line: str = ""
+    occurred_at: datetime | None = None
+
+
+class BriefingTasks(BaseModel):
+    """The user's tasks as the brief saw them. Lists are capped for reading;
+    the totals are counted before the cap."""
+
+    finished: list[BriefingTaskItem] = Field(default_factory=list)
+    failed: list[BriefingTaskItem] = Field(default_factory=list)
+    waiting: list[BriefingTaskItem] = Field(default_factory=list)
+    finished_total: int = Field(default=0, ge=0)
+    failed_total: int = Field(default=0, ge=0)
+    waiting_total: int = Field(default=0, ge=0)
+    in_progress_total: int = Field(default=0, ge=0)
+
+    @property
+    def is_empty(self) -> bool:
+        return not (self.finished_total or self.failed_total or self.waiting_total)
+
+
 class BriefingContent(BaseModel):
     generated_at: datetime
     timezone: str
@@ -66,3 +97,6 @@ class BriefingContent(BaseModel):
     # and any briefing whose narrative call failed, carry None and render as
     # template-only.
     narrative: str | None = None
+    # None on rows stored before the brief covered tasks; home then joins
+    # the tasks in itself.
+    tasks: BriefingTasks | None = None

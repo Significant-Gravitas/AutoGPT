@@ -19,6 +19,7 @@ import { render, screen, within } from "@/tests/integrations/test-utils";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EmptySession } from "../EmptySession";
+import { WorkArea } from "../../WorkArea/WorkArea";
 import { makeTask } from "./taskFixtures";
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
@@ -99,6 +100,7 @@ function renderHome(searchParams: string) {
           onCreateSession={() => {}}
           onSend={vi.fn()}
         />
+        <WorkArea sessionId={null} />
         <InsetSideSlot />
       </div>
     </Wrapper>,
@@ -106,10 +108,18 @@ function renderHome(searchParams: string) {
 }
 
 async function openPanel(name: string) {
-  await userEvent.click(
-    await screen.findByRole("button", { name: "Show expert info" }),
-  );
-  return screen.findByRole("complementary", { name: `About ${name}` });
+  // The day's brief opens the sidebar by itself on a first visit; otherwise
+  // the corner button does. Either way Profile is one of its tabs.
+  const profileTab = await screen
+    .findByRole("tab", { name: "Profile" })
+    .catch(() => null);
+  if (profileTab) await userEvent.click(profileTab);
+  else {
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Open the side panel" }),
+    );
+  }
+  return screen.findByRole("group", { name: `About ${name}` });
 }
 
 function group(panel: HTMLElement, name: string) {

@@ -12,13 +12,16 @@ Best-effort throughout: the record matters less than the tool call.
 import json
 import logging
 import time
+from collections.abc import Sequence
 from typing import Any
 
 from prisma.enums import TaskArtifactKind
 
+from backend.copilot import turn_end
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.data.db_accessors import task_record_db
+from backend.data.task_activity_meta import TaskActivityAccount
 from backend.data.task_record import ArtifactInput, ToolCallRecord
 
 logger = logging.getLogger(__name__)
@@ -71,7 +74,15 @@ _LABELS: dict[str, tuple[str, str]] = {
     "create_agent": ("Built a workflow", "Built {count} workflows"),
     "edit_agent": ("Edited a workflow", "Edited workflows"),
     "connect_integration": ("Asked to connect an account", ""),
+    "read_skill": ("Opened a skill", "Opened {count} skills"),
 }
+
+# A loaded skill, as ``read_skill`` reports it: the steps after it follow it.
+_SKILL_TOOL = "read_skill"
+_SKILL_LOADED = "skill_loaded"
+_SKILL_NAME_MAX_CHARS = 60
+# Built-in skills whose name would read wrong in the product.
+_SKILL_TITLES = {"agent_building_guide": "Workflow building guide"}
 
 # Platform tools whose success changes something outside the task itself, so
 # the call is its own proof.
@@ -114,10 +125,16 @@ def forget(session_id: str) -> None:
 
 
 def describe(
-    tool_name: str, args: dict[str, Any], output: str | None, success: bool
+    tool_name: str,
+    args: dict[str, Any],
+    output: str | None,
+    success: bool,
+    account: TaskActivityAccount | None = None,
+    skill: str | None = None,
 ) -> ToolCallRecord | None:
     """What one tool call adds to the record, or None for a call that adds
-    nothing: a failed one, a dry run, or plumbing."""
+    nothing: a failed one, a dry run, or plumbing. *account* is the connected
+    account the call used and *skill* the one its turn follows, when known."""
     result = _as_dict(output)
     # In a chat a tool that fails still returns normally, with an error
     # response: a file that was refused must not read as written.
@@ -126,9 +143,16 @@ def describe(
     name, inner_args, capability = _unwrap(tool_name, args)
     if name is None or name in SILENT_TOOLS:
         return None
-    label, label_many = _LABELS.get(name, (_fallback_label(name, capability), ""))
+    label, label_many = _LABELS.get(
+        name, (_fallback_label(name, capability, account, inner_args), "")
+    )
     record = ToolCallRecord(
-        tool=name, tool_call_id="", label=label, label_many=label_many or label
+        tool=name,
+        tool_call_id="",
+        label=label,
+        label_many=label_many or label,
+        account=account,
+        skill=skill,
     )
     if name == "write_workspace_file":
         title = str(
@@ -173,12 +197,58 @@ def _unwrap(
     return capability or None, inner_args, capability or None
 
 
-def _fallback_label(name: str, capability: str | None) -> str:
+def _fallback_label(
+    name: str,
+    capability: str | None,
+    account: TaskActivityAccount | None = None,
+    inner_args: dict[str, Any] | None = None,
+) -> str:
+    if account is not None:
+        words = _action_words(capability, inner_args or {})
+        if words.casefold() in (account.name.casefold(), account.service.casefold()):
+            words = ""
+        return f"Used {account.name} to {words}" if words else f"Used {account.name}"
     if capability:
         kind, _, rest = capability.partition(":")
-        words = rest.rsplit("/", 1)[-1].replace("_", " ").replace("-", " ").strip()
+        words = _capability_words(rest)
         return f"Used {words}" if words else f"Used a {kind or 'tool'}"
     return f"Used {name.replace('_', ' ')}"
+
+
+def _action_words(capability: str | None, inner_args: dict[str, Any]) -> str:
+    """What a call on a connected service did, for "Used Gmail to send email":
+    the MCP tool it called, else the capability's own name. A block is named
+    by its id, and run_block by nothing, so neither gives words."""
+    tool = inner_args.get("tool") or inner_args.get("tool_name")
+    if isinstance(tool, str) and tool.strip():
+        return _capability_words(tool)
+    kind, _, rest = (capability or "").partition(":")
+    return "" if kind in ("", "block", "https", "http") else _capability_words(rest)
+
+
+def _capability_words(rest: str) -> str:
+    return rest.rsplit("/", 1)[-1].replace("_", " ").replace("-", " ").strip()
+
+
+def _skill_title(name: str | None) -> str | None:
+    """A skill's name as a person reads it: ``cold-email`` is "Cold email"."""
+    if not name:
+        return None
+    if name in _SKILL_TITLES:
+        return _SKILL_TITLES[name]
+    words = " ".join(name.replace("_", " ").replace("-", " ").split())
+    words = words[:_SKILL_NAME_MAX_CHARS].strip()
+    return words[:1].upper() + words[1:] or None
+
+
+def _note_skill(session_id: str, tool_name: str, output: str | None) -> None:
+    """A skill this turn just loaded: the steps after it follow it."""
+    if tool_name != _SKILL_TOOL:
+        return
+    result = _as_dict(output)
+    name = _text(result.get("name"))
+    if result.get("type") == _SKILL_LOADED and name:
+        turn_end.note_skill(session_id, name)
 
 
 def _acts(capability: str) -> bool:
@@ -206,17 +276,28 @@ async def record(
     tool_call_id: str,
     args: dict[str, Any],
     output: StreamToolOutputAvailable,
+    accounts: Sequence[TaskActivityAccount] = (),
 ) -> None:
-    """Record one finished tool call on the task this chat is working on."""
+    """Record one finished tool call on the task this chat is working on.
+    *accounts* are the connected accounts the call used (``call_account``)."""
     user_id = session.user_id
-    if not user_id or _no_task_until.get(session.session_id, 0) > time.monotonic():
+    if not user_id:
+        return
+    text = output.output if isinstance(output.output, str) else None
+    if output.success:
+        # Before the no-task pause: a task given later in the turn still
+        # follows the skill loaded before it.
+        _note_skill(session.session_id, tool_name, text)
+    if _no_task_until.get(session.session_id, 0) > time.monotonic():
         return
     try:
         call = describe(
             tool_name,
             args,
-            output.output if isinstance(output.output, str) else None,
+            text,
             output.success,
+            account=accounts[0] if accounts else None,
+            skill=_skill_title(turn_end.skill_in_use(session.session_id)),
         )
         if call is None:
             return

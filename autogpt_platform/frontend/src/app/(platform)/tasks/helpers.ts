@@ -6,6 +6,7 @@ import {
   AUTOPILOT_AVATAR_URL,
   AUTOPILOT_NAME,
 } from "@/components/molecules/AutopilotAvatar/helpers";
+import { bySoonestStart, isMissed, isScheduled, isWatching } from "./schedule";
 
 /** The lanes every surface sorts a task into: board columns and pills. */
 export const LANES = ["needs_you", "working", "done", "cancelled"] as const;
@@ -70,17 +71,42 @@ export function pollInterval(tasks: Task[] | undefined) {
 }
 
 export interface BoardColumn {
-  id: Lane;
+  id: Lane | "scheduled" | "watching";
   label: string;
   tasks: Task[];
 }
 
+/** The board's lane for a task: a scheduled to-do waits in Scheduled, one
+ *  waiting for the event it watches in Watching, and one that missed its
+ *  start time asks the user, so it sits in Needs you. */
+function boardLaneOf(task: Task): BoardColumn["id"] {
+  if (isScheduled(task)) return isWatching(task) ? "watching" : "scheduled";
+  if (isMissed(task)) return "needs_you";
+  return laneOf(task);
+}
+
+/** The four lanes, with a Scheduled lane after Needs you, soonest start
+ *  first, while any task waits for its start time, and a Watching lane
+ *  after it while any task waits for an event. */
 export function buildBoardColumns(tasks: Task[]): BoardColumn[] {
-  return LANES.map((id) => ({
+  const lanes: BoardColumn[] = LANES.map((id) => ({
     id,
     label: LANE_LABELS[id],
-    tasks: tasks.filter((t) => laneOf(t) === id),
+    tasks: tasks.filter((t) => boardLaneOf(t) === id),
   }));
+  const scheduled = tasks
+    .filter((t) => boardLaneOf(t) === "scheduled")
+    .toSorted(bySoonestStart);
+  const watching = tasks.filter((t) => boardLaneOf(t) === "watching");
+  const waiting: BoardColumn[] = [
+    ...(scheduled.length > 0
+      ? [{ id: "scheduled" as const, label: "Scheduled", tasks: scheduled }]
+      : []),
+    ...(watching.length > 0
+      ? [{ id: "watching" as const, label: "Watching", tasks: watching }]
+      : []),
+  ];
+  return [lanes[0], ...waiting, ...lanes.slice(1)];
 }
 
 export interface TaskOwner {

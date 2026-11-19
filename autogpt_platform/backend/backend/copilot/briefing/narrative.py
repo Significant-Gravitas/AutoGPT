@@ -45,7 +45,7 @@ from backend.copilot.inference.record import record
 from backend.copilot.inference.routing import resolve_route
 from backend.copilot.trial_cost_context import attributed_usage
 
-from .models import BriefingContent, BriefingRunItem
+from .models import BriefingContent, BriefingRunItem, BriefingTaskItem, BriefingTasks
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,9 @@ def _system_prompt() -> str:
         "Write the opening of the user's morning briefing: 2-3 sentences of "
         "plain prose, first person, addressed to them. Cover what the team "
         "did, what it found, and what needs their decision — in that order, "
-        "skipping anything the facts don't support.\n"
+        "skipping anything the facts don't support. Tasks are work the "
+        "user handed over; a finished or waiting task is worth naming by "
+        "its title.\n"
         "Rules:\n"
         "- Use ONLY the facts in <briefing_facts>. Never invent a number, "
         "name, or outcome.\n"
@@ -225,8 +227,32 @@ def _facts_block(content: BriefingContent) -> str:
     if outcomes:
         lines.append("Outcomes:")
         lines.extend(outcomes)
+    if content.tasks is not None:
+        lines.extend(_task_facts(content.tasks))
     joined = "\n".join(lines)
     return f"<briefing_facts>\n{joined}\n</briefing_facts>"
+
+
+def _task_facts(tasks: BriefingTasks) -> list[str]:
+    """Task counts, then up to ``_MAX_FACT_ITEMS`` tasks, the ones waiting on
+    the user first."""
+    items = [("waiting on the user", t) for t in tasks.waiting]
+    items += [("failed", t) for t in tasks.failed]
+    items += [("finished", t) for t in tasks.finished]
+    return [
+        f"Tasks finished: {tasks.finished_total}",
+        f"Tasks failed: {tasks.failed_total}",
+        f"Tasks waiting on the user: {tasks.waiting_total}",
+        f"Tasks in progress: {tasks.in_progress_total}",
+        *(["Tasks:"] if items else []),
+        *(_task_line(state, task) for state, task in items[:_MAX_FACT_ITEMS]),
+    ]
+
+
+def _task_line(state: str, task: BriefingTaskItem) -> str:
+    who = f"{_clean(task.owner_name)} / " if task.owner_name else ""
+    line = f": {_clean(task.line)}" if task.line else ""
+    return f"- [{state}] {who}{_clean(task.title)}{line}"
 
 
 def _fact_line(item: BriefingRunItem) -> str:

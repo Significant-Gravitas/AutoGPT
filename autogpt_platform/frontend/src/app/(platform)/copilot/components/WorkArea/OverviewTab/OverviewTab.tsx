@@ -1,22 +1,17 @@
 "use client";
 
-import { StateIcon } from "@/app/(platform)/tasks/components/StateIcon/StateIcon";
-import { ownerOf } from "@/app/(platform)/tasks/helpers";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { integrationIconSrc } from "@/components/molecules/IntegrationLogo/helpers";
 import {
   Attachment01Icon,
   Brain02Icon,
-  CommandLineIcon,
   ComputerIcon,
   File02Icon,
+  FlowIcon,
   Globe02Icon,
-  Loading03Icon,
-  MessageQuestionIcon,
   PlugIcon,
   SparklesIcon,
-  Tick02Icon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import {
@@ -25,7 +20,8 @@ import {
   InfoMeta,
 } from "../../EmptySession/components/ExpertInfoPanel/components/InfoParts";
 import { BlockNote, BlockRow, NeedsYouTag } from "../blocks";
-import { fileTypeLabel, STEPS_SHOWN } from "./helpers";
+import { fileTypeLabel } from "./helpers";
+import { OverviewTaskRow } from "./OverviewTaskRow";
 import { useChatOverview } from "./useChatOverview";
 
 type OpenTarget = "files" | "computer" | "integrations";
@@ -39,8 +35,7 @@ interface Props {
 }
 
 /** What this chat has going on, as blocks: what waits on the user, the
- *  tasks it started, the steps of the turn, what it made, what it used and
- *  what was decided. A block with nothing in it is left out; a chat with
+ *  tasks it started, what it made and what it used. A block with nothing in it is left out; a chat with
  *  nothing at all gets one line saying what will show up here. */
 export function OverviewTab({
   sessionId,
@@ -49,17 +44,16 @@ export function OverviewTab({
   onOpenTask,
 }: Props) {
   const chat = useChatOverview(sessionId);
-  const earlier = Math.max(0, chat.steps.length - STEPS_SHOWN);
-  const steps = chat.steps.slice(-STEPS_SHOWN);
   const question = chat.pending?.questions[0]?.question ?? null;
   const usedRows = usageRows(chat, hasExpert, onOpen);
   const isEmpty =
     !question &&
     chat.tasks.length === 0 &&
-    chat.steps.length === 0 &&
+    chat.scheduled.length === 0 &&
+    chat.watching.length === 0 &&
+    chat.workflows.length === 0 &&
     chat.outputs.length === 0 &&
-    usedRows.length === 0 &&
-    chat.decisions.length === 0;
+    usedRows.length === 0;
 
   if (isEmpty) {
     return (
@@ -95,51 +89,57 @@ export function OverviewTab({
         <InfoGroup label="Tasks" count={chat.tasks.length}>
           <InfoList>
             {chat.tasks.map((task) => (
-              <BlockRow
+              <OverviewTaskRow
                 key={task.id}
-                tile={<StateIcon status={task.status} />}
-                title={task.title}
-                subtitle={task.status_text ?? ownerOf(task, chat.experts).name}
-                onClick={() => onOpenTask(task.id, task.title)}
-                trailing={
-                  (task.open_ask_count ?? 0) > 0 ? (
-                    <NeedsYouTag />
-                  ) : (task.subtask_count ?? 0) > 0 ? (
-                    <InfoMeta>
-                      {task.subtasks_done ?? 0}/{task.subtask_count}
-                    </InfoMeta>
-                  ) : null
-                }
+                task={task}
+                experts={chat.experts}
+                onOpen={() => onOpenTask(task.id, task.title)}
               />
             ))}
           </InfoList>
         </InfoGroup>
       ) : null}
 
-      {steps.length > 0 ? (
-        <InfoGroup
-          label="This turn"
-          action={
-            earlier > 0 ? (
-              <InfoMeta>
-                {earlier} earlier {earlier === 1 ? "step" : "steps"}
-              </InfoMeta>
-            ) : null
-          }
-        >
+      {chat.scheduled.length > 0 ? (
+        <InfoGroup label="Scheduled" count={chat.scheduled.length}>
           <InfoList>
-            {steps.map((step) => (
+            {chat.scheduled.map((task) => (
+              <OverviewTaskRow
+                key={task.id}
+                task={task}
+                experts={chat.experts}
+                onOpen={() => onOpenTask(task.id, task.title)}
+              />
+            ))}
+          </InfoList>
+        </InfoGroup>
+      ) : null}
+
+      {chat.watching.length > 0 ? (
+        <InfoGroup label="Watching" count={chat.watching.length}>
+          <InfoList>
+            {chat.watching.map((task) => (
+              <OverviewTaskRow
+                key={task.id}
+                task={task}
+                experts={chat.experts}
+                onOpen={() => onOpenTask(task.id, task.title)}
+              />
+            ))}
+          </InfoList>
+        </InfoGroup>
+      ) : null}
+
+      {chat.workflows.length > 0 ? (
+        <InfoGroup label="Workflows" count={chat.workflows.length}>
+          <InfoList>
+            {chat.workflows.map((workflow) => (
               <BlockRow
-                key={step.key}
-                tile={
-                  <Icon
-                    icon={step.state === "now" ? Loading03Icon : Tick02Icon}
-                    size={14}
-                    tone={step.state === "done" ? "ok" : "inherit"}
-                    spin={step.state === "now"}
-                  />
-                }
-                title={step.text}
+                key={workflow.graphID}
+                tile={<Icon icon={FlowIcon} size={14} tone="inherit" />}
+                title={workflow.title}
+                trailing={<InfoMeta>{runCountLabel(workflow.runIDs)}</InfoMeta>}
+                onClick={() => chat.openWorkflow(workflow)}
               />
             ))}
           </InfoList>
@@ -199,26 +199,13 @@ export function OverviewTab({
           <InfoList>{usedRows}</InfoList>
         </InfoGroup>
       ) : null}
-
-      {chat.decisions.length > 0 ? (
-        <InfoGroup label="What you decided" count={chat.decisions.length}>
-          <InfoList>
-            {chat.decisions.map((decision) => (
-              <BlockRow
-                key={decision.question}
-                tile={
-                  <Icon icon={MessageQuestionIcon} size={14} tone="inherit" />
-                }
-                title={decision.answer}
-                subtitle={decision.question}
-                wrap
-              />
-            ))}
-          </InfoList>
-        </InfoGroup>
-      ) : null}
     </div>
   );
+}
+
+function runCountLabel(runIDs: string[]) {
+  if (runIDs.length === 0) return "No runs yet";
+  return `${runIDs.length} ${runIDs.length === 1 ? "run" : "runs"}`;
 }
 
 type Chat = ReturnType<typeof useChatOverview>;
@@ -296,16 +283,6 @@ function usageRows(
               .join(" · ")}
           </InfoMeta>
         }
-      />,
-    );
-  }
-  if (usage.commands > 0) {
-    rows.push(
-      <BlockRow
-        key="commands"
-        tile={<Icon icon={CommandLineIcon} size={14} tone="inherit" />}
-        title="Commands"
-        trailing={<InfoMeta>{usage.commands} run</InfoMeta>}
       />,
     );
   }

@@ -13,6 +13,7 @@ import {
   backgroundNotice,
   TASK_HANDOFF_PART_TYPE,
   taskHandoffOf,
+  taskHandoffSnapshotOf,
 } from "./backgroundSubtasks";
 import { getStandaloneBubbleMetadata } from "./standaloneMessages";
 import {
@@ -632,7 +633,7 @@ function handoffPart(msg: SessionChatMessage, taskID: string): UiPart {
   return {
     type: TASK_HANDOFF_PART_TYPE,
     ...(id ? { id } : {}),
-    data: { taskID },
+    data: { taskID, snapshot: taskHandoffSnapshotOf(msg.metadata) },
   } as UiPart;
 }
 
@@ -710,7 +711,11 @@ export function createTurnLogRenderer(
       unanswered: turnOver ? "interrupted" : "input-available",
     };
 
-    const pending = pendingTools(log);
+    // A call the model opened but never finished writing did not run, so a
+    // turn that ended well leaves it out instead of calling it interrupted.
+    const pending = pendingTools(log).filter(
+      (p) => log.status !== "finished" || p.tool.phase === "input-error",
+    );
     const groups = groupTurnRows(log, pending.length > 0);
     const next = new Map<string, { deps: unknown[]; message: UiMessage }>();
     const messages = groups.map((group, index) => {

@@ -1,7 +1,9 @@
 import type { TaskStatus } from "@/app/api/__generated__/models/taskStatus";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import type { Tone } from "@/components/styles/tones";
 import { statusOf } from "../../helpers";
+import { SCHEDULE_WORDS, type ScheduleState } from "../../schedule";
 
 const PILL_FILL: Record<TaskStatus, string> = {
   TODO: "bg-surface-wash",
@@ -12,21 +14,56 @@ const PILL_FILL: Record<TaskStatus, string> = {
   CANCELLED: "bg-surface-wash",
 };
 
+const SCHEDULE_VIEWS: Record<
+  ScheduleState,
+  { word: string; tone: Tone; fill: string }
+> = {
+  scheduled: {
+    word: SCHEDULE_WORDS.scheduled,
+    tone: "info",
+    fill: "bg-info-surface",
+  },
+  missed: {
+    word: SCHEDULE_WORDS.missed,
+    tone: "waiting",
+    fill: "bg-status-waiting/10",
+  },
+  repeating: {
+    word: SCHEDULE_WORDS.repeating,
+    tone: "info",
+    fill: "bg-info-surface",
+  },
+  watching: {
+    word: SCHEDULE_WORDS.watching,
+    tone: "info",
+    fill: "bg-info-surface",
+  },
+  paused: {
+    word: SCHEDULE_WORDS.paused,
+    tone: "quiet",
+    fill: "bg-surface-wash",
+  },
+};
+
 interface Props {
   status: TaskStatus;
+  /** A to-do waiting for its start time, or one that missed it. */
+  schedule?: ScheduleState | null;
   className?: string;
 }
 
 /** A task's one status word on a soft tint of its colour. */
-export function StatusPill({ status, className }: Props) {
-  const view = statusOf(status);
+export function StatusPill({ status, schedule, className }: Props) {
+  const timed = schedule ? SCHEDULE_VIEWS[schedule] : null;
+  const view = timed ?? statusOf(status);
   return (
     <span
       data-testid="task-status"
       data-status={status}
+      data-schedule={schedule ?? undefined}
       className={cn(
         "inline-flex h-5 shrink-0 items-center rounded-control px-1.5",
-        PILL_FILL[status],
+        timed ? timed.fill : PILL_FILL[status],
         className,
       )}
     >

@@ -1,0 +1,161 @@
+/* The trace's look, in one place. Each block kind takes a hue from the role
+   tokens; a hue is never shown at full strength: fills mix ~14% of it into
+   the card's surface, edges and text ~60-80%. Greys for anything not running
+   yet or stopped; a failed block is the only red. */
+.trace {
+  --surface: rgb(var(--color-surface));
+  --ink: rgb(var(--color-foreground-base));
+  --hue-ai: rgb(var(--color-indigo));
+  --hue-integration: rgb(var(--color-sky));
+  --hue-logic: rgb(var(--color-pink));
+  /* Teal: halfway between the sky and success roles. */
+  --hue-io: color-mix(
+    in srgb,
+    rgb(var(--color-sky)) 45%,
+    rgb(var(--color-success))
+  );
+  --hue-other: rgb(var(--color-success));
+  --hue-failed: rgb(var(--color-error));
+  --hue-idle: rgb(var(--color-foreground-subtle));
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ai {
+  --hue: var(--hue-ai);
+}
+.integration {
+  --hue: var(--hue-integration);
+}
+.logic {
+  --hue: var(--hue-logic);
+}
+.io {
+  --hue: var(--hue-io);
+}
+.other {
+  --hue: var(--hue-other);
+}
+.failed {
+  --hue: var(--hue-failed);
+}
+.waiting,
+.stopped {
+  --hue: var(--hue-idle);
+}
+
+/* A row pops in: a short rise and fade, staggered by its place. */
+.row {
+  animation: row-in 180ms var(--ease) both;
+  animation-delay: calc(min(var(--i, 0), 8) * 28ms);
+}
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+}
+
+.tag {
+  background: color-mix(in srgb, var(--hue) 14%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hue) 22%, transparent);
+  color: color-mix(in srgb, var(--hue) 78%, var(--ink));
+  transition:
+    background-color 300ms var(--ease),
+    color 300ms var(--ease);
+}
+
+.tick {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+/* The bar sits on the shared axis: its start and length come in as
+   --left and --width, and it grows from the left the first time it shows. */
+.bar {
+  left: min(var(--left), calc(100% - 4px));
+  width: max(var(--width), 4px);
+  transform-origin: left center;
+  animation: bar-grow 420ms var(--ease) both;
+  transition:
+    left 260ms linear,
+    width 260ms linear;
+}
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.fill {
+  background: color-mix(in srgb, var(--hue) 16%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hue) 58%, transparent);
+  transition:
+    background-color 300ms var(--ease),
+    box-shadow 300ms var(--ease);
+}
+
+.waiting .bar {
+  left: min(var(--left), calc(100% - 14px));
+}
+
+.waiting .fill {
+  background: transparent;
+  box-shadow: none;
+  border: 1px dashed color-mix(in srgb, var(--hue) 70%, transparent);
+}
+
+/* While a block runs, a soft light sweeps along its bar... */
+.running .fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(var(--color-surface) / 0.75) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: sweep 1.5s var(--ease) infinite;
+}
+@keyframes sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* ...and a small blurred glow sits at its growing tip. */
+.tip {
+  background: var(--hue);
+  filter: blur(4px);
+  animation: tip-glow 1.5s ease-in-out infinite;
+}
+@keyframes tip-glow {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.waitingRing {
+  border: 1.5px dashed rgb(var(--color-foreground-subtle));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row,
+  .bar,
+  .tip,
+  .running .fill::after {
+    animation: none;
+  }
+  .running .fill::after {
+    display: none;
+  }
+  .bar,
+  .tag,
+  .fill {
+    transition: none;
+  }
+}

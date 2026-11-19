@@ -1,17 +1,12 @@
-import { getV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
-import { SESSION_GROUP_PAGES_QUERY_KEY } from "@/app/(platform)/copilot/sessionGroups";
-import { shareSessionListData } from "@/app/(platform)/copilot/sessionListSharing";
+import { useExpertSessionPages } from "@/app/(platform)/copilot/useExpertSessionPages";
 import {
   flattenSessions,
-  getNextSessionListOffset,
   useDeletingSessionIds,
 } from "@/app/(platform)/copilot/useSessionList";
 import { useSidebar } from "@/components/molecules/Sidebar/Sidebar";
-import { useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
-  GROUP_PAGE_LIMIT,
   GROUP_SHOW_MORE_STEP,
   isGroupCollapsed,
   mergeGroupSessions,
@@ -43,7 +38,7 @@ export function useExpertChatGroup({
   const { isMobile } = useSidebar();
   const visibleCount =
     openingChatCount(previewSessions.length, isMobile) + extraCount;
-  const olderPages = useOlderPages({
+  const olderPages = useExpertSessionPages({
     expertId,
     pinnedSeparately,
     // On a phone the first presses show chats the grouped read already has.
@@ -95,7 +90,7 @@ export function useExpertChatGroup({
   };
 }
 
-type OlderPages = ReturnType<typeof useOlderPages>;
+type OlderPages = ReturnType<typeof useExpertSessionPages>;
 
 /** The first "Show more" turns the older pages on, which reads their first
  *  page by itself; after that, the next page is read whenever the ones
@@ -146,38 +141,4 @@ function useRereadShiftedPages({
     total,
     refetch,
   ]);
-}
-
-interface OlderPagesArgs {
-  expertId: string | null;
-  pinnedSeparately: boolean;
-  enabled: boolean;
-}
-
-/** The group's chats a page at a time, newest first like its preview, for
- *  "Show more": the expert's, or Otto's own when there is no expert. */
-function useOlderPages({
-  expertId,
-  pinnedSeparately,
-  enabled,
-}: OlderPagesArgs) {
-  return useInfiniteQuery({
-    queryKey: [
-      ...SESSION_GROUP_PAGES_QUERY_KEY,
-      expertId,
-      { pinnedSeparately },
-    ],
-    queryFn: ({ pageParam }) =>
-      getV2ListSessions({
-        limit: GROUP_PAGE_LIMIT,
-        offset: pageParam,
-        pinned_first: false,
-        ...(expertId ? { expert_id: expertId } : { autopilot_only: true }),
-        ...(pinnedSeparately ? { pinned: false } : {}),
-      }),
-    initialPageParam: 0,
-    getNextPageParam: getNextSessionListOffset,
-    structuralSharing: shareSessionListData,
-    enabled,
-  });
 }

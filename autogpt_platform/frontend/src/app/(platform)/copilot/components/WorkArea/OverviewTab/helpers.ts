@@ -1,13 +1,4 @@
 import type { UIMessage } from "ai";
-import { parseAnswersFrame } from "../../QuestionDock/answeredQuestions";
-import { getLatestTaskList } from "../../TaskProgressBar/helpers";
-import { toChainRow } from "../../ToolChain/helpers";
-
-export interface OverviewStep {
-  key: string;
-  text: string;
-  state: "done" | "now" | "later";
-}
 
 export interface ChatUsage {
   searches: number;
@@ -22,8 +13,6 @@ export interface ChatUsage {
   /** Commands run on the chat's computer. */
   commands: number;
 }
-
-export const STEPS_SHOWN = 3;
 
 interface ToolCall {
   name: string;
@@ -132,53 +121,54 @@ export function chatUsageOf(messages: UIMessage[]): ChatUsage {
   };
 }
 
-/** The steps of the turn in progress or just finished: Otto's own checklist
- *  when it wrote one, else what it did, in the words the chat shows. */
-export function turnStepsOf(messages: UIMessage[]): OverviewStep[] {
-  const todos = getLatestTaskList(messages);
-  if (todos.length > 0) {
-    return todos.map((todo, index) => ({
-      key: `todo-${index}`,
-      text: todo.content,
-      state:
-        todo.status === "completed"
-          ? "done"
-          : todo.status === "in_progress"
-            ? "now"
-            : "later",
-    }));
-  }
-  const lastUser = messages.findLastIndex((message) => message.role === "user");
-  return messages
-    .slice(lastUser + 1)
-    .filter((message) => message.role === "assistant")
-    .flatMap((message) =>
-      message.parts.flatMap((part, index) => {
-        const row = toChainRow(part, index);
-        if (!row || !row.tool || row.category === "narration") return [];
-        return [
-          {
-            key: row.key,
-            text: row.text,
-            state:
-              row.state === "running" ? ("now" as const) : ("done" as const),
-          },
-        ];
-      }),
-    );
+export interface ChatWorkflow {
+  graphID: string;
+  title: string;
+  /** Ids of the runs this chat started or looked at, oldest first. */
+  runIDs: string[];
 }
 
-/** The questions the user answered in this chat, newest first. */
-export function decisionsOf(messages: UIMessage[]) {
-  return messages
-    .filter((message) => message.role === "user")
-    .flatMap((message) => {
-      const body = message.parts
-        .flatMap((part) => (part.type === "text" ? [part.text] : []))
-        .join("\n");
-      return parseAnswersFrame(body) ?? [];
-    })
-    .toReversed();
+const WORKFLOW_TOOLS = [
+  "run_agent",
+  "view_agent_output",
+  "create_agent",
+  "edit_agent",
+];
+
+/** The workflows this chat built, ran or looked at, with their runs. */
+export function chatWorkflowsOf(messages: UIMessage[]): ChatWorkflow[] {
+  const byGraph = new Map<string, ChatWorkflow>();
+  for (const call of toolCallsOf(messages)) {
+    if (!WORKFLOW_TOOLS.includes(call.name)) continue;
+    const output = asRecord(call.output);
+    const graphID = text(output.graph_id) ?? text(output.agent_id);
+    if (!graphID) continue;
+    const runID =
+      text(output.execution_id) ??
+      text(asRecord(output.execution).execution_id);
+    const known = byGraph.get(graphID);
+    const runIDs = known?.runIDs ?? [];
+    byGraph.set(graphID, {
+      graphID,
+      title:
+        text(output.graph_name) ??
+        text(output.agent_name) ??
+        known?.title ??
+        "Workflow",
+      runIDs: runID && !runIDs.includes(runID) ? [...runIDs, runID] : runIDs,
+    });
+  }
+  return [...byGraph.values()];
+}
+
+const TASK_TOOLS = ["start_task", "create_task", "update_task", "archive_task"];
+
+/** How many task tool calls of this chat have come back, so the task list
+ *  can be read again each time Otto adds or changes one. */
+export function finishedTaskCallsOf(messages: UIMessage[]) {
+  return toolCallsOf(messages).filter(
+    (call) => TASK_TOOLS.includes(call.name) && call.output !== undefined,
+  ).length;
 }
 
 const TYPE_BY_EXTENSION: Record<string, string> = {

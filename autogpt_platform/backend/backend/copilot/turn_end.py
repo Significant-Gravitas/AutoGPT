@@ -14,10 +14,13 @@ is waiting on a closing message in the worker's chat.
 Starting a background task (``start_task``) wraps the turn up instead: the
 work runs elsewhere, so the turn may still start more tasks and say one
 closing line, but every other tool call is refused, so none of the task is
-done inline and the chat is free again at once.
+done inline and the chat is free again at once. Scheduling a follow-up
+(``schedule_followup``) wraps the turn up the same way.
 
 The registry also counts the tool calls each turn has started, so a question
-can tell whether anything was looked at before it (``question_rules``).
+can tell whether anything was looked at before it (``question_rules``), and
+keeps the skill the turn last loaded, so the task record can say which skill
+each later step followed (``task_recorder``).
 
 Process-local: the tool runs in the same executor process as the engine that
 checks. Each turn clears its session when it starts, and the executor clears
@@ -35,15 +38,17 @@ FINISHED_REFUSAL = (
     "Not run: the task is finished and its result is saved, which ends your turn."
 )
 WRAP_UP_REFUSAL = (
-    "Not run: you started this as a background task, so the worker does it. "
-    "If you have not told the user it started, say so in one short line; "
-    "then stop."
+    "Not run: this turn handed its work off (a background task or a scheduled "
+    "follow-up), so none of it is done here. If you have not told the user, "
+    "say so in one short line; then stop."
 )
-_STILL_ALLOWED_AFTER_TASK = frozenset({"start_task"})
+# Either can follow the other: "research this now and remind me at 5".
+_STILL_ALLOWED_AFTER_TASK = frozenset({"start_task", "schedule_followup"})
 
 _lock = threading.Lock()
 _state: dict[str, Literal["question", "task", "finished"]] = {}
 _calls: dict[str, int] = {}
+_skills: dict[str, str] = {}
 
 
 def note_call(session_id: str | None) -> None:
@@ -62,6 +67,22 @@ def calls_started(session_id: str | None) -> int:
         return _calls.get(session_id, 0)
 
 
+def note_skill(session_id: str | None, skill: str) -> None:
+    """*session_id*'s turn just loaded *skill*: the steps after it follow it."""
+    if not session_id or not skill:
+        return
+    with _lock:
+        _skills[session_id] = skill
+
+
+def skill_in_use(session_id: str | None) -> str | None:
+    """The skill *session_id*'s turn last loaded, if it loaded one."""
+    if not session_id:
+        return None
+    with _lock:
+        return _skills.get(session_id)
+
+
 def request_end(session_id: str) -> None:
     """A question was asked: end *session_id*'s turn after this step."""
     with _lock:
@@ -75,7 +96,8 @@ def request_finish(session_id: str) -> None:
 
 
 def request_wrap_up(session_id: str) -> None:
-    """A task was started: only more tasks and a closing line may follow."""
+    """A task was started or a follow-up scheduled: only more of those and a
+    closing line may follow."""
     with _lock:
         _state.setdefault(session_id, "task")
 
@@ -103,6 +125,7 @@ def clear(session_id: str) -> None:
     with _lock:
         _state.pop(session_id, None)
         _calls.pop(session_id, None)
+        _skills.pop(session_id, None)
 
 
 def _get(session_id: str | None) -> Literal["question", "task", "finished"] | None:

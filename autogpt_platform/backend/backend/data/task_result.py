@@ -9,6 +9,8 @@ from pydantic import BaseModel
 
 from backend.data.task import RESULT_MAX_CHARS
 from backend.data.task_record import work_tasks
+from backend.data.task_rhythm import STATUS_BY_RUN_END
+from backend.data.task_schedule_meta import read_schedule_meta
 from backend.data.task_text import clip, file_key
 
 
@@ -110,12 +112,21 @@ async def task_outcome(session_id: str, user_id: str) -> TaskOutcome | None:
     return TaskOutcome(
         task_id=row.id,
         title=row.title,
-        status=row.status,
+        status=_run_status(row),
         result=row.result,
         failure_reason=row.failureReason,
         document_title=document.title if document else None,
         document_file_id=document.workspaceFileId if document else None,
     )
+
+
+def _run_status(row: prisma.models.Task) -> TaskStatus:
+    """The task's status; for a repeating task back to waiting, how the run
+    that just ended came out."""
+    repeat = read_schedule_meta(row.metadata).repeat
+    if row.status == TaskStatus.TODO and repeat and repeat.last_run:
+        return STATUS_BY_RUN_END[repeat.last_run]
+    return TaskStatus(row.status)
 
 
 async def _saved_file(task_id: str, file: str) -> prisma.models.TaskArtifact | None:

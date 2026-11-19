@@ -30,6 +30,8 @@ describe("startedTaskOf", () => {
       ownerExpertID: null,
       startedAt: "2026-11-10T09:59:00Z",
       link: "/copilot?sessionId=child-1",
+      startAt: null,
+      missedStart: false,
     });
     expect(startedTaskOf(JSON.stringify(OUTPUT))?.id).toBe("task-1");
   });

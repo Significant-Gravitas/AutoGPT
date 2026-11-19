@@ -66,11 +66,21 @@ export function NewTaskDialog({
                 </Text>
               ) : null}
               <Button
+                type="button"
+                variant="ghost-muted"
+                size="xs"
+                shape="pill"
+                disabled={!form.canSubmit}
+                onClick={form.saveForLater}
+              >
+                Save for later
+              </Button>
+              <Button
                 type="submit"
                 variant="primary"
                 size="icon-sm"
                 shape="pill"
-                aria-label="Create task"
+                aria-label="Create and start task"
                 leadingIcon={ArrowUp02Icon}
                 disabled={!form.canSubmit}
                 loading={form.isSubmitting}

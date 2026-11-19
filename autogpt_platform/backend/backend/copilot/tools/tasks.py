@@ -9,7 +9,7 @@ from typing import Any
 from prisma.enums import TaskCreator, TaskStatus
 
 from backend.copilot.model import ChatSession
-from backend.data.db_accessors import task_db
+from backend.data.db_accessors import task_db, task_schedule_db
 from backend.data.task import TaskPatch
 from backend.data.task_text import DONE_WHEN_MAX_CHARS, GOAL_MAX_CHARS, clip
 
@@ -324,6 +324,9 @@ class ArchiveTaskTool(BaseTool):
         assert user_id is not None  # guaranteed by requires_auth
         try:
             archived = await task_db().archive_task(task_id, user_id)
+            if archived:
+                # An archived task no longer repeats or watches.
+                await task_schedule_db().clear_task_repeat(task_id, user_id)
         except ValueError as e:  # includes NotFoundError
             return _error("archive_task_failed", str(e), session)
         except Exception as e:

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from prisma.enums import TaskStatus
 from pydantic import BaseModel, Field
 
@@ -10,6 +12,7 @@ from backend.data.task import (
 
 # Ids are UUIDs; the bound only keeps junk out of the lookup.
 ID_MAX_CHARS = 64
+INSTRUCTIONS_MAX_CHARS = 2_000
 
 
 class TaskCreateRequest(BaseModel):
@@ -30,7 +33,8 @@ class TaskCreateRequest(BaseModel):
 
 
 class TaskUpdateRequest(BaseModel):
-    """Fields left out, or sent as null, stay as they are."""
+    """Fields left out, or sent as null, stay as they are; ``start_at`` sent
+    as null removes the start time."""
 
     title: str | None = Field(default=None, min_length=1, max_length=TITLE_MAX_CHARS)
     description: str | None = Field(
@@ -45,6 +49,27 @@ class TaskUpdateRequest(BaseModel):
     )
     goal: str | None = Field(default=None, max_length=LINE_MAX_CHARS)
     done_when: str | None = Field(default=None, max_length=LINE_MAX_CHARS)
+    start_at: datetime | None = Field(
+        default=None,
+        description="A future time for a TODO task to start by itself; null "
+        "removes the start time. A time without an offset is UTC.",
+    )
+
+
+class TaskRunRequest(BaseModel):
+    instructions: str | None = Field(
+        default=None,
+        max_length=INSTRUCTIONS_MAX_CHARS,
+        description="What to do differently this run; kept on the task's activity.",
+    )
+
+
+class TaskCancelRequest(BaseModel):
+    this_run_only: bool = Field(
+        default=False,
+        description="For a repeating task: stop only the run going now, and "
+        "keep the rhythm.",
+    )
 
 
 class TaskListResponse(BaseModel):

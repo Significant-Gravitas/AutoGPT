@@ -54,12 +54,8 @@ async def start_background_subtask(
     parent: ChatSession,
     prompt: str,
 ) -> BackgroundTask:
-    # On unless PostHog says otherwise: ``start_task`` depends on it, and the
-    # flag stays as the switch to turn background work off.
-    if not await is_feature_enabled(
-        Flag.COPILOT_BACKGROUND_SUBTASKS, user_id, default=True
-    ):
-        raise TreeRefusal("Background subtasks are not enabled for this account.")
+    """Start background work under the running turn's limits: its envelope,
+    tool call and permissions."""
     envelope, call_id, turn_id = (
         get_current_envelope(),
         current_tool_call_id(),
@@ -69,7 +65,36 @@ async def start_background_subtask(
         raise TreeRefusal(
             "This subtask's limits could not be preserved. Start it again."
         )
-    permissions = get_current_permissions()
+    return await launch_background_subtask(
+        user_id,
+        parent,
+        prompt,
+        envelope=envelope,
+        call_id=call_id,
+        turn_id=turn_id,
+        permissions=get_current_permissions(),
+    )
+
+
+async def launch_background_subtask(
+    user_id: str,
+    parent: ChatSession,
+    prompt: str,
+    *,
+    envelope: TurnEnvelope,
+    call_id: str,
+    turn_id: str,
+    permissions: CopilotPermissions | None,
+) -> BackgroundTask:
+    """Start background work under ``parent`` with the given launching turn.
+    Outside a turn (a task starting at its time) the caller names a turn of
+    its own; the same ``turn_id`` and ``call_id`` return the same work."""
+    # On unless PostHog says otherwise: ``start_task`` depends on it, and the
+    # flag stays as the switch to turn background work off.
+    if not await is_feature_enabled(
+        Flag.COPILOT_BACKGROUND_SUBTASKS, user_id, default=True
+    ):
+        raise TreeRefusal("Background subtasks are not enabled for this account.")
     if not _can_read_result(envelope, permissions):
         raise TreeRefusal(
             f"This turn may not call {RESULT_TOOL}, so background work could not "

@@ -241,7 +241,7 @@ class PostToChatPlatformTool(BaseTool):
             "mode='thread' opens a thread (needs thread_name; channels only). "
             "'channel' is a name (#standup) or numeric ID — on Telegram, a "
             "linked group's numeric chat ID. Teams supports target='dm' only. "
-            "Pair with tool:schedule_followup for recurring posts; call "
+            "Pair with schedule_followup for recurring posts; call "
             "tool:list_chat_platform_channels if a Discord/Slack channel won't "
             "resolve. Edit a post later with tool:edit_chat_platform_message "
             "using the channel_id and ref_id it returns — for mode='thread' "

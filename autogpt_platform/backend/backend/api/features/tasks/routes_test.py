@@ -7,12 +7,13 @@ import fastapi
 import fastapi.testclient
 import pytest
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from prisma.enums import TaskActor, TaskCreator, TaskStatus
+from prisma.enums import TaskActivityKind, TaskActor, TaskCreator, TaskStatus
 from pytest_mock import MockerFixture
 
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.task import Task, TaskPatch
-from backend.data.task_record import TaskRecord
+from backend.data.task_activity_meta import TaskActivityAccount
+from backend.data.task_record import TaskActivity, TaskRecord
 from backend.util.exceptions import NotFoundError
 
 from .routes import router
@@ -100,6 +101,7 @@ def test_list_passes_filters_for_the_caller(mocker: MockerFixture, test_user_id)
         limit=10,
         offset=0,
         include_subtasks=False,
+        scheduled=False,
     )
 
 
@@ -178,6 +180,38 @@ def test_the_record_is_returned_whole_and_404s_for_a_stranger(
     assert client.get("/tasks/task-9/record").status_code == 404
 
 
+def test_each_activity_line_says_which_account_and_skill_it_used(
+    mocker: MockerFixture,
+):
+    def line(id: str, **meta) -> TaskActivity:
+        return TaskActivity(
+            id=id,
+            task_id="task-1",
+            created_at=_NOW,
+            actor_type=TaskActor.EXPERT,
+            kind=TaskActivityKind.TOOL,
+            text="Used Gmail to send email",
+            **meta,
+        )
+
+    gmail = TaskActivityAccount(service="google", name="Gmail", label="work@acme.com")
+    record = TaskRecord(
+        task=_task(),
+        activity=[line("a-1", account=gmail, skill="Cold email"), line("a-2")],
+    )
+    _mock(mocker, "get_task_record", record)
+
+    sent, plain = client.get("/tasks/task-1/record").json()["activity"]
+
+    assert sent["account"] == {
+        "service": "google",
+        "name": "Gmail",
+        "label": "work@acme.com",
+    }
+    assert sent["skill"] == "Cold email"
+    assert plain["account"] is None and plain["skill"] is None
+
+
 def test_subtasks_are_listed_only_when_asked_for(mocker: MockerFixture):
     list_tasks = _mock(mocker, "list_tasks", [])
 
@@ -199,9 +233,12 @@ def test_update_maps_data_layer_errors(mocker: MockerFixture, error, status):
 @pytest.mark.parametrize("archived, status", [(True, 204), (False, 404)])
 def test_archive(mocker: MockerFixture, test_user_id, archived, status):
     archive = _mock(mocker, "archive_task", archived)
+    clear = _mock(mocker, "clear_task_repeat", False)
 
     assert client.delete("/tasks/task-1").status_code == status
     archive.assert_awaited_once_with("task-1", test_user_id)
+    # An archived task stops repeating or watching, its webhook let go of.
+    assert clear.await_count == (1 if archived else 0)
 
 
 def test_attach_and_detach_a_chat(mocker: MockerFixture, test_user_id):
@@ -215,3 +252,92 @@ def test_attach_and_detach_a_chat(mocker: MockerFixture, test_user_id):
     assert detached.json()["session_ids"] == ["c1"]
     attach.assert_awaited_once_with("task-1", "c2", test_user_id)
     detach.assert_awaited_once_with("task-1", "c2", test_user_id)
+
+
+# ---------------------------------------------------------------- start time
+
+_LATER = datetime(2099, 1, 2, 9, 0, tzinfo=UTC)
+
+
+def _start_time(mocker: MockerFixture, timezone: str = "Europe/London") -> None:
+    mocker.patch(
+        "backend.api.features.tasks.start_time.user_timezone",
+        new_callable=AsyncMock,
+        return_value=(timezone, True),
+    )
+
+
+def test_a_future_start_time_schedules_a_todo_task(mocker: MockerFixture, test_user_id):
+    _start_time(mocker)
+    _mock(mocker, "get_task", _task())
+    update = _mock(mocker, "update_task", _task())
+    schedule = _mock(mocker, "set_task_start", _task(start_at=_LATER))
+    noted = _mock(mocker, "add_activity", None)
+
+    response = client.patch("/tasks/task-1", json={"start_at": "2099-01-02T09:00:00Z"})
+
+    assert response.status_code == 200
+    assert response.json()["start_at"].startswith("2099-01-02T09:00:00")
+    assert response.json()["missed_start"] is False
+    update.assert_awaited_once_with("task-1", test_user_id, TaskPatch())
+    schedule.assert_awaited_once_with("task-1", test_user_id, _LATER)
+    assert noted.await_args.args[2].text == (
+        "You set it to start Fri 2 Jan 2099, 09:00 Europe/London"
+    )
+
+
+def test_a_null_start_time_unschedules_the_task(mocker: MockerFixture, test_user_id):
+    _mock(mocker, "get_task", _task(start_at=_LATER))
+    _mock(mocker, "update_task", _task(start_at=_LATER))
+    schedule = _mock(mocker, "set_task_start", _task())
+    noted = _mock(mocker, "add_activity", None)
+
+    response = client.patch("/tasks/task-1", json={"start_at": None})
+
+    assert response.status_code == 200
+    schedule.assert_awaited_once_with("task-1", test_user_id, None)
+    assert noted.await_args.args[2].text == "You removed the start time"
+
+
+def test_an_edit_without_a_start_time_leaves_it_alone(mocker: MockerFixture):
+    _mock(mocker, "get_task", _task(start_at=_LATER))
+    _mock(mocker, "update_task", _task(start_at=_LATER, title="New"))
+    schedule = _mock(mocker, "set_task_start", _task())
+    _mock(mocker, "add_activity", None)
+
+    assert client.patch("/tasks/task-1", json={"title": "New"}).status_code == 200
+    schedule.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "task, body, status",
+    [
+        (
+            _task(status=TaskStatus.IN_PROGRESS),
+            {"start_at": "2099-01-02T09:00:00Z"},
+            409,
+        ),
+        (_task(), {"start_at": "2099-01-02T09:00:00Z", "status": "DONE"}, 409),
+        (_task(), {"start_at": "2020-01-02T09:00:00Z"}, 422),
+        (None, {"start_at": "2099-01-02T09:00:00Z"}, 404),
+    ],
+)
+def test_a_start_time_is_refused_before_anything_is_written(
+    mocker: MockerFixture, task, body, status
+):
+    _mock(mocker, "get_task", task)
+    update = _mock(mocker, "update_task", _task())
+    schedule = _mock(mocker, "set_task_start", _task())
+
+    assert client.patch("/tasks/task-1", json=body).status_code == status
+    update.assert_not_awaited()
+    schedule.assert_not_awaited()
+
+
+def test_scheduled_tasks_can_be_listed_on_their_own(mocker: MockerFixture):
+    list_tasks = _mock(mocker, "list_tasks", [_task(start_at=_LATER)])
+
+    response = client.get("/tasks", params={"scheduled": "true"})
+
+    assert response.json()["tasks"][0]["start_at"].startswith("2099-01-02")
+    assert list_tasks.await_args.kwargs["scheduled"] is True

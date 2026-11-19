@@ -81,6 +81,7 @@ from backend.copilot.model import (
     AutopilotMode,
     ChatSession,
     ChatSessionInfo,
+    ChatSessionMetadata,
     LocalExecutionTargetMetadata,
     PublicChatSessionMetadata,
     SessionIdConflictError,
@@ -689,6 +690,14 @@ class SessionSummaryResponse(BaseModel):
     source_platform: str | None = None
     is_pinned: bool = False
     expert_id: str | None = None
+    parent_session_id: str | None = Field(
+        default=None,
+        description="The chat this one works for, such as a task's background "
+        "worker; None for a chat of its own, a handed-off one included.",
+    )
+    work_task_id: str | None = Field(
+        default=None, description="The task this chat was opened to run."
+    )
 
 
 class ListSessionsResponse(BaseModel):
@@ -1139,7 +1148,17 @@ def _session_summary(
         source_platform=session.metadata.source_platform,
         is_pinned=session.is_pinned,
         expert_id=session.expert_id,
+        parent_session_id=_parent_session_id(session.metadata),
+        work_task_id=session.metadata.work_task_id,
     )
+
+
+def _parent_session_id(metadata: ChatSessionMetadata) -> str | None:
+    """A handoff records the delegation too, but the chat is then the
+    receiver's own, so only a delegation that kept its caller has a parent."""
+    if metadata.handed_off_from_expert_id:
+        return None
+    return metadata.delegated_by_session_id
 
 
 @router.get(

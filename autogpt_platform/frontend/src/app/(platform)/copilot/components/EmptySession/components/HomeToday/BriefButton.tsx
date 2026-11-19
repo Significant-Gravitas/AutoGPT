@@ -1,21 +1,12 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Key, storage } from "@/services/storage/local-storage";
 import { Sun03Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { useIsMobile } from "../../../../useIsMobile";
 import { useWorkAreaStore } from "../../../../workArea";
 import { briefName } from "./helpers";
-
-const SEEN_KEY = "home-brief-seen";
-
-function wasSeen(day: string) {
-  try {
-    return window.localStorage.getItem(SEEN_KEY) === day;
-  } catch {
-    return false;
-  }
-}
 
 /** Opens the day's brief in the sidebar, with a dot until it has been
  *  opened today. A phone has no sidebar, so there it is left out. */
@@ -23,7 +14,9 @@ export function BriefButton() {
   const [now] = useState(() => Date.now());
   const day = new Date(now).toDateString();
   const label = briefName(now);
-  const [isSeen, setIsSeen] = useState(() => wasSeen(day));
+  const [isSeen, setIsSeen] = useState(
+    () => storage.get(Key.HOME_BRIEF_SEEN) === day,
+  );
   const openBrief = useWorkAreaStore((s) => s.openBrief);
   const isMobile = useIsMobile();
   if (isMobile) return null;
@@ -31,11 +24,7 @@ export function BriefButton() {
   function open() {
     openBrief(label);
     setIsSeen(true);
-    try {
-      window.localStorage.setItem(SEEN_KEY, day);
-    } catch {
-      // Private mode: the dot simply comes back next time.
-    }
+    storage.set(Key.HOME_BRIEF_SEEN, day);
   }
 
   return (

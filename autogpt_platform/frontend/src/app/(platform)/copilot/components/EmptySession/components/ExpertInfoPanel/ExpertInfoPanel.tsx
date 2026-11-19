@@ -3,7 +3,6 @@
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
-import { InsetSidePanel } from "@/components/layout/InsetSidePanel/InsetSidePanel";
 import { SegmentedControl } from "@/components/molecules/SegmentedControl/SegmentedControl";
 import type { RecipientOption } from "../../../ChatInput/components/RecipientChip";
 import {
@@ -26,60 +25,56 @@ const TABS: { value: InfoTab; label: string }[] = [
 const OTTO_DESCRIPTION =
   "Your personal Head of AI. Tell Otto about your work and it finds what to automate, runs subtasks and brings in experts when a job needs them.";
 
-interface Props {
+interface ProfileProps {
   recipient: RecipientOption;
-  isOpen: boolean;
-  onClose: () => void;
 }
 
-export function ExpertInfoPanel({ recipient, isOpen, onClose }: Props) {
-  const panel = useExpertInfoPanel(recipient.id, isOpen);
+/** Who the composer is talking to: Otto, or an expert with its details,
+ *  access and tasks. Home shows it as the Profile tab of the right sidebar. */
+export function ExpertProfile({ recipient }: ProfileProps) {
+  const panel = useExpertInfoPanel(recipient.id, true);
   const isOtto = recipient.id === null;
 
   return (
-    <InsetSidePanel
-      isOpen={isOpen}
-      title="Profile"
-      ariaLabel={`About ${recipient.name}`}
-      closeLabel="Close expert info"
-      onClose={onClose}
+    <div
+      role="group"
+      aria-label={`About ${recipient.name}`}
+      className="flex flex-col gap-6 px-1.5 pb-6"
     >
-      <div className="flex flex-col gap-6 px-1.5 pb-6">
-        {isOtto ? (
-          <>
-            <InfoHeader
-              recipient={recipient}
-              role="Head of AI"
-              description={OTTO_DESCRIPTION}
-            />
-            <ScheduledGroup
-              schedules={panel.schedules}
-              isPaused={false}
-              isLoading={panel.isLoadingSchedules}
-            />
-            <TasksGroup
-              tasks={panel.tasks}
-              isLoading={panel.isLoadingTasks}
-              ownerName={panel.ownerName}
-            />
-          </>
-        ) : panel.isLoading ? (
-          <div className="flex justify-center py-10">
-            <LoadingSpinner size="small" />
-          </div>
-        ) : panel.expert ? (
-          <ExpertDetails
+      {isOtto ? (
+        <>
+          <InfoHeader
             recipient={recipient}
-            expert={panel.expert}
-            panel={panel}
+            role="Head of AI"
+            description={OTTO_DESCRIPTION}
           />
-        ) : (
-          <Text variant="body" tone="muted">
-            This expert&apos;s profile couldn&apos;t be loaded.
-          </Text>
-        )}
-      </div>
-    </InsetSidePanel>
+          <ScheduledGroup
+            schedules={panel.schedules}
+            isPaused={false}
+            isLoading={panel.isLoadingSchedules}
+          />
+          <TasksGroup
+            tasks={panel.tasks}
+            isLoading={panel.isLoadingTasks}
+            ownerName={panel.ownerName}
+          />
+        </>
+      ) : panel.isLoading ? (
+        <div className="flex justify-center py-10">
+          <LoadingSpinner size="small" />
+        </div>
+      ) : panel.expert ? (
+        <ExpertDetails
+          recipient={recipient}
+          expert={panel.expert}
+          panel={panel}
+        />
+      ) : (
+        <Text variant="body" tone="muted">
+          This expert&apos;s profile couldn&apos;t be loaded.
+        </Text>
+      )}
+    </div>
   );
 }
 

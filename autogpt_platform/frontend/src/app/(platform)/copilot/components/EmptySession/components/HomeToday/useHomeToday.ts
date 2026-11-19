@@ -40,8 +40,14 @@ export function useHomeToday() {
   const { dashboard } = useHomePage();
   const tasks = tasksQuery.data ?? [];
 
+  function openTask(task: Task) {
+    if (isMobile) router.push(taskHref(task) ?? BOARD_HREF);
+    else openTab(task.id, task.title);
+  }
+
   return {
     now,
+    tasks,
     ...sortToday(tasks, now),
     upcoming: (dashboard?.upcoming_tasks ?? []).toSorted(
       (a, b) =>
@@ -53,9 +59,13 @@ export function useHomeToday() {
     experts: expertsQuery.data ?? [],
     // Beside Home, in the sidebar a chat has; a phone has no room for one,
     // so there the task opens in its chat.
-    openTask(task: Task) {
-      if (isMobile) router.push(taskHref(task) ?? BOARD_HREF);
-      else openTab(task.id, task.title);
+    openTask,
+    /** A task the stored brief names, which the list may no longer hold. */
+    openTaskByID(taskID: string, title: string) {
+      const task = tasks.find((entry) => entry.id === taskID);
+      if (task) openTask(task);
+      else if (isMobile) router.push(BOARD_HREF);
+      else openTab(taskID, title);
     },
   };
 }

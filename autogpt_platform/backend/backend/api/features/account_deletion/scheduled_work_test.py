@@ -122,6 +122,13 @@ def detach_node(mocker: MockerFixture) -> AsyncMock:
 
 
 @pytest.fixture(autouse=True)
+def cancel_scheduled(mocker: MockerFixture) -> AsyncMock:
+    return mocker.patch(
+        f"{MODULE}.cancel_scheduled_tasks", new_callable=AsyncMock, return_value=0
+    )
+
+
+@pytest.fixture(autouse=True)
 def unlink_chats(mocker: MockerFixture) -> AsyncMock:
     """Tested in autopilot_work_test; it never raises."""
     return mocker.patch(f"{MODULE}.unlink_chat_platforms", new_callable=AsyncMock)
@@ -621,3 +628,36 @@ async def test_with_every_call_hung_it_still_returns_promptly(
     assert len(_errors(caplog)) == 8
     warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
     assert any("AutoPilot turn" in w and USER_ID in w for w in warnings)
+
+
+@pytest.mark.asyncio
+async def test_tasks_waiting_for_a_start_time_are_cancelled_with_the_users_id(
+    scheduler: MagicMock,
+    list_runs: AsyncMock,
+    stop_run: AsyncMock,
+    cancel_scheduled: AsyncMock,
+):
+    await stop_user_work(USER_ID)
+
+    cancel_scheduled.assert_awaited_once_with(USER_ID)
+
+
+@pytest.mark.asyncio
+async def test_a_failing_task_cancel_is_logged_and_the_rest_still_run(
+    scheduler: MagicMock,
+    list_runs: AsyncMock,
+    stop_run: AsyncMock,
+    cancel_scheduled: AsyncMock,
+    cancel_turns: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+):
+    cancel_scheduled.side_effect = RuntimeError("db down")
+    list_runs.return_value = [_run("run-1")]
+    caplog.set_level(logging.INFO, logger=MODULE)
+
+    await stop_user_work(USER_ID)
+
+    cancel_turns.assert_awaited_once_with(USER_ID)
+    stop_run.assert_awaited_once()
+    [error] = _errors(caplog)
+    assert "scheduled tasks" in error and USER_ID in error

@@ -360,7 +360,15 @@ from ._test_data import make_session
 #     task record tree                            83,475 (97 tools)
 #     + finish_task, stated caps      +566        84,041 (98 tools)
 #     + headroom                      +300        84,341
-_CHAR_BUDGET = 84_341
+# Re-measured after merging dev 6ba9456067 (2026-11-14) into the task
+# branch: dev's render_ui, request_work_check and flag_mistake now sit beside
+# the task tools.
+#     merged tree                                 89,743 (101 tools)
+#     + headroom                      +300        90,043
+# start_task's repeat_crons, for repeating tasks (2026-11-17):
+#     merged tree                                 90,202
+#     + headroom                      +300        90,502
+_CHAR_BUDGET = 90_502
 
 
 @pytest.fixture(scope="module")
@@ -629,7 +637,13 @@ def test_total_schema_char_budget() -> None:
 #     task record tree                            75,220
 #     + finish_task, stated caps      +508        75,728
 #     + headroom                      +300        76,028
-_SESSION_WIRE_BUDGET = 76_028
+# And re-measured after the same merge with dev 6ba9456067 (2026-11-14):
+#     merged tree                                 81,081
+#     + headroom                      +300        81,381
+# start_task's repeat_crons, for repeating tasks (2026-11-17):
+#     merged tree                                 81,522
+#     + headroom                      +300        81,822
+_SESSION_WIRE_BUDGET = 81_822
 
 
 def test_largest_declared_session_wire_budget() -> None:

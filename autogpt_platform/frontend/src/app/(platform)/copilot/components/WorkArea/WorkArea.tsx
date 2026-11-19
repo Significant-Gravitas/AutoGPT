@@ -14,6 +14,7 @@ import {
 } from "../../workArea";
 import { ComputerPanelContent } from "../ArtifactPanel/components/ComputerPanelContent";
 import { ContextPanelBody } from "../ContextPanel/ContextPanel";
+import { ExpertProfile } from "../EmptySession/components/ExpertInfoPanel/ExpertInfoPanel";
 import { PanelResizeHandle } from "../PanelResizeHandle";
 import { ArtifactTab } from "./ArtifactTab";
 import { BriefTab } from "./BriefTab";
@@ -21,6 +22,7 @@ import { FilesTab } from "./FilesTab";
 import { OverviewTab } from "./OverviewTab/OverviewTab";
 import { TaskTab } from "./TaskTab";
 import { useWorkArea } from "./useWorkArea";
+import { WorkflowRunTab } from "./WorkflowRunTab/WorkflowRunTab";
 import { TAB_ICONS, WorkTabs, type TabView } from "./WorkTabs";
 
 const EASE_OUT_QUART: [number, number, number, number] = [0.25, 1, 0.5, 1];
@@ -35,7 +37,8 @@ interface Props {
 /** The chat's one right sidebar: it sits straight on the page beside the
  *  conversation, with no fill of its own, with tabs for what was opened
  *  from it. It slides
- *  in from the right as it fades up; closing the last tab folds it away. */
+ *  in from the right as it fades up; closing the last tab folds it away,
+ *  and so does the close button at the end of the tabs. */
 export function WorkArea({ sessionId }: Props) {
   const area = useWorkArea(sessionId);
   const [isResizing, setIsResizing] = useState(false);
@@ -59,11 +62,13 @@ export function WorkArea({ sessionId }: Props) {
     ...area.tabs.map((tab) => ({
       key: tab.key,
       title:
-        tab.kind === "task" || tab.kind === "brief"
-          ? tab.title
+        tab.kind === "task" || tab.kind === "brief" || tab.kind === "workflow"
+          ? tab.title || "Workflow"
           : tab.kind === "artifact"
             ? tab.artifact.title
-            : "This chat",
+            : tab.kind === "profile"
+              ? "Profile"
+              : "This chat",
       icon: TAB_ICONS[tab.kind],
     })),
     ...(area.hasComputer
@@ -137,6 +142,7 @@ export function WorkArea({ sessionId }: Props) {
                   onNew={sessionId ? area.openStart : undefined}
                   isWide={area.isWide}
                   onToggleWidth={area.toggleWidth}
+                  onFold={area.fold}
                 />
                 <div
                   role="tabpanel"
@@ -169,6 +175,12 @@ export function WorkArea({ sessionId }: Props) {
                       experts={area.experts}
                       onOpenArtifact={openTaskArtifact}
                     />
+                  ) : active?.kind === "workflow" ? (
+                    <WorkflowRunTab key={active.graphID} tab={active} />
+                  ) : active?.kind === "profile" ? (
+                    area.profileRecipient ? (
+                      <ExpertProfile recipient={area.profileRecipient} />
+                    ) : null
                   ) : active?.kind === "brief" ? (
                     <BriefTab />
                   ) : active?.kind === "artifact" ? (

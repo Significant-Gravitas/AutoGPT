@@ -11,6 +11,7 @@ from pydantic.alias_generators import to_camel
 
 from backend.copilot.background_task import (
     BACKGROUND_TIMEOUT_MESSAGE,
+    SCHEDULED_LAUNCH_PREFIX,
     BackgroundChildResult,
     BackgroundOutcome,
     BackgroundSessionState,
@@ -79,11 +80,15 @@ async def create_background_task(
         child = await _lock_session(tx, task.child_session_id)
         if not _matches(parent, task) or not _matches(child, task):
             raise ValueError("The subtask's owner or scope changed.")
-        if (
-            parent is None
-            or parent.chatStatus != "running"
-            or _parse_json_field(parent.metadata, default={}).get("_active_turn_id")
-            != task.launch_turn_id
+        # A task started at its scheduled time has no launching turn to check.
+        scheduled = task.launch_turn_id.startswith(SCHEDULED_LAUNCH_PREFIX)
+        if parent is None or (
+            not scheduled
+            and (
+                parent.chatStatus != "running"
+                or _parse_json_field(parent.metadata, default={}).get("_active_turn_id")
+                != task.launch_turn_id
+            )
         ):
             raise ValueError("The launching turn is no longer running.")
         if child is None or child.chatStatus != "idle":

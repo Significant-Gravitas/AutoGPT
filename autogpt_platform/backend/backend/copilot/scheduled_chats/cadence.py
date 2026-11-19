@@ -152,6 +152,38 @@ def describe(crons: list[str], timezone: str, now: datetime) -> str | None:
     return f"{runs} times a week"
 
 
+def next_fire(crons: list[str], timezone: str, after: datetime) -> datetime | None:
+    """The soonest fire of any of *crons* strictly after *after*, on the zone's
+    real clock (a run at 08:00 stays at 08:00 across a clock change). None when
+    a cron does not parse or none of them fires within a year."""
+    try:
+        zone = ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = ZoneInfo("UTC")
+    start = after.astimezone(zone).replace(microsecond=0)
+    fires: list[datetime] = []
+    for cron in crons:
+        try:
+            fire = croniter(_as_scheduled(cron), start, day_or=False).get_next(datetime)
+        except (ValueError, KeyError):
+            return None
+        fires.append(fire)
+    soonest = min(fires, default=None)
+    if soonest is None or soonest - after > timedelta(days=366):
+        return None
+    return soonest
+
+
+def shortest_gap(crons: list[str], timezone: str, now: datetime) -> timedelta | None:
+    """The shortest time between two runs in the coming week; None when it
+    runs less than twice in that week."""
+    fires = _fires(crons, timezone, now, limit=_BUSIEST_DAY * 7)
+    gaps = [
+        later - earlier for earlier, later in zip(fires, fires[1:]) if later > earlier
+    ]
+    return min(gaps, default=None)
+
+
 def _fires(
     crons: list[str],
     timezone: str,

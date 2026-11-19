@@ -8,6 +8,8 @@ import { FOCUS } from "../EmptySession/components/ExpertInfoPanel/components/Inf
 import { formatDuration, type TrailStep } from "./trailSteps";
 import { NeedsYouTag } from "./blocks";
 import { BEND_BACK, BEND_OUT, Dot, Light, Marker } from "./TrailMarks";
+import { TrailLineMeta } from "./TrailLineMeta";
+import { TrailSubLine } from "./TrailSubLine";
 
 /** Sub-steps shown before the older ones fold into "+N earlier". */
 const VISIBLE = 5;
@@ -82,6 +84,7 @@ export function TrailStepRow({
       >
         {step.title}
       </span>
+      <TrailLineMeta line={step.line} />
       {isExpandable ? (
         <span
           className={cn(
@@ -193,34 +196,16 @@ export function TrailStepRow({
                     </button>
                   </li>
                 ) : null}
-                {shown.map((line, index) => {
-                  const isCurrent =
-                    step.state === "running" && index === shown.length - 1;
-                  return (
-                    <li
-                      key={line.id}
-                      title={line.text}
-                      className={cn(
-                        "flex h-6 -translate-y-1 items-center pr-2 pl-6 opacity-0 transition-[opacity,transform,translate] duration-200 ease-out",
-                        isOpen && "translate-y-0 opacity-100",
-                      )}
-                    >
-                      <span className="ml-[1.5px] flex">
-                        <Dot kind={isCurrent ? "current" : "done"} />
-                      </span>
-                      <span
-                        className={cn(
-                          "ml-[7.5px] min-w-0 truncate text-caption",
-                          isCurrent
-                            ? "text-foreground-text"
-                            : "text-foreground-quiet",
-                        )}
-                      >
-                        {line.text}
-                      </span>
-                    </li>
-                  );
-                })}
+                {shown.map((line, index) => (
+                  <TrailSubLine
+                    key={line.id}
+                    line={line}
+                    isCurrent={
+                      step.state === "running" && index === shown.length - 1
+                    }
+                    isOpen={isOpen}
+                  />
+                ))}
               </ul>
             </div>
           </div>

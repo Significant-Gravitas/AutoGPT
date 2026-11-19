@@ -6,6 +6,7 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import type { CSSProperties } from "react";
+import type { HandoffSnapshot } from "../../helpers/backgroundSubtasks";
 import { HandoffDocument } from "./HandoffDocument";
 import { useTaskHandoff } from "./useTaskHandoff";
 
@@ -19,6 +20,8 @@ const DOTS = [
 
 interface Props {
   taskID: string;
+  /** This run's own result, saved when it was handed over. */
+  snapshot?: HandoffSnapshot | null;
 }
 
 /** A finished task, handed over in the chat by whoever did it: their
@@ -26,8 +29,8 @@ interface Props {
  *  grows out of it with the result in their words and the document that
  *  holds the rest. Otto's own line follows it as plain text. A result met
  *  on reopening the chat is drawn still. */
-export function TaskHandoff({ taskID }: Props) {
-  const { isLoading, handoff } = useTaskHandoff(taskID);
+export function TaskHandoff({ taskID, snapshot = null }: Props) {
+  const { isLoading, handoff } = useTaskHandoff(taskID, snapshot);
   const prefersReducedMotion = useReducedMotion();
 
   if (isLoading) {

@@ -216,6 +216,11 @@ class ChatSessionMetadata(BaseModel):
     # session, latest wins.
     pending_question: PendingQuestion | None = None
 
+    # The task this chat was opened to run from the task's own page (``POST
+    # /tasks/{id}/run``). Nothing waits on such a chat, so the end of each of
+    # its turns settles the task (``copilot/task_run_settle.py``).
+    work_task_id: str | None = None
+
 
 def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
     """Origin for a fresh session a tool opens on *parent*'s behalf.
@@ -716,6 +721,7 @@ class ChatSession(ChatSessionInfo):
         handed_off_from_expert_id: str | None = None,
         autopilot_mode: AutopilotMode | None = None,
         text_only_result: bool = False,
+        work_task_id: str | None = None,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -739,6 +745,7 @@ class ChatSession(ChatSessionInfo):
                 handed_off_from_expert_id=handed_off_from_expert_id,
                 autopilot_mode=autopilot_mode,
                 text_only_result=text_only_result,
+                work_task_id=work_task_id,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1582,6 +1589,7 @@ async def create_chat_session(
     autopilot_mode: AutopilotMode | None = None,
     inherited_autopilot_mode: AutopilotMode | None = None,
     text_only_result: bool = False,
+    work_task_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1649,6 +1657,7 @@ async def create_chat_session(
         handed_off_from_expert_id=handed_off_from_expert_id,
         autopilot_mode=autopilot_mode,
         text_only_result=text_only_result,
+        work_task_id=work_task_id,
     )
 
     # Create in database first - fail fast if this fails

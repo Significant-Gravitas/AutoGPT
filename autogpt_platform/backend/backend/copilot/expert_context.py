@@ -262,7 +262,7 @@ def render_account_standing_work_block() -> str:
     It is right for a deferral and wrong for everything that repeats, and the
     difference is invisible at the moment of choosing.
     """
-    return "<standing_work>\nWork that repeats, or that the user will want to find and change later, belongs in a routine: `tool:schedule_routine` creates a named record they can switch off, with its own thread so each run remembers the last. `tool:list_routines` shows what you hold. Offer one when you notice work repeating. Never say a routine is running before the call that schedules it has returned.\n</standing_work>\n\n"
+    return "<standing_work>\nWork that repeats is a repeating task: `start_task` with `repeat_crons` makes one task the user can find, pause and stop, with each run's result coming back to this chat. Offer one when you notice work repeating. `tool:list_routines` shows routines set up before; `tool:schedule_routine` switches one of those on or off. Never say work is repeating before the call that sets it up has returned.\n</standing_work>\n\n"
 
 
 async def _routines_block(user_id: str, expert_id: str | None) -> str:

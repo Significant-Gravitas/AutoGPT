@@ -7,14 +7,10 @@ import { useFirstRunTourAutoStart } from "@/app/(platform)/components/FirstRunTo
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import {
-  useEffect,
-  useState,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
+import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useCopilotUIStore } from "../../store";
+import { useWorkAreaStore } from "../../workArea";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
@@ -27,11 +23,12 @@ import { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 import { ComposerTray } from "./components/ComposerTray/ComposerTray";
 import { DitherTrail } from "./components/DitherTrail/DitherTrail";
 import { EmptyHero } from "./components/EmptyHero";
-import { ExpertInfoPanel } from "./components/ExpertInfoPanel/ExpertInfoPanel";
 import { ExecutionTargetPicker } from "./components/ExecutionTargetPicker/ExecutionTargetPicker";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
 import { GreetingLoader } from "./components/GreetingLoader";
 import { HomeBoard } from "./components/HomeBoard/HomeBoard";
+import { DraftedTasksLine } from "./components/HomeToday/DraftedTasksLine";
+import { useBriefAutoOpen } from "./components/HomeToday/useBriefAutoOpen";
 import { HomeRecentRow } from "./components/HomeRecentChats/HomeRecentRow";
 import { HomeScroller } from "./components/HomeScroller";
 import { HomeViewTabs } from "./components/HomeViewTabs/HomeViewTabs";
@@ -153,12 +150,31 @@ export function EmptySession({
     greetingPath: intro.isVisible ? intro.path : null,
   });
 
-  const [isInfoOpen, setIsInfoOpen] = useState(false);
+  // Home has one right sidebar: the work area. Its button brings back what
+  // was open there, or opens on the profile of who the composer talks to.
+  const isSideOpen = useWorkAreaStore((s) => s.tabCount > 0 && !s.isFolded);
+  const hasSideTabs = useWorkAreaStore((s) => s.tabCount > 0);
+  const unfoldSide = useWorkAreaStore((s) => s.unfold);
+  const openProfile = useWorkAreaStore((s) => s.openProfile);
+  const setProfileRecipient = useWorkAreaStore((s) => s.setProfileRecipient);
+  const offerProfile = useWorkAreaStore((s) => s.offerProfile);
+  const sideTabCount = useWorkAreaStore((s) => s.tabs.length);
   // The regular hero: its composer sits in the tray, which names the
   // recipient and the connection, and the expert's profile opens beside it.
   const isRegularHero = !intro.isVisible && !intro.isAwaitingGreeting;
   // Home's two tabs, held back with the hero so a load shows one loader.
   const [homeView, setHomeView] = useHomeView();
+  // The day's brief opens itself on the first visit to Home each day.
+  useBriefAutoOpen(isRegularHero);
+
+  useEffect(() => {
+    setProfileRecipient(recipient);
+  }, [recipient, setProfileRecipient]);
+
+  // Whatever else is open beside Home, the profile is one tab away.
+  useEffect(() => {
+    if (isRegularHero && sideTabCount > 0) offerProfile();
+  }, [isRegularHero, sideTabCount, offerProfile]);
 
   useEffect(() => {
     resetNewChatExecutionTarget();
@@ -176,6 +192,9 @@ export function EmptySession({
       </div>
     );
   }
+
+  const showExecutionTarget =
+    isLocalPCEnabled || newChatExecutionTarget.kind === "local";
 
   const composer = (
     <ChatInput
@@ -215,8 +234,8 @@ export function EmptySession({
         {isRegularHero && <DitherTrail />}
         {isRegularHero ? (
           <InfoToggle
-            isPanelOpen={isInfoOpen}
-            onOpen={() => setIsInfoOpen(true)}
+            isPanelOpen={isSideOpen}
+            onOpen={hasSideTabs ? unfoldSide : openProfile}
           />
         ) : (
           // Which connection the new chat runs on, in the page corner while
@@ -288,8 +307,7 @@ export function EmptySession({
                   the greeting page instead of sitting under a bare hero. */}
               {!intro.isAwaitingGreeting && (
                 <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
-                  {isLocalPCEnabled ||
-                  newChatExecutionTarget.kind === "local" ? (
+                  {showExecutionTarget && intro.isVisible ? (
                     <ExecutionTargetPicker />
                   ) : null}
                   <div
@@ -312,6 +330,11 @@ export function EmptySession({
                       composer
                     ) : (
                       <ComposerTray
+                        top={
+                          showExecutionTarget ? (
+                            <ExecutionTargetPicker inTray />
+                          ) : null
+                        }
                         recipientPicker={recipientPicker}
                         connection={
                           <ConnectionPicker withLabel className="ml-0" />
@@ -321,6 +344,7 @@ export function EmptySession({
                       </ComposerTray>
                     )}
                     {lowHint}
+                    {isRegularHero && <DraftedTasksLine />}
                   </div>
                 </div>
               )}
@@ -329,13 +353,6 @@ export function EmptySession({
           </motion.div>
         </HomeScroller>
       </div>
-      {isRegularHero && (
-        <ExpertInfoPanel
-          recipient={recipient}
-          isOpen={isInfoOpen}
-          onClose={() => setIsInfoOpen(false)}
-        />
-      )}
     </div>
   );
 }

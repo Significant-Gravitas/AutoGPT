@@ -1,14 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetV2GetSessionQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useWorkAreaStore } from "../../workArea";
 import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useGetTask } from "@/app/api/__generated__/endpoints/tasks/tasks";
 import {
   AUTOPILOT_AVATAR_URL,
   AUTOPILOT_NAME,
 } from "@/components/molecules/AutopilotAvatar/helpers";
+import { scheduleStateOf } from "@/app/(platform)/tasks/schedule";
 import {
   isSettled,
   secondsBetween,
   taskLineStateOf,
+  watchOf,
+  type StartedRepeat,
   type StartedTask,
 } from "./helpers";
 
@@ -30,6 +36,39 @@ export function useTaskStatusLine(started: StartedTask) {
   const task = taskQuery.data?.status === 200 ? taskQuery.data.data : null;
   const status = task?.status ?? started.status;
   const state = taskLineStateOf(status);
+  // Waiting for its start time, or missed it: the card offers Start now.
+  const repeat: StartedRepeat | null = task
+    ? task.repeat
+      ? {
+          label: task.repeat.label,
+          paused: !!task.repeat.paused,
+          watch: watchOf(task.repeat.watch),
+        }
+      : null
+    : (started.repeat ?? null);
+  const schedule = scheduleStateOf(
+    task ?? {
+      status,
+      start_at: started.startAt ? new Date(started.startAt) : null,
+      missed_start: started.missedStart,
+      repeat,
+    },
+  );
+
+  // A task that starts or settles on its own (at its start time, in the
+  // background) brings an answer into this chat; re-read the chat so it
+  // shows without a reload.
+  const queryClient = useQueryClient();
+  const chatSessionID = useWorkAreaStore((s) => s.chatSessionID);
+  const lastStatus = useRef(status);
+  useEffect(() => {
+    if (lastStatus.current === status) return;
+    lastStatus.current = status;
+    if (!chatSessionID) return;
+    void queryClient.invalidateQueries({
+      queryKey: getGetV2GetSessionQueryKey(chatSessionID),
+    });
+  }, [status, chatSessionID, queryClient]);
 
   const ownerExpertID = task ? task.owner_expert_id : started.ownerExpertID;
   const expertsQuery = useListExperts({ query: { enabled: !!ownerExpertID } });
@@ -37,7 +76,7 @@ export function useTaskStatusLine(started: StartedTask) {
     expertsQuery.data?.status === 200 ? expertsQuery.data.data : [];
   const expert = experts.find((e) => e.id === ownerExpertID) ?? null;
 
-  const now = useNow(state === "working");
+  const now = useNow(state === "working" && !schedule);
   const startedAt = task?.started_at ?? started.startedAt;
   const seconds =
     state === "working"
@@ -48,6 +87,11 @@ export function useTaskStatusLine(started: StartedTask) {
 
   return {
     state,
+    schedule,
+    repeat,
+    startAt: task ? (task.start_at ?? null) : (started.startAt ?? null),
+    // A task cancelled before it ever started says Cancelled, not Stopped.
+    neverStarted: !startedAt,
     seconds,
     title: task?.title ?? started.title,
     // Where it is in the worker's own words, once it has said so.
@@ -57,6 +101,8 @@ export function useTaskStatusLine(started: StartedTask) {
         ? { done: task.subtasks_done ?? 0, total: task.subtask_count ?? 0 }
         : null,
     openAsks: task?.open_ask_count ?? 0,
+    /** Events a watching task still has to run after this one. */
+    eventsWaiting: task?.events_waiting ?? 0,
     owner: {
       name: expert?.name ?? (ownerExpertID ? "An expert" : AUTOPILOT_NAME),
       avatarUrl: ownerExpertID

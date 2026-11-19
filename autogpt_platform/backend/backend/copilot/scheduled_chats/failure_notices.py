@@ -18,24 +18,15 @@ from backend.copilot.scheduled_chats.notices import (
     ScheduledChatNotice,
 )
 from backend.copilot.scheduled_chats.outcomes import RunFailure
+from backend.integrations.provider_titles import provider_title
 
 BOTS_PATH = "/settings/bots"
-
-# Where ``str.title()`` gets a provider's name wrong.
-_PROVIDER_NAMES = {
-    "github": "GitHub",
-    "gitlab": "GitLab",
-    "hubspot": "HubSpot",
-    "linkedin": "LinkedIn",
-    "openai": "OpenAI",
-    "youtube": "YouTube",
-}
 
 
 def provider_name(provider: str | None) -> str:
     if not provider:
         return "a connected service"
-    return _PROVIDER_NAMES.get(provider, provider.replace("_", " ").title())
+    return provider_title(provider)
 
 
 def paused_notice(

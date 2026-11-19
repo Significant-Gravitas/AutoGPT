@@ -175,17 +175,30 @@ describe("rendering a turn log", () => {
     ]);
   });
 
-  it("ends a call whose input is still streaming as interrupted once the turn is over", () => {
+  it("ends a call whose input is still streaming as interrupted once the turn fails", () => {
     const cut = fold([
       { type: "tool-input-start", toolCallId: "c1", toolName: "bash_exec" },
-      { type: "finish" },
+      { type: "error", errorText: "boom" },
     ]);
-    expect(render(cut)[0].parts).toEqual([
+    expect(cut.status).toBe("failed");
+    expect(render(cut)[0].parts).toContainEqual(
       expect.objectContaining({
         state: "output-error",
         errorText: "Interrupted",
       }),
+    );
+  });
+
+  it("leaves out a call that never got its input when the turn ends well", () => {
+    const done = fold([
+      { type: "text-start", id: "a" },
+      { type: "text-delta", id: "a", delta: "Hi" },
+      { type: "text-end", id: "a" },
+      { type: "tool-input-start", toolCallId: "c1", toolName: "bash_exec" },
+      { type: "finish" },
     ]);
+    const parts = render(done).flatMap((message) => message.parts);
+    expect(parts.some((part) => part.type.startsWith("tool-"))).toBe(false);
   });
 
   it("puts a status that arrives before any content in the turn's own bubble, under one key throughout", () => {

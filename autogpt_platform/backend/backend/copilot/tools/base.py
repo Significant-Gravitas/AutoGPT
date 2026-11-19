@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal, Sequence
 from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
 
-from backend.copilot import task_recorder, tool_timing, turn_end
+from backend.copilot import call_account, task_recorder, tool_timing, turn_end
 from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
 from backend.copilot.context import args_already_bound, get_current_envelope
 from backend.copilot.google_data_redaction import (
@@ -567,6 +567,7 @@ class BaseTool:
         with (
             tool_transaction(self.name, tool_call_id, session.session_id) as span,
             tool_call_context(tool_call_id),
+            call_account.collect() as accounts,
             trial_reads_fresh(),
             tool_span(
                 self.name,
@@ -581,7 +582,9 @@ class BaseTool:
                 user_id, session, tool_call_id, **kwargs
             )
             tool_timing.note(tool_call_id, (time.monotonic() - started) * 1000)
-            await task_recorder.record(session, self.name, tool_call_id, kwargs, output)
+            await task_recorder.record(
+                session, self.name, tool_call_id, kwargs, output, accounts
+            )
             span.set_tag("copilot.tool.success", "true" if output.success else "false")
             if not output.success and not _awaits_the_user(output):
                 outcome.is_error = True

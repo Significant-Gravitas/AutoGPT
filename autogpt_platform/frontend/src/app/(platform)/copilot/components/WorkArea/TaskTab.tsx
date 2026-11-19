@@ -6,20 +6,14 @@ import {
   openAsks,
 } from "@/app/(platform)/tasks/components/TaskPanel/components/TaskRecordView/helpers";
 import { useTaskRecord } from "@/app/(platform)/tasks/components/TaskPanel/components/TaskRecordView/useTaskRecord";
-import { chatHref, ownerOf, statusOf } from "@/app/(platform)/tasks/helpers";
+import { chatHref, ownerOf } from "@/app/(platform)/tasks/helpers";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import type { TaskArtifact } from "@/app/api/__generated__/models/taskArtifact";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { formatTimeAgo } from "@/lib/utils/time";
 import {
   ArrowRight01Icon,
-  Calendar03Icon,
-  Flag02Icon,
   MessageQuestionIcon,
-  Message01Icon,
-  Target02Icon,
 } from "@hugeicons/core-free-icons";
 import NextLink from "next/link";
 import { useEffect } from "react";
@@ -31,9 +25,10 @@ import {
 } from "../EmptySession/components/ExpertInfoPanel/components/InfoParts";
 import { ActivityTrail } from "./ActivityTrail";
 import { BlockNote, BlockRow, NeedsYouTag } from "./blocks";
-import { possessive } from "../ToolChain/expertHandoff";
-import { isSettled, workChatOf } from "./taskBlocks";
+import { RunsBlock } from "./RunsBlock";
 import { ArtifactsBlock, EvidenceBlock, ResultBlock } from "./TaskTabBlocks";
+import { TaskControls } from "./TaskControls/TaskControls";
+import { TaskDetails } from "./TaskDetails";
 
 interface Props {
   taskID: string;
@@ -71,12 +66,10 @@ export function TaskTab({ taskID, sessionID, experts, onOpenArtifact }: Props) {
   const waiting = openAsks(asks);
   const decided = answeredAsks(asks);
   const artifacts = record.artifacts ?? [];
-  const status = statusOf(task.status);
-  const owner = ownerOf(task, experts);
-  const workChat = workChatOf(task, sessionID);
 
   return (
     <div aria-label={`Task: ${task.title}`} className="flex flex-col gap-5">
+      <TaskControls task={task} />
       {waiting.length > 0 ? (
         <InfoGroup label="Needs you" count={waiting.length}>
           {waiting.map((ask) => (
@@ -99,72 +92,7 @@ export function TaskTab({ taskID, sessionID, experts, onOpenArtifact }: Props) {
         </InfoGroup>
       ) : null}
 
-      <InfoGroup label="Details">
-        <InfoList>
-          <BlockRow
-            tile={<StateIcon status={task.status} />}
-            title="Status"
-            subtitle={isSettled(task.status) ? null : task.status_text}
-            trailing={
-              <InfoMeta>
-                {status.word}
-                {(task.attempt ?? 1) > 1 ? ` · attempt ${task.attempt}` : ""}
-              </InfoMeta>
-            }
-          />
-          <BlockRow
-            tile={
-              <ExpertAvatar
-                name={owner.name}
-                avatarUrl={owner.avatarUrl}
-                size={26}
-              />
-            }
-            title="Owner"
-            trailing={<InfoMeta>{owner.name}</InfoMeta>}
-          />
-          {workChat ? (
-            <BlockRow
-              tile={<Icon icon={Message01Icon} size={14} tone="inherit" />}
-              title={`${possessive(owner.name)} chat`}
-              subtitle={
-                isSettled(task.status)
-                  ? "Where the work was done"
-                  : "Where the work is being done"
-              }
-              trailing={<InfoMeta>Open</InfoMeta>}
-              href={chatHref(workChat)}
-            />
-          ) : null}
-          {task.started_at ? (
-            <BlockRow
-              tile={<Icon icon={Calendar03Icon} size={14} tone="inherit" />}
-              title="Started"
-              trailing={
-                <InfoMeta>
-                  {formatTimeAgo(new Date(task.started_at).toISOString())}
-                </InfoMeta>
-              }
-            />
-          ) : null}
-          {task.goal ? (
-            <BlockRow
-              tile={<Icon icon={Target02Icon} size={14} tone="inherit" />}
-              title="Goal"
-              subtitle={task.goal}
-              wrap
-            />
-          ) : null}
-          {task.done_when ? (
-            <BlockRow
-              tile={<Icon icon={Flag02Icon} size={14} tone="inherit" />}
-              title="Done when"
-              subtitle={task.done_when}
-              wrap
-            />
-          ) : null}
-        </InfoList>
-      </InfoGroup>
+      <TaskDetails task={task} sessionID={sessionID} experts={experts} />
 
       {subtasks.length > 0 ? (
         <InfoGroup
@@ -193,6 +121,13 @@ export function TaskTab({ taskID, sessionID, experts, onOpenArtifact }: Props) {
         task={task}
         artifacts={artifacts}
         isUnverified={!!record.is_unverified}
+        onOpenArtifact={onOpenArtifact}
+      />
+
+      <RunsBlock
+        task={task}
+        runs={record.runs ?? []}
+        artifacts={artifacts}
         onOpenArtifact={onOpenArtifact}
       />
 

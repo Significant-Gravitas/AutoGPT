@@ -278,6 +278,10 @@ def reconcile_schedule_index():
     _scheduler_instance._reconcile_schedule_index()
 
 
+# ``backend/executor/scheduled_tasks_job.py``.
+START_SCHEDULED_TASKS_JOB = "backend.executor.scheduled_tasks_job:start_scheduled_tasks"
+
+
 def deliver_background_subtasks() -> None:
     """Keep max_instances guarding the sweep until reconciliation finishes."""
     run_async(reconcile_background_subtasks(), timeout=None)
@@ -2510,8 +2514,9 @@ class _KeptScheduleJobs:
         self._stores = stores
 
     def add_job(
-        self, func: Callable[..., object], *args: Any, **options: Any
+        self, func: Callable[..., object] | str, *args: Any, **options: Any
     ) -> JobObj:
+        """``func`` is the job's function or a ``module:function`` reference."""
         trigger = args[0] if args else options.get("trigger")
         if trigger == "interval" and "next_run_time" not in options:
             stored = self._stored_job(options["id"], options["jobstore"])
@@ -3394,6 +3399,20 @@ class Scheduler(AppService):
                 id="deliver_background_subtasks",
                 trigger="interval",
                 seconds=5,
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Tasks with a start time: the task row holds the time, and this
+            # pass starts the ones that are due. By reference, because the
+            # job's module imports copilot code that imports this one.
+            system_jobs.add_job(
+                START_SCHEDULED_TASKS_JOB,
+                id="start_scheduled_tasks",
+                trigger="interval",
+                seconds=15,
                 replace_existing=True,
                 max_instances=1,
                 coalesce=True,

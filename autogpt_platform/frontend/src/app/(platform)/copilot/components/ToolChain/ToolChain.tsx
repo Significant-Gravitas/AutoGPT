@@ -54,7 +54,7 @@ import {
 } from "./helpers";
 import { SwapText } from "./SwapText";
 import { ToolResult } from "./ToolResult";
-import { startedTaskOf } from "../TaskStatusLine/helpers";
+import { startedTaskOf, uniqueTasks } from "../TaskStatusLine/helpers";
 import { TaskStatusLine } from "../TaskStatusLine/TaskStatusLine";
 
 const COLLAPSED_WINDOW = 2;
@@ -272,10 +272,12 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // A public transcript can't read the owner's tasks, so it shows none.
   const startedTasks = readOnly
     ? []
-    : rows.flatMap((row) => {
-        const task = row.state === "done" ? startedTaskOf(row.output) : null;
-        return task ? [task] : [];
-      });
+    : uniqueTasks(
+        rows.flatMap((row) => {
+          const task = row.state === "done" ? startedTaskOf(row.output) : null;
+          return task ? [task] : [];
+        }),
+      );
 
   const expanded = manualExpanded === true;
   const heading = getChainHeading(rows, isStreaming && !expanded);

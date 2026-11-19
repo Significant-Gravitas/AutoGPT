@@ -42,6 +42,8 @@ export function useWorkArea(sessionID: string | null) {
   const reset = useWorkAreaStore((s) => s.reset);
   const isFolded = useWorkAreaStore((s) => s.isFolded);
   const unfold = useWorkAreaStore((s) => s.unfold);
+  const fold = useWorkAreaStore((s) => s.fold);
+  const profileRecipient = useWorkAreaStore((s) => s.profileRecipient);
   const openStart = useWorkAreaStore((s) => s.openStart);
   const openTask = useWorkAreaStore((s) => s.openTask);
   const reportTabCount = useWorkAreaStore((s) => s.reportTabCount);
@@ -202,5 +204,7 @@ export function useWorkArea(sessionID: string | null) {
     toggleWidth,
     select,
     close,
+    fold,
+    profileRecipient,
   };
 }

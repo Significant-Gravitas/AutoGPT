@@ -1,6 +1,7 @@
 "use client";
 
 import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
+import { matchesRoute } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import { ReactNode } from "react";
@@ -13,6 +14,8 @@ import { AdminSidebar } from "./AdminSidebar/AdminSidebar";
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
+  // The Evals page (the Affect UI block) fills the area and scrolls itself.
+  const fullBleed = matchesRoute(pathname, "/admin/evals");
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-page">
@@ -20,17 +23,21 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <AdminMobileNav />
         <main className="flex-1 overflow-hidden bg-page">
-          <ScrollArea className="h-full">
-            <motion.div
-              key={pathname}
-              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.28, ease: [0, 0, 0.2, 1] as const }}
-              className="mx-auto w-full max-w-[1360px] px-4 pt-2 pb-8 md:px-6 md:pt-6"
-            >
-              {children}
-            </motion.div>
-          </ScrollArea>
+          {fullBleed ? (
+            children
+          ) : (
+            <ScrollArea className="h-full">
+              <motion.div
+                key={pathname}
+                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.28, ease: [0, 0, 0.2, 1] as const }}
+                className="mx-auto w-full max-w-[1360px] px-4 pt-2 pb-8 md:px-6 md:pt-6"
+              >
+                {children}
+              </motion.div>
+            </ScrollArea>
+          )}
         </main>
       </div>
     </div>

@@ -87,6 +87,16 @@ def _make_webhook(
     )
 
 
+@pytest.fixture(autouse=True)
+def watching_tasks():
+    """The tasks a delivery is handed to: stubbed, as it reads the database."""
+    with patch(
+        "backend.api.features.integrations.router.deliver_webhook_event",
+        AsyncMock(return_value=0),
+    ) as deliver:
+        yield deliver
+
+
 def _patch_ingress(webhook):
     # Important: every downstream DB-touching call on the success path must be
     # mocked. Real Prisma calls inside FastAPI TestClient's blocking portal
@@ -1167,3 +1177,49 @@ def test_a_provider_without_webhooks_is_answered_like_an_unknown_webhook(provide
 
     assert unknown_webhook.status_code == no_webhooks.status_code == 404
     assert no_webhooks.json() == unknown_webhook.json()
+
+
+@pytest.mark.parametrize("has_trigger", [True, False])
+def test_a_delivery_runs_its_workflows_and_reaches_watching_tasks(
+    has_trigger: bool, watching_tasks: AsyncMock
+):
+    """The workflow triggers run as before, and the validated event then goes
+    to the owner's tasks that watch the webhook, with or without workflows."""
+    node = MagicMock()
+    node.input_default = {}
+    webhook = _make_webhook(
+        ProviderName("generic_webhook"), triggered_nodes=[node] if has_trigger else []
+    )
+    patches = _patch_ingress(webhook) + [
+        patch(
+            "backend.api.features.integrations.router.get_webhook_manager",
+            return_value=_manager(webhook.provider),
+        )
+    ]
+    with ExitStack() as stack:
+        _, _, publish, _, run_node, _, _ = [stack.enter_context(p) for p in patches]
+        resp = _post("generic_webhook", body=b'{"order": 42}')
+
+    assert resp.status_code == 200, resp.text
+    publish.assert_awaited_once()
+    assert run_node.await_count == (1 if has_trigger else 0)
+    watching_tasks.assert_awaited_once_with(USER_ID, WEBHOOK_ID, "plain", {"order": 42})
+
+
+def test_a_failure_handing_the_event_to_tasks_still_acknowledges_it(
+    watching_tasks: AsyncMock,
+):
+    watching_tasks.side_effect = RuntimeError("database down")
+    webhook = _make_webhook(ProviderName("generic_webhook"))
+    patches = _patch_ingress(webhook) + [
+        patch(
+            "backend.api.features.integrations.router.get_webhook_manager",
+            return_value=_manager(webhook.provider),
+        )
+    ]
+    with ExitStack() as stack:
+        for p in patches:
+            stack.enter_context(p)
+        resp = _post("generic_webhook")
+
+    assert resp.status_code == 200, resp.text

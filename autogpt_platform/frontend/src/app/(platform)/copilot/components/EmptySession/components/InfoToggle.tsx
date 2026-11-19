@@ -25,7 +25,7 @@ export function InfoToggle({ isPanelOpen, onOpen }: Props) {
         variant="ghost-muted"
         size="icon-sm"
         leadingIcon={SidebarRightIcon}
-        aria-label="Show expert info"
+        aria-label="Open the side panel"
         className="size-7"
         onClick={onOpen}
       />

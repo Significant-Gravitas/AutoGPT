@@ -18,6 +18,7 @@ from backend.data.db_accessors import (
     experts_db,
     library_db,
     review_db,
+    task_db,
     user_db,
 )
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
@@ -27,10 +28,17 @@ from backend.util.funnel_analytics import emit_funnel_event
 from backend.util.posthog_events import PostHogEvent
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
-from .models import BriefingContent, BriefingDecisionItem, BriefingRunItem
+from .models import (
+    BriefingContent,
+    BriefingDecisionItem,
+    BriefingRunItem,
+    BriefingTasks,
+)
 from .narrative import compose_narrative
 from .outcome import DEFAULT_AGENT_NAME, compose_run_outcome, run_link
 from .render import render_briefing_markdown
+from .suggestions import draft_task_suggestions
+from .tasks import compose_task_summary
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +54,8 @@ _EXECUTION_FETCH_LIMIT = 50
 # Ceiling on both the decisions considered and the reported decision_total.
 _PENDING_REVIEW_PAGE_SIZE = 100
 _LIBRARY_LINK = "/library"
+# The newest tasks the brief reads; older ones are not news.
+_TASK_FETCH_LIMIT = 100
 
 
 class BriefingResult(TypedDict, total=False):
@@ -74,6 +84,7 @@ def compose_briefing(
     agent_info_by_graph_id: dict[str, AgentInfo],
     generated_at: datetime,
     tz_name: str,
+    task_summary: BriefingTasks | None = None,
 ) -> BriefingContent | None:
     experts_by_id = {e.id: e for e in experts}
     zero_expert_fallback = not experts
@@ -132,7 +143,8 @@ def compose_briefing(
             )
         )
 
-    if not run_items and not decision_items:
+    has_tasks = task_summary is not None and not task_summary.is_empty
+    if not run_items and not decision_items and not has_tasks:
         return None
     return BriefingContent(
         generated_at=generated_at,
@@ -143,6 +155,7 @@ def compose_briefing(
         decision_total=len(reviews),
         completed_total=len(terminal) - failed_total,
         failed_total=failed_total,
+        tasks=task_summary,
     )
 
 
@@ -202,7 +215,7 @@ async def _compose_fresh_briefing(
     # The three reads are independent; run them concurrently so the briefing
     # costs one round-trip's latency rather than three. The library lookup
     # can't join them — it needs the graph ids the executions resolve to.
-    experts, executions, reviews = await asyncio.gather(
+    experts, executions, reviews, tasks = await asyncio.gather(
         experts_db().list_experts(user_id),
         # Filter and bound in the query: a user running minute-crons can
         # accumulate thousands of executions a day, and every one of them
@@ -220,6 +233,9 @@ async def _compose_fresh_briefing(
         # A user past _PENDING_REVIEW_PAGE_SIZE waiting decisions therefore
         # sees the total reported at that ceiling.
         review_db().get_pending_reviews_for_user(user_id, 1, _PENDING_REVIEW_PAGE_SIZE),
+        task_db().list_tasks(
+            user_id=user_id, limit=_TASK_FETCH_LIMIT, include_subtasks=False
+        ),
     )
     # Resolve only the graphs actually referenced, rather than paging the
     # library: paging it would drop the very agent being briefed for a user
@@ -240,6 +256,9 @@ async def _compose_fresh_briefing(
         agent_info_by_graph_id=agent_info,
         generated_at=now_local,
         tz_name=tz_name,
+        task_summary=compose_task_summary(
+            tasks=tasks, experts=experts, since=window_start
+        ),
     )
     if content is None:
         return None
@@ -271,6 +290,13 @@ async def generate_and_deliver_briefing(user_id: str) -> BriefingResult:
     record = await client.get_briefing_for_date(user_id, briefing_date)
     if record and record.delivered_at:
         return {"status": "skipped", "reason": "already_delivered"}
+
+    # Drafted before the brief so the next tasks are ready when it is read.
+    # Best effort: a failure here never holds the brief back.
+    try:
+        await draft_task_suggestions(user_id)
+    except Exception:
+        logger.warning("Task suggestions failed for %s", user_id[:8], exc_info=True)
 
     # An undelivered record means a prior run stored the briefing but the
     # session post failed — redeliver the stored content so the record and

@@ -20,6 +20,10 @@ import { BlockNote, BlockRow } from "./blocks";
 import { fileTypeLabel } from "./OverviewTab/helpers";
 import { documentOf, hostOf, sourceOf } from "./taskBlocks";
 
+function resultLabel(task: Task) {
+  return task.failure_reason ? "What went wrong" : "Result";
+}
+
 interface ResultProps {
   task: Task;
   artifacts: TaskArtifact[];
@@ -28,7 +32,8 @@ interface ResultProps {
 }
 
 /** How the task ended: a short summary to read at a glance, and under it
- *  the document that holds the full result. */
+ *  the document that holds the full result. A repeating or watching task
+ *  has none: each of its runs holds its own result in the Runs list. */
 export function ResultBlock({
   task,
   artifacts,
@@ -37,10 +42,10 @@ export function ResultBlock({
 }: ResultProps) {
   const outcome = task.failure_reason || task.result;
   const document = task.failure_reason ? null : documentOf(artifacts);
-  if (!outcome && !document) return null;
+  if (task.repeat || (!outcome && !document)) return null;
 
   return (
-    <InfoGroup label={task.failure_reason ? "What went wrong" : "Result"}>
+    <InfoGroup label={resultLabel(task)}>
       {outcome ? (
         <BlockNote>
           <Text variant="inbox" tone="text" className="text-pretty">

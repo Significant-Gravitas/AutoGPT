@@ -30,6 +30,7 @@ export function BoardCard({ task, owner, selected, onOpen }: Props) {
       {...motionProps}
       data-testid="board-card"
       data-status={task.status}
+      data-schedule={card.schedule ?? undefined}
       data-selected={selected || undefined}
       className={cn(
         "relative rounded-card bg-surface shadow-(--inbox-shadow-card) transition-shadow duration-200 hover:shadow-(--inbox-shadow-card-hover) motion-reduce:transition-none",
@@ -53,7 +54,11 @@ export function BoardCard({ task, owner, selected, onOpen }: Props) {
           className="grid w-full gap-1.5 rounded-card py-3 pr-3 pl-3 text-left focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none"
         >
           <span className="flex min-w-0 items-start gap-2 pr-7">
-            <StateIcon status={task.status} className="mt-0.5" />
+            <StateIcon
+              status={task.status}
+              schedule={card.schedule}
+              className="mt-0.5"
+            />
             <Text
               as="span"
               variant="inbox-medium"
@@ -67,14 +72,15 @@ export function BoardCard({ task, owner, selected, onOpen }: Props) {
             <OwnerChip owner={owner} />
           </span>
           <span className="flex min-w-0 items-center justify-between gap-2 pl-6">
-            <StatusPill status={task.status} />
+            <StatusPill status={task.status} schedule={card.schedule} />
             {card.age ? (
               <Text
                 as="span"
                 variant="inbox"
                 tone="faint"
                 tabular
-                className="whitespace-nowrap"
+                className="min-w-0 truncate"
+                title={card.age}
               >
                 {card.age}
               </Text>

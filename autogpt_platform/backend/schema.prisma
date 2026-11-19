@@ -1143,6 +1143,16 @@ model Task {
   // 1, then one more on each retry after a failure.
   attempt       Int     @default(1)
 
+  // A task Otto drafted for the user to start or dismiss; it stays off the
+  // board until started.
+  isSuggested     Boolean   @default(false)
+  suggestedReason String?
+  dismissedAt     DateTime?
+
+  // When a TODO task starts by itself (the due-task sweep); cleared once it
+  // starts, is cancelled or misses its start. Set only while TODO.
+  startAt DateTime?
+
   Sessions   TaskSession[]
   Activities TaskActivity[]
   Asks       TaskAsk[]
@@ -1156,6 +1166,8 @@ model Task {
   @@index([workSessionId])
   @@index([teamId, updatedAt])
   @@index([organizationId])
+  // The sweep's query: status = TODO and startAt <= now, oldest first.
+  @@index([status, startAt])
 }
 
 enum TaskActor {
@@ -3026,7 +3038,7 @@ model Profile {
 }
 
 view Creator {
-  username    String @unique
+  username    String  @unique
   name        String
   avatar_url  String?
   description String
@@ -3131,7 +3143,7 @@ view StoreSubmission {
 
 // StoreCreator view — like Creator but with org_name for org-owned listings
 view StoreCreator {
-  username    String @unique
+  username    String  @unique
   name        String
   avatar_url  String?
   description String

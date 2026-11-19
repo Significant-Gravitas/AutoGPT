@@ -390,18 +390,31 @@ class TestSchedulingGuidance:
         assert "call `enter_agent_building_mode` first" in result
         assert "tool:enter_agent_building_mode" not in result
 
-    def test_supplement_names_schedule_followup_by_capability_id(self):
+    def test_supplement_names_schedule_followup_by_its_eager_name(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
-        assert "### Scheduling future work — use `tool:schedule_followup`" in result
-        assert "`tool:schedule_followup` schedules a future Otto turn" in result
+        assert "### Scheduling future work — use `schedule_followup`" in result
+        assert "tool:schedule_followup" not in result
+        # Timed work is a task with a start time, not a follow-up.
+        assert "`start_task` with `start_in_seconds` or `start_at`" in result
+        assert "`schedule_followup` schedules a future Otto turn" in result
 
-    def test_supplement_sends_standing_work_to_a_routine_without_naming_it(self):
+    def test_supplement_sends_repeating_work_to_a_repeating_task(self):
+        # "Every morning, brief me" is one task with a rhythm, not a routine.
         # Routines ride the flag-gated ``expert_resources`` group, so this
-        # ungated supplement points at the block that appears alongside them
-        # rather than at a tool the session may not be able to call.
+        # ungated supplement never names a tool the session may not call.
         result = prompting.get_sdk_supplement(use_e2b=False)
-        assert "set up a routine for it rather than a" in result
+        assert "one `start_task` with `repeat_crons`" in result
+        assert "rather than a routine or a repeating `schedule_followup`" in result
+        assert "more often than every 15 minutes" in result
         assert "schedule_routine" not in result
+
+    def test_supplement_sends_event_work_to_a_watching_task(self):
+        # "When a PR is opened, review it" is one task that watches, not a
+        # workflow Otto builds; a service with no trigger gets a repeating check.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "one `start_task` with `on_event`" in result
+        assert "not a workflow you build" in result
+        assert "offer a repeating check instead" in result
 
     def test_supplement_keeps_agent_schedules_on_run_agent(self):
         # "Run my report agent every morning" must stay a graph schedule, not

@@ -33,6 +33,7 @@ import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardin
 import { TaskHandoff } from "../../TaskHandoff/TaskHandoff";
 import { TurnPausedCard } from "../../TurnPausedCard/TurnPausedCard";
 import {
+  handoffSnapshot,
   handoffTaskID,
   TASK_HANDOFF_PART_TYPE,
 } from "../../../helpers/backgroundSubtasks";
@@ -287,8 +288,15 @@ export function MessagePartRenderer({
       );
     }
     case TASK_HANDOFF_PART_TYPE: {
-      const taskID = handoffTaskID("data" in part ? part.data : undefined);
-      return taskID ? <TaskHandoff key={key} taskID={taskID} /> : null;
+      const data = "data" in part ? part.data : undefined;
+      const taskID = handoffTaskID(data);
+      return taskID ? (
+        <TaskHandoff
+          key={key}
+          taskID={taskID}
+          snapshot={handoffSnapshot(data)}
+        />
+      ) : null;
     }
     case RENDER_UI_PART_TYPE:
       return (

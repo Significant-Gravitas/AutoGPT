@@ -21,6 +21,11 @@ BackgroundOutcome = Literal["completed", "failed", "cancelled", "timed_out"]
 BackgroundStage = Literal["child", "followup"]
 
 
+# Launch-turn id prefix of work the due-task sweep starts under a chat at a
+# scheduled time: no turn of that chat is running then.
+SCHEDULED_LAUNCH_PREFIX = "task-start:"
+
+
 class BackgroundContext(BaseModel):
     envelope: TurnEnvelope
     child_envelope: TurnEnvelope

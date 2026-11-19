@@ -1,10 +1,15 @@
 """What one tool call adds to a task's record (pure, no database)."""
 
 import json
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pytest_mock import MockerFixture
 
-from backend.copilot.task_recorder import SILENT_TOOLS, describe
+from backend.copilot import turn_end
+from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.task_recorder import SILENT_TOOLS, _skill_title, describe, record
+from backend.data.task_activity_meta import TaskActivityAccount
 
 
 def _out(**fields) -> str:
@@ -162,3 +167,129 @@ def test_a_page_read_keeps_its_address_so_a_link_can_be_checked_later():
     )
     assert through is not None and through.url == "https://x.ai/api"
     assert describe("web_search", {"query": "x"}, _out(), True).url is None
+
+
+_GMAIL = TaskActivityAccount(service="google", name="Gmail", label="work@acme.com")
+
+
+def test_a_call_on_a_connected_account_names_the_account_and_the_service():
+    call = describe(
+        "run_capability",
+        {"id": "mcp:gmail/send_email", "input": {}},
+        _out(),
+        True,
+        account=_GMAIL,
+    )
+    assert call is not None
+    assert call.account == _GMAIL
+    assert call.label == "Used Gmail to send email"
+
+
+@pytest.mark.parametrize(
+    "tool, args, label",
+    [
+        ("run_block", {"block_id": "b-1", "input_data": {}}, "Used Gmail"),
+        (
+            "run_capability",
+            {"id": "block:3f1c9a2e-0d4b-4c55-9a7e-1b2c3d4e5f60", "input": {}},
+            "Used Gmail",
+        ),
+        (
+            "run_capability",
+            {"id": "mcp:gmail", "input": {"tool": "search_threads"}},
+            "Used Gmail to search threads",
+        ),
+        ("run_mcp_tool", {"tool_name": "list_labels"}, "Used Gmail to list labels"),
+    ],
+)
+def test_a_step_on_a_known_integration_is_worded_after_it(tool, args, label):
+    call = describe(tool, args, _out(), True, account=_GMAIL)
+    assert call is not None and call.label == label
+
+
+def test_a_known_tools_own_label_is_kept_beside_its_account():
+    call = describe("web_search", {}, _out(), True, account=_GMAIL)
+    assert call is not None and call.label == "Searched the web"
+
+
+def test_the_skill_the_turn_follows_rides_on_the_step():
+    call = describe("web_search", {}, _out(), True, skill="Cold email")
+    assert call is not None and call.skill == "Cold email"
+
+
+def test_nothing_is_captured_when_neither_is_known():
+    call = describe("run_block", {"block_id": "b-1"}, _out(), True)
+    assert call is not None
+    assert call.account is None and call.skill is None
+    assert call.label == "Used run block"
+
+
+@pytest.mark.parametrize(
+    "name, title",
+    [
+        ("cold-email_writer", "Cold email writer"),
+        ("agent_building_guide", "Workflow building guide"),
+        ("Weekly Report", "Weekly Report"),
+        ("", None),
+    ],
+)
+def test_a_skill_is_shown_by_its_human_name(name, title):
+    assert _skill_title(name) == title
+
+
+@pytest.fixture
+def recorded(mocker: MockerFixture) -> AsyncMock:
+    db = mocker.patch("backend.copilot.task_recorder.task_record_db")
+    db.return_value.record_tool_call = AsyncMock(return_value=True)
+    turn_end.clear("chat-1")
+    yield db.return_value.record_tool_call
+    turn_end.clear("chat-1")
+
+
+def _session() -> MagicMock:
+    session = MagicMock()
+    session.session_id, session.user_id, session.expert_id = "chat-1", "u-1", None
+    return session
+
+
+def _output(tool: str, ok: bool = True, **fields) -> StreamToolOutputAvailable:
+    return StreamToolOutputAvailable(
+        toolCallId="call-1", toolName=tool, output=json.dumps(fields), success=ok
+    )
+
+
+async def _record(tool: str, args: dict, output, accounts=()) -> None:
+    await record(_session(), tool, "call-1", args, output, accounts)
+
+
+@pytest.mark.asyncio
+async def test_steps_after_a_loaded_skill_carry_it_with_their_account(recorded):
+    loaded = _output("read_skill", type="skill_loaded", name="cold-email")
+    await _record("read_skill", {"name": "cold-email"}, loaded)
+    await _record("run_block", {"block_id": "b-1"}, _output("run_block"), [_GMAIL])
+
+    opened, sent = [c.args[2] for c in recorded.await_args_list]
+    assert (opened.label, opened.skill) == ("Opened a skill", "Cold email")
+    assert (sent.label, sent.skill, sent.account) == (
+        "Used Gmail",
+        "Cold email",
+        _GMAIL,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_skill_that_failed_to_load_is_not_followed(recorded):
+    refused = _output("read_skill", type="error", name="cold-email")
+    await _record("read_skill", {"name": "cold-email"}, refused)
+    await _record("web_search", {}, _output("web_search"))
+    (searched,) = [c.args[2] for c in recorded.await_args_list]
+    assert searched.skill is None
+
+
+@pytest.mark.asyncio
+async def test_a_new_turn_forgets_the_skill_the_last_one_loaded(recorded):
+    loaded = _output("read_skill", type="skill_loaded", name="cold-email")
+    await _record("read_skill", {"name": "cold-email"}, loaded)
+    turn_end.clear("chat-1")
+    await _record("web_search", {}, _output("web_search"))
+    assert recorded.await_args_list[-1].args[2].skill is None

@@ -9,6 +9,26 @@ export interface StartedTask {
   startedAt: string | null;
   /** The chat doing the work; absent when the task runs in this chat. */
   link: string | null;
+  /** When a task scheduled for later starts by itself. */
+  startAt?: string | null;
+  /** Its start time passed without it starting. */
+  missedStart?: boolean;
+  /** Set when it runs again and again: how often, in words. */
+  repeat?: StartedRepeat | null;
+}
+
+export interface StartedRepeat {
+  label: string;
+  paused: boolean;
+  /** Set on a task that runs each time an event happens. */
+  watch?: StartedWatch | null;
+}
+
+export interface StartedWatch {
+  /** What it watches, in words: "PR opened on acme/web". */
+  line: string;
+  /** Where events are sent, for a webhook the user calls. */
+  url: string | null;
 }
 
 export type TaskLineState =
@@ -36,14 +56,44 @@ export function startedTaskOf(output: unknown): StartedTask | null {
   const title = task && str(task, "title");
   if (!task || !id || !title) return null;
   const status = str(task, "status");
+  const repeat = repeatOf(task.repeat);
   return {
     id,
     title,
-    status: isTaskStatus(status) ? status : TaskStatus.IN_PROGRESS,
+    status: isTaskStatus(status)
+      ? status
+      : str(data, "start_at")
+        ? TaskStatus.TODO
+        : TaskStatus.IN_PROGRESS,
     ownerExpertID: str(task, "owner_expert_id"),
     startedAt: str(task, "started_at"),
     link: str(data, "worker_session_link"),
+    startAt: str(task, "start_at") ?? str(data, "start_at"),
+    missedStart: task.missed_start === true,
+    ...(repeat ? { repeat } : {}),
   };
+}
+
+function repeatOf(value: unknown): StartedRepeat | null {
+  const repeat = asObject(value);
+  const label = repeat && str(repeat, "label");
+  if (!repeat || !label) return null;
+  const watch = watchOf(repeat.watch);
+  return { label, paused: repeat.paused === true, ...(watch ? { watch } : {}) };
+}
+
+export function watchOf(value: unknown): StartedWatch | null {
+  const watch = asObject(value);
+  const line = watch && str(watch, "line");
+  if (!watch || !line) return null;
+  return { line, url: str(watch, "url") };
+}
+
+/** Dedupe by task: Otto may hand back the same task twice. */
+export function uniqueTasks(tasks: StartedTask[]): StartedTask[] {
+  return tasks.filter(
+    (task, index) => tasks.findIndex((t) => t.id === task.id) === index,
+  );
 }
 
 export function taskLineStateOf(status: TaskStatus): TaskLineState {

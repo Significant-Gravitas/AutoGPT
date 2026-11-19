@@ -10,6 +10,8 @@ worker finishes, this chat is woken to carry on with the result
 """
 
 import logging
+from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import Any
 
 from prisma.enums import TaskActivityKind, TaskActor, TaskCreator, TaskStatus
@@ -18,14 +20,17 @@ from backend.copilot import task_recorder, turn_end
 from backend.copilot.background_subtasks import start_background_subtask
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import TreeRefusal
-from backend.data.db_accessors import task_db, task_record_db
+from backend.data.db_accessors import task_db, task_record_db, task_run_db
 from backend.data.task import MAX_SUBTASKS, Task, TaskPatch
 from backend.data.task_record import ActivityInput
 from backend.data.task_text import DONE_WHEN_MAX_CHARS, GOAL_MAX_CHARS, clip
+from backend.util.exceptions import ConflictError
 
 from .base import BaseTool
 from .external_scope import error_detail
 from .models import ErrorResponse, ToolResponseBase
+from .start_later import plan_start, schedule_task, waiting_to_start
+from .start_on_event import start_on_event
 from .task_models import TaskInfo, TaskStartedResponse
 
 logger = logging.getLogger(__name__)
@@ -49,9 +54,12 @@ class StartTaskTool(BaseTool):
         return (
             "Start multi-step work as a task that runs in the background, so "
             "the user can keep chatting; its result comes back to this chat. "
-            "Use it for anything bigger than a quick answer. After it, only "
-            "more start_task calls and one closing line. Inside a task, it "
-            "splits off a subtask for one part of the work."
+            "Use it for anything bigger than a quick answer. Work for later: set "
+            "start_in_seconds or start_at; repeating work: repeat_crons; work "
+            "each time something happens: on_event; a plain reminder is "
+            "schedule_followup. After it, only more start_task calls and one "
+            "closing line. Inside a task, it splits off a "
+            "subtask for one part of the work."
         )
 
     @property
@@ -101,6 +109,32 @@ class StartTaskTool(BaseTool):
                     ),
                     "entity": "expert",
                 },
+                "start_in_seconds": {
+                    "type": "integer",
+                    "description": "Start in this many seconds.",
+                },
+                "start_at": {
+                    "type": "string",
+                    "description": (
+                        "Start at this ISO time, not now; no offset means the "
+                        "user's time zone."
+                    ),
+                },
+                "repeat_crons": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Repeat: 5-field crons, user's time zone ('0 8 * * *')."
+                    ),
+                },
+                "on_event": {
+                    "type": "object",
+                    "description": (
+                        "Run each time this happens: {provider: 'github', event: "
+                        "'pull_request.opened', config: {repo: 'owner/name'}}; "
+                        "provider 'generic_webhook' gives a URL to call."
+                    ),
+                },
             },
             "required": ["title", "brief"],
         }
@@ -115,25 +149,47 @@ class StartTaskTool(BaseTool):
         goal: str | None = None,
         done_when: str | None = None,
         task_id: str | None = None,
+        start_in_seconds: int | None = None,
+        start_at: str | None = None,
+        repeat_crons: list[str] | None = None,
+        on_event: dict[str, Any] | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         assert user_id is not None  # guaranteed by requires_auth
         brief = brief.strip()[:BRIEF_MAX_CHARS]
         if not brief:
             return _error("A task needs a brief for the worker.", session)
+        create = partial(
+            _create_task, user_id, session, title, brief, expert_id, goal, done_when
+        )
         try:
+            if on_event:
+                return await _start_on_event(
+                    user_id, session, title, on_event, task_id, create
+                )
+            plan = await plan_start(
+                user_id,
+                start_in_seconds,
+                start_at,
+                repeat_crons,
+                seed=f"{user_id}:{title}",
+            )
             if task_id:
+                if plan.at is not None:
+                    return _error("A start time is for a new task.", session)
                 task = await _reopen_task(user_id, session, task_id, brief)
             else:
                 duplicate = await task_record_db().find_open_task_by_title(
                     user_id, session.session_id, title
                 )
-                if duplicate is not None:
+                if duplicate is not None and not waiting_to_start(duplicate):
                     return _already_running(duplicate, session)
-                task = await _open_task(
-                    user_id, session, title, brief, expert_id, goal, done_when
-                )
-        except ValueError as e:  # includes NotFoundError
+                if plan.at is not None:
+                    return await schedule_task(
+                        user_id, session, plan, duplicate, create
+                    )
+                task = await _start_now(user_id, duplicate, create)
+        except (ValueError, ConflictError) as e:  # ValueError: NotFoundError too
             return _error(str(e), session)
         except Exception as e:
             return _error(error_detail(e, session), session)
@@ -161,7 +217,7 @@ class StartTaskTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        task = await _link_worker(task, background.child_session_id, user_id)
+        task = await link_worker(task, background.child_session_id, user_id)
         turn_end.request_wrap_up(session.session_id)
         return TaskStartedResponse(
             message=(
@@ -178,6 +234,22 @@ class StartTaskTool(BaseTool):
             background_task_id=background.id,
             session_id=session.session_id,
         )
+
+
+async def _start_on_event(
+    user_id: str,
+    session: ChatSession,
+    title: str,
+    on_event: dict[str, Any],
+    task_id: str | None,
+    create: Callable[[str], Awaitable[Task]],
+) -> ToolResponseBase:
+    if task_id:
+        return _error("on_event is for a new task.", session)
+    duplicate = await task_record_db().find_open_task_by_title(
+        user_id, session.session_id, title
+    )
+    return await start_on_event(user_id, session, on_event, duplicate, create)
 
 
 def worker_prompt(task: Task, brief: str) -> str:
@@ -228,17 +300,34 @@ def worker_prompt_text(
     )
 
 
-async def _open_task(
+async def _start_now(
+    user_id: str,
+    waiting: Task | None,
+    create: Callable[[str], Awaitable[Task]],
+) -> Task:
+    """The task to work on now: a new one, or the same task asked for earlier
+    and still waiting for its start time, which starts now instead."""
+    if waiting is not None:
+        return (await task_run_db().claim_task_run(waiting.id, user_id)).task
+    created = await create("Task started")
+    return await task_db().update_task(
+        created.id, user_id, TaskPatch(status=TaskStatus.IN_PROGRESS)
+    )
+
+
+async def _create_task(
     user_id: str,
     session: ChatSession,
     title: str,
     brief: str,
     expert_id: str | None,
-    goal: str | None = None,
-    done_when: str | None = None,
+    goal: str | None,
+    done_when: str | None,
+    first_line: str,
 ) -> Task:
-    """Create the task; started from a chat that is itself working on a task,
-    it becomes that task's subtask."""
+    """Create the task, TODO, with ``first_line`` as its first activity;
+    started from a chat that is itself working on a task, it becomes that
+    task's subtask."""
     working_on = await task_record_db().work_tasks(session.session_id, user_id)
     parent = working_on[0] if working_on else None
     fields: dict[str, Any] = {
@@ -271,7 +360,7 @@ async def _open_task(
         user_id,
         ActivityInput(
             kind=TaskActivityKind.CREATED,
-            text="Task started",
+            text=first_line,
             actor_type=actor,
             actor_expert_id=session.expert_id,
             chat_session_id=session.session_id,
@@ -292,9 +381,7 @@ async def _open_task(
                 data={"subtask_id": created.id, "owner_expert_id": expert_id},
             ),
         )
-    return await task_db().update_task(
-        created.id, user_id, TaskPatch(status=TaskStatus.IN_PROGRESS)
-    )
+    return created
 
 
 async def _reopen_task(
@@ -371,7 +458,7 @@ async def _set_work_session(task: Task, session_id: str, user_id: str) -> Task:
     return task
 
 
-async def _link_worker(task: Task, worker_session_id: str, user_id: str) -> Task:
+async def link_worker(task: Task, worker_session_id: str, user_id: str) -> Task:
     """Link the worker's chat to the task; best-effort, the work has started."""
     try:
         await task_db().attach_task_session(task.id, worker_session_id, user_id)

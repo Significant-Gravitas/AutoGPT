@@ -10,7 +10,11 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 from backend.api.features.experts.models import Expert
-from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
+from backend.copilot.briefing.models import (
+    BriefingContent,
+    BriefingRunItem,
+    BriefingTasks,
+)
 from backend.copilot.briefing.outcome import (
     as_utc,
     as_utc_or_none,
@@ -74,6 +78,7 @@ def compose_briefing(
         outcomes=merged,
         source="persisted",
         narrative=persisted.narrative,
+        tasks=persisted.tasks,
         omitted_completed=max(0, persisted.completed_total - anchored_completed),
         omitted_failed=max(
             0, persisted.failed_total - len(anchored) + anchored_completed
@@ -88,6 +93,7 @@ def _briefing(
     outcomes: list[HomeBriefingOutcome],
     source: Literal["persisted", "live"],
     narrative: str | None = None,
+    tasks: BriefingTasks | None = None,
     omitted_completed: int = 0,
     omitted_failed: int = 0,
 ) -> HomeBriefing:
@@ -107,6 +113,7 @@ def _briefing(
         outcomes=shown,
         narrative=narrative,
         source=source,
+        tasks=tasks,
     )
 
 

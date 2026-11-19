@@ -30,10 +30,14 @@ user-facing message *before* calling this. The deferred work happens
 in a fresh turn that the user will see arrive at the scheduled time.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import httpx
+
+from backend.copilot import turn_end
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tools.session_context import is_followups_feature_enabled
@@ -41,6 +45,7 @@ from backend.copilot.tracking import track_chat_outcome
 from backend.data.db_accessors import user_db
 from backend.util.clients import get_scheduler_client
 from backend.util.cron import validate_cron
+from backend.util.service import HTTPServerError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .base import BaseTool
@@ -53,6 +58,14 @@ from .models import (
 from .schedule_credentials import INTEGRATIONS_PARAM, pin_schedule_credentials
 
 logger = logging.getLogger(__name__)
+
+# The chat waits on this call, so it gives up long before the RPC client's
+# own timeout: a scheduler that does not answer must not freeze the turn.
+SCHEDULER_CALL_TIMEOUT_SECONDS = 10.0
+SCHEDULER_UNAVAILABLE_MESSAGE = (
+    "Couldn't schedule that just now: the scheduling service didn't answer. "
+    "Nothing was set up. Try again in a minute."
+)
 
 
 class ScheduleCreatedResponse(ToolResponseBase):
@@ -275,7 +288,7 @@ class ScheduleFollowupTool(BaseTool):
             return pins
 
         try:
-            info = await get_scheduler_client().add_copilot_turn_schedule(
+            add_schedule = get_scheduler_client().add_copilot_turn_schedule(
                 user_id=user_id,
                 session_id=target_session_id,
                 message=message,
@@ -291,12 +304,32 @@ class ScheduleFollowupTool(BaseTool):
                 expert_id=session.expert_id if session else None,
                 credential_pins=pins,
             )
+            info = await asyncio.wait_for(
+                add_schedule, timeout=SCHEDULER_CALL_TIMEOUT_SECONDS
+            )
         except ValueError as e:
             return ErrorResponse(
                 message=f"Invalid schedule: {e}",
                 error="invalid_schedule",
                 session_id=current_session_id,
             )
+        except (
+            TimeoutError,
+            ConnectionError,
+            httpx.TransportError,
+            HTTPServerError,
+        ) as e:
+            logger.warning(
+                "[schedule_followup] scheduler unavailable for %s…: %s",
+                user_id[:8],
+                type(e).__name__,
+            )
+            return ErrorResponse(
+                message=SCHEDULER_UNAVAILABLE_MESSAGE,
+                error="scheduler_unavailable",
+                session_id=current_session_id,
+            )
+        turn_end.request_wrap_up(current_session_id)
 
         is_recurring = cron is not None
         track_chat_outcome(

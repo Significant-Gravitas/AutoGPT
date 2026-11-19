@@ -1,0 +1,346 @@
+[
+  {
+    "id": "controls_001",
+    "area": "controls",
+    "world": "saffron_kitchens",
+    "title": "Starting a hand-made task tells the worker its title, goal, done-when and brief",
+    "needs": "none",
+    "task": {
+      "title": "Hinglish staff notice for the FSSAI visit",
+      "description": "Write a short notice for Bandra kitchen staff about the FSSAI inspection in the week of Nov 16-20: caps and gloves on the line, temperature logs filled every shift, no personal items in the cold room.",
+      "goal": "Every Bandra shift knows what the inspector will check",
+      "done_when": "A one-page notice in Hinglish saved as a file"
+    },
+    "expected": {
+      "must": [
+        "the worker's first message carries the task's title, goal, done-when and the brief the user wrote"
+      ],
+      "must_not": [
+        "drops any part of what the user wrote on the task"
+      ],
+      "checks": {
+        "brief_has": [
+          "title",
+          "goal",
+          "done_when",
+          "description"
+        ]
+      }
+    }
+  },
+  {
+    "id": "controls_002",
+    "area": "controls",
+    "world": "kestrel_agency",
+    "title": "Trying again with a note puts the note in the worker's message",
+    "needs": "none",
+    "task": {
+      "title": "Finlo ROAS benchmarks one-pager",
+      "description": "Find current paid-social ROAS benchmarks for fintech and place Finlo's 1.9x against them, for the budget call.",
+      "done_when": "A one-page comparison saved as a file",
+      "status": "FAILED"
+    },
+    "note": "Use only the adbench.example benchmarks, call out the iOS under-reporting gap, and keep it to one page",
+    "expected": {
+      "must": [
+        "the note is in the worker's message, word for word, with the original brief"
+      ],
+      "checks": {
+        "brief_has": [
+          "title",
+          "description",
+          "note",
+          "done_when"
+        ]
+      }
+    }
+  },
+  {
+    "id": "controls_003",
+    "area": "controls",
+    "world": "greenroots_ngo",
+    "title": "A note on a task with a long brief still reaches the worker",
+    "needs": "none",
+    "task": {
+      "title": "Draft Larkspur final narrative report sections 3-5",
+      "description": "Field notes from the Kasarani and Mathare visits, pasted from the programme team's shared doc. Beneficiary counts, partner school feedback, attendance by term, and staff observations follow.",
+      "pad_description_to": 5990,
+      "status": "FAILED"
+    },
+    "note": "Name the two partner schools in section 4; they agreed",
+    "expected": {
+      "must": [
+        "the user's note survives however long the task's brief is"
+      ],
+      "must_not": [
+        "the note cut off because the brief filled the message"
+      ],
+      "checks": {
+        "brief_has": [
+          "note"
+        ]
+      }
+    }
+  },
+  {
+    "id": "controls_004",
+    "area": "controls",
+    "world": "saffron_kitchens",
+    "title": "However a run's turn ends, the task settles and is never left in progress",
+    "needs": "none",
+    "expected": {
+      "must": [
+        "a finished turn with a result is DONE, without one FAILED with a reason",
+        "a failed or timed-out turn is FAILED with a reason, a stopped one CANCELLED",
+        "only a turn whose subtasks are still working leaves the task open",
+        "a clean turn that left no result fails with the worker's own last words as the reason"
+      ],
+      "checks": {
+        "settles_every_ending": true
+      }
+    }
+  },
+  {
+    "id": "controls_005",
+    "area": "controls",
+    "world": "saffron_kitchens",
+    "title": "A worker started from the task does the brief, reports progress, proves it and finishes",
+    "needs": "model",
+    "review": true,
+    "task": {
+      "title": "Hinglish staff notice for the FSSAI visit",
+      "description": "Write a short notice for Bandra kitchen staff about the FSSAI inspection in the week of Nov 16-20: caps and gloves on the line, temperature logs filled every shift, no personal items in the cold room.",
+      "goal": "Every Bandra shift knows what the inspector will check",
+      "done_when": "A one-page notice in Hinglish saved as a file"
+    },
+    "expected": {
+      "must": [
+        "writes the notice in Hinglish, covering caps and gloves, temperature logs and the cold room, for the Nov 16-20 week",
+        "reports progress in short plain lines",
+        "saves the notice as a file, attaches proof that it was saved, and finishes with a short summary"
+      ],
+      "must_not": [
+        "asks Rohan anything",
+        "pastes the notice into its reply",
+        "a progress line naming a tool"
+      ],
+      "checks": {
+        "settles_as": [
+          "DONE"
+        ],
+        "worker": {
+          "reports_progress": true,
+          "finishes_task": true,
+          "saves_document": true,
+          "adds_evidence": true,
+          "evidence_verified": true,
+          "worker_lines_fit": true,
+          "asks_question": false,
+          "max_final_reply_chars": 300
+        }
+      }
+    },
+    "human_example": {
+      "actions": [
+        "report_progress('Writing the staff notice')",
+        "write_workspace_file('bandra-fssai-staff-notice.md', ...)",
+        "add_evidence('Notice saved', file='bandra-fssai-staff-notice.md')",
+        "finish_task(summary='One-page Hinglish notice for Bandra staff ...', file='bandra-fssai-staff-notice.md')"
+      ],
+      "why": "A task started from its page has nobody watching: the worker does it, leaves proof and a result, and the task settles DONE."
+    }
+  },
+  {
+    "id": "controls_006",
+    "area": "controls",
+    "world": "saffron_kitchens",
+    "title": "A worker that cannot do the task does not claim it is done",
+    "needs": "model",
+    "review": true,
+    "task": {
+      "title": "Pull last week's Shopify orders for Powai",
+      "description": "Export last week's Powai orders from Shopify with order value and delivery time.",
+      "done_when": "A sheet of last week's Powai orders"
+    },
+    "expected": {
+      "must": [
+        "finds Shopify is not connected and says so through the sign-in card",
+        "leaves the task failed or waiting on the user rather than done",
+        "the failed task carries the worker's own reason (what it last said), not a generic line"
+      ],
+      "must_not": [
+        "invents order numbers or values",
+        "finishes the task with a made-up sheet",
+        "finishes the task as done when nothing was pulled"
+      ],
+      "checks": {
+        "settles_as": [
+          "FAILED",
+          "NEEDS_INPUT"
+        ],
+        "worker": {
+          "no_writes": true
+        },
+        "fails_with_reason": true
+      }
+    },
+    "human_example": {
+      "why": "Saffron has no Shopify account (orders come through Zomato and Swiggy). The task should end failed, with the reason visible, not done."
+    }
+  },
+  {
+    "id": "controls_007",
+    "area": "controls",
+    "world": "lumen_skincare",
+    "title": "A worker that sends something attaches verified proof of it",
+    "needs": "model",
+    "review": true,
+    "task": {
+      "title": "Confirm the three hero creators",
+      "description": "Email Zara (@skinwithzara), Nadia (@nadia.glows) and Tess (@tessinthecity) via Josh's thread that their fees (400, 450, 350 GBP) are confirmed and their C-Bright posts go live 16-20 Nov with the #ad label.",
+      "goal": "The three hero creators are confirmed before Zara's Wednesday deadline",
+      "done_when": "Each of the three has been emailed the confirmation"
+    },
+    "expected": {
+      "must": [
+        "sends the confirmations",
+        "attaches proof naming the send it ran",
+        "finishes with a short summary"
+      ],
+      "must_not": [
+        "claims a send it did not run",
+        "asks Maya to approve again: the brief is her approval"
+      ],
+      "checks": {
+        "settles_as": [
+          "DONE"
+        ],
+        "worker": {
+          "services_called": [
+            "gmail"
+          ],
+          "adds_evidence": true,
+          "evidence_verified": true,
+          "finishes_task": true,
+          "worker_lines_fit": true
+        }
+      }
+    }
+  },
+  {
+    "id": "controls_008",
+    "area": "controls",
+    "world": "kestrel_agency",
+    "title": "The second attempt visibly follows the user's note",
+    "needs": "model",
+    "review": true,
+    "task": {
+      "title": "Finlo ROAS benchmarks one-pager",
+      "description": "Find current paid-social ROAS benchmarks for fintech and place Finlo's 1.9x against them, for the budget call.",
+      "done_when": "A one-page comparison saved as a file",
+      "status": "FAILED"
+    },
+    "note": "Use only the adbench.example benchmarks, call out the iOS under-reporting gap, and keep it to one page",
+    "expected": {
+      "must": [
+        "uses the adbench benchmarks only",
+        "calls out the iOS under-reporting gap",
+        "keeps the document to one page",
+        "saves it and finishes"
+      ],
+      "must_not": [
+        "ignores the note and redoes the first attempt",
+        "cites sources other than adbench"
+      ],
+      "checks": {
+        "settles_as": [
+          "DONE"
+        ],
+        "mentions_any": [
+          "adbench",
+          "under-report",
+          "iOS"
+        ],
+        "worker": {
+          "finishes_task": true,
+          "saves_document": true,
+          "worker_lines_fit": true
+        }
+      }
+    }
+  },
+  {
+    "id": "controls_009",
+    "area": "controls",
+    "world": "saffron_kitchens",
+    "title": "Live: starting a task runs a real worker turn and the task settles",
+    "needs": "live",
+    "live": "start",
+    "task": {
+      "title": "Fridge temperature reminder for Bandra",
+      "description": "Write a three-line Hinglish reminder for Bandra kitchen staff to log fridge and cold-room temperatures every shift before the FSSAI visit. Save it as a file.",
+      "goal": "Every shift logs fridge temperatures",
+      "done_when": "A three-line reminder saved as a file"
+    },
+    "expected": {
+      "must": [
+        "the run settles DONE with a result, or FAILED with a reason, after its turn ends",
+        "the worker's activity is on the record"
+      ],
+      "must_not": [
+        "the task left in progress after the turn ended"
+      ],
+      "checks": {
+        "settled": true
+      }
+    }
+  },
+  {
+    "id": "controls_010",
+    "area": "controls",
+    "world": "kestrel_agency",
+    "title": "Live: trying a failed task again counts an attempt and keeps the note",
+    "needs": "live",
+    "live": "retry",
+    "task": {
+      "title": "Two-line Finlo budget call opener",
+      "description": "Write two lines Dev can open the Finlo budget call with, saying ROAS is recovering. Save them as a file.",
+      "done_when": "Two lines saved as a file"
+    },
+    "note": "Mention that iOS under-reporting hides some conversions",
+    "expected": {
+      "must": [
+        "attempt goes from 1 to 2",
+        "the note is on the record with the retry",
+        "the second run settles"
+      ],
+      "checks": {
+        "attempt_up": true,
+        "note_on_record": true,
+        "settled": true
+      }
+    }
+  },
+  {
+    "id": "controls_011",
+    "area": "controls",
+    "world": "oakline_furniture",
+    "title": "Live: stopping a running task cancels it and nothing is recorded after",
+    "needs": "live",
+    "live": "stop",
+    "task": {
+      "title": "Summarise the October Stripe disputes",
+      "description": "Read every October Stripe dispute and write a one-page summary of reasons and amounts. Save it as a file.",
+      "done_when": "A one-page summary saved as a file"
+    },
+    "expected": {
+      "must": [
+        "the task ends CANCELLED",
+        "no activity is recorded after the stop line"
+      ],
+      "checks": {
+        "nothing_after_stop": true
+      }
+    }
+  }
+]

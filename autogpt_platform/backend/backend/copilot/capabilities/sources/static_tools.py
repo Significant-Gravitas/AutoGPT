@@ -68,6 +68,10 @@ EAGER_CORE: frozenset[str] = frozenset(
         # Multi-step work runs as a background task: the prompt routes every
         # request bigger than a quick answer here by name, every turn.
         "start_task",
+        # Timed work goes to ``start_task`` and a plain reminder here; the
+        # prompt names both, and deferred, a reminder cost the turn a
+        # describe/run round trip before it could be set.
+        "schedule_followup",
         # Both open a chat card, and a deferred tool renders as a generic
         # tool row instead of its card.
         "request_work_check",

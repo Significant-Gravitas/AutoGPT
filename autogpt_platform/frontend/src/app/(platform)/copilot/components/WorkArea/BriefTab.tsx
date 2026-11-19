@@ -13,10 +13,8 @@ import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { formatTimeAgo } from "@/lib/utils/time";
 import { Calendar03Icon } from "@hugeicons/core-free-icons";
-import type { ReactNode } from "react";
 import {
   InfoGroup,
-  InfoList,
   InfoMeta,
 } from "../EmptySession/components/ExpertInfoPanel/components/InfoParts";
 import { BriefWords } from "../EmptySession/components/HomeToday/BriefWords";
@@ -24,24 +22,35 @@ import { metaOf } from "../EmptySession/components/HomeToday/helpers";
 import { useHomeToday } from "../EmptySession/components/HomeToday/useHomeToday";
 import { useWeekStats } from "../EmptySession/components/HomeToday/useWeekStats";
 import { span } from "../EmptySession/components/HomeToday/weekStats";
-import { BlockNote, BlockRow, NeedsYouTag } from "./blocks";
-
-const NEEDS = "brief-needs";
-const READY = "brief-ready";
-const WORKING = "brief-working";
-const RAN = "brief-ran";
-const NEXT = "brief-next";
+import { BlockNote, BlockRow } from "./blocks";
+import {
+  Block,
+  FAILED,
+  Figure,
+  Jump,
+  NEEDS,
+  NEXT,
+  RAN,
+  READY,
+  WORKING,
+} from "./BriefParts";
+import { BriefTaskBlocks } from "./BriefTaskBlocks";
+import { storedBriefTasks } from "./briefTasks";
+import { StartingToday } from "./StartingToday";
+import { SuggestedNext } from "./SuggestedNext/SuggestedNext";
 
 /** The day's brief beside Home. Otto's own opening leads when the morning
- *  job wrote one, followed by where the tasks stand in words; then a row of
- *  counts that jump to their block, and the blocks themselves: what needs
- *  you, what is ready to read, what the team ran, what is in progress, what
- *  comes next, and the week in figures. A block with nothing is left out. */
+ *  job wrote one, followed by where the tasks stand in words; then the next
+ *  tasks Otto drafted, a row of counts that jump to their block, and the
+ *  blocks themselves: what needs you, what finished or failed, what the team
+ *  ran, what is in progress, what comes next, and the week in figures. A
+ *  block with nothing is left out. */
 export function BriefTab() {
   const today = useHomeToday();
   const stats = useWeekStats(today.now);
   const narrative = today.briefing?.narrative;
   const outcomes = today.briefing?.outcomes ?? [];
+  const stored = storedBriefTasks(today.briefing?.tasks, today.tasks);
   const writtenAt =
     narrative && today.briefing
       ? new Date(today.briefing.generated_at).toLocaleTimeString(undefined, {
@@ -49,27 +58,6 @@ export function BriefTab() {
           minute: "2-digit",
         })
       : null;
-
-  function taskRows(tasks: Task[], line: (task: Task) => string, tag?: string) {
-    return tasks.map((task) => (
-      <BlockRow
-        key={task.id}
-        tile={<Face task={task} today={today} />}
-        title={task.title}
-        subtitle={line(task)}
-        wrap
-        trailing={
-          tag ? (
-            <NeedsYouTag>{tag}</NeedsYouTag>
-          ) : (
-            <InfoMeta>{metaOf(task, today.now)}</InfoMeta>
-          )
-        }
-        onClick={() => today.openTask(task)}
-      />
-    ));
-  }
-  const nameOf = (task: Task) => ownerOf(task, today.experts).name;
 
   return (
     <div aria-label="Brief" className="flex flex-col gap-5">
@@ -109,12 +97,24 @@ export function BriefTab() {
         />
       </BlockNote>
 
+      <SuggestedNext experts={today.experts} onOpen={today.openTask} />
+
       <nav aria-label="In this brief" className="flex flex-wrap gap-1.5">
-        <Jump to={NEEDS} count={today.needs.length} isWaiting>
+        <Jump
+          to={NEEDS}
+          count={stored ? stored.waiting.length : today.needs.length}
+          isWaiting
+        >
           need you
         </Jump>
-        <Jump to={READY} count={today.ready.length}>
-          ready to read
+        <Jump
+          to={READY}
+          count={stored ? stored.finished.length : today.ready.length}
+        >
+          {stored ? "finished" : "ready to read"}
+        </Jump>
+        <Jump to={FAILED} count={stored?.failed.length ?? 0}>
+          {"didn't finish"}
         </Jump>
         <Jump to={RAN} count={outcomes.length}>
           ran since yesterday
@@ -127,18 +127,7 @@ export function BriefTab() {
         </Jump>
       </nav>
 
-      <Block id={NEEDS} label="Needs you" count={today.needs.length}>
-        {taskRows(
-          today.needs,
-          (task) =>
-            task.status_text ?? `${nameOf(task)} · ${metaOf(task, today.now)}`,
-          "Answer",
-        )}
-      </Block>
-
-      <Block id={READY} label="Ready to read" count={today.ready.length}>
-        {taskRows(today.ready, (task) => task.result ?? nameOf(task))}
-      </Block>
+      <BriefTaskBlocks today={today} stored={stored} />
 
       <Block id={RAN} label="What your team ran" count={outcomes.length}>
         {outcomes.map((outcome) => (
@@ -167,8 +156,24 @@ export function BriefTab() {
         ))}
       </Block>
 
+      <StartingToday
+        now={today.now}
+        experts={today.experts}
+        onOpen={today.openTask}
+      />
+
       <Block id={WORKING} label="In progress" count={today.working.length}>
-        {taskRows(today.working, (task) => task.status_text ?? nameOf(task))}
+        {today.working.map((task) => (
+          <BlockRow
+            key={task.id}
+            tile={<Face task={task} today={today} />}
+            title={task.title}
+            subtitle={task.status_text ?? ownerOf(task, today.experts).name}
+            wrap
+            trailing={<InfoMeta>{metaOf(task, today.now)}</InfoMeta>}
+            onClick={() => today.openTask(task)}
+          />
+        ))}
       </Block>
 
       <Block id={NEXT} label="Coming up" count={today.upcoming.length}>
@@ -210,79 +215,5 @@ function Face({ task, today }: FaceProps) {
   const owner = ownerOf(task, today.experts);
   return (
     <ExpertAvatar name={owner.name} avatarUrl={owner.avatarUrl} size={26} />
-  );
-}
-
-interface BlockProps {
-  id: string;
-  label: string;
-  count: number;
-  children: ReactNode;
-}
-
-function Block({ id, label, count, children }: BlockProps) {
-  if (count === 0) return null;
-  return (
-    <div id={id} className="scroll-mt-3">
-      <InfoGroup label={label} count={count}>
-        <InfoList>{children}</InfoList>
-      </InfoGroup>
-    </div>
-  );
-}
-
-interface JumpProps {
-  to: string;
-  count: number;
-  isWaiting?: boolean;
-  children: string;
-}
-
-/** A count that scrolls the brief to its block; nothing when it is zero. */
-function Jump({ to, count, isWaiting, children }: JumpProps) {
-  if (count === 0) return null;
-
-  function jump() {
-    const isStill = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    document.getElementById(to)?.scrollIntoView({
-      behavior: isStill ? "auto" : "smooth",
-      block: "start",
-    });
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={jump}
-      className="flex h-7 items-center gap-1.5 rounded-full bg-surface px-2.5 text-body-sm shadow-(--inbox-shadow-card) transition-shadow duration-150 ease-out outline-none hover:shadow-(--inbox-shadow-card-hover) focus-visible:ring-2 focus-visible:ring-focus-inbox"
-    >
-      <span
-        className={cn(
-          "font-medium tabular-nums",
-          isWaiting ? "text-status-waiting" : "text-foreground-ink",
-        )}
-      >
-        {count}
-      </span>
-      <span className="text-foreground-text">{children}</span>
-    </button>
-  );
-}
-
-interface FigureProps {
-  term: string;
-  value: string;
-}
-
-function Figure({ term, value }: FigureProps) {
-  return (
-    <div className="flex min-w-0 flex-col">
-      <dt className="truncate text-caption text-foreground-quiet">{term}</dt>
-      <dd className="text-body-lg font-medium text-foreground-ink tabular-nums">
-        {value}
-      </dd>
-    </div>
   );
 }

@@ -22,6 +22,10 @@ import {
   type StartedTask,
   type TaskLineState,
 } from "./helpers";
+import { isBetweenRuns } from "@/app/(platform)/tasks/schedule";
+import { RepeatingTaskLine } from "./RepeatingTaskLine";
+import { ScheduledTaskLine } from "./ScheduledTaskLine";
+import { WatchingTaskLine } from "./WatchingTaskLine";
 import { useTaskStatusLine } from "./useTaskStatusLine";
 
 const RING_SIZE = 18;
@@ -47,6 +51,41 @@ export function TaskStatusLine({ task }: Props) {
   const line = useTaskStatusLine(task);
   const openTask = useWorkAreaStore((s) => s.openTask);
   const { state, seconds, title, owner } = line;
+  if (line.repeat?.watch && isBetweenRuns(line.schedule)) {
+    return (
+      <WatchingTaskLine
+        taskID={task.id}
+        title={title}
+        repeat={line.repeat}
+        watch={line.repeat.watch}
+        heldBecause={line.statusText}
+      />
+    );
+  }
+  if (line.repeat && isBetweenRuns(line.schedule)) {
+    return (
+      <RepeatingTaskLine
+        taskID={task.id}
+        title={title}
+        owner={owner}
+        repeat={line.repeat}
+        startAt={line.startAt}
+        heldBecause={line.statusText}
+      />
+    );
+  }
+  if (line.schedule) {
+    return (
+      <ScheduledTaskLine
+        taskID={task.id}
+        title={title}
+        owner={owner}
+        startAt={line.startAt}
+        isMissed={line.schedule === "missed"}
+        heldBecause={line.statusText}
+      />
+    );
+  }
   const time =
     seconds === null
       ? null
@@ -80,7 +119,7 @@ export function TaskStatusLine({ task }: Props) {
             ·
           </Text>
           <OverflowText
-            value={whereItIs(state, line.statusText)}
+            value={whereItIs(state, line.statusText, line.neverStarted)}
             overflow="fade"
             variant="inbox"
             tone="quiet"
@@ -99,6 +138,11 @@ export function TaskStatusLine({ task }: Props) {
         >
           {line.subtasks.done}/{line.subtasks.total}
         </Text>
+      ) : null}
+      {state === "working" && line.eventsWaiting > 0 ? (
+        <span className="shrink-0 rounded-sm bg-info-surface px-1.5 text-caption font-medium text-info-foreground">
+          {line.eventsWaiting} in line
+        </span>
       ) : null}
       {state === "needs_input" ? (
         <span className="shrink-0 rounded-sm bg-status-waiting/15 px-1.5 text-caption font-medium text-warning-foreground">
@@ -139,7 +183,11 @@ export function TaskStatusLine({ task }: Props) {
 }
 
 /** Where the task is, after its owner's name. */
-function whereItIs(state: TaskLineState, statusText: string | null) {
+function whereItIs(
+  state: TaskLineState,
+  statusText: string | null,
+  neverStarted: boolean,
+) {
   switch (state) {
     case "needs_input":
       return "Needs your answer";
@@ -148,7 +196,7 @@ function whereItIs(state: TaskLineState, statusText: string | null) {
     case "failed":
       return "Didn't finish";
     case "stopped":
-      return "Stopped";
+      return neverStarted ? "Cancelled" : "Stopped";
     case "working":
       return statusText ?? "Working on it";
   }

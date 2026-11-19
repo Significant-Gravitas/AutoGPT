@@ -227,6 +227,13 @@ async def _deliver(task: BackgroundTask) -> None:
         if _is_handed_over(outcome):
             # The chat shows this task's result itself, from its record.
             metadata["task_handoff"] = outcome.task_id
+            # This run's own result: a repeating or watching task's record
+            # only holds its latest run, and clears it while the next works.
+            metadata["task_handoff_result"] = {
+                "result": outcome.result,
+                "document_title": outcome.document_title,
+                "document_file_id": outcome.document_file_id,
+            }
         queued = await background_task_db().enqueue_background_followup(
             task.id, task.user_id, continuation_message(task, outcome), metadata
         )

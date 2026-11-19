@@ -39,10 +39,10 @@ _EC = "backend.copilot.expert_context"
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned for the chief-of-staff triage (answer, or start_task) and the
-# "Asking the user" section.
+# Last re-pinned when schedule_followup became eager, so the prompt names it
+# bare instead of by its ``tool:`` capability id.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "7a4a2af737af82e0f45b0c0176e19bc17e76f4d354ecc7a79cc3aba44fe7c7f6"
+    "e35416421185b27e3b1e8799a9e2aea1ea58fac178c9e5a608a4ecaa1def429f"
 )
 
 

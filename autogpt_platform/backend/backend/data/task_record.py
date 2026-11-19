@@ -22,6 +22,7 @@ from prisma.enums import (
     TaskEvidenceKind,
     TaskStatus,
 )
+from prisma.types import TaskUpdateInput
 from pydantic import BaseModel, Field
 
 from backend.data.task import (
@@ -32,6 +33,15 @@ from backend.data.task import (
     _line,
     get_task,
 )
+from backend.data.task_activity_meta import (
+    TaskActivityAccount,
+    account_from_data,
+    meta_data,
+    skill_from_data,
+)
+from backend.data.task_rhythm import RUN_END_BY_STATUS, is_repeating, rearmed
+from backend.data.task_runs import TaskRun, list_task_runs, run_end_data
+from backend.data.task_schedule_meta import with_schedule_meta
 from backend.data.task_text import (
     file_key,
     recorded_tool_names,
@@ -64,9 +74,16 @@ class TaskActivity(BaseModel):
     text: str
     is_milestone: bool = False
     data: dict[str, Any] = Field(default_factory=dict)
+    account: TaskActivityAccount | None = Field(
+        default=None, description="The connected account the step used, if known."
+    )
+    skill: str | None = Field(
+        default=None, description="The skill the step followed, if known."
+    )
 
     @classmethod
     def from_db(cls, row: prisma.models.TaskActivity) -> "TaskActivity":
+        data = dict(row.data) if isinstance(row.data, dict) else {}
         return cls(
             id=row.id,
             task_id=row.taskId,
@@ -77,7 +94,9 @@ class TaskActivity(BaseModel):
             kind=TaskActivityKind(row.kind),
             text=row.text,
             is_milestone=row.isMilestone,
-            data=dict(row.data) if isinstance(row.data, dict) else {},
+            data=data,
+            account=account_from_data(data),
+            skill=skill_from_data(data),
         )
 
 
@@ -191,6 +210,9 @@ class TaskRecord(BaseModel):
         default=False,
         description="Done with a stated done-when but no verified evidence.",
     )
+    runs: list[TaskRun] = Field(
+        default_factory=list, description="Each run of the task, newest first."
+    )
 
 
 class ActivityInput(BaseModel):
@@ -246,6 +268,9 @@ class ToolCallRecord(BaseModel):
     deleted_file_id: str | None = None
     # The page a read fetched, so a link given as proof can be checked.
     url: str | None = None
+    # The connected account the call used and the skill the turn follows.
+    account: TaskActivityAccount | None = None
+    skill: str | None = None
 
 
 def _actor(expert_id: str | None) -> TaskActor:
@@ -264,7 +289,12 @@ async def work_tasks(session_id: str, user_id: str) -> list[Task]:
         include=_WITH_SESSIONS,
         order={"createdAt": "desc"},
     )
-    return [Task.from_db(row) for row in rows]
+    # A repeating task waiting for its next run is no chat's work right now.
+    return [
+        Task.from_db(row)
+        for row in rows
+        if not (row.status == TaskStatus.TODO and is_repeating(row))
+    ]
 
 
 async def find_open_task_by_title(
@@ -445,6 +475,7 @@ async def record_tool_call(
                 "tool": call.tool,
                 "tool_call_id": call.tool_call_id,
                 **({"urls": [call.url]} if call.url else {}),
+                **meta_data(call.account, call.skill),
             },
             merge_key=None if call.artifact or call.evidence_claim else call.tool,
         ),
@@ -750,50 +781,77 @@ async def settle_work_tasks(
     moved = 0
     for row in running:
         children = row.Subtasks or []
+        if row.status == TaskStatus.TODO and is_repeating(row):
+            continue  # waiting for its next run, not running
         if status == TaskStatus.DONE and any(
             child.status in OPEN_STATUSES for child in children
         ):
             continue
-        kind, word = _SETTLED_LINE[status]
-        await tasks.update(
-            where={"id": row.id},
-            data={
-                "status": status,
-                "completedAt": datetime.now(UTC),
-                # A summary the worker left (``task_result.finish_task``)
-                # stands; a bare reply is cut down to its opening.
-                "result": (
-                    row.result or short_result(result)
-                    if status == TaskStatus.DONE
-                    else row.result
-                ),
-                "failureReason": (
-                    _line(failure_reason) if status == TaskStatus.FAILED else None
-                ),
-                "statusText": None,
-                "nextStep": None,
-            },
-        )
-        await prisma.models.TaskAsk.prisma().update_many(
-            where={"taskId": row.id, "status": TaskAskStatus.OPEN},
-            data={"status": TaskAskStatus.WITHDRAWN},
-        )
-        reason = (
-            f": {failure_reason}"
-            if status == TaskStatus.FAILED and failure_reason
-            else ""
-        )
+        await _settle_row(row, session_id, status, result, failure_reason)
+        moved += 1
+    return moved
+
+
+async def _settle_row(
+    row: prisma.models.Task,
+    session_id: str,
+    status: TaskStatus,
+    result: str | None,
+    failure_reason: str | None,
+) -> None:
+    """Settle one task with its run's outcome; a repeating one goes back to
+    waiting for its next run (``task_rhythm.rearmed``), its outcome kept."""
+    now = datetime.now(UTC)
+    # A summary the worker left (``task_result.finish_task``) stands; a bare
+    # reply is cut down to its opening.
+    final = (
+        row.result or short_result(result) if status == TaskStatus.DONE else row.result
+    )
+    data: TaskUpdateInput = {
+        "status": status,
+        "completedAt": now,
+        "result": final,
+        "failureReason": (
+            _line(failure_reason) if status == TaskStatus.FAILED else None
+        ),
+        "statusText": None,
+        "nextStep": None,
+    }
+    ended = RUN_END_BY_STATUS[status]
+    rearm = rearmed(row, ended, now)
+    if rearm is not None:
+        data["status"] = TaskStatus.TODO
+        data["startAt"] = rearm.start_at
+        data["statusText"] = rearm.paused_because
+        data["metadata"] = with_schedule_meta(row.metadata, rearm.meta)
+    await prisma.models.Task.prisma().update(where={"id": row.id}, data=data)
+    await prisma.models.TaskAsk.prisma().update_many(
+        where={"taskId": row.id, "status": TaskAskStatus.OPEN},
+        data={"status": TaskAskStatus.WITHDRAWN},
+    )
+    kind, word = _SETTLED_LINE[status]
+    reason = (
+        f": {failure_reason}" if status == TaskStatus.FAILED and failure_reason else ""
+    )
+    await _append(
+        row.id,
+        ActivityInput(
+            kind=kind,
+            text=f"{word}{reason}",
+            chat_session_id=session_id,
+            is_milestone=True,
+            data=run_end_data(ended, final if status == TaskStatus.DONE else None),
+        ),
+    )
+    if rearm is not None and rearm.paused_because:
         await _append(
             row.id,
             ActivityInput(
-                kind=kind,
-                text=f"{word}{reason}",
-                chat_session_id=session_id,
+                kind=TaskActivityKind.STATUS,
+                text=rearm.paused_because,
                 is_milestone=True,
             ),
         )
-        moved += 1
-    return moved
 
 
 async def _subtask_ids(task_id: str) -> list[str]:
@@ -849,6 +907,7 @@ async def get_task_record(task_id: str, user_id: str) -> TaskRecord | None:
         artifacts=artifacts,
         evidence=evidence,
         is_unverified=is_unverified(task, evidence),
+        runs=await list_task_runs(task_id),
     )
 
 

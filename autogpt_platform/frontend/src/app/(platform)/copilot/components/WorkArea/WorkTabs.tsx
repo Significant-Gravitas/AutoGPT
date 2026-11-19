@@ -10,9 +10,12 @@ import {
   Cancel01Icon,
   CheckListIcon,
   File02Icon,
+  FlowIcon,
   Folder01Icon,
   Message01Icon,
+  SidebarRightIcon,
   Sun03Icon,
+  UserIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import { useEffect, useRef, type KeyboardEvent } from "react";
@@ -34,6 +37,8 @@ interface Props {
   /** The sidebar is at its reading width, so the button offers to narrow it. */
   isWide: boolean;
   onToggleWidth: () => void;
+  /** Hide the whole sidebar; its tabs stay for when it is opened again. */
+  onFold: () => void;
 }
 
 export const TAB_ICONS = {
@@ -42,10 +47,13 @@ export const TAB_ICONS = {
   context: Folder01Icon,
   start: Message01Icon,
   brief: Sun03Icon,
+  workflow: FlowIcon,
+  profile: UserIcon,
 } as const;
 
 /** The tabs across the sidebar's head: each with its own close, and a plus
- *  at the end for a new tab. More tabs first narrow, their names fading out,
+ *  at the end for a new tab; past them, the width button and the button that
+ *  closes the sidebar. More tabs first narrow, their names fading out,
  *  then the strip scrolls sideways. Left and Right move between them, Delete
  *  closes the one in focus. */
 export function WorkTabs({
@@ -56,6 +64,7 @@ export function WorkTabs({
   onNew,
   isWide,
   onToggleWidth,
+  onFold,
 }: Props) {
   const { ref: stripRef, hiddenRight } = useOverflowRight<HTMLDivElement>();
   const buttons = useRef(new Map<string, HTMLButtonElement>());
@@ -190,6 +199,15 @@ export function WorkTabs({
           size={14}
           tone="inherit"
         />
+      </button>
+      <button
+        type="button"
+        aria-label="Close sidebar"
+        title="Close sidebar"
+        onClick={onFold}
+        className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-lg text-foreground-text transition-colors duration-150 ease-out outline-none hover:bg-surface-wash hover:text-foreground-ink focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:ring-inset motion-reduce:transition-none"
+      >
+        <Icon icon={SidebarRightIcon} size={14} tone="inherit" />
       </button>
     </div>
   );

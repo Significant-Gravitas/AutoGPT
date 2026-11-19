@@ -21,6 +21,8 @@ def test_a_started_task_allows_more_tasks_and_a_closing_line_only():
     try:
         assert not turn_end.is_ending("sess-task")
         assert turn_end.refusal("sess-task", "start_task") is None
+        # "Research it now and remind me at 5": a follow-up may follow too.
+        assert turn_end.refusal("sess-task", "schedule_followup") is None
         assert turn_end.refusal("sess-task", "web_search") == turn_end.WRAP_UP_REFUSAL
     finally:
         turn_end.clear("sess-task")

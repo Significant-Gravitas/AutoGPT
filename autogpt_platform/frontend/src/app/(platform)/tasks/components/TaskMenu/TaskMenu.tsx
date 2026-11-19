@@ -19,9 +19,13 @@ import {
   Archive02Icon,
   MoreHorizontalIcon,
   PencilEdit02Icon,
+  RepeatOffIcon,
   Tick02Icon,
+  FlashOffIcon,
 } from "@hugeicons/core-free-icons";
 import { STATUS_ORDER, statusOf } from "../../helpers";
+import { StopTaskDialog } from "../StopTaskDialog/StopTaskDialog";
+import { TryAgainDialog } from "../TryAgainForm/TryAgainDialog";
 import { ArchiveTaskDialog } from "./components/ArchiveTaskDialog/ArchiveTaskDialog";
 import { useTaskMenu } from "./useTaskMenu";
 
@@ -32,8 +36,8 @@ interface Props {
   className?: string;
 }
 
-/** The ⋯ menu on a row, a board card and the panel: rename, change the
- *  status, archive. */
+/** The ⋯ menu on a row, a board card and the panel: start, stop or run
+ *  again, rename, change the status, archive. */
 export function TaskMenu({ task, onRename, onArchived, className }: Props) {
   const menu = useTaskMenu({ task, onRename, onArchived });
 
@@ -46,6 +50,24 @@ export function TaskMenu({ task, onRename, onArchived, className }: Props) {
           className="w-44"
           onCloseAutoFocus={menu.onCloseAutoFocus}
         >
+          <DropdownMenuItem onSelect={menu.pickRun}>
+            <span className="flex items-center gap-2">
+              <Icon icon={menu.run.icon} size={14} />
+              {menu.run.label}
+            </span>
+          </DropdownMenuItem>
+          {task.repeat ? (
+            <DropdownMenuItem onSelect={menu.stopRepeating}>
+              <span className="flex items-center gap-2">
+                <Icon
+                  icon={task.repeat.watch ? FlashOffIcon : RepeatOffIcon}
+                  size={14}
+                />
+                {task.repeat.watch ? "Stop watching" : "Stop repeating"}
+              </span>
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={menu.startRename}>
             <span className="flex items-center gap-2">
               <Icon icon={PencilEdit02Icon} size={14} />
@@ -87,6 +109,21 @@ export function TaskMenu({ task, onRename, onArchived, className }: Props) {
         isPending={menu.isPending}
         onCancel={menu.keep}
         onConfirm={menu.confirmArchive}
+      />
+      <StopTaskDialog
+        isOpen={menu.isConfirmingStop}
+        title={task.title}
+        isPending={menu.isStopping}
+        onCancel={menu.closeRunDialog}
+        onConfirm={menu.confirmStop}
+        isRepeating={!!task.repeat}
+      />
+      <TryAgainDialog
+        isOpen={menu.isAskingRetry}
+        taskID={task.id}
+        isPending={menu.isStarting}
+        onCancel={menu.closeRunDialog}
+        onSubmit={menu.retry}
       />
     </>
   );
