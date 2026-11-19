@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any, Literal
 
 from pydantic import SecretStr
@@ -20,9 +19,8 @@ from backend.blocks.sql_query_helpers import (
     DatabaseType,
     QueryWorkerError,
     _execute_query_in_worker,
+    _query_too_long,
     _sanitize_error,
-    _validate_query_is_read_only,
-    _validate_single_statement,
 )
 from backend.data.credential_scope import ServerTarget
 from backend.data.model import (
@@ -188,7 +186,7 @@ class SQLQueryBlock(Block):
         return await resolve_and_check_blocked(host)
 
     @staticmethod
-    def execute_query(
+    async def execute_query(
         connection_url: URL | str,
         query: str,
         timeout: int,
@@ -198,11 +196,11 @@ class SQLQueryBlock(Block):
     ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
         """Execute a SQL query and return (rows, columns, affected_rows, truncated).
 
-        Runs ``_execute_query`` in a worker process, through
+        Checks and runs the query in a worker process, through
         ``_execute_query_in_worker`` in ``sql_query_helpers``.
         Extracted as a method so it can be mocked during block tests.
         """
-        return _execute_query_in_worker(
+        return await _execute_query_in_worker(
             connection_url=connection_url,
             query=query,
             timeout=timeout,
@@ -221,10 +219,8 @@ class SQLQueryBlock(Block):
         graph_version: int | None = None,
         **_kwargs: Any,
     ) -> BlockOutput:
-        # Validate query structure and read-only constraints. Parsing is
-        # CPU-bound, so keep it off the event loop like the query itself.
-        error = await asyncio.to_thread(self._validate_query, input_data)
-        if error:
+        # The query's statements are checked in its worker (see execute_query).
+        if error := _query_too_long(input_data.query):
             yield "error", error
             return
 
@@ -277,8 +273,7 @@ class SQLQueryBlock(Block):
             )
 
         try:
-            results, columns, affected, truncated = await asyncio.to_thread(
-                self.execute_query,
+            results, columns, affected, truncated = await self.execute_query(
                 connection_url=connection_url,
                 query=input_data.query,
                 timeout=input_data.timeout,
@@ -317,17 +312,6 @@ class SQLQueryBlock(Block):
                     f"Please contact the platform administrator."
                 ),
             )
-
-    @staticmethod
-    def _validate_query(input_data: "SQLQueryBlock.Input") -> str | None:
-        """Validate query structure and read-only constraints."""
-        stmt_error, parsed_stmt = _validate_single_statement(input_data.query)
-        if stmt_error:
-            return stmt_error
-        assert parsed_stmt is not None
-        if input_data.read_only:
-            return _validate_query_is_read_only(parsed_stmt)
-        return None
 
     async def _resolve_host(
         self, input_data: "SQLQueryBlock.Input"

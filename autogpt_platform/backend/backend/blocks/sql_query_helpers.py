@@ -1,13 +1,15 @@
+import asyncio
 import functools
 import json
 import logging
+import os
 import re
-import subprocess
 import sys
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Any
+from weakref import WeakKeyDictionary
 
 import sqlalchemy.exc
 import sqlparse
@@ -91,6 +93,8 @@ _JSON_INT_MAX = 2**64 - 1
 _WORKER_MEMORY_LIMIT = 512 * 2**20
 _MAX_RESULT_BYTES = 16 * 2**20
 _WORKER_DEADLINE_SLACK_SECONDS = 30
+# Workers one event loop runs at once: as many as asyncio.to_thread ran before.
+_WORKERS_PER_LOOP = min(32, (os.cpu_count() or 1) + 4)
 
 # Default ports for each database type.
 # The scheme of a database login's scope (see backend/data/credential_scope.py).
@@ -262,6 +266,17 @@ def _has_disallowed_into(stmt: sqlparse.sql.Statement) -> bool:
     return False
 
 
+def _validate_query(query: str, read_only: bool) -> str | None:
+    """Why the query is refused: not one statement, or not read-only when asked."""
+    stmt_error, parsed_stmt = _validate_single_statement(query)
+    if stmt_error:
+        return stmt_error
+    assert parsed_stmt is not None
+    if read_only:
+        return _validate_query_is_read_only(parsed_stmt)
+    return None
+
+
 def _validate_query_is_read_only(stmt: sqlparse.sql.Statement) -> str | None:
     """Validate that a parsed SQL statement is read-only (SELECT/WITH only).
 
@@ -299,8 +314,8 @@ def _validate_single_statement(
     Returns (error_message, parsed_statement). If error_message is not None,
     the query is invalid and parsed_statement will be None.
     """
-    if len(query) > _MAX_QUERY_LENGTH:
-        return f"Query is too long (max {_MAX_QUERY_LENGTH:,} characters).", None
+    if too_long := _query_too_long(query):
+        return too_long, None
 
     stripped = query.strip().rstrip(";").strip()
     if not stripped:
@@ -324,6 +339,12 @@ def _validate_single_statement(
         return "Query is empty.", None
 
     return None, statements[0]
+
+
+def _query_too_long(query: str) -> str | None:
+    if len(query) > _MAX_QUERY_LENGTH:
+        return f"Query is too long (max {_MAX_QUERY_LENGTH:,} characters)."
+    return None
 
 
 def _is_blank_statement(stmt: sqlparse.sql.Statement) -> bool:
@@ -498,10 +519,15 @@ def _execute_query(
 
 
 class QueryWorkerError(Exception):
-    """A query's worker process ran out of memory or stopped without an answer."""
+    """A query's worker refused it, ran out of memory or stopped without an answer."""
 
 
-def _execute_query_in_worker(
+_worker_slots: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    WeakKeyDictionary()
+)
+
+
+async def _execute_query_in_worker(
     connection_url: URL | str,
     query: str,
     timeout: int,
@@ -509,11 +535,12 @@ def _execute_query_in_worker(
     read_only: bool = True,
     database_type: DatabaseType = DatabaseType.POSTGRES,
 ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
-    """Run ``_execute_query`` in a fresh interpreter under a memory limit.
+    """Check and run the query in a fresh interpreter under a memory limit.
 
-    The worker is killed, and ``TimeoutError`` raised, once the connect and
-    statement timeouts plus ``_WORKER_DEADLINE_SLACK_SECONDS`` have passed.
-    A driver error is raised here as the same SQLAlchemy class and text.
+    The worker is killed when the caller is cancelled, and with a
+    ``TimeoutError`` once the connect and statement timeouts plus
+    ``_WORKER_DEADLINE_SLACK_SECONDS`` have passed. A driver error is raised
+    here as the same SQLAlchemy class and text.
     """
     if isinstance(connection_url, str):
         connection_url = make_url(connection_url)
@@ -536,25 +563,62 @@ def _execute_query_in_worker(
         "max_result_bytes": _MAX_RESULT_BYTES,
     }
     deadline = _CONNECT_TIMEOUT_SECONDS + timeout + _WORKER_DEADLINE_SLACK_SECONDS
-    try:
-        finished = subprocess.run(
-            [sys.executable, "-I", "-c", _worker_bootstrap()],
-            input=json.dumps(request).encode(),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=deadline,
+    async with _loop_worker_slots():
+        worker = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-I",
+            "-c",
+            _worker_bootstrap(),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
             env={},
         )
-    except subprocess.TimeoutExpired as e:
-        raise TimeoutError(f"The query's worker was stopped after {deadline}s") from e
-    if not finished.stdout:
+        try:
+            raw = await asyncio.wait_for(
+                _exchange(worker, json.dumps(request).encode()), deadline
+            )
+        except TimeoutError as e:
+            raise TimeoutError(
+                f"The query's worker was stopped after {deadline}s"
+            ) from e
+        finally:
+            if worker.returncode is None:
+                worker.kill()
+                await worker.wait()
+    if not raw:
         logger.warning(
-            f"SQL query worker exited with code {finished.returncode} and no answer"
+            f"SQL query worker exited with code {worker.returncode} and no answer"
         )
         raise QueryWorkerError(
             "The query stopped without a result; it may have run out of memory."
         )
-    return _read_worker_answer(finished.stdout)
+    return _read_worker_answer(raw)
+
+
+def _loop_worker_slots() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    if (slots := _worker_slots.get(loop)) is None:
+        slots = _worker_slots[loop] = asyncio.Semaphore(_WORKERS_PER_LOOP)
+    return slots
+
+
+async def _exchange(worker: asyncio.subprocess.Process, request: bytes) -> bytes:
+    """Send the request and read the answer, refusing one over the size limit."""
+    assert worker.stdin is not None and worker.stdout is not None
+    try:
+        worker.stdin.write(request)
+        await worker.stdin.drain()
+        worker.stdin.close()
+    except (BrokenPipeError, ConnectionResetError):
+        pass  # A worker that died early answers nothing, which the caller reports
+    answer = bytearray()
+    while chunk := await worker.stdout.read(2**16):
+        answer += chunk
+        if len(answer) > _MAX_RESULT_BYTES:
+            raise QueryWorkerError(_too_large(_MAX_RESULT_BYTES))
+    await worker.wait()
+    return bytes(answer)
 
 
 def _worker_bootstrap() -> str:
@@ -576,8 +640,8 @@ def _read_worker_answer(
     if "result" in answer:
         rows, columns, affected, truncated = answer["result"]
         return rows, columns, affected, truncated
-    if "too_large" in answer:
-        raise QueryWorkerError(answer["too_large"])
+    if "refused" in answer:
+        raise QueryWorkerError(answer["refused"])
     name, message = answer["error"]
     if answer.get("dbapi"):
         raise _rebuilt_error_class(name)(message)
@@ -611,31 +675,38 @@ def _serve_query() -> None:
     """A query worker's entry point: one request on stdin, one answer on stdout."""
     request = json.loads(sys.stdin.buffer.read())
     _limit_memory(request["memory_limit"])
+    limit = request["max_result_bytes"]
     try:
-        result = _execute_query(
-            connection_url=URL.create(**request["url"]),
-            query=request["query"],
-            timeout=request["timeout"],
-            max_rows=request["max_rows"],
-            read_only=request["read_only"],
-            database_type=DatabaseType(request["database_type"]),
-        )
-        answer = json.dumps({"result": result}, default=_json_default)
-        if len(answer) > request["max_result_bytes"]:
-            answer = json.dumps({"too_large": _too_large(request)})
+        # Checked here, inside the worker's limits, rather than by the caller.
+        if refusal := _validate_query(request["query"], request["read_only"]):
+            answer = json.dumps({"refused": refusal})
+        else:
+            result = _execute_query(
+                connection_url=URL.create(**request["url"]),
+                query=request["query"],
+                timeout=request["timeout"],
+                max_rows=request["max_rows"],
+                read_only=request["read_only"],
+                database_type=DatabaseType(request["database_type"]),
+            )
+            answer = json.dumps({"result": result}, default=_json_default)
     except MemoryError:
-        answer = json.dumps({"too_large": _too_large(request)})
-    except DBAPIError as e:
-        answer = json.dumps({"error": [type(e).__name__, str(e)], "dbapi": True})
+        answer = json.dumps({"refused": _too_large(limit)})
     except Exception as e:
-        answer = json.dumps({"error": [type(e).__name__, str(e)]})
+        # The server chooses an error's text, and so its length.
+        error = [type(e).__name__, _truncate_error(str(e))]
+        answer = json.dumps({"error": error, "dbapi": isinstance(e, DBAPIError)})
+    if len(answer) > limit:
+        answer = json.dumps({"refused": _too_large(limit)})
     sys.stdout.write(answer)
     sys.stdout.flush()
 
 
-def _too_large(request: dict[str, Any]) -> str:
-    limit = request["max_result_bytes"] // 2**20
-    return f"Query result is too large (max {limit} MB); select fewer rows or columns."
+def _too_large(limit: int) -> str:
+    return (
+        f"Query result is too large (max {limit // 2**20} MB); "
+        "select fewer rows or columns."
+    )
 
 
 def _json_default(value: Any) -> Any:
