@@ -31,6 +31,7 @@ from prisma.models import (
 )
 from prisma.types import (
     AgentGraphCreateInput,
+    AgentGraphInclude,
     AgentGraphWhereInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
@@ -75,6 +76,13 @@ from .dynamic_fields import (
 )
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
+from .sub_graph_budget import (
+    SubGraphBudget,
+    SubGraphRef,
+    SubGraphSize,
+    get_sub_graph_sizes,
+    too_large_error,
+)
 
 if TYPE_CHECKING:
     from backend.blocks._base import AnyBlockSchema
@@ -1955,9 +1963,37 @@ async def get_sub_graphs_of_each(
     Each graph's sub-graphs, recursively, flattened, in the order of `graphs`.
     Fetched breadth-first with one DB query per level of depth for all `graphs`
     together, so a sub-graph they share (e.g. across versions) is fetched once.
+
+    Raises `SubGraphsTooLargeError` when they are more than one read may load
+    (`sub_graph_budget`), before loading the level that would pass it.
     """
+    each = await _walk_sub_graphs(graphs, client, AGENT_GRAPH_INCLUDE, leave_out=False)
+    # Without leave_out a walk past the bound raises rather than giving None.
+    return [sub_graphs or [] for sub_graphs in each]
+
+
+async def get_sub_graphs_leaving_out_too_large(
+    graphs: Sequence[AgentGraph], client: Prisma | None = None
+) -> list[list[AgentGraph] | None]:
+    """`get_sub_graphs_of_each`, for a batch: a graph whose sub-graphs would
+    take the read past its bound gets None instead, and the rest still load."""
+    return await _walk_sub_graphs(graphs, client, AGENT_GRAPH_INCLUDE, leave_out=True)
+
+
+async def _walk_sub_graphs(
+    graphs: Sequence[AgentGraph],
+    client: Prisma | None,
+    include: AgentGraphInclude,
+    *,
+    leave_out: bool,
+) -> list[list[AgentGraph] | None]:
     agent_block_id = AgentExecutorBlock().id
-    fetched: dict[tuple[str, int, str], AgentGraph | None] = {}
+    # One budget for the read: a sub-graph several graphs share counts once.
+    budget = SubGraphBudget()
+    sizes: dict[SubGraphRef, SubGraphSize] = {}
+    fetched: dict[SubGraphRef, AgentGraph | None] = {}
+    counted: set[SubGraphRef] = set()
+    left_out: set[int] = set()
     found = [{graph.id: graph} for graph in graphs]
     frontiers = [[graph] for graph in graphs]
 
@@ -1973,14 +2009,34 @@ async def get_sub_graphs_of_each(
         ]
         if missing := {ref for level in refs for ref in level} - fetched.keys():
             fetched.update(dict.fromkeys(missing))
+            sizes.update(await get_sub_graph_sizes(missing, client))
+
+        # Sized before anything is fetched, so a level past the bound loads nothing.
+        to_fetch: list[SubGraphRef] = []
+        for i, level in enumerate(refs):
+            new = [
+                ref
+                for ref in dict.fromkeys(level)
+                if ref in sizes and ref[0] not in found[i] and ref not in counted
+            ]
+            if budget.take([sizes[ref] for ref in new]):
+                counted.update(new)
+                to_fetch += new
+            elif leave_out:
+                left_out.add(i)
+                refs[i] = []
+            else:
+                raise too_large_error()
+
+        if to_fetch:
             rows = await AgentGraph.prisma(client).find_many(
                 where={
                     "OR": [
                         {"id": graph_id, "version": graph_version, "userId": user_id}
-                        for graph_id, graph_version, user_id in missing
+                        for graph_id, graph_version, user_id in to_fetch
                     ]
                 },
-                include=AGENT_GRAPH_INCLUDE,
+                include=include,
             )
             fetched.update({(row.id, row.version, row.userId): row for row in rows})
 
@@ -1991,14 +2047,14 @@ async def get_sub_graphs_of_each(
                 {
                     ref: graph
                     for ref in level
-                    if (graph := fetched[ref]) and graph.id not in found[i]
+                    if (graph := fetched.get(ref)) and graph.id not in found[i]
                 }.values()
             )
             found[i].update({graph.id: graph for graph in frontiers[i]})
 
     return [
-        [g for g in sub_graphs.values() if g.id != root.id]
-        for root, sub_graphs in zip(graphs, found)
+        None if i in left_out else [g for g in sub_graphs.values() if g.id != root.id]
+        for i, (root, sub_graphs) in enumerate(zip(graphs, found))
     ]
 
 
@@ -2881,6 +2937,18 @@ async def __create_graph(
             for link in graph.links
         ]
     )
+
+    # Measured as a read of the saved graph will measure it; raising here rolls
+    # the save back, so a graph is never stored that cannot then be read.
+    agent_block_id = AgentExecutorBlock().id
+    refs_only: AgentGraphInclude = {
+        "Nodes": {"where": {"agentBlockId": agent_block_id}}
+    }
+    saved = await AgentGraph.prisma(tx).find_first(
+        where={"id": graph.id, "version": graph.version}, include=refs_only
+    )
+    if saved:
+        await _walk_sub_graphs([saved], tx, refs_only, leave_out=False)
 
 
 async def graph_owner_id(graph_id: str, tx: Prisma | None = None) -> str | None:

@@ -149,6 +149,10 @@ class GraphNotFoundError(NotFoundError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
 
+class SubGraphsTooLargeError(ValueError):
+    """A workflow's sub-workflows are more than one read may load."""
+
+
 class GraphInUseError(Exception):
     """The graph can't be permanently deleted because other users, or a store
     listing, still reference it."""
