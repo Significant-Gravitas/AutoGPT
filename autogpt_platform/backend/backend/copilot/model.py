@@ -22,7 +22,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 from prisma.enums import APIKeyPermission
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
 from backend.data.db_accessors import chat_db, chat_db_is_local, experts_db, library_db
 from backend.data.graph import GraphSettings
@@ -129,11 +129,21 @@ PublicExecutionTargetMetadata = Annotated[
 ]
 
 
+# Kept in ``metadata``, which every chat listing loads per row, and only ever
+# shown as a preview; cut whatever a writer passes.
+PENDING_QUESTION_MAX_LENGTH = 2_000
+
+
 class PendingQuestion(BaseModel):
     """The last unanswered question a session asked the user."""
 
     text: str
     asked_at: datetime
+
+    @field_validator("text")
+    @classmethod
+    def _cut_text(cls, text: str) -> str:
+        return text[:PENDING_QUESTION_MAX_LENGTH]
 
 
 class ChatSessionMetadata(BaseModel):

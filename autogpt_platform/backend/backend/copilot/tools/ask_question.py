@@ -14,7 +14,11 @@ logger = logging.getLogger(__name__)
 
 # The model can be steered by untrusted page content (agent_browser, MCP tools),
 # and every option is replayed into context on each subsequent turn.
+# Any string argument can be a whole file (``@@agptfile:``), so the question
+# and its keyword are bounded like the options.
 MAX_QUESTIONS = 10
+MAX_QUESTION_LENGTH = 2_000
+MAX_KEYWORD_LENGTH = 100
 MAX_OPTIONS = 25
 MAX_OPTION_LENGTH = 200
 MAX_OPTION_SCAN = 500
@@ -167,7 +171,7 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
 
     raw_keyword = item.get("keyword")
     keyword = (
-        str(raw_keyword).strip()
+        str(raw_keyword).strip()[:MAX_KEYWORD_LENGTH]
         if raw_keyword is not None and str(raw_keyword).strip()
         else f"question-{idx}"
     )
@@ -175,7 +179,7 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
     options = _parse_options(item.get("options"))
 
     return ClarifyingQuestion(
-        question=text.strip(),
+        question=text.strip()[:MAX_QUESTION_LENGTH],
         keyword=keyword,
         example=", ".join(options) if options else None,
         options=options,

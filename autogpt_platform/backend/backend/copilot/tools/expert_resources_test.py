@@ -4,7 +4,7 @@ import pytest
 
 from backend.api.features.experts.models import ExpertCredentialRef, ExpertWorkflowRef
 from backend.copilot.context import set_turn_unattended
-from backend.copilot.model import ChatSession
+from backend.copilot.model import PENDING_QUESTION_MAX_LENGTH, ChatSession
 from backend.copilot.tools.expert_resources import (
     CredentialGrantRequestedResponse,
     ExpertCredentialsResponse,
@@ -218,6 +218,20 @@ async def test_autopilot_lists_an_experts_credentials(experts):
     assert isinstance(result, ExpertCredentialsResponse)
     assert "cred-1" in result.message
     experts.list_expert_credentials.assert_awaited_once_with("user-1", "expert-b")
+
+
+async def test_grant_request_keeps_a_short_pending_question(experts):
+    from backend.copilot.tools.expert_resources import RequestCredentialGrantTool
+
+    chat = MagicMock()
+    chat.set_session_pending_question = AsyncMock()
+    session = _session("expert-a")
+    with patch(f"{_PATH}.chat_db", return_value=chat):
+        await RequestCredentialGrantTool()._execute(
+            "user-1", session, credential_id="c" * (PENDING_QUESTION_MAX_LENGTH * 3)
+        )
+    assert session.metadata.pending_question is not None
+    assert len(session.metadata.pending_question.text) == PENDING_QUESTION_MAX_LENGTH
 
 
 async def test_expert_requests_a_grant_and_leaves_a_pending_question(experts):
