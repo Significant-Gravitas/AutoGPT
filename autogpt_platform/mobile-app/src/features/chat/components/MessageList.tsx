@@ -20,6 +20,8 @@ interface Props {
   isLoadingEarlier: boolean;
   onLoadEarlier: () => void;
   onSend: (text: string) => boolean;
+  /** The floating header's height; the first turn starts below it. */
+  topInset: number;
   listRef: RefObject<FlashListRef<Turn> | null>;
   blankSpace: SharedValue<number>;
   composerHeight: SharedValue<number>;
@@ -38,6 +40,7 @@ export function MessageList({
   isLoadingEarlier,
   onLoadEarlier,
   onSend,
+  topInset,
   listRef,
   blankSpace,
   composerHeight,
@@ -117,7 +120,8 @@ export function MessageList({
         }}
         ListHeaderComponent={renderHeader()}
         style={styles.list}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingTop: topInset + spacing.sm }]}
+        scrollIndicatorInsets={{ top: topInset }}
       />
     </ChatScrollContext>
   );
@@ -127,7 +131,6 @@ const useStyles = createStyles((colors) => ({
   list: { flex: 1 },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
     paddingBottom: BOTTOM_PADDING,
   },
   earlier: {

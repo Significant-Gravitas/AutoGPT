@@ -1378,6 +1378,36 @@ describe("recovered terminal errors", () => {
   });
 });
 
+describe("watching for a turn the server starts", () => {
+  it("says so from the start of the watch until that turn attaches", async () => {
+    runtime.followBackendTurn();
+    expect(snapshot()).toMatchObject({
+      probing: true,
+      phase: "idle",
+    });
+    await advance(1_200);
+    expect(snapshot().probing).toBe(true);
+
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    await advance(1_000);
+    expect(snapshot()).toMatchObject({
+      probing: false,
+      phase: "live",
+    });
+  });
+
+  it("stops saying so when no turn comes", async () => {
+    runtime.followBackendTurn();
+    // Eight looks, 500 ms apart.
+    await advance(5_000);
+    expect(snapshot()).toMatchObject({
+      probing: false,
+      phase: "idle",
+    });
+  });
+});
+
 function loseSendWhileHidden() {
   backend.respond(({ method }) =>
     method === "POST" ? "network-error" : "stream",
