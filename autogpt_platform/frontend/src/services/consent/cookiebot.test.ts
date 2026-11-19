@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseCookieConsent, parseCookieConsentHeader } from "./cookiebot";
+import {
+  parseCookieConsent,
+  parseCookieConsentHeader,
+  readCookieConsentIdentity,
+} from "./cookiebot";
 
 const ANSWER =
   "{stamp:'VLZnHUKBPLqZCJyClLLmnGglmUPeZsGxrmiAEZ48i7UH39ptKHY4MA==',necessary:true,preferences:false,statistics:true,marketing:false,method:'explicit',ver:1,utc:1724770548958,region:'de'}";
@@ -186,5 +190,34 @@ describe("parseCookieConsentHeader", () => {
       statistics: false,
       marketing: false,
     });
+  });
+});
+
+describe("readCookieConsentIdentity", () => {
+  function header(value: string) {
+    return `other=1; CookieConsent=${encodeURIComponent(value)}`;
+  }
+
+  it("changes when the visitor answers again, even with the same choice", () => {
+    const again = ANSWER.replace("utc:1724770548958", "utc:1724770999999");
+    expect(readCookieConsentIdentity(header(again))).not.toBe(
+      readCookieConsentIdentity(header(ANSWER)),
+    );
+  });
+
+  it("depends only on the answer's consent ID and time", () => {
+    const changed = ANSWER.replace("region:'de'", "region:'fr'");
+    expect(readCookieConsentIdentity(header(changed))).toBe(
+      readCookieConsentIdentity(header(ANSWER)),
+    );
+  });
+
+  it("uses the raw value for an answer without a consent ID", () => {
+    expect(readCookieConsentIdentity("CookieConsent=0")).toBe("0");
+  });
+
+  it("is null without a stored answer", () => {
+    expect(readCookieConsentIdentity("other=1")).toBeNull();
+    expect(readCookieConsentIdentity(null)).toBeNull();
   });
 });

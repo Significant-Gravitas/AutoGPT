@@ -5,6 +5,7 @@ graph execution; these tests pin the chat shape, the graph shape, and the
 reading of rows (and callers) still in the old shape.
 """
 
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -274,3 +275,82 @@ async def test_the_database_refuses_a_review_without_exactly_one_scope(user_id, 
                 **scope,
             }
         )
+
+
+async def test_v2_run_review_listing_leaves_out_chat_reviews(user_id):
+    from prisma.enums import APIKeyPermission
+
+    from backend.api.external.v2.pagination import PageRequest
+    from backend.api.external.v2.runs import list_reviews
+    from backend.api.external.v2.tenancy import TenantContext
+
+    graph_exec_id = str(uuid4())
+    await get_or_create_human_review(
+        user_id=user_id,
+        node_exec_id=str(uuid4()),
+        graph_exec_id=graph_exec_id,
+        graph_id="graph-1",
+        graph_version=1,
+        input_data={},
+        message="Send",
+        editable=False,
+    )
+    await get_or_create_human_review(
+        user_id=user_id,
+        node_exec_id=f"copilot-node-blk:{uuid4().hex[:8]}",
+        chat_session_id=f"chat-{uuid4()}",
+        input_data={},
+        message="Create Folder",
+        editable=False,
+    )
+    await PendingHumanReview.prisma().create(
+        data={
+            "nodeExecId": f"copilot-node-old:{uuid4().hex[:8]}",
+            "userId": user_id,
+            "graphExecId": f"copilot-session-chat-{uuid4()}",
+            "graphId": "copilot-session-old",
+            "graphVersion": 1,
+            "payload": SafeJson({}),
+            "instructions": "Old shape",
+            "editable": False,
+        }
+    )
+
+    page = await list_reviews(
+        run_id=None,
+        review_status=None,
+        page=PageRequest(limit=20),
+        auth=TenantContext(
+            user_id=user_id,
+            scopes=list(APIKeyPermission),
+            type="api_key",
+            organization_id=f"org-{uuid4()}",
+        ),
+    )
+
+    assert [r.run_id for r in page.items] == [graph_exec_id]
+    assert page.total_count == 1
+
+
+async def test_every_pending_review_of_an_execution_is_returned_oldest_first(user_id):
+    """The review UI and submission read this list whole, in the order the run
+    asked; a page of the newest 25 would drop the oldest from both."""
+    graph_exec_id = str(uuid4())
+    start = datetime.now(timezone.utc)
+    created = [str(uuid4()) for _ in range(26)]
+    for i, node_exec_id in enumerate(created):
+        await PendingHumanReview.prisma().create(
+            data={
+                "nodeExecId": node_exec_id,
+                "userId": user_id,
+                "graphExecId": graph_exec_id,
+                "graphId": "graph-1",
+                "graphVersion": 1,
+                "payload": SafeJson({"i": i}),
+                "createdAt": start + timedelta(seconds=i),
+            }
+        )
+
+    reviews = await get_pending_reviews_for_execution(graph_exec_id, user_id)
+
+    assert [r.node_exec_id for r in reviews] == created

@@ -106,6 +106,8 @@ export function useWorkflowImportAutoSubmit({
   const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
   const hasProcessedUrlPrompt = useRef(false);
 
+  // After every commit, not just on mount: a workflow import can stash its
+  // prompt once this host is already up, and a later render picks it up.
   useEffect(() => {
     if (isSendLocked || hasProcessedUrlPrompt.current) return;
 
@@ -124,5 +126,5 @@ export function useWorkflowImportAutoSubmit({
     } else {
       setInitialPrompt(urlPrompt.prompt);
     }
-  }, [isSendLocked, onSend, setInitialPrompt, setPendingFileParts]);
+  });
 }

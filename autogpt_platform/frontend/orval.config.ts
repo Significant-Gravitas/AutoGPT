@@ -54,6 +54,15 @@ export default defineConfig({
         ],
       },
       override: {
+        mock: {
+          // A generated response is a healthy one: a random scheduler outage
+          // would show schedules as unavailable in any test built on these
+          // mocks. Tests of an outage set the flag themselves.
+          properties: {
+            schedule_info_unavailable: false,
+            schedules_unavailable: false,
+          },
+        },
         mutator: {
           path: "./mutators/custom-mutator.ts",
           name: "customMutator",

@@ -41,6 +41,7 @@ def compose_home_dashboard(
     work_events: list[ActivityEvent] | None = None,
     session_titles: dict[str, str | None] | None = None,
     paused_chats: list[PausedScheduledChat] | None = None,
+    schedules_unavailable: bool = False,
 ) -> HomeDashboardResponse:
     hired = [
         expert
@@ -48,12 +49,12 @@ def compose_home_dashboard(
         if not expert.is_template and not expert.is_archived
     ]
     expert_by_id = {expert.id: expert for expert in hired}
-    agent_by_graph = agent_refs_by_graph(hired, library_refs)
     graph_schedules = [
         schedule
         for schedule in schedules
         if isinstance(schedule, GraphExecutionJobInfo)
     ]
+    agent_by_graph = agent_refs_by_graph(hired, library_refs, graph_schedules)
     expert_by_schedule = experts_by_schedule(hired, graph_schedules)
     running_expert_ids = {
         execution.expert_id
@@ -106,4 +107,5 @@ def compose_home_dashboard(
             agent_by_graph=agent_by_graph,
             session_titles=session_titles or {},
         ),
+        schedules_unavailable=schedules_unavailable,
     )

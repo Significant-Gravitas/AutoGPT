@@ -2,6 +2,8 @@
 
 import hashlib
 
+from backend.util.llm.request_too_large import is_request_too_large_text
+
 # Otto is the account's built-in helper — the identity every session
 # without an expert speaks as, and the fixed author of the morning briefing.
 AUTOPILOT_NAME = "Otto"
@@ -46,15 +48,20 @@ STREAM_INCOMPLETE_MARKER = f"{COPILOT_SYSTEM_PREFIX} Reached the per-query spend
 # the history just stopping mid-task.
 STREAM_ERROR_MARKER = f"{COPILOT_SYSTEM_PREFIX} The assistant ran into an error and stopped. Send a follow-up message to retry."
 
+# Streamed by the baseline engine when the model finished under its budget but
+# its last round left nothing to read, so a long thinking-only turn doesn't end
+# on a blank bubble. The SDK engine reports the same thing as
+# ``StreamError(code="empty_completion")``.
+EMPTY_COMPLETION_NOTICE = (
+    "The model returned no response for this turn. "
+    "Please try again or rephrase your request."
+)
+
 # Notices streamed as the reply's own text when the model gave no answer.
 # Unlike the markers above they carry no prefix, so they read as the reply.
 BUDGET_EXHAUSTED_NOTICE = (
     "Reached the tool-call budget for this turn. "
     "Send a follow-up message to continue from here."
-)
-EMPTY_FINISH_NOTICE = (
-    "The model returned no response for this turn. "
-    "Please try again or rephrase your request."
 )
 NO_COMMENTARY_NOTICE = "(Done — no further commentary.)"
 
@@ -64,7 +71,7 @@ _MARKER_PREFIXES = (
     COPILOT_SYSTEM_PREFIX,
 )
 _NOTICES = frozenset(
-    {BUDGET_EXHAUSTED_NOTICE, EMPTY_FINISH_NOTICE, NO_COMMENTARY_NOTICE}
+    {BUDGET_EXHAUSTED_NOTICE, EMPTY_COMPLETION_NOTICE, NO_COMMENTARY_NOTICE}
 )
 
 
@@ -196,6 +203,10 @@ FRIENDLY_TRANSIENT_MSG = (
 
 def is_transient_api_error(error_text: str) -> bool:
     """Return True if *error_text* matches a known transient Anthropic API error."""
+    # OpenAI's "Request too large" carries rate_limit_exceeded, but the same
+    # request is refused every time, so it is never worth another attempt.
+    if is_request_too_large_text(error_text):
+        return False
     lower = error_text.lower()
     return any(pat.lower() in lower for pat in _TRANSIENT_ERROR_PATTERNS)
 
@@ -212,4 +223,6 @@ _TRANSIENT_ERROR_CATEGORIES = frozenset({"server_error", "rate_limit"})
 def is_transient_assistant_error(category: str, content: str) -> bool:
     """Return True if an API error the CLI reported in an ``AssistantMessage``
     is transient, by its category or by the text it carries."""
+    if is_request_too_large_text(content):
+        return False
     return category in _TRANSIENT_ERROR_CATEGORIES or is_transient_api_error(content)

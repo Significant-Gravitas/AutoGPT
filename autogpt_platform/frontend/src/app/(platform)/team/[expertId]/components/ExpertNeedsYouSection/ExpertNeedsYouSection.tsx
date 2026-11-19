@@ -33,7 +33,7 @@ export function ExpertNeedsYouSection({ expert }: Props) {
           isHeldCall(item) ? (
             <div
               key={item.id}
-              className="overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm"
+              className="overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm"
             >
               <HeldCall
                 item={item}

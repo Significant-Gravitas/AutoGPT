@@ -8,7 +8,7 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 
-vi.mock("@sentry/nextjs", () => ({
+vi.mock("@sentry/nextjs/config", () => ({
   withSentryConfig: (config: NextConfig) => config,
 }));
 vi.mock("@/lib/auth/server/getServerAuthToken", () => ({

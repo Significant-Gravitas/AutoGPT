@@ -55,7 +55,7 @@ def test_importing_backend_turns_mem0_telemetry_off(tmp_path: Path):
         "assert os.environ['GRAPHITI_TELEMETRY_ENABLED'] == 'false'\n"
         "assert os.environ['MEM0_TELEMETRY'] == 'false'\n"
         "assert telemetry.MEM0_TELEMETRY is False\n"
-        "assert telemetry.client_telemetry.posthog.disabled is True\n",
+        "assert telemetry.client_telemetry.posthog is None\n",
         tmp_path,
     )
 

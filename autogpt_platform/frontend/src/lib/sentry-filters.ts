@@ -44,8 +44,30 @@ export function isInjectedIframeProbe(event: Event) {
   );
 }
 
+// webpack ("Loading chunk 34006 failed.", "Loading CSS chunk 123 failed.")
+// and Turbopack ("Failed to load chunk /_next/static/…").
+const CHUNK_LOAD_MESSAGE =
+  /Loading (CSS )?chunk \S+ failed|Failed to load chunk/;
+
+export function isChunkLoadFailure(name = "", message = "") {
+  return name === "ChunkLoadError" || CHUNK_LOAD_MESSAGE.test(message);
+}
+
+/**
+ * Marks a failed on-demand code load as deploy skew: a tab on an older build
+ * asked for a chunk the current deployment no longer serves. The event is
+ * still sent, so a chunk that fails for another reason stays visible.
+ */
+export function tagDeploySkew<T extends Event>(event: T): T {
+  const exception = event.exception?.values?.[0];
+  if (isChunkLoadFailure(exception?.type, exception?.value)) {
+    event.tags = { ...event.tags, deploy_skew: true };
+  }
+  return event;
+}
+
 export const CLIENT_IGNORE_ERRORS = [
-  // Sentry Replay (rrweb) serializing DOM snapshots with cross-origin
+  // Session replay (rrweb) serializing DOM snapshots with cross-origin
   // stylesheets (e.g. from browser extensions or CDN-loaded CSS)
   /Not allowed to access cross-origin stylesheet/,
   // Sentry SDK internal issue on some mobile browsers
@@ -160,7 +182,28 @@ function withoutPrivateAttributes<V>(attributes: Record<string, V>) {
 
 type SentryOptions = NonNullable<Parameters<typeof init>[0]>;
 type SentryLog = Parameters<NonNullable<SentryOptions["beforeSendLog"]>>[0];
-type SentrySpan = Parameters<NonNullable<SentryOptions["beforeSendSpan"]>>[0];
+type SentrySpan = NonNullable<Event["spans"]>[number];
+
+// The names the SDK treats as private in headers and query parameters.
+const SDK_PRIVATE_NAMES = {
+  deny: ["forwarded", "-ip", "remote-", "via", "-user"],
+};
+
+// Sentry collects user details, cookies, headers and bodies unless told not
+// to. This keeps it to what it collected while told to send no personal data,
+// which the filters here then narrow further.
+export const SENTRY_DATA_COLLECTION = {
+  userInfo: false,
+  cookies: false,
+  httpHeaders: { request: SDK_PRIVATE_NAMES, response: SDK_PRIVATE_NAMES },
+  httpBodies: [],
+  urlQueryParams: SDK_PRIVATE_NAMES,
+  genAI: { inputs: false, outputs: false },
+  databaseQueryData: false,
+  queues: false,
+  graphQL: { document: false, variables: false },
+  frameContextLines: 7,
+} satisfies SentryOptions["dataCollection"];
 
 // Logs are known to Sentry by the user id only, like errors and transactions.
 export function stripLogUserPII(log: SentryLog): SentryLog {

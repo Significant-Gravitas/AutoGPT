@@ -6,6 +6,7 @@ raise are the ones production runs.
 """
 
 import logging
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
@@ -21,11 +22,11 @@ from backend.blocks.pinecone import PineconeQueryBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.copilot import tree
 from backend.copilot.context import set_execution_context
-from backend.copilot.gate import CEILING_UNIT_MICRODOLLARS, check_action
+from backend.copilot.gate import CEILING_UNIT_MICRODOLLARS, check_action, spent_approval
 from backend.copilot.gate import subject as subject_module
 from backend.copilot.gate.headline import Headline
 from backend.copilot.gate.policy import Effect
-from backend.copilot.gate.review import open_review, review_payload
+from backend.copilot.gate.review import open_review, review_id_for, review_payload
 from backend.copilot.gate.subject import Subject, block_subject
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.copilot.tools.gate_subject_test import _graph, _node, _sub
@@ -48,6 +49,7 @@ from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionStatus
 from backend.data.model import CredentialsMetaInput
 from backend.data.redis_client import AsyncRedisClient
+from backend.util.exceptions import InsufficientBalanceError
 
 _GATE = "backend.copilot.gate"
 _RUN = "backend.copilot.tools.run_agent"
@@ -130,6 +132,7 @@ def gate(redis):
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.review_store.consume", store.consume),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held.kept_for_its_card", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value=None)),
     ):
         yield store
@@ -262,6 +265,28 @@ async def test_the_approval_runs_next_turn_and_buys_the_chat_one_more_dollar(
     assert not (await _check(_PAID)).allowed
 
 
+async def test_a_money_card_the_fold_spent_buys_the_chat_one_more_dollar(gate, chat):
+    """The gate spends the card the fold read as the call reaches it, and lets
+    the call through on it, so the dollar is bought there, without a lookup.
+    Kills: dropping the raise from the gate's branch for the fold's call."""
+    await _open(chat, ceiling=0)
+    review_id = review_id_for(_CHAT, "user-1", "t", {"q": 1})
+    card = SimpleNamespace(
+        node_exec_id=review_id,
+        status=ReviewStatus.APPROVED,
+        payload={"spend": {}},
+        created_at=datetime.now(UTC),
+        updated_at=None,
+        reviewed_at=datetime.now(UTC),
+    )
+    with spent_approval.running(review_id, spent_approval.FoldPass(card)):
+        assert (await _check(_PAID)).allowed
+    gate.consume.assert_awaited_once_with(card, "user-1")
+    gate.find_review.assert_not_awaited()
+    ceiling = (await chat.snapshot(_ledger_id()))["ceiling"]
+    assert ceiling == CEILING_UNIT_MICRODOLLARS
+
+
 async def test_an_approval_of_any_other_card_raises_nothing(gate, chat):
     await _open(chat, ceiling=0)
     gate.find_review.return_value = SimpleNamespace(
@@ -311,18 +336,42 @@ async def test_a_block_run_charges_the_chat_even_when_expert_metering_fails(gate
     assert (await chat.snapshot(_ledger_id()))["spent"] == 70_000
 
 
-@pytest.mark.parametrize("charge_fails", [False, True])
-async def test_only_a_failed_charge_is_logged_as_a_billing_leak(ledger, charge_fails):
-    """Kills: a failed flag lookup after a paid charge logged as BILLING_LEAK."""
+_DEBIT_ERRORS = {
+    "refused": InsufficientBalanceError("Low balance", "user-1", 0, 7),
+    "debit": RuntimeError("db down"),
+}
+
+
+@pytest.mark.parametrize("fails", ["nothing", "refused", "debit", "metering"])
+async def test_only_metering_that_fails_after_the_debit_is_logged(ledger, fails):
+    """Kills: a failed flag lookup after a paid charge logged as a metering
+    miss. A refused or failed debit raises, so the block never runs; only
+    spend metering that fails after the debit landed is logged, as
+    SPEND_METERING_MISSED."""
     lines: list[str] = []
     handler = logging.Handler()
     handler.emit = lambda record: lines.append(record.getMessage())
     helpers_logger = logging.getLogger("backend.copilot.tools.helpers")
     helpers_logger.addHandler(handler)
-    spend = AsyncMock(side_effect=RuntimeError("db down") if charge_fails else None)
+    spend = AsyncMock(side_effect=_DEBIT_ERRORS.get(fails))
+    metering = AsyncMock(
+        side_effect=RuntimeError("ledger down") if fails == "metering" else None
+    )
     try:
-        with patch.object(
-            tree, "is_feature_enabled", AsyncMock(side_effect=RuntimeError("flags"))
+        with (
+            patch.object(
+                tree, "is_feature_enabled", AsyncMock(side_effect=RuntimeError("flags"))
+            ),
+            (
+                patch("backend.copilot.tools.helpers.charge_credits", metering)
+                if fails == "metering"
+                else nullcontext()
+            ),
+            (
+                pytest.raises(type(_DEBIT_ERRORS[fails]))
+                if fails in _DEBIT_ERRORS
+                else nullcontext()
+            ),
         ):
             await _charge_block_credits(
                 SimpleNamespace(spend_credits=spend),
@@ -336,7 +385,9 @@ async def test_only_a_failed_charge_is_logged_as_a_billing_leak(ledger, charge_f
             )
     finally:
         helpers_logger.removeHandler(handler)
-    assert any("BILLING_LEAK" in line for line in lines) is charge_fails
+    assert any("SPEND_METERING_MISSED" in line for line in lines) is (
+        fails == "metering"
+    )
 
 
 async def test_a_workflow_run_charges_its_pre_flight_estimate(gate, chat):

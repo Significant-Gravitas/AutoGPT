@@ -21,7 +21,6 @@ import time
 from collections.abc import Iterator
 from typing import Any, Optional
 
-import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 from slack_sdk.errors import SlackApiError
@@ -52,7 +51,7 @@ from backend.copilot.bot.text import iter_chunks, resolve_mentions
 from backend.data.db_accessors import bot_installs_db
 from backend.platform_linking.models import Platform
 
-from . import choice_ui, commands, config, history, oauth, signing
+from . import choice_ui, commands, config, file_download, history, oauth, signing
 from .text import to_mrkdwn
 
 logger = logging.getLogger(__name__)
@@ -66,6 +65,8 @@ _UNINSTALL_EVENTS = {"app_uninstalled", "tokens_revoked"}
 
 # Matches both `<@U123>` and `<@U123|displayname>` mention forms.
 _USER_MENTION_RE = re.compile(r"<@(U[A-Z0-9]+)(?:\|[^>]+)?>")
+# A user (``<@U…>``/``<@W…>``) or user-group (``<!subteam^S…>``) mention.
+_ADDRESSEE_RE = re.compile(r"<@[UW][A-Z0-9]+(?:\|[^>]+)?>|<!subteam\^[A-Z0-9]+")
 
 # Slack channel/group/DM IDs — C/G/D + uppercase alphanumerics. Channel *names*
 # are lowercase-with-hyphens, so they never match; used by the proactive-post
@@ -130,7 +131,8 @@ class SlackAdapter(WebhookAdapter):
         return config.TYPING_REFRESH_SECONDS
 
     def looks_like_channel_id(self, ref: str) -> bool:
-        return bool(_CHANNEL_ID_RE.match(ref))
+        _, channel, _ = _decode_target(ref)
+        return bool(_CHANNEL_ID_RE.match(channel))
 
     def localize_markup(self, text: str) -> str:
         return to_mrkdwn(text)
@@ -230,7 +232,7 @@ class SlackAdapter(WebhookAdapter):
         form: dict[str, str] = {
             k: v for k, v in form_data.items() if isinstance(v, str)
         }
-        return await commands.handle(self._api, form)
+        return await commands.handle(self._api, form, self._client_for)
 
     async def _handle_interactive_request(self, request: Request) -> Response:
         # Same body-then-form sequence as _handle_command_request: Slack's
@@ -448,6 +450,14 @@ class SlackAdapter(WebhookAdapter):
             username=await self._user_display_name(team, user),
             text=await self._strip_mentions(team, text),
             bot_mentioned=bot_mentioned,
+            # Our own mention routes through app_mention (bot_mentioned=True),
+            # so any user or user-group token left here names someone else.
+            addressed_to_others=(
+                not bot_mentioned and bool(_ADDRESSEE_RE.search(text))
+            ),
+            public_channel_id=None if is_dm else channel,
+            public_thread_id=None if is_dm else thread_ts,
+            post_channel_id=None if is_dm else target_channel_id,
             thread_history=thread_history,
             mentionable_users=await self._collect_mentionable_users(team, text, user),
             attachments=attachments,
@@ -512,12 +522,12 @@ class SlackAdapter(WebhookAdapter):
     ) -> bytes:
         # Slack file URLs are private — download needs the workspace's bot token
         # as a bearer credential (files:read scope), unlike Discord's public CDN.
-        url = file_obj.get("url_private_download") or file_obj.get("url_private") or ""
-        token = await self._token_for(team_id)
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
-            resp.raise_for_status()
-            return resp.content
+        # file_download sends it only for files Slack hosts.
+        return await file_download.download(
+            file_obj,
+            await self._token_for(team_id),
+            max_bytes=self.max_attachment_bytes,
+        )
 
     async def _token_for(self, team_id: str) -> str:
         client = await self._client_for(team_id)

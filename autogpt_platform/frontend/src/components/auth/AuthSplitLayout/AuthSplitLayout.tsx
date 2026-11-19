@@ -11,11 +11,18 @@ interface Props {
 
 export function AuthSplitLayout({ marketing, children, className }: Props) {
   return (
-    <div className={cn("flex min-h-screen w-full flex-1", className)}>
-      <aside className="relative hidden flex-1 border-r border-zinc-200 bg-[#f9f9f9] lg:flex">
+    // From lg the page is exactly the screen tall and never scrolls: each half
+    // scrolls on its own if a short window can't fit it.
+    <div
+      className={cn(
+        "flex min-h-screen w-full flex-1 lg:max-h-screen lg:min-h-0",
+        className,
+      )}
+    >
+      <aside className="relative hidden flex-1 overflow-y-auto border-r border-border-base bg-surface-muted lg:flex">
         {marketing}
       </aside>
-      <section className="relative flex flex-1 flex-col items-center bg-white px-6 pb-4 pt-12 sm:px-10">
+      <section className="relative flex flex-1 flex-col items-center bg-surface px-6 pt-12 pb-4 sm:px-10 lg:overflow-y-auto">
         <div className="flex w-full max-w-[26rem] flex-1 flex-col justify-center">
           <AutoGPTLogo className="mx-auto mb-10 h-auto w-32 sm:w-40 lg:hidden" />
           {children}

@@ -1,5 +1,7 @@
 import { environment } from "@/services/environment";
+import { authTokenUnavailableResponse } from "@/lib/auth/server/authTokenUnavailableResponse";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import { NextRequest } from "next/server";
 import { normalizeSSEStream, SSE_HEADERS } from "../../../sse-helpers";
 
@@ -107,6 +109,9 @@ export async function POST(
       headers: SSE_HEADERS,
     });
   } catch (error) {
+    if (error instanceof AuthTokenUnavailableError) {
+      return authTokenUnavailableResponse(error);
+    }
     console.error("SSE proxy error:", error);
     return new Response(
       JSON.stringify({
@@ -174,6 +179,9 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (error instanceof AuthTokenUnavailableError) {
+      return authTokenUnavailableResponse(error);
+    }
     console.error("Resume stream proxy error:", error);
     return new Response(
       JSON.stringify({

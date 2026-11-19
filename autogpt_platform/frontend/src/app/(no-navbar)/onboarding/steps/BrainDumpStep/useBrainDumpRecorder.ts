@@ -3,10 +3,14 @@
 // so the reassurance on screen is a fact rather than a hope.
 
 import { useEffect, useRef, useState } from "react";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import {
+  isMicrophonePermissionDenied,
+  microphoneErrorName,
+} from "@/lib/microphone";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   HARD_STOP_SECONDS,
-  isPermissionDenied,
   META_REFRESH_SECONDS,
   newRecordingId,
   pickMimeType,
@@ -18,11 +22,32 @@ import { buildPart, useUploadQueue } from "./useUploadQueue";
 
 export type RecorderPhase = "idle" | "recording" | "stopping" | "stopped";
 
-export function useBrainDumpRecorder() {
+// How the browser answered the request for the microphone.
+type MicAnswer = "granted" | "denied" | "unavailable";
+
+interface Args {
+  // The role's prompt set, sent with `brain_dump_started`.
+  promptSet?: string;
+}
+
+interface StartOptions {
+  // Called once the browser has answered, before the take starts, so a
+  // caller can report the answer ahead of `brain_dump_started`.
+  onMicAnswer?: (answer: MicAnswer) => void;
+  // Asked once the microphone opens: the caller may have moved on while the
+  // permission prompt was open, and then no take is started.
+  shouldRecord?: () => boolean;
+}
+
+export function useBrainDumpRecorder({ promptSet }: Args = {}) {
+  const userID = useAuthStore((state) => state.user?.id);
   const [phase, setPhase] = useState<RecorderPhase>("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isSavedLocally, setIsSavedLocally] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  // No microphone, or one another app holds: unlike a denial, it can be
+  // fixed on the device, so Talk stays offered.
+  const [micUnavailable, setMicUnavailable] = useState(false);
   const [hasSpoken, setHasSpoken] = useState(false);
   // The recorder stopping itself is indistinguishable from any other stop
   // by phase alone, and the step has to tell them apart: this one has to
@@ -102,19 +127,19 @@ export function useBrainDumpRecorder() {
     }
   }
 
-  async function start() {
+  async function start(options: StartOptions = {}) {
     // A tap that lands while the permission prompt from the previous one
     // is still open is the same tap, not a second take.
     if (isStartingRef.current) return false;
     isStartingRef.current = true;
     try {
-      return await openMicAndRecord();
+      return await openMicAndRecord(options);
     } finally {
       isStartingRef.current = false;
     }
   }
 
-  async function openMicAndRecord() {
+  async function openMicAndRecord({ onMicAnswer, shouldRecord }: StartOptions) {
     // Permission is requested on the first tap, never on screen load —
     // a browser prompt before the user has read the headline is how
     // denial rates go up.
@@ -122,15 +147,17 @@ export function useBrainDumpRecorder() {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (error) {
-      if (isPermissionDenied(error)) {
-        setPermissionDenied(true);
-        trackBrainDump("brain_dump_permission_denied");
-      }
+      reportMicFailure(error);
+      onMicAnswer?.(
+        isMicrophonePermissionDenied(error) ? "denied" : "unavailable",
+      );
       return false;
     }
+    onMicAnswer?.("granted");
+    setMicUnavailable(false);
     // Back during the prompt, or a skip during "Record again", can leave the
     // step before the mic opens, and its unmount cleanup has already run.
-    if (unmountedRef.current) {
+    if (unmountedRef.current || shouldRecord?.() === false) {
       stream.getTracks().forEach((track) => track.stop());
       return false;
     }
@@ -158,23 +185,45 @@ export function useBrainDumpRecorder() {
       durationSecs: 0,
       finalized: false,
     });
-    if (unmountedRef.current) {
+    // The caller can move on during the write too.
+    if (unmountedRef.current || shouldRecord?.() === false) {
       stopTracks();
       return false;
     }
 
-    const recorder = new MediaRecorder(stream, { mimeType });
-    recorder.ondataavailable = function handleChunk(event) {
-      if (event.data.size === 0) return;
-      pendingWritesRef.current.push(persistChunk(recordingId, event.data));
-    };
-    recorder.start(TIMESLICE_MS);
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType });
+      recorder.ondataavailable = function handleChunk(event) {
+        if (event.data.size === 0) return;
+        pendingWritesRef.current.push(persistChunk(recordingId, event.data));
+      };
+      recorder.start(TIMESLICE_MS);
+    } catch (error) {
+      // The mic opened but the browser won't record from it (an encoder it
+      // refuses, a track that ended): let the mic go and say so.
+      stopTracks();
+      reportMicFailure(error);
+      return false;
+    }
     recorderRef.current = recorder;
 
     timerRef.current = setInterval(tick, 250);
     setPhase("recording");
-    trackBrainDump("brain_dump_started");
+    trackBrainDump("brain_dump_started", { prompt_set: promptSet });
     return true;
+  }
+
+  function reportMicFailure(error: unknown) {
+    trackBrainDump("brain_dump_mic_failed", {
+      error_name: microphoneErrorName(error),
+    });
+    if (isMicrophonePermissionDenied(error)) {
+      setPermissionDenied(true);
+      trackBrainDump("brain_dump_permission_denied");
+    } else {
+      setMicUnavailable(true);
+    }
   }
 
   async function persistChunk(recordingId: string, blob: Blob) {
@@ -277,7 +326,7 @@ export function useBrainDumpRecorder() {
   // still there, so the user is offered them back rather than told to
   // start over.
   async function findRecoverable() {
-    const meta = await getMeta().catch(() => null);
+    const meta = await getMeta(userID).catch(() => null);
     if (!meta || meta.finalized) return null;
     return meta;
   }
@@ -305,7 +354,7 @@ export function useBrainDumpRecorder() {
   // bandwidth and nothing else. A whole dump is ~6 MB.
   async function resendAllParts(recordingId: string) {
     const parts = await getParts(recordingId).catch(() => []);
-    parts.forEach((part) => queue.enqueue(part));
+    parts.forEach((part) => queue.enqueue({ ...part, resent: true }));
     return parts;
   }
 
@@ -314,7 +363,7 @@ export function useBrainDumpRecorder() {
   // serialised so the last one issued is the last one to land.
   async function rememberMeta(meta: Parameters<typeof saveMeta>[0]) {
     const write = metaWriteRef.current.then(() =>
-      saveMeta(meta).catch(() => undefined),
+      saveMeta({ ...meta, userID }).catch(() => undefined),
     );
     metaWriteRef.current = write;
     await write;
@@ -325,6 +374,10 @@ export function useBrainDumpRecorder() {
     elapsedSeconds,
     isSavedLocally,
     permissionDenied,
+    // A refusal is not final: a dismissed prompt asks again, and a blocked
+    // site can be allowed from the address bar.
+    clearPermissionDenied: () => setPermissionDenied(false),
+    micUnavailable,
     hasSpoken,
     hitTimeLimit,
     isOffline: queue.isOffline,

@@ -5,6 +5,7 @@ import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   mode: "voice" | "typed";
+  reason: string | null;
   onDownload: () => void;
   onSkip: () => void;
 }
@@ -17,9 +18,10 @@ interface Props {
 // browser's copy. Retrying is the orb itself, so only the secondary exits
 // live here. A typed take has no recording, so it gets neither the download
 // nor that promise; its text stays in the composer.
-export function FailureState({ mode, onDownload, onSkip }: Props) {
+export function FailureState({ mode, reason, onDownload, onSkip }: Props) {
   return (
     <div className="flex flex-col items-center gap-4 text-center">
+      {reason && <Text variant="body">{reason}</Text>}
       <Text variant="body" tone="muted">
         {mode === "voice"
           ? "Your recording is safe. Try again."

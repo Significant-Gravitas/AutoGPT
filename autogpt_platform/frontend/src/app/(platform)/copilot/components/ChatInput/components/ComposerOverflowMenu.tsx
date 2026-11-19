@@ -43,16 +43,12 @@ export function ComposerOverflowMenu({
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant="icon"
+          variant="tray"
           size="icon"
           aria-label="More options"
           data-testid="composer-overflow-button"
           disabled={disabled}
-          className={cn(
-            "border-transparent bg-transparent text-black shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-black",
-            className,
-            disabled && "opacity-40",
-          )}
+          className={cn(className)}
         >
           <Icon icon={MoreHorizontalIcon} className="h-4 w-4" />
         </Button>

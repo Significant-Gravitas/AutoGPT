@@ -6,7 +6,9 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
+      - ".github/scripts/install-prisma-cli-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
       - ".github/scripts/validate_backend_skips.py"
@@ -22,7 +24,9 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
+      - ".github/scripts/install-prisma-cli-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
       - ".github/scripts/validate_backend_skips.py"
@@ -67,6 +71,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -133,6 +139,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -189,6 +197,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -211,7 +221,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        run: poetry run prisma generate && poetry run gen-prisma-stub
+        uses: $/.github/actions/generate-prisma-client
 
       - name: Run Pyright
         run: poetry run pyright --pythonversion ${{ matrix.python-version }}
@@ -228,7 +238,9 @@ jobs:
     name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }})
     permissions:
       contents: read
-    # Each Python leg preserves the complete suite while its four disjoint path
+      # The time-limit warning reads when this job started.
+      actions: read
+    # Each Python leg preserves the complete suite while its five disjoint path
     # groups run on separate standard runners. The cap is a hang guard, not a
     # performance budget: on merge_group a cancelled job reads as a failed
     # check and ejects the PR from the queue, so keep it well above p99.
@@ -237,7 +249,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
-        test-shard: [data, copilot, util-executor, remainder]
+        test-shard: [data, copilot, copilot-sdk, util-executor, remainder]
     runs-on: ubuntu-latest
 
     services:
@@ -261,14 +273,17 @@ jobs:
           --health-retries 5
           --health-start-period 10s
       clamav:
-        image: clamav/clamav-debian:latest
+        image: clamav/clamav-debian:1.5.4
         ports:
           - 3310:3310
         env:
           CLAMAV_NO_FRESHCLAMD: false
-          CLAMD_CONF_StreamMaxLength: 50M
-          CLAMD_CONF_MaxFileSize: 100M
-          CLAMD_CONF_MaxScanSize: 100M
+          CLAMD_CONF_StreamMaxLength: 256M
+          CLAMD_CONF_MaxFileSize: 256M
+          CLAMD_CONF_MaxScanSize: 1024M
+          CLAMD_CONF_PCREMaxFileSize: 256M
+          CLAMD_CONF_AlertExceedsMax: "yes"
+          CLAMD_CONF_MaxScanTime: 300000
           CLAMD_CONF_MaxThreads: 4
           CLAMD_CONF_ReadTimeout: 300
         options: >-
@@ -280,9 +295,10 @@ jobs:
       # FalkorDB backs the Graphiti knowledge graph the copilot uses for
       # long-term memory. Mirrors the local compose mapping
       # (autogpt_platform/docker-compose.platform.yml: ``6380:6379``) so
-      # ``GraphitiConfig`` defaults (``localhost:6380``,
-      # password=``local-dev-password`` from backend/.env.default) work
-      # unchanged. ``REDIS_ARGS=--requirepass <pw>`` is the FalkorDB
+      # ``GraphitiConfig`` defaults (``localhost:6380``) work unchanged. The
+      # password is derived from the run, like the broker login below, and
+      # the job's ``GRAPHITI_FALKORDB_PASSWORD`` gives the tests the same one.
+      # ``REDIS_ARGS=--requirepass <pw>`` is the FalkorDB
       # image's documented way to set the bearer; mirrors the entrypoint
       # the compose stack writes. Integration tests in
       # ``backend/copilot/graphiti/*_integration_test.py`` skip cleanly
@@ -292,23 +308,53 @@ jobs:
       # ``redis-cli`` ships inside the FalkorDB image; the healthcheck
       # passes ``-a`` so AUTH succeeds rather than the daemon rejecting
       # an unauthenticated PING.
-      # Pinned to a concrete release (unlike the local compose ``:latest``)
-      # so an upstream FalkorDB push can't start failing CI on unrelated
-      # PRs; bump deliberately alongside the compose stack.
+      # Pinned to the release the cloud runs (``serviceVersion`` in the infra
+      # repo's FalkorDB chart): older releases refuse Cypher newer ones run.
+      # Bump every FalkorDB pin together with that chart (OPEN-3746, #16224).
       falkordb:
-        image: falkordb/falkordb:v4.18.9
+        image: falkordb/falkordb:v4.12.5
         ports:
           - 6380:6379
         env:
-          REDIS_ARGS: "--requirepass local-dev-password"
+          REDIS_ARGS: "--requirepass ci-${{ github.run_id }}-${{ github.run_attempt }}"
         options: >-
-          --health-cmd "redis-cli -a local-dev-password ping || exit 1"
+          --health-cmd "redis-cli -a ci-${{ github.run_id }}-${{ github.run_attempt }} ping || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
           --health-start-period 10s
 
     steps:
+      - name: Warn before the time limit
+        id: time-limit-warning
+        background: true
+        continue-on-error: true
+        working-directory: /tmp
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECK_RUN_ID: ${{ job.check_run_id }}
+          # Seven minutes under the job's timeout-minutes, so a shard that
+          # creeps towards it is split before a merge queue run is cancelled.
+          WARN_AFTER_MINUTES: 28
+        run: |
+          # From the job's own start, as its timeout counts: the service
+          # containers come up before this step, sometimes minutes before.
+          # Bounded: the loop below, which ends at the stop file, waits on it.
+          started=$(timeout 20 gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${CHECK_RUN_ID}" --jq .started_at) || started=
+          if [[ -z "$started" ]] || ! start=$(date -d "$started" +%s 2>/dev/null); then
+            echo "Could not read the job's start time; counting from this step."
+            start=$(date +%s)
+          fi
+          deadline=$((start + WARN_AFTER_MINUTES * 60))
+          echo "Warns at $(date -u -d "@${deadline}" +%T) UTC unless the job is done by then."
+          while (( $(date +%s) < deadline )); do
+            if [[ -f "$RUNNER_TEMP/backend-test-job-done" ]]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::warning title=Backend test shard near its time limit::This job has run ${WARN_AFTER_MINUTES} minutes and is cancelled at 35, which drops a PR from the merge queue. Split the shard or speed up its slowest tests (the junit report lists their times)."
+
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -323,6 +369,7 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           submodules: true
+          persist-credentials: false
 
       - name: Checkout skills catalog
         # The expert roster and the marketplace skills live in a separate
@@ -333,6 +380,7 @@ jobs:
         with:
           repository: Significant-Gravitas/skills-catalog
           path: skills-catalog
+          persist-credentials: false
 
       - name: Configure test shard
         shell: bash
@@ -349,8 +397,8 @@ jobs:
             copilot|remainder)
               database_name="ci_${MATRIX_TEST_SHARD}"
               ;;
-            util-executor)
-              database_name="ci_util_executor"
+            util-executor|copilot-sdk)
+              database_name="ci_${MATRIX_TEST_SHARD//-/_}"
               ;;
             *)
               echo "Unknown backend test shard: $MATRIX_TEST_SHARD" >&2
@@ -550,10 +598,12 @@ jobs:
           BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
 
       - name: Install Python dependencies
+        # A stuck download fails here, not at the job's limit with no test run.
+        timeout-minutes: 10
         run: poetry install
 
       - name: Generate Prisma Client
-        run: poetry run prisma generate && poetry run gen-prisma-stub
+        uses: $/.github/actions/generate-prisma-client
 
       - name: Wait for isolated stateful services
         wait: stateful-services
@@ -645,6 +695,14 @@ jobs:
           override_pr: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || '' }}
           files: ./autogpt_platform/backend/coverage-${{ matrix.test-shard }}.xml
 
+      # The warning step checks for this file every 5 s and ends, so the job,
+      # which waits for its background steps, doesn't wait out the 28 minutes.
+      - name: Stop the time-limit warning
+        if: ${{ always() }}
+        # /tmp, like the warning step: the default folder doesn't exist when checkout failed.
+        working-directory: /tmp
+        run: touch "$RUNNER_TEMP/backend-test-job-done"
+
     env:
       CI: true
       PLAIN_OUTPUT: True
@@ -653,13 +711,12 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       SKILLS_CATALOG_PATH: ${{ github.workspace }}/skills-catalog
       SKILLS_CATALOG_TOKEN: ${{ github.token }}
-      # We know these are here, don't report this as a security vulnerability
-      # This is used as the default credential for the entire system's RabbitMQ instance
-      # If you want to replace this, you can do so by making our entire system generate
-      # new credentials for each local user and update the environment variables in
-      # the backend service, docker composes, and examples
+      # The job's own broker login and FalkorDB password. Service containers
+      # start before any step can generate a value, so both are derived from
+      # the run instead, with the same expression the services above use.
       RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
-      RABBITMQ_DEFAULT_PASS: "k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7"
+      RABBITMQ_DEFAULT_PASS: "ci-${{ github.run_id }}-${{ github.run_attempt }}"
+      GRAPHITI_FALKORDB_PASSWORD: "ci-${{ github.run_id }}-${{ github.run_attempt }}"
 
   validate-skip-policy:
     name: Validate backend skip policy

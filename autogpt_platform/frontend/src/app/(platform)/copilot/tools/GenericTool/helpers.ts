@@ -341,7 +341,7 @@ export function getAnimationText(
         case "edit":
           return summary
             ? `Edited ${humanizeFileName(summary)}`
-            : "Edit completed";
+            : "Edited a file";
         case "todo":
           return "Updated task list";
         case "compaction":
@@ -383,6 +383,22 @@ export function getAnimationText(
           return "Fetch failed";
         case "browser":
           return "Browser action failed";
+        case "file-read":
+          return "Failed while reading the file";
+        case "file-write":
+          return "Failed while writing the file";
+        case "file-delete":
+          return "Failed while deleting the file";
+        case "file-list":
+          return "Failed while listing files";
+        case "search":
+          return "Failed while searching files";
+        case "edit":
+          return "Failed while editing the file";
+        case "todo":
+          return "Failed while updating the task list";
+        case "agent":
+          return "Subtask failed";
         default:
           return `${formatToolName(toolName)} failed`;
       }

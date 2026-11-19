@@ -89,6 +89,91 @@ def test_from_db_preserves_empty_marketplace_description():
     assert result.description == ""
 
 
+def _store_listing(
+    *, is_deleted: bool = False, with_active_version: bool = True
+) -> prisma.models.StoreListing:
+    now = datetime.datetime.now(datetime.timezone.utc)
+    version = prisma.models.StoreListingVersion(
+        id="slv1",
+        version=3,
+        createdAt=now,
+        updatedAt=now,
+        agentGraphId="g1",
+        agentGraphVersion=3,
+        name="Listed name",
+        subHeading="",
+        imageUrls=[],
+        description="",
+        categories=[],
+        isFeatured=False,
+        isDeleted=False,
+        isAvailable=True,
+        submissionStatus=prisma.enums.SubmissionStatus.APPROVED,
+        storeListingId="sl1",
+    )
+    profile = prisma.models.Profile(
+        id="p1",
+        createdAt=now,
+        updatedAt=now,
+        userId="creator",
+        name="Creator",
+        username="creator-slug",
+        description="",
+        links=[],
+        avatarUrl=None,
+        isFeatured=False,
+    )
+    return prisma.models.StoreListing(
+        id="sl1",
+        createdAt=now,
+        updatedAt=now,
+        isDeleted=is_deleted,
+        hasApprovedVersion=True,
+        slug="listed-agent",
+        useForOnboarding=False,
+        activeVersionId="slv1",
+        agentGraphId="g1",
+        owningUserId="creator",
+        ActiveVersion=version if with_active_version else None,
+        CreatorProfile=profile,
+    )
+
+
+def test_from_db_shows_the_store_listing_it_is_given():
+    """The library agent page reads `marketplace_listing` for the update
+    banner, the changelog and the creator byline; it must come through even
+    when the library agent runs an older version than the listing."""
+    agent = _make_library_agent()
+
+    result = library_model.LibraryAgent.from_db(agent, store_listing=_store_listing())
+
+    assert result.marketplace_listing == library_model.MarketplaceListing(
+        id="sl1",
+        name="Listed name",
+        slug="listed-agent",
+        creator=library_model.MarketplaceListingCreator(
+            name="Creator", id="p1", slug="creator-slug"
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "listing",
+    [
+        None,
+        _store_listing(is_deleted=True),
+        _store_listing(with_active_version=False),
+    ],
+    ids=["no listing", "deleted listing", "no active version"],
+)
+def test_from_db_shows_no_listing_unless_it_is_live(listing):
+    result = library_model.LibraryAgent.from_db(
+        _make_library_agent(), store_listing=listing
+    )
+
+    assert result.marketplace_listing is None
+
+
 def _file_input_node(graph_id: str) -> prisma.models.AgentNode:
     """An agent-level Google Drive file input whose default file was picked
     with the owner's credentials."""
@@ -115,6 +200,29 @@ def test_from_db_hides_the_publishers_picked_file_from_other_libraries():
 
     assert "default" not in result.input_schema["properties"]["file"]
     assert "file" in result.input_schema["required"]
+
+
+@pytest.mark.parametrize(
+    "schedule_info, scheduled, unavailable",
+    [
+        (None, False, False),
+        (library_model.ScheduleInfo(), False, False),
+        (library_model.ScheduleInfo(next_runs={"g1": "2030-01-01T09:00"}), True, False),
+        (library_model.ScheduleInfo(available=False), False, True),
+    ],
+)
+def test_from_db_says_when_the_schedule_is_unknown(
+    schedule_info: library_model.ScheduleInfo | None,
+    scheduled: bool,
+    unavailable: bool,
+):
+    result = library_model.LibraryAgent.from_db(
+        _make_library_agent(graph_id="g1"), schedule_info=schedule_info
+    )
+
+    assert result.is_scheduled is scheduled
+    assert result.next_scheduled_run == ("2030-01-01T09:00" if scheduled else None)
+    assert result.schedule_info_unavailable is unavailable
 
 
 def test_from_db_execution_count_override_covers_success_rate():

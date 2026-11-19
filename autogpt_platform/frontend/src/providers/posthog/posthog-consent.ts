@@ -5,6 +5,11 @@ import {
 } from "@/services/analytics/anonymous-id";
 import { environment } from "@/services/environment";
 import {
+  deleteCookie,
+  readCookieNames,
+  removeStorageKeys,
+} from "@/services/consent/browser-storage";
+import {
   hasConsentFor,
   hasDeclinedConsentFor,
   subscribeToConsent,
@@ -181,38 +186,9 @@ function clearPostHogOptIn() {
 function clearPostHogStorage(token: string) {
   if (typeof window === "undefined" || !token) return;
   const prefix = `ph_${token}_`;
-  clearStorage(() => window.localStorage, prefix);
-  clearStorage(() => window.sessionStorage, prefix);
+  const isPostHogKey = (key: string) => key.startsWith(prefix);
+  removeStorageKeys(() => window.localStorage, isPostHogKey);
+  removeStorageKeys(() => window.sessionStorage, isPostHogKey);
   clearPostHogOptIn();
-  document.cookie
-    .split(";")
-    .map((part) => part.trim().split("=")[0])
-    .filter((name) => name.startsWith(prefix))
-    .forEach(deleteCookie);
-}
-
-function clearStorage(getStorage: () => Storage, prefix: string) {
-  try {
-    const storage = getStorage();
-    const keys = Array.from({ length: storage.length }, (_, index) =>
-      storage.key(index),
-    );
-    keys
-      .filter((key): key is string => Boolean(key?.startsWith(prefix)))
-      .forEach((key) => storage.removeItem(key));
-  } catch {
-    // Storage blocked: nothing was stored there.
-  }
-}
-
-// PostHog sets its cookie on the widest domain it can (.agpt.co from
-// platform.agpt.co), so delete the host-only cookie and every parent
-// domain's.
-function deleteCookie(name: string) {
-  const expired = `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-  document.cookie = expired;
-  const labels = window.location.hostname.split(".");
-  for (let index = 0; index < labels.length - 1; index++) {
-    document.cookie = `${expired}; Domain=.${labels.slice(index).join(".")}`;
-  }
+  readCookieNames().filter(isPostHogKey).forEach(deleteCookie);
 }

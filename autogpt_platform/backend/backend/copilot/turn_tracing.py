@@ -6,11 +6,19 @@ turn's tool, a graph node. Each tool call the turn makes is a ``copilot.tool``
 transaction of its own in that trace, so a long autopilot turn stays under the
 SDK's span limit however many tools it runs.
 
+A turn failed when it ended on an error its user was shown, with no reply
+after it: an error frame, whether the engine streamed it or the executor
+published it for an exception, or a notice an engine streams in place of a
+reply (``NO_REPLY_NOTICES``). A tool error the model went on from is not a
+failure, nor is a pause at a limit; a turn its user stopped is cancelled.
+
 A turn that reached its engine also ends as an entry in PostHog's LLM
 analytics: the ``$ai_trace`` of a reply, or the ``$ai_span`` of a subtask in
-its reply's trace (see ``copilot.ai_spans``).
+its reply's trace (see ``copilot.ai_spans``). Every turn the executor ran is
+counted when it ends, on ``copilot_executor_turns_total``.
 """
 
+import asyncio
 import logging
 import time
 from collections.abc import Iterator
@@ -20,20 +28,28 @@ from typing import TYPE_CHECKING
 from sentry_sdk.tracing import Span
 
 from backend.copilot import ai_spans
-from backend.copilot.constants import is_platform_text
+from backend.copilot.constants import (
+    AUTOPILOT_BLOCK_TOOL_NAME,
+    EMPTY_COMPLETION_NOTICE,
+    STREAM_INCOMPLETE_MARKER,
+)
+from backend.copilot.reply_timing import (
+    MODEL_OUTPUT_CHUNKS,
+    is_answer_text,
+    is_model_output,
+)
 from backend.copilot.response_model import (
     StreamBaseResponse,
-    StreamReasoningDelta,
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolInputStart,
 )
-from backend.copilot.service import strip_user_context_tags
+from backend.copilot.turn_metrics import turns_counter
 from backend.util import tracing
 
 if TYPE_CHECKING:
     from backend.copilot.executor.utils import CoPilotExecutionEntry
-    from backend.copilot.model import ChatMessage, ChatSession
+    from backend.copilot.model import ChatSessionOrigin
 
 logger = logging.getLogger(__name__)
 
@@ -45,41 +61,14 @@ WAITED_AFTER_S = 60.0
 behind another turn, held at a limit, redelivered), so timing it from the
 request would measure the wait rather than the reply."""
 
-MODEL_OUTPUT_CHUNKS = (StreamTextDelta, StreamReasoningDelta, StreamToolInputStart)
-"""Chunks that carry model output. The first one is the turn's first token."""
-
-
-def is_model_output(chunk: StreamBaseResponse) -> bool:
-    """Whether the chunk carries model output; a notice the platform streams
-    as text, where the model gave no answer, does not."""
-    return isinstance(chunk, MODEL_OUTPUT_CHUNKS) and not _is_platform_delta(chunk)
-
-
-def is_answer_text(chunk: StreamBaseResponse) -> bool:
-    """Whether the chunk is text of the model's answer. Whitespace on its own
-    shows nothing, so it doesn't start the answer."""
-    return (
-        isinstance(chunk, StreamTextDelta)
-        and bool(chunk.delta.strip())
-        and not is_platform_text(chunk.delta)
-    )
-
-
-def _is_platform_delta(chunk: StreamBaseResponse) -> bool:
-    return isinstance(chunk, StreamTextDelta) and is_platform_text(chunk.delta)
-
-
-def _is_latest_user_message(messages: list["ChatMessage"], message: str) -> bool:
-    """Whether *message* is already saved at the end of the chat, compared
-    without the server blocks a saved copy can carry. Stripping a block also
-    takes the whitespace after it, so leading whitespace is ignored on both
-    sides."""
-    for row in reversed(messages):
-        if row.role != "user":
-            return False
-        if strip_user_context_tags(row.content or "").lstrip() == message.lstrip():
-            return True
-    return False
+NO_REPLY_NOTICES: dict[str, str] = {
+    STREAM_INCOMPLETE_MARKER: "stream_incomplete",
+    EMPTY_COMPLETION_NOTICE: "empty_completion",
+}
+"""What an engine streams as text in place of a reply it doesn't have, and the
+code a turn that ends on it fails with: the SDK engine's notice for a CLI that
+ended without a result, and the baseline engine's for a model that finished
+without a word (which the SDK engine reports as an error frame)."""
 
 
 class TurnTrace:
@@ -94,43 +83,22 @@ class TurnTrace:
         self._shape: str | None = None
         self._chunks = 0
         self._tool_calls = 0
+        # The code of the notice the turn's output last ended on, if any.
+        self._no_reply: str | None = None
+        self._ended = False
+        self._claimed_elsewhere = False
         self.engine: str | None = None
+        self.load_test: str | None = None
+        self.origin: str | None = None
         self.outcome = "completed"
         self.error_code: str | None = None
 
-    def describe_chat(self, session: "ChatSession", message: str | None = None) -> None:
-        """Tag the kind of chat the turn is in, so its timings split by it: a
-        chat's first turn sets up its sandbox and context, and an expert's
-        turn loads the expert as well. The first turn answers the chat's first
-        user message; a greeting or note the platform wrote before it doesn't
-        make it a follow-up.
-
-        ``message`` is the user message the turn answers, its server tags
-        stripped. The chat route saves it before dispatch, sometimes behind a
-        server block (a voice turn's instructions, a first turn's context); a
-        sub-session doesn't, and the engine saves it when the turn starts.
-        Either way it counts once, and so does a message of files with no
-        text, which nothing saves. A turn with no user message of its own (a
-        kickoff, a scheduled follow-up the scheduler stores as the model's, a
-        continuation) is the first only in a chat nobody has written to yet.
-        A chat loaded without its oldest messages (a long one, past the load
-        limit) has had turns before the ones it holds."""
-        try:
-            users = sum(1 for row in session.messages if row.role == "user")
-            if message is None:
-                first = users == 0
-            else:
-                if not _is_latest_user_message(session.messages, message):
-                    users += 1
-                first = users <= 1
-            if session.messages and (session.messages[0].sequence or 0) > 0:
-                first = False
-            self.span.set_tag("copilot.turn.first", "true" if first else "false")
-            self.span.set_tag(
-                "copilot.expert", "true" if session.expert_id else "false"
-            )
-        except Exception:
-            logger.debug("Could not tag the turn's kind of chat", exc_info=True)
+    def load_test_account(self, engine: str) -> None:
+        """The turn is a load-test account's, run on *engine*
+        (``backend/copilot/load_test.py``), so it can be told apart from
+        people's turns even when it fails before its engine starts."""
+        self.load_test = engine
+        self.span.set_tag("copilot.load_test", engine)
 
     def engine_started(self, engine: str) -> None:
         """Setup is done and the turn is handed to ``engine``."""
@@ -138,11 +106,25 @@ class TurnTrace:
         self.span.set_tag("copilot.engine", engine)
         tracing.set_timing("copilot.turn.setup_ms", self._elapsed_ms(), span=self.span)
 
+    def set_origin(self, origin: str) -> None:
+        """What started the turn, once its chat session is known."""
+        self.origin = origin
+        self.span.set_tag("copilot.turn.origin", origin)
+
     def observe(self, chunk: StreamBaseResponse) -> None:
         """Account for one chunk the turn streamed."""
         self._chunks += 1
         if isinstance(chunk, StreamToolInputAvailable):
             self._tool_calls += 1
+        if not isinstance(chunk, MODEL_OUTPUT_CHUNKS):
+            return
+        # The latest output decides: a notice in place of a reply ends the
+        # turn without one unless the model writes on after it.
+        self._no_reply = (
+            NO_REPLY_NOTICES.get(chunk.delta)
+            if isinstance(chunk, StreamTextDelta)
+            else None
+        )
         if not self._first_token_seen and is_model_output(chunk):
             self._first_token_seen = True
             tracing.set_timing(
@@ -166,13 +148,36 @@ class TurnTrace:
         error_code: str | None = None,
     ) -> None:
         """Tag how the turn ended, given the error it reports to the user
-        and the code it reports with it."""
-        if not error_message:
-            outcome, status = "completed", "ok"
-        elif error_message == cancelled_message:
-            outcome, status = "cancelled", "cancelled"
+        and the code it reports with it. A turn that reports none still
+        failed when its output ended on a notice in place of a reply, under
+        that notice's code."""
+        if error_message and error_message == cancelled_message:
+            self._end("cancelled", "cancelled", error_code)
+        elif error_message:
+            self._end("failed", "internal_error", error_code)
+        elif self._no_reply is not None:
+            self._end("failed", "internal_error", self._no_reply)
         else:
-            outcome, status = "failed", "internal_error"
+            self._end("completed", "ok", error_code)
+
+    def claimed_elsewhere(self) -> None:
+        """Another worker claimed this background turn and reports its
+        outcome, so this worker records none for it, even when closing its
+        own pickup raises."""
+        self._claimed_elsewhere = True
+
+    def raised(self, error: BaseException) -> None:
+        """End a turn that raised before its outcome was set: cancelled by a
+        cancellation, failed by anything else."""
+        if self._ended or self._claimed_elsewhere:
+            return
+        if isinstance(error, (asyncio.CancelledError, GeneratorExit)):
+            self._end("cancelled", "cancelled", None)
+        else:
+            self._end("failed", "internal_error", None)
+
+    def _end(self, outcome: str, status: str, error_code: str | None) -> None:
+        self._ended = True
         self.outcome = outcome
         self.error_code = error_code
         self.span.set_tag("copilot.turn.outcome", outcome)
@@ -201,9 +206,28 @@ class TurnTrace:
             outcome=self.outcome,
             error_code=self.error_code,
             engine=self.engine,
-            origin=_origin(entry),
+            origin=self.origin or turn_origin(entry),
             tool_call_count=self._tool_calls,
+            load_test=self.load_test,
         )
+
+    def report_to_prometheus(self, entry: "CoPilotExecutionEntry") -> None:
+        """Count the turn's end on ``copilot_executor_turns_total``. A turn
+        that never reached its engine is counted under ``engine="none"``, so
+        it never reads as a model turn. A pickup that ended without an
+        outcome ran nothing here (another worker owns its turn), so it is not
+        counted."""
+        if not self._ended:
+            return
+        try:
+            turns_counter.labels(
+                outcome=self.outcome,
+                engine=self.engine or "none",
+                origin=self.origin or turn_origin(entry),
+                load_test=self.load_test or "",
+            ).inc()
+        except Exception:
+            logger.warning("Failed to count the turn's end", exc_info=True)
 
     def _elapsed_ms(self) -> float:
         return (time.monotonic() - self._started_at) * 1000
@@ -228,7 +252,7 @@ def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
         tags={
             "copilot.llm_auth_provider": entry.llm_auth_provider,
             "copilot.model_tier": entry.model or "default",
-            "copilot.turn.origin": _origin(entry),
+            "copilot.turn.origin": turn_origin(entry),
         },
         data={
             key: value
@@ -249,9 +273,13 @@ def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
         turn = TurnTrace(span, requested_at=_prompt_request_time(entry, span))
         try:
             yield turn
+        except BaseException as error:
+            turn.raised(error)
+            raise
         finally:
             turn.close()
             turn.report_to_posthog(entry)
+            turn.report_to_prometheus(entry)
 
 
 def _prompt_request_time(entry: "CoPilotExecutionEntry", span: Span) -> float:
@@ -264,11 +292,27 @@ def _prompt_request_time(entry: "CoPilotExecutionEntry", span: Span) -> float:
     return 0.0 if waited else entry.request_arrival_at
 
 
-def _origin(entry: "CoPilotExecutionEntry") -> str:
+def turn_origin(
+    entry: "CoPilotExecutionEntry",
+    session_origin: "ChatSessionOrigin | None" = None,
+) -> str:
+    """What started a turn: ``scheduled`` (a schedule, or a turn nobody is
+    watching), ``spawned`` (a subtask), ``automation`` (a workflow's AutoPilot
+    block, whose prompts are machine-written), ``system`` (the platform, not a
+    message) or ``chat`` (a message someone sent).
+
+    The block is known by what dispatched the turn (``entry.tool_name``), so a
+    message someone types into a chat the block opened stays ``chat``. An
+    entry queued before ``tool_name`` existed falls back to the chat's
+    origin, which the executor passes once the session is loaded."""
     if entry.scheduled is not None or entry.unattended:
         return "scheduled"
     if entry.envelope is not None and entry.envelope.depth > 0:
         return "spawned"
+    if entry.tool_name == AUTOPILOT_BLOCK_TOOL_NAME:
+        return "automation"
+    if entry.tool_name is None and session_origin == "automation":
+        return "automation"
     if not entry.is_user_message:
         return "system"
     return "chat"

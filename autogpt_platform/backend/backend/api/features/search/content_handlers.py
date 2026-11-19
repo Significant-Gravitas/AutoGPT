@@ -868,6 +868,7 @@ class WorkspaceFileHandler(ContentHandler):
               AND uce."contentType" = 'WORKSPACE_FILE'::{schema_prefix}"ContentType"
               AND uce."userId" = uw."userId"
             WHERE uwf."isDeleted" = false
+              AND uwf."isInternal" = false
               AND uce."contentId" IS NULL
             LIMIT $1
             """,
@@ -899,7 +900,7 @@ class WorkspaceFileHandler(ContentHandler):
             """
             SELECT COUNT(*) as count
             FROM {schema_prefix}"UserWorkspaceFile"
-            WHERE "isDeleted" = false
+            WHERE "isDeleted" = false AND "isInternal" = false
             """
         )
         total = total_result[0]["count"] if total_result else 0
@@ -913,7 +914,7 @@ class WorkspaceFileHandler(ContentHandler):
               ON uce."contentId" = uwf.id
               AND uce."contentType" = 'WORKSPACE_FILE'::{schema_prefix}"ContentType"
               AND uce."userId" = uw."userId"
-            WHERE uwf."isDeleted" = false
+            WHERE uwf."isDeleted" = false AND uwf."isInternal" = false
             """
         )
         with_embeddings = with_result[0]["count"] if with_result else 0
@@ -925,13 +926,14 @@ class WorkspaceFileHandler(ContentHandler):
         }
 
     async def get_valid_content_ids(self) -> set[str]:
-        # Mirrors ``get_missing_items``: a soft-deleted file's embedding
-        # is orphaned and should be cleaned up.
+        # Mirrors ``get_missing_items``: a soft-deleted file's embedding is
+        # orphaned and should be cleaned up, and so is an internal file's,
+        # embedded before Otto's working files were marked.
         rows = await query_raw_with_schema(
             """
             SELECT id
             FROM {schema_prefix}"UserWorkspaceFile"
-            WHERE "isDeleted" = false
+            WHERE "isDeleted" = false AND "isInternal" = false
             """,
         )
         return {row["id"] for row in rows}
@@ -969,6 +971,7 @@ class ChatSessionHandler(ContentHandler):
               AND """
             + exclude_dream_sessions_sql("cs.metadata")
             + """
+              AND cs."archivedAt" IS NULL
               AND uce."contentId" IS NULL
             LIMIT $1
             """,
@@ -997,6 +1000,7 @@ class ChatSessionHandler(ContentHandler):
             SELECT COUNT(*) as count
             FROM {schema_prefix}"ChatSession"
             WHERE title IS NOT NULL AND btrim(title) <> ''
+              AND "archivedAt" IS NULL
               AND """
             + exclude_dream_sessions_sql()
         )
@@ -1011,6 +1015,7 @@ class ChatSessionHandler(ContentHandler):
               AND uce."contentType" = 'CHAT_SESSION'::{schema_prefix}"ContentType"
               AND uce."userId" = cs."userId"
             WHERE cs.title IS NOT NULL AND btrim(cs.title) <> ''
+              AND cs."archivedAt" IS NULL
               AND """
             + exclude_dream_sessions_sql("cs.metadata")
         )
@@ -1027,12 +1032,14 @@ class ChatSessionHandler(ContentHandler):
         # title aren't embedded; a session that was deleted or had its
         # title cleared should have its embedding cleaned up. Excluding
         # dream sessions here also makes the cleanup sweep delete any
-        # dream-session embeddings that were created before the filter.
+        # dream-session embeddings that were created before the filter, and
+        # excluding archived ones takes a reset expert's chats out of search.
         rows = await query_raw_with_schema(
             """
             SELECT id
             FROM {schema_prefix}"ChatSession"
             WHERE title IS NOT NULL AND btrim(title) <> ''
+              AND "archivedAt" IS NULL
               AND """
             + exclude_dream_sessions_sql(),
         )

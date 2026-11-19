@@ -1,0 +1,34 @@
+diff --git a/lib/module/views/Drawer.native.js b/lib/module/views/Drawer.native.js
+index f463263048cc838af4f6a8263a668d28fb5c3677..8ef312a9d8715b0a91891e8f211c3aecec691a6a 100644
+--- a/lib/module/views/Drawer.native.js
++++ b/lib/module/views/Drawer.native.js
+@@ -142,9 +142,9 @@ export function Drawer({
+     touchX.value = 0;
+     translationX.value = withSpring(translateX, {
+       velocity,
+-      stiffness: 1000,
+-      damping: 500,
+-      mass: 3,
++      stiffness: 220,
++      damping: 30,
++      mass: 1,
+       overshootClamping: true,
+       reduceMotion: ReduceMotion.Never
+     }, finished => runOnJS(onAnimationEnd)(open, finished));
+diff --git a/src/views/Drawer.native.tsx b/src/views/Drawer.native.tsx
+index 0c3e0385c52f4abb56bb7194ba2d996f6a4aa8c1..ec25d8963a09146183ac1853bb97c862c3312ade 100644
+--- a/src/views/Drawer.native.tsx
++++ b/src/views/Drawer.native.tsx
+@@ -200,9 +200,9 @@ export function Drawer({
+         translateX,
+         {
+           velocity,
+-          stiffness: 1000,
+-          damping: 500,
+-          mass: 3,
++          stiffness: 220,
++          damping: 30,
++          mass: 1,
+           overshootClamping: true,
+           reduceMotion: ReduceMotion.Never,
+         },

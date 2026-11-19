@@ -78,9 +78,9 @@ export function ExpertTeamCard({
   }
 
   return (
-    <div className="relative flex flex-col overflow-hidden rounded-2xl bg-white smooth-shadow-ring-sm">
+    <div className="relative flex flex-col overflow-hidden rounded-2xl bg-surface smooth-shadow-ring-sm">
       {/* Floated over the cover so the whole body stays one link target. */}
-      <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
+      <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5">
         <Button
           variant="secondary"
           size="icon-sm"
@@ -114,20 +114,17 @@ export function ExpertTeamCard({
               color={expert.color}
               backgroundColor={cover.color}
               size={88}
-              className="rounded-full border border-[#e3e3e3] ring-4 ring-background"
+              // oxlint-disable-next-line design-system/no-restyle -- ExpertAvatar has no bordered variant (src/components is P9's)
+              className="rounded-full border border-border-base ring-4 ring-surface"
             />
           </span>
 
           <div className="mt-2 flex min-w-0 flex-1 flex-col gap-1">
-            <div className="flex items-baseline justify-between gap-2">
+            <div className="flex items-baseline justify-between gap-2 tabular-nums">
               <Text variant="small-medium" tone="secondary">
                 Budget
               </Text>
-              <Text
-                variant="small-medium"
-                tone="secondary"
-                className="tabular-nums"
-              >
+              <Text variant="small-medium" tone="secondary">
                 {weeklySpend
                   ? `${creditsToUsdLabel(weeklySpend.spent)} / ${creditsToUsdLabel(weeklySpend.budget)}`
                   : "No budget"}
@@ -195,8 +192,8 @@ export function ExpertTeamCard({
       />
 
       {isPaused ? (
-        <div className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">
-          <Text variant="body" className="text-amber-700">
+        <div className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-warning-surface px-3 py-2 ring-1 ring-warning-border ring-inset">
+          <Text variant="body" tone="warning">
             Schedules paused
           </Text>
           <Button
