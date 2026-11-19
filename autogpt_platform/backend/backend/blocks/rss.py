@@ -1,5 +1,5 @@
-import asyncio
 import logging
+from asyncio import sleep
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -173,6 +173,4 @@ class ReadRSSFeedBlock(Block):
             # The next poll outputs only entries newer than any output so far.
             start_time = newest
             if input_data.run_continuously:
-                await asyncio.sleep(
-                    max(input_data.polling_rate, self.MIN_POLLING_RATE_SECONDS)
-                )
+                await sleep(max(input_data.polling_rate, self.MIN_POLLING_RATE_SECONDS))

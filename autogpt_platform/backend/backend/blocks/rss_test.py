@@ -21,7 +21,7 @@ async def test_run_once_does_not_sleep(monkeypatch, has_entries, polling_rate):
     parse_feed = AsyncMock(return_value={"entries": [entry] if has_entries else []})
     sleep = AsyncMock()
     monkeypatch.setattr(block, "parse_feed", parse_feed)
-    monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
+    monkeypatch.setattr("backend.blocks.rss.sleep", sleep)
 
     input_data = ReadRSSFeedBlock.Input(
         rss_url="https://example.com/rss",
@@ -53,7 +53,7 @@ async def test_continuous_mode_sleeps_between_polls(monkeypatch):
     parse_feed = AsyncMock(side_effect=[{"entries": []}, {"entries": []}])
     sleep = AsyncMock(side_effect=[None, asyncio.CancelledError])
     monkeypatch.setattr(block, "parse_feed", parse_feed)
-    monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
+    monkeypatch.setattr("backend.blocks.rss.sleep", sleep)
 
     input_data = ReadRSSFeedBlock.Input(
         rss_url="https://example.com/rss",
@@ -79,7 +79,7 @@ async def test_continuous_mode_waits_at_least_the_minimum(monkeypatch, polling_r
     block = ReadRSSFeedBlock()
     sleep = AsyncMock(side_effect=asyncio.CancelledError)
     monkeypatch.setattr(block, "parse_feed", AsyncMock(return_value={"entries": []}))
-    monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
+    monkeypatch.setattr("backend.blocks.rss.sleep", sleep)
 
     input_data = ReadRSSFeedBlock.Input(
         rss_url="https://example.com/rss",
@@ -103,7 +103,7 @@ async def test_continuous_mode_outputs_each_entry_once(monkeypatch):
     )
     sleep = AsyncMock(side_effect=[None, None, asyncio.CancelledError])
     monkeypatch.setattr(block, "parse_feed", parse_feed)
-    monkeypatch.setattr("backend.blocks.rss.asyncio.sleep", sleep)
+    monkeypatch.setattr("backend.blocks.rss.sleep", sleep)
 
     input_data = ReadRSSFeedBlock.Input(
         rss_url="https://example.com/rss",
