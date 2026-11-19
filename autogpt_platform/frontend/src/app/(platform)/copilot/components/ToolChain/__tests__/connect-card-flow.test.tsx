@@ -972,6 +972,38 @@ describe("copilot Connect card, an account and an MCP server in one step", () =>
       .click(await screen.findByRole("button", { name: "Proceed" }));
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
     expect(onSend.mock.calls[1][0]).toContain(MCP_RETRY);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull(),
+    );
+    expect(onSend).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not repeat the MCP server's line after a Proceed sends it", async () => {
+    const onSend = vi.fn();
+    render(
+      <CredentialsProvider>
+        <CopilotChatActionsProvider onSend={onSend}>
+          <ToolChain
+            parts={[triggerPart(), unconnectedMcpPart()]}
+            isStreaming={false}
+          />
+        </CopilotChatActionsProvider>
+      </CredentialsProvider>,
+    );
+
+    await connectRemainingProvider();
+    await connectMcpServer();
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Proceed" }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0]).toContain(MCP_RETRY);
+
+    // The trigger card leaves the chain once sent, which leaves the MCP row
+    // as the chain's only card. Still counting as just connected, it would
+    // auto-send its line a second time.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(onSend).toHaveBeenCalledTimes(1);
   });
 
   it("still sends the MCP server's message when it is the only sign-in", async () => {
@@ -988,6 +1020,9 @@ describe("copilot Connect card, an account and an MCP server in one step", () =>
 
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     expect(onSend.mock.calls[0][0]).toBe(MCP_RETRY);
+    // The line is sent, so a Proceed left here would only send it again.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull();
   });
 });
 

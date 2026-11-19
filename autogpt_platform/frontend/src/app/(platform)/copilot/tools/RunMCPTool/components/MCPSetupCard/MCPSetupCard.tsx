@@ -213,6 +213,8 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // ``liveHasCred=false`` (e.g. cred revoked) and keep the Connected
   // pill stuck.
   const [localConnected, setLocalConnected] = useState(false);
+  // The chain sent this card's line; a later send must not repeat it.
+  const [lineSent, setLineSent] = useState(false);
   // When Reconnect fails (or any in-card flow errors out), force the
   // not-connected branch even though the live cred row still exists —
   // otherwise ``liveHasCred=true`` would keep the pill rendered and the
@@ -268,6 +270,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       }
     }
     setConnected(true);
+    setLineSent(false);
     // Inside a tool chain the chain sends one reply for every card, this
     // one's line included; sending here as well gave Otto two messages.
     if (!chainActions) onSend(retryMessage);
@@ -399,8 +402,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       ready: connected,
       // Only a sign-in completed here owes Otto a line; a server that was
       // already connected when the chat loaded stays silent.
-      justConnected: localConnected,
-      buildMessage: () => (localConnected ? retryMessageRef.current : null),
+      justConnected: localConnected && !lineSent,
+      buildMessage: () =>
+        localConnected && !lineSent ? retryMessageRef.current : null,
+      onSent: () => setLineSent(true),
       mcp: {
         id: actionId,
         service,
@@ -426,6 +431,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     actionId,
     connected,
     localConnected,
+    lineSent,
     loading,
     error,
     grantError,
