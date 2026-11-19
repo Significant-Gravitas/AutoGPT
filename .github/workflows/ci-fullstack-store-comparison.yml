@@ -2,7 +2,7 @@ name: Compare direct full-stack image stores
 'on':
   push:
     branches:
-    - codex/ci-image-store-20261119
+    - codex/ci-fullstack-store-20261119
 permissions:
   contents: read
 jobs:
@@ -133,7 +133,6 @@ jobs:
           exit 0
         fi
         bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$BUILDKIT_IMAGE"
-      if: matrix.mode == 'container'
     - name: Set up Platform - Create .env files with generated secrets
       working-directory: autogpt_platform
       run: make init-env
@@ -227,7 +226,6 @@ jobs:
     - name: Set up Platform - Wait for BuildKit image
       wait:
       - buildkit-image
-      if: matrix.mode == 'container'
     - name: Set up Platform - Set up Docker Buildx
       uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
       with:
