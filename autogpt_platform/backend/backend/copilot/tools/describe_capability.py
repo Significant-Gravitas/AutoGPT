@@ -118,22 +118,22 @@ class DescribeCapabilityTool(BaseTool):
         # was withheld from revealing.
         if entry.kind == "block":
             if gate_denied(BLOCK_GATE):
-                return gate_denied_error("blocks", session_id)
+                return gate_denied_error("blocks", session_id, describing=True)
             return await _describe_block(entry, user_id, session, expand)
         if entry.kind == "skill":
             if gate_denied(SKILL_TOOL):
-                return gate_denied_error(SKILL_TOOL, session_id)
+                return gate_denied_error(SKILL_TOOL, session_id, describing=True)
             return describe_skill(entry, session_id)
         if entry.kind == "expert":
             return describe_expert(entry, session_id)
         if entry.kind == "tool":
             name = entry.implementations[0].ref
             if gate_denied(name):
-                return gate_denied_error(name, session_id)
+                return gate_denied_error(name, session_id, describing=True)
             return _describe_tool(entry, session_id, expand)
         if entry.kind == "mcp_server":
             if gate_denied(MCP_GATE):
-                return gate_denied_error("MCP servers", session_id)
+                return gate_denied_error("MCP servers", session_id, describing=True)
             return await _describe_mcp(entry, user_id, session)
         return ErrorResponse(
             message=f"Capabilities of kind '{entry.kind}' cannot be described yet.",
@@ -195,7 +195,7 @@ def describe_expert(entry: CapabilityEntry, session_id: str) -> ToolResponseBase
         ).from_outside()
     name, bound = dispatch
     if gate_denied(name):
-        return gate_denied_error(name, session_id)
+        return gate_denied_error(name, session_id, describing=True)
     action = "On the user's team" if entry.hired else "On the roster, not yet hired"
     return CapabilityDetailsResponse(
         message=(
