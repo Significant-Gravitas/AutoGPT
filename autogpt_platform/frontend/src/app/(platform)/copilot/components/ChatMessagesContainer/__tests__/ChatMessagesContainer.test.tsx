@@ -303,6 +303,109 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
   });
 
+  const finishedTool = {
+    type: "tool-find_block",
+    toolCallId: "tool-1",
+    state: "output-available",
+    input: {},
+    output: {},
+  } as Message["parts"][number];
+  const stepStart = { type: "step-start" } as Message["parts"][number];
+
+  it.each([
+    ["a turn that has only opened its first step", [stepStart]],
+    [
+      "a status line followed by the first step",
+      [
+        {
+          type: "data-status",
+          data: { message: "Preparing workspace…" },
+        } as Message["parts"][number],
+        stepStart,
+      ],
+    ],
+    ["the step opened after a finished tool", [finishedTool, stepStart]],
+    ["several steps opened in a row", [finishedTool, stepStart, stepStart]],
+    [
+      "a step opened after a follow-up was drained",
+      [
+        { type: "text", text: "Looking into it." },
+        { type: "data-pending-drained", data: {} },
+        stepStart,
+      ] as Message["parts"],
+    ],
+  ])(
+    "keeps the thinking indicator through %s, until the model writes",
+    (_label, parts) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[{ id: "assistant-stepping", role: "assistant", parts }]}
+          status="streaming"
+        />,
+      );
+
+      expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+    },
+  );
+
+  it.each([
+    ["text", [{ type: "text", text: "Looking into it." }]],
+    ["reasoning", [{ type: "reasoning", text: "Weighing the options." }]],
+    [
+      "a pause",
+      [
+        { type: "text", text: "Saved where I got to." },
+        { type: "data-turn-paused", data: { reason: "steps", steps: 450 } },
+      ],
+    ],
+    [
+      "a running tool",
+      [{ ...finishedTool, state: "input-available", output: undefined }],
+    ],
+    [
+      "a tool waiting for approval",
+      [
+        {
+          ...finishedTool,
+          state: "approval-requested",
+          output: undefined,
+          approval: { id: "approval-1" },
+        },
+      ],
+    ],
+    [
+      "a tool whose approval was just answered",
+      [
+        {
+          ...finishedTool,
+          state: "approval-responded",
+          output: undefined,
+          approval: { id: "approval-1", approved: true },
+        },
+      ],
+    ],
+  ] as Array<[string, Message["parts"]]>)(
+    "does not bring the thinking indicator back when a step opens after %s",
+    (_label, before) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[
+            {
+              id: "assistant-then-step",
+              role: "assistant",
+              parts: [...before, stepStart],
+            },
+          ]}
+          status="streaming"
+        />,
+      );
+
+      expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+    },
+  );
+
   it("drops the thinking indicator once a streaming turn has landed on a pause", () => {
     render(
       <ChatMessagesContainer

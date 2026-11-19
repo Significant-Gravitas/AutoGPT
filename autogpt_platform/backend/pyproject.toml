@@ -50,8 +50,10 @@ markdown-it-py = "^4.0.0"
 mem0ai = "1.0.8"
 # Pinned to an upstream master commit until a moviepy release allows pillow 13
 # (every release up to 2.2.1 caps pillow below 12). Switch back to the release
-# then: https://github.com/Zulko/moviepy/pull/2562, SECRT-3057.
-moviepy = { git = "https://github.com/Zulko/moviepy.git", rev = "4cf7f84ed1f840e4f0c3ed92b8cdec12a87b56ec" }
+# then: https://github.com/Zulko/moviepy/pull/2562, SECRT-3057. The commit's
+# tarball rather than the git repository: a clone once hung CI for 32 minutes.
+# If GitHub ever rebuilds the tarball differently, re-lock for its new hash.
+moviepy = { url = "https://github.com/Zulko/moviepy/archive/4cf7f84ed1f840e4f0c3ed92b8cdec12a87b56ec.tar.gz" }
 ollama = "^0.6.1"
 openai = "^1.97.1"
 orjson = "^3.10.0"
