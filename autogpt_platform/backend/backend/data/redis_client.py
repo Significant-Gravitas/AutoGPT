@@ -238,7 +238,7 @@ def _attach_loop_close_wrapper(loop: asyncio.AbstractEventLoop) -> None:
     if getattr(loop, "_redis_close_wrapped", False):
         return
     try:
-        loop._redis_close_wrapped = True
+        setattr(loop, "_redis_close_wrapped", True)
     except AttributeError:
         pass
 
@@ -255,7 +255,7 @@ def _attach_loop_close_wrapper(loop: asyncio.AbstractEventLoop) -> None:
         orig_close()
 
     try:
-        loop.close = _wrapped_close
+        setattr(loop, "close", _wrapped_close)
     except (AttributeError, TypeError):
         pass
 

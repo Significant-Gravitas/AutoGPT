@@ -208,7 +208,9 @@ def test_get_redis_async_closes_client_when_owning_loop_shuts_down() -> None:
     assert not redis_client._async_client_finalizers
 
 
-def test_get_redis_async_closes_client_when_loop_closed_without_shutdown_asyncgens() -> None:
+def test_get_redis_async_closes_client_when_loop_closed_without_shutdown_asyncgens() -> (
+    None
+):
     fake = MagicMock(spec=AsyncRedisCluster)
     fake.close = AsyncMock()
 
