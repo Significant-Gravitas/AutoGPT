@@ -44,6 +44,7 @@ import {
   platformUserExists,
   provisionPlatformUser,
 } from "./provision-platform-user";
+import { assertProfileFieldsFit } from "./profile-field-limits";
 import { assertProviderVerifiedEmail } from "./provider-verified-email";
 import {
   recordResetLinkAddress,
@@ -151,6 +152,8 @@ export const auth = betterAuth({
   disabledPaths: DISABLED_AUTH_PATHS,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      // First, so a sign-up is answered alike with or without an account.
+      assertProfileFieldsFit(ctx.body);
       assertAppleSignInRequest(ctx.path, ctx.body);
       // Sign-in and reset emails are limited per IP and address (attempt-limits.ts).
       await limitAuthAttempts({
@@ -237,6 +240,8 @@ export const auth = betterAuth({
           // First, so an unverified address is answered the same whether or
           // not an account uses it, before any later check tells them apart.
           assertProviderVerifiedEmail(user, ctx);
+          // Also covers rows no request body carried: a provider's profile.
+          assertProfileFieldsFit(user);
           // Microsoft's next: its refusals carry codes /login explains.
           assertMicrosoftSignUpAllowed(user, ctx);
           assertSignUpPolicy(user.email, ctx);
@@ -278,6 +283,10 @@ export const auth = betterAuth({
         },
       },
       update: {
+        // An admin's update carries its fields nested, out of hooks.before's view.
+        before: async (user: Record<string, unknown>) => {
+          assertProfileFieldsFit(user);
+        },
         // updateUserByEmail (fired when a change-email link is confirmed)
         // runs this hook post-commit; mirror the now-verified email onto the
         // platform User row so notifications/Stripe track the confirmed
