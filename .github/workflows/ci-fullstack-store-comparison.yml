@@ -1,0 +1,532 @@
+name: Compare direct full-stack image stores
+'on':
+  push:
+    branches:
+    - codex/ci-image-store-20261119
+permissions:
+  contents: read
+jobs:
+  fullstack:
+    name: Full-stack store (${{ matrix.mode }}, repeat ${{ matrix.repeat }})
+    continue-on-error: false
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - mode: container
+          repeat: 1
+          suite: smoke
+          config: playwright.config.ts
+          playwright_args: ''
+          min_tests: 29
+          embeddings: true
+          seed: true
+          hosted: false
+          scripted_model: false
+          known_failures: false
+          partition: 1
+        - mode: container
+          repeat: 2
+          suite: smoke
+          config: playwright.config.ts
+          playwright_args: ''
+          min_tests: 29
+          embeddings: true
+          seed: true
+          hosted: false
+          scripted_model: false
+          known_failures: false
+          partition: 1
+        - mode: direct
+          repeat: 1
+          suite: smoke
+          config: playwright.config.ts
+          playwright_args: ''
+          min_tests: 29
+          embeddings: true
+          seed: true
+          hosted: false
+          scripted_model: false
+          known_failures: false
+          partition: 1
+        - mode: direct
+          repeat: 2
+          suite: smoke
+          config: playwright.config.ts
+          playwright_args: ''
+          min_tests: 29
+          embeddings: true
+          seed: true
+          hosted: false
+          scripted_model: false
+          known_failures: false
+          partition: 1
+    permissions:
+      contents: read
+      packages: read
+    env:
+      BUILD_CACHE_IMAGE: ghcr.io/significant-gravitas/autogpt-platform-e2e-buildcache
+      E2E_SEED_IMAGE: ghcr.io/significant-gravitas/autogpt-platform-e2e-seed
+      WRITE_BUILD_CACHE: 'false'
+      BUILDKIT_IMAGE: docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      with:
+        ref: ${{ github.sha }}
+        submodules: recursive
+        persist-credentials: false
+        filter: blob:none
+        sparse-checkout-cone-mode: false
+        sparse-checkout: |
+          /*
+          !/docs/platform/.gitbook/assets/*.png
+          !/docs/platform/.gitbook/assets/*.gif
+    - name: Set up tests - Compute E2E test data cache key
+      id: e2e-seed-key
+      if: matrix.seed
+      working-directory: .
+      env:
+        EMBEDDINGS: ${{ matrix.embeddings && 'emb' || 'noemb' }}
+      run: |
+        inputs_hash=$(
+          {
+            git ls-files -s -- \
+              autogpt_platform/backend/test/e2e_test_data.py \
+              autogpt_platform/backend/agents/calculator-agent.json \
+              autogpt_platform/backend/schema.prisma \
+              autogpt_platform/backend/migrations \
+              autogpt_platform/backend/backend/api/features/library/db.py \
+              autogpt_platform/backend/backend/api/features/library/model.py \
+              autogpt_platform/backend/backend/api/features/orgs/db.py \
+              autogpt_platform/backend/backend/api/features/search/embeddings.py \
+              autogpt_platform/backend/backend/api/features/store/db.py \
+              autogpt_platform/backend/backend/data/auth/api_key.py \
+              autogpt_platform/backend/backend/data/credit.py \
+              autogpt_platform/backend/backend/data/graph.py \
+              autogpt_platform/backend/backend/data/org_migration.py \
+              autogpt_platform/backend/backend/data/profile.py \
+              autogpt_platform/backend/backend/data/user.py \
+              autogpt_platform/backend/backend/util/json.py
+            sed -n '/- name: Set up tests - Create E2E test data$/,/^      - name:/p' \
+              .github/workflows/platform-fullstack-ci.yml
+          } | sha256sum | cut -c1-40
+        )
+        echo "tag=v4-${EMBEDDINGS}-${inputs_hash}" >> "$GITHUB_OUTPUT"
+    - name: Verify application source and test fixtures are present
+      working-directory: .
+      run: python3 .github/scripts/validate_ci_checkout.py
+    - name: Set up the candidate Docker image store
+      if: matrix.mode == 'direct'
+      uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
+      with:
+        version: v29.9.2
+        daemon-config: '{"features":{"containerd-snapshotter":true}}'
+    - name: Set up Platform - Pull BuildKit image
+      id: buildkit-image
+      working-directory: /tmp
+      timeout-minutes: 5
+      background: true
+      run: |
+        if docker image inspect "$BUILDKIT_IMAGE" >/dev/null 2>&1; then
+          exit 0
+        fi
+        bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$BUILDKIT_IMAGE"
+      if: matrix.mode == 'container'
+    - name: Set up Platform - Create .env files with generated secrets
+      working-directory: autogpt_platform
+      run: make init-env
+    - name: Set up Platform - Configure backend .env
+      run: |
+        if [[ "${{ matrix.embeddings }}" == "true" ]]; then
+          echo "OPENAI_INTERNAL_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> ../backend/.env
+        fi
+        # The journeys leg's AutoPilot talks to the scripted model instead
+        # (docker-compose.journeys.yml).
+        if [[ "${{ matrix.scripted_model }}" != "true" ]]; then
+          echo "CHAT_TEST_MODE=true" >> ../backend/.env
+        fi
+        echo "SCHEDULER_STARTUP_EMBEDDING_BACKFILL=false" >> ../backend/.env
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    - name: Set up Platform - Configure hosted backend .env
+      if: matrix.hosted
+      run: python ../../.github/scripts/hosted_journeys_env.py >> ../backend/.env
+    - name: Set up Platform - Log in to the GHCR build cache
+      continue-on-error: true
+      uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Set up tests - Pull cached E2E test data from GHCR
+      id: e2e-seed-pull
+      if: matrix.seed
+      continue-on-error: true
+      timeout-minutes: 3
+      working-directory: /tmp
+      run: |
+        ref="$E2E_SEED_IMAGE:${E2E_SEED_TAG}"
+        if ! docker pull --quiet "$ref"; then
+          echo "No cached E2E test data at $ref; seeding instead"
+          exit 0
+        fi
+        container=$(docker create "$ref" none)
+        docker cp "$container:/e2e_test_data.sql" /tmp/e2e_test_data.sql
+        docker rm "$container" >/dev/null
+        docker rmi "$ref" >/dev/null
+        echo "hit=true" >> "$GITHUB_OUTPUT"
+      env:
+        E2E_SEED_TAG: ${{ steps.e2e-seed-key.outputs.tag }}
+    - name: Set up Platform - Prepare Docker build
+      working-directory: autogpt_platform
+      env:
+        NEXT_PUBLIC_PW_TEST: true
+        NEXT_PUBLIC_SOURCEMAPS: true
+      run: |
+        pip install pyyaml
+
+        # Resolve extends and generate a flat compose file that bake can understand
+        export NEXT_PUBLIC_SOURCEMAPS NEXT_PUBLIC_PW_TEST
+        compose_files=(-f docker-compose.yml)
+        if [[ "${{ matrix.scripted_model }}" == "true" ]]; then
+          compose_files+=(-f docker-compose.journeys.yml)
+        fi
+        docker compose "${compose_files[@]}" config > docker-compose.resolved.yml
+
+        # Ensure NEXT_PUBLIC_SOURCEMAPS is in resolved compose
+        # (docker compose config on some versions drops this arg)
+        if ! grep -q "NEXT_PUBLIC_SOURCEMAPS" docker-compose.resolved.yml; then
+          echo "Injecting NEXT_PUBLIC_SOURCEMAPS into resolved compose (docker compose config dropped it)"
+          sed -i '/NEXT_PUBLIC_PW_TEST/a\        NEXT_PUBLIC_SOURCEMAPS: "true"' docker-compose.resolved.yml
+        fi
+
+        # Generated runtime credentials must not invalidate the build cache.
+        cp frontend/.env "$RUNNER_TEMP/frontend-test.env"
+        python ../.github/scripts/frontend_ci_env.py \
+          --compose docker-compose.resolved.yml --env frontend/.env
+
+        # Pull requests read the cache and never write it
+        write_cache=()
+        if [[ "$WRITE_BUILD_CACHE" == "true" ]]; then
+          write_cache=(--write-cache)
+        fi
+
+        python ../.github/workflows/scripts/docker-ci-fix-compose-build-cache.py \
+          --source docker-compose.resolved.yml \
+          --cache-image "$BUILD_CACHE_IMAGE" \
+          "${write_cache[@]}"
+
+        python3 - <<'PY'
+        import yaml
+        from pathlib import Path
+        compose = yaml.safe_load(Path('docker-compose.resolved.yml').read_text())
+        assert all(not service.get('build', {}).get('cache_to') for service in compose['services'].values())
+        PY
+    - name: Set up Platform - Wait for BuildKit image
+      wait:
+      - buildkit-image
+      if: matrix.mode == 'container'
+    - name: Set up Platform - Set up Docker Buildx
+      uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      with:
+        cleanup: false
+        driver: docker-container
+        driver-opts: |
+          image=${{ env.BUILDKIT_IMAGE }}
+          network=host
+        version: v0.36.0
+      if: matrix.mode == 'container'
+    - name: Set up Platform - Set up direct Docker builder
+      if: matrix.mode == 'direct'
+      uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      with:
+        version: v0.36.0
+        driver: docker
+        cleanup: false
+    - name: Record the runner and Docker builder
+      run: |-
+        nproc
+        lscpu | grep -E '^(Architecture|CPU\(s\)|Model name):'
+        docker version
+        docker buildx version
+        docker buildx inspect
+        docker info --format '{{json .DriverStatus}}'
+    - name: Set up Platform - Log runner memory
+      id: memory-log
+      background: true
+      run: |
+        lowest=
+        # e2e_test sets no job-level timeout-minutes, so GitHub's 360-minute
+        # default is the real ceiling; sample until then or the stop file,
+        # whichever comes first, so a long build+seed can't outlast the log.
+        for i in $(seq 2160); do
+          [ -f /tmp/stop-memory-log ] && break
+          read -r used available < <(free -m | awk '/^Mem:/ {print $3, $7}')
+          swap=$(free -m | awk '/^Swap:/ {print $3}')
+          echo "$(date -u +%T) used=${used}M available=${available}M swap=${swap}M"
+          if [ -z "$lowest" ] || [ "$available" -lt "$lowest" ]; then lowest=$available; fi
+          # Once a minute, which containers hold it
+          if (( i % 6 == 0 )); then docker stats --no-stream --format '  {{.Name}} {{.MemUsage}}' || true; fi
+          sleep 10
+        done
+        echo "Lowest available memory: ${lowest}M"
+    - name: Set up Platform - Build backend Docker images
+      id: platform-build-backend
+      working-directory: autogpt_platform
+      background: true
+      run: |
+        SECONDS=0
+        export_args=()
+        if [[ "$IMAGE_STORE_MODE" == container ]]; then
+          export_args=(--set "*.output=type=docker,compression=uncompressed")
+        fi
+        targets=$(python -c "import yaml; s = yaml.safe_load(open('docker-compose.resolved.yml'))['services']; print(' '.join(n for n, c in s.items() if 'build' in c and n != 'frontend'))")
+        echo "Baking: $targets"
+        # The UTC date re-runs the backend's package installs once a day
+        # (APT_REFRESH), so E2E tests the OS packages that ship.
+        docker buildx bake --progress=plain --allow=fs.read=.. -f docker-compose.resolved.yml \
+          "${export_args[@]}" \
+          --set "*.args.APT_REFRESH=$(date -u +%F)" $targets
+
+        printf '%s\n' "$SECONDS" > "$RUNNER_TEMP/backend-build-seconds.txt"
+      env:
+        IMAGE_STORE_MODE: ${{ matrix.mode }}
+    - name: Set up Platform - Build frontend Docker image
+      id: platform-build-frontend
+      working-directory: autogpt_platform
+      background: true
+      run: |
+        SECONDS=0
+        export_args=()
+        if [[ "$IMAGE_STORE_MODE" == container ]]; then
+          export_args=(--set "frontend.output=type=docker,compression=uncompressed")
+        fi
+        # Lint and type checks run in their own jobs, so the e2e build skips them
+        docker buildx bake --progress=plain --allow=fs.read=.. -f docker-compose.resolved.yml \
+          "${export_args[@]}" \
+          --set frontend.args.NEXT_SKIP_BUILD_CHECKS=true frontend
+
+        printf '%s\n' "$SECONDS" > "$RUNNER_TEMP/frontend-build-seconds.txt"
+      env:
+        NEXT_PUBLIC_PW_TEST: true
+        NEXT_PUBLIC_SOURCEMAPS: true
+        IMAGE_STORE_MODE: ${{ matrix.mode }}
+    - name: Set up Platform - Pull service images and start database
+      id: database
+      background: true
+      run: |
+        # Every image `up` would pull, pulled now through the retry, so a brief
+        # Docker Hub refusal can't fail a later `up`.
+        images=$(python -c "import yaml; s = yaml.safe_load(open('../docker-compose.resolved.yml'))['services']; built = {c.get('image') for c in s.values() if 'build' in c}; print(' '.join(sorted({c['image'] for c in s.values() if 'build' not in c} - built)))")
+        for image in $images; do
+          bash "$GITHUB_WORKSPACE/.github/scripts/docker-pull-with-retry.sh" "$image"
+        done
+        # --no-deps: db depends_on rabbitmq (startup-ordering only, see
+        # docker-compose.yml), so without it this would start rabbitmq here
+        # too, overlapping the frontend build. "Start (all other services)"
+        # brings rabbitmq up with everything else once the build is done.
+        docker compose -f ../docker-compose.resolved.yml up -d db --no-build --no-deps
+        echo "Waiting for database to be ready..."
+        timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
+    - name: Set up tests - Set up pnpm
+      uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+      with:
+        package_json_file: autogpt_platform/frontend/package.json
+    - name: Set up tests - Set up Node
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      with:
+        node-version: 24.22.1
+        cache: pnpm
+        cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+    - name: Set up tests - Cache Playwright browsers
+      if: matrix.suite == 'smoke'
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+        restore-keys: |
+          playwright-${{ runner.os }}-
+    - name: Set up tests - Restore Playwright browsers
+      if: matrix.suite != 'smoke'
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+        restore-keys: |
+          playwright-${{ runner.os }}-
+    - name: Set up tests - Install dependencies
+      run: pnpm install --frozen-lockfile --prefer-offline
+    - name: Set up tests - Install browser 'chromium'
+      run: pnpm playwright install chromium
+    - name: Wait for backend image build and database
+      wait:
+      - platform-build-backend
+      - database
+    - name: Set up Platform - Run migrations
+      run: "echo \"Running migrations...\"\n# --no-deps: `run` resolves migrate's full dependency closure, so\n\
+        # without it this starts rabbitmq too (db's own dependency, even\n# though db is already healthy from the\
+        \ step above) during the build.\ndocker compose -f ../docker-compose.resolved.yml run --rm --no-deps migrate\n\
+        echo \"\u2705 Migrations completed\"\n"
+      env:
+        NEXT_PUBLIC_PW_TEST: true
+    - name: Set up tests - Load cached E2E test data
+      id: e2e-seed-restore
+      if: steps.e2e-seed-pull.outputs.hit == 'true'
+      run: "echo \"\u2705 Found cached E2E test data, restoring...\"\n# One transaction: a dump that no longer fits\
+        \ the schema leaves\n# nothing behind, and the seed step below runs instead.\n{\n  echo \"SET session_replication_role\
+        \ = 'replica';\"\n  cat /tmp/e2e_test_data.sql\n  echo \"SET session_replication_role = 'origin';\"\n} |\
+        \ docker compose -f ../docker-compose.resolved.yml exec -T db psql -X -v ON_ERROR_STOP=1 --single-transaction\
+        \ -U postgres -d postgres -b || {\n  echo \"::warning title=e2e-seed-cache-stale::Cached E2E test data did\
+        \ not load; seeding instead\"\n  exit 0\n}\n# Refresh materialized views after restore\ndocker compose -f\
+        \ ../docker-compose.resolved.yml exec -T db \\\n  psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres -b\
+        \ -c \"SET search_path TO platform; SELECT refresh_store_materialized_views();\"\n\necho \"restored=true\"\
+        \ >> \"$GITHUB_OUTPUT\"\necho \"\u2705 E2E test data restored from cache\"\n"
+    - name: Wait for frontend image build
+      wait:
+      - platform-build-frontend
+    - name: Restore runtime configuration for Playwright
+      run: cp "$RUNNER_TEMP/frontend-test.env" .env
+    - name: Set up Platform - Start (all other services)
+      run: "# Everything but the frontend, which starts once the seed is in\ndocker compose -f ../docker-compose.resolved.yml\
+        \ up -d --no-build \\\n  $(docker compose -f ../docker-compose.resolved.yml config --services | grep -vx\
+        \ frontend)\necho \"Waiting for rest_server to be ready...\"\ntimeout 180 sh -c 'until curl -f http://localhost:8006/health\
+        \ 2>/dev/null; do sleep 2; done' || {\n  echo \"\u274C rest_server did not become healthy in 180s\"\n  docker\
+        \ compose -f ../docker-compose.resolved.yml logs --tail=100 rest_server\n  exit 1\n}\necho \"Waiting for\
+        \ scheduler_server to be ready...\"\n# Its port is internal (not published to the host), so ask from\n#\
+        \ inside its own container; the image has Python but no curl.\ntimeout 180 sh -c 'until docker compose -f\
+        \ ../docker-compose.resolved.yml exec -T scheduler_server python -c \"import urllib.request; urllib.request.urlopen(\\\
+        \"http://localhost:8003/health_check\\\", timeout=5)\" >/dev/null 2>&1; do sleep 2; done' || {\n  echo \"\
+        scheduler_server did not become healthy in 180s\"\n  docker compose -f ../docker-compose.resolved.yml logs\
+        \ --tail=100 scheduler_server\n  exit 1\n}\n"
+      env:
+        NEXT_PUBLIC_PW_TEST: true
+    - name: Set up tests - Verify cached seed credentials with fresh encryption key
+      id: e2e-seed-verify-cached
+      if: steps.e2e-seed-restore.outputs.restored == 'true'
+      run: |
+        docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
+        docker compose -f ../docker-compose.resolved.yml exec -T rest_server \
+          sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py --refresh-credentials-only"
+    - name: Set up tests - Create E2E test data
+      id: e2e-seed-create
+      if: matrix.seed && steps.e2e-seed-restore.outputs.restored != 'true'
+      timeout-minutes: 20
+      env:
+        EMBEDDINGS: ${{ matrix.embeddings }}
+      run: "echo \"Creating E2E test data...\"\ndocker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml\
+        \ ps -q rest_server):/tmp/e2e_test_data.py\ndocker compose -f ../docker-compose.resolved.yml exec -T rest_server\
+        \ sh -c \"cd /app/autogpt_platform && python /tmp/e2e_test_data.py\" | tee /tmp/e2e_seed.log || {\n  echo\
+        \ \"\u274C E2E test data creation failed!\"\n  docker compose -f ../docker-compose.resolved.yml logs --tail=50\
+        \ rest_server\n  exit 1\n}\n\n# Dump the platform schema for cache (includes the Better Auth\n# user/session/account\
+        \ tables seeded by e2e_test_data.py)\necho \"Dumping database for cache...\"\ndocker compose -f ../docker-compose.resolved.yml\
+        \ exec -T db \\\n  pg_dump -U postgres --data-only --column-inserts \\\n  --schema=platform \\\n  --exclude-table='platform._prisma_migrations'\
+        \ \\\n  --exclude-table='platform.\"PaidUsageActivationPolicy\"' \\\n  --exclude-table='platform.apscheduler_jobs'\
+        \ \\\n  --exclude-table='platform.apscheduler_jobs_batched_notifications' \\\n  postgres > /tmp/e2e_test_data.sql\n\
+        \necho \"\u2705 Database dump created for caching ($(wc -l < /tmp/e2e_test_data.sql) lines)\"\n\n# The seed\
+        \ only warns when the embedding backfill errors, stalls or\n# times out. Such a dump serves this run but\
+        \ is not published.\nif [[ \"$EMBEDDINGS\" != \"true\" ]] || grep -q 'Embeddings complete:' /tmp/e2e_seed.log;\
+        \ then\n  echo \"publishable=true\" >> \"$GITHUB_OUTPUT\"\nelse\n  echo \"::warning title=e2e-seed-not-published::Embedding\
+        \ coverage is incomplete; this dump will not be pushed to GHCR\"\nfi\n"
+    - name: Set up tests - Verify seeded credentials with fresh encryption key
+      id: e2e-seed-verify
+      if: matrix.seed && steps.e2e-seed-restore.outputs.restored != 'true'
+      run: |
+        docker cp ../backend/test/e2e_test_data.py $(docker compose -f ../docker-compose.resolved.yml ps -q rest_server):/tmp/e2e_test_data.py
+        docker compose -f ../docker-compose.resolved.yml exec -T rest_server \
+          sh -c "cd /app/autogpt_platform && python /tmp/e2e_test_data.py --refresh-credentials-only"
+    - name: Set up Platform - Start frontend
+      run: |
+        docker compose -f ../docker-compose.resolved.yml up -d --no-build --no-deps frontend
+        echo "Waiting for frontend to be ready..."
+        timeout 120 sh -c 'until curl -fsS -o /dev/null http://localhost:3000; do sleep 2; done' || {
+          echo "frontend did not become ready in 120s"
+          docker compose -f ../docker-compose.resolved.yml logs --tail=100 frontend
+          exit 1
+        }
+    - name: Set up Platform - Initialize auth signing keys
+      run: |
+        docker compose -f ../docker-compose.resolved.yml exec -T rest_server python - <<'PY'
+        import os
+        from jwt import PyJWKClient
+
+        PyJWKClient(os.environ["JWT_JWKS_URL"], timeout=5).get_signing_keys()
+        PY
+    - name: Stop runner memory log
+      if: always()
+      run: touch /tmp/stop-memory-log
+    - name: Wait for runner memory log
+      wait:
+      - memory-log
+    - name: Copy source maps from Docker for E2E coverage
+      run: |
+        FRONTEND_CONTAINER=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
+        docker cp "$FRONTEND_CONTAINER":/app/.next/static .next-static-coverage
+    - name: Discover the complete unsharded smoke suite
+      if: matrix.suite == 'smoke'
+      env:
+        PLAYWRIGHT_JSON_OUTPUT_FILE: smoke-inventory.json
+      run: pnpm exec playwright test --config playwright.config.ts --list --reporter=json --retries=0
+    - name: Run Playwright E2E suite
+      id: e2e-playwright
+      run: pnpm exec playwright test --config playwright.config.ts --retries=0 --trace=retain-on-failure
+      env:
+        PLAYWRIGHT_JSON_OUTPUT_FILE: test-results/results.json
+        PLAYWRIGHT_RETRIES: '0'
+        PLAYWRIGHT_CHANGELOG_FIXTURE: 'true'
+        PLAYWRIGHT_WORKERS: '4'
+        PLAYWRIGHT_JOURNEY_COST_PER_NODE: ${{ matrix.hosted && '1' || '' }}
+        PLAYWRIGHT_JOURNEY_TIER: ${{ matrix.hosted && 'PRO' || '' }}
+    - name: Validate Playwright JSON report
+      id: e2e-playwright-report
+      if: ${{ always() }}
+      run: python ../../.github/scripts/validate_playwright_json.py --synthesize-invalid --min-tests ${{ matrix.min_tests
+        }} ${{ matrix.known_failures && '--allow-known-failures' || '' }} test-results/results.json
+    - name: Require every discovered smoke test in each variant
+      if: always()
+      run: python3 ../../.github/scripts/verify_smoke_shards.py seed smoke-inventory.json test-results/results.json
+    - name: Validate coverage report
+      id: validate-e2e-coverage
+      if: ${{ always() }}
+      run: python ../../.github/scripts/validate_cobertura.py coverage/e2e/cobertura-coverage.xml
+    - name: Upload Playwright report
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: playwright-report-${{ matrix.suite }}${{ matrix.suite == 'smoke' && format('-{0}', matrix.partition)
+          || '' }}-${{ matrix.mode }}-${{ matrix.repeat }}
+        path: autogpt_platform/frontend/playwright-report
+        if-no-files-found: ignore
+        retention-days: 3
+    - name: Upload Playwright test results
+      if: ${{ always() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: playwright-test-results-${{ matrix.suite }}${{ matrix.suite == 'smoke' && format('-{0}', matrix.partition)
+          || '' }}-${{ matrix.mode }}-${{ matrix.repeat }}
+        path: |
+          autogpt_platform/frontend/test-results
+          autogpt_platform/frontend/smoke-inventory.json
+          autogpt_platform/frontend/smoke-seed-verification.json
+          autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
+        if-no-files-found: error
+        retention-days: 3
+    - name: Print Final Docker Compose logs
+      if: always()
+      run: docker compose -f ../docker-compose.resolved.yml logs
+    - name: Upload image build timings
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: fullstack-store-${{ matrix.mode }}-${{ matrix.repeat }}
+        path: |-
+          ${{ runner.temp }}/frontend-build-seconds.txt
+          ${{ runner.temp }}/backend-build-seconds.txt
+        if-no-files-found: error
+        retention-days: 7
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+        working-directory: autogpt_platform/frontend
