@@ -16,6 +16,7 @@ import shlex
 from typing import TYPE_CHECKING
 
 from backend.copilot.context import (
+    MAX_LOCAL_PATH_LENGTH,
     get_current_sandbox,
     get_workdir,
     is_local_pc_executor,
@@ -264,6 +265,11 @@ def validate_ephemeral_path(
     Returns the resolved real path on success, or an ``ErrorResponse`` when the
     path escapes the session directory.  Act on the result through ``host_fs``.
     """
+    if len(path) > MAX_LOCAL_PATH_LENGTH:
+        return ErrorResponse(
+            message=f"{param_name} is longer than {MAX_LOCAL_PATH_LENGTH} characters",
+            session_id=session_id,
+        )
     real = os.path.realpath(path)
     if not _inside_session_dir(real, session_id):
         return ErrorResponse(
@@ -274,6 +280,8 @@ def validate_ephemeral_path(
 
 def _ephemeral_parent_or_raise(path: str, session_id: str) -> str:
     """*path* with only its parent resolved, so a link it names is what goes."""
+    if len(path) > MAX_LOCAL_PATH_LENGTH:
+        raise PermissionError(f"path is longer than {MAX_LOCAL_PATH_LENGTH} characters")
     parent = os.path.realpath(os.path.dirname(path))
     name = os.path.basename(path)
     if name in ("", ".", "..") or not _inside_session_dir(

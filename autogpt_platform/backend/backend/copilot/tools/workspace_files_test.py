@@ -56,6 +56,17 @@ def ephemeral_dir(tmp_path, monkeypatch):
 
 
 class TestValidateEphemeralPath:
+    def test_path_longer_than_any_host_path_is_refused_unresolved(
+        self, ephemeral_dir, mocker
+    ):
+        realpath = mocker.patch("backend.copilot.tools.workdir.os.path.realpath")
+        deep = str(ephemeral_dir) + "/a" * 2_100
+
+        result = validate_ephemeral_path(deep, param_name="test", session_id="s1")
+
+        assert isinstance(result, ErrorResponse)
+        realpath.assert_not_called()
+
     def test_valid_path(self, ephemeral_dir):
         target = ephemeral_dir / "file.txt"
         target.touch()
