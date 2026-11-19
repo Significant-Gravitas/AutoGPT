@@ -97,10 +97,10 @@ _UNREACHABLE = _UnreachableType()
 # would otherwise turn every cached call into a Sentry event.
 _NOT_NOW = (TimeoutError, RedisTimeoutError, MaxConnectionsError)
 
-# A coroutine's misses of different keys compute concurrently, up to this many
-# at once per decorated function and event loop (per process for the API
-# servers, which run one loop), so a flood of distinct keys, such as public
-# store searches, can't flood the database behind them.
+# A coroutine's misses of different keys call the decorated function
+# concurrently, up to this many at once per function and event loop (per
+# process for the API servers, which run one loop), so a flood of distinct
+# keys, such as public store searches, can't flood the database behind them.
 # ``cached(max_concurrent_misses=...)`` overrides it.
 MAX_CONCURRENT_MISSES = 8
 
@@ -112,13 +112,13 @@ def _is_hit(result: Any) -> bool:
 class _InFlight:
     """The computation running for each key on one event loop. Callers that
     miss the key while it runs wait for it and share its result, stored or
-    not, so one computation answers them all. At most ``max_concurrent``
-    keys compute at once; the rest wait for a turn. For one event loop: a
-    future belongs to one."""
+    not, so one computation answers them all. A computation calls the cached
+    function during one of ``turns``, at most ``max_concurrent`` at once. For
+    one event loop: a future belongs to one."""
 
     def __init__(self, max_concurrent: int) -> None:
         self._flights: dict[Any, asyncio.Future[Any]] = {}
-        self._turns = asyncio.Semaphore(max_concurrent)
+        self.turns = asyncio.Semaphore(max_concurrent)
 
     async def run(
         self,
@@ -143,8 +143,7 @@ class _InFlight:
             return copy()
         flight = self._flights[key] = asyncio.get_running_loop().create_future()
         try:
-            async with self._turns:
-                value = await compute()
+            value = await compute()
         except Exception as e:
             flight.set_exception(e)
             flight.exception()  # Retrieved: an error nobody waited for logs nothing.
@@ -473,6 +472,8 @@ def cached(
                 if _is_hit(result):
                     return result
 
+                in_flight = _in_flight()
+
                 async def compute() -> Any:
                     # Double-check: another coroutine might have populated
                     # cache. Not when Redis just went unanswered: asking it
@@ -486,9 +487,12 @@ def cached(
                         if _is_hit(found):
                             return found
 
-                    # Cache miss - execute function
+                    # Cache miss - execute function, during a turn: only the
+                    # call itself, so a Redis that stalls the reads and the
+                    # write around it holds no turn from other keys' misses.
                     logger.debug(f"Cache miss for {func_name}")
-                    value = await target_func(*args, **kwargs)
+                    async with in_flight.turns:
+                        value = await target_func(*args, **kwargs)
 
                     # Store result (skip ``None`` if the caller opted out of
                     # caching it — used for transient-error sentinels).
@@ -505,8 +509,8 @@ def cached(
                 # The shared cache's own key: arguments Python counts as equal,
                 # such as ``True`` and ``1``, are different entries in Redis.
                 if shared_cache:
-                    return await _in_flight().run(redis_key, compute, _private_copies)
-                return await _in_flight().run(key, compute, _the_same)
+                    return await in_flight.run(redis_key, compute, _private_copies)
+                return await in_flight.run(key, compute, _the_same)
 
             wrapper = async_wrapper
 

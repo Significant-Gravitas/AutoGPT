@@ -24,6 +24,7 @@ from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
+import redis
 import redis.asyncio.cluster as async_cluster
 import redis.asyncio.connection as async_connection
 import redis.connection
@@ -2322,6 +2323,46 @@ class TestSharedCacheOnAnEventLoop:
         assert any(before)
         assert not any(after)
 
+    @pytest.mark.asyncio
+    async def test_a_write_redis_holds_keeps_no_other_key_from_computing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A computation holds its turn only while it calls the function, not
+        while Redis answers the reads and the write around it: a stalled write
+        mustn't keep other keys' misses from the database."""
+        monkeypatch.setattr(cache_module, "REDIS_OP_TIMEOUT_S", 3 * _HANG_SECONDS)
+        computing: dict[str, asyncio.Event] = {}
+
+        @cached(ttl_seconds=30, shared_cache=True, max_concurrent_misses=1)
+        async def lookup(key: str) -> str:
+            computing[key].set()
+            return key
+
+        held_key, other_key = _unique("held-write"), _unique("other")
+        computing.update({held_key: asyncio.Event(), other_key: asyncio.Event()})
+        held = hold_cache_read(
+            monkeypatch,
+            cache_key("lookup", key=held_key),
+            _HANG_SECONDS,
+            commands=("SET",),
+        )
+        held_call = asyncio.create_task(lookup(held_key))
+        callers = [held_call]
+        try:
+            async with asyncio.timeout(2 * _HANG_SECONDS):
+                await held.started()
+                callers.append(asyncio.create_task(lookup(other_key)))
+                # The only turn is free while Redis holds the first key's write.
+                await computing[other_key].wait()
+                assert not held.answered
+            held.release()
+            async with asyncio.timeout(_HANG_SECONDS):
+                assert await asyncio.gather(*callers) == [held_key, other_key]
+        finally:
+            held.release()
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.gather(*callers, return_exceptions=True)
+
 
 class TestSharedCacheFollowsAShardsRedirect:
     """A shard asked about a key whose slot it doesn't serve names the one
@@ -2329,6 +2370,17 @@ class TestSharedCacheFollowsAShardsRedirect:
     hostname only the cluster's docker network resolves. The clients reach
     every shard at the address ``address_remap`` gives, redirects included.
     Needs a cluster of several shards, as CI's."""
+
+    def test_redis_py_is_the_release_the_redirect_subclasses_were_written_for(self):
+        """``cache_redis``'s redirect subclasses override redis-py 8.1's
+        ``NodesManager.move_slot`` and ``RedisCluster.get_node``, and
+        ``reinitialize_steps=0`` stands in for its MOVED handling. Another
+        release may change all three."""
+        assert redis.__version__.startswith("8.1."), (
+            f"redis-py is {redis.__version__}. Recheck the redirect subclasses in "
+            "backend/util/cache_redis.py against it, and drop them if it includes "
+            "redis/redis-py#4522; then update this test."
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("redirect", ["MOVED", "ASK"])
@@ -2387,7 +2439,11 @@ class TestSharedCacheFollowsAShardsRedirect:
             # as two commands, each on the first idle connection, so with
             # several idle the command can miss its ASKING: a redis-py bug of
             # its own, not the remap's (#17090).
-            asyncio.run(on_a_fresh_loop())
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(on_a_fresh_loop())
+            finally:
+                loop.close()
 
         redirects = _record_redirects(monkeypatch)
         failed_dials = _record_failed_dials(monkeypatch)
