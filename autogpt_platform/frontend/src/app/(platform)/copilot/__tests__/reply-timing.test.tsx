@@ -7,13 +7,12 @@ import type { SessionDetailResponseMessagesItem } from "@/app/api/__generated__/
 import { server } from "@/mocks/mock-server";
 import {
   assistantTextChunks,
-  copilotResumeHandler,
   copilotStreamErrorHandler,
   copilotStreamHandler,
   createStreamHold,
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { delay, http, HttpResponse } from "msw";
@@ -191,6 +190,12 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function flushReplyReports() {
+  // Unmount schedules abandonment, which schedules the report in a second timer.
+  await sleep(0);
+  await sleep(0);
+}
+
 /** Type and submit; returns the clock just before and after the click. */
 async function sendAndClock(text: string) {
   await waitForInputReady();
@@ -217,10 +222,8 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  // A reply still followed when the chat unmounts is given up and reported a
-  // few ticks later; let it land here rather than in the next test.
   cleanup();
-  await sleep(20);
+  await flushReplyReports();
   resetChatRuntimes();
   useCopilotStreamStore.getState().resetAll();
   useCopilotUIStore.setState({ initialPrompt: null });
@@ -320,6 +323,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     ] as const)(
       "records a %s shown before the text as the first output",
       async (kind, chunks, shownOutput) => {
+        const clock = vi.spyOn(performance, "now").mockReturnValue(100);
         const { hold, release } = createStreamHold(TEXT_START);
         server.use(
           copilotStreamHandler({
@@ -330,27 +334,35 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
           }),
         );
 
-        renderHost();
-        await typeAndSend("how is the weather?");
-        expect(
-          await screen.findAllByText(shownOutput, undefined, { timeout: 5000 }),
-        ).not.toHaveLength(0);
-        await sleep(HELD_MS);
-        expect(replySpans()).toHaveLength(0);
+        try {
+          renderHost();
+          await typeAndSend("how is the weather?");
+          expect(
+            await screen.findAllByText(shownOutput, undefined, {
+              timeout: 5000,
+            }),
+          ).not.toHaveLength(0);
+          await act(async () => {});
+          expect(replySpans()).toHaveLength(0);
 
-        release();
-        await screen.findByText("Here is the answer.", undefined, {
-          timeout: 5000,
-        });
-        const span = await recordedReply();
+          clock.mockReturnValue(100 + HELD_MS);
+          release();
+          await screen.findByText("Here is the answer.", undefined, {
+            timeout: 5000,
+          });
+          const span = await recordedReply();
 
-        expect(attributesOf(span)).toMatchObject({
-          "copilot.reply.outcome": "answered",
-          "copilot.reply.first_output_kind": kind,
-        });
-        expect(
-          msOf(span, "first_text_ms") - msOf(span, "first_output_ms"),
-        ).toBeGreaterThanOrEqual(HELD_MS - 1);
+          expect(attributesOf(span)).toMatchObject({
+            "copilot.reply.outcome": "answered",
+            "copilot.reply.first_output_kind": kind,
+          });
+          expect(
+            msOf(span, "first_text_ms") - msOf(span, "first_output_ms"),
+          ).toBe(HELD_MS);
+        } finally {
+          release();
+          clock.mockRestore();
+        }
       },
     );
 
@@ -381,10 +393,21 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     });
 
     it("times a reply to the text of the turn the server starts after it", async () => {
+      let now = 100;
+      const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+      const initial = createStreamHold(5);
+      const continuation = createStreamHold(3);
+      const sessionRequested = vi.fn();
+      const resumeRequested = vi.fn();
+      let releaseSession = () => {};
+      const sessionReleased = new Promise<void>((resolve) => {
+        releaseSession = resolve;
+      });
       server.use(
         copilotStreamHandler({
           baseUrl: TEST_BACKEND_BASE_URL,
           sessionId: TEST_SESSION_ID,
+          hold: initial.hold,
           chunks: [
             { type: "start", messageId: "msg-1" },
             { type: "start-step" },
@@ -394,46 +417,99 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
             { type: "finish" },
           ],
         }),
-        copilotResumeHandler({
-          baseUrl: TEST_BACKEND_BASE_URL,
-          sessionId: TEST_SESSION_ID,
-          chunks: assistantTextChunks("Your agent is ready.", {
-            messageId: "msg-2",
-          }),
-        }),
-      );
-
-      renderHost();
-      await typeAndSend("build me an agent");
-      await screen.findAllByText(/searched the web/i, undefined, {
-        timeout: 5000,
-      });
-      // Dispatched after the turn ends, later than a turn that ended without
-      // text is given to show some.
-      await sleep(SETTLE_GRACE_MS + HELD_MS);
-      server.use(
-        sessionHandler({
-          chat_status: "running",
-          active_stream: {
-            turn_id: "continuation-turn",
-            last_message_id: "msg-1",
-            started_at: "2026-05-13T00:00:00Z",
+        http.get(
+          `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+          ({ request }) => {
+            resumeRequested();
+            return streamSseResponse(
+              assistantTextChunks("Your agent is ready.", {
+                messageId: "msg-2",
+              }),
+              {
+                turnId: "continuation-turn",
+                hold: continuation.hold,
+                abortSignal: request.signal,
+              },
+            );
           },
-        }),
+        ),
       );
-      await screen.findByText("Your agent is ready.", undefined, {
-        timeout: 5000,
-      });
-      server.use(sessionHandler());
-      const span = await recordedReply();
 
-      expect(attributesOf(span)).toMatchObject({
-        "copilot.reply.outcome": "answered",
-        "copilot.reply.first_output_kind": "tool",
-      });
-      expect(
-        msOf(span, "first_text_ms") - msOf(span, "first_output_ms"),
-      ).toBeGreaterThanOrEqual(SETTLE_GRACE_MS + HELD_MS);
+      async function advance(ms: number) {
+        now += ms;
+        await act(() => vi.advanceTimersByTimeAsync(ms));
+      }
+
+      try {
+        renderHost();
+        await typeAndSend("build me an agent");
+        await screen.findAllByText(/searched the web/i, undefined, {
+          timeout: 5000,
+        });
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        server.use(
+          http.get("/api/proxy/api/chat/sessions/:sessionId", async () => {
+            sessionRequested();
+            await sessionReleased;
+            return HttpResponse.json({
+              id: TEST_SESSION_ID,
+              created_at: "2026-05-13T00:00:00Z",
+              updated_at: "2026-05-13T00:00:00Z",
+              user_id: "test-user",
+              chat_status: "running",
+              messages: [],
+              has_more_messages: false,
+              oldest_sequence: null,
+              active_stream: {
+                turn_id: "continuation-turn",
+                last_message_id: "msg-1",
+                started_at: "2026-05-13T00:00:00Z",
+              },
+              metadata: { dry_run: false, builder_graph_id: null },
+              expert_id: null,
+              background_pending: false,
+            });
+          }),
+        );
+        await act(async () => initial.release());
+        await advance(500);
+        expect(sessionRequested).toHaveBeenCalled();
+        expect(resumeRequested).not.toHaveBeenCalled();
+
+        await advance(SETTLE_GRACE_MS + HELD_MS);
+        expect(replySpans()).toHaveLength(0);
+        expect(screen.queryByText("Your agent is ready.")).toBeNull();
+
+        await act(async () => releaseSession());
+        await advance(1);
+        expect(resumeRequested).toHaveBeenCalledTimes(1);
+        server.use(sessionHandler());
+        await act(async () => continuation.release());
+        await advance(50);
+        expect(screen.getByText("Your agent is ready.")).toBeDefined();
+        const [span] = replySpans();
+        expect(replySpans()).toHaveLength(1);
+        expect(span.ended).toBe(true);
+        expect(attributesOf(span)).toMatchObject({
+          "copilot.reply.outcome": "answered",
+          "copilot.reply.first_output_kind": "tool",
+        });
+        expect(
+          msOf(span, "first_text_ms") - msOf(span, "first_output_ms"),
+        ).toBeGreaterThanOrEqual(SETTLE_GRACE_MS + HELD_MS);
+      } finally {
+        initial.release();
+        releaseSession();
+        continuation.release();
+        cleanup();
+        resetChatRuntimes();
+        if (vi.isFakeTimers()) {
+          await act(() => vi.advanceTimersByTimeAsync(1));
+          vi.clearAllTimers();
+          vi.useRealTimers();
+        }
+        clock.mockRestore();
+      }
     }, 15_000);
 
     it("does not time a follow-up queued behind the running turn", async () => {
@@ -546,9 +622,8 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
             .value,
         ).toBe("over the limit"),
       );
-      // Past the AI SDK's post-turn probe, where a settled turn would end.
-      await sleep(1000);
-
+      cleanup();
+      await flushReplyReports();
       expect(replySpans()).toHaveLength(0);
     });
 
@@ -715,16 +790,16 @@ describe("on the AI SDK path", () => {
     });
     await screen.findByText("Only reply.", undefined, { timeout: 5000 });
     await typeAndSend("same again");
-    await sleep(SETTLE_GRACE_MS + HELD_MS);
-
-    expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
-      "value",
-      "",
+    await waitFor(() =>
+      expect(screen.getByLabelText(/chat message input/i)).toHaveProperty(
+        "value",
+        "",
+      ),
     );
     expect(screen.getAllByText("same again")).toHaveLength(2);
     // Leaving the chat ends the timing too, still unreported.
     cleanup();
-    await sleep(20);
+    await flushReplyReports();
     expect(posts).not.toHaveBeenCalled();
     expect(replySpans()).toHaveLength(0);
   });
