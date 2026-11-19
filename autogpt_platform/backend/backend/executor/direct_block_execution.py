@@ -410,7 +410,7 @@ async def _collect(outputs: BlockOutput) -> CompletedBlockOutput:
     try:
         async with aclosing(outputs):
             async for name, data in outputs:
-                size += len(json.dumps(data))
+                size += _json_size(data)
                 if size > DIRECT_BLOCK_EXECUTION_MAX_OUTPUT_SIZE:
                     raise DirectBlockExecutionOutputTooLargeError(
                         DIRECT_BLOCK_EXECUTION_MAX_OUTPUT_SIZE
@@ -421,3 +421,11 @@ async def _collect(outputs: BlockOutput) -> CompletedBlockOutput:
         collected.clear()
         raise
     return collected
+
+
+def _json_size(data: object) -> int:
+    try:
+        return len(json.dumps(data))
+    except TypeError:
+        # orjson refuses values the routes' encoder takes, such as ints past 64 bits.
+        return len(str(data))

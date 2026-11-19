@@ -92,16 +92,34 @@ async def test_continuous_mode_waits_at_least_the_minimum(monkeypatch, polling_r
     sleep.assert_awaited_once_with(ReadRSSFeedBlock.MIN_POLLING_RATE_SECONDS)
 
 
-async def test_continuous_mode_outputs_each_entry_once(monkeypatch):
-    """A later poll outputs only the entries newer than those already output."""
+@pytest.mark.parametrize(
+    "polls, expected",
+    [
+        ([["old"], ["old"], ["new", "old"]], [["old"], [], ["new"]]),
+        ([["a"], ["b", "a"]], [["a"], ["b"]]),
+        ([["future", "a"], ["future", "a", "later"]], [["future", "a"], ["later"]]),
+    ],
+    ids=["later-entry", "same-timestamp", "future-dated"],
+)
+async def test_continuous_mode_outputs_each_entry_once(monkeypatch, polls, expected):
+    """Every entry is output once, whatever order and dates later polls bring."""
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    dates = {
+        "old": now,
+        "new": now + timedelta(minutes=1),
+        "a": now,
+        "b": now,
+        "future": now + timedelta(days=365),
+        "later": now + timedelta(hours=1),
+    }
     block = ReadRSSFeedBlock()
-    published = datetime.now(timezone.utc).replace(microsecond=0)
-    old = _feed_entry("old", published)
-    new = _feed_entry("new", published + timedelta(minutes=1))
     parse_feed = AsyncMock(
-        side_effect=[{"entries": [old]}, {"entries": [old]}, {"entries": [new, old]}]
+        side_effect=[
+            {"entries": [_feed_entry(title, dates[title]) for title in poll]}
+            for poll in polls
+        ]
     )
-    sleep = AsyncMock(side_effect=[None, None, asyncio.CancelledError])
+    sleep = AsyncMock(side_effect=[None] * (len(polls) - 1) + [asyncio.CancelledError])
     monkeypatch.setattr(block, "parse_feed", parse_feed)
     monkeypatch.setattr("backend.blocks.rss.sleep", sleep)
 
@@ -110,20 +128,13 @@ async def test_continuous_mode_outputs_each_entry_once(monkeypatch):
         polling_rate=60,
         run_continuously=True,
     )
-    outputs = []
+    polled = []
     with pytest.raises(asyncio.CancelledError):
         async for name, value in block.run(input_data):
-            outputs.append(
-                (name, [e.title for e in value] if name == "entries" else value.title)
-            )
+            if name == "entries":
+                polled.append([e.title for e in value])
 
-    assert outputs == [
-        ("entry", "old"),
-        ("entries", ["old"]),
-        ("entries", []),
-        ("entry", "new"),
-        ("entries", ["new"]),
-    ]
+    assert polled == expected
 
 
 def _feed_entry(title: str, published: datetime) -> dict:

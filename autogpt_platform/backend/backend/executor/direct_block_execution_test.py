@@ -91,6 +91,14 @@ async def test_outputs_past_the_size_limit_stop_the_run_and_are_dropped(
 
 
 @pytest.mark.asyncio
+async def test_outputs_orjson_cannot_encode_are_still_collected():
+    async def outputs():
+        yield "n", 2**70
+
+    assert await run_block_off_loop(outputs()) == {"n": [2**70]}
+
+
+@pytest.mark.asyncio
 @pytest.mark.usefixtures("prisma_connected_here")
 async def test_server_thread_keeps_the_direct_prisma_path():
     assert db.is_connected()

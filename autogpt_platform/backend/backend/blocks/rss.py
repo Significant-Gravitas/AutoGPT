@@ -143,34 +143,38 @@ class ReadRSSFeedBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         keep_going = True
-        start_time = datetime.now(timezone.utc) - timedelta(
-            minutes=input_data.time_period
-        )
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=input_data.time_period)
+        # Entries already output and dated at or after the cutoff, by a hash of
+        # their link and title, so a later poll skips them.
+        output: dict[int, datetime] = {}
         while keep_going:
             keep_going = input_data.run_continuously
 
+            polled_at = datetime.now(timezone.utc)
             feed = await self.parse_feed(input_data.rss_url)
             all_entries = []
-            newest = start_time
 
             for entry in feed["entries"]:
                 pub_date = datetime(*entry["published_parsed"][:6], tzinfo=timezone.utc)
-
-                if pub_date > start_time:
-                    rss_entry = RSSEntry(
-                        title=entry["title"],
-                        link=entry["link"],
-                        description=entry.get("summary", ""),
-                        pub_date=pub_date,
-                        author=entry.get("author", ""),
-                        categories=[tag["term"] for tag in entry.get("tags", [])],
-                    )
-                    all_entries.append(rss_entry)
-                    newest = max(newest, pub_date)
-                    yield "entry", rss_entry
+                key = hash((entry["link"], entry["title"]))
+                if pub_date < cutoff or key in output:
+                    continue
+                rss_entry = RSSEntry(
+                    title=entry["title"],
+                    link=entry["link"],
+                    description=entry.get("summary", ""),
+                    pub_date=pub_date,
+                    author=entry.get("author", ""),
+                    categories=[tag["term"] for tag in entry.get("tags", [])],
+                )
+                all_entries.append(rss_entry)
+                output[key] = pub_date
+                yield "entry", rss_entry
 
             yield "entries", all_entries
-            # The next poll outputs only entries newer than any output so far.
-            start_time = newest
+            # Later polls skip what is older than the newest entry output, but a
+            # future-dated entry moves the cutoff no further than this poll.
+            cutoff = min(max(output.values(), default=cutoff), polled_at)
+            output = {key: date for key, date in output.items() if date >= cutoff}
             if input_data.run_continuously:
                 await sleep(max(input_data.polling_rate, self.MIN_POLLING_RATE_SECONDS))
