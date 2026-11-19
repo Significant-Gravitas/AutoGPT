@@ -4,7 +4,12 @@ import pytest
 
 from backend.blocks.github import ci
 from backend.blocks.github._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from backend.blocks.github.ci import SEARCH_TIMEOUT_SECONDS, GithubGetCIResultsBlock
+from backend.blocks.github.ci import (
+    MAX_MATCHED_LINE_LENGTH,
+    MAX_MATCHED_LINES,
+    SEARCH_TIMEOUT_SECONDS,
+    GithubGetCIResultsBlock,
+)
 from backend.util.user_regex import MAX_PATTERN_LENGTH
 
 CHECK_RUNS = [
@@ -55,6 +60,28 @@ async def test_search_in_logs_finds_matching_lines_with_context():
             "context": ["starting", "error: unused import", "done"],
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_search_in_logs_stops_at_the_maximum_number_of_matches():
+    check_run = {"name": "lint", "output_text": "\n".join(["a"] * MAX_MATCHED_LINES)}
+
+    matched = await GithubGetCIResultsBlock.search_in_logs([check_run] * 2, ".")
+
+    assert len(matched) == MAX_MATCHED_LINES
+    assert matched[-1]["line_number"] == MAX_MATCHED_LINES
+
+
+@pytest.mark.asyncio
+async def test_search_in_logs_truncates_long_lines_and_their_context():
+    long_line = "x" * (MAX_MATCHED_LINE_LENGTH + 1)
+    check_run = {"name": "lint", "output_text": "\n".join([long_line] * 3)}
+
+    matched = await GithubGetCIResultsBlock.search_in_logs([check_run], "x")
+
+    truncated = "x" * MAX_MATCHED_LINE_LENGTH
+    assert [match["line"] for match in matched] == [truncated] * 3
+    assert matched[1]["context"] == [truncated] * 3
 
 
 @pytest.mark.asyncio

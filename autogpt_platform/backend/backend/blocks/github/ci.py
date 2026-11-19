@@ -34,6 +34,11 @@ logger = logging.getLogger(__name__)
 SEARCH_TIMEOUT_SECONDS = 5.0
 SEARCH_TIMED_OUT = "Searching the CI logs timed out."
 
+# Every match carries up to five context lines, so both the number of matches
+# and the length of each returned line are capped.
+MAX_MATCHED_LINES = 1000
+MAX_MATCHED_LINE_LENGTH = 1000
+
 # GitHub check-run conclusions that count as a pass. Everything else that is
 # completed (failure, timed_out, action_required, cancelled, stale,
 # startup_failure, or a missing conclusion) counts as a failure.
@@ -272,10 +277,14 @@ class GithubGetCIResultsBlock(Block):
                         {
                             "check_name": check["name"],
                             "line_number": i + 1,
-                            "line": line,
-                            "context": context,
+                            "line": line[:MAX_MATCHED_LINE_LENGTH],
+                            "context": [
+                                text[:MAX_MATCHED_LINE_LENGTH] for text in context
+                            ],
                         }
                     )
+                    if len(matched_lines) >= MAX_MATCHED_LINES:
+                        return matched_lines
 
         return matched_lines
 
