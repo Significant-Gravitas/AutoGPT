@@ -172,10 +172,16 @@ async def test_a_client_past_the_bound_is_closed_and_its_backlog_dropped(
         assert socket.why == f"{bound}: 3 events, {3 * size} bytes waiting"
         assert len(socket.outbox._queue) == 0
 
+        sender = socket.outbox._sender
+        assert sender is not None
+        async with asyncio.timeout(_HANG_SECONDS):
+            await asyncio.wait([sender])
+        assert sender.cancelled()
         for i in range(4, 100):
             socket.outbox.put(client.delivery(f"e{i}"), size)
         client.reading.set()
-        await asyncio.sleep(0)
+        # Only a sender sends, and no new one started for what came after.
+        assert socket.outbox._sender is sender
         assert client.got == []
         assert client.sending == 0
         assert len(socket.outbox._queue) == 0
@@ -338,8 +344,8 @@ async def test_an_event_bigger_than_the_process_budget_closes_only_its_client(
         )
         assert not behind.closed.is_set()
         assert backlog.queued_bytes == 60
-        oversized.client.reading.set()
-        await asyncio.sleep(0)
+        # Never queued, so nothing was ever there to send it.
+        assert oversized.outbox._sender is None
         assert oversized.client.got == []
     finally:
         for socket in (behind, oversized):
@@ -407,9 +413,14 @@ async def test_stop_ends_whatever_the_outbox_still_waits_on(
 
         assert client.cancelled.is_set()
         assert closer_ended.is_set() == (stuck == "closing")
+        sender = outbox._sender
+        assert sender is not None and sender.done()
         outbox.put(client.delivery("late"), 1)
         client.reading.set()
-        await asyncio.sleep(0)
+        # Only a sender sends, and none started for the late event, which
+        # wasn't kept either.
+        assert outbox._sender is sender
+        assert outbox.queued_bytes == 0
         assert client.got == []
     finally:
         await _stop(outbox, client)

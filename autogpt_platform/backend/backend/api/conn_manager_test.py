@@ -1524,10 +1524,11 @@ async def test_a_socket_closed_for_falling_behind_stops_reading_redis(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Its shard streams would only drop what they read, and its close may
-    never get through to a client that stopped reading, so they stop at once
-    and take no new subscribe. Another socket's stream on the same shard
-    reads on."""
+    never get through to a client that stopped reading, so they stop at once.
+    Retired, it opens no stream on a shard it hadn't used either. Another
+    socket's stream on the same shard reads on."""
     monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    fake_redis.shard_of = lambda channel: ("redis", 2 if "graph-c" in channel else 1)
     stuck_ws: AsyncMock = AsyncMock(spec=WebSocket)
     stuck = _StuckClient(stuck_ws)
     healthy_ws: AsyncMock = AsyncMock(spec=WebSocket)

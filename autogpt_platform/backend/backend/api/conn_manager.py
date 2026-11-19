@@ -670,7 +670,8 @@ class _ShardStream:
             if handler is None:
                 continue
             # Never awaited here: a send waiting on a slow client would hold
-            # up the next read, a subscribe's confirmation included.
+            # up the next read, a subscribe's confirmation included. Its size
+            # is the payload's memory only, not the queue entry's own.
             data = message.get("data")
             self._outbox.put(
                 partial(self._deliver, channel, handler, data), sys.getsizeof(data)

@@ -569,8 +569,15 @@ async def test_a_client_too_far_behind_is_closed_so_it_resyncs(monkeypatch) -> N
             lambda: ws.close.await_count == 1, timeout=_HANG_SECONDS
         )
         ws.close.assert_awaited_once_with(code=1011, reason="Client fell behind")
+        outbox = cm._outboxes[ws]
+        sender = outbox._sender
+        assert sender is not None
+        async with asyncio.timeout(_HANG_SECONDS):
+            await asyncio.wait([sender])
+        assert sender.cancelled()
         reading.set()
-        await asyncio.sleep(0)
+        # Only a sender sends, and none started after the close.
+        assert outbox._sender is sender
         assert sent == []
     finally:
         reading.set()
