@@ -397,9 +397,15 @@ def _patch_submission(
             __aexit__=AsyncMock(return_value=False),
         ),
     )
-    mock_sl = mocker.patch("prisma.models.StoreListing.prisma")
-    mock_sl.return_value.find_unique = AsyncMock(return_value=existing_listing)
+    mocker.patch.object(
+        db,
+        "query_raw_with_schema",
+        AsyncMock(return_value=[existing_listing] if existing_listing else []),
+    )
     mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
+    mock_slv.return_value.find_many = AsyncMock(
+        return_value=existing_listing.Versions if existing_listing else []
+    )
     mock_slv.return_value.create = AsyncMock(return_value=mock_version)
     mock_slv.return_value.update_many = AsyncMock()
     return mock_agent_graph.return_value, mock_slv.return_value

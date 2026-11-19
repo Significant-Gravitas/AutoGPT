@@ -1006,18 +1006,16 @@ async def create_store_submission(
             )
 
         async with transaction() as tx:
-            # Determine next version number for this listing
-            existing_listing = await prisma.models.StoreListing.prisma(tx).find_unique(
-                where={"agentGraphId": graph_id},
-                include={
-                    "Versions": {
-                        # We just need the latest version and one of each status:
-                        "order_by": {"version": "desc"},
-                        "distinct": ["submissionStatus"],
-                        "where": {"isDeleted": False},
-                    }
-                },
+            # Take the insert's foreign-key lock before touching the pending version.
+            # A concurrent withdrawal also locks the listing before the version.
+            listings = await query_raw_with_schema(
+                'SELECT * FROM {schema_prefix}"StoreListing" '
+                'WHERE "agentGraphId" = $1 FOR KEY SHARE',
+                graph_id,
+                model=prisma.models.StoreListing,
+                client=tx,
             )
+            existing_listing = listings[0] if listings else None
             # A listing belongs to its creator: never withdraw or extend another's.
             if existing_listing and not _owns_listing(
                 existing_listing, user_id, organization_id
@@ -1027,23 +1025,25 @@ async def create_store_submission(
                     "by another creator"
                 )
 
-            next_version = 1
-            graph_has_pending_submissions = False
-            if existing_listing and existing_listing.Versions:
-                current_latest_version = max(
-                    (slv.version for slv in existing_listing.Versions), default=0
+            versions = prisma.models.StoreListingVersion.prisma(tx)
+            latest_by_status = (
+                await versions.find_many(
+                    where={"storeListingId": existing_listing.id, "isDeleted": False},
+                    order={"version": "desc"},
+                    distinct=["submissionStatus"],
                 )
-                next_version = current_latest_version + 1
-
-                graph_has_pending_submissions = any(
-                    slv.submissionStatus == prisma.enums.SubmissionStatus.PENDING
-                    for slv in existing_listing.Versions
-                )
+                if existing_listing
+                else []
+            )
+            next_version = max((v.version for v in latest_by_status), default=0) + 1
 
             # Delete any currently PENDING submissions for the same graph
             # in favor of the new submission
-            if graph_has_pending_submissions:
-                await prisma.models.StoreListingVersion.prisma(tx).update_many(
+            if any(
+                v.submissionStatus == prisma.enums.SubmissionStatus.PENDING
+                for v in latest_by_status
+            ):
+                await versions.update_many(
                     where={
                         "agentGraphId": graph.id,
                         "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
@@ -1052,7 +1052,7 @@ async def create_store_submission(
                     data={"isDeleted": True},
                 )
 
-            new_submission = await prisma.models.StoreListingVersion.prisma(tx).create(
+            new_submission = await versions.create(
                 data={
                     "AgentGraph": {
                         "connect": {

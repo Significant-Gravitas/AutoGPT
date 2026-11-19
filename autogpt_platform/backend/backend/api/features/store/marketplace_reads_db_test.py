@@ -184,6 +184,47 @@ async def test_rejection_commits_the_verdict_and_public_pointer_together(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_rejection_and_replacement_of_the_same_pending_submission(
+    server, monkeypatch
+):
+    tag = uuid4().hex[:12]
+    owner = await _seed_creator(tag, avatar_url="")
+    graph_id = f"graph-{tag}"
+    try:
+        live, pending = await _seed_listing(graph_id, owner, [APPROVED, PENDING])
+        versions = prisma.models.StoreListingVersion.prisma()
+        create_version = type(versions).create
+        ready_to_insert = asyncio.Event()
+
+        async def insert_after_rejection_waits(actions, **kwargs):
+            ready_to_insert.set()
+            await _wait_for_blocked_statement(actions._client)
+            return await create_version(actions, **kwargs)
+
+        monkeypatch.setattr(type(versions), "create", insert_after_rejection_waits)
+        async with asyncio.timeout(15), asyncio.TaskGroup() as requests:
+            replacing = requests.create_task(
+                store_db.create_store_submission(
+                    owner, graph_id, 1, graph_id, graph_id, "Replacement"
+                )
+            )
+            await ready_to_insert.wait()
+            requests.create_task(_reject(pending, owner))
+
+        old = await versions.find_unique_or_raise(where={"id": pending})
+        new = await versions.find_unique_or_raise(
+            where={"id": replacing.result().listing_version_id}
+        )
+        assert old.isDeleted and old.submissionStatus == REJECTED
+        assert not new.isDeleted and new.submissionStatus == PENDING
+        assert (
+            await store_db.get_store_agent_details(owner, graph_id)
+        ).active_version_id == live
+    finally:
+        await _clean_up(owner, [graph_id])
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_rejection_serializes_with_approval_of_a_parent_workflow(
     server, monkeypatch
 ):
@@ -363,9 +404,17 @@ async def test_parent_review_rolls_back_when_the_child_submission_is_replaced(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("withdraw_at", ["before-copy", "in-flight", "never"])
+@pytest.mark.parametrize(
+    ("change", "expected_status", "expected_private_file"),
+    [
+        ("withdraw-before-copy", REJECTED, "cover.png"),
+        ("withdraw-during-copy", REJECTED, "cover.png"),
+        ("edit-during-copy", APPROVED, "replacement.png"),
+        ("none", APPROVED, None),
+    ],
+)
 async def test_rejection_checks_approval_when_republishing_fallback_media(
-    server, monkeypatch, withdraw_at: str
+    server, monkeypatch, change: str, expected_status, expected_private_file: str | None
 ):
     tag = uuid4().hex[:12]
     owner = await _seed_creator(tag, avatar_url="")
@@ -378,13 +427,22 @@ async def test_rejection_checks_approval_when_republishing_fallback_media(
         await versions.update(where={"id": fallback}, data={"imageUrls": [image]})
 
         async def prepare_avatar(_owner):
-            if withdraw_at == "before-copy":
+            if change == "withdraw-before-copy":
                 await _reject(fallback, owner)
 
         async def copy_images(urls, owners):
             assert image in urls and owners == {owner}
-            if withdraw_at == "in-flight":
+            if change == "withdraw-during-copy":
                 await _reject(fallback, owner)
+            elif change == "edit-during-copy":
+                await versions.update(
+                    where={"id": fallback},
+                    data={
+                        "imageUrls": [
+                            submission_media.url(owner, "images", "replacement.png")
+                        ]
+                    },
+                )
             return {image: published}
 
         copy = AsyncMock(side_effect=copy_images)
@@ -393,13 +451,17 @@ async def test_rejection_checks_approval_when_republishing_fallback_media(
         monkeypatch.setattr(store_db.public_media, "publish_urls", copy)
         await _reject(live, owner)
 
-        assert copy.await_count == (0 if withdraw_at == "before-copy" else 1)
+        assert copy.await_count == (0 if change == "withdraw-before-copy" else 1)
         row = await versions.find_unique_or_raise(where={"id": fallback})
-        assert row.submissionStatus == (
-            APPROVED if withdraw_at == "never" else REJECTED
-        )
-        assert row.imageUrls == [published if withdraw_at == "never" else image]
-        if withdraw_at != "never":
+        assert row.submissionStatus == expected_status
+        assert row.imageUrls == [
+            (
+                submission_media.url(owner, "images", expected_private_file)
+                if expected_private_file is not None
+                else published
+            )
+        ]
+        if expected_status == REJECTED:
             listing = await prisma.models.StoreListing.prisma().find_unique_or_raise(
                 where={"agentGraphId": graph_id}
             )
@@ -425,16 +487,7 @@ async def _overlap_reviews(
             assert waiting_statement, "The second review never waited on the first"
             return fallback
         first_locked.set()
-        while second_read is None or not second_read.is_set():
-            await tx.execute_raw("SELECT pg_stat_clear_snapshot()")
-            rows = await tx.query_raw(
-                "SELECT query FROM pg_stat_activity WHERE datname = current_database() "
-                "AND pg_backend_pid() = ANY(pg_blocking_pids(pid))"
-            )
-            if rows:
-                waiting_statement = rows[0]["query"]
-                break
-            await asyncio.sleep(0.02)
+        waiting_statement = await _wait_for_blocked_statement(tx, until=second_read)
         return fallback
 
     monkeypatch.setattr(store_db, "_withdraw_store_version", hold_first_withdrawal)
@@ -445,6 +498,19 @@ async def _overlap_reviews(
     if second_read is None:
         assert waiting_statement
     return waiting_statement
+
+
+async def _wait_for_blocked_statement(tx, *, until: asyncio.Event | None = None):
+    while until is None or not until.is_set():
+        await tx.execute_raw("SELECT pg_stat_clear_snapshot()")
+        rows = await tx.query_raw(
+            "SELECT query FROM pg_stat_activity WHERE datname = current_database() "
+            "AND pg_backend_pid() = ANY(pg_blocking_pids(pid))"
+        )
+        if rows:
+            return rows[0]["query"]
+        await asyncio.sleep(0.02)
+    return None
 
 
 def _after_child_listing_read(monkeypatch, child_graph: str, action):
