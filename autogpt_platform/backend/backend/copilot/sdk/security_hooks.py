@@ -143,6 +143,8 @@ def _validate_tool_access(
 def _deny_unlisted(tool_name: str) -> dict[str, Any]:
     logger.warning(f"Blocked tool outside the session's allowed set: {tool_name}")
     name = tool_name.removeprefix(MCP_TOOL_PREFIX)
+    # Defensive: deferred tools are never registered on the MCP server, so
+    # the CLI is likely to answer a named one before this hook runs.
     if is_deferred_name_slip(name):
         return _deny(deferred_name_message(name))
     return _deny(

@@ -9,7 +9,7 @@ still be set up. A deferred tool named by mistake is not a refusal, so it is
 sent to ``run_capability`` instead.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 
 import pytest
 
@@ -160,6 +160,20 @@ async def test_a_permitted_deferred_tool_named_directly_is_sent_to_run_capabilit
     assert DID_NOT_HAPPEN not in message
 
 
+@pytest.mark.asyncio
+async def test_a_deferred_tool_this_deployment_cannot_run_is_refused(chat):
+    """An unavailable tool has no ``tool:`` id, so pointing the model at one
+    would only cost it a round trip."""
+    with patch.object(
+        ScheduleRoutineTool, "is_available", new_callable=PropertyMock
+    ) as available:
+        available.return_value = False
+        message = await _execute("schedule_routine", chat, frozenset())
+
+    assert "run_capability" not in message
+    _assert_says_it_did_not_happen(message, "schedule_routine")
+
+
 def test_describing_a_refused_tool_does_not_say_something_did_not_happen():
     """A lookup attempted nothing, so there is nothing to report as not done."""
     described = gate_denied_error("schedule_routine", "s", describing=True)
@@ -169,19 +183,24 @@ def test_describing_a_refused_tool_does_not_say_something_did_not_happen():
 
 
 @pytest.mark.parametrize(
-    "tool_name, slip",
+    "turn, tool_name, expected",
     [
-        (f"{MCP_TOOL_PREFIX}web_fetch", False),
-        (f"{MCP_TOOL_PREFIX}schedule_routine", True),
+        ("chat", "web_fetch", "refused"),
+        ("chat", "schedule_routine", "slip"),
+        ("routine_run", "schedule_routine", "refused, set it up in chat"),
     ],
 )
 def test_the_sdk_hook_refusal_says_it_did_not_happen_unless_it_was_a_slip(
-    chat, tool_name, slip
+    request, turn, tool_name, expected
 ):
-    reason = _deny_unlisted(tool_name)["hookSpecificOutput"]["permissionDecisionReason"]
+    request.getfixturevalue(turn)
+    reason = _deny_unlisted(f"{MCP_TOOL_PREFIX}{tool_name}")["hookSpecificOutput"][
+        "permissionDecisionReason"
+    ]
 
-    if slip:
+    if expected == "slip":
         assert "run_capability" in reason and DID_NOT_HAPPEN not in reason
-    else:
-        _assert_says_it_did_not_happen(reason, "web_fetch")
-        assert "[SECURITY]" in reason
+        return
+    _assert_says_it_did_not_happen(reason, tool_name)
+    assert "[SECURITY]" in reason
+    assert (SET_IT_UP_IN_CHAT in reason) == expected.endswith("in chat")

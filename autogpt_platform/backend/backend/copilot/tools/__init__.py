@@ -541,8 +541,13 @@ async def execute_tool(
 
 def is_deferred_name_slip(name: str) -> bool:
     """Whether naming *name* directly is a slip rather than a denial: a
-    deferred tool this turn may run, through ``run_capability``."""
-    return name in DEFERRED_TOOL_NAMES and not gate_denied(name)
+    deferred tool this turn may run, through ``run_capability``. A tool this
+    deployment cannot run has no ``tool:`` id to point to."""
+    return (
+        name in DEFERRED_TOOL_NAMES
+        and TOOL_REGISTRY[name].is_available
+        and not gate_denied(name)
+    )
 
 
 def deferred_name_message(name: str) -> str:
