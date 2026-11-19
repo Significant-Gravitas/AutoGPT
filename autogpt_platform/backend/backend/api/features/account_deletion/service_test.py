@@ -7,7 +7,7 @@ flow against the real database.
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 import stripe
@@ -43,12 +43,15 @@ CLOSE = [
     "forget_refusal",
     "forget_store_listings",
 ]
+# Once more after the close, for what another worker let through in the
+# seconds before its cache knew the account was closed.
+SWEEP = ["revoke_issued_access", "cancel_all_subscriptions_now", "set_auto_top_up"]
 AFTER_CLOSE = [
     "send_account_deleted_email",
     "mark_confirmation_sent",
     "capture_anonymous",
 ]
-STEPS = LOAD + BEFORE_CLOSE + CLOSE + AFTER_CLOSE
+STEPS = LOAD + BEFORE_CLOSE + CLOSE + SWEEP + AFTER_CLOSE
 # A confirmation that did not go out is left unmarked for the erasure routine.
 UNSENT = [name for name in STEPS if name != "mark_confirmation_sent"]
 SYNC_STEPS = {
@@ -72,7 +75,7 @@ def _user() -> MagicMock:
 def steps(mocker: MockerFixture) -> MagicMock:
     """Every step, attached to one parent so the order of the calls is kept."""
     parent = MagicMock()
-    for name in STEPS:
+    for name in dict.fromkeys(STEPS):
         step = mocker.patch(
             f"{MODULE}.{name}",
             new_callable=MagicMock if name in SYNC_STEPS else AsyncMock,
@@ -82,6 +85,8 @@ def steps(mocker: MockerFixture) -> MagicMock:
     parent.get_deletion_request.return_value = None
     parent.cancel_all_subscriptions_now.return_value = 1
     parent.close_account.return_value = MagicMock(eraseAfter=ERASE_AFTER)
+    # Read before each step of the sweep; not a step itself.
+    mocker.patch(f"{MODULE}.is_account_closed", AsyncMock(return_value=True))
     return parent
 
 
@@ -94,7 +99,7 @@ async def _delete(source: AccountDeletionSource = AccountDeletionSource.SETTINGS
 
 
 @pytest.mark.asyncio
-async def test_every_step_runs_once_in_order(steps: MagicMock):
+async def test_every_step_runs_in_order(steps: MagicMock):
     assert await _delete() == ERASE_AFTER
 
     assert _called(steps) == STEPS
@@ -102,7 +107,8 @@ async def test_every_step_runs_once_in_order(steps: MagicMock):
     steps.get_deletion_request.assert_awaited_once_with(USER_ID)
     for name in BEFORE_CLOSE:
         if name != "set_auto_top_up":
-            getattr(steps, name).assert_awaited_once_with(USER_ID)
+            step = getattr(steps, name)
+            assert step.await_args_list == [call(USER_ID)] * STEPS.count(name)
     steps.close_account.assert_awaited_once_with(
         USER_ID,
         AccountDeletionSource.SETTINGS,
@@ -243,7 +249,11 @@ async def test_a_failure_before_the_close_leaves_the_account_open(
 async def test_a_retry_after_a_failure_before_the_close_runs_every_step(
     steps: MagicMock,
 ):
-    steps.revoke_issued_access.side_effect = [RuntimeError("database down"), None]
+    steps.revoke_issued_access.side_effect = [
+        RuntimeError("database down"),
+        None,
+        None,
+    ]
     with pytest.raises(RuntimeError):
         await _delete()
     steps.reset_mock()
@@ -319,13 +329,16 @@ async def test_neither_email_is_ever_logged(
 
 
 @pytest.mark.asyncio
-async def test_auto_top_up_is_switched_off_before_the_close(steps: MagicMock):
+async def test_auto_top_up_is_switched_off_before_and_after_the_close(steps: MagicMock):
     """Work that outlives the deletion must not charge the saved card; the
     order of the steps is checked with the others above."""
     await _delete()
 
-    steps.set_auto_top_up.assert_awaited_once_with(
-        USER_ID, AutoTopUpConfig(threshold=0, amount=0)
+    # Before the close, and again after it for a setting another worker let
+    # through in the seconds before its cache knew the account was closed.
+    assert (
+        steps.set_auto_top_up.await_args_list
+        == [call(USER_ID, AutoTopUpConfig(threshold=0, amount=0))] * 2
     )
 
 
@@ -367,6 +380,70 @@ async def test_a_close_with_no_days_to_keep_it_says_so_in_the_email(steps: Magic
     steps.send_account_deleted_email.assert_awaited_once_with(
         EMAIL, AccountDeletionSource.EMAIL, ERASE_AFTER, erase_now=True
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failing, error",
+    [
+        ("revoke_issued_access", RuntimeError("database down")),
+        (
+            "cancel_all_subscriptions_now",
+            stripe.APIConnectionError("Stripe is unreachable"),
+        ),
+        ("set_auto_top_up", RuntimeError("database down")),
+    ],
+)
+async def test_a_failed_sweep_after_the_close_still_succeeds(
+    steps: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+    failing: str,
+    error: Exception,
+):
+    """The account is closed by then: a second revoke or cancel that fails is
+    logged, and Keep and the erasure revoke and cancel again."""
+    getattr(steps, failing).side_effect = [None, error]
+
+    with caplog.at_level(logging.ERROR):
+        assert await _delete() == ERASE_AFTER
+
+    assert _called(steps) == STEPS
+    assert type(error).__name__ in caplog.text
+    steps.capture_anonymous.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_a_key_made_while_the_close_ran_is_revoked_after_it(steps: MagicMock):
+    """Another worker still let an old token through and made a key after the
+    first revoke; the revoke after the close ends it."""
+    active_keys: set[str] = set()
+
+    async def revoke(user_id: str) -> None:
+        active_keys.clear()
+
+    async def close(user_id: str, *_args, **_kwargs) -> MagicMock:
+        active_keys.add("key-made-on-another-worker")
+        return MagicMock(eraseAfter=ERASE_AFTER)
+
+    steps.revoke_issued_access.side_effect = revoke
+    steps.close_account.side_effect = close
+
+    await _delete()
+
+    assert active_keys == set()
+
+
+@pytest.mark.asyncio
+async def test_an_account_kept_while_the_sweep_runs_keeps_its_keys_and_plan(
+    steps: MagicMock, mocker: MockerFixture
+):
+    """Keep works the moment the close commits; what the owner makes after
+    keeping it is theirs."""
+    mocker.patch(f"{MODULE}.is_account_closed", AsyncMock(return_value=False))
+
+    assert await _delete() == ERASE_AFTER
+
+    assert _called(steps) == LOAD + BEFORE_CLOSE + CLOSE + AFTER_CLOSE
 
 
 @pytest.mark.asyncio

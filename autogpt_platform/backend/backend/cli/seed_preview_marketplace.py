@@ -4,7 +4,7 @@
 
 Preview environments run this after their migrations, so the store opens with
 synthetic creators, approved listings, reviews and skills instead of empty
-lists. Idempotent; see :mod:`backend.api.features.store.preview_seed` for what
+lists, and the Local PC companion can sign in to link a computer. Idempotent; see :mod:`backend.api.features.store.preview_seed` for what
 a run creates and what it leaves alone. Refuses to run with APP_ENV=prod.
 
 Exit status: 0 when everything is seeded, 1 when some listing or skill could

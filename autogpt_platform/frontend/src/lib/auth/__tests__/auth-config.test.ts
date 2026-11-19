@@ -351,7 +351,7 @@ describe("email verification", () => {
 
 describe("team email sign-up", () => {
   type CreateUserHook = (
-    user: { email: string },
+    user: { email: string; emailVerified?: boolean },
     ctx: { path?: string } | null,
   ) => Promise<void>;
 
@@ -377,7 +377,10 @@ describe("team email sign-up", () => {
     const createUser = await loadCreateUserHook();
 
     await expect(
-      createUser({ email: "someone@agpt.co" }, { path: "/callback/google" }),
+      createUser(
+        { email: "someone@agpt.co", emailVerified: true },
+        { path: "/callback/google" },
+      ),
     ).resolves.toBeUndefined();
   });
 

@@ -303,6 +303,25 @@ def test_gpt6_astra_bills_at_authored_rates():
     assert astra_entry.context_window == 1050000
 
 
+def test_gpt6_2_astra_bills_at_authored_rates():
+    """GPT-6.2 Astra ($8/$40 per 1M, $0.40/1M cached input) -- flat tier
+    and per-1M projections must match the authored catalog entry."""
+    astra = LLMModel("gpt-6.2-astra")
+    assert astra is LLMModel.GPT6_2_ASTRA
+    assert MODEL_COST[astra] == 16
+    assert TOKEN_COST[astra].model_dump() == {
+        "input": 1200.0,
+        "output": 6000.0,
+        "cache_read": 60.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[astra].max_output_tokens == 128000
+    entry = next(m for m in CATALOG.models if m.slug == "gpt-6.2-astra")
+    assert entry.price_tier == 3
+    # Capped at the 272K base-price tier (longer prompts bill at $16/$60).
+    assert entry.context_window == 272000
+
+
 def test_gpt6_sol_bills_at_authored_rates():
     """GPT-6 Sol (OpenAI list price $2/$10 per 1M, the cost-efficient
     high-end tier below Astra) — flat tier and per-1M projections must
@@ -337,6 +356,24 @@ def test_gpt6_1_sol_bills_at_authored_rates():
     sol_entry = next(m for m in CATALOG.models if m.slug == "gpt-6.1-sol")
     assert sol_entry.price_tier == 2
     assert sol_entry.context_window == 1050000
+
+
+def test_gpt6_2_sol_bills_at_authored_rates():
+    """GPT-6.2 Sol ($2/$10 per 1M, $0.10/1M cached input) -- flat tier
+    and per-1M projections must match the authored catalog entry."""
+    sol = LLMModel("gpt-6.2-sol")
+    assert sol is LLMModel.GPT6_2_SOL
+    assert MODEL_COST[sol] == 4
+    assert TOKEN_COST[sol].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 15.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[sol].max_output_tokens == 128000
+    entry = next(m for m in CATALOG.models if m.slug == "gpt-6.2-sol")
+    assert entry.price_tier == 2
+    assert entry.context_window == 272000
 
 
 def test_gpt6_1_terra_bills_at_authored_rates():
@@ -429,6 +466,69 @@ def test_gemini_4_argon_bills_at_authored_rates():
     assert MODEL_METADATA[argon].max_output_tokens == 65536
     entry = next(m for m in CATALOG.models if m.slug == "google/gemini-4-argon")
     assert entry.price_tier == 2
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
+def test_gemini_4_hydrogen_bills_at_authored_rates():
+    """Gemini 4 Hydrogen (OpenRouter, $1.50/$7.50 per 1M, $0.075/1M cached
+    read) must match the authored catalog entry."""
+    hydrogen = LLMModel("google/gemini-4-hydrogen")
+    assert hydrogen is LLMModel.GEMINI_4_HYDROGEN
+    assert MODEL_COST[hydrogen] == 4
+    assert TOKEN_COST[hydrogen].model_dump() == {
+        "input": 225.0,
+        "output": 1125.0,
+        "cache_read": 11.25,
+        "cache_creation": 12.5,
+    }
+    assert MODEL_METADATA[hydrogen].max_output_tokens == 65536
+    entry = next(m for m in CATALOG.models if m.slug == "google/gemini-4-hydrogen")
+    assert entry.price_tier == 2
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
+def test_gemini_4_carbon_bills_at_authored_rates():
+    """Gemini 4 Carbon (OpenRouter, $2/$10 per 1M, $0.10/1M cached read,
+    $0.1875/1M cache write) must match the authored catalog entry."""
+    carbon = LLMModel("google/gemini-4-carbon")
+    assert carbon is LLMModel.GEMINI_4_CARBON
+    assert MODEL_COST[carbon] == 5
+    assert TOKEN_COST[carbon].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 15.0,
+        "cache_creation": 28.125,
+    }
+    assert MODEL_METADATA[carbon].max_output_tokens == 65536
+    entry = next(m for m in CATALOG.models if m.slug == "google/gemini-4-carbon")
+    assert entry.price_tier == 2
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
+def test_gemini_4_neon_bills_at_authored_rates():
+    """Gemini 4 Neon (OpenRouter, $3/$15 per 1M, $0.15/1M cached read,
+    $0.0833/1M cache write) must match the authored catalog entry."""
+    neon = LLMModel("google/gemini-4-neon")
+    assert neon is LLMModel.GEMINI_4_NEON
+    assert MODEL_COST[neon] == 8
+    assert TOKEN_COST[neon].model_dump() == {
+        "input": 450.0,
+        "output": 2250.0,
+        "cache_read": 22.5,
+        "cache_creation": 12.5,
+    }
+    assert MODEL_METADATA[neon].max_output_tokens == 65536
+    entry = next(m for m in CATALOG.models if m.slug == "google/gemini-4-neon")
+    assert entry.price_tier == 3
     assert entry.context_window == 1048576
     assert entry.supports_tools is True
     assert entry.supports_json_output is True
@@ -645,6 +745,27 @@ def test_qwen3_8_max_0902_bills_at_authored_rates():
     )
     assert qwen_max_entry.price_tier == 2
     assert qwen_max_entry.context_window == 262144
+
+
+def test_qwen4_max_bills_at_authored_rates():
+    """Qwen 4 Max (OpenRouter, $1.425/$4.275 per 1M, $0.07125/1M cached
+    read, $1.78125/1M cache write) must match the authored catalog entry."""
+    qwen = LLMModel("qwen/qwen4-max")
+    assert qwen is LLMModel.QWEN4_MAX
+    assert MODEL_COST[qwen] == 4
+    assert TOKEN_COST[qwen].model_dump() == {
+        "input": 213.75,
+        "output": 641.25,
+        "cache_read": 10.6875,
+        "cache_creation": 267.1875,
+    }
+    assert MODEL_METADATA[qwen].max_output_tokens == 393216
+    entry = next(m for m in CATALOG.models if m.slug == "qwen/qwen4-max")
+    assert entry.price_tier == 2
+    assert entry.context_window == 1000000
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
 
 
 def test_qwen3_8_flash_bills_at_authored_rates():

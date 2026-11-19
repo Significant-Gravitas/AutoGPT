@@ -8,6 +8,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from backend.api.features.account_deletion.restore import (
+    BannedAccountError,
     TooLateToRestoreError,
     get_deletion_status,
     restore_account,
@@ -143,3 +144,33 @@ async def test_too_late_changes_nothing(mocker: MockerFixture, edges: MagicMock)
         await restore_account(USER_ID)
 
     assert not edges.mock_calls
+
+
+@pytest.mark.asyncio
+async def test_a_banned_account_cannot_be_kept_and_nothing_changes(
+    mocker: MockerFixture, edges: MagicMock
+):
+    """A token from before the ban still reaches the keep; the ban refuses it
+    before the request is touched."""
+    mocker.patch(f"{MODULE}.is_user_banned", AsyncMock(return_value=True))
+    reopen = mocker.patch(f"{MODULE}.reopen_account", AsyncMock())
+
+    with pytest.raises(BannedAccountError):
+        await restore_account(USER_ID)
+
+    reopen.assert_not_awaited()
+    assert not edges.mock_calls
+
+
+@pytest.mark.asyncio
+async def test_an_account_not_banned_now_can_be_kept(
+    mocker: MockerFixture, edges: MagicMock
+):
+    """A lapsed ban is not one (is_user_banned answers it as not banned)."""
+    banned = mocker.patch(f"{MODULE}.is_user_banned", AsyncMock(return_value=False))
+    _reopen(mocker, ReopenOutcome.REOPENED)
+
+    await restore_account(USER_ID)
+
+    banned.assert_awaited_once_with(USER_ID)
+    edges.forget_account_state.assert_called_once_with(USER_ID)

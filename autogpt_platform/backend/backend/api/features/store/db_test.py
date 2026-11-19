@@ -6,10 +6,16 @@ import prisma.enums
 import prisma.errors
 import prisma.models
 import pytest
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from prisma import Prisma
 
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
-from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFailed
+from backend.util.exceptions import (
+    DatabaseError,
+    NotAuthorizedError,
+    NotFoundError,
+    PreconditionFailed,
+)
 
 from . import categories as store_categories
 from . import db
@@ -234,6 +240,35 @@ async def test_create_store_submission(mocker):
     version_prisma.create.assert_called_once()
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_submission_checks_the_role_where_the_workflow_lives(mocker):
+    """The workflow can live in a team the request doesn't name, so leaving
+    the team header off must not get a listing past the role there."""
+    graph_prisma, version_prisma = _patch_submission(mocker, existing_listing=None)
+    graph_prisma.find_first.return_value = (
+        graph_prisma.find_first.return_value.model_copy(
+            update={"organizationId": "org-1", "teamId": "team-1"}
+        )
+    )
+    role_check = mocker.patch.object(
+        db,
+        "require_role_where_resource_lives",
+        AsyncMock(side_effect=NotAuthorizedError("no")),
+    )
+
+    with pytest.raises(NotAuthorizedError):
+        await _submit(organization_id="org-1")
+
+    role_check.assert_awaited_once_with(
+        "user-id",
+        "org-1",
+        "team-1",
+        OrgAction.PUBLISH_TO_STORE,
+        TeamAction.PUBLISH_AGENTS,
+    )
+    version_prisma.create.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "owning_user_id, owning_org_id, organization_id",
     [
@@ -272,6 +307,25 @@ async def test_a_submission_in_an_organization_lands_on_a_listing_it_owns(
     await _submit(organization_id="org-1")
 
     version_prisma.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_submission_running_another_users_unpublished_workflow_is_refused(
+    mocker,
+):
+    _, version_prisma = _patch_submission(mocker, existing_listing=None)
+    foreign_refs = mocker.patch(
+        "backend.api.features.store.db.foreign_sub_graph_refs",
+        new_callable=AsyncMock,
+        return_value=[("their-graph", 2)],
+    )
+
+    with pytest.raises(PreconditionFailed, match="#their-graph v2"):
+        await _submit()
+
+    assert foreign_refs.await_args.args[0].id == "agent-id"
+    version_prisma.create.assert_not_awaited()
+    version_prisma.update_many.assert_not_awaited()
 
 
 def _patch_submission(
@@ -1737,6 +1791,40 @@ async def test_an_approval_versions_its_creators_sub_agent_listing(
     await _review(is_approved=True)
 
     review_mocks.slv.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_of_a_workflow_running_another_users_unpublished_workflow_is_refused(
+    mocker, review_mocks
+):
+    foreign_refs = mocker.patch(
+        "backend.api.features.store.db.foreign_sub_graph_refs",
+        new_callable=AsyncMock,
+        return_value=[("their-graph", 2)],
+    )
+
+    with pytest.raises(PreconditionFailed, match="#their-graph v2"):
+        await _review(is_approved=True)
+
+    assert foreign_refs.await_args.args[0].id == "agent-id"
+    review_mocks.slv.update.assert_not_awaited()
+    review_mocks.listing.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_workflow_running_another_users_unpublished_workflow_can_be_rejected(
+    mocker, review_mocks
+):
+    foreign_refs = mocker.patch(
+        "backend.api.features.store.db.foreign_sub_graph_refs",
+        new_callable=AsyncMock,
+        return_value=[("their-graph", 2)],
+    )
+
+    result = await _review(is_approved=False)
+
+    assert result.status == prisma.enums.SubmissionStatus.REJECTED
+    foreign_refs.assert_not_awaited()
 
 
 def _sub_agent_listed_by(mocker, review_mocks, owning_user_id: str) -> None:

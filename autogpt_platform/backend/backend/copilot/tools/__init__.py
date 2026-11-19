@@ -18,6 +18,7 @@ from .agent_output import AgentOutputTool
 from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
+from .capability_gates import gate_denied, tool_refused_message
 from .chat_platform import (
     EditChatPlatformMessageTool,
     ListChatPlatformChannelsTool,
@@ -346,6 +347,8 @@ INTERACTIVE_ORIGIN_TOOLS: frozenset[str] = frozenset(
         "raise_expert",
         "update_expert",
         "confirm_expert_change",
+        "grant_expert_credential",
+        "revoke_expert_credential",
     }
 )
 
@@ -490,10 +493,10 @@ async def execute_tool(
     # ``run_capability`` and the permission and envelope gates it applies.
     # Deferred-ness is a property of the tool, not of the turn, so it is
     # refused here rather than left to each caller's gate.
-    if tool_name in DEFERRED_TOOL_NAMES or (
-        tool_name in tool_names_in_groups(disabled_groups)
-        or tool_name in frozenset(disabled_tools)
-    ):
+    denied = tool_name in tool_names_in_groups(
+        disabled_groups
+    ) or tool_name in frozenset(disabled_tools)
+    if denied or tool_name in DEFERRED_TOOL_NAMES:
         logger.warning(
             "Refusing disabled tool: tool=%s user=%s session=%s",
             tool_name,
@@ -504,7 +507,11 @@ async def execute_tool(
             toolCallId=tool_call_id,
             toolName=tool_name,
             output=ErrorResponse(
-                message=f"{tool_name} is not available in this session.",
+                message=(
+                    deferred_name_message(tool_name)
+                    if not denied and is_deferred_name_slip(tool_name)
+                    else tool_refused_message(tool_name)
+                ),
                 error="tool_disabled",
                 session_id=session.session_id,
             ).model_dump_json(),
@@ -530,3 +537,23 @@ async def execute_tool(
     )
 
     return await tool.execute(user_id, session, tool_call_id, **parameters)
+
+
+def is_deferred_name_slip(name: str) -> bool:
+    """Whether naming *name* directly is a slip rather than a denial: a
+    deferred tool this turn may run, through ``run_capability``. A tool this
+    deployment cannot run has no ``tool:`` id to point to."""
+    return (
+        name in DEFERRED_TOOL_NAMES
+        and TOOL_REGISTRY[name].is_available
+        and not gate_denied(name)
+    )
+
+
+def deferred_name_message(name: str) -> str:
+    """Send a model that named a deferred tool to the way it runs, instead of
+    telling it the work cannot be done."""
+    return (
+        f"'{name}' is not called by name, so this call did not run. "
+        f'Run it with run_capability(id="tool:{name}", input={{...}}).'
+    )
