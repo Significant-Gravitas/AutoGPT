@@ -8,6 +8,7 @@ Release windows reflect how changes were grouped for publication and may overlap
 
 | Date | Highlights |
 | ---- | ---------- |
+| [November 15 – November 19](november-15-november-19-2026.md) | Sign up in fewer steps, every Expert's chats in the sidebar, reset an Expert to day one, a thinking figure in your team's colors, Gemini 4 Neon and GPT-6.2 |
 | [November 6 – November 11](november-6-november-11-2026.md) | Your plan before your trial, Wix for your team, Otto replies on a short brain dump, create and start a new Expert, Claude Fable 5.2 |
 | [November 4](november-4-2026.md) | Connect tools from the chat, the login page shows what's new, a friendlier first email, a clear Done at the end of each reply |
 | [October 27](october-27-2026.md) | A brain dump that helps you answer, a calmer trial welcome, a guided first run, hire and start in one click, what pays for what |
