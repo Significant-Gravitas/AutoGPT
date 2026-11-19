@@ -13,6 +13,7 @@ import referencing.exceptions
 from prisma import Json
 from pydantic import BaseModel
 
+from backend.blocks._base import BlockSchemaOutput
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.blocks.slack.blocks import SendSlackMessageBlock
 from backend.integrations.providers import ProviderName
@@ -882,6 +883,16 @@ class TestValidateWithJsonschema:
                 "f: a key must have at most 2 characters",
             ),
             (
+                {"contains": {"type": "integer"}, "minContains": 2},
+                [1, "secret-z"],
+                "f: must contain at least 2 matching items",
+            ),
+            (
+                {"contains": {"type": "integer"}, "maxContains": 1},
+                [1, 2, "secret-z"],
+                "f: must contain at most 1 matching item",
+            ),
+            (
                 {"anyOf": [{"type": "string", "minLength": 2}, {"type": "string"}]},
                 5,
                 "f: expected string, got integer",
@@ -934,6 +945,21 @@ class TestValidateWithJsonschema:
         }
         error = validate_with_jsonschema(schema, {"headers": {key: 1}})
         assert error == f"{location}: expected string, got integer"
+
+    def test_a_long_required_name_keeps_the_failed_check(self):
+        schema = {"type": "object", "required": ["x" * 400]}
+        error = validate_with_jsonschema(schema, {})
+        assert error == f"'{'x' * 37}...' is a required property"
+
+    def test_a_block_output_names_its_field(self):
+        class Output(BlockSchemaOutput):
+            rows: list[int]
+
+        assert Output.validate_field("rows", cast(Any, [1, 2])) is None
+        assert (
+            Output.validate_field("rows", cast(Any, [1, "secret-z"]))
+            == "rows[1]: expected integer, got string"
+        )
 
     def test_a_property_named_like_the_key_keyword_is_still_a_value(self):
         schema = {
@@ -1181,13 +1207,13 @@ class TestValidateWithJsonschema:
         cache: OrderedDict[json_util._SchemaCacheKey, Any] = OrderedDict()
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
 
-        assert validate_with_jsonschema(
+        assert self._outcome(first_schema, first_data) == self._baseline_outcome(
             first_schema, first_data
-        ) == self._baseline_outcome(first_schema, first_data)
+        )
         assert not cache
-        assert validate_with_jsonschema(
+        assert self._outcome(second_schema, second_data) == self._baseline_outcome(
             second_schema, second_data
-        ) == self._baseline_outcome(second_schema, second_data)
+        )
         assert len(cache) == expected_entries
 
     def test_nonfinite_key_cannot_hide_malformed_schema(self, monkeypatch):
@@ -1231,9 +1257,7 @@ class TestValidateWithJsonschema:
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE_MAX_KEY_BYTES", 1024)
         schema = OrchestratorBlock().input_schema.jsonschema()
         for data in ({"prompt": "hello"}, {"prompt": 123}):
-            assert validate_with_jsonschema(schema, data) == self._baseline_outcome(
-                schema, data
-            )
+            assert self._outcome(schema, data) == self._baseline_outcome(schema, data)
         assert not cache
 
     def test_uncached_schema_preserves_validation_without_copy_protocol(self):
@@ -1277,10 +1301,10 @@ class TestValidateWithJsonschema:
             "required": ["items"],
         }
 
-        def validate(index: int) -> str | None:
+        def validate(index: int) -> tuple | None:
             data = {"items": [index, index if index % 2 == 0 else -1]}
             expected = self._baseline_outcome(schema, data)
-            actual = validate_with_jsonschema(schema, data)
+            actual = self._outcome(schema, data)
             assert actual == expected
             return actual
 
@@ -1389,9 +1413,7 @@ class TestValidateWithJsonschema:
     )
     def test_nested_error_message_matches_jsonschema_exactly(self, schema, data):
         """best_match keeps byte-for-byte parity for combinator errors."""
-        assert validate_with_jsonschema(schema, data) == self._baseline_outcome(
-            schema, data
-        )
+        assert self._outcome(schema, data) == self._baseline_outcome(schema, data)
 
     def test_a_ref_outside_the_schema_is_never_retrieved(self, monkeypatch):
         """`$ref` resolves only within the schema and the bundled meta-schemas."""
@@ -1406,11 +1428,28 @@ class TestValidateWithJsonschema:
         assert retrievals == []
 
     @staticmethod
-    def _baseline_outcome(schema: dict[str, Any], data: dict[str, Any]) -> str | None:
+    def _signature(error: jsonschema.ValidationError) -> tuple:
+        return (
+            error.validator,
+            list(error.absolute_path),
+            list(error.absolute_schema_path),
+            error.message,
+        )
+
+    @classmethod
+    def _outcome(cls, schema: dict[str, Any], data: dict[str, Any]) -> tuple | None:
+        """The error validate_with_jsonschema describes, before it is shortened."""
+        error = json_util._best_error(schema, data)
+        return cls._signature(error) if error is not None else None
+
+    @classmethod
+    def _baseline_outcome(
+        cls, schema: dict[str, Any], data: dict[str, Any]
+    ) -> tuple | None:
         try:
             jsonschema.validate(data, schema)
         except jsonschema.ValidationError as error:
-            return describe_validation_error(error)
+            return cls._signature(error)
         return None
 
 

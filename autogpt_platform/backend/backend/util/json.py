@@ -285,6 +285,14 @@ def validate_with_jsonschema(
     Validate the data against the schema.
     Returns the validation error message if the data does not match the schema.
     """
+    error = _best_error(schema, data)
+    return describe_validation_error(error) if error is not None else None
+
+
+def _best_error(
+    schema: dict[str, Any], data: dict[str, Any]
+) -> jsonschema.ValidationError | None:
+    """The error `jsonschema.validate()` would raise, or None."""
     errors = _compiled_validator(schema).iter_errors(data)
 
     # Valid data is the common case, and it does not need best_match at all.
@@ -295,9 +303,7 @@ def validate_with_jsonschema(
     # `jsonschema.validate()` raises best_match(iter_errors(...)), which is not
     # the same error Validator.validate() raises, so match it exactly. chain the
     # already-consumed first error back in rather than re-running iter_errors.
-    return describe_validation_error(
-        jsonschema.exceptions.best_match(itertools.chain((first_error,), errors))
-    )
+    return jsonschema.exceptions.best_match(itertools.chain((first_error,), errors))
 
 
 VALIDATION_ERROR_MAX_LENGTH = 300
@@ -332,6 +338,12 @@ _BOUND_SIGNS: dict[str, str] = {
     "exclusiveMinimum": ">",
     "maximum": "<=",
     "exclusiveMaximum": "<",
+}
+
+# Draft 4 marks an exclusive bound with a boolean beside it.
+_DRAFT_4_EXCLUSIVE_FLAGS: dict[str, str] = {
+    "minimum": "exclusiveMinimum",
+    "maximum": "exclusiveMaximum",
 }
 
 _COUNT_LIMITS: dict[str, tuple[str, str]] = {
@@ -380,9 +392,7 @@ def _format_error_path(path: list[str | int]) -> str:
             continue
         # A key of a free-form dict comes from the given value, so keep it
         # short, and quote it unless it is a plain name.
-        name = str(part)
-        if len(name) > _PATH_PART_MAX_LENGTH:
-            name = name[: _PATH_PART_MAX_LENGTH - 3] + "..."
+        name = _short_name(part)
         if _PLAIN_PATH_PART.fullmatch(name):
             location += f".{name}" if index else name
         else:
@@ -390,6 +400,13 @@ def _format_error_path(path: list[str | int]) -> str:
             name = name.encode("utf-8", "backslashreplace").decode("utf-8")
             location += f"[{orjson.dumps(name).decode()}]"
     return location
+
+
+def _short_name(name: Any) -> str:
+    name = str(name)
+    if len(name) > _PATH_PART_MAX_LENGTH:
+        return name[: _PATH_PART_MAX_LENGTH - 3] + "..."
+    return name
 
 
 def _checks_a_key(schema_path: Iterable[str | int]) -> bool:
@@ -454,7 +471,7 @@ def _describe_failed_check(error: jsonschema.ValidationError) -> str:
         present = given if isinstance(given, dict) else {}
         missing = [name for name in expected if name not in present]
         if missing:
-            return f"{missing[0]!r} is a required property"
+            return f"{_short_name(missing[0])!r} is a required property"
     if keyword in ("required", "dependentRequired", "dependencies"):
         return "is missing a required property"
     if keyword == "enum":
@@ -463,12 +480,10 @@ def _describe_failed_check(error: jsonschema.ValidationError) -> str:
         return "is not the required value"
     if keyword in _BOUND_SIGNS and isinstance(expected, (int, float)):
         sign = _BOUND_SIGNS[keyword]
-        # Draft 4 marks an exclusive bound with a boolean beside it.
-        exclusive = {"minimum": "exclusiveMinimum", "maximum": "exclusiveMaximum"}
         if (
-            keyword in exclusive
+            keyword in _DRAFT_4_EXCLUSIVE_FLAGS
             and isinstance(schema, dict)
-            and schema.get(exclusive[keyword]) is True
+            and schema.get(_DRAFT_4_EXCLUSIVE_FLAGS[keyword]) is True
         ):
             sign = sign.rstrip("=")
         return f"must be {sign} {expected}"
@@ -487,6 +502,10 @@ def _describe_failed_check(error: jsonschema.ValidationError) -> str:
         return "has properties that are not allowed"
     if keyword in ("additionalItems", "items", "unevaluatedItems"):
         return "has items that are not allowed"
+    if keyword == "minContains" and isinstance(expected, int):
+        return f"must contain at least {_count(expected, 'matching item')}"
+    if keyword == "maxContains" and isinstance(expected, int):
+        return f"must contain at most {_count(expected, 'matching item')}"
     if keyword == "contains":
         return "does not contain enough of the required items"
     if keyword == "not":
