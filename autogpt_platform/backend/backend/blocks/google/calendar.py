@@ -32,6 +32,9 @@ from ._auth import (
 
 settings = Settings()
 
+# The most pages Read Events reads in one run while they hold only declined events.
+_MAX_PAGES_PER_RUN = 5
+
 
 class CalendarEvent(BaseModel):
     """Structured representation of a Google Calendar event."""
@@ -196,29 +199,15 @@ class GoogleCalendarReadEventsBlock(Block):
             # Calculate end time based on start time and time range
             end_time = start_time + timedelta(days=input_data.time_range_days)
 
-            # Call Google Calendar API
-            result = await asyncio.to_thread(
-                self._read_calendar,
-                service=service,
-                calendarId=input_data.calendar_id,
-                time_min=start_time.isoformat(),
-                time_max=end_time.isoformat(),
-                max_results=input_data.max_events,
-                single_events=True,
-                search_term=input_data.search_term,
-                show_deleted=False,
-                page_token=input_data.page_token,
+            items, next_page_token = await self._read_events(
+                service, input_data, start_time, end_time
             )
-
-            items = result.get("items", [])
-            if not input_data.include_declined_events:
-                items = [item for item in items if not _declined_by_me(item)]
 
             # Format events into a user-friendly structure
             formatted_events = self._format_events(items)
 
             # Include next page token if available
-            if next_page_token := result.get("nextPageToken"):
+            if next_page_token:
                 yield "next_page_token", next_page_token
 
             for event in formatted_events:
@@ -248,6 +237,42 @@ class GoogleCalendarReadEventsBlock(Block):
             scopes=credentials.scopes,
         )
         return build("calendar", "v3", credentials=creds)
+
+    async def _read_events(
+        self,
+        service,
+        input_data: Input,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> tuple[list[dict], str | None]:
+        """The events to output, and the token for the page after them.
+
+        Google fills a page before declined events are left out, so a page can
+        come back with nothing to show. Read on through such pages, a few at
+        most, rather than report an empty calendar.
+        """
+        page_token = input_data.page_token
+        items: list[dict] = []
+        for _ in range(_MAX_PAGES_PER_RUN):
+            result = await asyncio.to_thread(
+                self._read_calendar,
+                service=service,
+                calendarId=input_data.calendar_id,
+                time_min=start_time.isoformat(),
+                time_max=end_time.isoformat(),
+                max_results=input_data.max_events,
+                single_events=True,
+                search_term=input_data.search_term,
+                show_deleted=False,
+                page_token=page_token,
+            )
+            items = result.get("items", [])
+            if not input_data.include_declined_events:
+                items = [item for item in items if not _declined_by_me(item)]
+            page_token = result.get("nextPageToken")
+            if items or not page_token:
+                break
+        return items, page_token
 
     def _read_calendar(
         self,
@@ -516,10 +541,14 @@ class GoogleCalendarCreateEventBlock(Block):
                 start_datetime = input_data.timing.start_datetime
                 end_datetime = input_data.timing.end_datetime
             else:  # duration_timing
-                start_datetime = input_data.timing.start_datetime
-                end_datetime = start_datetime + timedelta(
-                    minutes=input_data.timing.duration_minutes
+                # Add on the UTC timeline so a clock change can't stretch the event.
+                start_datetime = _with_zone(
+                    input_data.timing.start_datetime, execution_context.user_timezone
                 )
+                end_datetime = (
+                    start_datetime.astimezone(timezone.utc)
+                    + timedelta(minutes=input_data.timing.duration_minutes)
+                ).astimezone(start_datetime.tzinfo)
 
             # Build the event body
             zone = _user_zone(execution_context.user_timezone).key
@@ -642,6 +671,10 @@ def _with_zone(moment: datetime, zone_name: str) -> datetime:
 
 
 def _declined_by_me(event: dict) -> bool:
+    """Whether the listed calendar declined: Google marks its attendee `self`.
+
+    On `primary`, the default, that is the connected account.
+    """
     return any(
         attendee.get("self") and attendee.get("responseStatus") == "declined"
         for attendee in event.get("attendees", [])

@@ -18,16 +18,21 @@ def _event(event_id: str, my_response: str) -> dict:
         "end": {"dateTime": "2026-10-05T10:00:00Z"},
         "attendees": [
             {"email": "boss@example.com", "organizer": True},
+            {"email": "colleague@example.com", "responseStatus": "declined"},
             {"email": "me@example.com", "self": True, "responseStatus": my_response},
         ],
     }
 
 
 class _FakeCalendar:
-    """Stands in for the Calendar service and records what the block sends."""
+    """Stands in for the Calendar service and records what the block sends.
 
-    def __init__(self, items: list[dict] | None = None):
-        self.items = items or []
+    `pages` maps a page token (None for the first page) to Google's response.
+    """
+
+    def __init__(self, items: list[dict] | None = None, pages: dict | None = None):
+        self.pages = pages or {None: {"items": items or []}}
+        self.list_calls: list[dict] = []
         self.list_params: dict = {}
         self.insert_kwargs: dict = {}
         self.result: dict = {}
@@ -37,7 +42,8 @@ class _FakeCalendar:
 
     def list(self, **params):
         self.list_params = params
-        self.result = {"items": self.items}
+        self.list_calls.append(params)
+        self.result = self.pages[params.get("pageToken")]
         return self
 
     def insert(self, **kwargs):
@@ -126,6 +132,53 @@ async def test_read_events_leaves_out_declined_events_unless_asked(
     assert service.list_params.get("showHiddenInvitations", False) is False
 
 
+@pytest.mark.asyncio
+async def test_read_events_reads_on_past_a_page_of_declined_events():
+    # "What's my next meeting?" when the next one is declined.
+    service = _FakeCalendar(
+        pages={
+            None: {"items": [_event("skipping", "declined")], "nextPageToken": "p2"},
+            "p2": {"items": [_event("going", "accepted")], "nextPageToken": "p3"},
+        }
+    )
+    outputs = dict(
+        await _run(
+            GoogleCalendarReadEventsBlock(),
+            service,
+            start_time="2026-10-05T00:00:00Z",
+            max_events=1,
+        )
+    )
+    assert [event.id for event in outputs["events"]] == ["going"]
+    # The token resumes after the page read last, so "going" isn't read twice.
+    assert outputs["next_page_token"] == "p3"
+
+
+@pytest.mark.asyncio
+async def test_read_events_reads_on_through_a_few_pages_at_most():
+    tokens = [None] + [f"p{n}" for n in range(1, 20)]
+    service = _FakeCalendar(
+        pages={
+            token: {
+                "items": [_event(f"skip{n}", "declined")],
+                "nextPageToken": f"p{n + 1}",
+            }
+            for n, token in enumerate(tokens)
+        }
+    )
+    outputs = dict(
+        await _run(
+            GoogleCalendarReadEventsBlock(),
+            service,
+            start_time="2026-10-05T00:00:00Z",
+            max_events=1,
+        )
+    )
+    assert outputs["events"] == []
+    assert len(service.list_calls) == 5
+    assert outputs["next_page_token"] == "p5"
+
+
 def test_occurrences_of_a_repeating_event_are_recurring():
     occurrence = {
         "id": "series1_20261005T090000Z",
@@ -181,6 +234,26 @@ async def test_create_event_keeps_an_explicit_offset_for_one_off_events():
     body = service.insert_kwargs["body"]
     assert body["start"] == {"dateTime": "2026-10-06T15:00:00+02:00"}
     assert body["end"] == {"dateTime": "2026-10-06T15:30:00+02:00"}
+
+
+@pytest.mark.asyncio
+async def test_a_duration_across_a_clock_change_keeps_its_length():
+    service = _FakeCalendar()
+    await _run(
+        GoogleCalendarCreateEventBlock(),
+        service,
+        "America/New_York",
+        event_title="Late",
+        timing={
+            "discriminator": "duration_timing",
+            "start_datetime": "2026-11-01T00:30",
+            "duration_minutes": 120,
+        },
+    )
+    body = service.insert_kwargs["body"]
+    # New York's clocks go back at 02:00 that night: 120 minutes, not 180.
+    assert body["start"] == {"dateTime": "2026-11-01T00:30:00-04:00"}
+    assert body["end"] == {"dateTime": "2026-11-01T01:30:00-05:00"}
 
 
 @pytest.mark.asyncio
