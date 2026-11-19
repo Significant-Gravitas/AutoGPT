@@ -1,0 +1,225 @@
+name: Frontend tool benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark:
+        description: Comparison to run
+        type: choice
+        options: [tools-and-tests, builds]
+        default: tools-and-tests
+  push:
+    branches: [dev, master]
+    paths:
+      - ".github/workflows/frontend-tool-benchmark.yml"
+      - "autogpt_platform/frontend/package.json"
+      - "autogpt_platform/frontend/pnpm-lock.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-tool-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/frontend
+
+jobs:
+  tooling:
+    if: github.event_name != 'push' && inputs.benchmark != 'builds'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24.22.1"
+          cache: pnpm
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install baseline dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Test benchmark safeguards
+        run: |
+          python3 -m unittest discover -s ../../.github/scripts -p test_frontend_benchmark.py
+          python3 -m unittest discover -s ../../.github/scripts -p test_frontend_typecheck.py
+      - name: Lint benchmark helpers
+        run: |
+          version=$(python3 ../../.github/workflows/scripts/get_package_version_from_lockfile.py ruff ../backend/poetry.lock)
+          pipx run --spec "ruff==$version" ruff check --select E4,E7,E9,F,I \
+            ../../.github/scripts/benchmark_frontend.py ../../.github/scripts/test_frontend_benchmark.py \
+            ../../.github/scripts/frontend_typecheck.py ../../.github/scripts/test_frontend_typecheck.py
+      - name: Compare tools and inject known lint and type errors
+        run: python3 ../../.github/scripts/benchmark_frontend.py tools --output "$RUNNER_TEMP/frontend-tools-report"
+        env:
+          CI: "true"
+          NEXT_TELEMETRY_DISABLED: "1"
+          NODE_OPTIONS: --max-old-space-size=8192
+      - name: Upload timings and compatibility diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-tool-benchmark
+          path: ${{ runner.temp }}/frontend-tools-report
+          if-no-files-found: error
+
+  test-workers:
+    if: github.event_name != 'push' && inputs.benchmark != 'builds'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24.22.1"
+          cache: pnpm
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+      - name: Install and generate API client
+        run: |
+          pnpm install --frozen-lockfile --prefer-offline
+          pnpm generate:api
+      - name: Compare isolated and shared workers on the same machine
+        run: >-
+          python3 ../../.github/scripts/benchmark_frontend.py tests
+          --shard ${{ matrix.shard }}
+          --output "$RUNNER_TEMP/frontend-worker-report"
+        env:
+          CI: "true"
+      - name: Upload both test inventories, coverage and timings
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-worker-benchmark-${{ matrix.shard }}
+          path: ${{ runner.temp }}/frontend-worker-report
+          if-no-files-found: error
+
+  dependency-cache:
+    if: github.event_name == 'push' || inputs.benchmark != 'builds'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24.22.1"
+          cache: pnpm
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+      - name: Measure installation from the existing pnpm store cache
+        run: |
+          mkdir -p "$RUNNER_TEMP/frontend-cache-report"
+          /usr/bin/time -f '%e' -o "$RUNNER_TEMP/frontend-cache-report/install-seconds.txt" \
+            pnpm install --frozen-lockfile --prefer-offline
+          git rev-parse HEAD > "$RUNNER_TEMP/frontend-cache-report/source-sha.txt"
+      - name: Save installed dependencies (also seeds dev and master after merge)
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: autogpt_platform/frontend/node_modules
+          key: frontend-modules-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-node24.22.1-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json', 'autogpt_platform/frontend/.npmrc', 'autogpt_platform/frontend/pnpm-workspace.yaml', 'autogpt_platform/frontend/.pnpmfile.cjs', 'autogpt_platform/frontend/patches/**') }}
+      - name: Retain the installation and start cache restore timer
+        run: |
+          mv node_modules "$RUNNER_TEMP/frontend-installed-modules"
+          date +%s.%N > "$RUNNER_TEMP/frontend-cache-report/restore-start.txt"
+      - name: Restore installed dependencies
+        id: modules
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: autogpt_platform/frontend/node_modules
+          key: frontend-modules-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-node24.22.1-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/package.json', 'autogpt_platform/frontend/.npmrc', 'autogpt_platform/frontend/pnpm-workspace.yaml', 'autogpt_platform/frontend/.pnpmfile.cjs', 'autogpt_platform/frontend/patches/**') }}
+          fail-on-cache-miss: true
+      - name: Validate restored executables and report cache timing
+        run: |
+          date +%s.%N > "$RUNNER_TEMP/frontend-cache-report/restore-end.txt"
+          pnpm exec tsc --version
+          pnpm exec vitest --version
+          printf '%s\n' "$CACHE_HIT" > "$RUNNER_TEMP/frontend-cache-report/cache-hit.txt"
+        env:
+          CACHE_HIT: ${{ steps.modules.outputs.cache-hit }}
+      - name: Upload cache measurements
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-cache-benchmark
+          path: ${{ runner.temp }}/frontend-cache-report
+          if-no-files-found: error
+
+  builds:
+    if: github.event_name == 'workflow_dispatch' && inputs.benchmark == 'builds'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        first: [webpack, turbopack]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24.22.1"
+          cache: pnpm
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+      - name: Prepare the same client and assets as the Docker build
+        run: |
+          pnpm install --frozen-lockfile --prefer-offline
+          pnpm generate:api
+          pnpm run copy:vad-assets
+          cp .env.default .env
+      - name: Test build measurement safeguards
+        run: python3 -m unittest discover -s ../../.github/scripts -p test_frontend_build_benchmark.py
+      - name: Lint build measurement helpers
+        run: |
+          version=$(python3 ../../.github/workflows/scripts/get_package_version_from_lockfile.py ruff ../backend/poetry.lock)
+          pipx run --spec "ruff==$version" ruff check --select E4,E7,E9,F,I \
+            ../../.github/scripts/benchmark_frontend_builds.py ../../.github/scripts/test_frontend_build_benchmark.py
+      - name: Compare cold, unchanged and edited-source builds on one runner
+        run: >-
+          python3 ../../.github/scripts/benchmark_frontend.py builds
+          --first-compiler "${{ matrix.first }}"
+          --output "$RUNNER_TEMP/frontend-build-report"
+        env:
+          CI: "true"
+          NODE_ENV: production
+          NEXT_PUBLIC_PW_TEST: "true"
+          NEXT_PUBLIC_SOURCEMAPS: "true"
+          NEXT_SKIP_BUILD_CHECKS: "true"
+          NEXT_TELEMETRY_DISABLED: "1"
+          NODE_OPTIONS: --max-old-space-size=8192
+      - name: Upload build timings and output inventories
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-build-benchmark-${{ matrix.first }}-first
+          path: ${{ runner.temp }}/frontend-build-report
+          if-no-files-found: error

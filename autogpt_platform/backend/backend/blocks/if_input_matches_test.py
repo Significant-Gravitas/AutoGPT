@@ -17,6 +17,14 @@ def graph_cleanup():
     yield
 
 
+@pytest.fixture(autouse=True)
+def block_registry(monkeypatch):
+    monkeypatch.setattr(
+        "backend.blocks.get_blocks",
+        lambda: {block().id: block for block in (ConditionBlock, IfInputMatchesBlock)},
+    )
+
+
 async def _matches(input_value: Any, value: Any) -> bool:
     block = IfInputMatchesBlock()
     outputs = [

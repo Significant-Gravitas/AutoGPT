@@ -16,6 +16,7 @@ from backend.blocks.autopilot import (
     _enqueue_for_recovery,
     _reset_recursion,
 )
+from backend.copilot.model import ChatSessionMetadata
 from backend.data.execution import ExecutionContext
 
 
@@ -156,11 +157,17 @@ class TestRunValidation:
         input_data = block.Input(prompt="do something", max_recursion_depth=3)
         ctx = _make_context()
         outputs = {}
-        async for name, value in block.run(input_data, execution_context=ctx):
-            outputs[name] = value
+        with patch(
+            "backend.blocks.autopilot._enqueue_for_recovery", new_callable=AsyncMock
+        ) as enqueue:
+            async for name, value in block.run(input_data, execution_context=ctx):
+                outputs[name] = value
 
         assert outputs["session_id"] == "sess-fail"
         assert "boom" in outputs.get("error", "")
+        enqueue.assert_awaited_once_with(
+            "sess-fail", ctx.user_id, "do something", False
+        )
 
     @pytest.mark.asyncio
     async def test_cancelled_error_yields_error_and_reraises(self, block):
@@ -226,10 +233,25 @@ class TestRunValidation:
             prompt="test", session_id="existing-sid", max_recursion_depth=3
         )
         ctx = _make_context()
-        async for _ in block.run(input_data, execution_context=ctx):
-            pass
+        existing_session = SimpleNamespace(
+            expert_id=None, metadata=ChatSessionMetadata(origin="automation")
+        )
+        with patch(
+            "backend.copilot.model.get_chat_session_metadata",
+            new_callable=AsyncMock,
+            return_value=existing_session,
+        ) as get_session:
+            outputs = {
+                name: value
+                async for name, value in block.run(input_data, execution_context=ctx)
+            }
 
+        get_session.assert_awaited_once_with("existing-sid", ctx.user_id)
         block.create_session.assert_not_called()
+        block.execute_copilot.assert_awaited_once()
+        assert outputs["session_id"] == "existing-sid"
+        assert outputs["response"] == "ok"
+        assert "error" not in outputs
 
 
 # ---------------------------------------------------------------------------

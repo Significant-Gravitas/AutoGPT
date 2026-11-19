@@ -80,7 +80,10 @@ def test_preload_setup_failure_does_not_mark_it_started(monkeypatch, failure):
         assert fixtures._preload_started
 
 
-def test_server_starts_on_demand_and_cleans_up(pytester: pytest.Pytester):
+@pytest.mark.parametrize("scheduler_fails", [False, True])
+def test_server_starts_on_demand_and_cleans_up(
+    pytester: pytest.Pytester, scheduler_fails: bool
+):
     events = pytester.path / "events.txt"
     backend_dir = Path(__file__).resolve().parents[1]
     pytester.makeconftest(
@@ -121,10 +124,20 @@ async def cleanup(server, graphs, listings):
     assert listings == ["listing"]
     record("cleanup")
 
+async def scheduler_ready():
+    record("ready")
+    if {scheduler_fails!r}:
+        raise RuntimeError("Scheduler stayed unready")
+
+def scheduler_client(*, should_retry):
+    assert should_retry
+    return SimpleNamespace(health_check_async=scheduler_ready)
+
 module = ModuleType("backend.util.test")
 module.SpinTestServer = FakeServer
 sys.modules["backend.util.test"] = module
 fixtures._delete_test_graphs = cleanup
+fixtures.get_scheduler_client = scheduler_client
 fixtures._warm_test_forkserver = lambda: None
 """
     )
@@ -137,6 +150,7 @@ def test_01_pure_unit_test():
     assert not Path({str(events)!r}).exists()
 
 async def test_02_server_test(server):
+    assert Path({str(events)!r}).read_text().splitlines() == ["start", "ready"]
     await server.agent_server.test_create_graph({{}}, user_id="user")
     await server.agent_server.test_create_store_listing()
 """
@@ -144,8 +158,12 @@ async def test_02_server_test(server):
 
     result = pytester.runpytest_subprocess("-q", "-p", "no:syrupy")
 
-    result.assert_outcomes(passed=2)
-    assert events.read_text().splitlines() == ["start", "cleanup", "stop"]
+    if scheduler_fails:
+        result.assert_outcomes(passed=1, errors=1)
+        assert events.read_text().splitlines() == ["start", "ready", "stop"]
+    else:
+        result.assert_outcomes(passed=2)
+        assert events.read_text().splitlines() == ["start", "ready", "cleanup", "stop"]
 
 
 def test_preloaded_services_have_no_background_threads_or_connections():

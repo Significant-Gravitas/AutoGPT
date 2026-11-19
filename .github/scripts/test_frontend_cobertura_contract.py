@@ -1,8 +1,22 @@
 import unittest
 from pathlib import Path
 
+import yaml
+
 
 class FrontendCoverageContractTests(unittest.TestCase):
+    def test_coverage_waits_for_every_integration_shard(self):
+        root = Path(__file__).resolve().parents[2]
+        workflow = yaml.safe_load(
+            (root / ".github/workflows/platform-frontend-ci.yml").read_text()
+        )
+        matrix = workflow["jobs"]["integration_test"]["strategy"]["matrix"]
+        codecov = yaml.safe_load((root / "codecov.yml").read_text())
+        self.assertEqual(
+            codecov["flags"]["platform-frontend"]["after_n_builds"],
+            len(matrix["shard"]),
+        )
+
     def test_codecov_requires_validated_coverage(self):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-frontend-ci.yml"
