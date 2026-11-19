@@ -92,9 +92,6 @@ async def _run_turn(messages: list):
     )
     events = []
     with contextlib.ExitStack() as stack:
-        stack.enter_context(
-            patch("backend.copilot.sdk.service.asyncio.sleep", new_callable=AsyncMock)
-        )
         for target, kwargs in patches:
             stack.enter_context(patch(target, **kwargs))
         async for event in stream_chat_completion_sdk(

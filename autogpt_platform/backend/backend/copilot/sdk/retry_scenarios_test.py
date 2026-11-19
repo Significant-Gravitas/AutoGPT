@@ -1046,6 +1046,12 @@ def _make_sdk_patches(
             f"{_SVC}.build_skills_context",
             dict(new_callable=AsyncMock, return_value=""),
         ),
+        (
+            "backend.copilot.service.build_expert_context",
+            {"new_callable": AsyncMock, "return_value": ""},
+        ),
+        (f"{_SVC}._update_title_async", {"new_callable": AsyncMock}),
+        ("backend.copilot.token_tracking._schedule_cost_log", {"return_value": None}),
         # Same for the per-turn skills drift notice: it lists the user's
         # skills from the workspace, which without a Prisma connection goes
         # over RPC to a database manager that isn't running here, retried
@@ -1053,6 +1059,10 @@ def _make_sdk_patches(
         (
             f"{_SVC}.build_skills_update_notice",
             dict(new_callable=AsyncMock, return_value=""),
+        ),
+        (
+            f"{_SVC}.build_matched_skills_notice",
+            {"new_callable": AsyncMock, "return_value": ""},
         ),
         (f"{_SVC}.get_redis_async", dict(new_callable=AsyncMock)),
         (

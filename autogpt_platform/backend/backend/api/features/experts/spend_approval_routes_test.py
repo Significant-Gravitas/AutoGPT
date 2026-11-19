@@ -5,6 +5,7 @@ unpublished, and nothing else happens. Chat's ``run_block`` path is covered in
 copilot turns open a session scoped to the expert (their own tests pin that)
 and then spend through these same seams."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -115,6 +116,9 @@ async def test_preset_api_run_is_parked(mocker, parked) -> None:
         webhook_id=None,
     )
     mocker.patch.object(presets_routes.db, "get_preset", AsyncMock(return_value=preset))
+    authorize = mocker.patch.object(
+        presets_routes, "require_role_where_resource_lives", AsyncMock()
+    )
 
     result = await presets_routes.execute_preset(
         preset_id="preset-1",
@@ -125,6 +129,13 @@ async def test_preset_api_run_is_parked(mocker, parked) -> None:
     )
 
     assert result.status.value == "REVIEW"
+    authorize.assert_awaited_once_with(
+        "owner",
+        "org",
+        "team",
+        presets_routes.autogpt_auth_lib.OrgAction.EXECUTE_RESOURCES,
+        presets_routes.autogpt_auth_lib.TeamAction.EXECUTE_AGENTS,
+    )
     _assert_parked(park, queue, create)
 
 
@@ -144,16 +155,24 @@ async def test_run_agent_from_expert_chat_is_parked_and_says_so(mocker, parked) 
     )
     mocker.patch.object(run_agent_mod, "emit_tool_display_name")
     mocker.patch.object(run_agent_mod, "_safe_link_to_chat_share", AsyncMock())
+    mocker.patch.object(
+        run_agent_mod,
+        "orgs_db",
+        return_value=MagicMock(
+            get_user_default_team=AsyncMock(return_value=("org", "team"))
+        ),
+    )
     session = make_session(user_id="owner", expert_id="expert-1")
 
-    response = await run_agent_mod.RunAgentTool()._run_agent(
-        user_id="owner",
-        session=session,
-        graph=MagicMock(id="g"),
-        graph_credentials={},
-        inputs={},
-        dry_run=False,
-    )
+    async with asyncio.timeout(30):
+        response = await run_agent_mod.RunAgentTool()._run_agent(
+            user_id="owner",
+            session=session,
+            graph=MagicMock(id="g"),
+            graph_credentials={},
+            inputs={},
+            dry_run=False,
+        )
 
     assert isinstance(response, ExecutionStartedResponse)
     assert response.status == "REVIEW"

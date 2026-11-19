@@ -11,11 +11,22 @@ import collections
 import functools
 import pathlib
 import sys
+import unicodedata
 from collections.abc import Iterable
 
 import pytest
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+
+def _parse_backend_file_if_named(
+    path: pathlib.Path, names: tuple[str, ...]
+) -> ast.Module | None:
+    source = path.read_text(encoding="utf-8")
+    normalized = unicodedata.normalize("NFKC", source)
+    if not any(name in normalized for name in names):
+        return None
+    return ast.parse(source, filename=str(path))
 
 
 # ---------------------------------------------------------------------------
@@ -150,10 +161,12 @@ _DATACLASS_KNOWN_OFFENDERS = frozenset(
 def _dataclass_imports(path: pathlib.Path) -> list[tuple[int, str]]:
     """Return (lineno, description) for every stdlib ``dataclasses`` import."""
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = _parse_backend_file_if_named(path, ("dataclasses",))
     except SyntaxError:
         return []
     offenses: list[tuple[int, str]] = []
+    if tree is None:
+        return []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -221,7 +234,6 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "copilot/graphiti/falkordb_driver_test.py asyncio.sleep": 4,
     "copilot/optimize_blocks_test.py asyncio.sleep": 3,
     "copilot/sdk/p0_guardrails_test.py asyncio.sleep": 7,
-    "copilot/sdk/provider_out_of_credits_test.py asyncio.sleep": 1,
     "copilot/sdk/retry_scenarios_test.py asyncio.sleep": 3,
     "copilot/tools/e2b_sandbox_test.py asyncio.sleep": 11,
     "copilot/tools/e2b_sandbox_test.py time.time": 1,
@@ -344,8 +356,10 @@ def _global_clock_patches() -> tuple[tuple[str, str, int], ...]:
     found: list[tuple[str, str, int]] = []
     for py in _iter_backend_py_files():
         try:
-            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+            tree = _parse_backend_file_if_named(py, ("patch", "setattr"))
         except SyntaxError:
+            continue
+        if tree is None:
             continue
         rel = py.relative_to(BACKEND_ROOT).as_posix()
         package = _package_of(rel)
@@ -832,8 +846,10 @@ def test_no_process_cached_loop_bound_clients():
     offenders: list[str] = []
     for py in _iter_backend_py_files():
         try:
-            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+            tree = _parse_backend_file_if_named(py, ("cached",))
         except SyntaxError:
+            continue
+        if tree is None:
             continue
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -951,7 +967,9 @@ def _unchecked_pattern_calls(tree: ast.Module, in_block: bool) -> list[tuple[int
             for alias in node.names:
                 if alias.name in _REGEX_FUNCTIONS:
                     functions[alias.asname or alias.name] = (node.module, alias.name)
-    inputs = _names_holding_input(tree)
+    if not modules and not functions:
+        return []
+    inputs = _names_holding_input(tree) if in_block else set()
 
     offenses: list[tuple[int, str]] = []
     for node in ast.walk(tree):
@@ -1043,10 +1061,10 @@ def test_only_cli_io_writes_to_the_cli_stdin():
         if rel == _CLI_IO_MODULE or py.name.endswith("_test.py"):
             continue
         try:
-            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+            tree = _parse_backend_file_if_named(py, ("claude_agent_sdk",))
         except SyntaxError:
             continue
-        if not _imports_claude_agent_sdk(tree):
+        if tree is None or not _imports_claude_agent_sdk(tree):
             continue
         for node in ast.walk(tree):
             # `self._transport` is a module's own attribute; `<client>._transport`
@@ -1154,8 +1172,12 @@ def test_zip_members_and_workbooks_are_read_through_the_capped_readers():
         if py.name.endswith("_test.py"):
             continue
         try:
-            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+            tree = _parse_backend_file_if_named(
+                py, ("read", "open", "extract", "read_excel")
+            )
         except SyntaxError:
+            continue
+        if tree is None:
             continue
         for call, line in _uncapped_archive_reads(tree):
             if call == "read_excel" and rel in _READ_EXCEL_MODULES:
@@ -1217,7 +1239,11 @@ def _unbounded_sandbox_reads() -> list[tuple[str, int, str]]:
         rel = py.relative_to(BACKEND_ROOT).as_posix()
         if py.name.endswith("_test.py"):
             continue
-        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        tree = _parse_backend_file_if_named(
+            py, ("files", "commands", "create_sandbox", "connect_sandbox")
+        )
+        if tree is None:
+            continue
         for lineno, what in _sandbox_reads_in(tree):
             if what == "commands.run" and rel in _SANDBOX_COMMAND_RUNNERS:
                 continue
@@ -1495,7 +1521,9 @@ def _org_ledger_call_sites() -> collections.Counter[str]:
             or name == "conftest.py"
         ):
             continue
-        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        tree = _parse_backend_file_if_named(py, tuple(_ORG_LEDGER_CALLS))
+        if tree is None:
+            continue
         for function, call in _calls_by_function(tree):
             called = _decorator_name(call.func)
             if called in _ORG_LEDGER_CALLS:
@@ -1535,7 +1563,9 @@ def test_no_csv_sniffer():
         rel = py.relative_to(BACKEND_ROOT)
         if _is_test_file(rel):
             continue
-        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        tree = _parse_backend_file_if_named(py, ("Sniffer",))
+        if tree is None:
+            continue
         offenders += [
             f"  backend/{rel.as_posix()}:{line}" for line in _csv_sniffer_uses(tree)
         ]

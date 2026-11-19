@@ -4,23 +4,38 @@ import argparse
 import os
 import subprocess
 import sys
+import time
+from pathlib import Path, PurePosixPath
 
-
-# A shard runs its paths minus any other shard's paths nested inside them, so
-# "copilot" runs backend/copilot without the folders "copilot-sdk" takes.
 SHARDS = {
     "data": ["backend/data"],
     "copilot": ["backend/copilot"],
-    # In the order they ran inside "copilot": a graphiti test fails on what
-    # the sdk tests leave for the garbage collector.
-    "copilot-sdk": [
-        "backend/copilot/billing_e2e",
+    "memory-experts": [
         "backend/copilot/dream",
         "backend/copilot/graphiti",
-        "backend/copilot/sdk",
+        "backend/api/features/experts",
+    ],
+    "sdk-billing": ["backend/copilot/sdk", "backend/copilot/billing_e2e"],
+    "billing-threads": [
+        "backend/copilot/billing_e2e/thread_billing_test.py",
+        "backend/executor/billing_e2e",
     ],
     "util-executor": ["backend/util", "backend/executor"],
+    "api": ["backend/api"],
 }
+PARTITIONS = {shard: 4 for shard in (*SHARDS, "remainder")}
+PARTITIONS["billing-threads"] = 3
+PARTITIONS["util-executor"] = 6
+
+
+def report_shards(partitioned: bool = False) -> list[str]:
+    """Enumerate every required report identity independently of uploaded files."""
+    return [
+        f"{shard}-{part}" if partitioned else shard
+        for shard, count in PARTITIONS.items()
+        for part in range(1, (count if partitioned else 1) + 1)
+    ]
+
 
 # The docker-backed e2e tests a shard turns on; elsewhere they skip unless asked.
 SHARD_E2E_FLAGS = {
@@ -28,55 +43,74 @@ SHARD_E2E_FLAGS = {
     "util-executor": "E2E_CLAMD_CONTAINER",
 }
 
-# No test in "copilot-sdk" starts the database manager, so a call that reaches
-# for one fails after a few tries instead of retrying for most of an hour.
-SHARDS_WITHOUT_DATABASE_MANAGER = {"copilot-sdk"}
-
-
-def _is_within(path: str, parent: str) -> bool:
-    return path.startswith(f"{parent}/")
+# SDK billing tests do not start the database manager.
+SHARDS_WITHOUT_DATABASE_MANAGER = {"sdk-billing"}
 
 
 def shard_args(shard: str) -> list[str]:
     if shard in SHARDS:
-        nested = [
+        paths = SHARDS[shard]
+        # Nested groups own their subtrees, including individually split files.
+        ignored = [
             path
-            for other, paths in SHARDS.items()
+            for other, group in SHARDS.items()
             if other != shard
-            for path in paths
-            if any(_is_within(path, own) for own in SHARDS[shard])
+            for path in group
+            if any(PurePosixPath(path).is_relative_to(parent) for parent in paths)
         ]
-        return [
-            "-c",
-            "pyproject.toml",
-            *SHARDS[shard],
-            *(f"--ignore={path}" for path in nested),
-        ]
-    if shard != "remainder":
+    elif shard == "remainder":
+        paths = [".", "../../.github/scripts"]
+        ignored = [path for group in SHARDS.values() for path in group]
+    else:
         raise ValueError(f"Unknown backend test shard: {shard}")
     return [
         "-c",
         "pyproject.toml",
-        ".",
-        "../../.github/scripts",
-        *(f"--ignore={path}" for paths in SHARDS.values() for path in paths),
+        *paths,
+        *(f"--ignore={path}" for path in ignored),
     ]
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--layout", choices=["paths", "weighted"], default="paths")
+    parser.add_argument("--partition", type=int, default=0)
     parser.add_argument("shard", choices=[*SHARDS, "remainder"])
     parser.add_argument("pytest_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if not 0 <= args.partition <= PARTITIONS[args.shard]:
+        parser.error("partition is outside the configured shard range")
     pytest_args = args.pytest_args
     if pytest_args[:1] == ["--"]:
         pytest_args = pytest_args[1:]
-    if flag := SHARD_E2E_FLAGS.get(args.shard):
-        os.environ[flag] = "1"
-    if args.shard in SHARDS_WITHOUT_DATABASE_MANAGER:
+    for shard, flag in SHARD_E2E_FLAGS.items():
+        if args.layout == "weighted" or args.shard == shard:
+            os.environ[flag] = "1"
+    if args.layout == "paths" and args.shard in SHARDS_WITHOUT_DATABASE_MANAGER:
         os.environ["PYRO_CLIENT_COMM_RETRY"] = "3"
+    os.environ["BACKEND_TEST_SHARD"] = args.shard
+    os.environ["BACKEND_TEST_LAYOUT"] = args.layout
+    os.environ["BACKEND_TEST_PARTITION"] = str(args.partition)
+    scripts = str(Path(__file__).resolve().parent)
+    os.environ["PYTHONPATH"] = os.pathsep.join(
+        part for part in (scripts, os.environ.get("PYTHONPATH", "")) if part
+    )
+    selected = (
+        shard_args(args.shard)
+        if args.layout == "paths"
+        else ["-c", "pyproject.toml", ".", "../../.github/scripts"]
+    )
+    os.environ["BACKEND_TEST_LAUNCH_TIME"] = str(time.perf_counter())
     return subprocess.run(
-        ["poetry", "run", "pytest", *shard_args(args.shard), *pytest_args],
+        [
+            "poetry",
+            "run",
+            "pytest",
+            "-p",
+            "backend_shard_plugin",
+            *selected,
+            *pytest_args,
+        ],
         check=False,
     ).returncode
 

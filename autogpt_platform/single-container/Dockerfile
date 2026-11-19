@@ -33,7 +33,8 @@ ENV NODE_ENV=production \
 # doesn't get the build under 8 GiB either; see "Requirements" in
 # docs/platform/single-container.md.
 RUN pnpm run generate:api \
-    && pnpm build \
+    && pnpm run copy:vad-assets \
+    && NODE_OPTIONS="--max-old-space-size=8192" pnpm exec next build --turbopack \
     && rm -f .env .env.local .env.production
 
 FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS node-runtime

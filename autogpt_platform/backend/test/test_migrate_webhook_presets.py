@@ -42,7 +42,10 @@ def caller_owns_every_graph_id(mocker):
 
 @pytest.fixture
 def mock_prisma():
-    with patch(_PRISMA_PATCH_TARGET) as mock:
+    with (
+        patch(_PRISMA_PATCH_TARGET) as mock,
+        patch("backend.api.features.library.db.transaction", return_value=MagicMock()),
+    ):
         mock_client = AsyncMock()
         mock.return_value = mock_client
         yield mock_client
@@ -56,6 +59,7 @@ def mock_input_output_prisma():
     db_test.py::test_migrate_webhook_presets_rekeys_input_mask."""
     with patch("prisma.models.AgentNodeExecutionInputOutput.prisma") as mock:
         io_client = AsyncMock()
+        io_client.find_many = AsyncMock(return_value=[])
         io_client.update_many = AsyncMock(return_value=0)
         mock.return_value = io_client
         yield io_client
