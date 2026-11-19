@@ -938,13 +938,7 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
             f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
         )
 
-    waiting = await _WaitingReviewId.prisma().find_many(
-        where={
-            "graphExecId": graph_exec_id,
-            "userId": user_id,
-            "status": ReviewStatus.WAITING,
-        }
-    )
+    waiting = await get_waiting_review_ids_for_execution(graph_exec_id, user_id)
     result = await PendingHumanReview.prisma().update_many(
         where={
             "graphExecId": graph_exec_id,
@@ -962,9 +956,7 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
     if waiting:
         await PendingHumanReview.prisma().delete_many(
             where={
-                "nodeExecId": {
-                    "in": [step_card_id(user_id, r.nodeExecId) for r in waiting]
-                },
+                "nodeExecId": {"in": [step_card_id(user_id, s) for s in waiting]},
                 "userId": user_id,
             }
         )
@@ -972,10 +964,52 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
     return result
 
 
+async def get_waiting_review_ids_for_execution(
+    graph_exec_id: str, user_id: str
+) -> list[str]:
+    """The node execution ids of one graph execution's waiting reviews."""
+    rows = await _WaitingReviewId.prisma().find_many(
+        where={
+            "graphExecId": graph_exec_id,
+            "userId": user_id,
+            "status": ReviewStatus.WAITING,
+        }
+    )
+    return [row.nodeExecId for row in rows]
+
+
+async def get_waiting_card_chat(node_exec_ids: list[str], user_id: str) -> str | None:
+    """The chat one of these reviews waits in, if any of them waits in a chat."""
+    if not node_exec_ids:
+        return None
+    cards = await _CardChat.prisma().find_many(
+        where={
+            "nodeExecId": {"in": node_exec_ids},
+            "userId": user_id,
+            "status": ReviewStatus.WAITING,
+        }
+    )
+    return next(
+        (
+            chat
+            for card in cards
+            if (chat := card.chatSessionId or legacy_chat_session_id(card.graphExecId))
+        ),
+        None,
+    )
+
+
 class _WaitingReviewId(BasePendingHumanReview):
     """Prisma selects only the declared fields, so `payload` is never read."""
 
     nodeExecId: str
+
+
+class _CardChat(BasePendingHumanReview):
+    """Prisma selects only the declared fields, so `payload` is never read."""
+
+    chatSessionId: Optional[str]
+    graphExecId: Optional[str]
 
 
 async def reopen_review(node_exec_id: str, user_id: str) -> int:

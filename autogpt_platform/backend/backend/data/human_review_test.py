@@ -8,12 +8,14 @@ from prisma.enums import ReviewStatus
 from backend.api.features.experts.spend_approval import spend_review_id
 from backend.copilot.constants import step_card_id
 from backend.data.human_review import (
+    _CardChat,
     _WaitingReviewId,
     cancel_pending_reviews_for_execution,
     get_or_create_human_review,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     get_reviews,
+    get_waiting_card_chat,
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
 )
@@ -575,3 +577,31 @@ async def test_a_stopped_run_reads_its_waiting_reviews_by_id_alone(
         "userId": "u1",
     }
     sync.assert_awaited_once_with("u1", "g1")
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_a_waiting_cards_chat_is_read_from_its_chat_columns_alone(
+    mocker: pytest_mock.MockFixture,
+):
+    cards = Mock(spec_set=["find_many"])
+    cards.find_many = AsyncMock(
+        return_value=[
+            Mock(chatSessionId=None, graphExecId="run-1"),
+            # A card an older deploy wrote in the synthetic-graph shape.
+            Mock(chatSessionId=None, graphExecId="copilot-session-s9"),
+        ]
+    )
+    mocker.patch.object(_CardChat, "prisma", return_value=cards)
+    mocker.patch(
+        "backend.data.human_review.PendingHumanReview.prisma",
+        return_value=Mock(spec_set=[]),
+    )
+
+    assert await get_waiting_card_chat(["card-1", "card-2"], "u1") == "s9"
+
+    assert set(_CardChat.model_fields) == {"chatSessionId", "graphExecId"}
+    assert cards.find_many.await_args.kwargs["where"] == {
+        "nodeExecId": {"in": ["card-1", "card-2"]},
+        "userId": "u1",
+        "status": ReviewStatus.WAITING,
+    }

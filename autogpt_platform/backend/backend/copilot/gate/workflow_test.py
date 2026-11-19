@@ -7,7 +7,7 @@ modes, and that every missing piece leaves the step to a human review.
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from prisma.enums import ReviewStatus
@@ -395,6 +395,23 @@ async def test_a_held_call_card_is_no_step(rows):
     assert workflow.step_rule_keys([_card(ReviewStatus.APPROVED)]) == {
         step_card_id("user-1", _STEP.node_exec_id): f"block:{_BLOCK.id}"
     }
+
+
+async def test_a_parked_runs_card_chat_is_read_from_ids_alone():
+    # The database client offers only the narrow reads, never the review rows.
+    db = Mock(
+        spec_set=["get_waiting_review_ids_for_execution", "get_waiting_card_chat"]
+    )
+    db.get_waiting_review_ids_for_execution = AsyncMock(
+        return_value=[_STEP.node_exec_id]
+    )
+    db.get_waiting_card_chat = AsyncMock(return_value="chat-1")
+    with patch(f"{_WORKFLOW}.review_db", return_value=db):
+        assert await workflow.card_chat_for_run("user-1", "run-1") == "chat-1"
+    db.get_waiting_review_ids_for_execution.assert_awaited_once_with("run-1", "user-1")
+    db.get_waiting_card_chat.assert_awaited_once_with(
+        [step_card_id("user-1", _STEP.node_exec_id)], "user-1"
+    )
 
 
 @pytest.mark.parametrize(
