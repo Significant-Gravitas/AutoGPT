@@ -39,6 +39,10 @@ settings = Settings()
 # Length of the HMAC-SHA256 signature prefix on cached values.
 _HMAC_SIG_LEN = 32
 
+# Keys per SCAN call. MATCH filters after the walk, so a scan visits every key
+# in the cluster, and Redis's default of 10 makes that one round trip per 10.
+_SCAN_BATCH_SIZE = 1000
+
 # RECOMMENDED REDIS CONFIGURATION FOR PRODUCTION:
 # Configure Redis with the following settings for optimal caching performance:
 #   maxmemory-policy allkeys-lru    # Evict least recently used keys when memory limit reached
@@ -415,7 +419,9 @@ def cached(
                 ):
                     keys = list(
                         _get_redis().scan_iter(
-                            match_pattern, target_nodes=RedisCluster.PRIMARIES
+                            match_pattern,
+                            count=_SCAN_BATCH_SIZE,
+                            target_nodes=RedisCluster.PRIMARIES,
                         )
                     )
 
@@ -438,6 +444,7 @@ def cached(
                 cache_keys = list(
                     _get_redis().scan_iter(
                         f"cache:{func_name}:*",
+                        count=_SCAN_BATCH_SIZE,
                         target_nodes=RedisCluster.PRIMARIES,
                     )
                 )

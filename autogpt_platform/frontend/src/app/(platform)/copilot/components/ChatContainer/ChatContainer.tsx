@@ -33,6 +33,7 @@ import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
 import { useShareChatExpert } from "../ContextPanel/useShareChatExpert";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SessionNotFound } from "./components/SessionNotFound";
+import type { RemovedChat } from "../../helpers/removedChat";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "../../useIsMobile";
 import { ComposerPanelTab } from "./components/ComposerPanelTab";
@@ -87,6 +88,8 @@ export interface ChatContainerProps {
   isLoadingSession: boolean;
   isSessionError?: boolean;
   isSessionNotFound?: boolean;
+  /** Set when the chat was removed by resetting its expert. */
+  removedChat?: RemovedChat | null;
   isCreatingSession: boolean;
   /** True when backend has an active stream but we haven't reconnected yet. */
   isReconnecting?: boolean;
@@ -111,6 +114,8 @@ export interface ChatContainerProps {
   ) => void | Promise<void>;
   /** Sends a suggested task, resolving to the chat it started. */
   onStartTask?: (message: string) => Promise<string | undefined>;
+  /** Sends again the message the chat couldn't confirm it sent. */
+  onResendUnconfirmed?: () => void;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
   onEnqueue?: (message: string) => void | Promise<void>;
@@ -146,6 +151,8 @@ export interface ChatContainerProps {
   /** Which layout floats its controls over the chat's top-left corner on
    *  small viewports; the thread header lines up with them. */
   floatingControls?: FloatingControls;
+  /** The chat runs on the user's Local PC, so it has no cloud computer. */
+  isLocalSession?: boolean;
 }
 
 const NO_OP_SEND = () => undefined;
@@ -162,6 +169,7 @@ export const ChatContainer = ({
   isLoadingSession,
   isSessionError,
   isSessionNotFound,
+  removedChat = null,
   isCreatingSession,
   isReconnecting,
   isFinishProbing,
@@ -172,6 +180,7 @@ export const ChatContainer = ({
   onCreateSession,
   onSend,
   onStartTask,
+  onResendUnconfirmed,
   onStop,
   onEnqueue,
   queuedMessages,
@@ -195,6 +204,7 @@ export const ChatContainer = ({
   isKickoffStarting,
   onBackendTurn,
   floatingControls,
+  isLocalSession = false,
 }: ChatContainerProps) => {
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   useAutoOpenArtifacts({
@@ -487,6 +497,17 @@ export const ChatContainer = ({
       });
   });
 
+  // Send again waits while anything holds the one request slot (a turn, or a
+  // send uploading its files, which goes first), and while the lock or the
+  // usage limit pauses sending, as it does the composer. A refused resend
+  // would hand the text back without its first id.
+  const canResend = !(
+    isSendLocked ||
+    isStreaming ||
+    isUploadingFiles ||
+    pendingSend
+  );
+
   return (
     <CopilotChatActionsProvider
       onSend={guardedOnSend}
@@ -507,7 +528,7 @@ export const ChatContainer = ({
                 message list and the input instead, so the expert thread header
                 can span edge to edge while staying aligned with the messages. */}
           {sessionId && isSessionNotFound ? (
-            <SessionNotFound />
+            <SessionNotFound removedChat={removedChat} />
           ) : sessionId ? (
             <div className="relative flex h-full min-h-0 w-full flex-col bg-surface">
               <div className="absolute top-0 right-0 z-30">
@@ -515,6 +536,7 @@ export const ChatContainer = ({
                   sessionId={sessionId}
                   expert={chatExpert}
                   hideIntegrationsOnMobile={floatingControls === "newLayout"}
+                  hideComputer={isLocalSession}
                 />
               </div>
               <ChatMessagesContainer
@@ -533,6 +555,7 @@ export const ChatContainer = ({
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
                 onRetry={handleRetry}
+                onResend={canResend ? onResendUnconfirmed : undefined}
                 turnStats={turnStats}
                 queuedMessages={queuedMessages}
                 pendingSend={pendingSend}

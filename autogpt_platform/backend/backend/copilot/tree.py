@@ -69,11 +69,11 @@ SPAWN_TOOLS: frozenset[str] = frozenset(
 
 # Denied to EVERY spawned child by default: irreversible deletes, and actions
 # that bind the user's account (connect an integration, register a trigger,
-# staff the team). None is part of a delegated expert's normal job, so
-# withholding them does not break a working delegation — it removes reach a
-# spawned turn should never have silently. The staffing tools are already
-# denied to expert sessions by their tool group; listing them keeps the
-# guarantee even for a plain-Otto child.
+# staff the team, grant a teammate a credential). None is part of a delegated
+# expert's normal job, so withholding them does not break a working
+# delegation — it removes reach a spawned turn should never have silently.
+# The staffing tools are already denied to expert sessions by their tool
+# group; listing them keeps the guarantee even for a plain-Otto child.
 DESCENT_DENIED_TOOLS: frozenset[str] = frozenset(
     {
         "connect_integration",
@@ -88,6 +88,8 @@ DESCENT_DENIED_TOOLS: frozenset[str] = frozenset(
         "raise_expert",
         "update_expert",
         "confirm_expert_change",
+        "grant_expert_credential",
+        "revoke_expert_credential",
     }
 )
 

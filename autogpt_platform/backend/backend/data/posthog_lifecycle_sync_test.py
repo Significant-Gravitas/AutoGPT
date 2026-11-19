@@ -234,6 +234,22 @@ async def test_an_enterprise_user_is_subscribed_only_while_paying(
     assert snapshot is not None and snapshot.subscription_status == expected
 
 
+@pytest.mark.parametrize(
+    "tier", [SubscriptionTier.NO_TIER, SubscriptionTier.TRIAL, SubscriptionTier.MAX]
+)
+async def test_sync_sets_the_stored_tier_on_the_person(posthog, tier):
+    """SECRT-3411: every event, ``chat_blocked`` included, can be split by
+    plan through the person."""
+    find_unique = AsyncMock(return_value=db_user(customer=None, tier=tier))
+    with patch(
+        f"{MODULE}.User.prisma", return_value=MagicMock(find_unique=find_unique)
+    ):
+        await lifecycle.sync_posthog_lifecycle("user-1")
+
+    sent = posthog.capture.call_args.kwargs["properties"]["$set"]
+    assert sent["subscription_tier"] == tier.value
+
+
 async def test_a_sync_requested_over_rpc_is_scheduled_like_a_local_one():
     with patch(f"{MODULE}.schedule_posthog_lifecycle_sync") as schedule:
         await lifecycle.request_posthog_lifecycle_sync("user-1")
@@ -355,8 +371,13 @@ def test_schedule_swallows_client_errors():
 # ---- sync_all_posthog_lifecycles --------------------------------------------
 
 
-def batch_user(user_id: str, customer: str | None):
-    return LifecycleUser(id=user_id, created_at=SIGNUP, stripe_customer_id=customer)
+def batch_user(user_id: str, customer: str | None, tier: str = "PRO"):
+    return LifecycleUser(
+        id=user_id,
+        created_at=SIGNUP,
+        stripe_customer_id=customer,
+        subscription_tier=tier,
+    )
 
 
 @pytest.fixture
@@ -367,7 +388,7 @@ def sweep_sources():
             batch_user("u-sub", "cus_sub"),
             batch_user("u-canceling", "cus_canceling"),
         ],
-        [batch_user("u-ended", "cus_ended")],
+        [batch_user("u-ended", "cus_ended", "NO_TIER")],
         [],
     ]
     subscriptions = stripe_page(
@@ -430,6 +451,17 @@ async def test_sweep_sends_every_user_and_flushes_per_batch(sweep_sources, posth
         "u-ended": "subscription_ended",
     }
     assert posthog.flush.call_count == 2
+    tiers = {
+        call.kwargs["distinct_id"]: call.kwargs["properties"]["$set"][
+            "subscription_tier"
+        ]
+        for call in posthog.capture.call_args_list
+    }
+    assert tiers == {"u-sub": "PRO", "u-canceling": "PRO", "u-ended": "NO_TIER"}
+
+
+def test_the_sweep_reads_the_tier_with_each_user():
+    assert '"subscriptionTier"::text AS subscription_tier' in lifecycle._USER_BATCH
 
 
 async def test_sweep_all_users_widens_the_query(sweep_sources, posthog):
@@ -658,3 +690,57 @@ async def test_a_cancelled_running_sync_keeps_a_requested_rerun(posthog):
 
     assert calls == 2
     assert not lifecycle._syncs
+
+
+# ---- set_tier_on_sign_in ---------------------------------------------------
+
+
+@pytest.fixture
+def shared_posthog():
+    """The shared client ``posthog_client.capture`` sends on."""
+    client = MagicMock()
+    with patch("backend.util.posthog_client.get_posthog_client", return_value=client):
+        yield client
+
+
+@pytest.mark.parametrize(
+    "tier", [SubscriptionTier.BUSINESS, SubscriptionTier.TRIAL, "NO_TIER"]
+)
+def test_a_sign_in_sets_the_stored_tier(shared_posthog, tier):
+    """``$set``, not ``$set_once``: a sign-in also repairs a tier whose last
+    sync PostHog never got."""
+    lifecycle.set_tier_on_sign_in("user-1", tier)
+
+    shared_posthog.capture.assert_called_once()
+    call = shared_posthog.capture.call_args.kwargs
+    assert call["distinct_id"] == "user-1"
+    assert call["event"] == "$set"
+    assert call["properties"]["$set"] == {
+        "subscription_tier": getattr(tier, "value", tier)
+    }
+    assert type(call["properties"]["$set"]["subscription_tier"]) is str
+
+
+@pytest.mark.parametrize("tier", [None, ""])
+def test_a_sign_in_without_a_tier_sends_nothing(shared_posthog, tier):
+    lifecycle.set_tier_on_sign_in("user-1", tier)
+    shared_posthog.capture.assert_not_called()
+
+
+def test_a_sign_in_while_an_admin_acts_as_the_user_sends_nothing(shared_posthog):
+    from backend.util import posthog_client
+
+    token = posthog_client.set_impersonated(True)
+    try:
+        lifecycle.set_tier_on_sign_in("user-1", SubscriptionTier.PRO)
+    finally:
+        posthog_client.reset_impersonated(token)
+    shared_posthog.capture.assert_not_called()
+
+
+def test_a_sign_in_survives_posthog_failing(shared_posthog, caplog):
+    shared_posthog.capture.side_effect = RuntimeError("posthog down")
+    lifecycle.set_tier_on_sign_in("user-1", SubscriptionTier.PRO)
+    with patch("backend.util.posthog_client.capture", side_effect=RuntimeError("boom")):
+        lifecycle.set_tier_on_sign_in("user-1", SubscriptionTier.PRO)
+    assert "Could not set the PostHog tier of user-1" in caplog.text

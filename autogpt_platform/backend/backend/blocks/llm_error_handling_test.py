@@ -203,6 +203,85 @@ async def test_prompt_refusal_takes_precedence_over_model_message():
     assert message == PROMPT_REFUSED_MESSAGE
 
 
+# OpenAI's two TPM refusals share a status, code and type: one request bigger
+# than the whole per-minute limit, and a minute that is already full.
+_OPENAI_REQUEST_TOO_LARGE = {
+    "error": {
+        "message": (
+            "Request too large for gpt-4.1-mini-2025-04-14 (for limit "
+            "gpt-4.1-mini-long-context) in organization org-private-canary on "
+            "tokens per min (TPM): Limit 400000, Requested 520131. The input or "
+            "output tokens must be reduced in order to run successfully."
+        ),
+        "type": "tokens",
+        "param": None,
+        "code": "rate_limit_exceeded",
+    }
+}
+_OPENAI_RATE_LIMITED = {
+    "error": {
+        "message": (
+            "Rate limit reached for gpt-4.1-mini-2025-04-14 in organization "
+            "org-private-canary on tokens per min (TPM): Limit 400000, Used "
+            "390000, Requested 20000. Please try again in 1.5s."
+        ),
+        "type": "tokens",
+        "param": None,
+        "code": "rate_limit_exceeded",
+    }
+}
+
+
+@pytest.mark.parametrize(
+    "model,status,body",
+    [
+        (LLMModel.GPT41_MINI, 429, _OPENAI_REQUEST_TOO_LARGE),
+        (
+            LLMModel.CLAUDE_4_5_HAIKU,
+            413,
+            {
+                "type": "error",
+                "error": {
+                    "type": "request_too_large",
+                    "message": "Request exceeds the maximum allowed size.",
+                },
+            },
+        ),
+    ],
+)
+async def test_request_too_large_fails_at_once_and_says_what_to_do(
+    model: LLMModel, status: int, body: dict
+):
+    _, _, requests, message = await _run_error(
+        status, body, model, error_type=ValueError
+    )
+
+    assert len(requests) == 1
+    assert "Shorten the input" in message
+    assert "choose a model with a higher limit" in message
+    assert model.metadata.provider_name in message
+    assert "org-private-canary" not in message
+
+
+async def test_request_too_large_names_the_sizes_the_provider_reported():
+    _, _, _, message = await _run_error(
+        429, _OPENAI_REQUEST_TOO_LARGE, LLMModel.GPT41_MINI, error_type=ValueError
+    )
+
+    assert "520,131 tokens" in message
+    assert "400,000" in message
+
+
+async def test_ordinary_rate_limit_keeps_its_existing_handling():
+    _, _, requests, message = await _run_error(
+        429, _OPENAI_RATE_LIMITED, LLMModel.GPT41_MINI
+    )
+
+    assert len(requests) == 1
+    assert message.startswith("Error calling LLM: Error code: 429")
+    assert "Shorten the input" not in message
+
+
 async def _run_error(
     status: int,
     body: dict,

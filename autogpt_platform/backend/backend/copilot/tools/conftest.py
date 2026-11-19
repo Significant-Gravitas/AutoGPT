@@ -43,6 +43,19 @@ def stub_user_lookup_in_helpers(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def stub_expert_chat_lookup(monkeypatch):
+    """``has_chat_with`` lists the user's chats with an expert to tell a first
+    turn from a later one. Without a connected Prisma client that read is the
+    DatabaseManager RPC client, whose retries would stall every hire and
+    delegation test; by default the expert has no chat yet. Tests that need
+    one patch ``expert_delegation.get_user_sessions`` themselves."""
+    monkeypatch.setattr(
+        "backend.copilot.tools.expert_delegation.get_user_sessions",
+        AsyncMock(return_value=([], 0)),
+    )
+
+
+@pytest.fixture(autouse=True)
 def stub_background_task_store(monkeypatch):
     """``get_sub_session_result`` asks the background-task store whether a sub
     is a background child. Without a connected Prisma client that accessor is
@@ -81,6 +94,7 @@ def stub_learning_registry(monkeypatch):
         "backend.copilot.tools.skills.mark_index_revision_seen", mark_seen
     )
     for target in (
+        "backend.copilot.learning.content_approvals.skill_versions_db",
         "backend.copilot.learning.retrieval.skill_versions_db",
         "backend.copilot.learning.retrieval.skill_use_db",
         "backend.copilot.learning.history.skill_versions_db",

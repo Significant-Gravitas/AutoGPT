@@ -20,6 +20,46 @@ def test_catalog_loads_validated_entries():
     assert get_mcp_catalog()
 
 
+# Every tool CompanyEnrich's MCP docs listed on 2026-11-17. All but
+# get_current_user spend the user's CompanyEnrich credits, so they ask first.
+COMPANYENRICH_BILLED_TOOLS = [
+    "enrich_company",
+    "enrich_company_by_properties",
+    "enrich_person_email",
+    "find_similar_companies",
+    "get_company_by_id",
+    "get_company_workforce",
+    "get_person_by_id",
+    "lookup_person_by_email",
+    "search_companies",
+    "search_people",
+]
+
+
+def test_companyenrich_uses_bearer_auth_and_paid_tools_require_approval():
+    """CompanyEnrich needs an API key and approval for credit-consuming tools."""
+    url = "https://mcp.companyenrich.com/mcp"
+    entry = get_mcp_catalog_entry_for_url(url)
+
+    assert entry is not None
+    assert entry.name == "mcp_companyenrich"
+    assert entry.display_name == "CompanyEnrich"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.auth_methods == ["bearer"]
+    assert entry.mcp_server.oauth_scopes is None
+    assert (
+        entry.mcp_server.documentation_url
+        == "https://docs.companyenrich.com/docs/mcp-server"
+    )
+    effects = get_mcp_effect_maps()["mcp_companyenrich"]
+    assert sorted(effects.external) == COMPANYENRICH_BILLED_TOOLS
+    assert effects.read == ["get_current_user"]
+    assert effects.irreversible == []
+    assert mcp_tool_effect(url, "find_similar_companies") == "external"
+    assert mcp_tool_effect(url, "get_current_user") == "read"
+    assert mcp_tool_effect(url, "unlisted_tool") is None
+
+
 def test_posthog_catalog_entry_uses_hosted_authentication():
     entry = get_mcp_catalog_entry_for_url("https://mcp.posthog.com/mcp")
 
@@ -66,6 +106,158 @@ def test_openseo_catalog_entry_defaults_to_cloud_and_allows_self_hosting():
     assert entry.mcp_server.allow_custom_url is True
     assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
     assert entry.mcp_server.documentation_url == "https://openseo.so/docs/mcp"
+
+
+def test_aimlapi_catalog_entry_is_filed_under_the_aiml_api_provider():
+    entry = get_mcp_catalog_entry_for_url("https://mcp.aimlapi.com/mcp")
+
+    assert entry is not None
+    assert entry.name == "mcp_aimlapi"
+    assert entry.display_name == "AI/ML API"
+    assert entry.mcp_server.icon_id == "aiml_api"
+    assert entry.mcp_server.provider == "aiml_api"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.allow_custom_url is False
+    assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
+    assert (
+        entry.mcp_server.documentation_url == "https://docs.aimlapi.com/quickstart/mcp"
+    )
+
+
+# Every tool the server listed on 2026-11-12. The billed ones charge the user's
+# AI/ML API balance, so the effect map must make each of them ask first.
+AIMLAPI_FREE_TOOLS = [
+    "account_balance",
+    "account_usage",
+    "job_result",
+    "job_status",
+    "model_get",
+    "models_compare",
+    "models_find_best",
+    "models_list",
+    "models_search",
+    "ping",
+    "tools_inspect",
+    "tools_run_status",
+    "tools_search",
+]
+AIMLAPI_BILLED_TOOLS = [
+    "audio_generate",
+    "embeddings_create",
+    "image_generate",
+    "jev_model_search",
+    "jev_tool_search",
+    "llm_chat",
+    "tools_run",
+    "video_generate",
+]
+
+
+@pytest.mark.parametrize("tool", AIMLAPI_BILLED_TOOLS)
+def test_aimlapi_billed_tools_are_never_mapped_as_reads(tool: str):
+    assert mcp_tool_effect("https://mcp.aimlapi.com/mcp", tool) == "external"
+
+
+@pytest.mark.parametrize("tool", AIMLAPI_FREE_TOOLS)
+def test_aimlapi_free_tools_are_mapped_as_reads(tool: str):
+    assert mcp_tool_effect("https://mcp.aimlapi.com/mcp", tool) == "read"
+
+
+def test_aimlapi_effect_map_names_exactly_the_published_tools():
+    effects = get_mcp_effect_maps()["mcp_aimlapi"]
+    assert sorted(effects.read) == AIMLAPI_FREE_TOOLS
+    assert sorted(effects.external) == AIMLAPI_BILLED_TOOLS
+    assert effects.irreversible == []
+
+
+# Every tool the server listed on 2026-11-18 to a caller with a valid key.
+# search, batch_search and extract each spend a call of the key's quota, but
+# searching is what the connection is for, so they run without asking, as the
+# AnySearch blocks do on the same key. score (the one tool its docs leave out)
+# sends ratings of the results back to AnySearch, so it asks first.
+ANYSEARCH_LOOKUP_TOOLS = ["batch_search", "extract", "get_sub_domains", "search"]
+
+
+def test_anysearch_takes_an_api_key_and_only_its_feedback_tool_asks():
+    url = "https://api.anysearch.com/mcp"
+    entry = get_mcp_catalog_entry_for_url(url)
+
+    assert entry is not None
+    assert entry.name == "mcp_anysearch"
+    assert entry.display_name == "AnySearch"
+    assert entry.mcp_server.icon_id == "anysearch"
+    assert entry.mcp_server.provider == "anysearch"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.allow_custom_url is False
+    assert entry.mcp_server.auth_methods == ["bearer"]
+    assert (
+        entry.mcp_server.documentation_url
+        == "https://www.anysearch.com/docs/mcp-install"
+    )
+    effects = get_mcp_effect_maps()["mcp_anysearch"]
+    assert sorted(effects.read) == ANYSEARCH_LOOKUP_TOOLS
+    assert effects.external == ["score"]
+    assert effects.irreversible == []
+    assert mcp_tool_effect(url, "search") == "read"
+    assert mcp_tool_effect(url, "score") == "external"
+    assert mcp_tool_effect(url, "unlisted_tool") is None
+
+
+# Every tool Supabase's MCP docs listed on 2026-11-17. The reads run without
+# asking. execute_sql both reads and writes, so it asks like the other changes.
+SUPABASE_READ_TOOLS = [
+    "generate_typescript_types",
+    "get_advisors",
+    "get_cost",
+    "get_edge_function",
+    "get_notebook",
+    "get_organization",
+    "get_project",
+    "get_project_url",
+    "get_publishable_keys",
+    "get_storage_config",
+    "list_branches",
+    "list_edge_functions",
+    "list_extensions",
+    "list_migrations",
+    "list_notebooks",
+    "list_organizations",
+    "list_projects",
+    "list_storage_buckets",
+    "list_tables",
+    "query_logs",
+    "search_docs",
+]
+SUPABASE_CHANGE_TOOLS = [
+    "apply_migration",
+    "confirm_cost",
+    "create_branch",
+    "create_edge_function_secret",
+    "create_notebook",
+    "create_project",
+    "deploy_edge_function",
+    "execute_sql",
+    "pause_project",
+    "rebase_branch",
+    "restore_project",
+    "run_notebook",
+    "submit_feedback",
+    "update_storage_config",
+]
+SUPABASE_IRREVERSIBLE_TOOLS = [
+    "delete_branch",
+    "delete_feedback",
+    "delete_notebook",
+    "merge_branch",
+    "reset_branch",
+]
+
+
+def test_supabase_effect_map_names_exactly_the_published_tools():
+    effects = get_mcp_effect_maps()["mcp_supabase"]
+    assert sorted(effects.read) == SUPABASE_READ_TOOLS
+    assert sorted(effects.external) == SUPABASE_CHANGE_TOOLS
+    assert sorted(effects.irreversible) == SUPABASE_IRREVERSIBLE_TOOLS
 
 
 def test_no_catalogued_server_is_limited_to_read_access():
@@ -286,6 +478,9 @@ def test_a_tool_cannot_carry_two_effects():
         ("https://mcp.cloudflare.com/mcp", "docs", "read"),
         ("https://mcp.cloudflare.com/mcp", "whoami", "read"),
         ("https://mcp.cloudflare.com/mcp", "execute", "external"),
+        ("https://mcp.supabase.com/mcp", "list_tables", "read"),
+        ("https://mcp.supabase.com/mcp", "execute_sql", "external"),
+        ("https://mcp.supabase.com/mcp", "merge_branch", "irreversible"),
         ("https://mcp.example.com/mcp", "get_things", None),
     ],
 )
