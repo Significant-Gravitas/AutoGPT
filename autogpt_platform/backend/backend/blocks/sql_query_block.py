@@ -221,8 +221,9 @@ class SQLQueryBlock(Block):
         graph_version: int | None = None,
         **_kwargs: Any,
     ) -> BlockOutput:
-        # Validate query structure and read-only constraints.
-        error = self._validate_query(input_data)
+        # Validate query structure and read-only constraints. Parsing is
+        # CPU-bound, so keep it off the event loop like the query itself.
+        error = await asyncio.to_thread(self._validate_query, input_data)
         if error:
             yield "error", error
             return
