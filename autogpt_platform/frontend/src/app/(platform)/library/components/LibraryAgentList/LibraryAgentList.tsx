@@ -23,7 +23,11 @@ import { useLibraryAgentList } from "./useLibraryAgentList";
 import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { useAgentStatusMap, getAgentStatus } from "../../hooks/useAgentStatus";
-import { ArrowLeft02Icon, FavouriteIcon } from "@hugeicons/core-free-icons";
+import {
+  ArrowLeft02Icon,
+  FavouriteIcon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 // cancels the current spring and starts a new one from current state.
@@ -150,6 +154,19 @@ export function LibraryAgentList({
     !selectedFolderId &&
     statusFilter === "all";
 
+  // A filter that matches nothing, once every page is read or the filter
+  // has exhausted them. Not for Scheduled or Idle while the schedules are
+  // unknown: the outage notice already explains that gap.
+  const isFilterNoMatch =
+    !agentLoading &&
+    statusFilter !== "all" &&
+    agents.length === 0 &&
+    !hasNextPage &&
+    !(
+      schedulesUnknown &&
+      (statusFilter === "scheduled" || statusFilter === "idle")
+    );
+
   return (
     <>
       {!selectedFolderId &&
@@ -223,6 +240,11 @@ export function LibraryAgentList({
           </div>
         ) : isPristineEmpty ? (
           <LibraryEmptyState />
+        ) : isFilterNoMatch ? (
+          <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-foreground-tertiary">
+            <Icon icon={Search01Icon} className="h-10 w-10" />
+            <Text variant="body">No workflows match this filter</Text>
+          </div>
         ) : (
           <InfiniteScroll
             isFetchingNextPage={isFetchingNextPage}

@@ -9,7 +9,10 @@ const LONG_OUTAGE_RECHECK_MS = 60_000;
 
 // refetchInterval for a read that answers with its schedules unknown: recheck
 // after Retry-After, less often once the outage outlasts a deploy, and not at
-// all once they are known.
+// all once they are known. React Query calls the interval function
+// repeatedly, so this ref-based backoff must be idempotent: the same input
+// always returns the same interval, and the stored start only ever moves
+// from null to a time.
 export function useRecheckWhileSchedulesUnknown() {
   const unknownSince = useRef<number | null>(null);
 

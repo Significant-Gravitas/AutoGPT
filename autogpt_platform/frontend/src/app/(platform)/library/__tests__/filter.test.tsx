@@ -234,5 +234,40 @@ describe("LibraryAgentList — Scheduled status filter", () => {
       await screen.findByText(/Schedules are temporarily unavailable/),
     ).toBeDefined();
     expect(screen.queryByText("No favorite workflows yet")).toBeNull();
+    // The outage notice explains the gap, not a no-match message: the
+    // schedules are unknown, so Scheduled can't be told from Idle.
+    expect(screen.queryByText("No workflows match this filter")).toBeNull();
+  });
+
+  test("a filter that matches no favorites says so once the schedules are known", async () => {
+    const favorite = makeAgent({
+      id: "a-idle",
+      graph_id: "g-idle",
+      name: "Idle Favorite",
+      is_favorite: true,
+    });
+    setupHandlers([favorite], [favorite]);
+
+    renderList("scheduled", "favorites");
+
+    expect(
+      await screen.findByText("No workflows match this filter"),
+    ).toBeDefined();
+    expect(screen.queryByText("No favorite workflows yet")).toBeNull();
+  });
+
+  test("a filter that matches no workflows says so on the All tab too", async () => {
+    const agent = makeAgent({
+      id: "a-idle",
+      graph_id: "g-idle",
+      name: "Idle Workflow",
+    });
+    setupHandlers([agent], []);
+
+    renderList("scheduled", "all");
+
+    expect(
+      await screen.findByText("No workflows match this filter"),
+    ).toBeDefined();
   });
 });

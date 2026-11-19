@@ -111,10 +111,10 @@ const SCHEDULES_UNAVAILABLE =
 // how many schedule reads it has answered, and when it first answered one.
 function serveSchedulerOutage() {
   let reads = 0;
-  let firstAnsweredAt: number | undefined;
+  let lastAnsweredAt: number | undefined;
   function schedulerOut() {
     reads += 1;
-    firstAnsweredAt ??= Date.now();
+    lastAnsweredAt = Date.now();
     return HttpResponse.json(
       {
         message: "Failed to process GET /api/schedules",
@@ -133,7 +133,7 @@ function serveSchedulerOutage() {
   );
   return {
     reads: () => reads,
-    firstAnsweredAt: () => firstAnsweredAt ?? Date.now(),
+    lastAnsweredAt: () => lastAnsweredAt ?? Date.now(),
   };
 }
 
@@ -587,11 +587,13 @@ describe("FollowupsPage", () => {
     expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
     await waitFor(() => expect(queryClient.isFetching()).toBe(0));
 
-    // Nothing asks again well before Retry-After: 10 s after the first 503
-    // neither list has been read again, nor is a read on its way.
+    // Nothing asks again well before Retry-After: 5 s after the last 503
+    // neither list has been read again, nor is a read on its way. The
+    // recheck is 15 s after the last read, so a slow runner still has a
+    // 10 s margin before it fires.
     const answered = outage.reads();
     await act(async () => {
-      vi.advanceTimersByTime(outage.firstAnsweredAt() + 10_000 - Date.now());
+      vi.advanceTimersByTime(outage.lastAnsweredAt() + 5_000 - Date.now());
     });
     expect(queryClient.isFetching()).toBe(0);
     expect(outage.reads()).toBe(answered);
@@ -603,7 +605,7 @@ describe("FollowupsPage", () => {
       defaultGraphSchedulesHandler(),
     );
     await act(async () => {
-      vi.advanceTimersByTime(6_000);
+      vi.advanceTimersByTime(11_000);
     });
 
     const list = await screen.findByTestId("followups-list");

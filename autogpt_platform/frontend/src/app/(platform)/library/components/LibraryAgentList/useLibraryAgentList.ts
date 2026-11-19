@@ -30,7 +30,7 @@ import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/gra
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { isAgentScheduled } from "../../hooks/executionHelpers";
 import { hasUnknownSchedules } from "@/services/schedules/scheduler-availability";
-import { useRecheckWhileSchedulesUnknown } from "@/services/schedules/useRecheckWhileSchedulesUnknown";
+import { useSchedulerProbe } from "@/services/schedules/useSchedulerProbe";
 
 const FILTER_EXHAUST_THRESHOLD = 3;
 
@@ -67,7 +67,6 @@ export function useLibraryAgentList({
     null,
   );
 
-  const recheckWhileSchedulesUnknown = useRecheckWhileSchedulesUnknown();
   const {
     data: agentsQueryData,
     fetchNextPage,
@@ -75,6 +74,7 @@ export function useLibraryAgentList({
     isFetching,
     isFetchingNextPage,
     isLoading: allAgentsLoading,
+    refetch,
   } = useGetV2ListLibraryAgentsInfinite(
     {
       page: 1,
@@ -88,14 +88,6 @@ export function useLibraryAgentList({
     {
       query: {
         getNextPageParam: getPaginationNextPageNumber,
-        // Without the scheduler the agents load with their schedules
-        // unknown; recheck after its Retry-After until they are known.
-        refetchInterval: (query) =>
-          recheckWhileSchedulesUnknown(
-            hasUnknownSchedules(
-              query.state.data ? unpaginate(query.state.data, "agents") : [],
-            ),
-          ),
       },
     },
   );
@@ -274,6 +266,14 @@ export function useLibraryAgentList({
     completedGraphIds,
   );
   const schedulesUnknown = hasUnknownSchedules(agents);
+
+  // While the schedules are unknown, a cheap probe — one read of the user's
+  // schedule list — checks whether the scheduler is back, instead of
+  // re-reading every loaded page; once it answers, this list re-reads once.
+  const { recovered } = useSchedulerProbe(schedulesUnknown);
+  useEffect(() => {
+    if (recovered) void refetch();
+  }, [recovered, refetch]);
 
   useEffect(() => {
     if (statusFilter === "all") {
