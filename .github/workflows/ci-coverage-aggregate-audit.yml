@@ -1,0 +1,69 @@
+name: Audit combined backend coverage
+"on":
+  push:
+    branches:
+      - codex/ci-coverage-aggregate-20261119
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out matching application source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout: ".github
+
+            autogpt_platform/backend
+
+            autogpt_platform/autogpt_libs"
+      - name: Download all 66 reports from the passing rerun
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: 14496275228,14496115023,14496105084,14496100311,14496045450,14495985199,14495970488,14495925572,14495925555,14495871084,14495860971,14495706842,14495697250,14495667140,14495647030,14495642659,14495642379,14495596984,14495576979,14495552586,14495547530,14495522485,14495522087,14495512034,14495502663,14495482410,14495442841,14495422548,14495422389,14495412521,14495377570,14495362586,14495297816,14495287608,14495227897,14495193781,14495188412,14495158269,14495158238,14495148424,14495148363,14495103432,14495078491,14495074152,14495033869,14495029012,14494984388,14494969491,14494913292,14494864466,14494859915,14494834732,14494819703,14494803634,14494708779,14494678787,14494634077,14494618739,14494519312,14494499434,14494489438,14494489421,14494444553,14494434652,14494414724,14494409750
+          run-id: 44447512116
+          github-token: ${{ github.token }}
+          path: reports
+      - name: Validate source, case inventory and raw report completeness
+        run:
+          python3 .github/ci-diagnostics/audit-combined-backend-coverage.py prepare --reports reports
+          --manifest .github/ci-diagnostics/coverage-aggregate-manifest.json --backend autogpt_platform/backend
+      - name: Install the same coverage version in an isolated tool environment
+        run: 'python3 -m venv "$RUNNER_TEMP/coverage-audit"
+
+          "$RUNNER_TEMP/coverage-audit/bin/pip" install --disable-pip-version-check coverage==7.13.5
+
+          '
+      - name: Combine raw branch coverage and generate one complete XML report
+        working-directory: autogpt_platform/backend
+        run:
+          '"$RUNNER_TEMP/coverage-audit/bin/python" ../../.github/scripts/report_backend_coverage.py
+          --data-file .coverage-diagnostic --output coverage-diagnostic.xml'
+      - name: Require exact independent coverage-union counts before upload
+        run: python3 .github/ci-diagnostics/audit-combined-backend-coverage.py verify --xml autogpt_platform/backend/coverage-diagnostic.xml
+      - name: Upload complete coverage on this diagnostic commit only
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: platform-backend
+          override_commit: ${{ github.sha }}
+          disable_search: true
+          fail_ci_if_error: true
+          files: ./autogpt_platform/backend/coverage-diagnostic.xml
+      - name: Retain aggregate evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: backend-coverage-aggregate-audit
+          path: "autogpt_platform/backend/coverage-diagnostic.xml
+
+            autogpt_platform/backend/coverage-diagnostic.summary.json
+
+            autogpt_platform/backend/.coverage-diagnostic"
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
