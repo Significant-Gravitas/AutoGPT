@@ -196,6 +196,37 @@ def _sheets_node(credentials_id: str) -> tuple[str, dict[str, Any]]:
 
 
 @pytest.mark.asyncio
+async def test_before_graph_activate_loads_credentials_once_across_sub_graphs():
+    graph = MagicMock(nodes=[_make_node()])
+    graph.auto_credentials_refs.return_value = []
+    graph.sub_graphs = [MagicMock(nodes=[_make_node()]) for _ in range(3)]
+
+    getter = AsyncMock(return_value=MagicMock())
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = getter
+        await before_graph_activate(graph, "user-1")
+
+    mgr.cached_getter.assert_called_once_with("user-1")
+    getter.assert_awaited_once_with("cred-1")
+
+
+@pytest.mark.asyncio
+async def test_before_graph_activate_checks_sub_graph_credentials():
+    graph = MagicMock(nodes=[])
+    graph.auto_credentials_refs.return_value = []
+    graph.sub_graphs = [MagicMock(nodes=[_make_node()])]
+
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = AsyncMock(return_value=None)
+        with pytest.raises(GraphActivationError, match="no longer exists"):
+            await before_graph_activate(graph, "user-1")
+
+
+@pytest.mark.asyncio
 async def test_before_graph_activate_keeps_only_files_picked_with_own_credentials():
     """[SECRT-1772] A save keeps the file the user picked with their own Google
     account. A file embedding someone else's credentials, as in an agent

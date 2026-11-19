@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Optional, cast, overload
+from typing import TYPE_CHECKING, Optional, cast
 
 from backend.blocks._base import BlockSchema
 from backend.data.graph import set_node_webhook
@@ -12,7 +12,7 @@ from backend.util.url_redaction import mask_credential
 from . import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
-    from backend.data.graph import BaseGraph, GraphModel, Node, NodeModel
+    from backend.data.graph import GraphModel, Node, NodeModel
     from backend.data.model import Credentials
 
     from ._base import BaseWebhooksManager
@@ -40,11 +40,7 @@ async def before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphMode
             unusable.
     """
     await clear_unowned_auto_credentials(graph, user_id)
-    graph = await _before_graph_activate(graph, user_id)
-    graph.sub_graphs = await asyncio.gather(
-        *(_before_graph_activate(sub_graph, user_id) for sub_graph in graph.sub_graphs)
-    )
-    return graph
+    return await _before_graph_activate(graph, user_id)
 
 
 async def clear_unowned_auto_credentials(graph: "GraphModel", user_id: str) -> None:
@@ -69,22 +65,16 @@ async def clear_unowned_auto_credentials(graph: "GraphModel", user_id: str) -> N
         )
 
 
-@overload
-async def _before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel": ...
-
-
-@overload
-async def _before_graph_activate(graph: "BaseGraph", user_id: str) -> "BaseGraph": ...
-
-
-async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
+async def _before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel":
     get_credentials = credentials_manager.cached_getter(user_id)
 
     # Collect every (node, field) credential reference up front so we can
     # resolve them in one parallel batch — important when a graph has
     # several distinct OAuth credentials that each need a refresh round-trip.
     refs: list[tuple["Node | NodeModel", str, dict, BlockSchema]] = []
-    for new_node in graph.nodes:
+    # One batch for the graph and all its sub-graphs, so a save loads the user's
+    # credentials once however many sub-graphs it carries.
+    for new_node in (n for g in (graph, *graph.sub_graphs) for n in g.nodes):
         block_input_schema = cast(BlockSchema, new_node.block.input_schema)
         for creds_field_name in block_input_schema.get_credentials_fields():
             creds_meta = new_node.input_default.get(creds_field_name)
