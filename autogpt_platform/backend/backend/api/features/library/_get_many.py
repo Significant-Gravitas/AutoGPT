@@ -48,7 +48,7 @@ async def get_library_agents_by_ids(
         _fetch_schedule_info(user_id),
         # The include loads only the latest few executions; cards show the total.
         _fetch_execution_counts(user_id, [row.agentGraphId for row in rows]),
-        _load_sub_graphs(rows),
+        _load_sub_graphs(rows, limit),
         asyncio.gather(*(_load_details(row, limit) for row in rows)),
     )
 
@@ -70,23 +70,39 @@ async def get_library_agents_by_ids(
 
 
 async def _load_sub_graphs(
-    rows: list[prisma.models.LibraryAgent],
+    rows: list[prisma.models.LibraryAgent], limit: asyncio.Semaphore
 ) -> dict[str, list[prisma.models.AgentGraph]]:
     """Each agent's sub-graphs by library agent ID, read in one walk so a
-    sub-graph several agents share is fetched and counted once. An agent whose
-    sub-graphs would take the read past its bound is left out."""
+    sub-graph several agents share is fetched once. An agent whose sub-graphs
+    are past the bound, or cannot be read, is left out."""
     agents = [(row.id, graph) for row in rows if (graph := row.AgentGraph)]
-    each = await graph_db.get_sub_graphs_leaving_out_too_large(
-        [graph for _, graph in agents]
-    )
+    graphs = [graph for _, graph in agents]
+    try:
+        each = await graph_db.get_sub_graphs_leaving_out_too_large(graphs)
+    except Exception as e:
+        # One agent's failure must not cost the batch its other cards.
+        logger.error(f"Error loading a library batch's sub-graphs, per agent now: {e}")
+        each = await asyncio.gather(
+            *(_load_sub_graphs_alone(graph, limit) for graph in graphs)
+        )
     left_out = [agent_id for (agent_id, _), subs in zip(agents, each) if subs is None]
     if left_out:
-        logger.warning(
-            f"Library agents left out, sub-graphs past the bound: {left_out}"
-        )
+        logger.warning(f"Library agents left out of the batch: {left_out}")
     return {
         agent_id: subs for (agent_id, _), subs in zip(agents, each) if subs is not None
     }
+
+
+async def _load_sub_graphs_alone(
+    graph: prisma.models.AgentGraph, limit: asyncio.Semaphore
+) -> list[prisma.models.AgentGraph] | None:
+    try:
+        async with limit:
+            [sub_graphs] = await graph_db.get_sub_graphs_leaving_out_too_large([graph])
+    except Exception as e:
+        logger.error(f"Error loading the sub-graphs of graph #{graph.id}: {e}")
+        return None
+    return sub_graphs
 
 
 class _AgentDetails(BaseModel):
