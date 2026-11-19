@@ -20,6 +20,9 @@ on:
       - 'classic/pyproject.toml'
       - 'classic/poetry.lock'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ format('benchmark-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
   cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}

@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: 20 4 * * 1,4
 
+permissions:
+  contents: read
+
 env:
   BASE_BRANCH: dev
   IMAGE_NAME: auto-gpt

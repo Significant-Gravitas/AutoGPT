@@ -16,6 +16,9 @@ on:
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ format('classic-autogpt-docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

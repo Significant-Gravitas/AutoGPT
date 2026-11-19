@@ -25,6 +25,9 @@ on:
       - 'classic/poetry.lock'
       - '!**/*.md'
 
+permissions:
+  contents: read
+
 defaults:
   run:
     shell: bash
