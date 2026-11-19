@@ -261,7 +261,10 @@ class IntegrationCredentialsManager:
                 # Credential doesn't expire
                 return credential
 
-            # Credential is OAuth2 credential and has expiration timestamp
+            handler = await self._get_oauth_handler(credential)
+            # The locked refresh re-reads the whole store, so only pay for it when due.
+            if not handler.needs_refresh(credential):
+                return credential
             return await self.refresh_if_needed(user_id, credential)
 
         return get_credentials
