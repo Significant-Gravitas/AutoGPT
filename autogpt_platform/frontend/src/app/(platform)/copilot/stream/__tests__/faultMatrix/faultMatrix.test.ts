@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CONTINUATION_PROBES, SendInFlightError } from "../../turnRuntime";
 import { FaultServer } from "./faultServer";
 import { Tab, type Screen } from "./tab";
 
@@ -513,11 +514,178 @@ describe("a send", () => {
     "whose request hung, stopped during its last check, shows no error",
     async () => {
       server.postMode = "hang-before-send";
+      const readsBefore = server.viewReads;
       tab.send(P1);
-      await advance(33_700);
-      tab.runtime.stop();
-      await advance(30_000);
+      // The stop lands after the check's last read, before its verdict.
+      let errorAtStop: Error | null | undefined;
+      onRead(CONTINUATION_PROBES, () =>
+        setTimeout(() => {
+          errorAtStop = tab.runtime.getSnapshot().error;
+          tab.runtime.stop();
+        }, 0),
+      );
+      await advance(60_000);
+      expect(errorAtStop).toBeNull();
+      // Every read was the check's, and none followed the stop: a stop placed
+      // a read early would leave one more read, as the check reads before it
+      // sees the stop.
+      expect(server.viewReads - readsBefore).toBe(CONTINUATION_PROBES);
       expectScreen({ error: null, notice: null });
+    },
+  );
+
+  cell(
+    "S19g",
+    "whose request hung, once reported, is sent again under its first id and answered once",
+    async () => {
+      server.postMode = "hang-before-send";
+      void tab.runtime.send(
+        {
+          parts: [
+            { type: "text", text: P1 },
+            {
+              type: "file",
+              mediaType: "application/pdf",
+              filename: "report.pdf",
+              url: "/api/proxy/api/workspace/files/file-1/download",
+            },
+            {
+              type: "data-workspace-folder",
+              data: { id: "folder-1", name: "Reports", fileCount: 2 },
+            },
+          ],
+        },
+        undefined,
+      );
+      await advance(40_000);
+      expectScreen({ error: UNCONFIRMED });
+      server.postMode = "stream";
+      expect(tab.runtime.resendUnconfirmed(undefined)).not.toBeNull();
+      await advance(0);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+      // The same request again: its id, its file and its folder.
+      const [first, again] = server.posts;
+      expect(server.posts).toHaveLength(2);
+      expect(again.message_id).toBe(first.message_id);
+      expect(first.file_ids).toEqual(["file-1"]);
+      expect(again.file_ids).toEqual(first.file_ids);
+      expect(first.folder_ids).toEqual(["folder-1"]);
+      expect(again.folder_ids).toEqual(first.folder_ids);
+    },
+  );
+
+  cell(
+    "S19p",
+    "reported while a later send waits on its answer, is sent again once that send is answered",
+    async () => {
+      server.postMode = "hang-before-send";
+      tab.send(P1);
+      // A later send goes out while P1's checks run, and its answer is slow.
+      await advance(30_500);
+      server.postMode = "stream";
+      server.respondAfterMs = 6_000;
+      tab.send(P2);
+      await advance(5_000);
+      expectScreen({ error: UNCONFIRMED });
+      expect(tab.runtime.resendUnconfirmed(undefined)).toBeNull();
+      expect(tab.screen().chat).toEqual([`user: ${P1}`, `user: ${P2}`]);
+      // P2's answer arrives and its turn ends; then P1 goes out again.
+      await advance(2_000);
+      server.publish();
+      await advance(10_000);
+      expect(tab.runtime.resendUnconfirmed(undefined)).not.toBeNull();
+      await advance(0);
+      server.publish();
+      await advance(30_000);
+      expectScreen({
+        error: null,
+        chat: [`user: ${P2}`, ANSWER, `user: ${P1}`, ANSWER],
+      });
+    },
+  );
+
+  cell(
+    "S19b",
+    "sent again before its late first request reaches the server, starts one turn with one prompt row",
+    async () => {
+      server.postMode = "late-after-receive";
+      tab.send(P1);
+      await advance(38_000);
+      expectScreen({ error: UNCONFIRMED });
+      server.postMode = "stream";
+      tab.runtime.resendUnconfirmed(undefined);
+      await advance(0);
+      // The first request reaches the server at 40 s, after the resend.
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+      expect(server.turns).toHaveLength(1);
+      expect(server.history.filter((row) => row.content === P1)).toHaveLength(
+        1,
+      );
+    },
+  );
+
+  cell(
+    "S19l",
+    "whose late request was answered after it was reported, no longer offers to send it again",
+    async () => {
+      server.postMode = "late-after-receive";
+      tab.send(P1);
+      await advance(38_000);
+      expectScreen({ error: UNCONFIRMED });
+      // The server took it at 40 s and answered; the page reads the chat.
+      await advance(4_000);
+      server.publish();
+      await advance(1_000);
+      tab.runtime.observe(server.view());
+      await advance(1_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+      expect(tab.runtime.resendUnconfirmed(undefined)).toBeNull();
+    },
+  );
+
+  cell(
+    "S19u",
+    "while its resend waits on an answer, refuses a new send rather than dropping it",
+    async () => {
+      server.postMode = "hang-before-send";
+      tab.send(P1);
+      await advance(40_000);
+      expectScreen({ error: UNCONFIRMED });
+      tab.runtime.resendUnconfirmed(undefined);
+      await advance(0);
+      await expect(tab.runtime.send({ text: P2 }, undefined)).rejects.toThrow(
+        SendInFlightError,
+      );
+      await advance(0);
+      // P1's two requests are all that went out: the refused send made none.
+      expect(server.posts.map((post) => post.message)).toEqual([P1, P1]);
+      expect(tab.screen().chat).toEqual([`user: ${P1}`]);
+    },
+  );
+
+  cell(
+    "S19a",
+    "whose request reached the server only after it was reported, sent again, shows once with its answer",
+    async () => {
+      server.postMode = "late-after-receive";
+      tab.send(P1);
+      await advance(38_000);
+      expectScreen({ error: UNCONFIRMED });
+      // The server takes the first request at 40 s and starts its turn.
+      await advance(4_000);
+      server.postMode = "stream";
+      expect(tab.runtime.resendUnconfirmed(undefined)).not.toBeNull();
+      await advance(0);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+      expect(server.posts).toHaveLength(2);
+      expect(server.posts[1].message_id).toBe(server.posts[0].message_id);
     },
   );
 
@@ -672,6 +840,36 @@ describe("a send", () => {
   );
 
   cell(
+    "S24w",
+    "lost, its check's read failing, is still reported when the tab's return reconnects a later send's stream before the retry",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.failViews = 1;
+      tab.send(P1);
+      await advance(0);
+      server.postMode = "stream";
+      tab.send(P2);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      // P2's stream drops while the tab is hidden, and the tab is back before
+      // P1's retry fires: the reconnect replaces that retry.
+      setVisibility("hidden");
+      server.connections[0].fail();
+      await advance(100);
+      setVisibility("visible");
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      // P2 arrived and its answer follows it; P1 never did and has none.
+      expectScreen({
+        error: "Failed to fetch",
+        chat: [`user: ${P1}`, `user: ${P2}`, ANSWER],
+      });
+    },
+  );
+
+  cell(
     "S15c",
     "two sends lost while offline are both checked once the network returns",
     async () => {
@@ -687,7 +885,11 @@ describe("a send", () => {
       await advance(5_000);
       server.publish();
       await advance(60_000);
-      expectScreen({ error: "Failed to fetch" });
+      // P2 arrived and its answer follows it; P1 never did and has none.
+      expectScreen({
+        error: "Failed to fetch",
+        chat: [`user: ${P1}`, `user: ${P2}`, ANSWER],
+      });
     },
   );
 
@@ -1074,7 +1276,14 @@ describe("two tabs on one chat", () => {
       await advance(5_000);
       server.publish();
       await advance(60_000);
-      expectScreen({ error: "Failed to fetch" }, stale);
+      // P3 arrived and its answer follows it; P2 never did and has none.
+      expectScreen(
+        {
+          error: "Failed to fetch",
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, `user: ${P3}`, ANSWER],
+        },
+        stale,
+      );
     },
   );
 
@@ -1103,7 +1312,14 @@ describe("two tabs on one chat", () => {
       await advance(5_000);
       server.publish();
       await advance(60_000);
-      expectScreen({ error: "Failed to fetch" }, stale);
+      // P3 arrived and its answer follows it; P2 never did and has none.
+      expectScreen(
+        {
+          error: "Failed to fetch",
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, `user: ${P3}`, ANSWER],
+        },
+        stale,
+      );
     },
   );
 
@@ -1150,7 +1366,14 @@ describe("two tabs on one chat", () => {
       await advance(5_000);
       server.publish();
       await advance(30_000);
-      expectScreen({ error: "Failed to fetch" }, stale);
+      // P3 arrived and its answer follows it; P2 never did and has none.
+      expectScreen(
+        {
+          error: "Failed to fetch",
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, `user: ${P3}`, ANSWER],
+        },
+        stale,
+      );
     },
   );
 
@@ -1178,7 +1401,14 @@ describe("two tabs on one chat", () => {
       await advance(500);
       server.viewsDown = false;
       await advance(30_000);
-      expectScreen({ error: "Failed to fetch" }, stale);
+      // P3 arrived and its answer follows it; P2 never did and has none.
+      expectScreen(
+        {
+          error: "Failed to fetch",
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, `user: ${P3}`, ANSWER],
+        },
+        stale,
+      );
     },
   );
 
@@ -1371,6 +1601,14 @@ function expectScreen(should: Partial<Screen>, on: Tab = tab) {
     Object.keys(should).map((key) => [key, screen[key as keyof Screen]]),
   );
   expect(seen).toEqual(should);
+}
+
+/** Runs `fn` as the `count`-th session read from now starts. */
+function onRead(count: number, fn: () => void) {
+  server.beforeViewOnce = () => {
+    if (count <= 1) fn();
+    else onRead(count - 1, fn);
+  };
 }
 
 function openTab(viewLatencyMs = 0, echoes = true) {

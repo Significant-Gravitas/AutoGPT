@@ -70,6 +70,8 @@ function RootStack() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Protected guard={!!session}>
           <Stack.Screen name="(app)" />
+          {/* A sign-in in the system browser comes back here. */}
+          <Stack.Screen name="integrations/oauth" />
         </Stack.Protected>
         <Stack.Protected guard={!session}>
           <Stack.Screen name="login" />

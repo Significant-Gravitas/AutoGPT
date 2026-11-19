@@ -6,7 +6,7 @@ import {
   UnconfirmedSendError,
 } from "./stream/turnRuntime";
 
-export type ChatErrorAction = "sign-in" | "new-chat" | "plans";
+export type ChatErrorAction = "sign-in" | "new-chat" | "plans" | "resend";
 
 export interface ChatErrorGuidance {
   /** What happened, and what will work next. */
@@ -72,7 +72,7 @@ export function describeChatError(error: Error): ChatErrorGuidance {
     return {
       title:
         "We couldn't confirm your message was sent. Check your connection and send it again.",
-      action: null,
+      action: "resend",
     };
   if (error.name === "TypeError")
     return {

@@ -53,7 +53,7 @@ const useStyles = createStyles((colors) => ({
     paddingVertical: spacing.sm,
   },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  pressed: { backgroundColor: colors.surfaceRaised },
+  pressed: { backgroundColor: colors.surfacePressed },
   text: { flex: 1, minWidth: 0 },
   name: { fontSize: 15, lineHeight: 20, fontWeight: "500", color: colors.text },
   detail: { fontSize: 13, lineHeight: 18, color: colors.textTertiary },
