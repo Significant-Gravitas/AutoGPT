@@ -25,9 +25,13 @@ const TOKENS: OAuth2Tokens = {
 let handoffs: unknown[] = [];
 
 beforeEach(() => {
-  vi.stubEnv("AUTH_CONNECT_AT_SIGN_IN", "google");
+  // Sign-in uses the client the backend's Google connections use.
+  vi.stubEnv("AUTH_GOOGLE_CLIENT_ID", "integration-client");
   handoffs = [];
   server.use(
+    http.get("*/api/auth/sign-in-connection", () =>
+      HttpResponse.json({ google: "integration-client", microsoft: null }),
+    ),
     http.post("*/api/auth/sign-in-connection", async ({ request }) => {
       handoffs.push(await request.json());
       return HttpResponse.json({ result: "created" });
@@ -72,8 +76,10 @@ describe("keepingSignInTokens", () => {
     expect(handoffs).toEqual([]);
   });
 
-  it("connects nothing while connecting at sign-in is off", async () => {
-    vi.stubEnv("AUTH_CONNECT_AT_SIGN_IN", "");
+  it("connects nothing when sign-in has a client of its own", async () => {
+    // Google may still return data scopes an earlier sign-in granted, but
+    // the backend couldn't renew this client's tokens.
+    vi.stubEnv("AUTH_GOOGLE_CLIENT_ID", "login-client");
 
     await signInAt("/callback/:id");
 

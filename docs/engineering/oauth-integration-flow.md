@@ -343,16 +343,16 @@ stateDiagram-v2
 
 ### Connecting at sign-in
 
-With `AUTH_CONNECT_AT_SIGN_IN` naming the provider (`google,microsoft`),
 Continue with Google or Microsoft also asks for the data scopes, so a person
 starts with the connection the Connect flow would make: one `google`
 connection for Gmail, Drive and Calendar, or one `microsoft` connection for
-mail, calendar and files.
+mail, calendar and files. Nothing turns it on: it happens wherever sign-in
+uses the backend's own OAuth client (below).
 
 - **The request:** `/api/auth/login/with-provider` adds the scopes
   (`lib/auth/connect-at-sign-in.ts`). Better Auth passes a sign-in's `scopes`
   straight to the provider, so `hooks.before` refuses any others for Google
-  and Microsoft, and refuses them all while the flag is off.
+  and Microsoft, and refuses them all when the sign-in can't connect.
 - **The tokens:** a wrapped `getUserInfo` keeps the token response of the
   provider's redirect (`lib/auth/sign-in-connection.ts`); an ID token sent to
   `/sign-in/social` never counts. Once the sign-in's session exists, the
@@ -369,13 +369,16 @@ mail, calendar and files.
   `/auth/callback` still sends the signup goal and records the signup's
   consent.
 - **One OAuth client:** a provider renews a refresh token only for the client
-  it was issued to, so login must use the backend's client. Microsoft already
-  does (one Entra app). For Google, `AUTH_GOOGLE_CLIENT_ID`/`SECRET` must be
-  the backend's `GOOGLE_CLIENT_ID`/`SECRET`, with
-  `{site}/api/auth/callback/google` added to that client's redirect URIs. The
-  backend checks the issuing client (Google's tokeninfo, Microsoft's ID token
-  audience) and answers 409 otherwise, so nothing breaks before the switch;
-  the sign-in just connects nothing.
+  it was issued to, so a sign-in connects only when it uses the backend's
+  client. Microsoft does (one Entra app). For Google, `AUTH_GOOGLE_CLIENT_ID`/
+  `SECRET` must be the backend's `GOOGLE_CLIENT_ID`/`SECRET`, with
+  `{site}/api/auth/callback/google` added to that client's redirect URIs.
+  `GET /api/auth/sign-in-connection` names the backend's clients (public, like
+  every client ID) and the frontend compares them with its own, asking the
+  backend again every few minutes. A deployment whose sign-in has a client of
+  its own, or has no Google or Microsoft connections, signs people in as it
+  always did. The handoff checks the issuing client as well (Google's
+  tokeninfo, Microsoft's ID token audience) and answers 409 otherwise.
 - **Not in the auth table:** Better Auth would store the provider's tokens in
   `UserAuthAccount` unencrypted. For Google and Microsoft the account hooks
   null them before they're written; the tokens live only in the backend's

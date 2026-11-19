@@ -10,6 +10,12 @@ just signed in. A sign-in never adds a second connection for an account that
 already has one: it widens the existing one when the new token covers it, and
 otherwise leaves it alone.
 
+Only a sign-in through the OAuth client the connections use can become one,
+since only that client can renew its tokens. ``GET`` says which clients those
+are, and the frontend asks for the data scopes only when its sign-in uses
+the same one. So a deployment whose sign-in has a client of its own, or that
+has no Google or Microsoft connections, signs people in as before.
+
 A sign-up's handoff arrives before the account's first request has set it up,
 and a connection can only be stored once the account has its personal org. The
 connection is held until then instead (encrypted, for ``HELD_FOR_SECONDS``),
@@ -44,6 +50,7 @@ from backend.integrations.oauth.sign_in import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util.encryption import JSONCryptor
+from backend.util.settings import Settings
 
 from .router import (
     _get_provider_oauth_handler,
@@ -85,6 +92,42 @@ SignInConnectionResult = Literal["created", "updated", "kept", "skipped", "held"
 
 class SignInConnectionResponse(BaseModel):
     result: SignInConnectionResult
+
+
+class SignInConnectionClients(BaseModel):
+    """The OAuth client each provider's connections use, or null when this
+    deployment has no such connections."""
+
+    google: str | None = None
+    microsoft: str | None = None
+
+
+@sign_in_connection_router.get(
+    "/sign-in-connection",
+    summary="The OAuth clients a sign-in must use to bring its connection",
+    operation_id="getSignInConnectionClients",
+)
+async def get_sign_in_connection_clients() -> SignInConnectionClients:
+    """Public, like the client IDs themselves: every sign-in link carries one."""
+    return SignInConnectionClients(
+        google=_google_connection_client(),
+        microsoft=_microsoft_connection_client(),
+    )
+
+
+def _google_connection_client() -> str | None:
+    # What _get_provider_oauth_handler builds Google's handler from.
+    secrets = Settings().secrets
+    if secrets.google_client_id and secrets.google_client_secret:
+        return secrets.google_client_id
+    return None
+
+
+def _microsoft_connection_client() -> str | None:
+    app = microsoft_app()
+    # A sign-in's tokens belong to a web app, which renews them only with its
+    # secret.
+    return app.client_id if app.client_secret else None
 
 
 async def signed_in_user(

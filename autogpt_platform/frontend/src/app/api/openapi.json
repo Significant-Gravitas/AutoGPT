@@ -3688,6 +3688,24 @@
       }
     },
     "/api/auth/sign-in-connection": {
+      "get": {
+        "tags": ["integrations"],
+        "summary": "The OAuth clients a sign-in must use to bring its connection",
+        "description": "Public, like the client IDs themselves: every sign-in link carries one.",
+        "operationId": "getSignInConnectionClients",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInConnectionClients"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": ["integrations"],
         "summary": "Keep the connection a Google or Microsoft sign-in granted",
@@ -37087,6 +37105,21 @@
         ],
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
+      },
+      "SignInConnectionClients": {
+        "properties": {
+          "google": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Google"
+          },
+          "microsoft": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Microsoft"
+          }
+        },
+        "type": "object",
+        "title": "SignInConnectionClients",
+        "description": "The OAuth client each provider's connections use, or null when this\ndeployment has no such connections."
       },
       "SignInConnectionRequest": {
         "properties": {

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -14,6 +15,7 @@ from backend.api.features.integrations import sign_in_connection
 from backend.api.rest_api import app as rest_app
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth import google as google_oauth
+from backend.integrations.oauth import microsoft_tokens
 from backend.integrations.oauth.google import GoogleOAuthHandler
 from backend.util import encryption
 
@@ -294,6 +296,65 @@ def test_a_microsoft_sign_in_from_another_app_is_refused(store, monkeypatch):
 
     assert res.status_code == 409
     store.create.assert_not_called()
+
+
+def _deployment(monkeypatch, **secrets: str) -> None:
+    """This deployment's Google and Microsoft app settings."""
+
+    def settings():
+        return SimpleNamespace(secrets=SimpleNamespace(**secrets))
+
+    monkeypatch.setattr(sign_in_connection, "Settings", settings)
+    monkeypatch.setattr(microsoft_tokens, "Settings", settings)
+
+
+def test_anyone_can_ask_which_clients_the_connections_use(monkeypatch):
+    _deployment(
+        monkeypatch,
+        google_client_id="integration-client",
+        google_client_secret="secret",  # pragma: allowlist secret
+        microsoft_client_id="connection-app",
+        microsoft_client_secret="secret",  # pragma: allowlist secret
+    )
+
+    # No token: the frontend's server asks before anyone has signed in.
+    res = client.get("/api/auth/sign-in-connection")
+
+    assert res.status_code == 200
+    assert res.json() == {"google": "integration-client", "microsoft": "connection-app"}
+
+
+@pytest.mark.parametrize(
+    "secrets",
+    [
+        pytest.param(
+            {
+                "google_client_id": "integration-client",
+                "google_client_secret": "",
+                "microsoft_client_id": "connection-app",
+                "microsoft_client_secret": "",
+            },
+            id="clients-without-their-secrets",
+        ),
+        # Without an app of its own the backend falls back to AutoGPT's public
+        # Microsoft client.
+        pytest.param(
+            {
+                "google_client_id": "",
+                "google_client_secret": "",
+                "microsoft_client_id": "",
+                "microsoft_client_secret": "",
+            },
+            id="no-clients",
+        ),
+    ],
+)
+def test_connections_that_cant_renew_a_sign_in_name_no_client(monkeypatch, secrets):
+    _deployment(monkeypatch, **secrets)
+
+    res = client.get("/api/auth/sign-in-connection")
+
+    assert res.json() == {"google": None, "microsoft": None}
 
 
 def test_refusals_never_echo_a_token(store, google, caplog):

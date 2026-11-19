@@ -31,11 +31,11 @@ export async function POST(request: Request) {
     try {
       const callbackURL =
         redirectTo || process.env.AUTH_CALLBACK_URL || "/auth/callback";
-      // With connecting at sign-in on, Google and Microsoft are also asked for
-      // the data scopes (connect-at-sign-in.ts), unless the person chose to
-      // sign in without connecting.
+      // Google and Microsoft are also asked for the data scopes when their
+      // sign-in can connect (connect-at-sign-in.ts), unless the person chose
+      // to sign in without connecting.
       const scopes =
-        body.connect === false ? null : connectAtSignInScopes(provider);
+        body.connect === false ? null : await connectAtSignInScopes(provider);
       const { url } = await auth.api.signInSocial({
         body: {
           provider,

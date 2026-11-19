@@ -29,14 +29,16 @@ export function keepingSignInTokens<T>(
   getUserInfo: (tokens: OAuth2Tokens) => Promise<T>,
 ) {
   return async (tokens: OAuth2Tokens) => {
-    keepTokens(provider, tokens);
+    await keepTokens(provider, tokens);
     return getUserInfo(tokens);
   };
 }
 
-/** Google's login options: with connecting on, refresh tokens are kept. */
+/**
+ * Google's login options. Refresh tokens are asked for so a sign-in can
+ * connect (connect-at-sign-in.ts); one that doesn't keeps none of them.
+ */
 export function googleLoginProvider(clientId: string, clientSecret: string) {
-  if (!connectAtSignInScopes("google")) return { clientId, clientSecret };
   const options = { clientId, clientSecret, accessType: "offline" as const };
   const base = google(options);
   return {
@@ -47,11 +49,10 @@ export function googleLoginProvider(clientId: string, clientSecret: string) {
   };
 }
 
-/** Microsoft's login options: with connecting on, the tokens are kept. */
+/** Microsoft's login options, keeping the tokens of a sign-in that connects. */
 export function microsoftLoginProvider<
   T extends Parameters<typeof microsoft>[0],
 >(options: T) {
-  if (!connectAtSignInScopes("microsoft")) return options;
   const base = microsoft(options);
   return {
     ...options,
@@ -61,15 +62,15 @@ export function microsoftLoginProvider<
   };
 }
 
-function keepTokens(provider: ConnectProvider, tokens: OAuth2Tokens) {
+async function keepTokens(provider: ConnectProvider, tokens: OAuth2Tokens) {
   const ctx = tryGetCurrentAuthEndpointContext() as
     | { path?: string }
     | undefined;
   // Only the provider's redirect: an ID token sent to /sign-in/social comes
   // with whatever tokens the browser chose.
-  if (!ctx?.path?.startsWith("/callback/")) return;
-  const asked = connectAtSignInScopes(provider);
-  if (!asked || !tokens.accessToken) return;
+  if (!ctx?.path?.startsWith("/callback/") || !tokens.accessToken) return;
+  const asked = await connectAtSignInScopes(provider);
+  if (!asked) return;
   const granted = (tokens.scopes ?? []).map((scope) =>
     scope.replace(GRAPH_PREFIX, ""),
   );

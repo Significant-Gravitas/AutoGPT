@@ -66,7 +66,14 @@ const PERSONAL_TENANT = "9188040d-6c67-4c5b-b112-36a304b66dad";
 const IDENTITY = ["openid", "https://www.googleapis.com/auth/userinfo.email"];
 type Handler = (request: Request) => Promise<Response>;
 
-async function createAuth(connect = "google,microsoft") {
+// The clients the backend's connections use: by default the ones sign-in
+// uses, so sign-in connects.
+async function createAuth(
+  connectionClients: Record<string, string | null> = {
+    google: "google-client-id",
+    microsoft: "microsoft-client-id",
+  },
+) {
   vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "false");
   vi.stubEnv("BETTER_AUTH_URL", baseURL);
   vi.stubEnv("BETTER_AUTH_SECRET", "test-secret-that-is-at-least-32-chars");
@@ -74,7 +81,11 @@ async function createAuth(connect = "google,microsoft") {
   vi.stubEnv("AUTH_GOOGLE_CLIENT_SECRET", "google-client-secret"); // pragma: allowlist secret
   vi.stubEnv("AUTH_MICROSOFT_CLIENT_ID", "microsoft-client-id");
   vi.stubEnv("AUTH_MICROSOFT_CLIENT_SECRET", "microsoft-client-secret"); // pragma: allowlist secret
-  vi.stubEnv("AUTH_CONNECT_AT_SIGN_IN", connect);
+  server.use(
+    http.get("*/api/auth/sign-in-connection", () =>
+      HttpResponse.json(connectionClients),
+    ),
+  );
   vi.doUnmock("../auth");
   vi.resetModules();
 
@@ -265,6 +276,27 @@ describe("Connecting at sign-in", () => {
     expect(db.UserAuthSession).toHaveLength(1);
   });
 
+  it("only signs in where sign-in has a client of its own", async () => {
+    // A self-hosted deployment, say, whose Google connections use another
+    // client: the backend couldn't renew this one's tokens.
+    const { handler, db } = await createAuth({
+      google: "connections-client-id",
+      microsoft: null,
+    });
+    // Google still returns the data scopes an earlier sign-in granted.
+    answerAsGoogle([...IDENTITY, ...GOOGLE_ACCESS_SCOPES]);
+    const handoffs = backendHandoffs();
+
+    const { landing } = await signInWith(handler, "google");
+
+    expect(landing).toBe("/auth/callback");
+    expect(handoffs).toEqual([]);
+    expect(db.UserAuthSession).toHaveLength(1);
+    expect(db.UserAuthAccount).toEqual([
+      expect.objectContaining({ accessToken: null, refreshToken: null }),
+    ]);
+  });
+
   it("still signs in when the backend can't keep the connection", async () => {
     const { handler, db } = await createAuth();
     answerAsGoogle([...IDENTITY, ...GOOGLE_ACCESS_SCOPES]);
@@ -287,8 +319,11 @@ describe("Connecting at sign-in", () => {
     errors.mockRestore();
   });
 
-  it("refuses the data scopes while connecting at sign-in is off", async () => {
-    const { handler } = await createAuth("");
+  it("refuses the data scopes where sign-in has a client of its own", async () => {
+    const { handler } = await createAuth({
+      google: "connections-client-id",
+      microsoft: null,
+    });
 
     const start = await startSignIn(handler, "google", GOOGLE_ACCESS_SCOPES);
 

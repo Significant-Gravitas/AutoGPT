@@ -92,11 +92,11 @@ function getSocialProviders() {
     const prefix = `AUTH_${provider.toUpperCase()}`;
     const clientId = process.env[`${prefix}_CLIENT_ID`];
     const clientSecret = process.env[`${prefix}_CLIENT_SECRET`];
-    if (clientId && clientSecret) {
-      providers[provider] =
-        provider === "google"
-          ? googleLoginProvider(clientId, clientSecret)
-          : { clientId, clientSecret };
+    if (!clientId || !clientSecret) continue;
+    if (provider === "google") {
+      providers.google = googleLoginProvider(clientId, clientSecret);
+    } else {
+      providers[provider] = { clientId, clientSecret };
     }
   }
 
@@ -173,7 +173,7 @@ export const auth = betterAuth({
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
       assertAppleSignInRequest(ctx.path, ctx.body);
-      assertSignInScopes(ctx.path, ctx.body);
+      await assertSignInScopes(ctx.path, ctx.body);
       // Sign-in and reset emails are limited per IP and address (attempt-limits.ts).
       await limitAuthAttempts({
         path: ctx.path,

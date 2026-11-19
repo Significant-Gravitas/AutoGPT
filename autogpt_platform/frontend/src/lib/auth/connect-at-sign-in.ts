@@ -1,15 +1,18 @@
 import { APIError } from "better-auth/api";
+import type { SignInConnectionClients } from "@/app/api/__generated__/models/signInConnectionClients";
 import { GOOGLE_ACCESS_SCOPES } from "@/lib/google-access";
 import { MICROSOFT_BASE_SCOPES } from "@/lib/microsoft-setup";
+import { environment } from "@/services/environment";
 
-// Google and Microsoft sign-in can ask for the data scopes too, so a person
+// Google and Microsoft sign-in also ask for the data scopes, so a person
 // starts with the connection the Connect flow would make: Gmail, Drive and
 // Calendar, or Microsoft 365 mail, calendar and files. sign-in-connection.ts
 // hands the tokens to the backend, which keeps them as that connection.
 //
-// Off unless AUTH_CONNECT_AT_SIGN_IN names the provider ("google,microsoft").
-// Turn Google on only once login uses the backend's Google OAuth client: the
+// Only when sign-in uses the OAuth client the backend's connections use: the
 // backend can renew only tokens its own client was issued, and refuses others.
+// It says which clients those are, so a deployment whose sign-in has a client
+// of its own, or that has no such connections, asks only who the person is.
 const CONNECT_SCOPES = {
   google: GOOGLE_ACCESS_SCOPES,
   // Microsoft returns a refresh token only for offline_access.
@@ -17,6 +20,20 @@ const CONNECT_SCOPES = {
 } as const satisfies Record<string, readonly string[]>;
 
 export type ConnectProvider = keyof typeof CONNECT_SCOPES;
+
+// The OAuth client each sign-in uses (auth.ts, microsoft-login.ts).
+const SIGN_IN_CLIENT_ENV = {
+  google: "AUTH_GOOGLE_CLIENT_ID",
+  microsoft: "AUTH_MICROSOFT_CLIENT_ID",
+} as const satisfies Record<ConnectProvider, string>;
+
+// The backend's clients change only when it is redeployed.
+const CLIENTS_KEPT_MS = 5 * 60_000;
+// Until the backend answers, sign-ins ask only who the person is.
+const RETRY_AFTER_MS = 30_000;
+// Starting a sign-in waits on the answer, so a stalled backend costs at most
+// this.
+const LOOKUP_TIMEOUT_MS = 2_000;
 
 export function isConnectProvider(id: unknown): id is ConnectProvider {
   return typeof id === "string" && Object.hasOwn(CONNECT_SCOPES, id);
@@ -26,14 +43,47 @@ export function isConnectProvider(id: unknown): id is ConnectProvider {
  * The data scopes a sign-in with this provider asks for, or null when it asks
  * only who the person is.
  */
-export function connectAtSignInScopes(
+export async function connectAtSignInScopes(
   provider: unknown,
-): readonly string[] | null {
+): Promise<readonly string[] | null> {
   if (!isConnectProvider(provider)) return null;
-  const enabled = (process.env.AUTH_CONNECT_AT_SIGN_IN ?? "")
-    .split(",")
-    .map((name) => name.trim());
-  return enabled.includes(provider) ? CONNECT_SCOPES[provider] : null;
+  const signInClient = process.env[SIGN_IN_CLIENT_ENV[provider]];
+  if (!signInClient) return null;
+  const clients = await connectionClients();
+  return clients?.[provider] === signInClient ? CONNECT_SCOPES[provider] : null;
+}
+
+let lookup:
+  | { until: number; clients: Promise<SignInConnectionClients | null> }
+  | undefined;
+
+function connectionClients() {
+  if (lookup && Date.now() < lookup.until) return lookup.clients;
+  const entry = {
+    until: Date.now() + CLIENTS_KEPT_MS,
+    clients: askBackendForClients(),
+  };
+  void entry.clients.then((clients) => {
+    if (!clients) entry.until = Date.now() + RETRY_AFTER_MS;
+  });
+  lookup = entry;
+  return entry.clients;
+}
+
+async function askBackendForClients(): Promise<SignInConnectionClients | null> {
+  try {
+    const response = await fetch(
+      `${environment.getAGPTServerBaseUrl()}/api/auth/sign-in-connection`,
+      { cache: "no-store", signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS) },
+    );
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    return (await response.json()) as SignInConnectionClients;
+  } catch (error) {
+    console.warn("Couldn't ask the backend which clients its connections use", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 const SCOPED_SIGN_IN_PATHS = new Set(["/sign-in/social", "/link-social"]);
@@ -41,16 +91,19 @@ const SCOPED_SIGN_IN_PATHS = new Set(["/sign-in/social", "/link-social"]);
 /**
  * Better Auth passes a sign-in request's `scopes` straight to the provider.
  * For Google and Microsoft, whose tokens become a connection, only the data
- * scopes above may be asked for, and only while connecting at sign-in is on.
+ * scopes above may be asked for, and only when the sign-in can connect.
  */
-export function assertSignInScopes(path: string | undefined, body: unknown) {
+export async function assertSignInScopes(
+  path: string | undefined,
+  body: unknown,
+) {
   if (!path || !SCOPED_SIGN_IN_PATHS.has(path)) return;
   const { provider, scopes } = (body ?? {}) as {
     provider?: unknown;
     scopes?: unknown;
   };
   if (!isConnectProvider(provider) || scopes === undefined) return;
-  const allowed = connectAtSignInScopes(provider) ?? [];
+  const allowed = (await connectAtSignInScopes(provider)) ?? [];
   if (
     Array.isArray(scopes) &&
     scopes.every(

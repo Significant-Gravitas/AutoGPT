@@ -1,5 +1,7 @@
 import { APIError } from "better-auth/api";
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { server } from "@/mocks/mock-server";
 
 const signInSocialMock = vi.fn();
 const isWaitlistErrorMock = vi.fn();
@@ -26,6 +28,23 @@ function makeProviderRequest(body: unknown): Request {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+// Sign-in uses these clients, and the backend says its connections use
+// `connections`.
+function signInClients(
+  connections: Record<string, string | null> = {
+    google: "google-client",
+    microsoft: "microsoft-client",
+  },
+) {
+  vi.stubEnv("AUTH_GOOGLE_CLIENT_ID", "google-client");
+  vi.stubEnv("AUTH_MICROSOFT_CLIENT_ID", "microsoft-client");
+  server.use(
+    http.get("*/api/auth/sign-in-connection", () =>
+      HttpResponse.json(connections),
+    ),
+  );
 }
 
 beforeEach(() => {
@@ -66,8 +85,8 @@ describe("POST /api/auth/login/with-provider", () => {
     });
   });
 
-  it("asks Google for the data scopes too while connecting at sign-in is on", async () => {
-    vi.stubEnv("AUTH_CONNECT_AT_SIGN_IN", "google,microsoft");
+  it("asks Google for the data scopes too when its sign-in can connect", async () => {
+    signInClients();
     signInSocialMock.mockResolvedValue({
       url: "https://accounts.google.com/x",
     });
@@ -91,7 +110,7 @@ describe("POST /api/auth/login/with-provider", () => {
   });
 
   it("signs in without the data scopes when asked to", async () => {
-    vi.stubEnv("AUTH_CONNECT_AT_SIGN_IN", "google,microsoft");
+    signInClients();
     signInSocialMock.mockResolvedValue({
       url: "https://accounts.google.com/x",
     });
@@ -106,8 +125,24 @@ describe("POST /api/auth/login/with-provider", () => {
     expect(await response.json()).toMatchObject({ connecting: false });
   });
 
+  it("only signs in where sign-in has a client of its own", async () => {
+    signInClients();
+    // Not the client the backend's Google connections use.
+    vi.stubEnv("AUTH_GOOGLE_CLIENT_ID", "login-client");
+    signInSocialMock.mockResolvedValue({
+      url: "https://accounts.google.com/x",
+    });
+
+    const response = await POST(makeProviderRequest({ provider: "google" }));
+
+    const [{ body }] = signInSocialMock.mock.calls[0];
+    expect(body.scopes).toBeUndefined();
+    expect(body.errorCallbackURL).not.toContain("connect=");
+    expect(await response.json()).toMatchObject({ connecting: false });
+  });
+
   it("asks a provider whose data isn't connected at sign-in for nothing more", async () => {
-    vi.stubEnv("AUTH_CONNECT_AT_SIGN_IN", "google,microsoft");
+    signInClients();
     signInSocialMock.mockResolvedValue({ url: "https://github.com/oauth" });
 
     await POST(makeProviderRequest({ provider: "github" }));
