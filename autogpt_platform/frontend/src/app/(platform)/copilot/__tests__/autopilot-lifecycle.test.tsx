@@ -146,7 +146,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       let sends = 0;
       server.use(
         http.post(
-          `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+          `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
           () => {
             sends += 1;
             return HttpResponse.error();
