@@ -103,6 +103,7 @@ from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi, start_metrics_server
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.process import freeze_startup_heap
+from backend.util.request_credentials import remember_request_credentials
 from backend.util.service import UnhealthyServiceError
 from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
 from backend.util.workspace_storage import shutdown_workspace_storage
@@ -325,6 +326,8 @@ app.add_middleware(AnalyticsContextMiddleware)
 
 # Add GZip compression middleware for large responses (like /api/blocks)
 app.add_middleware(BoundedGZipMiddleware)
+# Keeps each request's credentials for the error reports raised handling it.
+remember_request_credentials(app)
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)

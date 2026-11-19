@@ -4,6 +4,7 @@ import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
@@ -31,7 +32,7 @@ export function SelectedScheduleView({
   onSelectRun,
   banner,
 }: Props) {
-  const { schedule, isLoading, error } = useSelectedScheduleView(
+  const { schedule, unavailable, isLoading, error } = useSelectedScheduleView(
     agent.graph_id,
     scheduleId,
   );
@@ -40,6 +41,14 @@ export function SelectedScheduleView({
 
   const breakpoint = useBreakpoint();
   const isLgScreenUp = isLargeScreen(breakpoint);
+
+  if (unavailable) {
+    return (
+      <SelectedViewLayout agent={agent} banner={banner}>
+        <SchedulesUnavailableNotice />
+      </SelectedViewLayout>
+    );
+  }
 
   if (error) {
     return (
