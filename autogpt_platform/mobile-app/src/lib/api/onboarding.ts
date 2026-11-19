@@ -23,34 +23,46 @@ export interface OnboardingHire {
   failed: { name: string }[];
 }
 
-export function getOnboardingCompleted() {
-  return apiRequest<{ is_completed: boolean }>("/api/onboarding/completed");
+export function getOnboardingCompleted(signal?: AbortSignal) {
+  return apiRequest<{ is_completed: boolean }>("/api/onboarding/completed", {
+    signal,
+  });
 }
 
-export function submitOnboardingProfile(body: OnboardingProfile) {
-  return apiRequest<unknown>("/api/onboarding/profile", { method: "POST", body });
+export function submitOnboardingProfile(
+  body: OnboardingProfile,
+  signal?: AbortSignal,
+) {
+  return apiRequest<unknown>("/api/onboarding/profile", {
+    method: "POST",
+    body,
+    signal,
+  });
 }
 
-export function finalizeBrainDump(body: BrainDumpBody) {
+export function finalizeBrainDump(body: BrainDumpBody, signal?: AbortSignal) {
   return apiRequest<unknown>("/api/onboarding/brain-dump/finalize", {
     method: "POST",
     body,
+    signal,
   });
 }
 
-export function getOnboardingPlan() {
-  return apiRequest<OnboardingPlan>("/api/onboarding/brain-dump/plan");
+export function getOnboardingPlan(signal?: AbortSignal) {
+  return apiRequest<OnboardingPlan>("/api/onboarding/brain-dump/plan", { signal });
 }
 
-export function hireOnboardingPlan() {
+export function hireOnboardingPlan(signal?: AbortSignal) {
   return apiRequest<OnboardingHire>("/api/onboarding/brain-dump/plan/hire", {
     method: "POST",
+    signal,
   });
 }
 
-export function completeOnboarding() {
+export function completeOnboarding(signal?: AbortSignal) {
   return apiRequest<unknown>("/api/onboarding/step", {
     method: "POST",
     query: { step: "ONBOARDING_COMPLETE" },
+    signal,
   });
 }

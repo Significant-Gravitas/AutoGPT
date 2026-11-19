@@ -1,6 +1,7 @@
 import { skipToken, useQuery } from "@tanstack/react-query";
 
 import { getOnboardingCompleted, onboardingKeys } from "@/lib/api/onboarding";
+import { requestWithin } from "@/lib/deadline";
 
 import { GATE_TIMEOUT_MS, gateState } from "./gate";
 import { markOnboarded, useIsOnboarded } from "./onboardedStore";
@@ -22,15 +23,7 @@ export function useOnboardingGate(userID: string | undefined) {
 }
 
 async function askServer(userID: string) {
-  const answer = await withTimeout(getOnboardingCompleted(), GATE_TIMEOUT_MS);
+  const answer = await requestWithin(GATE_TIMEOUT_MS, getOnboardingCompleted);
   if (answer.is_completed) markOnboarded(userID);
   return answer;
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("Onboarding check timed out")), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
