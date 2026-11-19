@@ -14,7 +14,12 @@ from unittest import mock
 
 import pytest
 
-from backend.blocks.postonce._api import API_V1, PostOnceAPIError, PostOnceClient
+from backend.blocks.postonce._api import (
+    API_V1,
+    PostOnceAPIError,
+    PostOnceClient,
+    PostOnceUnknownOutcomeError,
+)
 from backend.blocks.postonce.accounts import SAMPLE_ACCOUNTS, PostOnceListAccountsBlock
 from backend.blocks.postonce.analytics import (
     SAMPLE_ANALYTICS,
@@ -118,6 +123,14 @@ async def test_non_object_success_body_raises():
     client, _ = client_with(FakeResponse(200, ["not", "an", "object"]))
     with pytest.raises(PostOnceAPIError, match="unexpected success body"):
         await client.get_post("p1")
+
+
+@pytest.mark.asyncio
+async def test_non_object_success_body_on_create_is_an_unknown_outcome():
+    client, request = client_with(FakeResponse(201, ["not", "an", "object"]))
+    with pytest.raises(PostOnceUnknownOutcomeError, match="before retrying"):
+        await client.create_post({"targets": []})
+    request.assert_awaited_once()
 
 
 @pytest.mark.asyncio

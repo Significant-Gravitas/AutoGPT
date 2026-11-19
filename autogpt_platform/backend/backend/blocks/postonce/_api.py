@@ -27,6 +27,10 @@ class PostOnceAPIError(ValueError):
         self.status = status
 
 
+class PostOnceUnknownOutcomeError(PostOnceAPIError):
+    """A write got a 2xx status but an unreadable body: it may have succeeded."""
+
+
 class PostOnceClient:
     def __init__(self, credentials: APIKeyCredentials):
         self.reads = _requests(credentials, READ_RETRY_ATTEMPTS)
@@ -76,6 +80,14 @@ class PostOnceClient:
         try:
             return _OBJECT_BODY.validate_json(response.content)
         except ValidationError as error:
+            if method != "GET":
+                raise PostOnceUnknownOutcomeError(
+                    f"PostOnce accepted the {method} {path} request (HTTP "
+                    f"{response.status}) but returned an unexpected body, so the "
+                    "change may already have been made. Check it in PostOnce "
+                    "before retrying.",
+                    response.status,
+                ) from error
             raise PostOnceAPIError(
                 f"PostOnce returned an unexpected success body: {error}",
                 response.status,
