@@ -483,6 +483,11 @@ function useCopilotPageChat(
     if (!trimmed && !hasAttachments) return;
     if (isExpertSendLocked) return;
 
+    const timing = startReplyTiming({
+      isNewChat: !sessionId,
+      isExpert: Boolean(session.activeExpertId),
+    });
+
     // Sending anything retires the greeting for good: flag it done on
     // the server (kept in the DB, just never shown again) and cache the
     // fact locally so no future visit even has to ask.
@@ -540,13 +545,6 @@ function useCopilotPageChat(
       heldForLocalSettle = true;
       if (!(await waitForLocalSettle())) return;
     }
-
-    // This send starts a turn: its reply is timed from here to the first
-    // answer text on screen. A follow-up queued above never gets this far.
-    const timing = startReplyTiming({
-      isNewChat: !sessionId,
-      isExpert: Boolean(session.activeExpertId),
-    });
 
     // Mark in-flight synchronously before dispatching so a rapid second
     // press sees isInflightRef.current=true and routes to the queue path

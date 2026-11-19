@@ -307,6 +307,43 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
     expect(sendNewMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the send time across the queue request and local settlement", async () => {
+    let now = 100;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    let rejectQueue = (_reason: Error) => {};
+    queueFollowUpMessage.mockImplementation(
+      () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectQueue = reject;
+        }),
+    );
+    const { result, rerender } = renderHook(() => useCopilotPage());
+
+    const send = result.current.onSend("After the answer, continue");
+    await flush();
+    expect(queueFollowUpMessage).toHaveBeenCalledTimes(1);
+    expect(sendNewMessage).not.toHaveBeenCalled();
+
+    now = 200;
+    rejectQueue(noActiveTurn());
+    await flush();
+    expect(sendNewMessage).not.toHaveBeenCalled();
+
+    now = 2100;
+    streamState.status = "ready";
+    rerender();
+    await send;
+
+    expect(sendNewMessage).toHaveBeenCalledExactlyOnceWith(
+      "After the answer, continue",
+      undefined,
+      undefined,
+      undefined,
+      expect.objectContaining({ startedAt: 100, isNewChat: false }),
+    );
+    expect(queueMessage).not.toHaveBeenCalled();
+  });
+
   it("resolves once the follow-up is dispatched, not when its answer ends", async () => {
     sendNewMessage.mockReturnValue(new Promise(() => {}));
     const { result, rerender } = renderHook(() => useCopilotPage());
