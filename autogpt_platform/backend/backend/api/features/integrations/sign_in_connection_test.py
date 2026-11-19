@@ -18,6 +18,7 @@ from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth import google as google_oauth
 from backend.integrations.oauth import microsoft_tokens
 from backend.integrations.oauth.google import GoogleOAuthHandler
+from backend.integrations.oauth.sign_in import SignInConnectionError
 from backend.util import encryption
 
 app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
@@ -197,6 +198,28 @@ def test_a_sign_in_widens_the_accounts_connection_it_covers(store, google):
     store.create.assert_not_called()
 
 
+def test_a_sign_in_never_widens_a_managed_or_system_connection(
+    store, google, monkeypatch
+):
+    # The same Google account, but one connection the platform manages and
+    # one of its own keys: neither is the account's to widen.
+    managed = _google_connection("pat@gmail.com", [GMAIL]).model_copy(
+        update={"is_managed": True}
+    )
+    system = _google_connection("pat@gmail.com", [GMAIL])
+    monkeypatch.setattr(
+        sign_in_connection,
+        "is_system_credential",
+        lambda credential_id: credential_id == system.id,
+    )
+    store.saved.extend([managed, system])
+
+    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+
+    assert res.json() == {"result": "created"}
+    store.upgrade.assert_not_called()
+
+
 def test_a_sign_in_never_adds_a_second_connection_for_the_account(store, google):
     # Granted more than this sign-in asked for, e.g. from the Connect flow.
     wider = [GMAIL, CALENDAR, "https://www.googleapis.com/auth/drive.file"]
@@ -301,6 +324,22 @@ def test_a_microsoft_sign_in_from_another_app_is_refused(store, monkeypatch):
     res = client.post("/api/auth/sign-in-connection", json=MICROSOFT_BODY)
 
     assert res.status_code == 409
+    store.create.assert_not_called()
+
+
+def test_a_microsoft_sign_in_whose_keys_cant_be_fetched_is_refused(store, monkeypatch):
+    # Microsoft's signing keys out of reach: the token can't be checked.
+    built = AsyncMock(side_effect=jwt.PyJWKClientError("Fail to fetch data"))
+    monkeypatch.setattr(sign_in_connection, "credentials_from_tokens", built)
+    monkeypatch.setattr(
+        sign_in_connection,
+        "microsoft_app",
+        lambda: MagicMock(client_id="connection-app"),
+    )
+
+    res = client.post("/api/auth/sign-in-connection", json=MICROSOFT_BODY)
+
+    assert res.status_code == 422
     store.create.assert_not_called()
 
 
@@ -530,6 +569,7 @@ async def test_googles_token_check_ends_before_the_frontend_stops_waiting(
     )
     started = time.monotonic()
 
-    with pytest.raises(asyncio.TimeoutError):
+    # A refusal like any other: the route answers 422, never a 500.
+    with pytest.raises(SignInConnectionError):
         await handler.credentials_from_sign_in("ya29.sign-in-access", None, None)
     assert time.monotonic() - started < _HANG_SECONDS

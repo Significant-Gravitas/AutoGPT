@@ -307,7 +307,9 @@ async def _microsoft_credentials(
         raise SignInClientMismatch(
             "Microsoft sign-in uses a different app than Microsoft connections."
         ) from None
-    except (jwt.InvalidTokenError, KeyError, ValueError) as error:
+    # PyJWTError, not just InvalidTokenError: Microsoft's signing keys out of
+    # reach (PyJWKClientError) means the token can't be checked either.
+    except (jwt.PyJWTError, KeyError, ValueError) as error:
         raise SignInConnectionError(
             f"Microsoft's sign-in tokens aren't usable: {type(error).__name__}"
         ) from None

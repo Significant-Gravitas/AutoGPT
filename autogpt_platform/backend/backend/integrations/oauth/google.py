@@ -3,6 +3,7 @@ import logging
 import time
 from typing import Optional
 
+import aiohttp
 from google.auth.exceptions import RefreshError
 from google.auth.external_account_authorized_user import (
     Credentials as ExternalAccountCredentials,
@@ -164,14 +165,19 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         """
         # In the body, not the query string, so the token stays out of URLs.
         # One deadline for the whole check: a throttled answer is retried.
-        response = await asyncio.wait_for(
-            Requests(raise_for_status=False, retry_max_attempts=3).post(
-                self.TOKEN_INFO_ENDPOINT,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data={"access_token": access_token},
-            ),
-            timeout=TOKEN_INFO_TIMEOUT_SECONDS,
-        )
+        try:
+            response = await asyncio.wait_for(
+                Requests(raise_for_status=False, retry_max_attempts=3).post(
+                    self.TOKEN_INFO_ENDPOINT,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    data={"access_token": access_token},
+                ),
+                timeout=TOKEN_INFO_TIMEOUT_SECONDS,
+            )
+        except (asyncio.TimeoutError, aiohttp.ClientError):
+            raise SignInConnectionError(
+                "Google didn't answer the sign-in's token check."
+            ) from None
         if not response.ok:
             raise SignInConnectionError("Google didn't accept the sign-in's token.")
         info = response.json()
