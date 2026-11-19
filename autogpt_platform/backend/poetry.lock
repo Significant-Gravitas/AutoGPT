@@ -3710,8 +3710,9 @@ description = "Video editing with Python"
 optional = false
 python-versions = "*"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "4cf7f84ed1f840e4f0c3ed92b8cdec12a87b56ec.tar.gz", hash = "sha256:4a389651b55df0b42c20ce1f250f14d95816dbfca66421518a579cc3c771ae93"},
+]
 
 [package.dependencies]
 decorator = ">=4.0.2,<6.0"
@@ -3728,10 +3729,8 @@ lint = ["black (>=23.7.0)", "flake8 (>=6.0.0)", "flake8-absolute-import (>=1.0)"
 test = ["coveralls (>=3.0,<4.0)", "pytest (>=3.0.0,<7.0.0)", "pytest-cov (>=2.5.1,<3.0)"]
 
 [package.source]
-type = "git"
-url = "https://github.com/Zulko/moviepy.git"
-reference = "4cf7f84ed1f840e4f0c3ed92b8cdec12a87b56ec"
-resolved_reference = "4cf7f84ed1f840e4f0c3ed92b8cdec12a87b56ec"
+type = "url"
+url = "https://github.com/Zulko/moviepy/archive/4cf7f84ed1f840e4f0c3ed92b8cdec12a87b56ec.tar.gz"
 
 [[package]]
 name = "msgpack"
@@ -8679,4 +8678,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "83d560a0ab319cde834a8effc9d9516f792014d57be40002950caea497d7f791"
+content-hash = "4186c02328ea22db042165d34a7df5199373de68e1a076112679bf892df0f0a8"
