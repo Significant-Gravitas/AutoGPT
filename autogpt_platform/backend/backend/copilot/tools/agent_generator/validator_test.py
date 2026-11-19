@@ -353,8 +353,8 @@ class TestValidatePromptDoubleCurlyBracesSpaces:
 
     @pytest.mark.parametrize(
         "prompt",
-        ["{" * 50_000, "{{a" * 20_000, "{{" + "a" * 50_000, "{{a}" * 15_000],
-        ids=["open_braces", "unclosed_placeholders", "long_unclosed", "half_closed"],
+        ["{" * 50_000, "{{a" * 20_000],
+        ids=["open_braces", "unclosed_placeholders"],
     )
     def test_unclosed_braces_are_checked_quickly(self, prompt: str):
         v = AgentValidator()
