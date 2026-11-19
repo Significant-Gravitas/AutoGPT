@@ -243,8 +243,12 @@ jobs:
     # Each Python leg preserves the complete suite while its five disjoint path
     # groups run on separate standard runners. The cap is a hang guard, not a
     # performance budget: on merge_group a cancelled job reads as a failed
-    # check and ejects the PR from the queue, so keep it well above p99.
-    timeout-minutes: 35
+    # check and ejects the PR from the queue, so keep it well above p99. A
+    # cold-cache 3.15 leg spends about 10 minutes before its tests start
+    # (lupa, pyyaml and zstandard have no 3.15 wheels yet, and the Prisma
+    # CLI's import of its generated types takes about 40 s per call), and
+    # its remainder and util-executor shards ran past 35.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
