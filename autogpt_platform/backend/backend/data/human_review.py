@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Awaitable, Optional
 
+from prisma.bases import BasePendingHumanReview
 from prisma.enums import ReviewStatus
 from prisma.models import (
     AgentGraphExecution,
@@ -937,7 +938,7 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
             f"Graph execution {graph_exec_id} not found or doesn't belong to user {user_id}"
         )
 
-    waiting = await PendingHumanReview.prisma().find_many(
+    waiting = await _WaitingReviewId.prisma().find_many(
         where={
             "graphExecId": graph_exec_id,
             "userId": user_id,
@@ -969,6 +970,12 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
         )
     await sync_awaiting_review(user_id, graph_exec.graph_id)
     return result
+
+
+class _WaitingReviewId(BasePendingHumanReview):
+    """Prisma selects only the declared fields, so `payload` is never read."""
+
+    nodeExecId: str
 
 
 async def reopen_review(node_exec_id: str, user_id: str) -> int:

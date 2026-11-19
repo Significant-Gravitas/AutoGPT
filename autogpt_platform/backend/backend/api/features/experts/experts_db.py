@@ -715,16 +715,18 @@ async def list_expert_runs(
     # ids) — a page of the user's newest reviews could miss an older run
     # that is still genuinely blocked.
     waiting_reviews, classified = await asyncio.gather(
-        prisma.models.PendingHumanReview.prisma().find_many(
+        # Grouped, not loaded: a review row holds its whole payload.
+        prisma.models.PendingHumanReview.prisma().group_by(
+            by=["graphExecId"],
             where={
                 "userId": user_id,
                 "status": prisma.enums.ReviewStatus.WAITING,
                 "graphExecId": {"in": execution_ids},
-            }
+            },
         ),
         _classify_run_outputs(execution_ids),
     )
-    reviewing = {review.graphExecId for review in waiting_reviews}
+    reviewing = {review["graphExecId"] for review in waiting_reviews}
 
     return [
         _to_expert_run(

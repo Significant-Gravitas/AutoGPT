@@ -8,6 +8,8 @@ from prisma.enums import ReviewStatus
 from backend.api.features.experts.spend_approval import spend_review_id
 from backend.copilot.constants import step_card_id
 from backend.data.human_review import (
+    _WaitingReviewId,
+    cancel_pending_reviews_for_execution,
     get_or_create_human_review,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
@@ -535,3 +537,41 @@ async def test_a_chat_with_legacy_and_new_rows_syncs_one_alert(
     calls = [c.args for c in sync.await_args_list]
     assert len(calls) == 2
     assert set(calls) == {("u1", None, "s1"), ("u1", "g1", None)}
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_a_stopped_run_reads_its_waiting_reviews_by_id_alone(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch(
+        "backend.data.human_review.get_graph_execution_meta",
+        new=AsyncMock(return_value=Mock(graph_id="g1")),
+    )
+    # Each client offers only what the cancel may call: the full rows, which
+    # hold the payloads, are updated and deleted but never read.
+    ids = Mock(spec_set=["find_many"])
+    ids.find_many = AsyncMock(return_value=[Mock(nodeExecId="node-exec-1")])
+    mocker.patch.object(_WaitingReviewId, "prisma", return_value=ids)
+    rows = Mock(spec_set=["update_many", "delete_many"])
+    rows.update_many = AsyncMock(return_value=1)
+    rows.delete_many = AsyncMock(return_value=1)
+    mocker.patch(
+        "backend.data.human_review.PendingHumanReview.prisma", return_value=rows
+    )
+    sync = mocker.patch(
+        "backend.data.human_review.sync_awaiting_review", new=AsyncMock()
+    )
+
+    assert await cancel_pending_reviews_for_execution("ge-1", "u1") == 1
+
+    assert set(_WaitingReviewId.model_fields) == {"nodeExecId"}
+    assert ids.find_many.await_args.kwargs["where"] == {
+        "graphExecId": "ge-1",
+        "userId": "u1",
+        "status": ReviewStatus.WAITING,
+    }
+    assert rows.delete_many.await_args.kwargs["where"] == {
+        "nodeExecId": {"in": [step_card_id("u1", "node-exec-1")]},
+        "userId": "u1",
+    }
+    sync.assert_awaited_once_with("u1", "g1")

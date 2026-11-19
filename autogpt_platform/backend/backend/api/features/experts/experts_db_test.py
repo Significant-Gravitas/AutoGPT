@@ -5456,7 +5456,7 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
         )
     )
     review_client = SimpleNamespace(
-        find_many=AsyncMock(return_value=[SimpleNamespace(graphExecId="exec-2")])
+        group_by=AsyncMock(return_value=[{"graphExecId": "exec-2"}])
     )
 
     with (
@@ -5498,7 +5498,7 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
         "expertId": "expert-1",
         "isDeleted": False,
     }
-    review_where = review_client.find_many.await_args.kwargs["where"]
+    review_where = review_client.group_by.await_args.kwargs["where"]
     assert review_where["userId"] == "owner-1"
     assert set(review_where["graphExecId"]["in"]) == {"exec-1", "exec-2"}
     assert [run.status for run in runs] == ["completed", "review"]
