@@ -646,6 +646,18 @@ class TestExecuteAsyncAclose:
     otherwise ``stream_chat_completion_sdk`` stays suspended and keeps
     holding the per-session Redis lock until GC."""
 
+    @pytest.fixture
+    def turn_clock(self, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+        now = SimpleNamespace(monotonic=100.0, wall=1000.0)
+        monkeypatch.setattr(
+            "backend.copilot.turn_tracing.time",
+            SimpleNamespace(
+                monotonic=lambda: now.monotonic,
+                time=lambda: now.wall,
+            ),
+        )
+        return now
+
     def _patches(self, published_stream: _TrackedStream):
         """Shared mock context: patches every dependency ``_execute_async``
         touches so the aclose path is the only behaviour under test."""
@@ -736,13 +748,13 @@ class TestExecuteAsyncAclose:
 
     @pytest.mark.asyncio
     async def test_a_turn_is_one_transaction_in_the_dispatchers_trace(
-        self, sentry_transactions
+        self, sentry_transactions, turn_clock
     ) -> None:
         trace_id, parent_span_id = "a" * 32, "b" * 16
         entry = _make_entry().model_copy(
             update={
                 "trace_headers": {"sentry-trace": f"{trace_id}-{parent_span_id}-1"},
-                "enqueued_at": time.time() - 2,
+                "enqueued_at": turn_clock.wall - 2,
             }
         )
         published = _TrackedStream(
@@ -779,7 +791,7 @@ class TestExecuteAsyncAclose:
         data = trace["data"]
         assert data["copilot.session_id"] == "sess-1"
         assert data["copilot.turn_id"] == "turn-1"
-        assert data["copilot.turn.queue_wait_ms"] >= 2000
+        assert data["copilot.turn.queue_wait_ms"] == 2000
         assert 0 <= data["copilot.turn.setup_ms"] <= data["copilot.turn.ttft_ms"]
         assert data["copilot.turn.ttft_ms"] <= data["copilot.turn.first_text_ms"]
         assert data["copilot.turn.first_text_ms"] <= data["copilot.turn.duration_ms"]
@@ -788,10 +800,20 @@ class TestExecuteAsyncAclose:
 
     @pytest.mark.asyncio
     async def test_a_turn_times_its_first_token_and_text_from_the_request(
-        self, sentry_transactions
+        self, sentry_transactions, turn_clock
     ) -> None:
-        entry = _make_entry().model_copy(update={"request_arrival_at": time.time() - 3})
-        published = _TrackedStream(
+        class TimedStream(_TrackedStream):
+            async def __anext__(self):
+                event = await super().__anext__()
+                elapsed = 0.5 if isinstance(event, StreamReasoningDelta) else 4.5
+                turn_clock.monotonic += elapsed
+                turn_clock.wall += elapsed
+                return event
+
+        entry = _make_entry().model_copy(
+            update={"request_arrival_at": turn_clock.wall - 3}
+        )
+        published = TimedStream(
             events=[
                 StreamReasoningDelta(id="r", delta="thinking"),
                 StreamTextDelta(id="t", delta="hi"),
@@ -807,21 +829,19 @@ class TestExecuteAsyncAclose:
         [turn] = sentry_transactions
         data = turn["contexts"]["trace"]["data"]
         assert turn["tags"]["copilot.turn.waited"] == "false"
-        assert data["copilot.turn.first_text_ms"] < 3000
-        assert data["copilot.turn.request_to_ttft_ms"] >= 3000
-        assert (
-            data["copilot.turn.request_to_ttft_ms"]
-            <= data["copilot.turn.request_to_first_text_ms"]
-        )
+        assert data["copilot.turn.ttft_ms"] == 500
+        assert data["copilot.turn.first_text_ms"] == 5000
+        assert data["copilot.turn.request_to_ttft_ms"] == 3500
+        assert data["copilot.turn.request_to_first_text_ms"] == 8000
 
     @pytest.mark.asyncio
     async def test_a_turn_that_waited_for_its_start_is_not_timed_from_the_request(
-        self, sentry_transactions
+        self, sentry_transactions, turn_clock
     ) -> None:
         """Queued behind another turn, held at a limit or redelivered: the
         request is hours old, and timing from it would count the wait."""
         entry = _make_entry().model_copy(
-            update={"request_arrival_at": time.time() - 2 * 3600}
+            update={"request_arrival_at": turn_clock.wall - 2 * 3600}
         )
         published = _TrackedStream(events=[StreamTextDelta(id="t", delta="hi")])
 
@@ -906,9 +926,9 @@ class TestExecuteAsyncAclose:
     )
     @pytest.mark.asyncio
     async def test_a_turn_is_shaped_by_whether_text_or_a_tool_came_first(
-        self, sentry_transactions, events, shape, answered
+        self, sentry_transactions, turn_clock, events, shape, answered
     ) -> None:
-        entry = _make_entry().model_copy(update={"request_arrival_at": time.time()})
+        entry = _make_entry().model_copy(update={"request_arrival_at": turn_clock.wall})
 
         patches = self._patches(_TrackedStream(events=events))
         with patches[0], patches[1], patches[2], patches[3], patches[4]:
