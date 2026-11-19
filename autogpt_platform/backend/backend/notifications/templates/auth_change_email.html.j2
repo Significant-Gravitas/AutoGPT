@@ -1,0 +1,34 @@
+{#- ============================================================
+    auth_change_email.html.j2: "Approve your email change", sent to
+    the account's current address when someone asks to move the
+    account to a new one. It names both addresses, so the owner can
+    tell whether the request was theirs before approving it.
+    Context: content (AuthEmailContent), action_url, recipient,
+    new_email (may be none), assets, urls
+    ============================================================ -#}
+{%- import '_email_ui.j2' as ui with context -%}
+<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>{{ ui.head_block(content.subject) }}</head>
+{{ ui.body_open() }}
+{{ ui.preheader(content.preheader) }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+{{ ui.hero_otto() }}
+{{ ui.sheet_open() }}
+{% call ui.eyebrow(tone='brand') %}{{ content.eyebrow }}{% endcall %}
+{% call ui.headline() %}{{ content.headline }}{% endcall %}
+{% call ui.para() %}{{ content.intro }}{% endcall %}
+{{ ui.kvpanel([('Current email', recipient, true)] + ([('New email', new_email, true)] if new_email else [])) }}
+{{ ui.cta(content.action, action_url, micro='The link expires in ' ~ content.expiry ~ '.' if content.expiry else none) }}
+{% call ui.para(top=20) %}Once you approve, we'll send a link to {% if new_email %}the new address{% else %}your new address{% endif %}. Your account moves over when that link is opened.{% endcall %}
+{% call ui.note_card('Not you?', tone='amber') %}If you didn't request this, don't open the link, and your email address stays the same. Someone may be signed in to your account, so reset your password from the AutoGPT login page.{% endcall %}
+{% call ui.note_card('Button not working?', top=12) %}Copy this link into your browser:
+<div style="padding-top:6px; font-family:{{ ui.MONO }}; font-size:12px; line-height:18px;"><a href="{{ action_url }}" style="color:#4D36AD; text-decoration:underline; overflow-wrap:anywhere; word-break:break-all;">{{ action_url }}</a></div>
+{% endcall %}
+{{ ui.close_row(content.reason, 'Something wrong? Ask in Discord', urls.discord) }}
+{{ ui.sheet_close() }}
+{{ ui.page_close() }}
+{{ ui.legal_footer("This is a service message about an AutoGPT account. It's sent even if you've opted out of product news.", 'Discord', urls.discord) }}
+</td></tr></table>
+</body></html>

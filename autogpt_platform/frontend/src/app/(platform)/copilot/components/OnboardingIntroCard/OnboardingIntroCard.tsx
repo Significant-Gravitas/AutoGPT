@@ -1,11 +1,10 @@
 "use client";
 
-import { GlassOrb } from "@/components/molecules/GlassOrb/GlassOrb";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import {
   GREETING_ORB_LAYOUT_ID,
   ORB_FLIP_TRANSITION,
   ORB_FLIP_TRANSITION_REDUCED,
-  SMALL_ORB_PARAMS,
 } from "../../helpers/greetingOrb";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
@@ -19,18 +18,20 @@ import {
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
-import { SuggestedTaskList } from "../SuggestedTasks/SuggestedTaskList";
+import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
+import type { useCollapsedSuggestions } from "../SuggestedTasks/useCollapsedSuggestions";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 
 interface Props {
   name: string | null;
   greeting: string;
   suggestions: ReturnType<typeof useSuggestedTasks>;
+  collapse: ReturnType<typeof useCollapsedSuggestions>;
   transcript?: string;
   disabled?: boolean;
 }
 
-// The orb travels into this card's heading from the loader, so the
+// Otto's avatar travels into this card's heading from the loader, so the
 // heading is revealed on its arrival and everything below waits for the
 // trip to finish.
 const HEADING_START = 0.2;
@@ -56,11 +57,14 @@ export function OnboardingIntroCard({
   name,
   greeting,
   suggestions,
+  collapse,
   transcript = "",
   disabled = false,
 }: Props) {
   const prefersReducedMotion = useReducedMotion();
   const [isCopied, setIsCopied] = useState(false);
+  const hasTasks = suggestions.tasks.length > 0;
+  const isListHeld = hasTasks && !suggestions.isRosterLoaded;
   const { toast } = useToast();
 
   async function handleCopyTranscript() {
@@ -111,9 +115,9 @@ export function OnboardingIntroCard({
               ? ORB_FLIP_TRANSITION_REDUCED
               : ORB_FLIP_TRANSITION
           }
-          className="relative block size-8 shrink-0"
+          className="relative block size-10 shrink-0"
         >
-          <GlassOrb params={SMALL_ORB_PARAMS} />
+          <AutopilotAvatar size={40} transparent className="size-full" />
         </motion.span>
         <motion.div {...reveal(HEADING_START)}>
           <Text variant="large-medium" tone="primary">
@@ -138,12 +142,7 @@ export function OnboardingIntroCard({
                   className="rounded-full p-2 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
                 >
                   {isCopied ? (
-                    <Icon
-                      icon={Tick02Icon}
-                      size={16}
-                      // TODO(tokens): no exact role for text-emerald-600
-                      className="text-emerald-600"
-                    />
+                    <Icon icon={Tick02Icon} size={16} tone="success" />
                   ) : (
                     <Icon icon={Copy01Icon} size={16} />
                   )}
@@ -165,27 +164,28 @@ export function OnboardingIntroCard({
         </Text>
       </motion.div>
 
-      {suggestions.tasks.length > 0 && (
-        // Negative margins let the list's border breathe outward while the
-        // row content (px-4) stays aligned with the text above it.
-        <motion.div {...reveal(promptsStart)} className="-mx-5 mt-5">
-          <SuggestedTaskList
-            tasks={suggestions.tasks}
-            sendingId={suggestions.sendingId}
+      {hasTasks && (
+        <motion.div {...reveal(promptsStart)} className="mt-5">
+          <SuggestedTasksBlock
+            suggestions={suggestions}
+            collapse={collapse}
             disabled={disabled}
-            onSend={suggestions.sendTask}
-            onHide={suggestions.hideTask}
+            showTeam
           />
         </motion.div>
       )}
 
-      <motion.div {...reveal(footerStart)}>
-        <Text variant="body" tone="muted" className="mt-5">
-          {suggestions.tasks.length > 0
-            ? "Want to do something else? Just write it in the textbox below."
-            : "Tell me what you'd like to start with in the textbox below."}
-        </Text>
-      </motion.div>
+      {/* Folded away with the list, and held back with it while the team
+          can't be read: it would point at a list that isn't there. */}
+      {(hasTasks && collapse.isCollapsed) || isListHeld ? null : (
+        <motion.div {...reveal(footerStart)}>
+          <Text variant="body" tone="muted" className="mt-5">
+            {hasTasks
+              ? "Want to do something else? Just write it in the textbox below."
+              : "Tell me what you'd like to start with in the textbox below."}
+          </Text>
+        </motion.div>
+      )}
     </div>
   );
 }

@@ -20,12 +20,14 @@ from prisma.enums import ReviewStatus
 from backend.blocks._base import BlockEffect
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock
+from backend.blocks.airtable.schema import AirtableCreateTableBlock
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeStepBlock
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
 from backend.blocks.email_block import SendEmailBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.github.issues import GithubAddLabelBlock
+from backend.blocks.github.repo import GithubCreateRepositoryBlock
 from backend.blocks.github.repo_files import GithubCreateFileBlock
 from backend.blocks.google.gmail import GmailSendBlock
 from backend.blocks.http import SendWebRequestBlock
@@ -33,7 +35,7 @@ from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.copilot import usage_activation_fixtures
-from backend.copilot.gate import RUN_FILES_KEY, RUNS_KEY, chat_rules
+from backend.copilot.gate import RUN_FILES_KEY, RUNS_KEY, chat_rules, held
 from backend.copilot.gate.chat_rules import RuleHit
 from backend.copilot.gate.chat_rules_test import _Redis
 from backend.copilot.gate.classifier import Judgement
@@ -98,6 +100,7 @@ def gate():
         find_review=AsyncMock(return_value=None),
         open_review=AsyncMock(side_effect=_opened),
         consume=AsyncMock(return_value=True),
+        discard=AsyncMock(),
     )
     with (
         patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)),
@@ -105,7 +108,9 @@ def gate():
         patch(f"{_GATE}.review_store.find_review", store.find_review),
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.review_store.consume", store.consume),
+        patch(f"{_GATE}.review_store.discard", store.discard),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held.kept_for_its_card", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value=None)),
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()),
         patch(f"{_GATE}.reads.release_held_read", AsyncMock(return_value=None)),
@@ -194,19 +199,42 @@ async def test_a_call_that_runs_nothing_never_asks(gate, ran, payload, extra):
     gate.open_review.assert_not_awaited()
 
 
-async def test_an_ask_first_block_asks_in_auto_and_the_card_names_it(gate, ran):
+@pytest.mark.parametrize(
+    "block, payload, name, reason, irreversible",
+    [
+        (
+            SendEmailBlock,
+            _EMAIL,
+            "Send Email",
+            "Runs Send Email, which reaches outside the platform.",
+            True,
+        ),
+        # The new repo is public unless the call says otherwise.
+        (
+            GithubCreateRepositoryBlock,
+            {"name": "otter-notes"},
+            "Github Create Repository",
+            "Nothing changes in your account until you approve.",
+            False,
+        ),
+    ],
+    ids=["email", "github repo"],
+)
+async def test_an_ask_first_block_asks_in_auto_and_the_card_names_it(
+    gate, ran, block, payload, name, reason, irreversible
+):
     judge = AsyncMock()
     with patch(f"{_GATE}.supervise", judge):
-        result = await _run_capability(_session(), SendEmailBlock().id, _EMAIL)
+        result = await _run_capability(_session(), block().id, payload)
     assert _is_held(result)
     ran.assert_not_awaited()
     judge.assert_not_awaited()
     args = gate.open_review.await_args.args
-    reason, subject = args[5], args[6]
-    assert subject.name == "Send Email"
-    assert subject.key == f"block:{SendEmailBlock().id}"
-    assert reason == "Runs Send Email, which reaches outside the platform."
-    assert subject.irreversible
+    assert args[5] == reason
+    subject = args[6]
+    assert subject.name == name
+    assert subject.key == f"block:{block().id}"
+    assert subject.irreversible is irreversible
 
 
 @pytest.mark.parametrize("allowed", [True, False])
@@ -283,7 +311,7 @@ async def test_after_a_rejection_the_block_asks_again(gate, ran, block, payload)
         patch(f"{_GATE}.chat_rules.get_redis_async", AsyncMock(return_value=_Redis())),
         patch(
             f"{_GATE}.held._held",
-            AsyncMock(return_value={"x": SimpleNamespace(rule_key=key)}),
+            AsyncMock(return_value={"x": SimpleNamespace(review_id="x", rule_key=key)}),
         ),
         patch(f"{_GATE}.review_store.review_id_for", side_effect=["x", "y"]),
         patch(f"{_GATE}.supervise", judge),
@@ -480,7 +508,7 @@ async def test_a_rejection_asks_for_the_subject_not_the_tool(gate, ran):
     gate.find_review.return_value = SimpleNamespace(
         status=ReviewStatus.REJECTED, payload={}
     )
-    call = SimpleNamespace(rule_key="block:abc")
+    call = SimpleNamespace(review_id="x", rule_key="block:abc")
     with (
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()) as set_ask,
         patch(f"{_GATE}.held._held", AsyncMock(return_value={"x": call})),
@@ -488,6 +516,7 @@ async def test_a_rejection_asks_for_the_subject_not_the_tool(gate, ran):
     ):
         await _run_capability(_session(), GetWikipediaSummaryBlock().id, {"topic": "x"})
     set_ask.assert_awaited_once_with("session-1", "block:abc", "user-1", None)
+    gate.discard.assert_awaited_once_with(gate.find_review.return_value, "user-1")
 
 
 async def test_the_gate_off_resolves_no_subject():
@@ -1338,3 +1367,141 @@ async def test_a_write_with_no_sandbox_to_resolve_it_in_is_judged(gate):
     ):
         ran, held, asked = await _bash("auto", _LONG_POST)
     assert (ran, held, asked) == (0, True, 1)
+
+
+# ---- an Airtable change: shown as it runs, asked after the pick ------------
+
+_READ = "backend.copilot.sdk.file_ref.read_file_bytes"
+_CREDS = "backend.copilot.tools.run_capability.resolve_block_credentials"
+_BLOCK = AirtableCreateTableBlock().id
+_FIELDS = [
+    {"name": "Order number", "type": "singleLineText"},
+    {"name": "Total", "type": "currency"},
+]
+_FROM_FILE = {
+    "base_id": "appX",
+    "table_name": "Orders",
+    "table_fields": "@@agptfile:workspace:///fields.json",
+}
+
+
+@pytest.fixture
+def files():
+    """Workspace files by path, read as the model's references resolve them."""
+    contents = {"fields.json": json.dumps(_FIELDS)}
+
+    async def read(uri, user_id, session):
+        name = uri.rsplit("/", 1)[-1]
+        if name not in contents:
+            raise ValueError(f"File not found: {name}")
+        return contents[name].encode()
+
+    with patch(_READ, AsyncMock(side_effect=read)):
+        yield contents
+
+
+@pytest.fixture(autouse=True)
+def creds():
+    with patch(_CREDS, AsyncMock(return_value=({}, []))):
+        yield
+
+
+def _approve_only(review_id: str):
+    async def find(rid, user_id, session_id):
+        if rid == review_id:
+            return SimpleNamespace(status=ReviewStatus.APPROVED, payload={})
+        return None
+
+    return AsyncMock(side_effect=find)
+
+
+async def test_fields_from_a_file_are_shown_and_exactly_they_run(gate, ran, files):
+    held = await _run_capability(_session(), _BLOCK, dict(_FROM_FILE))
+
+    assert _is_held(held)
+    review_id, args, subject = (
+        gate.open_review.await_args.args[0],
+        gate.open_review.await_args.args[4],
+        gate.open_review.await_args.args[6],
+    )
+    assert [f.name for f in subject.preview.tables[0].fields] == [
+        "Order number",
+        "Total",
+    ]
+    # The card lists the fields themselves, not the file they came from.
+    assert args["input"]["table_fields"] == _FIELDS
+
+    gate.find_review = _approve_only(review_id)
+    with patch("backend.copilot.gate.review_store.find_review", gate.find_review):
+        await _run_capability(_session(), _BLOCK, dict(_FROM_FILE))
+    ran.assert_awaited_once()
+    assert ran.await_args.args[3]["table_fields"] == _FIELDS
+
+
+async def test_a_file_changed_after_approval_asks_again(gate, ran, files):
+    await _run_capability(_session(), _BLOCK, dict(_FROM_FILE))
+    approved = gate.open_review.await_args.args[0]
+
+    files["fields.json"] = json.dumps(_FIELDS + [{"name": "Secret", "type": "url"}])
+    with patch(
+        "backend.copilot.gate.review_store.find_review", _approve_only(approved)
+    ):
+        again = await _run_capability(_session(), _BLOCK, dict(_FROM_FILE))
+
+    # A new card for the new fields, not the approval of the old ones.
+    assert _is_held(again)
+    ran.assert_not_awaited()
+    assert gate.open_review.await_count == 2
+    assert gate.open_review.await_args.args[0] != approved
+
+
+@pytest.mark.parametrize("unpicked", [{}, {"base_id": None}, {"base_id": ""}])
+async def test_the_base_is_picked_before_anything_asks(gate, ran, unpicked):
+    """The picker card comes first; the one approval follows the pick."""
+    payload = {"table_name": "Orders", "table_fields": _FIELDS, **unpicked}
+
+    first = await _run_capability(_session(), _BLOCK, payload)
+
+    assert not _is_held(first)
+    gate.open_review.assert_not_awaited()
+    ran.assert_awaited_once()
+
+    picked = await _run_capability(_session(), _BLOCK, {**payload, "base_id": "appX"})
+    assert _is_held(picked)
+    gate.open_review.assert_awaited_once()
+
+
+async def test_an_approved_call_replays_the_content_it_was_approved_for(
+    gate, ran, files
+):
+    """A held call is stored resolved. Replaying it on approval must not
+    resolve it again: a name read from a file that itself mentions a file
+    reference is text, and expanding it would fail or ask a second time."""
+    files["name.txt"] = "Orders (see @@agptfile:/home/user/old_notes.txt )"
+    payload = {**_FROM_FILE, "table_name": "@@agptfile:/home/user/name.txt"}
+    remember = AsyncMock(return_value=True)
+    with (
+        patch(f"{_GATE}.held.remember", remember),
+        patch(f"{_GATE}.held.kept_for_its_card", AsyncMock(return_value=True)),
+    ):
+        held_result = await _run_capability(_session(), _BLOCK, payload)
+    assert _is_held(held_result)
+    call = remember.await_args.args[1]
+    assert call.args["input"]["table_name"] == files["name.txt"]
+
+    # The fold spends the card it read, and the gate lets through the call
+    # that card's id names: the replay must name the same one, or it asks again.
+    card = SimpleNamespace(
+        node_exec_id=call.review_id,
+        status=ReviewStatus.APPROVED,
+        payload={},
+        created_at=datetime.now(UTC),
+        updated_at=None,
+        reviewed_at=datetime.now(UTC),
+    )
+    await held._run("user-1", _session(), call, card, RunCapabilityTool())
+
+    ran.assert_awaited_once()
+    assert ran.await_args.args[3]["table_name"] == files["name.txt"]
+    assert ran.await_args.args[7] is True  # run as resolved, not expanded again
+    assert gate.open_review.await_count == 1

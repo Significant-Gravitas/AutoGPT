@@ -14,12 +14,32 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
+const TEXT_INPUT_TYPES = new Set([
+  "text",
+  "search",
+  "email",
+  "url",
+  "tel",
+  "password",
+  "number",
+]);
+
+function hasOwnTextUndo(target: EventTarget | null): boolean {
+  if (target instanceof HTMLTextAreaElement) return !target.readOnly;
+  if (target instanceof HTMLInputElement)
+    return TEXT_INPUT_TYPES.has(target.type) && !target.readOnly;
+  return target instanceof HTMLElement && target.isContentEditable;
+}
+
 export const UndoRedoButtons = () => {
   const { undo, redo, canUndo, canRedo } = useHistoryStore();
 
   // Keyboard shortcuts for undo and redo
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // A text field keeps its own undo/redo, so the workflow history must not take the shortcut there.
+      if (hasOwnTextUndo(event.target)) return;
+
       const isMac = /Mac/i.test(navigator.userAgent);
       const isCtrlOrCmd = isMac ? event.metaKey : event.ctrlKey;
 
@@ -57,10 +77,7 @@ export const UndoRedoButtons = () => {
         </TooltipTrigger>
         <TooltipContent side="right">Undo</TooltipContent>
       </Tooltip>
-      <Separator
-        // TODO(tokens): no exact role: text-[#E1E1E1] #E1E1E1
-        className="text-[#E1E1E1]"
-      />
+      <Separator />
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <ControlPanelButton

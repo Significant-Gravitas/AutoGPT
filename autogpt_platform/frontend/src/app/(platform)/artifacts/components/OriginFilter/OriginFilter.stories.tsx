@@ -53,7 +53,7 @@ export const Interactive: Story = {
     return (
       <div className="flex flex-col items-center gap-4">
         <OriginFilter value={value} onChange={setValue} />
-        <span className="text-xs text-foreground-tertiary">
+        <span className="text-caption text-foreground-tertiary">
           Selected: <code className="text-foreground-strong">{value}</code>
         </span>
       </div>

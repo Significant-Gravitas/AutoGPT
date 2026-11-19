@@ -14,19 +14,18 @@ export function WorkflowsMovedContent({ titleRef, onDismiss }: Props) {
   return (
     <>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="px-6 pb-3 pt-5 sm:px-8">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-widest text-accent-strong">
+        <div className="px-6 pt-5 pb-3 sm:px-8">
+          <p className="mb-1.5 text-caption font-medium tracking-widest text-accent-strong uppercase">
             Workspace update
           </p>
           <Dialog.Title
             ref={titleRef}
             tabIndex={-1}
-            // TODO(tokens): SECRT-3152, rare size sm:text-[1.625rem]
-            className="pr-7 text-2xl font-semibold leading-tight tracking-tight text-foreground-strong outline-none sm:text-[1.625rem]"
+            className="pr-7 text-heading-md leading-tight font-semibold tracking-tight text-foreground-strong outline-none sm:text-heading sm:leading-tight"
           >
             Your agents have moved
           </Dialog.Title>
-          <Dialog.Description className="mt-1.5 text-sm leading-relaxed text-foreground-secondary">
+          <Dialog.Description className="mt-1.5 text-body leading-relaxed text-foreground-secondary">
             Agents are now{" "}
             <strong className="font-medium text-foreground-strong">
               workflows
@@ -49,7 +48,7 @@ export function WorkflowsMovedContent({ titleRef, onDismiss }: Props) {
 function WorkflowsMovedActions({ onDismiss }: Pick<Props, "onDismiss">) {
   return (
     <div className="shrink-0 border-t border-separator bg-surface px-6 py-2 sm:px-8">
-      <p className="mb-1.5 text-xs leading-none text-foreground-tertiary">
+      <p className="mb-1.5 text-caption leading-none text-foreground-tertiary">
         Nothing to set up again.
       </p>
       <div className="flex flex-col gap-2 sm:flex-row-reverse">
@@ -73,17 +72,12 @@ function WorkflowLocation() {
   return (
     <ol
       aria-label="Where to find your workflows"
-      className="mt-3 flex w-fit flex-wrap items-center gap-2 rounded-full border border-border-base/80 bg-surface-muted px-3 py-1 text-xs text-foreground-secondary"
+      className="mt-3 flex w-fit flex-wrap items-center gap-2 rounded-full border border-border-base/80 bg-surface-muted px-3 py-1 text-caption text-foreground-secondary"
     >
       {["Team", "Otto", "Workflows"].map((label, index) => (
         <li key={label} className="flex items-center gap-2">
           {index > 0 && (
-            <Icon
-              icon={ArrowRight02Icon}
-              size={12}
-              className="text-foreground-subtle"
-              aria-hidden
-            />
+            <Icon icon={ArrowRight02Icon} size={12} tone="subtle" aria-hidden />
           )}
           <span
             className={

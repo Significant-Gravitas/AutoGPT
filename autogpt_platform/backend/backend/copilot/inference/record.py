@@ -187,8 +187,6 @@ def _row_metadata(ctx: InferenceContext, accounting: _KindAccounting) -> dict[st
         "discount_applied": batch_discount(ctx.route.execution_path),
         "expert_id": ctx.scope.expert_id,
     }
-    if ctx.trace_id:
-        metadata["langfuse_trace_id"] = ctx.trace_id
     return metadata
 
 

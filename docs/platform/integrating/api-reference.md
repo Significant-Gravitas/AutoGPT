@@ -54,6 +54,7 @@ pipx run openapi-python-client generate --url "$AUTOGPT_API_URL/openapi.json"
 | Search | Search marketplace agents, blocks, docs, your library and your files. |
 | Marketplace | Browse agents and creators; manage your submissions and profile. |
 | Library | Your agents and folders; start runs. |
+| Presets | Saved inputs for running an agent, and the webhook triggers that run one. |
 | Runs | Run status, outputs, stopping, sharing and human-in-the-loop reviews. |
 | Credits | Balance, transactions, invoices, subscription and cost summaries. |
 | Integrations | Third-party credentials your agents use. |

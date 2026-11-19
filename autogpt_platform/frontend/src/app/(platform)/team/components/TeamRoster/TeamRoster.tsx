@@ -4,11 +4,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { Text } from "@/components/atoms/Text/Text";
 import { ReactNode } from "react";
-import {
-  SECTION_INSET_CLASS,
-  TEAM_GRID_CLASS,
-  getAutopilotSummary,
-} from "../../helpers";
+import { TEAM_GRID_CLASS, getAutopilotSummary } from "../../helpers";
 import { AutopilotCard } from "../AutopilotCard";
 import { ExpertTeamCardSkeleton } from "../ExpertTeamCardSkeleton";
 
@@ -62,7 +58,7 @@ export function TeamRoster({
       )}
 
       {!isLoading && isNarrowed && visibleExperts.length === 0 ? (
-        <Text variant="body" tone="muted" className={SECTION_INSET_CLASS}>
+        <Text variant="body" tone="muted" className="mx-4">
           No experts match that search or filter.
         </Text>
       ) : null}

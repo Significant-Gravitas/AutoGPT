@@ -10,7 +10,7 @@ const { push, searchParams } = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, replace: vi.fn() }),
   usePathname: () => "/admin/marketplace",
   useSearchParams: () => searchParams.current,
 }));

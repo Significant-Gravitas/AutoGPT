@@ -5,8 +5,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
+import {
+  buildServerScope,
+  getServerFieldSchema,
+  getServerScopeSchemes,
+} from "@/components/contextual/CredentialsInput/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Select } from "@/components/atoms/Select/Select";
 import {
   Form,
   FormControl,
@@ -26,6 +32,8 @@ const userPasswordConnectSchema = z
       .max(100, "Name must be 100 characters or less"),
     username: z.string().trim().min(1, "Username is required"),
     password: z.string().min(1, "Password is required"),
+    server: z.string().trim(),
+    scheme: z.string(),
   })
   .strict();
 
@@ -51,9 +59,23 @@ export function InlineUserPasswordForm({
     onSuccess,
   });
 
+  const schemes = getServerScopeSchemes(provider);
+
   const form = useForm<UserPasswordConnectFormValues>({
-    resolver: zodResolver(userPasswordConnectSchema),
-    defaultValues: { title: "", username: "", password: "" },
+    resolver: zodResolver(
+      schemes
+        ? userPasswordConnectSchema.extend({
+            server: getServerFieldSchema(provider),
+          })
+        : userPasswordConnectSchema,
+    ),
+    defaultValues: {
+      title: "",
+      username: "",
+      password: "",
+      server: "",
+      scheme: schemes?.[0].value ?? "",
+    },
     mode: "onChange",
   });
 
@@ -64,6 +86,7 @@ export function InlineUserPasswordForm({
       title: values.title,
       username: values.username,
       password: values.password,
+      ...(schemes && { scope: buildServerScope(values.scheme, values.server) }),
     });
   }
 
@@ -90,6 +113,53 @@ export function InlineUserPasswordForm({
           </FormItem>
         )}
       />
+
+      {schemes && schemes.length > 1 && (
+        <FormField
+          control={form.control}
+          name="scheme"
+          render={({ field }) => (
+            <FormItem>
+              <Select
+                id={field.name}
+                label="Database type"
+                labelVariant="small-medium"
+                size="small"
+                value={field.value}
+                onValueChange={field.onChange}
+                options={schemes}
+                wrapperClassName="!mb-0"
+              />
+            </FormItem>
+          )}
+        />
+      )}
+
+      {schemes && (
+        <FormField
+          control={form.control}
+          name="server"
+          render={({ field }) => (
+            <FormItem>
+              <FormControl>
+                <Input
+                  {...field}
+                  id={field.name}
+                  autoComplete="off"
+                  spellCheck={false}
+                  label="Server"
+                  labelVariant="small-medium"
+                  size="small"
+                  placeholder="host or host:port"
+                  hint="This login is only ever sent to this server."
+                  wrapperClassName="!mb-0"
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      )}
 
       <FormField
         control={form.control}

@@ -49,7 +49,7 @@ const CACHED: Record<string, string[]> = {
   ],
   [`${COPILOT}/components/ChatMessagesContainer/ChatMessagesContainer.tsx`]: [
     "buildMessageIndexById(",
-    "extractReviewTarget(",
+    "extractReviewTargets(",
     "hasTrailingErrorMarker(",
     "<TailSpacer",
   ],

@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,8 +14,15 @@ from backend.copilot.response_model import (
     StreamFinish,
     StreamTextDelta,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
 )
-from backend.copilot.tools.models import ApprovalRequiredResponse
+from backend.copilot.tools.models import (
+    ApprovalRequiredResponse,
+    SetupInfo,
+    SetupRequirementsResponse,
+    UserReadiness,
+)
+from backend.copilot.turn_pause import TurnPause
 from backend.platform_linking.models import (
     BotExpert,
     ChatTurnHandle,
@@ -246,7 +253,9 @@ class TestStreamChat:
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
-        await queue.put((None, StreamError(errorText="executor crashed")))
+        await queue.put(
+            (None, StreamError(errorText="executor crashed", code="sdk_error"))
+        )
 
         with (
             patch(
@@ -265,6 +274,7 @@ class TestStreamChat:
                 pass
 
         assert excinfo.value.error_kind == "backend_stream_error"
+        assert excinfo.value.code == "sdk_error"
         assert "executor crashed" in str(excinfo.value)
 
     @pytest.mark.asyncio
@@ -549,6 +559,238 @@ class TestStreamChat:
                 pass
 
         assert excinfo.value.error_kind == "subscribe_failed"
+
+
+def _connected_card() -> str:
+    """The "already signed in" card run_mcp_tool returns for a status probe
+    (``surface_connect_card`` with a working credential)."""
+    return SetupRequirementsResponse(
+        message="You're connected to linear.app. Use Reconnect to swap accounts.",
+        session_id="sess",
+        setup_info=SetupInfo(
+            agent_id="https://mcp.linear.app/mcp",
+            agent_name="linear.app",
+            user_readiness=UserReadiness(
+                has_all_credentials=True, missing_credentials={}, ready_to_run=True
+            ),
+            requirements={"credentials": [], "inputs": [], "execution_modes": []},
+        ),
+    ).model_dump_json()
+
+
+class TestConnectedCardIsNotASetupPrompt:
+    """Recorded case (Discord, #AutoPwuts thread, 2026-09-15 10:48): while
+    filing a Linear ticket the model checked the connection, got the
+    "connected" card, and the relay posted "You're connected to linear.app.
+    Use Reconnect to swap accounts. Click the button below ... finish setup"
+    although nothing needed doing."""
+
+    def test_connected_card_needs_no_user_action(self):
+        assert _extract_setup_requirements(_connected_card()) is None
+
+    def test_card_with_missing_credentials_is_still_a_prompt(self):
+        payload = json.loads(_connected_card())
+        payload["setup_info"]["user_readiness"] = {
+            "has_all_credentials": False,
+            "missing_credentials": {"credentials": {"provider": "mcp"}},
+            "ready_to_run": False,
+        }
+        assert _extract_setup_requirements(payload) == payload
+
+    def test_card_for_a_rejected_credential_is_still_a_prompt(self):
+        payload = json.loads(_connected_card())
+        payload["rejection"] = {"provider": "mcp", "detail": "expired"}
+        assert _extract_setup_requirements(payload) == payload
+
+    def test_inputs_still_to_pick_are_still_a_prompt(self):
+        payload = json.loads(_connected_card())
+        payload["setup_info"]["user_readiness"]["ready_to_run"] = False
+        assert _extract_setup_requirements(payload) == payload
+
+    @pytest.mark.asyncio
+    async def test_connected_card_does_not_use_up_the_turns_setup_prompt(
+        self, api: BotBackend
+    ):
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+        missing = '{"type":"setup_requirements","message":"Connect Sentry"}'
+
+        queue: asyncio.Queue = asyncio.Queue()
+        await queue.put(
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="run_mcp_tool",
+                    output=_connected_card(),
+                ),
+            )
+        )
+        await queue.put(
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-2", toolName="run_mcp_tool", output=missing
+                ),
+            )
+        )
+        await queue.put((None, StreamFinish()))
+
+        setup_calls: list[dict] = []
+
+        async def on_setup(session_id: str, output: dict, tool_name: str | None):
+            setup_calls.append(output)
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            async for _ in api.stream_chat(
+                platform="discord",
+                platform_user_id="u1",
+                message="file it",
+                on_setup_required=on_setup,
+            ):
+                pass
+
+        assert setup_calls == [json.loads(missing)]
+
+
+class TestPausedTurn:
+    """A turn at its budget or step limit now pauses instead of failing
+    (#15388). The web chat offers a Keep going button; a chat user has none,
+    so the reply has to say how to pick the task back up."""
+
+    async def _reply(self, api: BotBackend, *chunks) -> str:
+        handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
+        api._client.start_chat_turn = AsyncMock(return_value=handle)
+        queue: asyncio.Queue = asyncio.Queue()
+        for chunk in (*chunks, StreamFinish()):
+            await queue.put((None, chunk))
+
+        with (
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(return_value=queue),
+            ),
+            patch(
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
+                new=AsyncMock(),
+            ),
+        ):
+            return "".join(
+                [
+                    chunk
+                    async for chunk in api.stream_chat(
+                        platform="discord", platform_user_id="u1", message="hi"
+                    )
+                ]
+            )
+
+    @pytest.mark.asyncio
+    async def test_a_step_check_in_follows_the_checkpoint_with_how_to_go_on(
+        self, api: BotBackend
+    ):
+        reply = await self._reply(
+            api,
+            StreamTextDelta(id="1", delta="Done 3 of 5 files. Next: the other 2."),
+            StreamTurnPaused(pause=TurnPause(reason="steps", steps=450).as_part()),
+        )
+
+        assert reply == (
+            "Done 3 of 5 files. Next: the other 2.\n\n"
+            'Paused: checking in after a long run. Reply "keep going" to pick it up.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_task_size_pause_says_to_keep_going(self, api: BotBackend):
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(reason="task", checkpoint_saved=False).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Paused: this task reached its size limit. "
+            'Reply "keep going" to pick it up.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_budget_pause_says_when_it_can_go_on(self, api: BotBackend):
+        resets_at = datetime(2026, 10, 16, 0, 0, tzinfo=UTC)
+
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(reason="daily", resets_at=resets_at).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Paused: this task is out of today's budget. "
+            'Reply "keep going" after it resets at 00:00 UTC on Oct 16.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_trial_pause_says_to_go_on_once_there_is_allowance(
+        self, api: BotBackend
+    ):
+        reply = await self._reply(
+            api, StreamTurnPaused(pause=TurnPause(reason="trial").as_part())
+        )
+
+        assert reply == (
+            "Paused: the trial allowance is used up. "
+            'Reply "keep going" once your plan has allowance again.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_turn_refused_at_start_says_when_it_can_go_on(
+        self, api: BotBackend
+    ):
+        # The executor refuses a turn the allowance can't cover (#15396).
+        resets_at = datetime(2026, 10, 16, 0, 0, tzinfo=UTC)
+
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(
+                    reason="daily",
+                    resets_at=resets_at,
+                    checkpoint_saved=False,
+                    started=False,
+                ).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Not started: out of today's budget. "
+            'Reply "keep going" after it resets at 00:00 UTC on Oct 16.'
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_budget_that_never_resets_points_at_the_plan(self, api: BotBackend):
+        # No plan behind the account: nothing refills, so no reset to wait for.
+        reply = await self._reply(
+            api,
+            StreamTurnPaused(
+                pause=TurnPause(
+                    reason="weekly", checkpoint_saved=False, started=False
+                ).as_part()
+            ),
+        )
+
+        assert reply == (
+            "Not started: out of this week's budget. "
+            'Reply "keep going" once your plan has allowance again.'
+        )
 
 
 class TestExtractSetupRequirements:

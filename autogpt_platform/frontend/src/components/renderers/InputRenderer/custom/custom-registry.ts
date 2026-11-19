@@ -1,5 +1,7 @@
 import type { JSX } from "react";
 import { FieldProps, RJSFSchema, RegistryFieldsType } from "@rjsf/utils";
+import { AirtableBasePickerField } from "./AirtableBasePickerField/AirtableBasePickerField";
+import { isAirtableBasePickerSchema } from "./AirtableBasePickerField/helpers";
 import { CredentialsField } from "./CredentialField/CredentialField";
 import { GoogleDrivePickerField } from "./GoogleDrivePickerField/GoogleDrivePickerField";
 import { JsonTextField } from "./JsonTextField/JsonTextField";
@@ -36,6 +38,11 @@ export const CUSTOM_FIELDS: CustomFieldDefinition[] = [
     id: "custom/google_drive_picker_field",
     matcher: isGoogleDrivePickerSchema,
     component: GoogleDrivePickerField,
+  },
+  {
+    id: "custom/airtable_base_picker_field",
+    matcher: isAirtableBasePickerSchema,
+    component: AirtableBasePickerField,
   },
   {
     id: "custom/json_text_field",

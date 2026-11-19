@@ -17,7 +17,7 @@ export function SearchCommandSkeleton({ rows = 4 }: Props) {
     >
       <div
         data-slot="search-command-skeleton-header"
-        className="px-3 pb-1 pt-2"
+        className="px-3 pt-2 pb-1"
       >
         <Skeleton className="h-3 w-16" />
       </div>

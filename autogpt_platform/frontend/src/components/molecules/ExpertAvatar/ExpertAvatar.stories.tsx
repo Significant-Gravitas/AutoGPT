@@ -51,18 +51,18 @@ export const TopicSurfaces: Story = {
                   avatarUrl={identity.url}
                   backgroundColor={color}
                   size={88}
-                  className="rounded-full ring-4 ring-white"
+                  className="rounded-full ring-4 ring-surface"
                 />
                 <p className="mt-2 font-semibold">{identity.name}</p>
-                <p className="text-sm text-foreground-tertiary">
+                <p className="text-body text-foreground-tertiary">
                   {identity.job_title}
                 </p>
-                <div className="my-3 flex items-center gap-2 text-sm text-foreground-tertiary">
+                <div className="my-3 flex items-center gap-2 text-body text-foreground-tertiary">
                   <ExpertAvatar
                     name={identity.name}
                     avatarUrl={identity.url}
                     size={32}
-                    className="rounded-full border border-[#e3e3e3]"
+                    className="rounded-full border border-border-base"
                   />
                   Sidebar
                 </div>
@@ -87,7 +87,7 @@ export const Family: Story = {
       <div className="flex w-full max-w-5xl flex-col gap-6">
         {families.map((family) => (
           <div key={family}>
-            <p className="mb-2 text-sm font-medium capitalize text-foreground-tertiary">
+            <p className="mb-2 text-body font-medium text-foreground-tertiary capitalize">
               {family}
             </p>
             <div className="flex flex-wrap gap-4">

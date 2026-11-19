@@ -1,7 +1,7 @@
 // BLOCK MENU TODO: We need to add a better hover state to it; currently it's not in the design either.
 
-import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { blockMenuButtonBase } from "./style";
 import { cn } from "@/lib/utils";
 import React, { ButtonHTMLAttributes } from "react";
 
@@ -21,14 +21,14 @@ export const MenuItem: React.FC<Props> = ({
   ...rest
 }) => {
   return (
-    <Button
-      variant="legacy-default"
+    <button
+      type="button"
       data-id={menuItemType ? `menu-item-${menuItemType}` : undefined}
       className={cn(
-        "flex h-[2.375rem] w-[12.875rem] justify-between whitespace-normal rounded-[0.5rem] bg-transparent p-2 pl-3 shadow-none",
-        "hover:cursor-default hover:bg-surface-hover focus:ring-0",
-        // TODO(tokens): no fitting role for bg-zinc-100 #EFEFF0; #EFEFF0 is surface-hover, a hover fill, and this fill is not a hover state (QUALITY 41)
-        selected && "bg-zinc-100",
+        blockMenuButtonBase,
+        "flex h-[2.375rem] w-[12.875rem] justify-between rounded-lg bg-transparent p-2 pl-3 whitespace-normal",
+        "hover:cursor-default hover:bg-surface-hover",
+        selected && "bg-surface-hover",
         className,
       )}
       {...rest}
@@ -46,6 +46,6 @@ export const MenuItem: React.FC<Props> = ({
           {number > 100 ? "100+" : number}
         </Text>
       )}
-    </Button>
+    </button>
   );
 };

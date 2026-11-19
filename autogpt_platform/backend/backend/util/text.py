@@ -1,12 +1,23 @@
 import asyncio
+import atexit
+import builtins
+import json
 import logging
+import pickle
 import re
+import signal
+import socket
+import subprocess
+import sys
+import threading
 import types
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from functools import update_wrapper
+from multiprocessing.connection import Connection
 from typing import Any
 
-from jinja2 import BaseLoader
+from jinja2 import BaseLoader, Template
 from jinja2.exceptions import TemplateError
 from jinja2.sandbox import (
     SandboxedEnvironment,
@@ -14,6 +25,9 @@ from jinja2.sandbox import (
     SandboxedFormatter,
 )
 from markupsafe import Markup
+
+if sys.platform != "win32":
+    import resource
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +37,14 @@ MAX_RANGE = 10_000  # Max items from range()
 MAX_SEQUENCE_REPEAT = 10_000  # Max length from sequence * int
 TEMPLATE_RENDER_TIMEOUT = 10  # Seconds before render is killed
 MAX_FORMAT_FIELD_SIZE = 1_000  # Max width or precision of a formatted field
+RENDER_MEMORY_LIMIT = 512 * 2**20  # Bytes a render worker may allocate past its start
+MAX_RENDER_OUTPUT = 50_000_000  # Max characters one render may return
+MAX_RENDER_WORKERS = 4  # Render worker processes per rendering process
+RENDERS_PER_WORKER = 1_000  # Renders before a worker is replaced
+WORKER_RETIRE_GROWTH = 64 * 2**20  # Heap growth a render may leave in its worker
+WORKER_START_TIMEOUT = 60  # Seconds a new worker may take to answer
+
+REMOVED_FILTERS = frozenset({"pprint", "tojson", "urlize", "xmlattr"})
 
 # The rest of one %-style conversion after its optional "(key)": flags, a
 # width and a precision that are digits or "*", a length modifier and the
@@ -110,21 +132,7 @@ def _check_field_size(width: str | int | None, precision: str | int | None) -> N
 
 class TextFormatter:
     def __init__(self, autoescape: bool = True):
-        self.env = _RestrictedEnvironment(
-            loader=BaseLoader(), autoescape=autoescape, enable_async=True
-        )
-        self.env.globals.clear()
-
-        # Replace range with a safe capped version
-        self.env.globals["range"] = _safe_range
-
-        # Instead of clearing all filters, just remove potentially unsafe ones
-        unsafe_filters = ["pprint", "tojson", "urlize", "xmlattr"]
-        for f in unsafe_filters:
-            if f in self.env.filters:
-                del self.env.filters[f]
-
-        self.env.filters["format"] = format_filter_for_jinja2
+        self.autoescape = autoescape
 
     async def format_string(
         self,
@@ -134,24 +142,324 @@ class TextFormatter:
         timeout: float | None = TEMPLATE_RENDER_TIMEOUT,
         **kwargs,
     ) -> str:
-        """Render a Jinja2 template with resource limits.
+        """Render a Jinja2 template in a render worker process.
 
-        Uses Jinja2's native async rendering (``render_async``) with
-        ``asyncio.wait_for`` as a defense-in-depth timeout.
+        The worker compiles and renders under ``RENDER_MEMORY_LIMIT`` and is
+        killed once ``timeout`` seconds pass, so no template can hold this
+        process's memory or time. Waiting for a free worker is not counted
+        against ``timeout``.
+
+        Raises ``ValueError`` for anything the caller's template is refused
+        for, so the API answers 400 rather than 500.
         """
+        context = {**(values or {}), **kwargs}
+        return await asyncio.get_running_loop().run_in_executor(
+            _render_threads,
+            _render_pool.render,
+            template_str,
+            context,
+            self.autoescape,
+            timeout,
+        )
+
+
+class _RenderPool:
+    """Render workers shared by this process's threads, started on demand."""
+
+    def __init__(self, size: int = MAX_RENDER_WORKERS) -> None:
+        self._size = size
+        self._idle: list[_RenderWorker] = []
+        self._workers = 0
+        self._changed = threading.Condition()
+
+    def render(
+        self,
+        template_str: str,
+        context: dict[str, Any],
+        autoescape: bool,
+        timeout: float | None,
+    ) -> str:
         try:
-            template = self.env.from_string(template_str)
-            coro = template.render_async(values or {}, **kwargs)
-            if timeout is not None:
-                return await asyncio.wait_for(coro, timeout=timeout)
-            return await coro
-        except TimeoutError:
+            request = pickle.dumps(
+                (template_str, context, autoescape), pickle.HIGHEST_PROTOCOL
+            )
+        except Exception as e:
+            raise ValueError(f"Template values must be plain data: {e}") from e
+        worker = self._acquire()
+        try:
+            answer = worker.render(request, timeout)
+        finally:
+            self._release(worker)
+        return _read_answer(answer)
+
+    def _acquire(self) -> "_RenderWorker":
+        with self._changed:
+            while True:
+                while self._idle:
+                    worker = self._idle.pop()
+                    if worker.usable:
+                        return worker
+                    worker.close()
+                    self._workers -= 1
+                if self._workers < self._size:
+                    self._workers += 1
+                    break
+                self._changed.wait()
+        try:
+            return _RenderWorker()
+        except BaseException:
+            with self._changed:
+                self._workers -= 1
+                self._changed.notify()
+            raise
+
+    def close(self) -> None:
+        with self._changed:
+            for worker in self._idle:
+                worker.close()
+            self._workers -= len(self._idle)
+            self._idle.clear()
+
+    def _release(self, worker: "_RenderWorker") -> None:
+        with self._changed:
+            if worker.usable:
+                self._idle.append(worker)
+            else:
+                worker.close()
+                self._workers -= 1
+            self._changed.notify()
+
+
+class _RenderWorker:
+    """One worker process, rendering one template at a time over a socket.
+
+    A fresh interpreter rather than a multiprocessing child, which would
+    import the calling program's main module, and with it every module that
+    program loaded, before it ran anything of ours.
+    """
+
+    def __init__(self) -> None:
+        ours, theirs = socket.socketpair()
+        # A process-wide socket timeout would leave both ends non-blocking
+        ours.setblocking(True)
+        theirs.setblocking(True)
+        self._process = subprocess.Popen(
+            [sys.executable, "-I", "-c", _bootstrap(theirs.fileno())],
+            pass_fds=(theirs.fileno(),),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            env={},
+        )
+        theirs.close()
+        self._connection = Connection(ours.detach())
+        self.renders = 0
+        self.retired = False
+        try:
+            if not self._connection.poll(WORKER_START_TIMEOUT):
+                raise RuntimeError("no answer")
+            self._connection.recv_bytes()
+        except (RuntimeError, EOFError, OSError) as e:
+            self.close()
+            raise RuntimeError(f"Template render worker failed to start: {e}") from e
+
+    @property
+    def usable(self) -> bool:
+        return (
+            not self.retired
+            and self.renders < RENDERS_PER_WORKER
+            and self._process.poll() is None
+        )
+
+    def render(self, request: bytes, timeout: float | None) -> bytes:
+        self.renders += 1
+        try:
+            self._connection.send_bytes(request)
+            answered = self._connection.poll(timeout)
+            answer = self._connection.recv_bytes() if answered else b""
+        except (EOFError, OSError) as e:
+            self.retire()
+            logger.warning(f"Template render worker stopped mid-render: {e!r}")
+            raise ValueError("Template rendering failed") from e
+        except BaseException:
+            # Half a request or answer left on the socket would reach the next caller
+            self.retire()
+            raise
+        if not answered:
+            self.retire()
             raise ValueError(
                 f"Template rendering timed out after {timeout}s "
                 "(expression too complex)"
             )
-        except TemplateError as e:
-            raise ValueError(e) from e
+        if answer[:1] == _RETIRING:
+            self.retired = True
+        return answer[1:]
+
+    def retire(self) -> None:
+        self.retired = True
+        self.close()
+
+    def close(self) -> None:
+        if self._process.poll() is None:
+            self._process.kill()
+        self._process.wait()
+        self._connection.close()
+
+
+def _bootstrap(fd: int) -> str:
+    return (
+        f"import sys; sys.path[:0] = {sys.path!r}; "
+        f"from backend.util.text import _serve_renders; _serve_renders({fd})"
+    )
+
+
+def _read_answer(answer: bytes) -> str:
+    """The rendered text, or the worker's error raised here."""
+    kind, body = answer[:1], answer[1:].decode("utf-8", "surrogatepass")
+    if kind == _TEXT:
+        return body
+    if kind == _REFUSED:
+        raise ValueError(body)
+    name, message = json.loads(body)
+    # The worker answers in plain text, so only a builtin type is rebuilt
+    error_type = getattr(builtins, name, None)
+    if isinstance(error_type, type) and issubclass(error_type, Exception):
+        try:
+            error = error_type(message)
+        except TypeError:  # Its constructor wants more than a message
+            pass
+        else:
+            raise error
+    raise RuntimeError(f"{name}: {message}")
+
+
+def _serve_renders(fd: int) -> None:
+    """A worker's loop: one request in, one answer out, until the socket closes.
+
+    A render that leaves the heap grown is the worker's last: the allocator
+    keeps what it freed, and that would count against the next render's limit.
+    """
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    connection = Connection(fd)
+    started_with = _data_in_use()
+    _limit_memory(started_with)
+    environments = {False: _build_environment(False), True: _build_environment(True)}
+    connection.send_bytes(b"ready")
+    while True:
+        try:
+            answer, out_of_memory = _answer(connection.recv_bytes(), environments)
+        except (EOFError, MemoryError):
+            # A request too big to receive leaves the rest of it unread
+            return
+        grown = _data_in_use() > started_with + WORKER_RETIRE_GROWTH
+        retiring = out_of_memory or grown
+        connection.send_bytes((_RETIRING if retiring else _SERVING) + answer)
+        if retiring:
+            return
+
+
+def _answer(
+    request: bytes, environments: dict[bool, "_RestrictedEnvironment"]
+) -> tuple[bytes, bool]:
+    """The answer to one request, and whether the render ran out of memory."""
+    try:
+        template_str, context, autoescape = pickle.loads(request)
+        template = environments[autoescape].from_string(template_str)
+        text = _render_capped(template, context)
+        return _TEXT + text.encode("utf-8", "surrogatepass"), False
+    except Exception as error:
+        if _ran_out_of_memory(error):
+            limit = RENDER_MEMORY_LIMIT // 2**20
+            refusal = f"Template rendering ran out of memory (max {limit} MB)"
+            return _REFUSED + refusal.encode(), True
+        if isinstance(error, _REFUSALS):
+            return _REFUSED + str(error).encode("utf-8", "surrogatepass"), False
+        detail = json.dumps([type(error).__name__, str(error)])
+        return _ERROR + detail.encode("utf-8", "surrogatepass"), False
+
+
+def _ran_out_of_memory(error: BaseException) -> bool:
+    """Whether a MemoryError is anywhere in the error's chain.
+
+    Jinja rewrites a render's traceback by compiling code, which fails too
+    once memory has run out, so what arrives can be a SystemError (3.12) or
+    a ValueError (3.11) raised while handling the MemoryError.
+    """
+    seen: set[int] = set()
+    link: BaseException | None = error
+    while link is not None and id(link) not in seen:
+        if isinstance(link, MemoryError):
+            return True
+        seen.add(id(link))
+        link = link.__cause__ or link.__context__
+    return False
+
+
+def _render_capped(template: Template, context: dict[str, Any]) -> str:
+    pieces: list[str] = []
+    length = 0
+    for piece in template.generate(context):
+        length += len(piece)
+        if length > MAX_RENDER_OUTPUT:
+            raise _OutputTooLarge(
+                f"Template output too large (max {MAX_RENDER_OUTPUT} characters)"
+            )
+        pieces.append(piece)
+    return "".join(pieces)
+
+
+def _limit_memory(in_use: int) -> None:
+    # The limit is set only where it is enforced and VmData can be read
+    if sys.platform != "linux":
+        return
+    # On top of what the interpreter and its imports already hold
+    _, hard = resource.getrlimit(resource.RLIMIT_DATA)
+    limit = in_use + RENDER_MEMORY_LIMIT
+    if hard != resource.RLIM_INFINITY:
+        limit = min(limit, hard)
+    resource.setrlimit(resource.RLIMIT_DATA, (limit, hard))
+
+
+def _data_in_use() -> int:
+    """Bytes of this process's data segment, which RLIMIT_DATA bounds."""
+    if sys.platform != "linux":
+        return 0
+    with open("/proc/self/status") as status:
+        return next(
+            int(line.split()[1]) * 1024 for line in status if line.startswith("VmData:")
+        )
+
+
+def _build_environment(autoescape: bool) -> "_RestrictedEnvironment":
+    env = _RestrictedEnvironment(loader=BaseLoader(), autoescape=autoescape)
+    env.globals.clear()
+
+    # Replace range with a safe capped version
+    env.globals["range"] = _safe_range
+
+    # Instead of clearing all filters, just remove potentially unsafe ones
+    for name in REMOVED_FILTERS:
+        env.filters.pop(name, None)
+
+    env.filters["format"] = format_filter_for_jinja2
+    return env
+
+
+class _OutputTooLarge(Exception):
+    """Raised in a worker whose render has emitted more than it may return."""
+
+
+# A template's own error, answered as ValueError so the API says 400
+_REFUSALS = (TemplateError, ArithmeticError, RecursionError, _OutputTooLarge)
+
+# A worker's answer opens with whether it is retiring, then what the rest is
+_RETIRING, _SERVING = b"X", b"-"
+_TEXT, _REFUSED, _ERROR = b"T", b"R", b"E"
+
+_render_pool = _RenderPool()
+# One thread per worker, so renders waiting for one hold no thread of the
+# event loop's shared executor
+_render_threads = ThreadPoolExecutor(MAX_RENDER_WORKERS, "template-render")
+atexit.register(_render_pool.close)
 
 
 def _safe_range(*args: int) -> range:

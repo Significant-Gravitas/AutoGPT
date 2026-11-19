@@ -198,7 +198,8 @@ class TestDispatchCommand:
         starter = await interaction.channel.send("x")
         options = TurnOptions(model="advanced")
 
-        await adapter._dispatch_command(interaction, starter, "hi", options)
+        with patch.object(adapter, "_channel_history", new=AsyncMock(return_value=())):
+            await adapter._dispatch_command(interaction, starter, "hi", options)
 
         ctx = callback.await_args.args[0]
         assert ctx.channel_type == channel_type
@@ -235,20 +236,38 @@ class TestDispatchCommand:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("thread", [True, False])
-    async def test_a_command_in_a_thread_carries_its_history(self, thread):
+    async def test_a_command_carries_the_history_before_it(self, thread):
         adapter, callback = self._adapter()
         interaction = _interaction(guild=True, thread=thread)
+        interaction.user = MagicMock(spec=discord.Member, id=456, display_name="B")
         starter = await interaction.channel.send("x")
         earlier = (MessageHistoryEntry(username="Ana", user_id="1", text="the bug"),)
-        fetch = AsyncMock(return_value=earlier)
+        thread_fetch = AsyncMock(return_value=earlier)
+        channel_fetch = AsyncMock(return_value=earlier)
 
-        with patch.object(adapter, "_thread_history", new=fetch):
+        with (
+            patch.object(adapter, "_thread_history", new=thread_fetch),
+            patch.object(adapter, "_channel_history", new=channel_fetch),
+        ):
             await adapter._dispatch_command(interaction, starter, "hi", TurnOptions())
 
-        ctx = callback.await_args.args[0]
+        assert callback.await_args.args[0].thread_history == earlier
         if thread:
-            fetch.assert_awaited_once_with(starter)
-            assert ctx.thread_history == earlier
+            thread_fetch.assert_awaited_once_with(starter)
+            channel_fetch.assert_not_awaited()
         else:
-            fetch.assert_not_awaited()
-            assert ctx.thread_history == ()
+            # Read as the member who ran the command; the starter is the bot's.
+            channel_fetch.assert_awaited_once_with(starter, interaction.user)
+            thread_fetch.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_command_from_a_non_member_reads_no_channel_history(self):
+        adapter, _ = self._adapter()
+        interaction = _interaction(guild=True)
+        starter = await interaction.channel.send("x")
+        fetch = AsyncMock(return_value=())
+
+        with patch.object(adapter, "_channel_history", new=fetch):
+            await adapter._dispatch_command(interaction, starter, "hi", TurnOptions())
+
+        fetch.assert_awaited_once_with(starter, None)

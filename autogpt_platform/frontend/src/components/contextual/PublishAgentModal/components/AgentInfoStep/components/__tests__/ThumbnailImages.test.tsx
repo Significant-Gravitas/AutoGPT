@@ -209,6 +209,36 @@ describe("ThumbnailImages", () => {
     );
   });
 
+  it("explains the daily limit when generating is refused for the day", async () => {
+    toastSpy.mockClear();
+    server.use(
+      http.post("*/api/store/submissions/generate_image", () =>
+        HttpResponse.json(
+          { detail: "Limit: 25 generated agent images per day." },
+          { status: 429 },
+        ),
+      ),
+    );
+
+    render(
+      <ThumbnailImages
+        agentId="agent-1"
+        onImagesChange={() => {}}
+        initialImages={[]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /generate/i }));
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Daily image limit reached" }),
+      ),
+    );
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Generation failed" }),
+    );
+  });
+
   it("rejects an oversized file before uploading and explains the size limit", async () => {
     toastSpy.mockClear();
     uploadSpy.mockClear();

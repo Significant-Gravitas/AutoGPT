@@ -22,7 +22,24 @@ import { buildPart, useUploadQueue } from "./useUploadQueue";
 
 export type RecorderPhase = "idle" | "recording" | "stopping" | "stopped";
 
-export function useBrainDumpRecorder() {
+// How the browser answered the request for the microphone.
+type MicAnswer = "granted" | "denied" | "unavailable";
+
+interface Args {
+  // The role's prompt set, sent with `brain_dump_started`.
+  promptSet?: string;
+}
+
+interface StartOptions {
+  // Called once the browser has answered, before the take starts, so a
+  // caller can report the answer ahead of `brain_dump_started`.
+  onMicAnswer?: (answer: MicAnswer) => void;
+  // Asked once the microphone opens: the caller may have moved on while the
+  // permission prompt was open, and then no take is started.
+  shouldRecord?: () => boolean;
+}
+
+export function useBrainDumpRecorder({ promptSet }: Args = {}) {
   const userID = useAuthStore((state) => state.user?.id);
   const [phase, setPhase] = useState<RecorderPhase>("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -110,19 +127,19 @@ export function useBrainDumpRecorder() {
     }
   }
 
-  async function start() {
+  async function start(options: StartOptions = {}) {
     // A tap that lands while the permission prompt from the previous one
     // is still open is the same tap, not a second take.
     if (isStartingRef.current) return false;
     isStartingRef.current = true;
     try {
-      return await openMicAndRecord();
+      return await openMicAndRecord(options);
     } finally {
       isStartingRef.current = false;
     }
   }
 
-  async function openMicAndRecord() {
+  async function openMicAndRecord({ onMicAnswer, shouldRecord }: StartOptions) {
     // Permission is requested on the first tap, never on screen load —
     // a browser prompt before the user has read the headline is how
     // denial rates go up.
@@ -131,12 +148,16 @@ export function useBrainDumpRecorder() {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (error) {
       reportMicFailure(error);
+      onMicAnswer?.(
+        isMicrophonePermissionDenied(error) ? "denied" : "unavailable",
+      );
       return false;
     }
+    onMicAnswer?.("granted");
     setMicUnavailable(false);
     // Back during the prompt, or a skip during "Record again", can leave the
     // step before the mic opens, and its unmount cleanup has already run.
-    if (unmountedRef.current) {
+    if (unmountedRef.current || shouldRecord?.() === false) {
       stream.getTracks().forEach((track) => track.stop());
       return false;
     }
@@ -164,7 +185,8 @@ export function useBrainDumpRecorder() {
       durationSecs: 0,
       finalized: false,
     });
-    if (unmountedRef.current) {
+    // The caller can move on during the write too.
+    if (unmountedRef.current || shouldRecord?.() === false) {
       stopTracks();
       return false;
     }
@@ -188,7 +210,7 @@ export function useBrainDumpRecorder() {
 
     timerRef.current = setInterval(tick, 250);
     setPhase("recording");
-    trackBrainDump("brain_dump_started");
+    trackBrainDump("brain_dump_started", { prompt_set: promptSet });
     return true;
   }
 
@@ -352,6 +374,9 @@ export function useBrainDumpRecorder() {
     elapsedSeconds,
     isSavedLocally,
     permissionDenied,
+    // A refusal is not final: a dismissed prompt asks again, and a blocked
+    // site can be allowed from the address bar.
+    clearPermissionDenied: () => setPermissionDenied(false),
     micUnavailable,
     hasSpoken,
     hitTimeLimit,

@@ -2,12 +2,16 @@
 
 import * as Sentry from "@sentry/nextjs";
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   children: ReactNode;
   artifactID: string;
   artifactTitle: string;
   artifactType: string;
+  /** The text being rendered. New text gets a fresh try, even under the same
+   *  id, title and type. */
+  content?: string | null;
 }
 
 interface State {
@@ -35,12 +39,16 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
     });
   }
 
-  componentDidUpdate(prevProps: Props) {
+  componentDidUpdate(prevProps: Props, prevState: State) {
+    // An error caught in this very commit belongs to these props: clearing it
+    // would only crash and report the same render again.
     if (
       this.state.error &&
+      prevState.error === this.state.error &&
       (prevProps.artifactID !== this.props.artifactID ||
         prevProps.artifactTitle !== this.props.artifactTitle ||
-        prevProps.artifactType !== this.props.artifactType)
+        prevProps.artifactType !== this.props.artifactType ||
+        prevProps.content !== this.props.content)
     ) {
       this.setState({ error: null });
     }
@@ -72,28 +80,31 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
         role="alert"
         className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <p className="text-sm font-medium text-foreground-body">
+        <Text variant="body-medium-tight" tone="body">
           This artifact couldn&apos;t be rendered
-        </p>
-        <p className="max-w-md break-words text-xs text-foreground-tertiary">
+        </Text>
+        <Text
+          variant="small-tight"
+          tone="muted"
+          className="max-w-md break-words"
+        >
           Something in{" "}
           <span className="font-mono">{this.props.artifactTitle}</span> threw an
           error while rendering. The chat and sidebar are still working.
-        </p>
-        <pre className="max-h-32 max-w-md overflow-auto whitespace-pre-wrap break-words rounded-md bg-surface-hover px-3 py-2 text-left text-xs text-foreground-body">
+        </Text>
+        <pre className="max-h-32 max-w-md overflow-auto rounded-md bg-surface-hover px-3 py-2 text-left text-caption break-words whitespace-pre-wrap text-foreground-body">
           {message}
         </pre>
         <button
           type="button"
           onClick={this.handleCopy}
-          // TODO(tokens): no exact role for focus-visible:ring-violet-400
-          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-xs font-medium text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="rounded-md border border-border-base bg-surface px-3 py-1.5 text-caption font-medium text-foreground-body shadow-sm transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
         >
           Copy error details
         </button>
-        <p className="max-w-md text-xs text-foreground-subtle">
+        <Text variant="small-tight" tone="subtle" className="max-w-md">
           Paste this into the chat so a working version can be regenerated.
-        </p>
+        </Text>
       </div>
     );
   }

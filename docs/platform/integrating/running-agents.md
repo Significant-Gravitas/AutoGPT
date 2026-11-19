@@ -101,7 +101,11 @@ So `inputs` for this agent is `{"topic": "...", "document": "..."}`, with `max_w
 * `"format": "file"` marks an input that takes a [file reference](#pass-files-to-an-agent). Other formats, such as `long-text`, are hints for the app's form: send a plain string.
 * An input can be `required` while its type also allows `null`, like `document` above. Send a value for it: `null` counts as missing.
 * `advanced: true` marks an optional input the app tucks away under advanced settings. `secret: true` marks a value the app masks, such as a password. Neither changes how you send it.
-* Starting a run or creating a schedule checks `inputs` against `input_schema`. A name the agent doesn't have, or a `required` input left out or `null`, is a [`422`](api-conventions.md#validation-errors) and nothing starts; `details.errors` has one entry per input, with `loc` `["body", "inputs", "<name>"]`.
+* Starting a run or creating a schedule checks `inputs` against `input_schema`. A name the agent doesn't have, or a `required` input left out or `null`, is a [`422`](api-conventions.md#validation-errors) and nothing starts; `details.errors` has one entry per input, up to 20, with `loc` `["body", "inputs", "<name>"]`.
+
+Turning on **Advanced** now makes a workflow input optional even without a default. This also applies to existing workflows. To require a value, turn off Advanced and clear the input's default.
+
+When a run omits an optional input with no default, connected blocks use their own pin defaults. A block with a required input and no default may skip execution. A block that runs a child workflow can still start that workflow, allowing its other starting blocks to run. Keep a Google Drive picker required when a connected block needs its file and credentials.
 
 ## Supply credentials it needs
 

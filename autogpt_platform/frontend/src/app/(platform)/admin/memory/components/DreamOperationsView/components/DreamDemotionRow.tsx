@@ -1,6 +1,3 @@
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// text-gray-500 #6B7280.
-
 import type { DemotionSummary } from "@/app/api/__generated__/models/demotionSummary";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
@@ -25,11 +22,11 @@ export function DreamDemotionRow({ item }: Props) {
           {item.new_status}
         </Badge>
       </div>
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-500">
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-foreground-tertiary">
         <code className="font-mono text-tiny leading-inherit">
           edge: {shortenUuid(item.edge_uuid)}
         </code>
-        <Text variant="small" className="text-gray-500" as="span">
+        <Text variant="small" tone="muted" as="span">
           {item.applied ? "applied" : "not applied"}
         </Text>
       </div>

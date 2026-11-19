@@ -78,13 +78,7 @@ export const RunInputDialog = ({
               {hasCredentials() && credentialFields.length > 0 && (
                 <div data-id="run-input-credentials-section">
                   <div className="mb-4">
-                    <Text
-                      // TODO(tokens): no exact role: text-gray-900 #111827
-                      variant="h4"
-                      className="text-gray-900"
-                    >
-                      Credentials
-                    </Text>
+                    <Text variant="h4">Credentials</Text>
                   </div>
                   <div className="px-2" data-id="run-input-credentials-form">
                     <CredentialsGroupedView
@@ -102,13 +96,7 @@ export const RunInputDialog = ({
               {hasInputs() && (
                 <div data-id="run-input-inputs-section">
                   <div className="mb-4">
-                    <Text
-                      // TODO(tokens): no exact role: text-gray-900 #111827
-                      variant="h4"
-                      className="text-gray-900"
-                    >
-                      Inputs
-                    </Text>
+                    <Text variant="h4">Inputs</Text>
                   </div>
                   <div data-id="run-input-inputs-form">
                     <FormRenderer
@@ -134,7 +122,7 @@ export const RunInputDialog = ({
                 <Button
                   variant="primary"
                   size="large"
-                  className="group h-fit min-w-0 gap-2 px-10"
+                  className="group h-fit min-w-0 px-10"
                   onClick={handleManualRun}
                   loading={isExecutingGraph}
                   data-id="run-input-manual-run-button"
@@ -142,7 +130,8 @@ export const RunInputDialog = ({
                   {!isExecutingGraph && (
                     <Icon
                       icon={PlayIcon}
-                      className="size-5 transition-transform group-hover:scale-110"
+                      motion="transform"
+                      className="size-5 group-hover:scale-110"
                     />
                   )}
                   <Text variant="body-semibold-tight" as="span" tone="inherit">
@@ -154,13 +143,14 @@ export const RunInputDialog = ({
                 <Button
                   variant="primary"
                   size="large"
-                  className="group h-fit min-w-0 gap-2 px-10"
+                  className="group h-fit min-w-0 px-10"
                   onClick={() => setOpenCronSchedulerDialog(true)}
                   data-id="run-input-schedule-button"
                 >
                   <Icon
                     icon={Clock01Icon}
-                    className="size-5 transition-transform group-hover:scale-110"
+                    motion="transform"
+                    className="size-5 group-hover:scale-110"
                   />
                   <Text variant="body-semibold-tight" as="span" tone="inherit">
                     Schedule Run

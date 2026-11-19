@@ -12,7 +12,10 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock
 import pytest
 
 from backend.data.model import OAuthState, UserIntegrations
-from backend.integrations.credentials_store import IntegrationCredentialsStore
+from backend.integrations.credentials_store import (
+    NATIVE_STATE_PREFIX,
+    IntegrationCredentialsStore,
+)
 
 
 class _NoopLockContext:
@@ -109,3 +112,23 @@ async def test_peek_rejects_an_unknown_token(mocker):
     store, _ = _store_with(mocker, [_state()])
 
     assert await store.peek_state_token("user-a", "wrong", "stripe_link") is None
+
+
+@pytest.mark.asyncio
+async def test_a_native_sign_in_state_carries_the_prefix_and_still_verifies(mocker):
+    store, integrations = _store_with(mocker, [])
+
+    token, _ = await store.store_state_token("user-a", "github", [], native=True)
+
+    assert token.startswith(NATIVE_STATE_PREFIX)
+    assert integrations.oauth_states[0].token == token
+    assert await store.verify_state_token("user-a", token, "github") is not None
+
+
+@pytest.mark.asyncio
+async def test_a_web_sign_in_state_has_no_prefix(mocker):
+    store, _ = _store_with(mocker, [])
+
+    token, _ = await store.store_state_token("user-a", "github", [])
+
+    assert "." not in token

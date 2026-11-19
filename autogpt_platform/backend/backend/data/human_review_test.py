@@ -5,6 +5,7 @@ import pytest
 import pytest_mock
 from prisma.enums import ReviewStatus
 
+from backend.api.features.experts.spend_approval import spend_review_id
 from backend.copilot.constants import step_card_id
 from backend.data.human_review import (
     get_or_create_human_review,
@@ -164,6 +165,47 @@ async def test_get_pending_reviews_for_user(
     call_args = mock_prisma.return_value.find_many.call_args_list[1]
     assert call_args.kwargs["skip"] == 10  # (page-1) * page_size = (2-1) * 10
     assert call_args.kwargs["take"] == 10
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_an_experts_waiting_spend_approvals_group_as_one_node(
+    mocker: pytest_mock.MockFixture,
+):
+    # One node per expert gives the chat one Approve for all her paused runs.
+    def spend_row(graph_exec_id: str) -> Mock:
+        row = Mock()
+        row.nodeExecId = spend_review_id("e-1", graph_exec_id)
+        row.userId = "user-1"
+        row.graphExecId = graph_exec_id
+        row.chatSessionId = None
+        row.graphId = "graph-1"
+        row.graphVersion = 1
+        row.payload = {"expert": "Maria"}
+        row.instructions = "Maria needs your approval to keep spending"
+        row.editable = False
+        row.status = ReviewStatus.WAITING
+        row.reviewMessage = None
+        row.wasEdited = False
+        row.processed = False
+        row.createdAt = datetime.datetime.now(datetime.UTC)
+        row.updatedAt = None
+        row.reviewedAt = None
+        return row
+
+    prisma = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
+    prisma.return_value.count = AsyncMock(return_value=2)
+    prisma.return_value.find_many = AsyncMock(
+        side_effect=[[], [spend_row("exec-1"), spend_row("exec-2")]]
+    )
+    node_execs = mocker.patch("backend.data.human_review.AgentNodeExecution.prisma")
+    node_execs.return_value.find_many = AsyncMock(return_value=[])
+    graph_execs = mocker.patch("backend.data.human_review.AgentGraphExecution.prisma")
+    graph_execs.return_value.find_many = AsyncMock(return_value=[])
+
+    reviews = await get_pending_reviews_for_user("user-1")
+
+    assert [r.node_id for r in reviews] == ["expert-spend:e-1", "expert-spend:e-1"]
+    assert {r.graph_exec_id for r in reviews} == {"exec-1", "exec-2"}
 
 
 @pytest.mark.parametrize("named", ["its own step", "another step"])

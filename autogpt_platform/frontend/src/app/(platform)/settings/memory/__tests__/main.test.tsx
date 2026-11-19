@@ -55,7 +55,6 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     DREAM_SKILL_LEARNING_ENABLED: "dream-skill-learning-enabled",
     CHAT_MODE_OPTION: "chat-mode-option",
-    ENABLE_PLATFORM_PAYMENT: "enable-platform-payment",
   },
   useGetFlag: () => false,
   useFlagStatus: () => ({

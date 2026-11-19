@@ -21,7 +21,15 @@ import {
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 
 const { posthog } = vi.hoisted(() => ({
-  posthog: { __loaded: true, is_capturing: () => true, capture: vi.fn() },
+  posthog: {
+    __loaded: true,
+    is_capturing: () => true,
+    // posthog-js returns the event it takes, and nothing when it drops one.
+    capture: vi.fn((event: string, properties?: unknown) => ({
+      event,
+      properties,
+    })),
+  },
 }));
 vi.mock("posthog-js", () => ({ default: posthog }));
 
