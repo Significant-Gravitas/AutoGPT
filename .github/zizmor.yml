@@ -39,19 +39,6 @@ rules:
 
   # Classic only below this line.
 
-  artipacked:
-    ignore:
-      # Classic
-      - classic-autogpt-ci.yml
-      - classic-autogpt-docker-cache-clean.yml
-      - classic-autogpt-docker-ci.yml
-      - classic-autogpt-docker-release.yml
-      - classic-autogpts-ci.yml
-      - classic-benchmark-ci.yml
-      - classic-benchmark_publish_package.yml
-      - classic-forge-ci.yml
-      - classic-python-checks.yml
-
   obfuscation:
     ignore:
       # Classic
