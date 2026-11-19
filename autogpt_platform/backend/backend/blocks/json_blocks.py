@@ -14,6 +14,7 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 from backend.util.json import dumps, loads
+from backend.util.type import check_json_value_count
 
 
 class JSONEncoderBlock(Block):
@@ -85,6 +86,7 @@ class JSONDecoderBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        check_json_value_count(input_data.json_str)
         try:
             parsed_data = loads(input_data.json_str)
             yield "data", parsed_data

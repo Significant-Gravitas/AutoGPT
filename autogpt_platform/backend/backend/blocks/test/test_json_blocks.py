@@ -3,6 +3,7 @@ import json
 import pytest
 
 from backend.blocks.json_blocks import JSONDecoderBlock, JSONEncoderBlock
+from backend.util.type import MAX_JSON_VALUES
 
 
 @pytest.mark.asyncio
@@ -75,6 +76,18 @@ async def test_json_decoder_success():
     name, value = outputs[0]
     assert name == "data"
     assert value == {"a": 1, "b": [True, False, None], "c": {"d": "nested"}}
+
+
+@pytest.mark.asyncio
+async def test_json_decoder_reads_json_only_within_the_value_limit():
+    async def decode(values: int) -> list:
+        json_str = "[" + ",".join(["0"] * values) + "]"
+        block = JSONDecoderBlock()
+        return [o async for o in block.run(JSONDecoderBlock.Input(json_str=json_str))]
+
+    assert await decode(MAX_JSON_VALUES - 1) == [("data", [0] * (MAX_JSON_VALUES - 1))]
+    with pytest.raises(ValueError, match="more than 500,000 values"):
+        await decode(MAX_JSON_VALUES)
 
 
 @pytest.mark.asyncio

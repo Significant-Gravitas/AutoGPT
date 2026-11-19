@@ -15,6 +15,7 @@ from backend.data.model import SchemaField
 from backend.util.json import dumps, loads
 from backend.util.mock import MockObject
 from backend.util.prompt import estimate_token_count_str
+from backend.util.type import check_json_value_count
 
 # =============================================================================
 # Dictionary Manipulation Blocks
@@ -193,6 +194,7 @@ class FindInDictionaryBlock(Block):
         key = input_data.key
 
         if isinstance(obj, str):
+            check_json_value_count(obj)
             obj = loads(obj)
 
         if isinstance(obj, dict) and key in obj:
