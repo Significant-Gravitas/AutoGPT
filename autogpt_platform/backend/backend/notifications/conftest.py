@@ -13,14 +13,14 @@ a module that reaches past the RPC fails its test rather than passing it.
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import Iterator
 from unittest.mock import AsyncMock
 
 import pytest
-from prisma.enums import BriefingFrequency
+from prisma.enums import BriefingFrequency, SubscriptionTier
 
 from backend.data.alerts import MaturedAlertPage
 from backend.data.notifications import NotificationPreference
+from backend.data.product_mail_audience import ProductMailStanding
 from backend.notifications import notifications as delivery
 
 NOW = datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc)
@@ -30,11 +30,6 @@ NOW = datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc)
 def server() -> None:
     """The notification suite is pure logic; it needs no live stack."""
     return None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup() -> Iterator[None]:
-    yield
 
 
 def make_db_client(**overrides) -> SimpleNamespace:
@@ -64,6 +59,16 @@ def make_db_client(**overrides) -> SimpleNamespace:
         get_user_by_id=AsyncMock(return_value=None),
         is_marketing_opted_out=AsyncMock(return_value=False),
         get_user_email_verification=AsyncMock(return_value=True),
+        # A paying account, so product mail is inside the audience unless a
+        # test says otherwise.
+        get_product_mail_standing=AsyncMock(
+            return_value=ProductMailStanding(
+                email="sam@example.com",
+                subscription_tier=SubscriptionTier.PRO,
+                subscription_ended_at=None,
+                trial_ends_at=None,
+            )
+        ),
         # Alert conditions
         get_users_with_matured_alerts=AsyncMock(
             return_value=MaturedAlertPage(user_ids=[], exhausted=True)
@@ -107,3 +112,19 @@ def audience_consent(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         delivery, "get_database_manager_async_client", lambda **_: client
     )
     return client
+
+
+@pytest.fixture(autouse=True)
+def lifecycle_resync(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """A group join asks the database manager for one more lifecycle sync
+    (`lifecycle_audience.resync_after_group_change`). Stubbed so no test
+    reaches for the RPC; assert on the returned mock to check the request."""
+    from backend.notifications import lifecycle_audience
+
+    request = AsyncMock()
+    monkeypatch.setattr(
+        lifecycle_audience,
+        "posthog_lifecycle_db",
+        lambda: SimpleNamespace(request_posthog_lifecycle_sync=request),
+    )
+    return request

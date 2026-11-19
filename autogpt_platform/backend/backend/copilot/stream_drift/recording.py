@@ -103,11 +103,17 @@ async def record_turn(
 
 
 async def persisted_session(
-    user_id: str, prompt: str, *, history: Sequence[ChatMessage] = ()
+    user_id: str,
+    prompt: str,
+    *,
+    history: Sequence[ChatMessage] = (),
+    metadata: dict[str, Any] | None = None,
 ) -> ChatSession:
     """A session whose prompt is already persisted, as the POST route leaves it."""
     session = ChatSession.new(user_id, dry_run=False)
-    session.messages.extend([*history, ChatMessage(role="user", content=prompt)])
+    session.messages.extend(
+        [*history, ChatMessage(role="user", content=prompt, metadata=metadata)]
+    )
     await upsert_chat_session(session)
     return session
 

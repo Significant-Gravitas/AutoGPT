@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+// Documented in docs/platform/rate-limits.md: update it with any change here.
 // At most one email of a kind per address per window, however often whatever
 // sends it is repeated.
 const AUTH_EMAIL_COOLDOWN_SECONDS = 10 * 60;
@@ -7,10 +8,15 @@ const AUTH_EMAIL_COOLDOWN_SECONDS = 10 * 60;
 // addresses (or +aliases of one mailbox) can't each be mailed.
 export const AUTH_EMAILS_PER_IP = 5;
 
+export interface WindowLimit {
+  max: number;
+  windowSeconds: number;
+}
+
 interface Where {
   field: string;
-  value: string | Date;
-  operator?: "eq" | "gt" | "starts_with" | "ends_with";
+  value: string | string[] | Date;
+  operator?: "eq" | "gt" | "in" | "starts_with" | "ends_with";
 }
 
 /**
@@ -55,7 +61,7 @@ export async function claimEmailSlot(
   if (await hasLiveSlot(context, identifier)) return false;
   try {
     await createVerification(context, {
-      id: slotID(identifier),
+      id: slotID(identifier, currentWindow(AUTH_EMAIL_COOLDOWN_SECONDS)),
       identifier,
       value: "sent",
       expiresInSeconds: AUTH_EMAIL_COOLDOWN_SECONDS,
@@ -80,8 +86,7 @@ async function hasLiveSlot(context: AuthEmailContext, identifier: string) {
   return live.length > 0;
 }
 
-function slotID(identifier: string, index?: number) {
-  const window = currentWindow();
+function slotID(identifier: string, window: number, index?: number) {
   const key =
     index === undefined
       ? `${identifier}#${window}`
@@ -89,41 +94,99 @@ function slotID(identifier: string, index?: number) {
   return createHash("sha256").update(key).digest("hex");
 }
 
-function currentWindow() {
-  return Math.floor(Date.now() / (AUTH_EMAIL_COOLDOWN_SECONDS * 1000));
+function currentWindow(windowSeconds: number) {
+  return Math.floor(Date.now() / (windowSeconds * 1000));
 }
 
-// One of AUTH_EMAILS_PER_IP fixed rows per IP and window; each id can only be
-// inserted once, so a burst from one IP can't take more than that many. A
-// failed insert whose row now exists lost the race and tries the next slot.
 export async function claimIPEmailSlot(context: AuthEmailContext, ip: string) {
-  const identifier = `auth-email-ip:${ip}`;
-  const windowEndsAt = (currentWindow() + 1) * AUTH_EMAIL_COOLDOWN_SECONDS;
-  for (let index = 0; index < AUTH_EMAILS_PER_IP; index++) {
-    const id = slotID(identifier, index);
-    if (await rowExists(context, id)) continue;
+  const slot = await claimWindowSlot(context, `auth-email-ip:${ip}`, {
+    max: AUTH_EMAILS_PER_IP,
+    windowSeconds: AUTH_EMAIL_COOLDOWN_SECONDS,
+  });
+  return slot !== null;
+}
+
+// One of `max` fixed rows per identifier and window; each id can only be
+// inserted once, so a burst can't take more than that many. A failed insert
+// whose row now exists lost the race and tries the next slot. Returns the
+// claimed row's id, or null when every slot is taken.
+export async function claimWindowSlot(
+  context: AuthEmailContext,
+  identifier: string,
+  { max, windowSeconds }: WindowLimit,
+) {
+  const window = currentWindow(windowSeconds);
+  const windowEndsAt = (window + 1) * windowSeconds;
+  const slot = await claimSlot(
+    context,
+    identifier,
+    max,
+    window,
+    windowEndsAt - Date.now() / 1000,
+  );
+  return slot?.id ?? null;
+}
+
+// The same race-safe slots for an identifier that is never reused (one
+// emailed code's tries), kept until it expires instead of per clock window.
+// Returns the claimed slot's index, from 0, or null when all `max` are taken.
+export async function claimOneOf(
+  context: AuthEmailContext,
+  identifier: string,
+  max: number,
+  expiresInSeconds: number,
+) {
+  const slot = await claimSlot(context, identifier, max, 0, expiresInSeconds);
+  return slot?.index ?? null;
+}
+
+async function claimSlot(
+  context: AuthEmailContext,
+  identifier: string,
+  max: number,
+  window: number,
+  expiresInSeconds: number,
+) {
+  const ids = Array.from({ length: max }, (_, index) =>
+    slotID(identifier, window, index),
+  );
+  const taken = await existingIDs(context, ids);
+  for (const [index, id] of ids.entries()) {
+    if (taken.has(id)) continue;
     try {
       await createVerification(context, {
         id,
         identifier,
         value: "sent",
-        expiresInSeconds: windowEndsAt - Date.now() / 1000,
+        expiresInSeconds,
       });
-      return true;
+      return { id, index };
     } catch (error) {
       if (!(await rowExists(context, id))) throw error;
     }
   }
-  return false;
+  return null;
+}
+
+export async function releaseWindowSlot(context: AuthEmailContext, id: string) {
+  await context.adapter.deleteMany({
+    model: "verification",
+    where: [{ field: "id", value: id }],
+  });
 }
 
 async function rowExists(context: AuthEmailContext, id: string) {
-  const rows = await context.adapter.findMany({
+  return (await existingIDs(context, [id])).size > 0;
+}
+
+// Which of these rows are there, in one read.
+async function existingIDs(context: AuthEmailContext, ids: string[]) {
+  const rows = (await context.adapter.findMany({
     model: "verification",
-    where: [{ field: "id", value: id }],
-    limit: 1,
-  });
-  return rows.length > 0;
+    where: [{ field: "id", value: ids, operator: "in" }],
+    limit: ids.length,
+  })) as Array<{ id: string }>;
+  return new Set(rows.map((row) => row.id));
 }
 
 export function createVerification(

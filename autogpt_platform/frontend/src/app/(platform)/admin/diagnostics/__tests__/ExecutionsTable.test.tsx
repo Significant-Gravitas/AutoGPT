@@ -1170,7 +1170,7 @@ describe("ExecutionsTable", () => {
     mockRunningQuery.mockReturnValue(withExecutions([sampleExecution], 1));
     render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
     const badge = screen.getByText("RUNNING");
-    expect(badge.className).toContain("bg-green");
+    expect(badge.className).toContain("bg-success");
   });
 
   it("renders status badge with yellow for QUEUED", () => {

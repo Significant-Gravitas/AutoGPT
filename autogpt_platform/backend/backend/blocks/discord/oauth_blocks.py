@@ -5,6 +5,7 @@ Discord OAuth-based blocks.
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -74,6 +75,7 @@ class DiscordGetCurrentUserBlock(Block):
                     accent_color=0,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

@@ -1,4 +1,9 @@
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@/tests/integrations/test-utils";
 import type { MutableRefObject } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
@@ -163,6 +168,62 @@ describe("MentionDropdown", () => {
     expect(option.textContent).toContain("mcp.sentry.dev");
     expect(option.textContent).toContain("Sentry");
     expect(option.textContent).not.toMatch(/mcp:|\bMcp\b|\bMCP\b/);
+  });
+
+  it("offers to connect an integration after the empty state, searching for what was typed", () => {
+    const connect: MentionOption = { kind: "connect", query: "linear" };
+    const { onSelect } = renderDropdown({
+      options: [connect],
+      hasIntegrations: true,
+    });
+    expect(screen.getByText("No matching files or integrations.")).toBeTruthy();
+    const option = screen.getByRole("option", {
+      name: /Connect an integration/,
+    });
+    expect(option.getAttribute("aria-selected")).toBe("true");
+    expect(option.textContent).toContain("Search services for “linear”");
+    fireEvent.mouseDown(option);
+    expect(onSelect).toHaveBeenCalledWith(connect);
+  });
+
+  it("keeps connecting an integration as the last row below results", () => {
+    const { onHighlight } = renderDropdown({
+      options: [GOOGLE_ITEM, FILE_ITEM, { kind: "connect", query: "" }],
+      hasIntegrations: true,
+      highlightedIndex: 0,
+    });
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(3);
+    expect(options[2].textContent).toBe("Connect an integration");
+    expect(screen.queryByText(/No matching/)).toBeNull();
+    fireEvent.mouseEnter(options[2]);
+    expect(onHighlight).toHaveBeenCalledWith(2);
+  });
+
+  it("still renders Connect last when the results are swapped for the next query", () => {
+    const props = renderDropdown({
+      options: [FILE_ITEM, { kind: "connect", query: "g" }],
+      hasIntegrations: true,
+    });
+    const highlightedRef = props.highlightedRef;
+    const next: MentionOption[] = [
+      GOOGLE_ITEM,
+      FILE_ITEM,
+      { kind: "connect", query: "goo" },
+    ];
+    cleanup();
+    render(
+      <MentionDropdown
+        {...props}
+        highlightedRef={highlightedRef}
+        options={next}
+      />,
+    );
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(3);
+    expect(options[2].textContent).toBe(
+      "Connect an integrationSearch services for “goo”",
+    );
   });
 
   it("drops the headings when files are not part of the picker", () => {

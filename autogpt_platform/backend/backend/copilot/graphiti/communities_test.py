@@ -13,6 +13,7 @@ from .communities import (
     _summarize_communities,
     rebuild_communities_for_user,
 )
+from .scope import MemoryScope
 
 
 @pytest.fixture(autouse=True)
@@ -242,10 +243,6 @@ class TestRebuildCommunitiesForUser:
 
         with (
             patch(
-                "backend.copilot.graphiti.communities.derive_memory_group_id",
-                return_value="expert_resolved_group",
-            ) as derive_group,
-            patch(
                 "backend.copilot.graphiti.communities.make_flex_graphiti_client",
                 make_client,
             ),
@@ -261,12 +258,12 @@ class TestRebuildCommunitiesForUser:
             )
 
         assert result["error"] is None
-        derive_group.assert_called_once_with(
+        expert_group = MemoryScope.for_expert(
             "883cc9da-fe37-4863-839b-acba022bf3ef", "expert-1"
-        )
-        make_client.assert_awaited_once_with("expert_resolved_group")
+        ).group_id
+        make_client.assert_awaited_once_with(expert_group)
         lock_key = _free_rebuild_lock.set.call_args.args[0]
-        assert lock_key == "graphiti:community_rebuild_lock:expert_resolved_group"
+        assert lock_key == f"graphiti:community_rebuild_lock:{expert_group}"
 
     @pytest.mark.asyncio
     async def test_failure_path_returns_error_in_result(self) -> None:

@@ -17,6 +17,11 @@ class FindAgentTool(BaseTool):
         return "find_agent"
 
     @property
+    def allow_external_use(self):
+        # READ_STORE permission not needed since we only use public marketplace data
+        return True, []
+
+    @property
     def description(self) -> str:
         return "Search marketplace agents by capability, or look up by slug ('username/agent-name')."
 

@@ -7,6 +7,8 @@
  * turns the replay-equivalence test red.
  */
 
+import { TURN_PAUSE_KEY, turnPauseSummary, type TurnPause } from "../turnPause";
+
 export type RowRole = "assistant" | "reasoning" | "tool" | "user";
 
 export interface LogToolCall {
@@ -234,22 +236,55 @@ export function setToolDisplayName(
   return { ...patchRow(log, index, { toolCalls }), displayNames };
 }
 
+const DRAINED_USER_KEY_PREFIX = "user:";
+
+/** Whether a row key, which is also its rendered bubble's id, is a drained
+ *  follow-up's: part of the turn it was taken into, not a turn of its own. */
+export function isDrainedUserKey(key: string): boolean {
+  return key.startsWith(DRAINED_USER_KEY_PREFIX);
+}
+
 /**
  * Row rule 8: drained follow-ups are user rows, keyed by pending message id,
- * at the hint's place in the stream.
+ * at the hint's place in the stream, with the metadata their stored row has.
  */
 export function appendDrainedUserRows(
   log: TurnLog,
-  messages: readonly { id: string; content: string }[],
+  messages: readonly {
+    id: string;
+    content: string;
+    metadata?: Record<string, unknown> | null;
+  }[],
 ) {
   const known = new Set(log.rows.map((r) => r.key));
   const rows = messages
     .map((m) => ({
-      ...assistantRow(`user:${m.id}`, m.content),
+      ...assistantRow(`${DRAINED_USER_KEY_PREFIX}${m.id}`, m.content),
       role: "user" as const,
+      metadata: m.metadata ?? null,
     }))
     .filter((row) => !known.has(row.key));
   return rows.reduce(pushRow, log);
+}
+
+/**
+ * Row rule 9: a pause becomes a marker row carrying it, unless one already
+ * ends the turn (`append_pause_marker`).
+ */
+export function appendPauseMarker(
+  log: TurnLog,
+  entryId: string,
+  pause: TurnPause,
+) {
+  const last = log.rows[log.rows.length - 1];
+  if (last && isMarker(last)) return log;
+  return pushRow(log, {
+    ...assistantRow(
+      `pause:${entryId}`,
+      `${COPILOT_SYSTEM_PREFIX} ${turnPauseSummary(pause)}`,
+    ),
+    metadata: { [TURN_PAUSE_KEY]: pause },
+  });
 }
 
 /**
@@ -325,6 +360,7 @@ export function isMarker(row: LogRow): boolean {
 
 /** A row as `GET /sessions/{id}` returns it. */
 export interface PersistedRow {
+  id?: string | null;
   role: string;
   content?: string | null;
   tool_call_id?: string | null;

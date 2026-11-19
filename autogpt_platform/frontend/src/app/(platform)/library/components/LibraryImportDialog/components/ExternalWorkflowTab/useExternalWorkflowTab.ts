@@ -2,6 +2,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import { fetchWorkflowFromUrl } from "./fetchWorkflowFromUrl";
 
 function decodeBase64Json(dataUrl: string): string {
@@ -19,7 +20,7 @@ async function uploadJsonAsFile(
 ): Promise<{ fileId: string; fileName: string; mimeType: string }> {
   const file = new File(
     [new Blob([jsonString], { type: "application/json" })],
-    `workflow-${crypto.randomUUID()}.json`,
+    `workflow-${uuidv4({})}.json`,
     { type: "application/json" },
   );
   const uploaded = await uploadFileDirect(file);
@@ -36,7 +37,7 @@ function storeAndRedirect(
 ) {
   sessionStorage.setItem(
     "importWorkflowPrompt",
-    "Import this workflow and recreate it as an AutoGPT agent",
+    "Import this workflow and recreate it as an AutoGPT workflow",
   );
   sessionStorage.setItem("importWorkflowFile", JSON.stringify(fileInfo));
   router.push("/copilot?source=import&autosubmit=true");

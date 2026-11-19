@@ -30,6 +30,7 @@ export interface FakeConnection {
   fail(): void;
   /** Stop this connection's heartbeats: it stays open and goes silent. */
   silence(): void;
+  send(sse: string): void;
 }
 
 type Responder = (request: { method: string; url: URL }) =>
@@ -129,6 +130,9 @@ export function fakeBackend(turn: RecordedTurn) {
       sent: [],
       closed: false,
       aborted: false,
+      send: (sse) => {
+        if (!conn.closed) controller.enqueue(encoder.encode(sse));
+      },
       cut: () => end(() => controller.close()),
       fail: () => end(() => controller.error(new TypeError("network lost"))),
       silence: () => {

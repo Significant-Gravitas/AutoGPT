@@ -5,7 +5,14 @@ import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CopilotPendingReviews } from "../../CopilotPendingReviews/CopilotPendingReviews";
-import { createAgent, mail, mcpTool, CHAT_SESSION } from "./fixtures";
+import {
+  createAgent,
+  mail,
+  mcpTool,
+  realCardSchemaHandler,
+  realCards,
+  CHAT_SESSION,
+} from "./fixtures";
 
 function serve(
   review: ReturnType<typeof mail> = mail("m1", ["allow", "judge"]),
@@ -48,7 +55,7 @@ async function openMenu() {
 
 const MAIL = "Gmail Send";
 const MCP = "create_issue on mcp.linear.app";
-const TOOL = "“Create an agent”";
+const TOOL = "“Create a workflow”";
 
 test.each([
   [`Approve ${MAIL} from now on`, "allow", mail("m1")],
@@ -151,6 +158,44 @@ test.each([
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0].reviews).toEqual([
       expect.objectContaining({ chat_rule: "allow", chat_rule_scope: scope }),
+    ]);
+  },
+);
+
+// The card the backend builds for a step of a workflow Otto started.
+const STEP = realCards().find((card) => card.story === "Workflow Step")!.review;
+
+test.each([
+  ["This chat", "chat", `Approve ${MAIL} from now on`, "allow"],
+  ["Otto, every chat", "expert", `Let Otto judge ${MAIL} from now on`, "judge"],
+  ["Every Expert on my team", "team", `Approve ${MAIL} from now on`, "allow"],
+  [
+    "Every Expert on my team",
+    "team",
+    `Let Otto judge ${MAIL} from now on`,
+    "judge",
+  ],
+])(
+  "a workflow step's card sets a rule as an action's does: %s, %s",
+  async (label, scope, item, rule) => {
+    const sent = serve(STEP);
+    server.use(realCardSchemaHandler(realCards()));
+    renderQueue(null);
+
+    await openMenu();
+    await userEvent.click(
+      await screen.findByRole("menuitemradio", { name: label }),
+    );
+    await userEvent.click(await screen.findByText(item));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].reviews).toEqual([
+      expect.objectContaining({
+        node_exec_id: STEP.node_exec_id,
+        approved: true,
+        chat_rule: rule,
+        chat_rule_scope: scope,
+      }),
     ]);
   },
 );

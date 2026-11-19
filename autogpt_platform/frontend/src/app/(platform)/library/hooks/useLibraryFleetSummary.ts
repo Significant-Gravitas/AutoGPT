@@ -9,8 +9,13 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import type { UserExecutionCostSummary } from "@/app/api/__generated__/models/userExecutionCostSummary";
 import { okData } from "@/app/api/helpers";
-import { useExecutionEvents } from "@/hooks/useExecutionEvents";
+import {
+  EXECUTION_REFETCH_THROTTLE_MS,
+  refetchAfterReconnect,
+  useExecutionEvents,
+} from "@/hooks/useExecutionEvents";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
+import { hasUnknownSchedules } from "@/services/schedules/scheduler-availability";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import type { FleetSummary } from "../types";
@@ -66,7 +71,7 @@ export function useLibraryFleetSummary(
 
   const graphIDs = useMemo(() => agents.map((a) => a.graph_id), [agents]);
 
-  const handleExecutionUpdate = useCallback(() => {
+  const refetchExecutions = useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: getGetV1ListAllExecutionsQueryKey(),
     });
@@ -75,7 +80,10 @@ export function useLibraryFleetSummary(
   useExecutionEvents({
     graphIds: graphIDs.length > 0 ? graphIDs : undefined,
     enabled: graphIDs.length > 0,
-    onExecutionUpdate: handleExecutionUpdate,
+    throttleMs: EXECUTION_REFETCH_THROTTLE_MS,
+    onExecutionUpdate: refetchExecutions,
+    onReconnect: () =>
+      refetchAfterReconnect(queryClient, getGetV1ListAllExecutionsQueryKey()),
   });
 
   return useMemo(() => {
@@ -111,6 +119,7 @@ export function useLibraryFleetSummary(
       scheduled: 0,
       idle: 0,
       monthlySpend,
+      schedulesUnknown: hasUnknownSchedules(agents),
     };
 
     for (const agent of agents) {

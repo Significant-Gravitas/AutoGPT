@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+from backend.copilot.at_reset import at_reset_schedule_id
 from backend.executor.schedule_index_test_helpers import (
     _graph_job_kwargs,
     _mock_job,
@@ -126,6 +127,70 @@ def test_get_schedule_jobs_loads_candidates_and_drops_dangling_rows():
     assert jobs == [live_job]
     # The dangling row (fired one-shot removed by APScheduler) is cleaned up.
     assert scheduler._schedule_index.all_job_ids() == {"live"}
+
+
+def _at_reset_send() -> CopilotTurnJobArgs:
+    return CopilotTurnJobArgs(
+        schedule_id=at_reset_schedule_id("send", "sess-1"),
+        user_id="u1",
+        session_id="sess-1",
+        message="Draft the launch post",
+        cron="0 0 * * *",
+    )
+
+
+def _set_again_after_one_miss(scheduler: Scheduler, args: CopilotTurnJobArgs):
+    """The job is gone at the first lookup, then set again under its id."""
+    set_again = _mock_job(args.model_dump(mode="json"))
+    lookups = iter([None])
+    scheduler.scheduler.get_job.side_effect = lambda job_id, jobstore=None: next(
+        lookups, set_again
+    )
+
+
+def test_get_schedule_jobs_keeps_the_row_of_a_turn_set_again_under_its_id():
+    # A chat's turn at the reset reuses its id: one set again between the
+    # listing finding the old job gone and dropping its row keeps the row.
+    scheduler = _scheduler_with_index()
+    index = scheduler._schedule_index
+    assert index is not None
+    args = _at_reset_send()
+    index.upsert(_index_entry(args.schedule_id, args))
+    _set_again_after_one_miss(scheduler, args)
+
+    with patch.object(scheduler, "_get_active_jobs_cached"):
+        scheduler._get_schedule_jobs(
+            user_id="u1",
+            graph_id=None,
+            session_id="sess-1",
+            kind=None,
+            organization_id=None,
+        )
+
+    assert index.all_job_ids() == {args.schedule_id}
+
+
+def test_get_schedule_jobs_leaves_a_row_dropped_when_its_job_cant_be_read_again():
+    # Nothing shows a turn was set again, so the listing still answers and the
+    # next reconcile restores the row if one was.
+    scheduler = _scheduler_with_index()
+    index = scheduler._schedule_index
+    assert index is not None
+    args = _at_reset_send()
+    index.upsert(_index_entry(args.schedule_id, args))
+    scheduler.scheduler.get_job.side_effect = [None, RuntimeError("store down")]
+
+    with patch.object(scheduler, "_get_active_jobs_cached"):
+        jobs = scheduler._get_schedule_jobs(
+            user_id="u1",
+            graph_id=None,
+            session_id="sess-1",
+            kind=None,
+            organization_id=None,
+        )
+
+    assert jobs == []
+    assert index.all_job_ids() == set()
 
 
 def test_get_schedule_jobs_index_error_falls_back_to_full_scan():
@@ -269,3 +334,20 @@ def test_reconcile_rebuilds_index_and_keeps_racing_rows():
 
     assert index.all_job_ids() == {"in-store", "racing"}
     assert scheduler._schedule_index_ready is True
+
+
+def test_reconcile_keeps_the_row_of_a_turn_set_again_during_the_sweep():
+    scheduler = _scheduler_with_index()
+    index = scheduler._schedule_index
+    assert index is not None
+    in_store = GraphExecutionJobArgs(**_graph_job_kwargs("in-store", "u1", "g1"))
+    scheduler.scheduler.get_jobs.return_value = [
+        _mock_job(in_store.model_dump(mode="json"))
+    ]
+    args = _at_reset_send()
+    index.upsert(_index_entry(args.schedule_id, args))
+    _set_again_after_one_miss(scheduler, args)
+
+    scheduler._reconcile_schedule_index()
+
+    assert index.all_job_ids() == {"in-store", args.schedule_id}

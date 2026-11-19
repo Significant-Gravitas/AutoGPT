@@ -1,19 +1,23 @@
-"""Queue the checkout-opened audience change for an account.
+"""Queue the checkout-opened audience change for an account, and set the same
+segmentation on its PostHog person.
 
 Called by the checkout routes once a Stripe Checkout Session exists, with the
 visitor's IP country, and by the checkout.session.completed webhook with the
 Stripe billing country. Firing on every checkout, not once, is safe: the
 notification service keeps the first open date, an existing status, and the
-strongest country it has seen (`audience_enrichment.merge_with_held`).
+strongest country it has seen (`audience_enrichment.merge_with_held`), and
+PostHog gets the same rules from `$set_once` (`notifications/posthog_audience.py`).
 
 It runs in the background and never raises. A checkout must not wait on, or
-fail because of, MailerLite bookkeeping; the backfill catches anyone missed.
+fail because of, MailerLite or PostHog bookkeeping; the backfills catch anyone
+missed.
 
 Nothing is queued for an account that opted out of marketing, or that any
 signal places in Iran or Russia, the IP and billing countries included: it
-never enters MailerLite (`notifications/consent.py`). An Iranian or Russian
-IP or billing country is also recorded on the account, since the trial and
-billing events that follow a checkout don't carry it.
+never enters MailerLite (`notifications/consent.py`). PostHog is analytics,
+not marketing, so it gets every opener. An Iranian or Russian IP or billing
+country is also recorded on the account, since the trial and billing events
+that follow a checkout don't carry it.
 """
 
 import asyncio
@@ -24,12 +28,14 @@ import prisma.models
 
 from backend.data.db import query_raw_with_schema
 from backend.data.notifications import AudienceAction
-from backend.data.onboarding_role import OnboardingRole, get_onboarding_role
+from backend.data.onboarding_role import OnboardingRole, get_answered_role
 from backend.data.user import get_user_by_id, record_excluded_country
+from backend.notifications import posthog_audience
 from backend.notifications.audience_enrichment import (
     billing_country,
     checkout_fields,
     excluded_country,
+    role_fields,
 )
 from backend.notifications.consent import audience_change_allowed
 from backend.notifications.subscriber_fields import queue_fields
@@ -75,10 +81,6 @@ async def queue_checkout_opened(
     try:
         await _record_excluded_country(user_id, (ip_country, stripe_country))
         user = await get_user_by_id(user_id)
-        if not audience_change_allowed(
-            user, AudienceAction.CHECKOUT_OPENED, (ip_country, stripe_country)
-        ):
-            return
         fields = checkout_fields(
             email=user.email,
             created_at=user.created_at,
@@ -87,8 +89,16 @@ async def queue_checkout_opened(
             timezone=user.timezone,
             stripe_country=stripe_country,
             ip_country=ip_country,
-            role=await _role(user_id),
         )
+        posthog_audience.set_checkout_properties(user_id, fields, opened_at)
+        if not audience_change_allowed(
+            user, AudienceAction.CHECKOUT_OPENED, (ip_country, stripe_country)
+        ):
+            return
+        # The wizard sends the role to PostHog itself once its role step is
+        # answered (onboarding routes); only MailerLite gets it here.
+        if role := await _role(user_id):
+            fields.update(role_fields(role))
         await queue_fields(user_id, user.email, fields, AudienceAction.CHECKOUT_OPENED)
     except Exception:
         logger.exception(f"Could not queue the MailerLite checkout for {user_id}")
@@ -156,7 +166,7 @@ async def _role(user_id: str) -> OnboardingRole | None:
     """The role picked in onboarding, if there is one yet. A failed read
     costs the opener their role, never their checkout event."""
     try:
-        return await get_onboarding_role(user_id)
+        return await get_answered_role(user_id)
     except Exception:
         logger.warning(f"Could not read the onboarding role of {user_id}")
         return None

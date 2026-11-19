@@ -19,7 +19,7 @@ export function LowCreditBanner({ className }: Props) {
     <Alert variant="warning" aria-live="polite">
       <div className="flex flex-wrap items-center gap-3">
         <AlertDescription className="min-w-[12rem] flex-1">
-          You&apos;re out of automation credits. Top up to keep your agents
+          You&apos;re out of automation credits. Top up to keep your workflows
           running.
         </AlertDescription>
         <Button variant="primary" size="small" onClick={openTopUp}>
@@ -31,7 +31,7 @@ export function LowCreditBanner({ className }: Props) {
           onClick={dismiss}
           aria-label="Dismiss"
           title="Dismiss"
-          className="hover:border-[#FFE4BF] hover:bg-[#FFE4BF]"
+          className="hover:border-warning/20 hover:bg-warning/20"
         >
           <Icon icon={Cancel01Icon} className="h-4 w-4" />
         </Button>

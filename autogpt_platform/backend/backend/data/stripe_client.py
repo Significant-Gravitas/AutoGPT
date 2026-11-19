@@ -64,8 +64,11 @@ async def stripe_call_timeout(
 
 async def stripe_list_items(
     page: stripe.ListObject[StripeResource],
+    timeout_seconds: float | None = None,
 ) -> AsyncIterator[StripeResource]:
-    """Keep subsequent SDK list requests inside the same timeout/metrics boundary."""
+    """Keep subsequent SDK list requests inside the same timeout/metrics
+    boundary. Pass the first page's ``timeout_seconds`` when it wasn't the
+    default."""
     while True:
         for item in page.data:
             yield item
@@ -73,7 +76,10 @@ async def stripe_list_items(
             return
         if not page.data:
             raise ValueError("Stripe returned an empty page with more results")
-        page = await stripe_call(page.next_page_async)
+        page = await _call(
+            DEFAULT_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds,
+            page.next_page_async,
+        )
 
 
 async def _call(

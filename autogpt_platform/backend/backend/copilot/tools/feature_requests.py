@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
 from pydantic import SecretStr
 
 from backend.blocks.linear._api import LinearClient
@@ -12,6 +13,7 @@ from backend.data.model import APIKeyCredentials
 from backend.util.settings import Settings
 
 from .base import BaseTool
+from .external_scope import error_detail
 from .models import (
     ErrorResponse,
     FeatureRequestCreatedResponse,
@@ -133,6 +135,11 @@ class SearchFeatureRequestsTool(BaseTool):
         return "search_feature_requests"
 
     @property
+    def allow_external_use(self):
+        # Reaches the platform's own Linear workspace, on the platform's key.
+        return True, [APIKeyPermission.USE_TOOLS]
+
+    @property
     def description(self) -> str:
         return "Search existing feature requests. Check before creating a new one."
 
@@ -214,11 +221,12 @@ class SearchFeatureRequestsTool(BaseTool):
             ).from_outside(results)
         except Exception as e:
             logger.exception("Failed to search feature requests")
+            detail = error_detail(e, session)
             return ErrorResponse(
                 message="Failed to search feature requests.",
-                error=str(e),
+                error=detail,
                 session_id=session_id,
-            ).from_outside(str(e))
+            ).from_outside(detail)
 
 
 class CreateFeatureRequestTool(BaseTool):

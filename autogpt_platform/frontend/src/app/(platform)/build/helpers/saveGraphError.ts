@@ -8,13 +8,13 @@ import { useNodeStore } from "../stores/nodeStore";
 export function describeSaveError(error: unknown) {
   if (isValidationError(error)) {
     return {
-      title: "Couldn't save your agent",
+      title: "Couldn't save your workflow",
       description: `${error.response.detail.message}. Fix the highlighted fields and save again.`,
       variant: "destructive" as const,
     };
   }
   return {
-    title: "Error saving graph",
+    title: "Error saving workflow",
     description:
       error instanceof Error ? error.message : "An unexpected error occurred.",
     variant: "destructive" as const,

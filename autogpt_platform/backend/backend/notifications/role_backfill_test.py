@@ -2,6 +2,7 @@
 newer pick on either side, never creates a MailerLite subscriber, and keeps
 anyone MailerLite may not hold out of it."""
 
+import json
 import logging
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -12,6 +13,7 @@ from backend.data.onboarding_role import OnboardingRole
 from backend.notifications import role_backfill
 from backend.notifications.mailerlite import pseudonym
 from backend.notifications.role_backfill import RoleAssignment, RoleRecord
+from backend.util import posthog_client
 
 OPTED_OUT = datetime(2026, 10, 2, tzinfo=UTC)
 
@@ -38,6 +40,65 @@ def test_only_reliable_picks_are_planned():
         "kept@x.io": OnboardingRole(choice="Other", other="Dentist"),
         "exact@x.io": OnboardingRole(choice="Sales/BD"),
         "both@x.io": OnboardingRole(choice="Marketing"),
+    }
+
+
+def _draft(**fields) -> str:
+    return json.dumps(
+        {
+            "version": 1,
+            "currentStep": "subscription",
+            "completedSteps": ["team", "autopilot", "role", "painPoints", "hire"],
+            "role": "Other",
+            "otherRole": "Dentist",
+            "painPoints": [],
+            "otherPainPoint": "",
+            "selectedBilling": "monthly",
+            "hasUserSelectedBilling": False,
+            "selectedCountryCode": "US",
+            "hiredTemplateIds": [],
+            **fields,
+        }
+    )
+
+
+def test_the_draft_of_someone_who_stopped_at_the_paywall_is_planned():
+    plan = role_backfill.plan(
+        [
+            _record("paywall@x.io", wizard_progress=_draft()),
+            # The kept pick is the newer one.
+            _record("kept@x.io", choice="Marketing", wizard_progress=_draft()),
+            # The draft is the pick; the understanding's copy may be a rewrite.
+            _record(
+                "both@x.io",
+                wizard_progress=_draft(role="Engineering"),
+                understanding_role="Sales/BD",
+            ),
+            # Still on the role step: no pick yet, so the understanding counts.
+            _record(
+                "editing@x.io",
+                wizard_progress=_draft(currentStep="role"),
+                understanding_role="Sales/BD",
+            ),
+            # Back before the role step, which stays completed: Other's text
+            # may be half typed, so it is skipped.
+            _record("back@x.io", wizard_progress=_draft(currentStep="autopilot")),
+            _record("broken@x.io", wizard_progress='{"version": 2}'),
+        ],
+        current={},
+    )
+    assert (plan.accounts, plan.kept, plan.drafted, plan.exact, plan.skipped) == (
+        6,
+        1,
+        2,
+        1,
+        2,
+    )
+    assert {a.email: a.role for a in plan.posthog} == {
+        "paywall@x.io": OnboardingRole(choice="Other", other="Dentist"),
+        "kept@x.io": OnboardingRole(choice="Marketing"),
+        "both@x.io": OnboardingRole(choice="Engineering"),
+        "editing@x.io": OnboardingRole(choice="Sales/BD"),
     }
 
 
@@ -154,24 +215,69 @@ async def test_a_failure_is_counted_by_pseudonym_and_the_run_goes_on(
     assert "a@x.io" not in caplog.text
 
 
-@pytest.mark.asyncio
-async def test_posthog_gets_a_set_once_per_person_and_a_flush(monkeypatch):
+@pytest.fixture
+def posthog_run(monkeypatch):
+    """The run's own PostHog client (`posthog_client.send_each`), never the
+    shared one. `client.on_error` is the callback the run gave it."""
     client = MagicMock()
-    monkeypatch.setattr(role_backfill, "get_posthog_client", lambda: client)
-    sent = MagicMock()
-    monkeypatch.setattr(role_backfill, "set_onboarding_role", sent)
-    monkeypatch.setattr(role_backfill, "POSTHOG_FLUSH_EVERY", 2)
+    shared = MagicMock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: shared)
 
-    await role_backfill.send_to_posthog([_assignment() for _ in range(3)])
+    def new_client(**options):
+        client.on_error = options["on_error"]
+        return client
 
-    assert sent.call_count == 3
-    assert all(call.kwargs["keep_existing"] for call in sent.call_args_list)
-    assert client.flush.call_count == 2
+    monkeypatch.setattr(posthog_client, "new_posthog_client", new_client)
+    yield client
+    shared.capture.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_posthog_gets_a_set_once_per_person_on_the_runs_own_client(
+    posthog_run,
+):
+    assigned = [
+        RoleAssignment(user_id=f"u-{n}", email=f"{n}@x.io", role=role)
+        for n, role in enumerate(
+            [OnboardingRole(choice="Marketing"), OnboardingRole(choice="Engineering")]
+        )
+    ]
+
+    assert await role_backfill.send_to_posthog(assigned) == 0
+
+    sent = [c.kwargs for c in posthog_run.capture.call_args_list]
+    assert [s["distinct_id"] for s in sent] == ["u-0", "u-1"]
+    assert [s["properties"]["$set_once"]["onboarding_role"] for s in sent] == [
+        "Marketing",
+        "Engineering",
+    ]
+    assert all("$set" not in s["properties"] for s in sent)
+    posthog_run.shutdown.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_what_posthog_did_not_take_is_returned(posthog_run):
+    """Refused when queued, or in an upload that failed for good, so the CLI
+    can fail the run instead of reporting everyone as sent."""
+    posthog_run.capture.side_effect = lambda **event: (
+        None if event["distinct_id"] == "u-0" else "event-uuid"
+    )
+    posthog_run.shutdown.side_effect = lambda: posthog_run.on_error(
+        RuntimeError("503"), [{"distinct_id": "u-2"}]
+    )
+    assigned = [
+        RoleAssignment(
+            user_id=f"u-{n}", email=f"{n}@x.io", role=OnboardingRole(choice="Marketing")
+        )
+        for n in range(3)
+    ]
+
+    assert await role_backfill.send_to_posthog(assigned) == 2
 
 
 @pytest.mark.asyncio
 async def test_posthog_must_be_configured(monkeypatch):
-    monkeypatch.setattr(role_backfill, "get_posthog_client", lambda: None)
+    monkeypatch.setattr(posthog_client, "new_posthog_client", lambda **_: None)
     with pytest.raises(RuntimeError, match="PostHog is not configured"):
         await role_backfill.send_to_posthog([_assignment()])
 

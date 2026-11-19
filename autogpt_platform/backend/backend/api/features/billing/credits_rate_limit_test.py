@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -12,6 +12,34 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisClusterException, ResponseError
 
 from backend.api.features.billing import credits_rate_limit as rate_limit
+
+# Windows are aligned to the epoch, so every whole minute starts one.
+WINDOW_START = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+# Only stops a call that missed its deadline: a passing run ends at its
+# short deadline whatever this is, and a CI runner can stall a test for
+# seconds.
+_HANG_SECONDS = 10
+
+
+class Clock:
+    """The limiter's clock: frozen, and moved only by the test."""
+
+    def __init__(self, now: datetime) -> None:
+        self.now = now
+
+
+@pytest.fixture(autouse=True)
+def clock(mocker) -> Clock:
+    """Freeze the limiter's clock at the start of a window, for every test.
+
+    On the real clock, a sequence that happens to cross hh:mm:00 splits its
+    count across two window keys and the cap never trips. No test here may
+    depend on when it runs; one that needs a boundary moves ``clock.now``.
+    """
+    clock = Clock(WINDOW_START)
+    mocker.patch.object(rate_limit, "datetime", MagicMock(now=lambda tz: clock.now))
+    return clock
 
 
 class FakeRedis:
@@ -89,14 +117,10 @@ async def test_ttl_not_refreshed_on_later_hits(fake_redis):
 
 
 @pytest.mark.asyncio
-async def test_window_rolls_over(fake_redis, mocker):
+async def test_window_rolls_over(fake_redis, clock):
     """A later window uses a different key, so the count starts fresh."""
-    base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
-    mocker.patch.object(rate_limit, "datetime", MagicMock(now=lambda tz: base))
     await rate_limit.enforce_subscription_status_rate_limit("u1")
-
-    later = datetime(2026, 1, 1, 12, 1, 30, tzinfo=UTC)
-    mocker.patch.object(rate_limit, "datetime", MagicMock(now=lambda tz: later))
+    clock.now = WINDOW_START + timedelta(seconds=90)
     await rate_limit.enforce_subscription_status_rate_limit("u1")
 
     assert len(fake_redis.counters) == 2
@@ -111,6 +135,35 @@ async def test_cap_is_enforced_over_a_real_sequence(fake_redis):
     with pytest.raises(fastapi.HTTPException) as exc_info:
         await rate_limit.enforce_subscription_status_rate_limit("u1")
     assert exc_info.value.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_window_boundary_resets_the_count(fake_redis, clock):
+    """Windows are fixed and aligned to the minute, not sliding.
+
+    The count resets at exactly hh:mm:00, so a burst that straddles it gets the
+    full cap on each side (up to twice the cap in a moment, the accepted cost of
+    a fixed window), and a 429 a moment before it says to retry in 1s.
+    """
+    cap = rate_limit.SUBSCRIPTION_STATUS_MAX_REQUESTS
+    window = rate_limit.SUBSCRIPTION_STATUS_WINDOW_SECONDS
+
+    async def burst() -> fastapi.HTTPException:
+        for _ in range(cap):
+            await rate_limit.enforce_subscription_status_rate_limit("u1")
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await rate_limit.enforce_subscription_status_rate_limit("u1")
+        assert exc_info.value.status_code == 429
+        return exc_info.value
+
+    clock.now = WINDOW_START + timedelta(seconds=window, milliseconds=-1)
+    assert (await burst()).headers == {"Retry-After": "1"}
+    clock.now = WINDOW_START + timedelta(seconds=window)
+    assert (await burst()).headers == {"Retry-After": str(window)}
+
+    # One counter per window, each given the window's TTL once, when it opened.
+    assert list(fake_redis.counters.values()) == [cap + 1, cap + 1]
+    assert list(fake_redis.ttls.values()) == [window, window]
 
 
 @pytest.mark.asyncio
@@ -180,13 +233,10 @@ async def test_fails_open_and_fast_when_redis_hangs(mocker):
     mocker.patch.object(rate_limit, "_incr_window", new=never_returns)
     mocker.patch.object(rate_limit, "SUBSCRIPTION_STATUS_REDIS_TIMEOUT_SECONDS", 0.05)
 
-    loop = asyncio.get_running_loop()
-    started = loop.time()
-    await rate_limit.enforce_subscription_status_rate_limit("u1")
-    # Tight bound: the patched deadline is 50ms, so anything approaching a
-    # second means the timeout was not honoured. Generous enough to absorb CI
-    # scheduling jitter, strict enough to fail if the deadline is dropped.
-    assert loop.time() - started < 1
+    # Two hundred times the 50 ms deadline, still well short of the 60 s a
+    # dropped deadline would wait.
+    async with asyncio.timeout(_HANG_SECONDS):
+        await rate_limit.enforce_subscription_status_rate_limit("u1")
 
 
 @pytest.mark.asyncio

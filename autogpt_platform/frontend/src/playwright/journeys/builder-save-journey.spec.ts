@@ -22,7 +22,7 @@ test.describe("builder save journey", () => {
 
     await buildPage.saveAgent(agentName, "Builder save journey");
 
-    await expect(page.getByText("Couldn't save your agent")).toBeVisible();
+    await expect(page.getByText("Couldn't save your workflow")).toBeVisible();
     await expect(
       page.getByText(/Agent Output › Name: This field is required/),
     ).toBeVisible();

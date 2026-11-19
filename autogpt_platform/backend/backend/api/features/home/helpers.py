@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
@@ -93,16 +94,31 @@ UNKNOWN_AGENT = AgentRef(name=DEFAULT_AGENT_NAME, library_agent_id=None)
 
 
 def agent_refs_by_graph(
-    experts: list[Expert], refs: list[LibraryAgentRef]
+    experts: list[Expert],
+    refs: list[LibraryAgentRef],
+    schedules: Sequence[GraphExecutionJobInfo] = (),
 ) -> dict[str, AgentRef]:
+    # A schedule keeps the name it was given, so its runs keep one even when the
+    # graph is in neither the library nor an expert's workflows. Older runs carry
+    # no schedule id, so a graph gets none unless all its schedules share one.
+    names_by_graph: defaultdict[str, set[str]] = defaultdict(set)
+    for schedule in schedules:
+        names_by_graph[schedule.graph_id].add(schedule.agent_name or "")
+    scheduled_names = {
+        graph_id: next(iter(names))
+        for graph_id, names in names_by_graph.items()
+        if len(names) == 1 and "" not in names
+    }
     agents = {
         ref.graph_id: AgentRef(
-            name=ref.name or UNKNOWN_AGENT.name,
+            name=ref.name or scheduled_names.get(ref.graph_id) or UNKNOWN_AGENT.name,
             library_agent_id=None if ref.is_deleted else ref.id,
             image_url=ref.image_url,
         )
         for ref in refs
     }
+    for graph_id, name in scheduled_names.items():
+        agents.setdefault(graph_id, AgentRef(name=name, library_agent_id=None))
     for expert in experts:
         for workflow in expert.workflows:
             if workflow.graph_id:

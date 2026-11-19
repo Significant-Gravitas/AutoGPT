@@ -6,25 +6,32 @@ import {
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
-type TrialRefetchInterval =
-  | number
-  | ((trial: TrialStatusResponse | undefined) => number | false);
-
 interface Options {
-  refetchInterval?: TrialRefetchInterval;
+  poll?: boolean;
+  refetchInterval?: (trial: TrialStatusResponse | undefined) => number | false;
 }
 
-export function useTrialStatus({ refetchInterval }: Options = {}) {
+export function useTrialStatus({
+  poll = false,
+  refetchInterval,
+}: Options = {}) {
   const userID = useAuthStore((state) => state.user?.id);
   return useGetTrialsGetTrialStatus({
     query: {
       queryKey: [...getGetTrialsGetTrialStatusQueryKey(), userID],
       enabled: Boolean(userID),
       retry: false,
-      refetchInterval:
-        typeof refetchInterval === "function"
-          ? (query) => refetchInterval(readTrial(query.state.data))
-          : refetchInterval,
+      refetchInterval: (query) => {
+        if (refetchInterval)
+          return refetchInterval(readTrial(query.state.data));
+        const response = query.state.data;
+        return poll && response?.status === 200 && response.data.active
+          ? 30_000
+          : false;
+      },
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
+      staleTime: 10_000,
       select: readTrial,
     },
   });

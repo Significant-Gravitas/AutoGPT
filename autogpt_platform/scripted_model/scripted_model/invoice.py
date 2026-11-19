@@ -25,6 +25,9 @@ class Price:
 
 
 # Keyed by model name without the vendor prefix (``anthropic/``).
+# Sonnet 5.5's cache read is the bundled CLI's $0.20, not Anthropic's $0.10:
+# this model serves no OpenRouter generation lookup, so the platform charges
+# the CLI's own estimate, and the journeys check that charge matches this bill.
 PRICES: dict[str, Price] = {
     "claude-sonnet-5-5": Price(2.0, 10.0, 0.2, 2.5, 4.0),
     "claude-opus-5-5": Price(4.0, 20.0, 0.2, 5.0, 8.0),

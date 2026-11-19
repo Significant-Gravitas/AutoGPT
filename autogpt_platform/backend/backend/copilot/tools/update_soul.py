@@ -81,8 +81,8 @@ class UpdateExpertSoulTool(BaseTool):
         return (
             "Propose an edit to this expert's Soul — identity/personality, "
             "voice preferences, or boundaries. Never writes: it returns the "
-            "before/after diff plus a one-time confirmation_id. Show the user "
-            "the diff and, only after they explicitly approve, call "
+            "before/after diff plus a one-time confirmation_id. The user sees "
+            "the diff on a card; only after they approve, call "
             "tool:confirm_expert_soul_update with that confirmation_id."
         )
 
@@ -186,9 +186,11 @@ class UpdateExpertSoulTool(BaseTool):
         )
         return ExpertSoulUpdatedResponse(
             message=(
-                "Nothing saved yet. Show the user this before/after diff and ask "
-                "them to approve. Only after they explicitly approve, call "
-                "tool:confirm_expert_soul_update with this confirmation_id."
+                "Nothing saved yet. The user is looking at this diff on a card "
+                "with Approve and Decline buttons — do not repeat it in text. "
+                "Reply with one short line at most and wait. Only after they "
+                "explicitly approve, call tool:confirm_expert_soul_update with "
+                "this confirmation_id."
             ),
             session_id=session_id,
             applied=False,

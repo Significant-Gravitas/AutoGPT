@@ -1,6 +1,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import type { Meta } from "@storybook/nextjs";
-import { SquareArrowOutUpRight } from "lucide-react";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { StoryCode } from "./helpers/StoryCode";
 
 const meta: Meta = {
@@ -80,10 +81,10 @@ export function AllVariants() {
       {/* Border Radius System Documentation */}
       <div className="space-y-8">
         <div>
-          <Text variant="h1" className="mb-4 text-zinc-800">
+          <Text variant="h1" className="mb-4 text-foreground-emphasis">
             Border Radius
           </Text>
-          <Text variant="large" className="text-zinc-600">
+          <Text variant="large" className="text-foreground-secondary">
             Our border radius system uses a descriptive naming convention
             (xsmall, small, medium, large, xlarge, 2xlarge, full) based on our
             Figma design tokens. This creates visual hierarchy and maintains
@@ -96,47 +97,51 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-zinc-800"
+              className="mb-2 text-lead font-semibold text-foreground-emphasis"
             >
               Tailwind utilities
             </Text>
             <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-border-base p-4">
                 <a
                   href="https://tailwindcss.com/docs/border-radius"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-body-lg font-semibold text-info-foreground hover:underline"
                 >
                   Border Radius Classes{" "}
-                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                  <Icon
+                    aria-hidden
+                    icon={LinkSquare01Icon}
+                    className="inline-block h-3 w-3"
+                  />
                 </a>
-                <Text variant="body" className="mb-2 text-zinc-600">
+                <Text variant="body" className="mb-2 text-foreground-secondary">
                   Used to round the corners of elements
                 </Text>
-                <div className="font-mono text-sm text-zinc-800">
+                <div className="font-mono text-body text-foreground-emphasis">
                   rounded-lg → border-radius: 0.5rem (8px)
                 </div>
               </div>
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-border-base p-4">
                 <Text
                   variant="body-medium"
-                  className="mb-2 font-semibold text-zinc-800"
+                  className="mb-2 font-semibold text-foreground-emphasis"
                 >
                   Directional Classes
                 </Text>
-                <Text variant="body" className="mb-2 text-zinc-600">
+                <Text variant="body" className="mb-2 text-foreground-secondary">
                   Apply radius to specific corners or sides using our design
                   tokens
                 </Text>
-                <div className="space-y-1 font-mono text-sm text-zinc-800">
+                <div className="space-y-1 font-mono text-body text-foreground-emphasis">
                   <div>rounded-t-m → top corners</div>
                   <div>rounded-r-m → right corners</div>
                   <div>rounded-b-m → bottom corners</div>
                   <div>rounded-l-m → left corners</div>
                 </div>
               </div>
-              <Text variant="body" className="mb-4 text-zinc-600">
+              <Text variant="body" className="mb-4 text-foreground-secondary">
                 We use a custom border radius system based on our Figma design
                 tokens, with descriptive naming (xsmall, small, medium, large,
                 xlarge, 2xlarge, full) that provides consistent radius values
@@ -149,23 +154,23 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-zinc-800"
+              className="mb-2 text-lead font-semibold text-foreground-emphasis"
             >
               FAQ
             </Text>
             <div className="space-y-4">
               <Text
                 variant="h3"
-                className="mb-2 text-base font-semibold text-zinc-800"
+                className="mb-2 text-body-lg font-semibold text-foreground-emphasis"
               >
                 🤔 Why use border radius tokens?
               </Text>
-              <div className="space-y-3 text-zinc-600">
+              <div className="space-y-3 text-foreground-secondary">
                 <Text variant="body">
                   Always use radius classes instead of arbitrary values.
                   Reasons:
                 </Text>
-                <ul className="ml-4 list-disc space-y-1 text-sm">
+                <ul className="ml-4 list-disc space-y-1 text-body">
                   <li>Ensures consistent corner rounding across components</li>
                   <li>Creates visual hierarchy through systematic scaling</li>
                   <li>Maintains design cohesion and brand consistency</li>
@@ -183,11 +188,11 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-zinc-800"
+            className="mb-2 text-lead font-semibold text-foreground-emphasis"
           >
             Design System Border Radius Tokens
           </Text>
-          <Text variant="body" className="mb-6 text-zinc-600">
+          <Text variant="body" className="mb-6 text-foreground-secondary">
             All border radius values from our Figma design tokens. Each value
             can be applied to all corners or specific corners/sides using our
             descriptive naming convention (xsmall, small, medium, large, xlarge,
@@ -199,32 +204,42 @@ export function AllVariants() {
           {borderRadiusScale.map((radius) => (
             <div
               key={radius.name}
-              className="flex items-center rounded-lg border border-gray-200 p-4"
+              className="flex items-center rounded-lg border border-border-base p-4"
             >
               <div className="flex w-32 flex-col">
-                <Text variant="body-medium" className="font-mono text-zinc-800">
+                <Text
+                  variant="body-medium"
+                  className="font-mono text-foreground-emphasis"
+                >
                   {radius.name}
                 </Text>
-                <Text variant="small" className="font-mono text-zinc-500">
+                <Text
+                  variant="small"
+                  className="font-mono text-foreground-tertiary"
+                >
                   {radius.class}
                 </Text>
               </div>
               <div className="flex w-32 flex-col text-right">
-                <p className="font-mono text-xs text-zinc-500">{radius.rem}</p>
-                <p className="font-mono text-xs text-zinc-500">{radius.px}</p>
+                <p className="font-mono text-caption text-foreground-tertiary">
+                  {radius.rem}
+                </p>
+                <p className="font-mono text-caption text-foreground-tertiary">
+                  {radius.px}
+                </p>
               </div>
               <div className="ml-8 flex-1">
                 <div className="flex items-center gap-4">
                   <div
-                    className="h-16 w-16 bg-blue-500"
+                    className="h-16 w-16 bg-info"
                     style={{ borderRadius: radius.value }}
                   ></div>
                   <div
-                    className="h-12 w-24 bg-green-500"
+                    className="h-12 w-24 bg-success"
                     style={{ borderRadius: radius.value }}
                   ></div>
                   <div
-                    className="h-8 w-32 bg-purple-500"
+                    className="h-8 w-32 bg-brand"
                     style={{ borderRadius: radius.value }}
                   ></div>
                 </div>

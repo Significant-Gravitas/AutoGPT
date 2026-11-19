@@ -4,6 +4,7 @@ from typing import Annotated, Awaitable
 import stripe
 from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, Depends, Header, HTTPException, Security
+from prisma.enums import SubscriptionTier
 
 from backend.api.features.billing.client_country import (  # noqa: F401 -- re-exported
     CLIENT_COUNTRY_SCOPE,
@@ -14,6 +15,7 @@ from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
 from backend.api.features.subscription_trial_models import (
+    CancelTrialRequest,
     TrialCheckoutRequest,
     TrialCheckoutResponse,
     TrialOfferResponse,
@@ -39,6 +41,7 @@ from backend.data.subscription_trial_checkout import (
     resolve_trial_price,
 )
 from backend.data.subscription_trial_config import get_trial_offer
+from backend.data.subscription_trial_invoice import get_trial_payment_due
 from backend.data.user import get_user_by_id
 from backend.util.product_analytics import track_checkout_started
 from backend.util.settings import Settings
@@ -66,6 +69,8 @@ async def get_trial_status(
                 and (offer := await get_trial_offer(user_id, country=country))
                 is not None
                 and await trial_seat_available(offer, trial_id=trial.id)
+                and (await get_user_by_id(user_id)).subscription_tier
+                == SubscriptionTier.NO_TIER
             ),
             offer=TrialOfferResponse.from_offer(trial.offer),
             status=trial.status,
@@ -80,6 +85,13 @@ async def get_trial_status(
             allowance_used_percent=min(
                 100, 100 * trial.cost_microdollars / trial.offer.total_cost_limit
             ),
+            usage_policy=(
+                "lifetime"
+                if trial.offer.daily_cost_limit >= trial.offer.total_cost_limit
+                and trial.offer.weekly_cost_limit >= trial.offer.total_cost_limit
+                else "rolling"
+            ),
+            payment_due=await get_trial_payment_due(trial),
         )
     offer = await get_trial_offer(user_id, country=country)
     if offer is None or not await trial_seat_available(offer):
@@ -177,7 +189,9 @@ async def _track_trial_checkout_started(user_id: str, *, surface: str) -> None:
         502: {"description": "Stripe cancellation temporarily unavailable"},
     },
 )
-async def cancel_trial(user_id: CurrentUser) -> TrialStatusResponse:
+async def cancel_trial(
+    user_id: CurrentUser, body: CancelTrialRequest | None = None
+) -> TrialStatusResponse:
     trial = await get_subscription_trial(user_id)
     if (
         trial is None
@@ -187,7 +201,12 @@ async def cancel_trial(user_id: CurrentUser) -> TrialStatusResponse:
     ):
         raise HTTPException(409, "No trial subscription is available to cancel")
     await _apply_trial_change(
-        schedule_trial_cancellation(trial), "Unable to cancel your trial. Please retry."
+        schedule_trial_cancellation(
+            trial,
+            reason=body.reason if body else None,
+            comment=body.comment if body else None,
+        ),
+        "Unable to cancel your trial. Please retry.",
     )
     return await get_trial_status(user_id)
 

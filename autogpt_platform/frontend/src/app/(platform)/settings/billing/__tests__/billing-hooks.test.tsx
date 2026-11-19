@@ -1,3 +1,4 @@
+import { setTrialUser } from "@/tests/integrations/trial-fixtures";
 /**
  * Hook-level coverage for the billing card hooks.
  *
@@ -14,12 +15,25 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAutoRefillCard } from "../components/AutomationCreditsTab/AutoRefillCard/useAutoRefillCard";
 import { useBalanceCard } from "../components/AutomationCreditsTab/BalanceCard/useBalanceCard";
 import { usePaymentMethodCard } from "../components/SubscriptionTab/PaymentMethodCard/usePaymentMethodCard";
 import { useYourPlanCard } from "../components/SubscriptionTab/YourPlanCard/useYourPlanCard";
+
+import { maxUpgradePreview } from "./max-upgrade.fixture";
+
+afterEach(() => setTrialUser(null));
+
+beforeEach(() => {
+  setTrialUser("billing-user");
+  server.use(
+    http.post("*/api/credits/subscription/preview", () =>
+      HttpResponse.json(maxUpgradePreview()),
+    ),
+  );
+});
 
 function jsonHandler(method: "get" | "post", path: string, body: JsonBodyType) {
   return http[method](`*${path}`, () => HttpResponse.json(body));
@@ -666,6 +680,9 @@ describe("useYourPlanCard", () => {
       result.current.onUpgrade();
     });
     await waitFor(() => expect(result.current.pendingTierUpgrade).toBe("MAX"));
+    await waitFor(() =>
+      expect(result.current.upgradeReview.preview).toBeDefined(),
+    );
 
     await act(async () => {
       await result.current.onConfirmTierUpgrade();

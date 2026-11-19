@@ -4,7 +4,10 @@ import { expect, test, vi } from "vitest";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
+import { expectTypingKept } from "@/tests/integrations/typing";
 import { PendingReviewCard } from "../PendingReviewCard";
+
+type ReviewPayload = PendingHumanReviewModel["payload"];
 
 function makeReview(
   overrides: Partial<PendingHumanReviewModel> = {},
@@ -266,4 +269,99 @@ test("uses the block's input schema and never shows the credential id", async ()
   expect(screen.queryByText(/s3cr3t/)).toBeNull();
   expect(screen.queryByDisplayValue("s3cr3t")).toBeNull();
   expect(screen.queryByText("SendEmailBlock")).toBeNull();
+});
+
+// A list payload is edited as raw JSON. Every half-typed edit is invalid JSON,
+// and the field used to drop it and put the old text back, which also broke
+// IME input and threw the caret to the end.
+test("keeps half-typed JSON in a list payload and reports it once it parses", async () => {
+  const onReviewDataChange = vi.fn();
+  render(
+    <PendingReviewCard
+      review={makeReview({ payload: [1, 2] as unknown as ReviewPayload })}
+      onReviewDataChange={onReviewDataChange}
+    />,
+  );
+
+  const field = screen.getByPlaceholderText(
+    "Edit JSON data",
+  ) as HTMLTextAreaElement;
+  await expectTypingKept(field, ", 3", field.value.indexOf("2") + 1);
+
+  expect(onReviewDataChange).toHaveBeenLastCalledWith(
+    "ne-1",
+    JSON.stringify([1, 2, 3], null, 2),
+  );
+});
+
+test("an emptied JSON draft shows a value that then arrives from outside", () => {
+  const review = makeReview({ payload: [1, 2] as unknown as ReviewPayload });
+  const { rerender } = render(
+    <PendingReviewCard review={review} onReviewDataChange={() => {}} />,
+  );
+  const field = screen.getByPlaceholderText(
+    "Edit JSON data",
+  ) as HTMLTextAreaElement;
+
+  fireEvent.change(field, { target: { value: "" } });
+  rerender(
+    <PendingReviewCard
+      review={review}
+      onReviewDataChange={() => {}}
+      externalDataValue="null"
+    />,
+  );
+
+  expect(field.value).toBe("null");
+});
+
+// A card mounted again (its group collapsed and expanded) must show the draft
+// the list still holds, or Approve fails over text the reviewer can't see.
+test("a JSON draft that doesn't parse is shown again when the card remounts", () => {
+  const draft = "[\n  1,\n]";
+  render(
+    <PendingReviewCard
+      review={makeReview({ payload: [1, 2] as unknown as ReviewPayload })}
+      onReviewDataChange={() => {}}
+      externalDataValue={draft}
+    />,
+  );
+
+  expect(
+    (screen.getByPlaceholderText("Edit JSON data") as HTMLTextAreaElement)
+      .value,
+  ).toBe(draft);
+});
+
+// JSON parsing rounds a whole number past 16 digits, so an ID typed bare is
+// saved as a different one. The editor says so and changes nothing itself.
+test("the JSON editor says to quote a whole number too long to keep", () => {
+  const hint = /put them in quotes to keep every digit/i;
+  const onReviewDataChange = vi.fn();
+  render(
+    <PendingReviewCard
+      review={makeReview({ payload: [1, 2] as unknown as ReviewPayload })}
+      onReviewDataChange={onReviewDataChange}
+    />,
+  );
+  const field = screen.getByPlaceholderText(
+    "Edit JSON data",
+  ) as HTMLTextAreaElement;
+  expect(screen.queryByText(hint)).toBeNull();
+
+  fireEvent.change(field, { target: { value: "[1234567890123456789]" } });
+
+  const shown = screen.getByText(hint);
+  expect(field.getAttribute("aria-describedby")).toBe(shown.id);
+
+  fireEvent.change(field, { target: { value: '["1234567890123456789"]' } });
+  expect(screen.queryByText(hint)).toBeNull();
+  expect(field.value).toBe('["1234567890123456789"]');
+  expect(onReviewDataChange).toHaveBeenLastCalledWith(
+    "ne-1",
+    JSON.stringify(["1234567890123456789"], null, 2),
+  );
+
+  fireEvent.change(field, { target: { value: "[9007199254740991]" } });
+  expect(screen.queryByText(hint)).toBeNull();
 });

@@ -9,7 +9,7 @@ import type { AttentionListRow, useHeldReview } from "./useHeldReview";
 
 interface Args {
   rows: AttentionListRow[];
-  held: ReturnType<typeof useHeldReview>;
+  held: Pick<ReturnType<typeof useHeldReview>, "decide">;
 }
 
 // One dialog over every held call: the current one is kept by review id across the poll.
