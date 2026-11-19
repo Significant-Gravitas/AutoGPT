@@ -468,6 +468,31 @@ async def get_library_agent_organizations(
     return {row.id: row.organizationId for row in rows}
 
 
+async def get_library_agent_organizations_by_any_id(
+    user_id: str, agent_ids: list[str]
+) -> dict[str, list[str | None]]:
+    """The organization of every live library entry of the user's that each id
+    names, as the entry's own id or as its graph's, in one read of the tags.
+
+    Ids that name none are left out.
+    """
+    if not agent_ids:
+        return {}
+    rows = await prisma.models.LibraryAgent.prisma().find_many(
+        where={
+            "userId": user_id,
+            "isDeleted": False,
+            "OR": [{"id": {"in": agent_ids}}, {"agentGraphId": {"in": agent_ids}}],
+        }
+    )
+    wanted = set(agent_ids)
+    organizations: dict[str, list[str | None]] = {}
+    for row in rows:
+        for agent_id in wanted.intersection((row.id, row.agentGraphId)):
+            organizations.setdefault(agent_id, []).append(row.organizationId)
+    return organizations
+
+
 async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str | None:
     """Id-only lookup for building deep links (e.g. the expert run post) —
     no relation includes, no schedule info, unlike the full getter below."""

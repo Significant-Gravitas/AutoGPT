@@ -26,6 +26,7 @@ from backend.api.features.library.db import (
     get_library_agent,
     get_library_agent_by_graph_id,
     get_library_agent_id_by_graph_id,
+    get_library_agent_organizations_by_any_id,
     get_library_agent_refs_by_graph_ids,
     get_preset,
     get_root_agent_summaries,
@@ -160,6 +161,7 @@ from backend.data.graph import (
     get_graph_metadata,
     get_graph_settings,
     get_node,
+    get_owned_graph_organizations,
     get_store_listed_graphs,
     is_graph_version_owner,
     validate_graph_execution_permissions,
@@ -430,6 +432,7 @@ class DatabaseManager(AppService):
     get_copied_graph_ids = _(get_copied_graph_ids)
     get_graph_metadata = _(get_graph_metadata)
     get_graph_settings = _(get_graph_settings)
+    get_owned_graph_organizations = _(get_owned_graph_organizations)
     get_store_listed_graphs = _(get_store_listed_graphs)
     is_graph_version_owner = _(is_graph_version_owner)
 
@@ -499,6 +502,9 @@ class DatabaseManager(AppService):
     create_library_agent = _(create_library_agent)
     get_library_agent = _(get_library_agent)
     get_library_agent_by_graph_id = _(get_library_agent_by_graph_id)
+    get_library_agent_organizations_by_any_id = _(
+        get_library_agent_organizations_by_any_id
+    )
     update_library_agent = _(update_library_agent)
     update_graph_in_library = _(update_graph_in_library)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
@@ -1045,6 +1051,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_copied_graph_ids = d.get_copied_graph_ids
     get_graph_metadata = d.get_graph_metadata
     get_graph_settings = d.get_graph_settings
+    get_owned_graph_organizations = d.get_owned_graph_organizations
     is_graph_version_owner = d.is_graph_version_owner
     get_node = d.get_node
     get_store_listed_graphs = d.get_store_listed_graphs
@@ -1139,6 +1146,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_library_agent = d.create_library_agent
     get_library_agent = d.get_library_agent
     get_library_agent_by_graph_id = d.get_library_agent_by_graph_id
+    get_library_agent_organizations_by_any_id = (
+        d.get_library_agent_organizations_by_any_id
+    )
     update_library_agent = d.update_library_agent
     update_graph_in_library = d.update_graph_in_library
     validate_graph_execution_permissions = d.validate_graph_execution_permissions

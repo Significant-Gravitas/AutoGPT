@@ -61,6 +61,7 @@ from backend.data.graph import (
     get_graph_all_versions,
     get_graph_at_version,
     get_graph_settings,
+    get_owned_graph_organizations,
     get_store_listed_graphs,
     graph_in_library_filter,
     graph_owner_id,
@@ -429,6 +430,31 @@ async def test_is_graph_version_owner(server: SpinTestServer):
     assert not await is_graph_version_owner(
         created.id, created.version + 1, DEFAULT_USER_ID
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_owned_graph_organizations(server: SpinTestServer):
+    """A graph carries the tag of the user's newest version of it; another
+    user's graph, a marketplace one included, is left out."""
+    other_user = await create_test_user(alt_user=True)
+    graph_id, their_graph_id = str(uuid4()), str(uuid4())
+    for graph, version, user_id, organization_id in (
+        (graph_id, 1, DEFAULT_USER_ID, "org-old"),
+        (graph_id, 2, DEFAULT_USER_ID, "org-new"),
+        (their_graph_id, 1, other_user.id, "org-theirs"),
+    ):
+        await AgentGraph.prisma().create(
+            data={
+                "id": graph,
+                "version": version,
+                "userId": user_id,
+                "organizationId": organization_id,
+            }
+        )
+
+    assert await get_owned_graph_organizations(
+        DEFAULT_USER_ID, [graph_id, their_graph_id, "no-such-graph"]
+    ) == {graph_id: "org-new"}
 
 
 @pytest.mark.asyncio(loop_scope="session")

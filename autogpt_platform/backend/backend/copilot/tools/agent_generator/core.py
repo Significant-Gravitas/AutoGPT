@@ -172,7 +172,7 @@ async def get_library_agents_by_ids(
         List of LibraryAgentSummary for found agents (silently skips not found)
     """
     agents: list[LibraryAgentSummary] = []
-    for agent_id in agent_ids:
+    for agent_id in dict.fromkeys(agent_ids):
         try:
             agent = await get_library_agent_by_id(user_id, agent_id)
             if agent:
