@@ -1001,12 +1001,16 @@ async def test_a_closure_lookup_that_runs_out_of_time_closes_the_socket_to_retry
     mock_websocket.send_text.assert_not_called()
 
 
+# The shared cache's own bound, read at import: every test's autouse
+# ``patient_shared_cache`` fixture replaces it.
+_PRODUCT_REDIS_OP_TIMEOUT_S = cache_redis.REDIS_OP_TIMEOUT_S
+
+
 def test_the_account_checks_bound_fits_its_two_cache_reads() -> None:
-    """Every test replaces the shared cache's 1 s bound, so this checks the
-    product's: the check reads the cache twice, then the database, inside
+    """The check reads the cache twice, then the database, inside
     ``ACCOUNT_CHECK_TIMEOUT_S``."""
-    assert cache_redis.REDIS_OP_TIMEOUT_S <= 1.0
-    assert 2 * cache_redis.REDIS_OP_TIMEOUT_S < ws_api.ACCOUNT_CHECK_TIMEOUT_S
+    assert _PRODUCT_REDIS_OP_TIMEOUT_S <= 1.0
+    assert 2 * _PRODUCT_REDIS_OP_TIMEOUT_S < ws_api.ACCOUNT_CHECK_TIMEOUT_S
 
 
 # ---------- get_connection_manager singleton ----------

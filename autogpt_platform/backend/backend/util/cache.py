@@ -103,8 +103,8 @@ _NOT_NOW = (TimeoutError, RedisTimeoutError, MaxConnectionsError)
 # keys, such as public store searches, can't flood the database behind them.
 # ``cached(max_concurrent_misses=...)`` overrides it. A miss holds its turn
 # while the function runs, so a cached coroutine must not call itself: each
-# nested miss waits for a turn, and at this depth none is left (dev's lock
-# deadlocked at depth 1). Nothing in the backend does.
+# nested miss waits for a turn, and at this depth none is left. Nothing in the
+# backend does.
 MAX_CONCURRENT_MISSES = 8
 
 

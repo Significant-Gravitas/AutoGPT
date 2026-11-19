@@ -177,11 +177,13 @@ async def no_leaked_db_transaction(request: pytest.FixtureRequest):
 
 @pytest.fixture(autouse=True)
 def patient_shared_cache(monkeypatch: pytest.MonkeyPatch) -> None:
-    """In production a coroutine's shared-cache command waits for Redis
-    ``REDIS_OP_TIMEOUT_S`` (1 s), then counts as a miss and the value is
-    computed instead. A runner that pauses that long would turn a test's
-    hit into a miss, so a test waits 30 s. A test of that bound sets its own."""
+    """In production the shared cache waits ``REDIS_OP_TIMEOUT_S`` (1 s) for
+    each Redis command, each connect and each close of a loop's client, then
+    gives up. A runner that pauses that long would turn a test's hit into a
+    miss, or leave a client open for the guard to fail, so a test waits 30 s.
+    A test of a bound sets its own."""
     monkeypatch.setattr(shared_cache, "REDIS_OP_TIMEOUT_S", 30.0)
+    monkeypatch.setattr(cache_redis, "REDIS_OP_TIMEOUT_S", 30.0)
 
 
 _HTTPX_CLIENTS = HttpxClientGuard()
