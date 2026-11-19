@@ -127,15 +127,19 @@ export const useFlow = () => {
     },
   );
 
+  // An error with no graph to show. A refetch that fails (window focus, a
+  // network blip) keeps the graph it had, and the builder keeps working.
+  const graphLoadFailed = isGraphError && !graph;
+
   // The graph couldn't load — bail out of the builder instead of falling into
   // the fully-editable "new agent" state, which would look like a wiped agent
   // and risk an empty save over the real flowID.
   useEffect(() => {
-    if (!flowID || !isGraphError) return;
+    if (!flowID || !graphLoadFailed) return;
     const { title, description } = getGraphLoadErrorToast(graphError);
     toast({ title, description, variant: "destructive" });
     router.push("/library");
-  }, [flowID, isGraphError, graphError, toast, router]);
+  }, [flowID, graphLoadFailed, graphError, toast, router]);
 
   const nodes = graph?.nodes;
   const blockIds = nodes
@@ -155,6 +159,7 @@ export const useFlow = () => {
       },
     },
   );
+  const blocksLoadFailed = isBlocksError && !blocks;
 
   const customNodes = useMemo(() => {
     if (!nodes || !blocks) return [];
@@ -237,10 +242,11 @@ export const useFlow = () => {
     setLoadedGraph(graph);
   }, [graph, customNodes, flowVersion, setLoadedGraph]);
 
-  // A save waiting for the canvas fails at once if it can't load.
+  // A save waiting for the canvas fails at once if the workflow or its blocks
+  // can't load. A refetch that fails keeps the data it had, so fails no save.
   useEffect(() => {
-    setLoadFailed(isGraphError || isBlocksError);
-  }, [isGraphError, isBlocksError, setLoadFailed]);
+    setLoadFailed(graphLoadFailed || blocksLoadFailed);
+  }, [graphLoadFailed, blocksLoadFailed, setLoadFailed]);
 
   useEffect(() => {
     if (customNodes.length > 0 && graph?.links) {

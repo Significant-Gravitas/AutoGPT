@@ -383,6 +383,35 @@ function canvas(): Graph {
   };
 }
 
+// Moves the Store Value block and edits its input, as a user does before
+// saving, and returns the canvas with those edits.
+function editTheCanvas() {
+  const block = useNodeStore
+    .getState()
+    .nodes.find((node) => node.data.block_id === STORE_VALUE_BLOCK.id)!;
+  act(() => {
+    useNodeStore.getState().onNodesChange([
+      {
+        type: "position",
+        id: block.id,
+        position: { x: 120, y: 80 },
+        dragging: false,
+      },
+    ]);
+    useNodeStore.getState().updateNodeData(block.id, {
+      hardcodedValues: { ...block.data.hardcodedValues, input: "edited" },
+    });
+  });
+  const edited = canvas();
+  expect(edited.nodes).toContainEqual(
+    expect.objectContaining({
+      input_default: { input: "edited" },
+      metadata: expect.objectContaining({ position: { x: 120, y: 80 } }),
+    }),
+  );
+  return edited;
+}
+
 async function waitForTheRun() {
   await waitFor(
     () =>
@@ -627,29 +656,7 @@ describe("builder canvas when the version it shows is fetched again", () => {
         () => expect(useGraphStore.getState().loadedGraph?.version).toBe(1),
         NETWORK_WAIT,
       );
-      const block = useNodeStore
-        .getState()
-        .nodes.find((node) => node.data.block_id === STORE_VALUE_BLOCK.id)!;
-      act(() => {
-        useNodeStore.getState().onNodesChange([
-          {
-            type: "position",
-            id: block.id,
-            position: { x: 120, y: 80 },
-            dragging: false,
-          },
-        ]);
-        useNodeStore.getState().updateNodeData(block.id, {
-          hardcodedValues: { ...block.data.hardcodedValues, input: "edited" },
-        });
-      });
-      const edited = canvas();
-      expect(edited.nodes).toContainEqual(
-        expect.objectContaining({
-          input_default: { input: "edited" },
-          metadata: expect.objectContaining({ position: { x: 120, y: 80 } }),
-        }),
-      );
+      const edited = editTheCanvas();
       const loadedBefore = useGraphStore.getState().loadedGraph;
 
       backend.graphs[GRAPH_ID][0] = change(backend.graphs[GRAPH_ID][0]);
@@ -672,6 +679,86 @@ describe("builder canvas when the version it shows is fetched again", () => {
       );
     },
   );
+});
+
+describe("builder when fetching the open workflow again fails", () => {
+  // A one-off refusal, as a network blip or an expired session gives. A 4xx,
+  // so the request isn't tried again.
+  function refuseTheNextGraphFetch() {
+    server.use(
+      http.get(
+        `/api/proxy/api/graphs/${GRAPH_ID}`,
+        () => HttpResponse.json({ detail: "Not allowed" }, { status: 403 }),
+        { once: true },
+      ),
+    );
+  }
+
+  async function fetchVersion1Again(queryClient: QueryClient) {
+    const key = getGetV1GetSpecificGraphQueryKey(GRAPH_ID, { version: 1 });
+    await act(() => queryClient.invalidateQueries({ queryKey: key }));
+    await waitFor(() =>
+      expect(queryClient.getQueryState(key)?.status).toBe("error"),
+    );
+    // React Query tells the builder about it on the next tick.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  }
+
+  test("a Run waiting for the canvas still runs once the blocks are in", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    const user = userEvent.setup();
+    hold("blocks");
+    const { queryClient } = renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
+    await waitFor(
+      () => expect(backend.requests.blocks).toBeGreaterThan(0),
+      NETWORK_WAIT,
+    );
+    await clickRunOnceItIsEnabled(user);
+
+    refuseTheNextGraphFetch();
+    await fetchVersion1Again(queryClient);
+    backend.release();
+    await waitForTheRun();
+
+    expect(
+      screen.queryByText(
+        "Your workflow couldn't be loaded. Reload the page and try again.",
+      ),
+    ).toBeNull();
+    expect(backend.executions).toEqual([
+      { graphID: GRAPH_ID, graphVersion: 1 },
+    ]);
+  });
+
+  test("the builder stays on it with the user's edits, and Run saves and runs them", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    const user = userEvent.setup();
+    const { queryClient } = renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
+    await waitFor(
+      () => expect(useGraphStore.getState().loadedGraph?.version).toBe(1),
+      NETWORK_WAIT,
+    );
+    const edited = editTheCanvas();
+
+    refuseTheNextGraphFetch();
+    await fetchVersion1Again(queryClient);
+
+    expect(
+      screen.queryByText("Not authorized to view this workflow"),
+      "the builder left the workflow",
+    ).toBeNull();
+    expect(canvas()).toEqual(edited);
+    await clickRunOnceItIsEnabled(user);
+    await waitForTheRun();
+
+    expect(backend.updates).toHaveLength(1);
+    expect(backend.updates[0].nodes).toContainEqual(
+      expect.objectContaining({ input_default: { input: "edited" } }),
+    );
+    expect(backend.executions).toEqual([
+      { graphID: GRAPH_ID, graphVersion: 2 },
+    ]);
+  });
 });
 
 describe("builder Run whose workflow never loads", () => {
