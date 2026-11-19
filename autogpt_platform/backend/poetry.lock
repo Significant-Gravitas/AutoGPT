@@ -7968,7 +7968,7 @@ files = [
     {file = "tzdata-2025.3-py2.py3-none-any.whl", hash = "sha256:06a47e5700f3081aab02b2e513160914ff0694bce9947d6b76ebd6bf57cfc5d1"},
     {file = "tzdata-2025.3.tar.gz", hash = "sha256:de39c2ca5dc7b0344f2eba86f49d614019d29f060fc4ebc8a417896a620b56a7"},
 ]
-markers = {main = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or platform_system == \"Windows\"", dev = "platform_system == \"Windows\""}
+markers = {dev = "platform_system == \"Windows\""}
 
 [[package]]
 name = "tzlocal"
@@ -8883,4 +8883,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.16"
-content-hash = "0e3d01cad07f2e79243734e94461daac7fd1287bc0c781fd22073da349f155d6"
+content-hash = "48f5d11ebc9c074521696bde867c7b70b90b8b60f527a2b0139f3b7d3c989152"

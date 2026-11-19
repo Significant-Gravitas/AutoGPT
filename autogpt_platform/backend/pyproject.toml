@@ -87,7 +87,11 @@ tenacity = "^9.1.4"
 todoist-api-python = "^2.1.7"
 tweepy = "^4.16.0"
 typesafe-sdk = "0.6.0"
-uvicorn = { extras = ["standard"], version = ">=0.40,<0.54" }
+# notifications/audience_enrichment.py reads its zone tables, and zoneinfo needs
+# it for old names (Asia/Calcutta) that Debian's tzdata moved to tzdata-legacy.
+# pandas 2 used to pull it in; pandas 3 only does on Windows.
+tzdata = ">=2025.3"
+uvicorn ={ extras = ["standard"], version = ">=0.40,<0.54" }
 websockets = "^15.0"
 youtube-transcript-api = "^1.2.5"  # 1.2.5 is the first to allow Python 3.15
 yt-dlp = "2026.8.19"
