@@ -1096,7 +1096,8 @@ async def upload_app_logo(
 
 
 def _logo_size(raw: bytes) -> tuple[int, int]:
-    return Image.open(io.BytesIO(raw), formats=LOGO_ALLOWED_FORMATS).size
+    with Image.open(io.BytesIO(raw), formats=LOGO_ALLOWED_FORMATS) as image:
+        return image.size
 
 
 async def _delete_app_current_logo_file(app: OAuthApplicationInfo):

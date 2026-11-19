@@ -1,4 +1,5 @@
 import io
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -120,7 +121,9 @@ async def test_logo_reference_updates_before_previous_object_is_deleted(monkeypa
         patch.object(oauth, "_delete_app_current_logo_file", side_effect=delete),
         patch.object(oauth, "scan_content_safe", AsyncMock()),
         patch.object(
-            oauth.Image, "open", return_value=SimpleNamespace(size=(512, 512))
+            oauth.Image,
+            "open",
+            return_value=nullcontext(SimpleNamespace(size=(512, 512))),
         ),
         patch.object(oauth.async_storage, "Storage", return_value=context),
     ):
