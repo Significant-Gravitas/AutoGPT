@@ -34,8 +34,7 @@ from backend.util.workspace_storage import get_workspace_storage
 logger = logging.getLogger(__name__)
 
 PREVIEW_CACHE_TTL = 86_400  # 1 day
-# The cache shares the platform's Redis, so a workspace may only put so much
-# there; a thumbnail past either cap is still served, just rendered again.
+# A thumbnail past either cap is still served, just rendered again.
 PREVIEW_CACHE_MAX_ENTRY_BYTES = 512 * 1024
 PREVIEW_CACHE_MAX_WORKSPACE_BYTES = 32 * 1024 * 1024
 # Each thumbnail renders in its own child process; cap how many run at once so a
