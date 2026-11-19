@@ -19,21 +19,24 @@ def cache_key(function_name: str, **arguments: Any) -> str:
 
 
 class HeldRead:
-    """The first read of one key, held until ``release()``, whichever client
-    makes it: a sync read blocks its thread and an async one awaits. A sync
-    read also goes on after ``hang_s``, so code that reads on the event
-    loop's thread, which the test can't release from, fails it instead of
-    hanging it.
+    """The first read of one key (or the first of ``commands``), held until
+    ``release()``, whichever client makes it: a sync read blocks its thread
+    and an async one awaits. A sync read also goes on after ``hang_s``, so
+    code that reads on the event loop's thread, which the test can't release
+    from, fails it instead of hanging it.
 
     ``answered`` turns true once the held read goes on to Redis; a read its
     caller gave up on never does. ``commands`` lists every command sent for
     the key since, held or not."""
 
-    def __init__(self, redis_key: str, hang_s: float) -> None:
+    def __init__(
+        self, redis_key: str, hang_s: float, held_commands: tuple[str, ...]
+    ) -> None:
         self.answered = False
         self.commands: list[str] = []
         self._redis_key = redis_key
         self._hang_s = hang_s
+        self._held_commands = held_commands
         self._claimed = False
         self._loop = asyncio.get_running_loop()
         self._started = asyncio.Event()
@@ -51,7 +54,7 @@ class HeldRead:
         if (key.decode() if isinstance(key, bytes) else key) != self._redis_key:
             return False
         self.commands.append(str(command))
-        if self._claimed or command not in ("GET", "GETEX"):
+        if self._claimed or command not in self._held_commands:
             return False
         self._claimed = True
         return True
@@ -68,11 +71,14 @@ class HeldRead:
 
 
 def hold_cache_read(
-    monkeypatch: pytest.MonkeyPatch, redis_key: str, hang_s: float
+    monkeypatch: pytest.MonkeyPatch,
+    redis_key: str,
+    hang_s: float,
+    commands: tuple[str, ...] = ("GET", "GETEX"),
 ) -> HeldRead:
-    """Hold the next read of ``redis_key`` until the returned handle is
-    released. Release it in a ``finally``."""
-    held = HeldRead(redis_key, hang_s)
+    """Hold the next read of ``redis_key`` (or the next of ``commands``)
+    until the returned handle is released. Release it in a ``finally``."""
+    held = HeldRead(redis_key, hang_s, commands)
     execute = sync_cluster.RedisCluster.execute_command
     execute_async = async_cluster.RedisCluster.execute_command
 

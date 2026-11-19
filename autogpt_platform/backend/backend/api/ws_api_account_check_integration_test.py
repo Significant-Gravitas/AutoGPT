@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+import redis.asyncio.cluster as async_cluster
 from fastapi import WebSocket, WebSocketDisconnect
 
 import backend.data.redis_client as redis_client
@@ -68,9 +69,9 @@ class _Browser:
 def _serve(
     browsers: list[_Browser], monkeypatch: pytest.MonkeyPatch
 ) -> list[asyncio.Task]:
-    """The real router and ConnectionManager, past authentication. With
-    ``real_ban_lookup``, the real cached account lookups too; their database
-    reads find open accounts."""
+    """The real router and ConnectionManager, past authentication. The
+    calling test's ``real_ban_lookup`` fixture provides the real cached
+    account lookups; their database reads find open accounts."""
     users = {id(browser.websocket): browser.user_id for browser in browsers}
 
     async def authenticate(websocket: WebSocket) -> str:
@@ -129,5 +130,44 @@ async def test_other_sockets_are_answered_while_redis_holds_one_users_account_ch
             held.release()
         for browser in (held_user, other):
             browser.leave()
+        async with asyncio.timeout(2 * _HANG_SECONDS):
+            await asyncio.gather(*routers, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_each_message_reads_the_ban_and_the_closure_once(
+    monkeypatch: pytest.MonkeyPatch, real_ban_lookup: None
+) -> None:
+    """A Redis shard that stops answering costs each of the check's cache
+    reads the cache's bound, so it reads each answer once per message."""
+    browser = _Browser(f"user-reads-{uuid4().hex[:8]}")
+    routers = _serve([browser], monkeypatch)
+    answers = {
+        cache_key("is_user_banned", user_id=browser.user_id): "ban",
+        cache_key("is_user_account_closed", user_id=browser.user_id): "closure",
+    }
+    reads: list[str] = []
+    execute = async_cluster.RedisCluster.execute_command
+
+    async def recorded_execute(self, *args, **kwargs):
+        command, key = args[0], args[1] if len(args) > 1 else None
+        key = key.decode() if isinstance(key, bytes) else key
+        if command in ("GET", "GETEX") and key in answers:
+            reads.append(answers[key])
+        return await execute(self, *args, **kwargs)
+
+    try:
+        async with asyncio.timeout(_HANG_SECONDS):
+            # The first message stores both answers.
+            browser.heartbeat()
+            assert (await browser.next_answer())["data"] == "pong"
+            monkeypatch.setattr(
+                async_cluster.RedisCluster, "execute_command", recorded_execute
+            )
+            browser.heartbeat()
+            assert (await browser.next_answer())["data"] == "pong"
+        assert reads == ["ban", "closure"]
+    finally:
+        browser.leave()
         async with asyncio.timeout(2 * _HANG_SECONDS):
             await asyncio.gather(*routers, return_exceptions=True)

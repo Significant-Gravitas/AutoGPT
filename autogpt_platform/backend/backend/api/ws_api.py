@@ -28,7 +28,7 @@ from backend.api.utils.cors import build_cors_params
 from backend.api.utils.validation_errors import loggable_validation_errors
 from backend.data import redis_client
 from backend.data.db_accessors import auth_session_db, user_db
-from backend.data.user import is_user_banned, is_user_refused
+from backend.data.user import is_user_account_closed, is_user_banned
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
     start_metrics_server,
@@ -46,10 +46,10 @@ ACCOUNT_BANNED_CLOSE_CODE = 4004
 # Clients send only subscribe, unsubscribe and heartbeat messages of ~100 bytes.
 WS_MAX_MESSAGE_BYTES = 4096
 # The per-message account check reads the cache in milliseconds. A Redis shard
-# that stops answering costs each of its (up to three) cache reads the cache's
-# own bound, ``REDIS_OP_TIMEOUT_S``, before the database answers instead. This
-# bounds the whole check, database included, well inside the 10 s the client
-# waits for a pong.
+# that stops answering costs each of its two cache reads the cache's own bound,
+# ``REDIS_OP_TIMEOUT_S``, before the database answers instead. This bounds the
+# whole check, database included, well inside the 10 s the client waits for a
+# pong.
 ACCOUNT_CHECK_TIMEOUT_S = 5.0
 # "Try again later": the client reconnects, and the connect-time checks, which
 # refuse a socket whose account can't be read, decide.
@@ -455,10 +455,10 @@ async def _answer_failure(
     )
 
 
-async def _refused_now(user_id: str) -> bool:
+async def _closed_now(user_id: str) -> bool:
     """A lookup that fails keeps the socket; the next message asks again."""
     try:
-        return await is_user_refused(user_id)
+        return await is_user_account_closed(user_id)
     except Exception:
         logger.warning(
             f"Closed-account lookup failed for user #{user_id}; keeping the socket"
@@ -477,10 +477,10 @@ async def _banned_now(user_id: str) -> bool:
 
 async def _closed_for_account(websocket: WebSocket, user_id: str) -> bool:
     """Close the socket if its account may no longer use it, and say whether
-    it did. A ban is ruled out first, so a refusal after it is a closed
-    account. A check that doesn't finish in time closes it too, with a code
-    the client retries: it never counts as allowed."""
-    banned = refused = False
+    it did: banned, or closed by its owner. A check that doesn't finish in
+    time closes it too, with a code the client retries: it never counts as
+    allowed."""
+    banned = closed = False
     deadline = asyncio.timeout(ACCOUNT_CHECK_TIMEOUT_S)
     try:
         async with deadline:
@@ -488,7 +488,7 @@ async def _closed_for_account(websocket: WebSocket, user_id: str) -> bool:
             # A ban lookup that swallowed the cancellation leaves no second
             # one coming, so the deadline is checked before the next lookup.
             if not banned and not deadline.expired():
-                refused = await _refused_now(user_id)
+                closed = await _closed_now(user_id)
     except TimeoutError:
         pass
     # Also when a lookup swallowed the cancellation and answered anyway.
@@ -504,7 +504,7 @@ async def _closed_for_account(websocket: WebSocket, user_id: str) -> bool:
     if banned:
         await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
         return True
-    if refused:
+    if closed:
         await websocket.close(code=4003, reason=ACCOUNT_CLOSED_DETAIL)
         return True
     return False

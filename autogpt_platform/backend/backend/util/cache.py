@@ -17,8 +17,7 @@ import logging
 import pickle
 import threading
 import time
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from functools import cache, wraps
 from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
@@ -26,6 +25,7 @@ from weakref import WeakKeyDictionary
 
 import sentry_sdk
 from redis.cluster import RedisCluster
+from redis.exceptions import MaxConnectionsError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from backend.util import tracing
@@ -93,31 +93,70 @@ class _UnreachableType:
 _UNREACHABLE = _UnreachableType()
 
 
+# Redis didn't answer in time, or this process has too many commands in flight
+# to send one more: logged as a warning, since a stalled shard or a burst
+# would otherwise turn every cached call into a Sentry event.
+_NOT_NOW = (TimeoutError, RedisTimeoutError, MaxConnectionsError)
+
+
 def _is_hit(result: Any) -> bool:
     return result is not _MISSING and result is not _UNREACHABLE
 
 
-class _KeyLocks:
-    """An ``asyncio.Lock`` per key, made on first use and dropped once nobody
-    holds or waits for it. For one event loop: an asyncio.Lock belongs to one."""
+class _InFlight:
+    """The computation running for each key on one event loop. Callers that
+    miss the key while it runs wait for it and share its result, stored or
+    not, so one computation answers them all. For one event loop: a future
+    belongs to one."""
 
     def __init__(self) -> None:
-        self._locks: dict[Any, asyncio.Lock] = {}
-        self._users: dict[Any, int] = {}
+        self._flights: dict[Any, asyncio.Future[Any]] = {}
 
-    @asynccontextmanager
-    async def hold(self, key: Any) -> AsyncIterator[None]:
-        lock = self._locks.get(key)
-        if lock is None:
-            lock = self._locks[key] = asyncio.Lock()
-        self._users[key] = self._users.get(key, 0) + 1
+    async def run(
+        self, key: Any, compute: Callable[[], Awaitable[T]], share: Callable[[T], T]
+    ) -> T:
+        """``compute()``'s result, or the running computation's for ``key``,
+        passed through ``share``. Its error is raised to every caller that
+        waited for it; if its own caller is cancelled, a waiting one computes
+        instead."""
+        while (flight := self._flights.get(key)) is not None:
+            try:
+                value = await asyncio.shield(flight)
+            except asyncio.CancelledError:
+                caller = asyncio.current_task()
+                # Only the computation was cancelled, not this caller too.
+                if flight.cancelled() and not (caller and caller.cancelling()):
+                    continue
+                raise
+            return share(value)
+        flight = self._flights[key] = asyncio.get_running_loop().create_future()
         try:
-            async with lock:
-                yield
+            value = await compute()
+        except Exception as e:
+            flight.set_exception(e)
+            flight.exception()  # Retrieved: an error nobody waited for logs nothing.
+            raise
+        else:
+            flight.set_result(value)
+            return value
         finally:
-            self._users[key] -= 1
-            if not self._users[key]:
-                del self._users[key], self._locks[key]
+            if not flight.done():
+                flight.cancel()
+            if self._flights.get(key) is flight:
+                del self._flights[key]
+
+
+def _private_copy(value: T) -> T:
+    """A copy of a shared-cache value for one more caller, who, as from
+    Redis, gets one of its own. A value that can't be pickled is shared."""
+    try:
+        return pickle.loads(pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
+    except Exception:
+        return value
+
+
+def _as_is(value: T) -> T:
+    return value
 
 
 @dataclass
@@ -214,7 +253,8 @@ def cached(
 
     Uses double-checked locking to prevent multiple threads/coroutines from
     executing the expensive operation simultaneously during cache misses. For
-    a coroutine the lock is per key: misses for other arguments don't wait.
+    a coroutine, concurrent misses of one key share one computation, and
+    misses of other keys don't wait for it.
 
     Args:
         maxsize: Maximum number of cached entries (only for in-memory cache)
@@ -252,7 +292,7 @@ def cached(
         func_name = target_func.__name__
         signature = inspect.signature(target_func)
         cache_storage: dict[tuple, CachedValue] = {}
-        _key_locks_by_loop: WeakKeyDictionary[asyncio.AbstractEventLoop, _KeyLocks] = (
+        _in_flight_by_loop: WeakKeyDictionary[asyncio.AbstractEventLoop, _InFlight] = (
             WeakKeyDictionary()
         )
 
@@ -313,10 +353,10 @@ def cached(
                         cached_bytes = await redis.getex(redis_key, ex=ttl_seconds)
                     else:
                         cached_bytes = await redis.get(redis_key)
-            except (TimeoutError, RedisTimeoutError):
+            except _NOT_NOW as e:
                 logger.warning(
-                    f"Redis didn't answer a cache check for {func_name} within "
-                    f"{REDIS_OP_TIMEOUT_S}s; computing it instead"
+                    f"Cache check for {func_name} gave up on Redis ({e!r}); "
+                    "computing it instead"
                 )
                 return _UNREACHABLE
             except Exception as e:
@@ -335,11 +375,8 @@ def cached(
                 async with asyncio.timeout(REDIS_OP_TIMEOUT_S):
                     redis = await _get_async_redis()
                     await redis.set(redis_key, _sign_payload(pickled), ex=ttl_seconds)
-            except (TimeoutError, RedisTimeoutError):
-                logger.warning(
-                    f"Redis didn't store a cache entry for {func_name} within "
-                    f"{REDIS_OP_TIMEOUT_S}s"
-                )
+            except _NOT_NOW as e:
+                logger.warning(f"Cache write for {func_name} gave up on Redis ({e!r})")
             except Exception as e:
                 logger.error(f"Redis error storing cache for {func_name}: {e}")
 
@@ -372,12 +409,12 @@ def cached(
 
         if inspect.iscoroutinefunction(target_func):
 
-            def _key_locks() -> _KeyLocks:
+            def _in_flight() -> _InFlight:
                 loop = asyncio.get_running_loop()
-                locks = _key_locks_by_loop.get(loop)
-                if locks is None:
-                    locks = _key_locks_by_loop[loop] = _KeyLocks()
-                return locks
+                in_flight = _in_flight_by_loop.get(loop)
+                if in_flight is None:
+                    in_flight = _in_flight_by_loop[loop] = _InFlight()
+                return in_flight
 
             @wraps(target_func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs):
@@ -392,19 +429,18 @@ def cached(
                 if _is_hit(result):
                     return result
 
-                # Slow path: one caller per key computes it, and misses for
-                # other keys don't wait behind it.
-                async with _key_locks().hold(key):
+                async def compute() -> Any:
                     # Double-check: another coroutine might have populated
                     # cache. Not when Redis just went unanswered: asking it
                     # again, or storing the value, would only wait again.
-                    if result is not _UNREACHABLE:
+                    found = result
+                    if found is not _UNREACHABLE:
                         if shared_cache:
-                            result = await _aget_from_redis(redis_key)
+                            found = await _aget_from_redis(redis_key)
                         else:
-                            result = _get_from_memory(key)
-                        if _is_hit(result):
-                            return result
+                            found = _get_from_memory(key)
+                        if _is_hit(found):
+                            return found
 
                     # Cache miss - execute function
                     logger.debug(f"Cache miss for {func_name}")
@@ -412,13 +448,18 @@ def cached(
 
                     # Store result (skip ``None`` if the caller opted out of
                     # caching it — used for transient-error sentinels).
-                    if result is not _UNREACHABLE and (cache_none or value is not None):
+                    if found is not _UNREACHABLE and (cache_none or value is not None):
                         if shared_cache:
                             await _aset_to_redis(redis_key, value)
                         else:
                             _set_to_memory(key, value)
-
                     return value
+
+                # Slow path: one caller per key computes it, and the ones that
+                # miss it meanwhile share its result; misses for other keys
+                # don't wait for it.
+                share = _private_copy if shared_cache else _as_is
+                return await _in_flight().run(key, compute, share)
 
             wrapper = async_wrapper
 

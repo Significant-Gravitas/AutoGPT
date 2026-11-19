@@ -36,9 +36,10 @@ def account_db(mocker):
     tests don't run; an account is open unless a test closes it."""
     db = mocker.patch("backend.api.ws_api.user_db").return_value
     db.is_account_closed = AsyncMock(return_value=False)
-    # The open socket's per-message check, through the same DatabaseManager.
-    db.refused = mocker.patch(
-        "backend.api.ws_api.is_user_refused", new=AsyncMock(return_value=False)
+    # The open socket's per-message closure check, through the same
+    # DatabaseManager.
+    db.closed = mocker.patch(
+        "backend.api.ws_api.is_user_account_closed", new=AsyncMock(return_value=False)
     )
     return db
 
@@ -828,7 +829,7 @@ async def test_a_closed_account_ends_an_open_socket_at_its_next_message(
         "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
     )
     mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
-    account_db.refused.return_value = True
+    account_db.closed.return_value = True
     mock_websocket.receive_text.side_effect = [
         WSMessage(
             method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
@@ -844,7 +845,7 @@ async def test_a_closed_account_ends_an_open_socket_at_its_next_message(
         code=4003, reason="This account is closed."
     )
     mock_manager.subscribe_graph_exec.assert_not_called()
-    account_db.refused.assert_awaited_once_with(DEFAULT_USER_ID)
+    account_db.closed.assert_awaited_once_with(DEFAULT_USER_ID)
 
 
 @pytest.mark.asyncio
@@ -855,7 +856,7 @@ async def test_an_unreadable_closure_keeps_an_open_socket(
         "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
     )
     mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
-    account_db.refused.side_effect = ConnectionError()
+    account_db.closed.side_effect = ConnectionError()
     mock_websocket.receive_text.side_effect = [
         WSMessage(
             method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
@@ -933,17 +934,17 @@ async def test_an_account_check_that_runs_out_of_time_closes_the_socket_to_retry
     on, which runs the connect-time checks. Nor does a ban lookup that
     swallowed the cancellation start the closure lookup past the deadline,
     which no second cancellation would end."""
-    refusal_lookup_started = asyncio.Event()
+    closure_lookup_started = asyncio.Event()
 
-    async def refusal_lookup(user_id: str) -> bool:
-        refusal_lookup_started.set()
+    async def closure_lookup(user_id: str) -> bool:
+        closure_lookup_started.set()
         return await _never_answers(user_id)
 
     mocker.patch(
         "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
     )
     mocker.patch("backend.api.ws_api.is_user_banned", new=ban_lookup)
-    mocker.patch("backend.api.ws_api.is_user_refused", new=refusal_lookup)
+    mocker.patch("backend.api.ws_api.is_user_account_closed", new=closure_lookup)
     # The lookup never finishes on its own, so the bound decides when the
     # check gives up, not whether.
     mocker.patch.object(ws_api, "ACCOUNT_CHECK_TIMEOUT_S", 0.05)
@@ -963,7 +964,7 @@ async def test_an_account_check_that_runs_out_of_time_closes_the_socket_to_retry
     mock_websocket.close.assert_awaited_once_with(code=1013, reason="Try again")
     mock_manager.subscribe_graph_exec.assert_not_called()
     mock_websocket.send_text.assert_not_called()
-    assert not refusal_lookup_started.is_set()
+    assert not closure_lookup_started.is_set()
 
 
 # ---------- get_connection_manager singleton ----------

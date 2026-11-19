@@ -9,15 +9,18 @@ the sync client (``get_redis``) blocks the thread that calls it.
 
 import asyncio
 import logging
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from functools import cache
 from typing import Any
 
 from redis.asyncio.cluster import ClusterNode as AsyncClusterNode
+from redis.asyncio.cluster import NodesManager as AsyncNodesManager
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.asyncio.retry import Retry as AsyncRetry
 from redis.backoff import NoBackoff
-from redis.cluster import ClusterNode, RedisCluster
+from redis.cluster import ClusterNode, NodesManager, RedisCluster
+from redis.exceptions import AskError, MovedError
 from redis.retry import Retry
 
 from backend.util.retry import conn_retry
@@ -41,7 +44,7 @@ def get_redis() -> RedisCluster:
     # Local import breaks the redis_client <-> cache module cycle.
     from backend.data.redis_client import _address_remap
 
-    c = RedisCluster(
+    c = _RedisCluster(
         startup_nodes=[
             ClusterNode(settings.config.redis_host, settings.config.redis_port)
         ],
@@ -129,7 +132,7 @@ def _new_async_redis() -> AsyncRedisCluster:
     # Local import breaks the redis_client <-> cache module cycle.
     from backend.data.redis_client import REDIS_MAX_CONNECTIONS, _address_remap
 
-    return AsyncRedisCluster(
+    return _AsyncRedisCluster(
         startup_nodes=[
             AsyncClusterNode(settings.config.redis_host, settings.config.redis_port)
         ],
@@ -143,3 +146,81 @@ def _new_async_redis() -> AsyncRedisCluster:
         retry=AsyncRetry(NoBackoff(), _RETRIES),
         address_remap=_address_remap,
     )
+
+
+# redis-py 8.1 applies ``address_remap`` to the slot map it reads but not to
+# the address a MOVED or ASK reply names, so a redirect would dial a shard's
+# announced address: unresolvable wherever the remap is needed, as on CI's
+# cluster. These clients remap both. redis-py fixed it after 8.1
+# (redis/redis-py#4522, first in 8.2.0b1); drop them once on a release with it.
+Remap = Callable[[str, int], tuple[str, int]]
+
+
+class _NodesManager(NodesManager):
+    def move_slot(self, e: AskError | MovedError) -> None:
+        _remap_reply(self.remap_host_port, e)
+        super().move_slot(e)
+
+
+class _RedisCluster(RedisCluster):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.nodes_manager.__class__ = _NodesManager
+
+    def get_node(
+        self,
+        host: str | None = None,
+        port: int | None = None,
+        node_name: str | None = None,
+    ) -> ClusterNode | None:
+        return _get_node(
+            super().get_node, self.nodes_manager.remap_host_port, host, port, node_name
+        )
+
+
+class _AsyncNodesManager(AsyncNodesManager):
+    __slots__ = ()
+
+    async def move_slot(self, e: AskError | MovedError) -> None:
+        _remap_reply(self.remap_host_port, e)
+        await super().move_slot(e)
+
+
+class _AsyncRedisCluster(AsyncRedisCluster):
+    __slots__ = ()
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.nodes_manager.__class__ = _AsyncNodesManager
+
+    def get_node(
+        self,
+        host: str | None = None,
+        port: int | None = None,
+        node_name: str | None = None,
+    ) -> AsyncClusterNode | None:
+        return _get_node(
+            super().get_node, self.nodes_manager.remap_host_port, host, port, node_name
+        )
+
+
+def _remap_reply(remap: Remap, e: AskError | MovedError) -> None:
+    e.host, e.port = remap(e.host, e.port)
+    e.node_addr = (e.host, e.port)
+
+
+def _get_node(
+    get_node: Callable[..., Any],
+    remap: Remap,
+    host: str | None,
+    port: int | None,
+    node_name: str | None,
+) -> Any:
+    """``get_node``, finding the node an ASK reply names at its remapped
+    address too: redis-py looks it up by the name the reply gives. By host
+    and port, since a node given as ``localhost`` is named by its IP."""
+    node = get_node(host, port, node_name)
+    if node is None and node_name is not None:
+        announced_host, _, announced_port = node_name.rpartition(":")
+        node = get_node(*remap(announced_host, int(announced_port)))
+    return node

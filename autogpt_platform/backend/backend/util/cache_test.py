@@ -9,18 +9,25 @@ This module tests the thread-local caching functionality including:
 """
 
 import asyncio
+import inspect
+import logging
+import pickle
 import threading
 import time
 import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
 import redis.asyncio.cluster as async_cluster
+import redis.asyncio.connection as async_connection
 import redis.connection
+from redis.cluster import ClusterNode, RedisCluster
+from redis.exceptions import AskError
 from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import MaxConnectionsError, MovedError
 
 from backend.util import cache as cache_module
 from backend.util import cache_redis
@@ -812,87 +819,56 @@ class TestSharedCache:
         # Cleanup
         await asyncio.to_thread(shared_async_function.cache_clear)
 
-    def test_shared_cache_ttl_refresh(self):
-        """Test TTL refresh functionality with shared cache."""
-        call_count = 0
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("refresh", [True, False], ids=["refreshed", "kept"])
+    @pytest.mark.parametrize("caller", ["sync", "async"])
+    async def test_a_hit_refreshes_its_entrys_ttl_only_when_asked_to(
+        self, caller: str, refresh: bool
+    ):
+        """``refresh_ttl_on_get`` reads an entry with GETEX, which gives it its
+        whole TTL again; without it, a hit leaves the TTL running down."""
+        calls = 0
 
-        @cached(ttl_seconds=2, shared_cache=True, refresh_ttl_on_get=True)
-        def ttl_refresh_function(x: int) -> int:
-            nonlocal call_count
-            call_count += 1
-            return x * 10
+        def answer(key: str) -> str:
+            nonlocal calls
+            calls += 1
+            return f"answer to {key}"
 
-        # Clear any existing cache
-        ttl_refresh_function.cache_clear()
+        if caller == "sync":
 
-        # First call
-        result1 = ttl_refresh_function(3)
-        assert result1 == 30
-        assert call_count == 1
+            @cached(ttl_seconds=30, shared_cache=True, refresh_ttl_on_get=refresh)
+            def ttl_lookup(key: str) -> str:
+                return answer(key)
 
-        # Wait 1 second
-        time.sleep(1)
+            async def call(key: str) -> str:
+                return await asyncio.to_thread(ttl_lookup, key)
 
-        # Second call - should refresh TTL and use cache
-        result2 = ttl_refresh_function(3)
-        assert result2 == 30
-        assert call_count == 1
+        else:
 
-        # Wait another 1.5 seconds (total 2.5s from first call, 1.5s from second)
-        time.sleep(1.5)
+            @cached(ttl_seconds=30, shared_cache=True, refresh_ttl_on_get=refresh)
+            async def ttl_lookup(key: str) -> str:
+                return answer(key)
 
-        # Third call - TTL should have been refreshed, so still cached
-        result3 = ttl_refresh_function(3)
-        assert result3 == 30
-        assert call_count == 1
+            async def call(key: str) -> str:
+                return await ttl_lookup(key)
 
-        # Wait 2.1 seconds - now it should expire
-        time.sleep(2.1)
+        key = _unique("ttl")
+        redis_key = cache_key("ttl_lookup", key=key)
+        redis = await asyncio.to_thread(cache_module._get_redis)
+        try:
+            assert await call(key) == f"answer to {key}"
+            # As if most of its TTL had run down.
+            await asyncio.to_thread(redis.expire, redis_key, 5)
+            assert await call(key) == f"answer to {key}"
+            ttl = cast(int, await asyncio.to_thread(redis.ttl, redis_key))
+        finally:
+            await asyncio.to_thread(redis.delete, redis_key)
 
-        # Fourth call - should call function again
-        result4 = ttl_refresh_function(3)
-        assert result4 == 30
-        assert call_count == 2
-
-        # Cleanup
-        ttl_refresh_function.cache_clear()
-
-    def test_shared_cache_without_ttl_refresh(self):
-        """Test that TTL doesn't refresh when refresh_ttl_on_get=False."""
-        call_count = 0
-
-        @cached(ttl_seconds=2, shared_cache=True, refresh_ttl_on_get=False)
-        def no_ttl_refresh_function(x: int) -> int:
-            nonlocal call_count
-            call_count += 1
-            return x * 10
-
-        # Clear any existing cache
-        no_ttl_refresh_function.cache_clear()
-
-        # First call
-        result1 = no_ttl_refresh_function(4)
-        assert result1 == 40
-        assert call_count == 1
-
-        # Wait 1 second
-        time.sleep(1)
-
-        # Second call - should use cache but NOT refresh TTL
-        result2 = no_ttl_refresh_function(4)
-        assert result2 == 40
-        assert call_count == 1
-
-        # Wait another 1.1 seconds (total 2.1s from first call)
-        time.sleep(1.1)
-
-        # Third call - should have expired
-        result3 = no_ttl_refresh_function(4)
-        assert result3 == 40
-        assert call_count == 2
-
-        # Cleanup
-        no_ttl_refresh_function.cache_clear()
+        assert calls == 1
+        if refresh:
+            assert ttl > 5
+        else:
+            assert 0 < ttl <= 5
 
     def test_shared_cache_complex_objects(self):
         """Test caching complex objects with shared cache (pickle serialization)."""
@@ -1218,80 +1194,60 @@ class TestCacheHMAC:
 
         hmac_roundtrip_fn.cache_clear()
 
-    def test_tampered_cache_entry_rejected(self):
-        """A tampered Redis entry is rejected and treated as a cache miss."""
-        from backend.util.cache import _get_redis
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("entry", ["unsigned", "tampered", "signed-unreadable"])
+    @pytest.mark.parametrize("caller", ["sync", "async"])
+    async def test_an_entry_that_does_not_decode_is_computed_again_and_replaced(
+        self, caller: str, entry: str
+    ):
+        """An entry without a valid signature (a legacy one, or one someone
+        changed), or whose signed payload doesn't unpickle, counts as a miss:
+        the value is computed again and stored in its place."""
+        calls = 0
 
-        call_count = 0
+        def answer(key: str) -> str:
+            nonlocal calls
+            calls += 1
+            return f"answer to {key}"
 
-        @cached(ttl_seconds=30, shared_cache=True)
-        def tamper_test_fn(x: int) -> int:
-            nonlocal call_count
-            call_count += 1
-            return x * 2
+        if caller == "sync":
 
-        tamper_test_fn.cache_clear()
+            @cached(ttl_seconds=30, shared_cache=True)
+            def decoded_lookup(key: str) -> str:
+                return answer(key)
 
-        # Populate the cache
-        result = tamper_test_fn(7)
-        assert result == 14
-        assert call_count == 1
+            async def call(key: str) -> str:
+                return await asyncio.to_thread(decoded_lookup, key)
 
-        # Find and tamper with the Redis key
-        redis = _get_redis()
-        keys = list(redis.scan_iter("cache:tamper_test_fn:*"))
-        assert len(keys) >= 1, "Expected at least one cache key"
+        else:
 
-        for key in keys:
-            raw: bytes | None = redis.get(key)  # type: ignore[assignment]
-            assert raw is not None
-            # Flip a byte in the signature portion to simulate tampering
-            tampered = bytes([raw[0] ^ 0xFF]) + raw[1:]  # type: ignore[index]
-            redis.set(key, tampered)
+            @cached(ttl_seconds=30, shared_cache=True)
+            async def decoded_lookup(key: str) -> str:
+                return answer(key)
 
-        # Next call should detect tampering and recompute
-        result2 = tamper_test_fn(7)
-        assert result2 == 14
-        assert call_count == 2  # Had to recompute
+            async def call(key: str) -> str:
+                return await decoded_lookup(key)
 
-        tamper_test_fn.cache_clear()
+        key = _unique("decode")
+        redis_key = cache_key("decoded_lookup", key=key)
+        redis = await asyncio.to_thread(cache_module._get_redis)
+        try:
+            assert await call(key) == f"answer to {key}"
+            stored = cast(bytes, await asyncio.to_thread(redis.get, redis_key))
+            undecodable = {
+                "unsigned": pickle.dumps("not the answer"),
+                "tampered": bytes([stored[0] ^ 0xFF]) + stored[1:],
+                "signed-unreadable": cache_module._sign_payload(b"not a pickle"),
+            }[entry]
+            await asyncio.to_thread(redis.set, redis_key, undecodable, ex=30)
 
-    def test_unsigned_legacy_entry_rejected(self):
-        """A raw pickled value (no HMAC prefix) is rejected as a cache miss."""
-        import pickle as _pickle
-
-        from backend.util.cache import _get_redis
-
-        call_count = 0
-
-        @cached(ttl_seconds=30, shared_cache=True)
-        def legacy_test_fn(x: int) -> int:
-            nonlocal call_count
-            call_count += 1
-            return x + 100
-
-        legacy_test_fn.cache_clear()
-
-        # Manually write an unsigned (legacy) pickled value directly to Redis
-        redis = _get_redis()
-        # We need to figure out the cache key format; populate first then overwrite
-        result = legacy_test_fn(5)
-        assert result == 105
-        assert call_count == 1
-
-        keys = list(redis.scan_iter("cache:legacy_test_fn:*"))
-        assert len(keys) >= 1
-
-        # Overwrite with raw unsigned pickle (simulating a legacy entry)
-        for key in keys:
-            redis.set(key, _pickle.dumps(999))
-
-        # Next call should reject the unsigned value and recompute
-        result2 = legacy_test_fn(5)
-        assert result2 == 105
-        assert call_count == 2
-
-        legacy_test_fn.cache_clear()
+            assert await call(key) == f"answer to {key}"
+            assert calls == 2
+            # The value computed again replaced the entry.
+            assert await call(key) == f"answer to {key}"
+            assert calls == 2
+        finally:
+            await asyncio.to_thread(redis.delete, redis_key)
 
 
 class TestCacheNoneHandling:
@@ -1727,25 +1683,449 @@ class TestSharedCacheOnAnEventLoop:
         assert not is_open(client)
 
     @pytest.mark.asyncio
-    async def test_a_key_lock_is_dropped_once_nobody_holds_or_waits_for_it(self):
-        """One lock per key a miss ever took would grow without end."""
-        locks = cache_module._KeyLocks()
-        holding, finish = asyncio.Event(), asyncio.Event()
+    async def test_a_write_redis_does_not_answer_in_time_is_given_up(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        calls = 0
 
-        async def compute(key: str) -> None:
-            async with locks.hold(key):
-                holding.set()
-                await finish.wait()
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def unstored_lookup(question: str) -> str:
+            nonlocal calls
+            calls += 1
+            # Redis answers the reads; only the write that follows gets a
+            # short bound, which decides when the call stops waiting for it.
+            monkeypatch.setattr(cache_module, "REDIS_OP_TIMEOUT_S", 0.05)
+            return f"answer to {question}"
 
-        first = asyncio.create_task(compute("key"))
-        await holding.wait()
-        waiter = asyncio.create_task(compute("key"))
-        # Its first step runs until it waits for the lock.
-        await asyncio.sleep(0)
-        waiter.cancel()
-        finish.set()
-        async with asyncio.timeout(_HANG_SECONDS):
-            await first
-            await asyncio.gather(waiter, return_exceptions=True)
+        question = _unique("unstored")
+        held = hold_cache_read(
+            monkeypatch,
+            cache_key("unstored_lookup", question=question),
+            _HANG_SECONDS,
+            commands=("SET",),
+        )
+        try:
+            async with asyncio.timeout(2 * _HANG_SECONDS):
+                assert await unstored_lookup(question) == f"answer to {question}"
+            assert not held.answered
+            assert held.commands == ["GET", "GET", "SET"]
+            assert calls == 1
+        finally:
+            held.release()
 
-        assert locks._locks == {} and locks._users == {}
+    @pytest.mark.asyncio
+    async def test_a_process_out_of_redis_connections_computes_with_a_warning(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ):
+        """A burst of commands past the client's connection cap is a moment's
+        overload, as a timeout is: a warning, not an error for Sentry."""
+
+        async def out_of_connections():
+            raise MaxConnectionsError("Too many connections")
+
+        monkeypatch.setattr(cache_module, "_get_async_redis", out_of_connections)
+        calls = 0
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def crowded_lookup(key: str) -> str:
+            nonlocal calls
+            calls += 1
+            return key
+
+        key = _unique("crowded")
+        with caplog.at_level(logging.WARNING, logger=cache_module.logger.name):
+            assert await crowded_lookup(key) == key
+
+        assert calls == 1
+        assert [
+            record.levelno
+            for record in caplog.records
+            if record.name == cache_module.logger.name
+        ] == [logging.WARNING]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("shared_cache", [False, True], ids=["memory", "redis"])
+    async def test_callers_missing_a_key_share_a_result_that_is_not_stored(
+        self, shared_cache: bool, monkeypatch: pytest.MonkeyPatch
+    ):
+        """``cache_none=False`` stores no ``None``. The callers that missed the
+        key while it was computed get it all the same, instead of computing
+        it again one after another."""
+        everyone_in = _callers_in_flight(monkeypatch, 3)
+        finish = asyncio.Event()
+        calls = 0
+
+        @cached(ttl_seconds=30, shared_cache=shared_cache, cache_none=False)
+        async def unstored_lookup(key: str) -> None:
+            nonlocal calls
+            calls += 1
+            await finish.wait()
+
+        key = _unique("unstored-none")
+        callers = [asyncio.create_task(unstored_lookup(key)) for _ in range(3)]
+        try:
+            async with asyncio.timeout(_HANG_SECONDS):
+                await everyone_in.wait()
+                finish.set()
+                assert await asyncio.gather(*callers) == [None] * 3
+        finally:
+            finish.set()
+            await asyncio.gather(*callers, return_exceptions=True)
+        assert calls == 1
+
+    @pytest.mark.asyncio
+    async def test_callers_missing_a_key_share_one_computation_while_redis_is_unreachable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Nothing is stored while Redis can't be reached, so without sharing,
+        each caller would compute the value in turn. Each gets a copy of its
+        own, as from Redis."""
+
+        async def unreachable():
+            raise RedisConnectionError("Redis is unreachable")
+
+        monkeypatch.setattr(cache_module, "_get_async_redis", unreachable)
+        everyone_in = _callers_in_flight(monkeypatch, 3)
+        finish = asyncio.Event()
+        calls = 0
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def unreachable_lookup(key: str) -> dict[str, str]:
+            nonlocal calls
+            calls += 1
+            await finish.wait()
+            return {"answer": key}
+
+        key = _unique("unreachable")
+        callers = [asyncio.create_task(unreachable_lookup(key)) for _ in range(3)]
+        try:
+            async with asyncio.timeout(_HANG_SECONDS):
+                await everyone_in.wait()
+                finish.set()
+                results = await asyncio.gather(*callers)
+        finally:
+            finish.set()
+            await asyncio.gather(*callers, return_exceptions=True)
+        assert results == [{"answer": key}] * 3
+        assert len({id(result) for result in results}) == 3
+        assert calls == 1
+
+    @pytest.mark.asyncio
+    async def test_an_error_reaches_every_caller_that_waited_for_its_computation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        everyone_in = _callers_in_flight(monkeypatch, 3)
+        finish = asyncio.Event()
+        calls = 0
+
+        @cached(ttl_seconds=30)
+        async def failing_lookup(key: str) -> str:
+            nonlocal calls
+            calls += 1
+            await finish.wait()
+            raise ValueError(f"no answer to {key}")
+
+        key = _unique("failing")
+        callers = [asyncio.create_task(failing_lookup(key)) for _ in range(3)]
+        try:
+            async with asyncio.timeout(_HANG_SECONDS):
+                await everyone_in.wait()
+                finish.set()
+                results = await asyncio.gather(*callers, return_exceptions=True)
+        finally:
+            finish.set()
+            await asyncio.gather(*callers, return_exceptions=True)
+        assert [type(result) for result in results] == [ValueError] * 3
+        assert calls == 1
+
+        # An error isn't stored: the next caller computes it again.
+        with pytest.raises(ValueError):
+            await failing_lookup(key)
+        assert calls == 2
+
+    @pytest.mark.asyncio
+    async def test_a_caller_waiting_on_a_cancelled_computation_computes_it_itself(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        everyone_in = _callers_in_flight(monkeypatch, 2)
+        computing, finish = asyncio.Event(), asyncio.Event()
+        calls = 0
+
+        @cached(ttl_seconds=30)
+        async def lookup(key: str) -> str:
+            nonlocal calls
+            calls += 1
+            computing.set()
+            await finish.wait()
+            return key
+
+        key = _unique("handed-over")
+        leader = asyncio.create_task(lookup(key))
+        callers = [leader]
+        try:
+            async with asyncio.timeout(_HANG_SECONDS):
+                await computing.wait()
+                follower = asyncio.create_task(lookup(key))
+                callers.append(follower)
+                await everyone_in.wait()
+                computing.clear()
+                leader.cancel()
+                # The waiting caller computes it now.
+                await computing.wait()
+                finish.set()
+                assert await follower == key
+        finally:
+            finish.set()
+            await asyncio.gather(*callers, return_exceptions=True)
+        assert leader.cancelled()
+        assert calls == 2
+
+    @pytest.mark.asyncio
+    async def test_a_caller_cancelled_along_with_its_keys_computation_stays_cancelled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """As when one task group cancels both callers: the waiting one must
+        not take the computation over."""
+        everyone_in = _callers_in_flight(monkeypatch, 2)
+        computing, finish = asyncio.Event(), asyncio.Event()
+        calls = 0
+
+        @cached(ttl_seconds=30)
+        async def lookup(key: str) -> str:
+            nonlocal calls
+            calls += 1
+            computing.set()
+            await finish.wait()
+            return key
+
+        key = _unique("cancelled-together")
+        leader = asyncio.create_task(lookup(key))
+        callers = [leader]
+        try:
+            async with asyncio.timeout(_HANG_SECONDS):
+                await computing.wait()
+                follower = asyncio.create_task(lookup(key))
+                callers.append(follower)
+                await everyone_in.wait()
+                # The computing caller first, so the waiting one finds the
+                # computation cancelled when its own cancellation reaches it.
+                leader.cancel()
+                follower.cancel()
+                finish.set()
+                results = await asyncio.gather(*callers, return_exceptions=True)
+        finally:
+            finish.set()
+            await asyncio.gather(*callers, return_exceptions=True)
+        assert [type(result) for result in results] == [asyncio.CancelledError] * 2
+        assert calls == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("ending", ["returns", "raises", "is_cancelled"])
+    async def test_a_keys_computation_is_forgotten_once_it_ends(self, ending: str):
+        """One entry per key ever computed would grow without end."""
+        in_flight = cache_module._InFlight()
+        computing, finish = asyncio.Event(), asyncio.Event()
+
+        async def compute() -> str:
+            computing.set()
+            await finish.wait()
+            if ending == "raises":
+                raise ValueError("no answer")
+            return "answer"
+
+        def caller() -> asyncio.Task[str]:
+            return asyncio.create_task(
+                in_flight.run("key", compute, cache_module._as_is)
+            )
+
+        leader = caller()
+        follower: asyncio.Task[str] | None = None
+        try:
+            async with asyncio.timeout(_HANG_SECONDS):
+                await computing.wait()
+                follower = caller()
+                await asyncio.sleep(0)
+                # It waits for the leader's computation: started, and suspended.
+                waiting = follower.get_coro()
+                assert waiting is not None
+                assert inspect.getcoroutinestate(waiting) == inspect.CORO_SUSPENDED
+                follower.cancel()
+                if ending == "is_cancelled":
+                    leader.cancel()
+                finish.set()
+                await asyncio.gather(leader, follower, return_exceptions=True)
+        finally:
+            finish.set()
+            await asyncio.gather(
+                leader, *([follower] if follower else []), return_exceptions=True
+            )
+        assert follower.cancelled()
+        assert in_flight._flights == {}
+
+
+def _callers_in_flight(monkeypatch: pytest.MonkeyPatch, expected: int) -> asyncio.Event:
+    """Set once ``expected`` callers have reached their key's computation: the
+    first computing it, the others waiting for it."""
+    entered = 0
+    everyone_in = asyncio.Event()
+    run = cache_module._InFlight.run
+
+    async def counted_run(self, *args, **kwargs):
+        nonlocal entered
+        entered += 1
+        if entered == expected:
+            everyone_in.set()
+        return await run(self, *args, **kwargs)
+
+    monkeypatch.setattr(cache_module._InFlight, "run", counted_run)
+    return everyone_in
+
+
+class TestSharedCacheFollowsAShardsRedirect:
+    """A shard asked about a key whose slot it doesn't serve names the one
+    that does, by the address that shard announces: on CI's cluster, a
+    hostname only the cluster's docker network resolves. The clients reach
+    every shard at the address ``address_remap`` gives, redirects included.
+    Needs a cluster of several shards, as CI's."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("redirect", ["MOVED", "ASK"])
+    @pytest.mark.parametrize("caller", ["sync", "async"])
+    async def test_a_redirect_is_followed_to_the_shards_remapped_address(
+        self, caller: str, redirect: str, monkeypatch: pytest.MonkeyPatch
+    ):
+        sync_redis = await asyncio.to_thread(cache_module._get_redis)
+        primaries = sync_redis.get_primaries()
+        if len(primaries) < 2:
+            pytest.skip("A redirect needs a cluster of several shards, as CI's")
+        calls = 0
+
+        def answer(key: str) -> str:
+            nonlocal calls
+            calls += 1
+            return f"answer to {key}"
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        def sync_lookup(key: str) -> str:
+            return answer(key)
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def async_lookup(key: str) -> str:
+            return answer(key)
+
+        key = _unique("redirected")
+        redis_key = cache_key(f"{caller}_lookup", key=key)
+        slot = sync_redis.keyslot(redis_key)
+        owner = sync_redis.get_node_from_key(redis_key)
+        other = next(node for node in primaries if node.name != owner.name)
+
+        def make_stale(client: Any) -> None:
+            if redirect == "MOVED":
+                # A slot map gone stale, as after a failover or a resharding:
+                # the key's next read goes to a shard that doesn't serve it.
+                stale = client.get_node(host=other.host, port=other.port)
+                monkeypatch.setitem(client.nodes_manager.slots_cache, slot, [stale])
+                # Every fifth MOVED makes redis-py read the whole map instead.
+                monkeypatch.setattr(client, "reinitialize_counter", 0)
+
+        def read_twice() -> None:
+            if caller == "sync":
+                assert sync_lookup(key) == f"answer to {key}"
+                make_stale(sync_redis)
+                assert sync_lookup(key) == f"answer to {key}"
+                return
+
+            async def on_a_fresh_loop() -> None:
+                assert await async_lookup(key) == f"answer to {key}"
+                make_stale(await cache_module._get_async_redis())
+                assert await async_lookup(key) == f"answer to {key}"
+
+            # A fresh loop's client holds one connection to each shard.
+            # redis-py's async client sends ASKING and the command it allows
+            # as two commands, each on the first idle connection, so with
+            # several idle the command can miss its ASKING: a redis-py bug of
+            # its own, not the remap's.
+            asyncio.run(on_a_fresh_loop())
+
+        redirects = _record_redirects(monkeypatch)
+        failed_dials = _record_failed_dials(monkeypatch)
+        if redirect == "MOVED":
+            await asyncio.to_thread(read_twice)
+        else:
+            # Mid-resharding, the shard moving the slot answers for a key it
+            # doesn't hold with ASK, and the other shard holds it from then.
+            await asyncio.to_thread(_start_moving_slot, sync_redis, slot, owner, other)
+            try:
+                await asyncio.to_thread(read_twice)
+            finally:
+                await asyncio.to_thread(
+                    _stop_moving_slot, sync_redis, slot, owner, other, redis_key
+                )
+
+        assert calls == 1
+        assert redirects and set(redirects) == {redirect}
+        assert failed_dials == []
+
+
+def _record_redirects(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The kind of every MOVED or ASK reply a client gets from now on."""
+    redirects: list[str] = []
+    init = AskError.__init__
+
+    def recorded_init(self, *args, **kwargs):
+        init(self, *args, **kwargs)
+        redirects.append("MOVED" if isinstance(self, MovedError) else "ASK")
+
+    monkeypatch.setattr(AskError, "__init__", recorded_init)
+    return redirects
+
+
+def _record_failed_dials(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, int]]:
+    """Every address a Redis connection, sync or async, fails to reach from
+    now on."""
+    failed: list[tuple[str, int]] = []
+    connect = redis.connection.Connection._connect
+    connect_async = async_connection.Connection._connect
+
+    def recorded_connect(self):
+        try:
+            return connect(self)
+        except Exception:
+            failed.append((self.host, self.port))
+            raise
+
+    async def recorded_connect_async(self):
+        try:
+            return await connect_async(self)
+        except Exception:
+            failed.append((self.host, self.port))
+            raise
+
+    monkeypatch.setattr(redis.connection.Connection, "_connect", recorded_connect)
+    monkeypatch.setattr(async_connection.Connection, "_connect", recorded_connect_async)
+    return failed
+
+
+def _start_moving_slot(
+    redis: RedisCluster, slot: int, source: ClusterNode, destination: ClusterNode
+) -> None:
+    destination_id = redis.cluster_myid(destination)
+    source_id = redis.cluster_myid(source)
+    redis.cluster_setslot(destination, source_id, slot, "IMPORTING")
+    redis.cluster_setslot(source, destination_id, slot, "MIGRATING")
+
+
+def _stop_moving_slot(
+    redis: RedisCluster,
+    slot: int,
+    source: ClusterNode,
+    destination: ClusterNode,
+    redis_key: str,
+) -> None:
+    # The entry went to the importing shard, which serves it only after ASKING.
+    with redis.get_redis_connection(destination).pipeline(transaction=False) as pipe:
+        pipe.execute_command("ASKING")
+        pipe.delete(redis_key)
+        pipe.execute()
+    for node in (source, destination):
+        redis.execute_command("CLUSTER SETSLOT", slot, "STABLE", target_nodes=node)
