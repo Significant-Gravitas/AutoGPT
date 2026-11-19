@@ -134,7 +134,9 @@ def test_a_required_input_that_arrives_as_none_is_skipped_as_before(
 
 def test_a_value_that_does_not_match_the_schema_raises_when_asked():
     # Not converted (credentials aren't a plain type), and not an object.
-    with pytest.raises(InputMismatchError, match="is not of type 'object'"):
+    with pytest.raises(
+        InputMismatchError, match="credentials: expected object, got string"
+    ):
         validate_exec(
             _llm_node("prompt", "credentials"),
             {"prompt": "hi", "credentials": "not-credentials"},
