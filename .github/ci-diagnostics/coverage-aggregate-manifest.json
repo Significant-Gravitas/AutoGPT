@@ -2,331 +2,397 @@
   {
     "id": 14496275228,
     "name": "backend-test-reports-py3.12-util-executor-5",
-    "created_at": "2026-11-19T03:26:11Z"
+    "created_at": "2026-11-19T03:26:11Z",
+    "digest": "sha256:5e4a7c6f0064bcbff7c8db5e82adaa73974ea470e4cb7925768d57a3fe91cb1f"
   },
   {
     "id": 14496115023,
     "name": "backend-test-reports-py3.13-copilot-2",
-    "created_at": "2026-11-19T03:22:57Z"
+    "created_at": "2026-11-19T03:22:57Z",
+    "digest": "sha256:29144043aa9b4c67045caea4717930f6cf6d2bbad15949ea4839fa12530e484b"
   },
   {
     "id": 14496105084,
     "name": "backend-test-reports-py3.13-copilot-4",
-    "created_at": "2026-11-19T03:24:49Z"
+    "created_at": "2026-11-19T03:24:49Z",
+    "digest": "sha256:344b2b8b8e4e7264bc6d6558b839340830c356b2e13255c291734c065eb4c27a"
   },
   {
     "id": 14496100311,
     "name": "backend-test-reports-py3.12-billing-threads-1",
-    "created_at": "2026-11-19T03:24:04Z"
+    "created_at": "2026-11-19T03:24:04Z",
+    "digest": "sha256:93e6b444a3f9bc86ed85a6bbb394ecc8dd577da2234c9e923655377a1daf6478"
   },
   {
     "id": 14496045450,
     "name": "backend-test-reports-py3.12-remainder-3",
-    "created_at": "2026-11-19T03:23:47Z"
+    "created_at": "2026-11-19T03:23:47Z",
+    "digest": "sha256:b1b1f0aceee341384ff76a641792f4159bfb0f3135f52d8ade21d21a41ffefe2"
   },
   {
     "id": 14495985199,
     "name": "backend-test-reports-py3.12-memory-experts-4",
-    "created_at": "2026-11-19T03:22:18Z"
+    "created_at": "2026-11-19T03:22:18Z",
+    "digest": "sha256:7acda5b9d67a91647fde949bb3cbdc2133bc20fc7537ddd37c210e213f2c0279"
   },
   {
     "id": 14495970488,
     "name": "backend-test-reports-py3.13-api-1",
-    "created_at": "2026-11-19T03:23:54Z"
+    "created_at": "2026-11-19T03:23:54Z",
+    "digest": "sha256:68d3458f0fbee176b72dedd174fc4511631260b2590408a1f103568058a84581"
   },
   {
     "id": 14495925572,
     "name": "backend-test-reports-py3.12-remainder-2",
-    "created_at": "2026-11-19T03:23:30Z"
+    "created_at": "2026-11-19T03:23:30Z",
+    "digest": "sha256:e9470d6d03b602422c0681fb5575a1f65ffdb8a9571efcd68655d4191cfb5569"
   },
   {
     "id": 14495925555,
     "name": "backend-test-reports-py3.13-remainder-1",
-    "created_at": "2026-11-19T03:23:21Z"
+    "created_at": "2026-11-19T03:23:21Z",
+    "digest": "sha256:52e837178b0a40669a1c35df27339633928c0c2afe4ee9b9fc5266a93c3f2980"
   },
   {
     "id": 14495871084,
     "name": "backend-test-reports-py3.12-copilot-1",
-    "created_at": "2026-11-19T03:25:20Z"
+    "created_at": "2026-11-19T03:25:20Z",
+    "digest": "sha256:f8093378f8ef006fe91bc3e284c575c866f8ca2acdc080a2500b1bd4b688b7b4"
   },
   {
     "id": 14495860971,
     "name": "backend-test-reports-py3.13-api-2",
-    "created_at": "2026-11-19T03:24:13Z"
+    "created_at": "2026-11-19T03:24:13Z",
+    "digest": "sha256:7335d82b6ecf01daa7d92c521daf1b67f4e59ba4b343b58f37dee11cc741c4bb"
   },
   {
     "id": 14495706842,
     "name": "backend-test-reports-py3.12-sdk-billing-3",
-    "created_at": "2026-11-19T03:22:33Z"
+    "created_at": "2026-11-19T03:22:33Z",
+    "digest": "sha256:06e50b9df48dd5790a2588f14483e2c0384820422843e2b9c274e86038d61b27"
   },
   {
     "id": 14495697250,
     "name": "backend-test-reports-py3.13-util-executor-5",
-    "created_at": "2026-11-19T03:24:44Z"
+    "created_at": "2026-11-19T03:24:44Z",
+    "digest": "sha256:d917dab36eb4c82daf56960be83dd2d425dc39926415ac30dd1ef81d5f00612d"
   },
   {
     "id": 14495667140,
     "name": "backend-test-reports-py3.12-data-3",
-    "created_at": "2026-11-19T03:23:56Z"
+    "created_at": "2026-11-19T03:23:56Z",
+    "digest": "sha256:834012e6d4303dc8a9841e0f79ad76f13118bbf96b8dee20c151dbff0501069f"
   },
   {
     "id": 14495647030,
     "name": "backend-test-reports-py3.13-billing-threads-3",
-    "created_at": "2026-11-19T03:22:21Z"
+    "created_at": "2026-11-19T03:22:21Z",
+    "digest": "sha256:21d086491521d9f591bca8f3171ac6fdf9ad94a2b871404e520cec5a34d2d1fe"
   },
   {
     "id": 14495642659,
     "name": "backend-test-reports-py3.12-api-1",
-    "created_at": "2026-11-19T03:25:34Z"
+    "created_at": "2026-11-19T03:25:34Z",
+    "digest": "sha256:991ea7502521ff2703993c79b0a9d874a1c70efecb390ea39dcc2701e4419010"
   },
   {
     "id": 14495642379,
     "name": "backend-test-reports-py3.12-billing-threads-3",
-    "created_at": "2026-11-19T03:23:58Z"
+    "created_at": "2026-11-19T03:23:58Z",
+    "digest": "sha256:21094c287710b9c7b7eacd3375c93ff4b60f7e2d8bf264531ace4a15d622710d"
   },
   {
     "id": 14495596984,
     "name": "backend-test-reports-py3.13-copilot-3",
-    "created_at": "2026-11-19T03:21:56Z"
+    "created_at": "2026-11-19T03:21:56Z",
+    "digest": "sha256:ae2cd528f2a49ab54465476a950ee3b9ef47cfbe5b465c789cef9073e524ad60"
   },
   {
     "id": 14495576979,
     "name": "backend-test-reports-py3.13-sdk-billing-3",
-    "created_at": "2026-11-19T03:21:47Z"
+    "created_at": "2026-11-19T03:21:47Z",
+    "digest": "sha256:275f11eda8fbbea5abc9d6b6fb611f719889f2b0502f44b60c72f4de0269e555"
   },
   {
     "id": 14495552586,
     "name": "backend-test-reports-py3.12-copilot-2",
-    "created_at": "2026-11-19T03:24:52Z"
+    "created_at": "2026-11-19T03:24:52Z",
+    "digest": "sha256:accc5fc4bb285cbe922c41a91abe89a8a71503b6c42db34fa5f1c20fde01d9f8"
   },
   {
     "id": 14495547530,
     "name": "backend-test-reports-py3.12-util-executor-4",
-    "created_at": "2026-11-19T03:24:26Z"
+    "created_at": "2026-11-19T03:24:26Z",
+    "digest": "sha256:3350b9383395efb6d4ee1a5a697d5c9d27d95093cbeca2e6ab3cce46c561ae00"
   },
   {
     "id": 14495522485,
     "name": "backend-test-reports-py3.12-remainder-1",
-    "created_at": "2026-11-19T03:24:13Z"
+    "created_at": "2026-11-19T03:24:13Z",
+    "digest": "sha256:9b4fa65e04af85059ff5c46cc411c39126b9c60f43379a4d70fa0dfcfd8bcaab"
   },
   {
     "id": 14495522087,
     "name": "backend-test-reports-py3.13-memory-experts-2",
-    "created_at": "2026-11-19T03:21:45Z"
+    "created_at": "2026-11-19T03:21:45Z",
+    "digest": "sha256:d8d4834d51225f7d039c7107f66afb53ce8fa4d36065af50bd8a9b87ce3f8d71"
   },
   {
     "id": 14495512034,
     "name": "backend-test-reports-py3.13-sdk-billing-1",
-    "created_at": "2026-11-19T03:21:36Z"
+    "created_at": "2026-11-19T03:21:36Z",
+    "digest": "sha256:54063ea214c0bdbe445ed6dd8b1ff2911276e41def1867e71087b0a2786c9e5f"
   },
   {
     "id": 14495502663,
     "name": "backend-test-reports-py3.12-util-executor-2",
-    "created_at": "2026-11-19T03:25:20Z"
+    "created_at": "2026-11-19T03:25:20Z",
+    "digest": "sha256:6948204f4533d29265e84471a3181e8731c8d8ee846b058d200fac40d1c9d0b7"
   },
   {
     "id": 14495482410,
     "name": "backend-test-reports-py3.13-memory-experts-1",
-    "created_at": "2026-11-19T03:23:00Z"
+    "created_at": "2026-11-19T03:23:00Z",
+    "digest": "sha256:d6cad55f3d94f07c89b00be8f350327597e0d2723d5e42f9c3ef0256811de341"
   },
   {
     "id": 14495442841,
     "name": "backend-test-reports-py3.12-api-2",
-    "created_at": "2026-11-19T03:24:52Z"
+    "created_at": "2026-11-19T03:24:52Z",
+    "digest": "sha256:15e709df2e0d49a5cdc65e3581ab4822c5c0a3b19e1f0bcbe3df5d9017789b5d"
   },
   {
     "id": 14495422548,
     "name": "backend-test-reports-py3.12-copilot-3",
-    "created_at": "2026-11-19T03:23:47Z"
+    "created_at": "2026-11-19T03:23:47Z",
+    "digest": "sha256:564636a8732e47e6e91c6a330cad4dc05ea9e66122153b0209d434bc22779240"
   },
   {
     "id": 14495422389,
     "name": "backend-test-reports-py3.13-billing-threads-1",
-    "created_at": "2026-11-19T03:22:46Z"
+    "created_at": "2026-11-19T03:22:46Z",
+    "digest": "sha256:bd19bcb84b26aa3b75a6af957c26d42a5a8e5353298addf6158bb5f3af8c4011"
   },
   {
     "id": 14495412521,
     "name": "backend-test-reports-py3.13-remainder-3",
-    "created_at": "2026-11-19T03:23:08Z"
+    "created_at": "2026-11-19T03:23:08Z",
+    "digest": "sha256:6572254867c4cceeca80e4fdb91d9e7f2a63db24700290631853ff0e71eddd23"
   },
   {
     "id": 14495377570,
     "name": "backend-test-reports-py3.12-util-executor-1",
-    "created_at": "2026-11-19T03:23:19Z"
+    "created_at": "2026-11-19T03:23:19Z",
+    "digest": "sha256:fc25719c887a8e489ed8ae31c1138508ea2347d4e965b90a5758df8e5ef97f0c"
   },
   {
     "id": 14495362586,
     "name": "backend-test-reports-py3.13-util-executor-1",
-    "created_at": "2026-11-19T03:22:31Z"
+    "created_at": "2026-11-19T03:22:31Z",
+    "digest": "sha256:1ff9de586bd2a2b844c9b1867c56aba822bce85e5729f48c08e00702d1cb5c62"
   },
   {
     "id": 14495297816,
     "name": "backend-test-reports-py3.13-remainder-4",
-    "created_at": "2026-11-19T03:22:43Z"
+    "created_at": "2026-11-19T03:22:43Z",
+    "digest": "sha256:354b196eaa88dfa137d70ffd2e909504412b68316ec969c13606b3c393d624c9"
   },
   {
     "id": 14495287608,
     "name": "backend-test-reports-py3.13-memory-experts-3",
-    "created_at": "2026-11-19T03:21:32Z"
+    "created_at": "2026-11-19T03:21:32Z",
+    "digest": "sha256:1cbfc7c520e8822d7ee3c446c2f0474c3d6bc79d4a990c80f6e7d19e7cae2a2b"
   },
   {
     "id": 14495227897,
     "name": "backend-test-reports-py3.13-sdk-billing-2",
-    "created_at": "2026-11-19T03:21:50Z"
+    "created_at": "2026-11-19T03:21:50Z",
+    "digest": "sha256:d88427b815d8e2b5f4372f76841107d02ed64d146fe2f708aa1c8494f816a996"
   },
   {
     "id": 14495193781,
     "name": "backend-test-reports-py3.12-api-3",
-    "created_at": "2026-11-19T03:25:38Z"
+    "created_at": "2026-11-19T03:25:38Z",
+    "digest": "sha256:01ae98f07ea94690eccfccbcd1e00df96c50976de48f3cf6addb89ab3d5338ed"
   },
   {
     "id": 14495188412,
     "name": "backend-test-reports-py3.13-util-executor-3",
-    "created_at": "2026-11-19T03:24:16Z"
+    "created_at": "2026-11-19T03:24:16Z",
+    "digest": "sha256:9ca394cd683888f15b91cbfaa310b75695383a405f9c52bbb967a55e98637ee0"
   },
   {
     "id": 14495158269,
     "name": "backend-test-reports-py3.13-api-3",
-    "created_at": "2026-11-19T03:23:07Z"
+    "created_at": "2026-11-19T03:23:07Z",
+    "digest": "sha256:bd7c684f19ccce025153979e37b9d6c584f12a5271f785e2f580a6e409117bde"
   },
   {
     "id": 14495158238,
     "name": "backend-test-reports-py3.13-util-executor-4",
-    "created_at": "2026-11-19T03:22:55Z"
+    "created_at": "2026-11-19T03:22:55Z",
+    "digest": "sha256:6dc640424bcc750b2d926cbfe1143dbf44b50ba6a4a4a20e3acc91a3e680002a"
   },
   {
     "id": 14495148424,
     "name": "backend-test-reports-py3.12-sdk-billing-1",
-    "created_at": "2026-11-19T03:23:31Z"
+    "created_at": "2026-11-19T03:23:31Z",
+    "digest": "sha256:0ba1865255ad3d86fa80083e8a46855bc352c3edc5dc8eeb449e4de960f5afab"
   },
   {
     "id": 14495148363,
     "name": "backend-test-reports-py3.12-util-executor-6",
-    "created_at": "2026-11-19T03:23:13Z"
+    "created_at": "2026-11-19T03:23:13Z",
+    "digest": "sha256:6aba6440f348c5b698019cc4edf60ffea1adfe5d23f42456e70bacda5dc94773"
   },
   {
     "id": 14495103432,
     "name": "backend-test-reports-py3.13-memory-experts-4",
-    "created_at": "2026-11-19T03:21:33Z"
+    "created_at": "2026-11-19T03:21:33Z",
+    "digest": "sha256:f40445d7ff7f0489ccc1bc18d7bbe61f4276007a32f9d8a4a4ed1aaeafb6eac2"
   },
   {
     "id": 14495078491,
     "name": "backend-test-reports-py3.12-memory-experts-3",
-    "created_at": "2026-11-19T03:22:28Z"
+    "created_at": "2026-11-19T03:22:28Z",
+    "digest": "sha256:91b451cd4b09b89a0e5e1419d86610a5b2837a9ebe794309b263bd008c80dfe7"
   },
   {
     "id": 14495074152,
     "name": "backend-test-reports-py3.12-copilot-4",
-    "created_at": "2026-11-19T03:24:48Z"
+    "created_at": "2026-11-19T03:24:48Z",
+    "digest": "sha256:652e7cb321fc8569ae2f67bb98de91386aa16cfeea8cedbcde7af07556b96b67"
   },
   {
     "id": 14495033869,
     "name": "backend-test-reports-py3.12-memory-experts-2",
-    "created_at": "2026-11-19T03:22:27Z"
+    "created_at": "2026-11-19T03:22:27Z",
+    "digest": "sha256:fc02fabe247d1e2ed5641d2719ed629324445cbdd84332b4e58592b71d3fcdd9"
   },
   {
     "id": 14495029012,
     "name": "backend-test-reports-py3.13-data-4",
-    "created_at": "2026-11-19T03:23:23Z"
+    "created_at": "2026-11-19T03:23:23Z",
+    "digest": "sha256:424af67545d0dfb072fcf4b699bf5f795d61c06331b08952b10b84c72bf4c740"
   },
   {
     "id": 14494984388,
     "name": "backend-test-reports-py3.13-util-executor-2",
-    "created_at": "2026-11-19T03:23:52Z"
+    "created_at": "2026-11-19T03:23:52Z",
+    "digest": "sha256:a0dae390db5da49c8f8841ee503016dcdbdc459f2a49328f79810756d0eb8079"
   },
   {
     "id": 14494969491,
     "name": "backend-test-reports-py3.12-remainder-4",
-    "created_at": "2026-11-19T03:23:19Z"
+    "created_at": "2026-11-19T03:23:19Z",
+    "digest": "sha256:5f2f4474144688e0f834d24828936cda483e1c0e255194b99a6372b9e7c2b6c5"
   },
   {
     "id": 14494913292,
     "name": "backend-test-reports-py3.12-sdk-billing-4",
-    "created_at": "2026-11-19T03:22:20Z"
+    "created_at": "2026-11-19T03:22:20Z",
+    "digest": "sha256:8be139830bd6fa23882eae0a6f5d1788d27782310d474873beb963d21352f074"
   },
   {
     "id": 14494864466,
     "name": "backend-test-reports-py3.12-sdk-billing-2",
-    "created_at": "2026-11-19T03:21:51Z"
+    "created_at": "2026-11-19T03:21:51Z",
+    "digest": "sha256:d17ae5f7e8b0a5074090e890269ebeab264bf4c963a76362d5fb2152e9bf78d4"
   },
   {
     "id": 14494859915,
     "name": "backend-test-reports-py3.12-api-4",
-    "created_at": "2026-11-19T03:23:48Z"
+    "created_at": "2026-11-19T03:23:48Z",
+    "digest": "sha256:88cbc35c44a35d92bded39e15bfa4d85a92e2f9d37b32302a7aa1004687c17ca"
   },
   {
     "id": 14494834732,
     "name": "backend-test-reports-py3.13-data-3",
-    "created_at": "2026-11-19T03:23:08Z"
+    "created_at": "2026-11-19T03:23:08Z",
+    "digest": "sha256:deae3681c9494bad081702b11c2f9bcc13694e612212fe5357e0e2b81dc90927"
   },
   {
     "id": 14494819703,
     "name": "backend-test-reports-py3.13-data-2",
-    "created_at": "2026-11-19T03:22:38Z"
+    "created_at": "2026-11-19T03:22:38Z",
+    "digest": "sha256:9aa6fd832ee2cdad2ef52739056bab4696de63999198e2d02cdb7b051cee9999"
   },
   {
     "id": 14494803634,
     "name": "backend-test-reports-py3.12-memory-experts-1",
-    "created_at": "2026-11-19T03:24:13Z"
+    "created_at": "2026-11-19T03:24:13Z",
+    "digest": "sha256:3b64bfce935dc5dfc2ac77e0551326f309ae5f38bce4d55d4a3fb1815ad562a9"
   },
   {
     "id": 14494708779,
     "name": "backend-test-reports-py3.12-billing-threads-2",
-    "created_at": "2026-11-19T03:23:48Z"
+    "created_at": "2026-11-19T03:23:48Z",
+    "digest": "sha256:31614950b44c68c4a368d0033ef587fd6b8cc4372d10d6d41f803fbf3c84b29f"
   },
   {
     "id": 14494678787,
     "name": "backend-test-reports-py3.12-data-4",
-    "created_at": "2026-11-19T03:23:09Z"
+    "created_at": "2026-11-19T03:23:09Z",
+    "digest": "sha256:17b8c362c351a46e617b56e4a6290ee2cc9163c5c18f6748f6003bddea655063"
   },
   {
     "id": 14494634077,
     "name": "backend-test-reports-py3.13-api-4",
-    "created_at": "2026-11-19T03:23:35Z"
+    "created_at": "2026-11-19T03:23:35Z",
+    "digest": "sha256:760af823d3a3b99309e8185650e8e14092646302950481e80fe1a6cf8f90c70b"
   },
   {
     "id": 14494618739,
     "name": "backend-test-reports-py3.13-sdk-billing-4",
-    "created_at": "2026-11-19T03:21:38Z"
+    "created_at": "2026-11-19T03:21:38Z",
+    "digest": "sha256:5b195c7d05646adeefc241fd540466db164ccd43d1c6edb0ae51061633de544f"
   },
   {
     "id": 14494519312,
     "name": "backend-test-reports-py3.12-data-1",
-    "created_at": "2026-11-19T03:22:22Z"
+    "created_at": "2026-11-19T03:22:22Z",
+    "digest": "sha256:c5165e8300de3295ce34b14fa78d494c3cdcd0c49332458dc0c8e7a8a17b8485"
   },
   {
     "id": 14494499434,
     "name": "backend-test-reports-py3.12-data-2",
-    "created_at": "2026-11-19T03:23:30Z"
+    "created_at": "2026-11-19T03:23:30Z",
+    "digest": "sha256:b0b166b9c0cfb2d27c387687002a68788c2d8d17f4866e7b92458ae0e9f3a7c7"
   },
   {
     "id": 14494489438,
     "name": "backend-test-reports-py3.12-util-executor-3",
-    "created_at": "2026-11-19T03:23:45Z"
+    "created_at": "2026-11-19T03:23:45Z",
+    "digest": "sha256:abe1c06be302df4b6c04af315dcf61dfc422058742177506866c08b7e41f74be"
   },
   {
     "id": 14494489421,
     "name": "backend-test-reports-py3.13-util-executor-6",
-    "created_at": "2026-11-19T03:23:39Z"
+    "created_at": "2026-11-19T03:23:39Z",
+    "digest": "sha256:f296218ecf44a84edd885baee948437a7ec5cd7128e823acd8e9a3969a585d8e"
   },
   {
     "id": 14494444553,
     "name": "backend-test-reports-py3.13-data-1",
-    "created_at": "2026-11-19T03:22:22Z"
+    "created_at": "2026-11-19T03:22:22Z",
+    "digest": "sha256:cce2b75d71791d1f133c6bfcae1c00e5d6d7401b11114aa7be6ccc220cfeb9b0"
   },
   {
     "id": 14494434652,
     "name": "backend-test-reports-py3.13-remainder-2",
-    "created_at": "2026-11-19T03:23:24Z"
+    "created_at": "2026-11-19T03:23:24Z",
+    "digest": "sha256:923ac4e528d5ab5281dca8bd9bb4463edb79c76602a865ac902364eb6e684846"
   },
   {
     "id": 14494414724,
     "name": "backend-test-reports-py3.13-copilot-1",
-    "created_at": "2026-11-19T03:23:18Z"
+    "created_at": "2026-11-19T03:23:18Z",
+    "digest": "sha256:70af574bc0bb9db73422e682aa33f703a43147f10d7e40a89a0943b6b6ef1a6f"
   },
   {
     "id": 14494409750,
     "name": "backend-test-reports-py3.13-billing-threads-2",
-    "created_at": "2026-11-19T03:23:42Z"
+    "created_at": "2026-11-19T03:23:42Z",
+    "digest": "sha256:f9edcdb2529c49c1a3be16918b7370d3ad52b367846f82662b8a5e47df43dde9"
   }
 ]
