@@ -401,9 +401,9 @@ async def test_schedule_health_metrics_uses_persisted_cron_and_excludes_orphans(
     )
     healthy = _schedule(
         id="healthy",
-        cron="0 17 * * *",
+        cron="30 17 * * *",
         timezone="Asia/Tokyo",
-        next_run_time="2026-11-16T08:00:00Z",
+        next_run_time="2026-11-16T08:30:00Z",
     )
     orphaned = _schedule(
         id="orphan",
@@ -420,7 +420,7 @@ async def test_schedule_health_metrics_uses_persisted_cron_and_excludes_orphans(
         return_value=[
             _record_with_trigger(legacy, legacy_trigger),
             _record_with_trigger(
-                healthy, CronTrigger(hour=17, minute=0, timezone="Asia/Tokyo")
+                healthy, CronTrigger(hour=17, minute=30, timezone="Asia/Tokyo")
             ),
             _record_with_trigger(orphaned, CronTrigger(minute=0, timezone="UTC")),
         ]
@@ -449,7 +449,7 @@ async def test_schedule_health_metrics_uses_persisted_cron_and_excludes_orphans(
 
     assert metrics.total_schedules == 3
     assert metrics.total_orphaned == 1
-    assert metrics.total_runs_next_hour == 0
+    assert metrics.total_runs_next_hour == (1 if scheduler_has_diagnostics else 0)
     assert metrics.total_runs_next_24h == 1
     scheduler.get_graph_schedule_diagnostics.assert_awaited_once()
     if scheduler_has_diagnostics:
