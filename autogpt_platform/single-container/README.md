@@ -158,6 +158,10 @@ gh attestation verify oci://docker.io/significantgravitas/autogpt:vX.Y.Z \
   --signer-workflow Significant-Gravitas/AutoGPT/.github/workflows/platform-single-container-docker.yml
 ```
 
+The check shows where and how the image was built, not that its code is safe.
+Images released before attestations were added have none, so the command
+finds nothing for them.
+
 ## Upgrading
 
 Pin a `vX.Y.Z` tag instead of `latest` to choose when you upgrade, and read that

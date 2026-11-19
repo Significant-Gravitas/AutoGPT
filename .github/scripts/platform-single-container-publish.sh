@@ -578,7 +578,7 @@ publish() {
     manifest_digest="$release_manifest_digest"
   fi
   write_summary "$manifest_digest" "$sha_manifest_digest"
-  write_outputs "$manifest_digest" "$sha_manifest_digest"
+  write_outputs "$release_manifest_digest" "$sha_manifest_digest"
 }
 
 assert_equal() {
@@ -592,7 +592,7 @@ assert_equal() {
 }
 
 self_test() {
-  local actual authorization_output manifest_retry_state publish_output tag_retry_state
+  local actual authorization_output manifest_retry_state moves_latest publish_output tag_retry_state
 
   actual="$(platform_from_image_json amd64 <<<'{"os":"linux","architecture":"amd64"}')"
   assert_equal linux/amd64 "$actual" "flat image platform"
@@ -820,6 +820,41 @@ self_test() {
     return 1
   fi
   rm -f "$publish_output"
+
+  # publish() hands the release tag's digest and the sha tag's digest to
+  # write_outputs in that order, whether or not latest moves.
+  for moves_latest in true false; do
+    publish_output="$(mktemp)"
+    (
+      resolve_publication() {
+        publish_latest="$moves_latest"
+      }
+      verify_public_repository() {
+        :
+      }
+      load_verified_digests() {
+        :
+      }
+      ensure_immutable_manifest() {
+        manifest_digest=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      }
+      ensure_release_tag() {
+        release_manifest_digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      }
+      publish_latest_tag() {
+        :
+      }
+      write_summary() {
+        :
+      }
+      GITHUB_OUTPUT="$publish_output" publish
+    )
+    actual="$(<"$publish_output")"
+    assert_equal \
+      $'release_digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nsha_digest=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
+      "$actual" "publish digest output order (latest moves: $moves_latest)"
+    rm -f "$publish_output"
+  done
   if DEPLOY_IMAGE=docker.io/significantgravitas/autogpt \
     GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REF=refs/heads/feature GITHUB_SHA=abc123 \
     RELEASE_TAG='' resolve_publication 2>/dev/null; then

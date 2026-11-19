@@ -508,6 +508,9 @@ jobs:
       # Signed SLSA build provenance for the two image indexes just published:
       # the release (vX.Y.Z, which latest also points to) and its sha-<commit>
       # tag. docs/platform/single-container.md tells users how to check one.
+      # They run before the Overview update, which tells users to check them.
+      # If one fails, re-run this job: the publish step reuses and re-verifies
+      # the tags it already pushed.
       - name: Attest the release image's build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
