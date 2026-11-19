@@ -1536,6 +1536,8 @@ async def add_store_agent_to_library_as_admin(
 ############ Folder DB Functions #############
 ##############################################
 
+MAX_FOLDER_DEPTH = 32
+
 
 async def list_folders(
     user_id: str,
@@ -1605,11 +1607,17 @@ async def get_folder_tree(
         for folder in all_folders
     }
 
-    # Build the tree structure
+    # Build the tree structure; a folder stored deeper than MAX_FOLDER_DEPTH
+    # (from before the limit, or two racing moves) is listed at the top level.
+    depths = _folder_depths({f.id: f.parentId for f in all_folders})
     root_folders: list[library_model.LibraryFolderTree] = []
     for folder in all_folders:
         tree_folder = folder_map[folder.id]
-        if folder.parentId and folder.parentId in folder_map:
+        if (
+            folder.parentId
+            and folder.parentId in folder_map
+            and depths[folder.id] <= MAX_FOLDER_DEPTH
+        ):
             folder_map[folder.parentId].children.append(tree_folder)
         else:
             root_folders.append(tree_folder)
@@ -1717,6 +1725,7 @@ async def create_folder(
 
     Raises:
         FolderAlreadyExistsError: If a folder with this name already exists.
+        FolderValidationError: If the folder would be nested too deep.
         NotFoundError: If the parent folder doesn't exist.
     """
     logger.debug(f"Creating folder '{name}' for user #{user_id}")
@@ -1725,6 +1734,12 @@ async def create_folder(
     # Verify the parent belongs to this user to prevent cross-user nesting.
     if parent_id:
         await get_folder(parent_id, user_id)
+
+        depths = await _get_folder_depths(user_id)
+        if depths.get(parent_id, 0) >= MAX_FOLDER_DEPTH:
+            raise FolderValidationError(
+                f"Folders cannot be nested more than {MAX_FOLDER_DEPTH} levels deep"
+            )
 
     # Build data dict conditionally - don't include Parent key if no parent_id
     create_data: dict = {
@@ -1887,6 +1902,19 @@ async def move_folder(
         if await _is_descendant_of(target_parent_id, folder_id, user_id):
             raise FolderValidationError("Cannot move folder into its own descendant")
 
+        # The deepest folder of the moved subtree must stay within the limit
+        depths = await _get_folder_depths(user_id)
+        subtree_ids = [folder_id] + await _get_descendant_folder_ids(folder_id, user_id)
+        subtree_height = (
+            max(depths.get(fid, 0) for fid in subtree_ids)
+            - depths.get(folder_id, 0)
+            + 1
+        )
+        if depths.get(target_parent_id, 0) + subtree_height > MAX_FOLDER_DEPTH:
+            raise FolderValidationError(
+                f"Folders cannot be nested more than {MAX_FOLDER_DEPTH} levels deep"
+            )
+
     try:
         folder = await prisma.models.LibraryFolder.prisma().update(
             where={"id": folder_id},
@@ -1908,6 +1936,43 @@ async def move_folder(
         agent_count=len(folder.LibraryAgents) if folder.LibraryAgents else 0,
         subfolder_count=len(folder.Children) if folder.Children else 0,
     )
+
+
+async def _get_folder_depths(user_id: str) -> dict[str, int]:
+    """Map each of the user's folders to its nesting depth (1 for a root folder)."""
+    all_folders = await prisma.models.LibraryFolder.prisma().find_many(
+        where={"userId": user_id, "isDeleted": False},
+    )
+    return _folder_depths({f.id: f.parentId for f in all_folders})
+
+
+def _folder_depths(parent_map: dict[str, str | None]) -> dict[str, int]:
+    """Depth of each folder in an ID -> parent ID map (a missing parent is the top).
+
+    Iterative, so neither a long chain nor a cycle can exhaust the stack.
+    """
+    depths: dict[str, int] = {}
+    for folder_id in parent_map:
+        # Walk up to the first ancestor of known depth, then number the path top down
+        path: list[str] = []
+        visited: set[str] = set()
+        current_id: str | None = folder_id
+        while (
+            current_id
+            and current_id in parent_map
+            and current_id not in depths
+            and current_id not in visited  # cycle guard
+        ):
+            visited.add(current_id)
+            path.append(current_id)
+            current_id = parent_map[current_id]
+
+        depth = depths.get(current_id, 0) if current_id else 0
+        for path_id in reversed(path):
+            depth += 1
+            depths[path_id] = depth
+
+    return depths
 
 
 async def _is_descendant_of(
