@@ -420,6 +420,7 @@ jobs:
         PY
         pnpm exec prettier --write src/playwright/hydration-diagnostic.ts src/playwright/journeys/signup-onboarding-first-journey.spec.ts
         pnpm exec eslint src/playwright/hydration-diagnostic.ts src/playwright/journeys/signup-onboarding-first-journey.spec.ts
+        pnpm orval --config ./orval.config.ts
         pnpm types
     - name: Run Playwright E2E suite
       id: e2e-playwright
