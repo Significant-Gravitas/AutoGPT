@@ -151,6 +151,32 @@ export function hostFromURL(url: string) {
   return match ? match[1].toLowerCase() : null;
 }
 
+function hostAndPort(value: string) {
+  const match = /^(?:[a-z][a-z\d+.-]*:\/\/)?([^/?#:]+)(?::(\d+))?/i.exec(value.trim());
+  return match ? { host: match[1].toLowerCase(), port: match[2] ? Number(match[2]) : null } : null;
+}
+
+/**
+ * Whether a host-scoped account's scope ("api.example.com:8443",
+ * "*.example.com") covers a request URL. Mirrors the backend's
+ * `HostScopedCredentials.matches_url`: a port in the scope must match, and
+ * without one only the default ports do.
+ */
+export function hostScopeMatches(scope: string, url: string) {
+  const credential = hostAndPort(scope);
+  const request = hostAndPort(url);
+  if (!credential || !request) return false;
+  if (credential.port !== null) {
+    if (request.port !== credential.port) return false;
+  } else if (request.port !== null && request.port !== 80 && request.port !== 443) {
+    return false;
+  }
+  if (credential.host === request.host) return true;
+  if (!credential.host.startsWith("*.")) return false;
+  const domain = credential.host.slice(2);
+  return request.host === domain || request.host.endsWith(`.${domain}`);
+}
+
 /** The single host a host-scoped need names, as the web keys its picks. */
 export function requestHost(request: CredentialRequest) {
   if (!request.types.includes("host_scoped")) return null;
@@ -181,10 +207,8 @@ function matchesTarget(credential: CredentialMeta, request: CredentialRequest) {
     );
   }
   if (credential.type === "host_scoped" && credential.host) {
-    return (
-      wanted.length === 0 ||
-      wanted.some((url) => hostFromURL(url) === credential.host?.toLowerCase())
-    );
+    const scope = credential.host;
+    return wanted.length === 0 || wanted.some((url) => hostScopeMatches(scope, url));
   }
   return true;
 }

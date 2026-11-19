@@ -42,7 +42,11 @@ export function SetupCard(props: Props) {
       <>
         {run.error ? <Text style={styles.error}>{run.error}</Text> : null}
         {props.setup.needsInputs ? (
-          <Text style={styles.footerText}>This also needs details you can fill in on the web.</Text>
+          <Text style={styles.footerText}>
+            {card.rows.length > 0
+              ? "This also needs details you can fill in on the web."
+              : "This needs details you can fill in on the web."}
+          </Text>
         ) : null}
         {connect.needsPlan ? (
           <Text style={styles.footerText}>Connecting a service needs an active plan.</Text>
@@ -74,11 +78,11 @@ export function SetupCard(props: Props) {
     <View style={styles.card}>
       <View style={styles.header}>
         <Text accessibilityRole="header" style={styles.title}>
-          Connect to continue
+          {card.rows.length > 0 ? "Connect to continue" : "More details needed"}
         </Text>
         {card.intro ? <Text style={styles.intro}>{card.intro}</Text> : null}
       </View>
-      {card.rows.map(({ request, name, logoID, status }, index) => (
+      {card.rows.map(({ request, name, logoID, status, usesToken }, index) => (
         <SetupRow
           key={request.key}
           name={name}
@@ -86,11 +90,7 @@ export function SetupCard(props: Props) {
           hint={rowHint(request, status, props.setup)}
           error={connect.errors[request.key] ?? null}
           isConnected={status.kind === "connected"}
-          actionLabel={
-            status.kind === "connect" && connect.tokenRows[request.key]
-              ? "Add token"
-              : actionLabel(status)
-          }
+          actionLabel={usesToken ? "Add token" : actionLabel(status)}
           isBusy={connect.busyKey === request.key}
           isLoading={card.isLoading && !run.picks[request.key]}
           isLocked={card.isAnyBusy || run.followUp !== "idle"}

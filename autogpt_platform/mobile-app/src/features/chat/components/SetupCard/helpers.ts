@@ -90,13 +90,15 @@ export function parseSetupRequirements(output: unknown, toolName: string): Setup
   const setupInfo = toRecord(record.setup_info);
   const readiness = toRecord(setupInfo?.user_readiness);
   const requests = parseCredentialRequests(readiness?.missing_credentials);
-  if (requests.length === 0) return null;
+  const inputs = readInputs(toolName, toRecord(setupInfo?.requirements));
+  // A card that only needs an input (a Drive file, say) still sends you to the web.
+  if (requests.length === 0 && !inputs.needsInputs) return null;
   return {
     toolName,
     serviceName: text(setupInfo?.agent_name),
     serverURL: text(setupInfo?.agent_id),
     requests,
-    ...readInputs(toolName, toRecord(setupInfo?.requirements)),
+    ...inputs,
     rejection: readRejection(record.rejection),
   };
 }
@@ -211,11 +213,12 @@ const CONNECT_INTROS: Partial<Record<ConnectMethod, (name: string) => string>> =
  * The line under the card's title, from its rows. The tool's own `message`
  * is written for Otto, so it is never shown.
  */
-export function cardIntro(rows: { name: string; status: RowStatus }[]) {
+export function cardIntro(rows: { name: string; status: RowStatus; usesToken?: boolean }[]) {
   const open = rows.filter((row) => row.status.kind !== "connected");
   if (open.length === 0) return null;
   if (open.length > 1) return "Connect these services to continue.";
-  const [{ name, status }] = open;
+  const [{ name, status, usesToken }] = open;
+  if (usesToken) return `Add a token for ${name} to continue.`;
   switch (status.kind) {
     case "allow":
       return `Allow access to your ${name} account to continue.`;

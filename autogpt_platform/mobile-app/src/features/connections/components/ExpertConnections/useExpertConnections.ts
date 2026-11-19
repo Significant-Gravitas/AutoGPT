@@ -10,7 +10,13 @@ import {
 } from "@/lib/api/integrations";
 
 import { allowErrorText, allowForExpert, removeFromExpert } from "../../expertAccess";
-import { expertNeeds, grantedRows, toServices, type AccountRow } from "../../listHelpers";
+import {
+  expertNeeds,
+  grantedRows,
+  signInServerURL,
+  toServices,
+  type AccountRow,
+} from "../../listHelpers";
 import { useConnect } from "../../useConnect";
 import { needRows, type NeedRow } from "./helpers";
 
@@ -74,6 +80,9 @@ export function useExpertConnections({ sessionID, expertID, expertName, isOpen }
     needs: expertNeeds(setup.data ?? [], expertID),
     services: providers.data ? toServices(providers.data) : providers.isError ? [] : null,
     grantedIDs,
+  }).map((need) => {
+    const action = need.action?.kind === "connect" ? need.action.service.action : null;
+    return { ...need, usesToken: connect.usesToken(need.key, signInServerURL(action)) };
   });
   const isBusy = connect.busyKey !== null || allow.isPending || remove.isPending;
 

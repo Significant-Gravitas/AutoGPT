@@ -25,6 +25,12 @@ export interface NeedRow {
 
 const WEB: ServiceAction = { kind: "web" };
 
+function canMeet(action: ServiceAction, providers: string[]) {
+  return action.kind === "oauth" || action.kind === "sheet"
+    ? providers.includes(action.provider)
+    : true;
+}
+
 function needDetail(need: ExpertNeed) {
   return need.workflowNames.length > 0 ? need.workflowNames.join(", ") : "A scheduled workflow";
 }
@@ -57,11 +63,14 @@ export function needRows({ needs, services, grantedIDs }: Args): NeedRow[] {
     }
     if (!services) return [{ ...base, label: null, action: null }];
     const known = service ?? { key: need.key, name: base.name, description: null, providers: need.providers, action: WEB };
+    // A service row signs in to its lead provider; when that one can't meet
+    // this need, the web, which lists every provider, does it instead.
+    const action = canMeet(known.action, need.providers) ? known.action : WEB;
     return [
       {
         ...base,
-        label: actionLabel(known.action),
-        action: { kind: "connect", service: { ...known, key: need.key } },
+        label: actionLabel(action),
+        action: { kind: "connect", service: { ...known, key: need.key, action } },
       },
     ];
   });

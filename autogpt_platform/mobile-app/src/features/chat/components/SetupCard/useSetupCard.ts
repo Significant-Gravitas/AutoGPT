@@ -8,6 +8,7 @@ import {
 } from "@/features/connections/connectedThisRun";
 import {
   logoID,
+  MCP_PROVIDER,
   requestHost,
   requestServerURL,
   type CredentialRequest,
@@ -77,11 +78,16 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
       grantedIDs,
       rejection: setup.rejection,
     });
+    const serverURL = requestServerURL(request, setup.serverURL);
+    const signsIn = status.kind === "reconnect" || status.kind === "connect";
     return {
       request,
       name: displayName(request, setup),
-      logoID: logoID(request.provider, requestServerURL(request, setup.serverURL)),
+      logoID: logoID(request.provider, serverURL),
       status,
+      // A failed MCP sign-in turns the row's next press into the token sheet.
+      usesToken:
+        signsIn && request.provider === MCP_PROVIDER && connect.usesToken(request.key, serverURL),
     };
   });
   const connectedRows: ConnectedRow[] = rows.flatMap(({ request, status }) =>
@@ -94,8 +100,14 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
     isAllConnected && run.followUp === "idle" && !setup.needsInputs && (hasPicks || replyText === null);
   // A sign-in from this card in this app run sends the reply by itself; a
   // card whose accounts were already there waits for Continue.
+  // A card the chat has already moved past waits for Continue too.
   const shouldAutoSend =
-    canContinue && hasPicks && !run.error && !isBusy && !needsManualContinue(setup);
+    canContinue &&
+    hasPicks &&
+    replyText === null &&
+    !run.error &&
+    !isBusy &&
+    !needsManualContinue(setup);
   const needsWeb =
     setup.needsInputs ||
     connect.needsPlan ||
@@ -129,8 +141,14 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
     if (!(await grantNewAccounts())) return;
     const selections = buildSelections(connectedRows);
     if (!isMCPSetup(setup) && Object.keys(selections).length > 0) {
-      // With nothing recorded the backend asks again, so a failure only costs a second card.
-      await recordCredentialPicks(sessionID, selections).catch(() => undefined);
+      // An account recorded earlier in the chat would win over this pick, so
+      // the chat only goes on once the pick is saved.
+      try {
+        await recordCredentialPicks(sessionID, selections);
+      } catch {
+        settleFollowUp(cardKey, false, "Couldn't save which account to use. Try again.");
+        return;
+      }
     }
     // Refused while the chat is busy: the card then offers Try again.
     const isSent = await sendWhenReady(onSend, followUpMessage(setup, connectedRows));

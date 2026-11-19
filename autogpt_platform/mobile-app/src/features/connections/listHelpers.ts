@@ -243,6 +243,11 @@ export function serviceFor(services: ConnectableService[], providers: string[]) 
   );
 }
 
+/** The MCP server a row's sign-in goes to, if it signs in to one. */
+export function signInServerURL(action: ServiceAction | null) {
+  return action?.kind === "mcp" ? action.serverURL : null;
+}
+
 /** The button a service's row shows. */
 export function actionLabel(action: ServiceAction) {
   switch (action.kind) {

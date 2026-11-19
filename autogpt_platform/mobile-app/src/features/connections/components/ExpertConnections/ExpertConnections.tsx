@@ -82,8 +82,8 @@ export function ExpertConnections({ sessionID, expertID, expertName, isOpen }: P
                 action={
                   need.label
                     ? {
-                        label: connect.tokenRows[need.key] ? "Add token" : need.label,
-                        variant: need.label === "Sign in" && !connect.tokenRows[need.key] ? "primary" : "outline",
+                        label: need.usesToken ? "Add token" : need.label,
+                        variant: need.label === "Sign in" && !need.usesToken ? "primary" : "outline",
                         onPress: () => tab.handleNeed(need),
                         isBusy: tab.isNeedBusy(need),
                         isDisabled: tab.isBusy,

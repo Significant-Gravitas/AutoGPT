@@ -4,6 +4,7 @@ import { FRONTEND_URL } from "@/lib/env";
 import {
   connectMethod,
   credentialFits,
+  hostScopeMatches,
   logoID,
   logoURL,
   parseCredentialRequests,
@@ -127,6 +128,21 @@ describe("credentialFits", () => {
     const key = credential({ provider: "http", type: "host_scoped", host: "api.example.com" });
     expect(credentialFits(key, http)).toBe(true);
     expect(credentialFits({ ...key, host: "api.other.com" }, http)).toBe(false);
+  });
+});
+
+describe("hostScopeMatches", () => {
+  it("keeps a port in the scope and matches it, as the backend does", () => {
+    expect(hostScopeMatches("api.example.com:8443", "https://api.example.com:8443/data")).toBe(true);
+    expect(hostScopeMatches("api.example.com:8443", "https://api.example.com/data")).toBe(false);
+    expect(hostScopeMatches("api.example.com", "https://api.example.com:8443/data")).toBe(false);
+    expect(hostScopeMatches("api.example.com", "https://API.example.com:443/data")).toBe(true);
+  });
+
+  it("lets a wildcard scope cover the domain and its subdomains", () => {
+    expect(hostScopeMatches("*.example.com", "https://api.example.com/a")).toBe(true);
+    expect(hostScopeMatches("*.example.com", "https://example.com/a")).toBe(true);
+    expect(hostScopeMatches("*.example.com", "https://example.org/a")).toBe(false);
   });
 });
 

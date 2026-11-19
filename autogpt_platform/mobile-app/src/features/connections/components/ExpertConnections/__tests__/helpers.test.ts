@@ -37,6 +37,15 @@ describe("needRows", () => {
     });
   });
 
+  it("sends a need its service's lead provider can't meet to the web", () => {
+    const need = { ...connectNeed, key: "connect:hubspot_crm", providers: ["hubspot_crm"] };
+    const service = { ...hubspot, providers: ["hubspot", "hubspot_crm"] };
+    expect(needRows({ needs: [need], services: [service], grantedIDs: [] })[0]).toMatchObject({
+      label: "Open",
+      action: { kind: "connect", service: { action: { kind: "web" } } },
+    });
+  });
+
   it("offers Allow for an account, and drops one allowed since", () => {
     expect(needRows({ needs: [allowNeed], services: null, grantedIDs: [] })[0]).toMatchObject({
       name: "GitHub",

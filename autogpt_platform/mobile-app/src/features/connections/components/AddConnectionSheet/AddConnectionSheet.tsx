@@ -6,7 +6,7 @@ import { Icon } from "@/components/Icon";
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 import { logoID } from "../../helpers";
-import { actionLabel } from "../../listHelpers";
+import { actionLabel, signInServerURL } from "../../listHelpers";
 import { BottomSheet } from "../BottomSheet";
 import { ConnectionRow } from "../ConnectionRow";
 import { CredentialForm } from "../CredentialSheet/CredentialSheet";
@@ -92,7 +92,9 @@ function SheetBody({ sessionID, expertID, onDone }: BodyProps) {
             logoID={logoID(service.key)}
             error={connect.errors[service.key]}
             action={{
-              label: connect.tokenRows[service.key] ? "Add token" : actionLabel(service.action),
+              label: connect.usesToken(service.key, signInServerURL(service.action))
+                ? "Add token"
+                : actionLabel(service.action),
               variant: service.action.kind === "web" ? "ghost" : "outline",
               onPress: () => sheet.connectService(service),
               isBusy: sheet.isRowBusy(service.key),

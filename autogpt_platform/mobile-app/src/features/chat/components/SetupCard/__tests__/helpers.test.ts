@@ -94,6 +94,16 @@ describe("parseSetupRequirements", () => {
     expect(setup).toMatchObject({ needsInputs: true, inputValues: { repo: "a/b" } });
   });
 
+  it("keeps a card that only needs an input, with no service to connect", () => {
+    const setup = parseSetupRequirements(
+      output({}, {
+        setup_info: { ...output({}).setup_info, requirements: { inputs: [{ name: "file", required: true }] }, user_readiness: { missing_credentials: {} } },
+      }),
+      "run_block",
+    );
+    expect(setup).toMatchObject({ requests: [], needsInputs: true });
+  });
+
   it("only shows a workflow's inputs, so they never send it to the web", () => {
     const setup = parseSetupRequirements(
       output({ github_credentials: github }, {
@@ -273,5 +283,12 @@ describe("cardIntro", () => {
       "Finish connecting GitHub on the web.",
     );
     expect(introFor({ kind: "connect", method: "host_scoped" })).toBe("Connect GitHub to continue.");
+  });
+
+  it("asks for a token once a failed sign-in turned the row into one", () => {
+    const rows = [
+      { name: "Linear", status: { kind: "connect", method: "mcp" } as const, usesToken: true },
+    ];
+    expect(cardIntro(rows)).toBe("Add a token for Linear to continue.");
   });
 });
