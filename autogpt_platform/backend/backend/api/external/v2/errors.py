@@ -165,6 +165,9 @@ def _handle_http_exception(
     )
 
 
+_VALIDATION_ERRORS = pydantic.TypeAdapter(list[dict[str, JsonValue]])
+
+
 def _handle_validation_error(
     request: fastapi.Request, exc: Exception
 ) -> fastapi.responses.JSONResponse:
@@ -180,7 +183,7 @@ def _handle_validation_error(
     return error_response(
         status.HTTP_422_UNPROCESSABLE_CONTENT,
         f"Invalid data for {request.method} {request.url.path}",
-        details={"errors": pydantic.TypeAdapter(JsonValue).dump_python(errors)},
+        details={"errors": _VALIDATION_ERRORS.dump_python(errors)},
     )
 
 
