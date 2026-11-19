@@ -3,6 +3,7 @@ import logging
 import time
 from typing import Optional
 
+import aiohttp
 from google.auth.exceptions import RefreshError
 from google.auth.external_account_authorized_user import (
     Credentials as ExternalAccountCredentials,
@@ -21,6 +22,10 @@ from .refresh_failure import OAuthTokenRequestError, describe_refresh_failure
 from .sign_in import SignInClientMismatch, SignInConnectionError
 
 logger = logging.getLogger(__name__)
+
+# Under the frontend's 8 s wait for a sign-in's handoff, so this check never
+# outlives the request that asked for it.
+TOKEN_INFO_TIMEOUT_SECONDS = 5
 
 
 def _expires_at(expires_in: object) -> int | None:
@@ -163,6 +168,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
             self.TOKEN_INFO_ENDPOINT,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             data={"access_token": access_token},
+            timeout=aiohttp.ClientTimeout(total=TOKEN_INFO_TIMEOUT_SECONDS),
         )
         if not response.ok:
             raise SignInConnectionError("Google didn't accept the sign-in's token.")

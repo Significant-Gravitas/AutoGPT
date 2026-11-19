@@ -292,10 +292,33 @@ def test_a_microsoft_sign_in_uses_the_connection_apps_own_checks(store, monkeypa
 def test_a_microsoft_sign_in_from_another_app_is_refused(store, monkeypatch):
     built = AsyncMock(side_effect=jwt.InvalidAudienceError("aud"))
     monkeypatch.setattr(sign_in_connection, "credentials_from_tokens", built)
+    monkeypatch.setattr(
+        sign_in_connection,
+        "microsoft_app",
+        lambda: MagicMock(client_id="connection-app"),
+    )
 
     res = client.post("/api/auth/sign-in-connection", json=MICROSOFT_BODY)
 
     assert res.status_code == 409
+    store.create.assert_not_called()
+
+
+def test_a_microsoft_sign_in_the_app_cant_renew_is_refused(store, monkeypatch):
+    # The frontend's answer from a few minutes ago still names the app, but
+    # the app has lost its secret since.
+    _deployment(
+        monkeypatch,
+        microsoft_client_id="connection-app",
+        microsoft_client_secret="",
+    )
+    built = AsyncMock(return_value=_microsoft_connection())
+    monkeypatch.setattr(sign_in_connection, "credentials_from_tokens", built)
+
+    res = client.post("/api/auth/sign-in-connection", json=MICROSOFT_BODY)
+
+    assert res.status_code == 501
+    built.assert_not_called()
     store.create.assert_not_called()
 
 
@@ -384,6 +407,49 @@ def test_a_sign_ups_connection_waits_for_the_account_to_be_set_up(store, google,
     # Encrypted while it waits.
     for secret in ("sign-in-access", "sign-in-refresh"):
         assert secret not in held.values[key]
+
+
+def test_an_account_set_up_while_its_connection_was_held_keeps_it(store, google, held):
+    # Set up after the handoff looked and before it held the connection: the
+    # account's own look for a held one found nothing.
+    store.has_org.side_effect = [False, True]
+
+    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+
+    assert res.json() == {"result": "created"}
+    store.create.assert_called_once()
+    assert held.values == {}
+
+
+def test_a_connection_that_cant_be_held_never_fails_the_sign_up(
+    store, google, monkeypatch, caplog
+):
+    store.has_org.return_value = False
+    monkeypatch.setattr(
+        sign_in_connection,
+        "get_redis_async",
+        AsyncMock(side_effect=ConnectionError("Redis is down")),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+
+    assert res.status_code == 200
+    assert res.json() == {"result": "skipped"}
+    assert "A sign-up's connection couldn't be held" in caplog.text
+    for secret in ("sign-in-access", "sign-in-refresh"):
+        assert secret not in caplog.text
+
+
+# How long the frontend waits for a sign-in's handoff (sign-in-connection.ts).
+_FRONTEND_HANDOFF_WAIT_SECONDS = 8
+
+
+def test_googles_token_check_ends_before_the_frontend_stops_waiting(store, google):
+    client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+
+    (post,) = google.posts
+    assert post["timeout"].total < _FRONTEND_HANDOFF_WAIT_SECONDS
 
 
 def _api() -> httpx.AsyncClient:

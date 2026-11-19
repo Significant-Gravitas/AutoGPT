@@ -179,10 +179,27 @@ async def connect_from_sign_in(
     if await has_personal_org(user_id):
         result = await keep_sign_in_connection(user_id, credentials)
     else:
-        await hold_sign_in_connection(user_id, credentials)
-        result = "held"
+        result = await _hold_for_set_up(user_id, credentials)
     logger.info("Sign-in connection for %s: %s", request.provider, result)
     return SignInConnectionResponse(result=result)
+
+
+async def _hold_for_set_up(
+    user_id: str, credentials: OAuth2Credentials
+) -> SignInConnectionResult:
+    """Holds a sign-up's connection for the request that sets its account up."""
+    try:
+        await hold_sign_in_connection(user_id, credentials)
+    except Exception:
+        # Never the error. The sign-in goes on, and onboarding offers the
+        # connection instead.
+        logger.warning("A sign-up's connection couldn't be held")
+        return "skipped"
+    # Set up after the check above but before the hold, the account's own
+    # look for a held connection came too early: keep it here instead.
+    if await has_personal_org(user_id):
+        return await keep_held_sign_in_connection(user_id) or "held"
+    return "held"
 
 
 def _held_key(user_id: str) -> str:
@@ -261,6 +278,14 @@ async def _credentials_from_sign_in(
 async def _microsoft_credentials(
     request: SignInConnectionRequest, access_token: str, refresh_token: str | None
 ) -> OAuth2Credentials:
+    # As for Google's handler: an app without its secret can't renew the
+    # tokens, so there is no connection to keep. The frontend asks first, but
+    # its answer can be a few minutes old.
+    if _microsoft_connection_client() is None:
+        raise HTTPException(
+            status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Integration with provider 'microsoft' is not configured.",
+        )
     payload = {
         "access_token": access_token,
         "refresh_token": refresh_token,
