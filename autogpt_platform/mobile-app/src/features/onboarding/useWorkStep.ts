@@ -23,6 +23,8 @@ export function useWorkStep({ onSubmit, onBackToRole }: Args) {
   // Between "Start over"'s stop and the new recording, still listening.
   const [isRestarting, setIsRestarting] = useState(false);
   const isStarting = useRef(false);
+  // Bumped by Back, so a restart still stopping the last take does not record again.
+  const restartAttempt = useRef(0);
   const dictation = useDictation({
     getDraft: () => "",
     onText: (text) => onSubmit({ mode: "typed", text: text.trim() }),
@@ -47,12 +49,14 @@ export function useWorkStep({ onSubmit, onBackToRole }: Args) {
   }
 
   async function startOver() {
+    restartAttempt.current += 1;
+    const attempt = restartAttempt.current;
     setIsRestarting(true);
     try {
       await dictation.cancel();
-      await dictation.start();
+      if (attempt === restartAttempt.current) await dictation.start();
     } finally {
-      setIsRestarting(false);
+      if (attempt === restartAttempt.current) setIsRestarting(false);
     }
   }
 
@@ -76,6 +80,8 @@ export function useWorkStep({ onSubmit, onBackToRole }: Args) {
 
   function back() {
     if (screen === "listening") {
+      restartAttempt.current += 1;
+      setIsRestarting(false);
       void dictation.cancel();
       setBase("rest");
     } else if (screen === "typing") {

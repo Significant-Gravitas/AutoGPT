@@ -1,4 +1,5 @@
 import { Image } from "expo-image";
+import { useState } from "react";
 import { Linking, Text, View } from "react-native";
 
 import { Button } from "@/components/Button";
@@ -15,10 +16,17 @@ interface Props {
 /** The end on a server that wants a plan first: the web takes it from here. */
 export function PlanNeeded({ userID }: Props) {
   const styles = useStyles();
+  const [error, setError] = useState<string | null>(null);
 
-  function openWeb() {
-    Linking.openURL(FRONTEND_URL).catch(() => undefined);
-    markOnboarded(userID);
+  // Leaves this screen only once the browser opened, so the plan stays one tap away.
+  async function openWeb() {
+    setError(null);
+    try {
+      await Linking.openURL(FRONTEND_URL);
+      markOnboarded(userID);
+    } catch {
+      setError("Couldn't open your browser. Try again, or go to Home.");
+    }
   }
 
   function goHome() {
@@ -40,6 +48,11 @@ export function PlanNeeded({ userID }: Props) {
         Your answers are saved. Choose a plan on the web, then come back and
         your team gets to work.
       </Text>
+      {error ? (
+        <Text accessibilityLiveRegion="polite" style={styles.error}>
+          {error}
+        </Text>
+      ) : null}
       <View style={styles.buttons}>
         <Button label="Open AutoGPT on the web" onPress={openWeb} fullWidth />
         <Button label="Go to Home" variant="secondary" onPress={goHome} fullWidth />
@@ -60,5 +73,6 @@ const useStyles = createStyles((colors) => ({
   otto: { width: 104, height: 104 },
   heading: { ...type.headline, color: colors.text, textAlign: "center" },
   body: { ...type.body, color: colors.textSecondary, textAlign: "center" },
+  error: { ...type.small, color: colors.error, textAlign: "center" },
   buttons: { alignSelf: "stretch", gap: spacing.md, marginTop: spacing.lg },
 }));
