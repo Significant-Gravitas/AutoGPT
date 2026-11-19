@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import cast
+import asyncio
+from typing import Any, cast
+from unittest.mock import patch
 
 import pytest
 
@@ -18,6 +20,8 @@ from backend.blocks.llm import (
     AICredentials,
     LLMResponse,
 )
+from backend.data.execution import ExecutionContext
+from backend.util.exceptions import BlockExecutionError
 
 _TEST_AI_CREDENTIALS = cast(AICredentials, TEST_CREDENTIALS_INPUT)
 
@@ -186,3 +190,62 @@ class TestCacheTokenPropagation:
         assert block.execution_stats.cache_read_token_count == 7
         assert block.execution_stats.cache_creation_token_count == 3
         assert block.execution_stats.provider_cost == 0.0012
+
+
+# ---------------------------------------------------------------------------
+# Regression: an unclear answer still records the call's usage
+# ---------------------------------------------------------------------------
+
+
+class TestUsageOnErrorBranch:
+    @pytest.mark.asyncio
+    async def test_unclear_answer_keeps_the_calls_usage(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The provider billed the call, so its usage is recorded although the
+        answer could not be read: the error output ends the run before any
+        later line of the block runs."""
+        block = AIConditionBlock()
+
+        async def unclear_llm(**kwargs):
+            return _mock_llm_response("maybe", provider_cost=0.002)
+
+        monkeypatch.setattr(block, "llm_call", unclear_llm)
+
+        with pytest.raises(BlockExecutionError, match="Unclear AI response"):
+            async for _ in block.execute(
+                _make_input().model_dump(mode="json"),
+                execution_context=ExecutionContext(),
+                credentials=TEST_CREDENTIALS,
+            ):
+                pass
+
+        assert block.execution_stats.input_token_count > 0
+        assert block.execution_stats.provider_cost == 0.002
+
+
+class TestUsageOfAStoppedCall:
+    @pytest.mark.asyncio
+    async def test_a_stop_mid_call_records_the_requests_estimated_input(self):
+        block = AIConditionBlock()
+        request_sent = asyncio.Event()
+
+        async def provider(**_: Any) -> None:
+            request_sent.set()
+            await asyncio.Event().wait()
+
+        with patch("backend.util.llm.providers.call_provider", provider):
+            run = asyncio.ensure_future(
+                _collect_outputs(
+                    block,
+                    _make_input(input_value="hello@example.com " * 100),
+                    credentials=TEST_CREDENTIALS,
+                )
+            )
+            await asyncio.wait_for(request_sent.wait(), timeout=30)
+            run.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await run
+
+        assert block.execution_stats.abandoned_input_token_count > 100
+        assert block.execution_stats.input_token_count == 0

@@ -15,12 +15,21 @@ vi.mock("@/services/feature-flags/use-get-flag", async () => {
   };
 });
 
+let paymentEnabled = true;
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: paymentEnabled,
+    isResolved: true,
+  }),
+}));
+
 afterEach(() => {
   mockUseGetFlag.mockReset();
 });
 
 beforeEach(() => {
   mockUseGetFlag.mockReturnValue(true);
+  paymentEnabled = true;
 });
 
 vi.mock("../../StorageBar", () => ({
@@ -145,6 +154,7 @@ describe("UsagePopover", () => {
 
   it("hides the 'Manage billing' link when billing is disabled at the platform level", async () => {
     mockUseGetFlag.mockReturnValue(false);
+    paymentEnabled = false;
     mockUsageResponse(makeUsage());
     render(<UsagePopover />);
 

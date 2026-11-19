@@ -96,53 +96,38 @@ export const getTypeDisplayInfo = (schema: any) => {
   ) {
     return {
       displayType: "table",
-      // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
-      colorClass: "!text-indigo-500",
-      // TODO(tokens): no exact role: literal #6366F1
-      hexColor: "#6366f1",
+      colorClass: "!text-indigo",
     };
   }
 
   if (schema?.type === "string" && schema?.format) {
     const formatMap: Record<
       string,
-      { displayType: string; colorClass: string; hexColor: string }
+      { displayType: string; colorClass: string }
     > = {
       file: {
         displayType: "file",
         colorClass: "!text-success",
-        // TODO(tokens): no exact role: literal #22C55E
-        hexColor: "#22c55e",
       },
       date: {
         displayType: "date",
         colorClass: "!text-info",
-        // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
-        hexColor: "#3b82f6",
       },
       time: {
         displayType: "time",
         colorClass: "!text-info",
-        // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
-        hexColor: "#3b82f6",
       },
       "date-time": {
         displayType: "datetime",
         colorClass: "!text-info",
-        // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
-        hexColor: "#3b82f6",
       },
       "long-text": {
         displayType: "text",
         colorClass: "!text-success",
-        // TODO(tokens): no exact role: literal #22C55E
-        hexColor: "#22c55e",
       },
       "short-text": {
         displayType: "text",
         colorClass: "!text-success",
-        // TODO(tokens): no exact role: literal #22C55E
-        hexColor: "#22c55e",
       },
     };
 
@@ -168,42 +153,18 @@ export const getTypeDisplayInfo = (schema: any) => {
     string: "!text-success",
     number: "!text-info",
     integer: "!text-info",
-    // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
-    boolean: "!text-yellow-500",
+    boolean: "!text-yellow",
     object: "!text-brand",
-    // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
-    array: "!text-indigo-500",
+    array: "!text-indigo",
     null: "!text-foreground-tertiary",
     any: "!text-foreground-tertiary",
   };
 
-  const hexColorMap: Record<string, string> = {
-    // TODO(tokens): no exact role: literal #22C55E
-    string: "#22c55e",
-    // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
-    number: "#3b82f6",
-    // TODO(tokens): no fitting role for literal #3B82F6; #3B82F6 is info (a status colour), sidebar-ring (a focus ring colour)
-    integer: "#3b82f6",
-    // TODO(tokens): no exact role: literal #EAB308
-    boolean: "#eab308",
-    // TODO(tokens): no exact role: literal #A855F7
-    object: "#a855f7",
-    // TODO(tokens): no exact role: literal #6366F1
-    array: "#6366f1",
-    // TODO(tokens): no exact role: literal #6B7280
-    null: "#6b7280",
-    // TODO(tokens): no exact role: literal #6B7280
-    any: "#6b7280",
-  };
-
   const colorClass = colorMap[schema?.type] || "!text-foreground-tertiary";
-  // TODO(tokens): no exact role: literal #6B7280
-  const hexColor = hexColorMap[schema?.type] || "#6b7280";
 
   return {
     displayType,
     colorClass,
-    hexColor,
   };
 };
 
@@ -211,23 +172,17 @@ export const getTypeDisplayInfo = (schema: any) => {
 const EDGE_STROKE_CLASSES: Record<string, string> = {
   "!text-success": "stroke-success",
   "!text-info": "stroke-info",
-  // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
-  "!text-yellow-500": "stroke-yellow-500",
+  "!text-yellow": "stroke-yellow",
   "!text-brand": "stroke-brand",
-  // oxlint-disable-next-line design-system/no-raw-colors -- each data type keeps its own hue; no role is left that would not collide with another type
-  "!text-indigo-500": "stroke-indigo-500",
+  "!text-indigo": "stroke-indigo",
   "!text-foreground-tertiary": "stroke-foreground-tertiary",
 };
 
 export function getEdgeColorFromOutputType(
   outputSchema: RJSFSchema | undefined,
   sourceHandle: string,
-): { colorClass: string; hexColor: string } {
-  const defaultColor = {
-    colorClass: "stroke-edge/50",
-    // TODO(tokens): no exact role: literal #6B7280
-    hexColor: "#6b7280",
-  };
+): { colorClass: string } {
+  const defaultColor = { colorClass: "stroke-edge/50" };
 
   if (!outputSchema?.properties) return defaultColor;
 
@@ -241,10 +196,9 @@ export function getEdgeColorFromOutputType(
     if (!fieldSchema) return defaultColor;
 
     if (i === handleParts.length - 1) {
-      const { hexColor, colorClass } = getTypeDisplayInfo(fieldSchema);
+      const { colorClass } = getTypeDisplayInfo(fieldSchema);
       return {
         colorClass: EDGE_STROKE_CLASSES[colorClass] ?? defaultColor.colorClass,
-        hexColor,
       };
     }
 

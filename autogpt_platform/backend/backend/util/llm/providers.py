@@ -185,10 +185,17 @@ def _is_temperature_deprecation_error(exc: anthropic.BadRequestError) -> bool:
 # Opus 5 still honour one. Hence exact native slugs rather than family
 # prefixes (``claude-opus-5`` is a prefix of ``claude-opus-5-5``), compared
 # after the vendor prefix and any ``-YYYYMMDD`` snapshot suffix are stripped.
-# Anthropic documents the restriction for Opus/Sonnet 5.5 and the Fable 5.1 /
-# Mythos 5.1 line; add a model here when it documents the same for another.
+# Anthropic documents the restriction for Opus/Sonnet 5.5, the Fable 5.1 /
+# Mythos 5.1 line and Fable 5.2; add a model here when it documents the same
+# for another.
 _ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED: frozenset[str] = frozenset(
-    {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-mythos-5-1"}
+    {
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-fable-5-1",
+        "claude-fable-5-2",
+        "claude-mythos-5-1",
+    }
 )
 
 
@@ -606,7 +613,7 @@ async def _call_anthropic_messages(
     # Cache tool definitions alongside the system prompt — placing
     # cache_control on the last tool caches all tool schemas as a
     # single prefix. Cache reads bill at a fraction of the input rate:
-    # 10% on most Claude models, 5% on Opus 5.5, 2.5% on Fable 5.1 (the
+    # 10% on most Claude models, 5% on Opus 5.5, 2.5% on Fable 5.1/5.2 (the
     # catalog's provider cache-read prices carry each model's figure).
     if isinstance(an_tools, list) and an_tools:
         an_tools[-1] = {**an_tools[-1], "cache_control": {"type": "ephemeral"}}
@@ -1134,13 +1141,9 @@ def _extract_openai_compat_cache_tokens(response: Any) -> tuple[int, int]:
 # (``extra_body``, ``extra_headers``, ``stream_options``, tools).
 #
 # Client factory injection:
-#   The chat layer instantiates ``openai.AsyncOpenAI`` via a
-#   Langfuse-wrapped subclass (``langfuse.openai.AsyncOpenAI``) to
-#   thread OTel-style spans through every chat turn. To preserve that
-#   tracing, callers pass ``client_factory=LangfuseAsyncOpenAI`` (or
-#   any subclass with the same constructor) and the helper builds the
-#   client from it. Defaults to ``openai.AsyncOpenAI`` so non-traced
-#   callers (eval scripts, integration tests) need no extra wiring.
+#   Callers that need an ``openai.AsyncOpenAI`` subclass pass it as
+#   ``client_factory`` (any subclass with the same constructor) and the
+#   helper builds the client from it. Defaults to ``openai.AsyncOpenAI``.
 
 
 # Wider than ``ProviderResponse`` because the caller picks up chunks
@@ -1175,12 +1178,11 @@ async def call_provider_stream(
     SSE tokens) belong here.
 
     Either pass a pre-built ``client`` (the chat layer caches its
-    Langfuse-wrapped client at module level) OR pass
+    client at module level) OR pass
     ``base_url`` + ``api_key`` and the helper builds one via
     ``client_factory``. The chat layer prefers the pre-built path so
     TCP connections stay pooled across turns; tests pass a mocked
-    client. Default factory is ``openai.AsyncOpenAI`` — callers
-    needing Langfuse spans pass the wrapped subclass.
+    client. Default factory is ``openai.AsyncOpenAI``.
 
     Does NOT wrap the call in ``asyncio.wait_for`` and defaults
     ``timeout`` to ``openai.omit`` so the SDK / client's own per-request

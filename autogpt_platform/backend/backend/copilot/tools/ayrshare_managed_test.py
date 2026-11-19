@@ -371,7 +371,8 @@ class TestPostToUnlinkedNetwork:
         assert isinstance(result, SetupRequirementsResponse)
         assert "with the Connect button in the card" in result.message
         assert "Twitter is not linked" in result.message
-        spend.assert_not_awaited()
+        # Debited before the post, given back when Ayrshare refused it.
+        assert [c.kwargs["cost"] for c in spend.await_args_list] == [2, -2]
 
     async def test_other_ayrshare_errors_stay_errors(self):
         post = AsyncMock(

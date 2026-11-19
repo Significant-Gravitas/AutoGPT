@@ -63,7 +63,7 @@ export function YouTubeEmbed({
         data-slot="youtube-embed-icon"
         icon={YoutubeIcon}
         size={28}
-        className="text-foreground-subtle"
+        tone="subtle"
       />
       <Text
         variant="body"

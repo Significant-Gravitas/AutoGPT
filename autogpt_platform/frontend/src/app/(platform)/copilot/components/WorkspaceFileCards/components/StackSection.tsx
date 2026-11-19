@@ -33,12 +33,7 @@ export function StackSection({
       {/* px-3 matches the card's own padding, so the title starts exactly
           where the row content inside does. */}
       <div className="mb-1.5 flex items-center gap-1.5 px-3">
-        <Icon
-          icon={icon}
-          size={14}
-          className="text-foreground-tertiary"
-          aria-hidden
-        />
+        <Icon icon={icon} size={14} tone="muted" aria-hidden />
         <Text tone="body" variant="small-medium">
           {title}
           {count === undefined ? "" : ` (${count})`}

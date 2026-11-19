@@ -2193,7 +2193,10 @@ class TestCreationEnvBehindTheSwapProxy:
         assert kwargs["envs"]["GITHUB_TOKEN"] == "hsurr:github:cred-default"
         # A chat's own box starts with the chat's pick, under the turn's ceiling.
         self.lookup.assert_awaited_once_with(
-            "user-a", providers=None, selected={"github": "cred-default"}
+            "user-a",
+            providers=None,
+            selected={"github": "cred-default"},
+            allowed_ids=None,
         )
         self.grant.assert_awaited_once_with("sb-new", {"github": "cred-default"})
 
@@ -2226,7 +2229,9 @@ class TestCreationEnvBehindTheSwapProxy:
             ) as lookup,
         ):
             asyncio.run(_placeholder_grants(owner, session_id))
-        lookup.assert_awaited_once_with("user-a", providers=None, selected=selected)
+        lookup.assert_awaited_once_with(
+            "user-a", providers=None, selected=selected, allowed_ids=None
+        )
 
     def test_without_the_proxy_the_create_call_is_unchanged(self):
         kwargs = self._create(proxy=None, user_id="user-a")
@@ -2238,6 +2243,56 @@ class TestCreationEnvBehindTheSwapProxy:
         kwargs = self._create(proxy="proxy:1080", user_id=None)
         assert "envs" not in kwargs
         self.lookup.assert_not_awaited()
+
+
+class TestAnExpertsBoxStartsWithItsGrantsOnly:
+    """The placeholders an expert's box is created with, and granted, are
+    chosen among the credentials granted to that expert."""
+
+    def _db(self, **kwargs) -> MagicMock:
+        db = MagicMock()
+        db.expert_allowed_credential_ids = AsyncMock(**kwargs)
+        return db
+
+    async def _grants(self, db: MagicMock) -> tuple[dict[str, str], AsyncMock]:
+        from backend.util.e2b_network import EgressOwner
+
+        from .e2b_sandbox import _placeholder_grants
+
+        owner = EgressOwner(kind="expert", id="expert-1", user_id="user-a")
+        with (
+            patch(
+                "backend.copilot.tools.e2b_sandbox.proxy_address",
+                return_value="proxy:1080",
+            ),
+            patch("backend.copilot.integration_creds.experts_db", return_value=db),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.placeholder_grants",
+                AsyncMock(return_value={"github": "cred-granted"}),
+            ) as lookup,
+        ):
+            return await _placeholder_grants(owner), lookup
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_lookup_is_narrowed_to_the_experts_grants(self):
+        db = self._db(return_value=["cred-granted"])
+        grants, lookup = await self._grants(db)
+        assert grants == {"github": "cred-granted"}
+        lookup.assert_awaited_once_with(
+            "user-a",
+            providers=None,
+            selected=None,
+            allowed_ids=frozenset({"cred-granted"}),
+        )
+        db.expert_allowed_credential_ids.assert_awaited_once_with("user-a", "expert-1")
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_grants_that_cannot_be_read_start_the_box_with_none(self):
+        grants, lookup = await self._grants(
+            self._db(side_effect=RuntimeError("expert not found"))
+        )
+        assert grants == {}
+        lookup.assert_not_awaited()
 
 
 class TestGrantsAreRenewedOnReconnect:

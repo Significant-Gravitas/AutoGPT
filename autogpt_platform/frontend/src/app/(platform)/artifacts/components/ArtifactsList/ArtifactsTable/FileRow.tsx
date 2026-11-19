@@ -133,7 +133,7 @@ export function FileRow({
               sideOffset={16}
               collisionPadding={16}
               // oxlint-disable-next-line design-system/no-restyle -- the hover preview is a card, which the tooltip atom has no variant for
-              className="max-w-none rounded-2xl border border-border-base bg-surface p-0 text-sm text-foreground-strong shadow-xl shadow-black/10 outline-none"
+              className="max-w-none rounded-2xl border border-border-base bg-surface p-0 text-body text-foreground-strong shadow-xl shadow-scrim/10 outline-none"
             >
               <FilePreviewCard file={file} />
             </TooltipContent>
@@ -165,8 +165,8 @@ export function FileRow({
         variant="body"
         as="span"
         tone="muted"
-        // oxlint-disable-next-line design-system/no-restyle -- tabular figures keep the size column aligned; Text has no numeric variant
-        className="hidden tabular-nums md:block"
+        tabular
+        className="hidden md:block"
       >
         {formatFileSize(file.size_bytes)}
       </Text>

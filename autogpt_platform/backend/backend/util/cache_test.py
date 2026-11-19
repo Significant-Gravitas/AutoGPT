@@ -17,7 +17,12 @@ from unittest.mock import Mock
 
 import pytest
 
-from backend.util.cache import cached, clear_thread_cache, thread_cached
+from backend.util.cache import (
+    _SCAN_BATCH_SIZE,
+    cached,
+    clear_thread_cache,
+    thread_cached,
+)
 
 
 class TestThreadCached:
@@ -267,47 +272,35 @@ class TestThreadCached:
         assert call_count == 3
 
     def test_sync_caching_performance(self):
+        calls = 0
+
         @thread_cached
         def slow_function(x: int) -> int:
-            print(f"slow_function called with x={x}")
+            nonlocal calls
+            calls += 1
             time.sleep(0.1)
             return x * 2
 
-        start = time.time()
-        result1 = slow_function(5)
-        first_call_time = time.time() - start
-        print(f"First call took {first_call_time:.4f} seconds")
-
-        start = time.time()
-        result2 = slow_function(5)
-        second_call_time = time.time() - start
-        print(f"Second call took {second_call_time:.4f} seconds")
-
-        assert result1 == result2 == 10
-        assert first_call_time > 0.09
-        assert second_call_time < 0.01
+        assert slow_function(5) == 10
+        assert slow_function(5) == 10
+        # The slow body ran once: the second call was a cache hit.
+        assert calls == 1
 
     @pytest.mark.asyncio
     async def test_async_caching_performance(self):
+        calls = 0
+
         @thread_cached
         async def slow_async_function(x: int) -> int:
-            print(f"slow_async_function called with x={x}")
+            nonlocal calls
+            calls += 1
             await asyncio.sleep(0.1)
             return x * 2
 
-        start = time.time()
-        result1 = await slow_async_function(5)
-        first_call_time = time.time() - start
-        print(f"First async call took {first_call_time:.4f} seconds")
-
-        start = time.time()
-        result2 = await slow_async_function(5)
-        second_call_time = time.time() - start
-        print(f"Second async call took {second_call_time:.4f} seconds")
-
-        assert result1 == result2 == 10
-        assert first_call_time > 0.09
-        assert second_call_time < 0.01
+        assert await slow_async_function(5) == 10
+        assert await slow_async_function(5) == 10
+        # The slow body ran once: the second call was a cache hit.
+        assert calls == 1
 
     def test_with_mock_objects(self):
         mock = Mock(return_value=42)
@@ -679,6 +672,21 @@ class TestCache:
 
 class TestSharedCache:
     """Tests for shared_cache (Redis-backed) functionality."""
+
+    def test_scans_walk_redis_in_large_batches(self, mocker):
+        redis = mocker.MagicMock()
+        redis.scan_iter.side_effect = lambda *args, **kwargs: iter([])
+        mocker.patch("backend.util.cache._get_redis", return_value=redis)
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        def batched_scan_function() -> int:
+            return 1
+
+        batched_scan_function.cache_info()
+        batched_scan_function.cache_clear()
+
+        batch_sizes = [c.kwargs.get("count") for c in redis.scan_iter.call_args_list]
+        assert batch_sizes == [_SCAN_BATCH_SIZE, _SCAN_BATCH_SIZE]
 
     def test_sync_shared_cache_basic(self):
         """Test basic shared cache functionality with sync function."""

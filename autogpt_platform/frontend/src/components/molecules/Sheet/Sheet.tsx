@@ -23,7 +23,7 @@ const SheetOverlay = React.forwardRef<
   <SheetPrimitive.Overlay
     data-slot="sheet-overlay"
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:fill-mode-forwards data-[state=open]:animate-in data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-scrim/80 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:fill-mode-forwards data-[state=open]:animate-in data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -73,7 +73,7 @@ const SheetContent = React.forwardRef<
     >
       <SheetPrimitive.Close
         data-slot="sheet-close"
-        className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:ring-2 focus:ring-focus focus:ring-offset-2 focus:outline-none disabled:pointer-events-none data-[state=open]:bg-surface-hover"
+        className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-surface transition-opacity hover:opacity-100 focus:ring-2 focus:ring-focus focus:ring-offset-2 focus:outline-none disabled:pointer-events-none data-[state=open]:bg-surface-hover"
       >
         <Icon aria-hidden icon={Cancel01Icon} className="h-4 w-4" />
         <span className="sr-only">Close</span>
@@ -121,11 +121,7 @@ const SheetTitle = React.forwardRef<
   <SheetPrimitive.Title
     ref={ref}
     data-slot="sheet-title"
-    className={cn(
-      // TODO(tokens): no role holds 18px (text-lg = 1.125rem / 1.75rem); the type scale goes 16px (body-lg) to 20px (lead). SECRT-3152
-      "text-lg font-semibold text-foreground-base",
-      className,
-    )}
+    className={cn("text-lead font-semibold text-foreground-base", className)}
     {...props}
   />
 ));

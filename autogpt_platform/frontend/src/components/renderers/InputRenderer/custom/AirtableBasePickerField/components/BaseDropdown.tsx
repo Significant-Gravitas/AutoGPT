@@ -105,7 +105,7 @@ export function BaseDropdown({
           aria-describedby={`${labelID}-hint`}
           aria-required="true"
           className={cn(
-            "flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-border-base bg-surface px-4 text-start text-sm transition-colors",
+            "flex h-9 w-full min-w-0 items-center gap-2 rounded-xl border border-border-base bg-surface px-4 text-start text-body transition-colors",
             "hover:border-border-strong focus:border-foreground-subtle focus:ring-1 focus:ring-foreground-subtle focus:outline-none",
             chosen ? "text-foreground-strong" : "text-foreground-subtle",
           )}
@@ -116,7 +116,8 @@ export function BaseDropdown({
           <Icon
             icon={UnfoldMoreIcon}
             size={16}
-            className="shrink-0 text-foreground-tertiary"
+            tone="muted"
+            className="shrink-0"
           />
         </button>
       </PopoverTrigger>
@@ -162,7 +163,7 @@ export function BaseDropdown({
                 onClick={() => pick(base.id)}
                 onKeyDown={(event) => handleOptionKeyDown(event, base.id)}
                 className={cn(
-                  "flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2 text-start text-sm leading-snug text-foreground-emphasis transition-colors",
+                  "flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2 text-start text-body leading-snug text-foreground-emphasis transition-colors",
                   "hover:bg-surface-hover focus:bg-surface-hover focus:outline-none",
                   isSelected && "font-medium text-foreground-strong",
                   locked &&
@@ -187,9 +188,11 @@ export function BaseDropdown({
             );
           })}
           {shown.length === 0 && (
-            <Text variant="small" tone="muted" className="px-3 py-2">
-              No base matches “{search.trim()}”.
-            </Text>
+            <div className="px-3 py-2">
+              <Text variant="small" tone="muted">
+                No base matches “{search.trim()}”.
+              </Text>
+            </div>
           )}
         </div>
       </PopoverContent>

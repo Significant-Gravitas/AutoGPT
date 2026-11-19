@@ -108,7 +108,7 @@ export function CredentialRow({
           className="inline-flex size-5 items-center justify-center text-foreground-base transition-colors hover:text-error focus-visible:ring-1 focus-visible:ring-brand focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-foreground-base"
         >
           {isDeleting ? (
-            <Icon icon={Loading03Icon} size={20} className="animate-spin" />
+            <Icon icon={Loading03Icon} size={20} spin />
           ) : (
             <Icon icon={Delete02Icon} size={20} />
           )}

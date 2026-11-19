@@ -53,9 +53,7 @@ export function CardProviderIcon({
   );
 }
 
-const BLOCK_ICON = (
-  <Icon icon={PuzzleIcon} size={15} className="text-foreground-secondary" />
-);
+const BLOCK_ICON = <Icon icon={PuzzleIcon} size={15} tone="secondary" />;
 
 export function BlockListCard({ blocks }: BlockListCardProps) {
   return (
@@ -131,13 +129,15 @@ export function BlockOutputCard({ output }: BlockOutputCardProps) {
           <Icon
             icon={CheckmarkCircle02Icon}
             size={16}
-            className="shrink-0 text-success"
+            tone="success"
+            className="shrink-0"
           />
         ) : (
           <Icon
             icon={CancelCircleIcon}
             size={16}
-            className="shrink-0 text-error"
+            tone="error"
+            className="shrink-0"
           />
         )}
       </div>

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from openai.types.chat import ChatCompletionChunk
 
-from backend.copilot import pending_message_helpers
+from backend.copilot import pending_message_helpers, pending_message_reconciliation
 from backend.copilot.baseline import service
 from backend.copilot.baseline import service_cancellation_test as baseline_fixtures
 from backend.copilot.model import ChatSession
@@ -33,7 +33,7 @@ async def test_pending_task_is_matched_before_next_tool_round(
     provider, upload, matcher = baseline.patch_provider(monkeypatch)
     sent = _patch_two_rounds(monkeypatch, provider)
     pending = _pending_batch(pending_image, extra_note)
-    requeue = _patch_pending_persistence(monkeypatch, pending, persist_ok)
+    restore = _patch_pending_persistence(monkeypatch, pending, persist_ok)
     await baseline.run_turn(session, "Continue the current task")
     assert len(sent) == 2
     assert "<matched_skills>" not in _user_content(sent[0])
@@ -43,7 +43,10 @@ async def test_pending_task_is_matched_before_next_tool_round(
         *(["\n\n".join(pm.content for pm in pending)] if persist_ok else []),
     ]
     _assert_saved_messages(session, upload, pending, persist_ok)
-    assert requeue.await_count == (0 if persist_ok else len(pending))
+    if persist_ok:
+        restore.assert_not_awaited()
+    else:
+        restore.assert_awaited_once_with(session.session_id, pending)
 
 
 def _patch_two_rounds(monkeypatch: pytest.MonkeyPatch, provider: AsyncMock) -> list:
@@ -88,9 +91,12 @@ def _patch_pending_persistence(
     monkeypatch.setattr(
         pending_message_helpers, "upsert_chat_session", AsyncMock(side_effect=save)
     )
-    requeue = AsyncMock(return_value=len(pending))
-    monkeypatch.setattr(pending_message_helpers, "push_pending_message", requeue)
-    return requeue
+    store = AsyncMock()
+    store.get_chat_messages_by_ids.return_value = []
+    monkeypatch.setattr(pending_message_reconciliation, "chat_db", lambda: store)
+    restore = AsyncMock()
+    monkeypatch.setattr(pending_message_helpers, "restore_pending_messages", restore)
+    return restore
 
 
 def _assert_next_round(messages: list, image: bool, persist_ok: bool) -> None:

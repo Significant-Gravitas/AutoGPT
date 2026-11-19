@@ -20,10 +20,7 @@ export function AgentPageLoading() {
         <div className="mt-0 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 lg:mt-8 lg:flex-row lg:gap-12">
           {/* Left: Agent info panel */}
           <div className="w-full lg:w-2/5">
-            <div
-              // oxlint-disable-next-line design-system/no-raw-colors -- indigo has no role; info or brand would change the frame\'s hue (deferred)
-              className="rounded-2xl bg-gradient-to-r from-info/10 to-indigo-100/50 p-px"
-            >
+            <div className="rounded-2xl bg-gradient-to-r from-info/10 to-indigo/10 p-px">
               <div className="flex flex-col rounded-large bg-surface-muted p-4">
                 {/* Title */}
                 <Skeleton className="mb-3 h-9 w-3/4" />

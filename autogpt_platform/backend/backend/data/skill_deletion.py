@@ -210,7 +210,7 @@ async def _append_marker(
             "ownerKey": head.ownerKey,
             "skillName": head.skillName,
             "headId": head.id,
-            "version": await next_version_number(head.id),
+            "version": await next_version_number(head.id, client=tx),
             "content": "",
             "contentHash": content_hash(""),
             "packageFiles": version_files_json(None),

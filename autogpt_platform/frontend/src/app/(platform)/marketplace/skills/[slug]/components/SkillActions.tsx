@@ -15,7 +15,7 @@ import {
 
 // Sized and shaped like the small button beside it so the pair reads as one row.
 // oxlint-disable-next-line design-system/no-restyle -- the status badge is sized like the button beside it; Badge has no button-sized variant
-const STATUS_CLASS = "h-9 rounded-full px-3.5 text-sm";
+const STATUS_CLASS = "h-9 rounded-full px-3.5 text-body";
 
 interface Props {
   slug: string;
@@ -81,8 +81,7 @@ export function SkillActions({
                 size="small"
                 aria-label={MENU_LABEL}
                 disabled={isAdding}
-                // oxlint-disable-next-line design-system/no-restyle -- an icon-only button at the small button's height; icon sizes change its shape
-                className="!min-w-0 px-2.5"
+                className="!min-w-0"
               >
                 <Icon icon={ArrowDown01Icon} size={16} aria-hidden />
               </Button>
