@@ -1,7 +1,9 @@
 import asyncio
 import contextvars
+import gc
 import threading
 import time
+import weakref
 
 import pytest
 import pytest_mock
@@ -15,6 +17,7 @@ from backend.executor.direct_block_execution import (
     DIRECT_BLOCK_EXECUTION_WORKERS,
     DirectBlockExecutionBusyError,
     DirectBlockExecutionLimitError,
+    DirectBlockExecutionOutputTooLargeError,
     DirectBlockExecutionTimeoutError,
     claim_direct_block_execution_slot,
     run_block_off_loop,
@@ -55,6 +58,39 @@ async def test_block_errors_reach_the_caller():
 
 
 @pytest.mark.asyncio
+async def test_outputs_past_the_size_limit_stop_the_run_and_are_dropped(
+    mocker: pytest_mock.MockFixture,
+):
+    mocker.patch.object(
+        direct_block_execution, "DIRECT_BLOCK_EXECUTION_MAX_OUTPUT_SIZE", 10_000
+    )
+    yielded: list[weakref.ref[_Payload]] = []
+    closed = threading.Event()
+
+    async def outputs():
+        try:
+            while True:
+                payload = _Payload(text="x" * 1000)
+                yielded.append(weakref.ref(payload))
+                yield "text", payload
+                await asyncio.sleep(0)
+        finally:
+            closed.set()
+
+    gc.disable()  # So only the run itself can have released the outputs.
+    try:
+        with pytest.raises(
+            DirectBlockExecutionOutputTooLargeError, match="output is larger"
+        ):
+            await asyncio.wait_for(run_block_off_loop(outputs()), timeout=10)
+        assert closed.is_set()
+        assert len(yielded) == 10
+        assert yielded[0]() is None
+    finally:
+        gc.enable()
+
+
+@pytest.mark.asyncio
 @pytest.mark.usefixtures("prisma_connected_here")
 async def test_server_thread_keeps_the_direct_prisma_path():
     assert db.is_connected()
@@ -80,9 +116,9 @@ async def test_block_on_a_worker_loop_takes_the_database_manager_path():
 @pytest.mark.asyncio
 async def test_worker_keeps_one_event_loop_across_runs():
     async def outputs():
-        yield "loop", asyncio.get_running_loop()
+        yield "loop", id(asyncio.get_running_loop())
 
-    loops = {id((await run_block_off_loop(outputs()))["loop"][0]) for _ in range(20)}
+    loops = {(await run_block_off_loop(outputs()))["loop"][0] for _ in range(20)}
     # One loop per worker thread at most, never one per run.
     assert len(loops) <= DIRECT_BLOCK_EXECUTION_WORKERS
 
@@ -597,6 +633,10 @@ async def test_slot_is_released_when_the_run_cannot_reach_its_worker(
 
     assert "user-a" not in direct_block_execution._runs_per_user
     assert closed.active == 0
+
+
+class _Payload(dict):
+    """A JSON object a weak reference can watch."""
 
 
 def _nothing() -> None:

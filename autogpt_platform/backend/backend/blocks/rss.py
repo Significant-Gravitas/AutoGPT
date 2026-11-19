@@ -28,6 +28,9 @@ class RSSEntry(pydantic.BaseModel):
 
 
 class ReadRSSFeedBlock(Block):
+    # Each poll downloads the whole feed again, and feeds rarely change faster.
+    MIN_POLLING_RATE_SECONDS = 60
+
     class Input(BlockSchemaInput):
         rss_url: str = SchemaField(
             description="The URL of the RSS feed to read",
@@ -39,7 +42,7 @@ class ReadRSSFeedBlock(Block):
             default=1440,
         )
         polling_rate: int = SchemaField(
-            description="The number of seconds to wait between polling attempts.",
+            description="The number of seconds to wait between polling attempts (at least 60).",
             placeholder="300",
         )
         run_continuously: bool = SchemaField(
@@ -148,6 +151,7 @@ class ReadRSSFeedBlock(Block):
 
             feed = await self.parse_feed(input_data.rss_url)
             all_entries = []
+            newest = start_time
 
             for entry in feed["entries"]:
                 pub_date = datetime(*entry["published_parsed"][:6], tzinfo=timezone.utc)
@@ -162,8 +166,13 @@ class ReadRSSFeedBlock(Block):
                         categories=[tag["term"] for tag in entry.get("tags", [])],
                     )
                     all_entries.append(rss_entry)
+                    newest = max(newest, pub_date)
                     yield "entry", rss_entry
 
             yield "entries", all_entries
+            # The next poll outputs only entries newer than any output so far.
+            start_time = newest
             if input_data.run_continuously:
-                await asyncio.sleep(input_data.polling_rate)
+                await asyncio.sleep(
+                    max(input_data.polling_rate, self.MIN_POLLING_RATE_SECONDS)
+                )
