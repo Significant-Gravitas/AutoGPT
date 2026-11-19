@@ -149,6 +149,15 @@ use shared memory.
 
 `canary-sha-*` tags are unsupported pre-release validation artifacts.
 
+Release images carry a signed build provenance attestation. Check one with the
+[GitHub CLI](https://cli.github.com/):
+
+```bash
+gh attestation verify oci://docker.io/significantgravitas/autogpt:vX.Y.Z \
+  --repo Significant-Gravitas/AutoGPT \
+  --signer-workflow Significant-Gravitas/AutoGPT/.github/workflows/platform-single-container-docker.yml
+```
+
 ## Upgrading
 
 Pin a `vX.Y.Z` tag instead of `latest` to choose when you upgrade, and read that

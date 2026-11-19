@@ -466,6 +466,10 @@ jobs:
     environment: dockerhub-release
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # signs the build provenance attestations below
+      attestations: write # stores those attestations with the repository
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -493,12 +497,28 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Publish and verify manifest
+        id: publish
         shell: bash
         env:
           DIGEST_DIR: ${{ runner.temp }}/platform-single-container-publish-digests
           MANIFEST_METADATA: ${{ runner.temp }}/platform-single-container-manifest.json
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: bash .github/scripts/platform-single-container-publish.sh publish
+
+      # Signed SLSA build provenance for the two image indexes just published:
+      # the release (vX.Y.Z, which latest also points to) and its sha-<commit>
+      # tag. docs/platform/single-container.md tells users how to check one.
+      - name: Attest the release image's build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.DEPLOY_IMAGE }}
+          subject-digest: ${{ steps.publish.outputs.release_digest }}
+
+      - name: Attest the sha-tagged image's build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.DEPLOY_IMAGE }}
+          subject-digest: ${{ steps.publish.outputs.sha_digest }}
 
       - name: Update Docker Hub Overview
         uses: peter-evans/dockerhub-description@e98e4d1628a5f3be2be7c231e50981aee98723ae # v4.0.0
