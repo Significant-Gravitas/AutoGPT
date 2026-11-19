@@ -1328,6 +1328,70 @@ async def test_a_child_that_fails_to_stop_does_not_stop_the_parents_cancel(
     assert "parent" in child_stops["cancelled"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("wait_timeout,child_wait", [(15.0, 1.0), (0, 0)])
+async def test_a_child_stop_waits_at_most_briefly(
+    mocker: MockerFixture, child_stops, wait_timeout: float, child_wait: float
+):
+    from backend.data.execution import ExecutionStatus
+    from backend.executor import utils
+
+    stop = utils.stop_graph_execution
+    child_waits: dict[str, float] = {}
+
+    async def record_child(*, graph_exec_id: str, wait_timeout: float, **_) -> None:
+        child_waits[graph_exec_id] = wait_timeout
+
+    mocker.patch.object(utils, "stop_graph_execution", side_effect=record_child)
+    mocker.patch.object(
+        utils.execution_db,
+        "get_graph_execution_meta",
+        new=mocker.AsyncMock(
+            return_value=mocker.MagicMock(status=ExecutionStatus.TERMINATED)
+        ),
+    )
+    bus = mocker.patch("backend.executor.utils.get_async_execution_event_bus")
+    bus.return_value.publish = mocker.AsyncMock()
+
+    await stop(user_id="u", graph_exec_id="parent", wait_timeout=wait_timeout)
+
+    assert child_waits == {child: child_wait for child in child_stops["children"]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prisma_connected", [True, False])
+async def test_the_child_lookup_goes_through_the_database_manager_without_prisma(
+    mocker: MockerFixture, prisma_connected: bool
+):
+    from backend.data.db_manager import DatabaseManagerAsyncClient
+    from backend.executor import utils
+
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = (
+        prisma_connected
+    )
+    client = mocker.MagicMock(spec_set=DatabaseManagerAsyncClient)
+    mocker.patch.object(
+        client,
+        "get_unfinished_child_graph_execution_ids",
+        new=mocker.AsyncMock(return_value=["via-database-manager"]),
+    )
+    mocker.patch(
+        "backend.executor.utils.get_database_manager_async_client",
+        return_value=client,
+    )
+    mocker.patch.object(
+        utils.execution_db,
+        "get_unfinished_child_graph_execution_ids",
+        new=mocker.AsyncMock(return_value=["via-prisma"]),
+    )
+
+    child_ids = await utils._get_unfinished_child_execution_ids("parent")
+
+    assert child_ids == (
+        ["via-prisma"] if prisma_connected else ["via-database-manager"]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Credential validation error marker parity.
 #

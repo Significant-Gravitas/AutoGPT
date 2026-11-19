@@ -47,6 +47,8 @@ async def test_only_a_runs_unfinished_live_children_are_listed(server):
         child_ids = await get_unfinished_child_graph_execution_ids(parent)
 
         assert sorted(child_ids) == sorted(unfinished)
+        # Running children are stopped first.
+        assert child_ids[0] == unfinished[2]
     finally:
         # Deleting a user deletes their graphs and runs with them.
         await prisma.models.User.prisma().delete_many(where={"id": user_id})

@@ -109,8 +109,10 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil
 MAX_RUN_INPUT_BYTES = 8 * 1024 * 1024
 # A credentials title is only a label; this is what a node gets of it.
 MAX_CREDENTIALS_TITLE_LENGTH = 256
-# How many of a run's child runs one stop stops at a time.
+# How many of a run's child runs one stop stops at a time, and the most each waits
+# on a running child; that child's own parent stops it again once it is cancelled.
 CHILD_STOP_CONCURRENCY = 4
+CHILD_STOP_WAIT_SECONDS = 1.0
 
 # ============ Resource Helpers ============ #
 
@@ -1381,7 +1383,7 @@ async def stop_graph_execution(
                 stop_graph_execution(
                     user_id=user_id,
                     graph_exec_id=child_id,
-                    wait_timeout=wait_timeout,
+                    wait_timeout=min(wait_timeout, CHILD_STOP_WAIT_SECONDS),
                     cascade=True,  # Recursively cascade to grandchildren
                 )
                 for child_id in child_ids
