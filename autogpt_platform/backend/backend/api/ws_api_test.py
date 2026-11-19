@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import logging
 from typing import cast, get_args
 from unittest.mock import AsyncMock
 
@@ -840,6 +841,96 @@ async def test_other_sockets_get_a_turn_between_two_buffered_messages(
             await other
 
     assert len(set(turns_at_each_reply)) == 5
+
+
+@pytest.mark.asyncio
+async def test_a_burst_of_messages_looks_the_account_up_once(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, account_db, mocker
+) -> None:
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    banned = mocker.patch(
+        "backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False)
+    )
+    heartbeat = WSMessage(method=WSMethod.HEARTBEAT).model_dump_json()
+    mock_websocket.receive_text.side_effect = [heartbeat] * 50 + [WebSocketDisconnect()]
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    assert mock_websocket.send_json.await_count == 50
+    assert banned.await_count == 1
+    assert account_db.refused.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "banned, refused, close_code",
+    [
+        pytest.param([False, True], [False, False], 4004, id="banned"),
+        pytest.param([False, False], [False, True], 4003, id="closed"),
+    ],
+)
+async def test_an_account_ended_later_closes_the_socket_once_a_recheck_is_due(
+    mock_websocket: AsyncMock,
+    mock_manager: AsyncMock,
+    account_db,
+    mocker,
+    banned: list[bool],
+    refused: list[bool],
+    close_code: int,
+) -> None:
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.ACCOUNT_RECHECK_INTERVAL_S", 0)
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(side_effect=banned))
+    account_db.refused.side_effect = refused
+    heartbeat = WSMessage(method=WSMethod.HEARTBEAT).model_dump_json()
+    mock_websocket.receive_text.side_effect = [heartbeat, heartbeat]
+
+    await websocket_router(
+        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+    )
+
+    assert mock_websocket.send_json.await_count == 1
+    assert mock_websocket.close.call_args.kwargs["code"] == close_code
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "frame",
+    [
+        pytest.param("not json", id="unparseable"),
+        pytest.param(
+            WSMessage(
+                method=WSMethod.SUBSCRIBE_GRAPH_EXEC, data={"wrong": 1}
+            ).model_dump_json(),
+            id="invalid-data",
+        ),
+    ],
+)
+async def test_a_clients_invalid_message_is_logged_below_error(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker, caplog, frame: str
+) -> None:
+    """An error-level log raises a Sentry event; a client's bad input is not one."""
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    mock_websocket.receive_text.side_effect = [frame, WebSocketDisconnect()]
+
+    with caplog.at_level(logging.DEBUG, logger="backend.api.ws_api"):
+        await websocket_router(
+            cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+        )
+
+    levels = [r.levelno for r in caplog.records if r.name == "backend.api.ws_api"]
+    assert logging.WARNING in levels
+    assert max(levels) < logging.ERROR
+    assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
 
 
 # ---------- get_connection_manager singleton ----------

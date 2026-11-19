@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Protocol
 
@@ -43,6 +44,9 @@ settings = Settings()
 ACCOUNT_BANNED_CLOSE_CODE = 4004
 # Clients send only subscribe, unsubscribe and heartbeat messages of ~100 bytes.
 WS_MAX_MESSAGE_BYTES = 4096
+# How often an open socket asks again whether its account is banned or closed;
+# both answers are cached for 30 s anyway.
+ACCOUNT_RECHECK_INTERVAL_S = 5.0
 
 
 @asynccontextmanager
@@ -316,21 +320,27 @@ async def websocket_router(
     # Track WebSocket connection
     update_websocket_connections(user_id, 1)
 
+    account_checked_at = float("-inf")
     try:
         while True:
             data = await websocket.receive_text()
             # A read of an already-buffered frame doesn't suspend, and neither does
             # anything below, so without this one socket's backlog runs to the end.
             await asyncio.sleep(0)
-            # The socket outlives its token, so a ban or a closed account ends
-            # it at the next message. A ban was ruled out first, so a refusal
-            # here is a closed account.
-            if await _banned_now(user_id):
-                await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
-                break
-            if await _refused_now(user_id):
-                await websocket.close(code=4003, reason=ACCOUNT_CLOSED_DETAIL)
-                break
+            # The socket outlives its token, so a ban or a closed account ends it
+            # at its first message once a recheck is due. A ban was ruled out
+            # first, so a refusal here is a closed account.
+            now = time.monotonic()
+            if now - account_checked_at >= ACCOUNT_RECHECK_INTERVAL_S:
+                account_checked_at = now
+                if await _banned_now(user_id):
+                    await websocket.close(
+                        code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned"
+                    )
+                    break
+                if await _refused_now(user_id):
+                    await websocket.close(code=4003, reason=ACCOUNT_CLOSED_DETAIL)
+                    break
             try:
                 message = WSMessage.model_validate_json(data)
             except pydantic.ValidationError as e:
@@ -429,7 +439,7 @@ async def websocket_router(
 
 
 async def _refused_now(user_id: str) -> bool:
-    """A lookup that fails keeps the socket; the next message asks again."""
+    """A lookup that fails keeps the socket; the next recheck asks again."""
     try:
         return await is_user_refused(user_id)
     except Exception:
@@ -440,7 +450,7 @@ async def _refused_now(user_id: str) -> bool:
 
 
 async def _banned_now(user_id: str) -> bool:
-    """A lookup that fails keeps the socket; the next message asks again."""
+    """A lookup that fails keeps the socket; the next recheck asks again."""
     try:
         return await is_user_banned(user_id)
     except Exception:
