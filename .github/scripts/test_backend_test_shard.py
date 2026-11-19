@@ -269,15 +269,32 @@ class BackendShardTests(unittest.TestCase):
         )
         matrix = workflow["jobs"]["test"]["strategy"]["matrix"]
         codecov = yaml.safe_load((root / "codecov.yml").read_text())
-        parts = {
-            f"{shard}-{part}"
+        jobs = [
+            {"python-version": version, "test-shard": shard, "partition": part}
+            for version in matrix["python-version"]
             for shard in matrix["test-shard"]
             for part in matrix["partition"]
-            if {"test-shard": shard, "partition": part} not in matrix["exclude"]
-        }
-        self.assertEqual(parts, set(report_shards(partitioned=True)))
-        self.assertEqual(len(parts), sum(PARTITIONS.values()))
+        ]
+        jobs = [
+            job
+            for job in jobs
+            if not any(
+                all(job[key] == value for key, value in excluded.items())
+                for excluded in matrix.get("exclude", [])
+            )
+        ]
+        jobs.extend(matrix.get("include", []))
+        identities = [
+            (job["python-version"], f"{job['test-shard']}-{job['partition']}")
+            for job in jobs
+        ]
+        expected = [
+            (version, shard)
+            for version in matrix["python-version"]
+            for shard in report_shards(partitioned=True)
+        ]
+        self.assertCountEqual(identities, expected)
         self.assertEqual(
             codecov["flags"]["platform-backend"]["after_n_builds"],
-            len(matrix["python-version"]) * len(parts),
+            len(expected),
         )

@@ -60,7 +60,8 @@ class WeightedShardTests(unittest.TestCase):
                     ]
                 else:
                     names = [
-                        f"{SHARDS[shard][0]}/new_{i}/case_check.py" for i in range(4)
+                        f"{SHARDS[shard][0]}/new_{i}/case_check.py"
+                        for i in range(PARTITIONS[shard])
                     ]
                 files.update({name: shard for name in names})
             files.update(

@@ -278,7 +278,7 @@ jobs:
     name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }}, part ${{ matrix.partition }})
     permissions:
       contents: read
-    # Each Python leg splits the eight fixture groups into 31 whole-file
+    # Each Python leg splits the eight fixture groups into 33 whole-file
     # partitions on standard runners. The cap is a hang guard, not a
     # performance budget: on merge_group a cancelled job reads as a failed
     # check and ejects the PR from the queue, so keep it well above p99.
@@ -291,6 +291,19 @@ jobs:
         exclude:
           - test-shard: billing-threads
             partition: 4
+        include:
+          - python-version: "3.12"
+            test-shard: util-executor
+            partition: 5
+          - python-version: "3.12"
+            test-shard: util-executor
+            partition: 6
+          - python-version: "3.13"
+            test-shard: util-executor
+            partition: 5
+          - python-version: "3.13"
+            test-shard: util-executor
+            partition: 6
         test-shard:
           - data
           - copilot

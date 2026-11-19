@@ -45,8 +45,8 @@ flags:
     paths:
       - autogpt_platform/backend/
     carryforward: true
-    # One upload per partition (2 Pythons x 31 partitions).
-    after_n_builds: 62
+    # One upload per partition (2 Pythons x 33 partitions).
+    after_n_builds: 66
   platform-frontend:
     paths:
       - autogpt_platform/frontend/src/

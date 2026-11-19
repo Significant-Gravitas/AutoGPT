@@ -25,6 +25,7 @@ SHARDS = {
 }
 PARTITIONS = {shard: 4 for shard in (*SHARDS, "remainder")}
 PARTITIONS["billing-threads"] = 3
+PARTITIONS["util-executor"] = 6
 
 
 def report_shards(partitioned: bool = False) -> list[str]:
