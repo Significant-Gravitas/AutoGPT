@@ -284,6 +284,7 @@ export const auth = betterAuth({
       },
       update: {
         // An admin's update carries its fields nested, out of hooks.before's view.
+        // Merging with another update.before: keep both checks, in one hook.
         before: async (user: Record<string, unknown>) => {
           assertProfileFieldsFit(user);
         },

@@ -1,7 +1,9 @@
 import { APIError } from "better-auth/api";
+import {
+  PROFILE_IMAGE_URL_MAX_LENGTH,
+  PROFILE_NAME_MAX_LENGTH,
+} from "./profile-field-lengths";
 
-export const PROFILE_NAME_MAX_LENGTH = 255;
-export const PROFILE_IMAGE_URL_MAX_LENGTH = 2048;
 export const INVALID_PROFILE_FIELD_CODE = "INVALID_PROFILE_FIELD";
 
 const MAX_LENGTHS = {

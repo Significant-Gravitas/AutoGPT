@@ -1,10 +1,10 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  INVALID_PROFILE_FIELD_CODE,
   PROFILE_IMAGE_URL_MAX_LENGTH,
   PROFILE_NAME_MAX_LENGTH,
-} from "../profile-field-limits";
+} from "../profile-field-lengths";
+import { INVALID_PROFILE_FIELD_CODE } from "../profile-field-limits";
 
 // Runs the real Better Auth handler with this app's auth options (from
 // ../auth) on an in-memory database, as email-verification-flow.test.ts does.
