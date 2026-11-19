@@ -1188,17 +1188,28 @@ class TestHostMatches:
         assert _host_matches("https://API.ANTHROPIC.COM/", "anthropic.com")
 
 
-class TestLangfusePromptCacheTTL:
+class TestSystemPromptCacheTTL:
     def test_default_is_five_minutes(self):
         # Read the field default, not an instance: backend/.env can set
-        # CHAT_LANGFUSE_PROMPT_CACHE_TTL and mask it.
-        assert ChatConfig.model_fields["langfuse_prompt_cache_ttl"].default == 300
+        # CHAT_SYSTEM_PROMPT_CACHE_TTL and mask it.
+        assert ChatConfig.model_fields["system_prompt_cache_ttl"].default == 300
 
     def test_a_negative_ttl_is_rejected(self):
-        # A negative TTL would skip our revalidation and expire the SDK entry
-        # at once, which is the unbounded staleness this field exists to avoid.
-        with pytest.raises(ValidationError, match="langfuse_prompt_cache_ttl"):
-            ChatConfig(langfuse_prompt_cache_ttl=-1)
+        # A negative TTL would make every turn serve the cached copy forever,
+        # which is the unbounded staleness this field exists to avoid.
+        with pytest.raises(ValidationError, match="system_prompt_cache_ttl"):
+            ChatConfig(system_prompt_cache_ttl=-1)
+
+    @pytest.mark.parametrize(
+        "env_var", ["CHAT_SYSTEM_PROMPT_CACHE_TTL", "CHAT_LANGFUSE_PROMPT_CACHE_TTL"]
+    )
+    def test_is_read_from_the_new_and_the_legacy_env_var(
+        self, monkeypatch: pytest.MonkeyPatch, env_var: str
+    ) -> None:
+        monkeypatch.delenv("CHAT_SYSTEM_PROMPT_CACHE_TTL", raising=False)
+        monkeypatch.delenv("CHAT_LANGFUSE_PROMPT_CACHE_TTL", raising=False)
+        monkeypatch.setenv(env_var, "60")
+        assert ChatConfig(_env_file=None).system_prompt_cache_ttl == 60
 
 
 class TestPosthogBuiltinToolSpans:

@@ -4,9 +4,9 @@ Generated while the onboarding loading screen is still up, then stored —
 landing on ``/copilot`` must never wait on a model. If generation fails the
 greeting falls back to a template, so there is always something to show.
 
-The generation instructions live in Langfuse (``BRAIN_DUMP_GREETING_PROMPT_NAME``)
+The generation instructions live in PostHog (``BRAIN_DUMP_GREETING_PROMPT_NAME``)
 so they can be tuned without a deploy; ``_LOCAL_PROMPT`` below is the
-fallback when Langfuse is unconfigured or unreachable.
+fallback when PostHog prompts are unconfigured or unreachable.
 """
 
 import asyncio
@@ -15,6 +15,7 @@ import os
 
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
+from posthog.ai.prompts import PromptResult
 
 from backend.api.features.onboarding_dump.greeting_race import Attempt, IntroReply, race
 from backend.api.features.onboarding_dump.models import MAX_WHY_CHARS, SuggestedPrompt
@@ -24,10 +25,11 @@ from backend.api.features.onboarding_dump.providers import (
     provider_lines,
 )
 from backend.api.features.onboarding_dump.structured import NO_REASONING
-from backend.util.clients import get_openai_client
-from backend.util.langfuse_prompts import (
-    get_langfuse_prompt_client,
-    langfuse_prompts_configured,
+from backend.util.clients import get_openai_client, openrouter_helper_cost_provider
+from backend.util.posthog_prompts import (
+    PromptRef,
+    fetch_prompt,
+    posthog_prompts_configured,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,13 +50,14 @@ _HEDGE_SECONDS = 12
 # answer alone, a greeting and six prompts at their longest, fits in this.
 _MAX_TOKENS = 4_000
 
-# The Langfuse copy of these instructions wins whenever it is reachable,
+# The PostHog copy of these instructions wins whenever it is reachable,
 # so it must be versioned in lockstep with ``_LOCAL_PROMPT`` — a voice
 # change made only here is invisible in prod.
-LANGFUSE_PROMPT_NAME = os.environ.get(
-    "BRAIN_DUMP_GREETING_PROMPT_NAME", "Brain Dump Greeting"
+MANAGED_PROMPT_NAME = os.environ.get(
+    "BRAIN_DUMP_GREETING_PROMPT_NAME", "brain-dump-greeting"
 )
-LANGFUSE_PROMPT_CACHE_TTL_SECONDS = 300
+MANAGED_PROMPT_CACHE_TTL_SECONDS = 300
+MANAGED_PROMPT_TIMEOUT_SECONDS = 5
 
 MIN_PROMPTS = 5
 MAX_PROMPTS = 6
@@ -94,7 +97,7 @@ PROMPT_ICONS = frozenset(
 DEFAULT_PROMPT_ICON = "sparkle"
 
 # Sent as the system message on every generation, whichever copy of the
-# instructions is in use: the Langfuse copy wins in prod and predates it.
+# instructions is in use: the PostHog copy wins in prod and predates it.
 COVERAGE_CONTRACT = f"""Leave out none of the problems the user described. \
 The greeting names every one, grouping those that belong together. Name a \
 problem no workflow or expert can take over too (a machine, a recipe, \
@@ -103,9 +106,9 @@ with them yourself, never as a job for the team. When the transcript has \
 such a problem, make the last suggested prompt that work. The greeting may \
 run to {GREETING_CHAR_LIMIT} characters when it has to."""
 
-# The local fallback for the Langfuse-managed instructions. The greeting
+# The local fallback for the PostHog-managed instructions. The greeting
 # diagnoses the dump so the user can see they were heard; the suggested
-# prompts are what turn that into an action. A Langfuse edit must keep the
+# prompts are what turn that into an action. A PostHog edit must keep the
 # same JSON contract — a malformed generation degrades to the template.
 _LOCAL_PROMPT = f"""You are Otto, this user's built-in Head of AI. \
 You are theirs alone, never shared, and you run a team for them: you can \
@@ -196,12 +199,18 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
         logger.warning("Brain dump greeting: no LLM client configured")
         return fallback_intro(text)
 
-    instructions = await _fetch_langfuse_prompt() or _LOCAL_PROMPT
+    managed = await _fetch_managed_prompt()
+    if managed is not None and not managed.prompt.strip():
+        managed = None  # an empty version falls back to the copy in code
+    instructions = managed.prompt if managed else _LOCAL_PROMPT
+    prompt_ref = PromptRef(
+        name=MANAGED_PROMPT_NAME, version=managed.version if managed else None
+    )
     content = f"{_integrations_block()}{instructions}{text}"
     reply = await race(
         Attempt(model=_MODEL, timeout=_TIMEOUT_SECONDS),
         Attempt(model=_BACKUP_MODEL, timeout=_BACKUP_TIMEOUT_SECONDS),
-        lambda model, timeout: _generate(client, content, model, timeout),
+        lambda model, timeout: _generate(client, content, prompt_ref, model, timeout),
         hedge_after=_HEDGE_SECONDS,
     )
     if reply.greeting is None:
@@ -214,7 +223,11 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
 
 
 async def _generate(
-    client: AsyncOpenAI, content: str, model: str, timeout: float
+    client: AsyncOpenAI,
+    content: str,
+    prompt_ref: PromptRef,
+    model: str,
+    timeout: float,
 ) -> IntroReply:
     """One model's greeting for ``content``. Never raises: a failed call or
     an unusable answer, however malformed, is logged with the model and
@@ -229,7 +242,7 @@ async def _generate(
                 ],
                 temperature=0.6,
                 max_tokens=_MAX_TOKENS,
-                extra_body=NO_REASONING,
+                extra_body=NO_REASONING | _broadcast_body(prompt_ref),
             ),
             timeout=timeout,
         )
@@ -292,24 +305,37 @@ def _integrations_block() -> str:
     )
 
 
-async def _fetch_langfuse_prompt() -> str | None:
-    """Fetch the greeting instructions from Langfuse.
+def _broadcast_body(prompt_ref: PromptRef) -> dict:
+    """Names the call and its prompt for OpenRouter Broadcast's
+    ``$ai_generation``, as ``$ai_span_name`` and ``metadata_prompt_*``.
 
-    Returns the compiled prompt string, or None when Langfuse is
-    unconfigured or the fetch fails — the caller falls back to
-    ``_LOCAL_PROMPT`` so a Langfuse outage never blocks onboarding.
+    Only on OpenRouter: a local endpoint may reject the unknown field.
     """
-    if not langfuse_prompts_configured():
+    if openrouter_helper_cost_provider() != "open_router":
+        return {}
+    return {
+        "trace": {"generation_name": "onboarding-greeting"}
+        | prompt_ref.broadcast_trace()
+    }
+
+
+async def _fetch_managed_prompt() -> PromptResult | None:
+    """Fetch the greeting instructions from PostHog.
+
+    Returns the prompt, or None when PostHog prompts are unconfigured or the
+    fetch fails — the caller falls back to ``_LOCAL_PROMPT`` so a PostHog
+    outage never blocks onboarding.
+    """
+    if not posthog_prompts_configured():
         return None
     try:
-        prompt = await asyncio.to_thread(
-            get_langfuse_prompt_client().get_prompt,
-            LANGFUSE_PROMPT_NAME,
-            cache_ttl_seconds=LANGFUSE_PROMPT_CACHE_TTL_SECONDS,
+        return await fetch_prompt(
+            MANAGED_PROMPT_NAME,
+            cache_ttl_seconds=MANAGED_PROMPT_CACHE_TTL_SECONDS,
+            timeout_seconds=MANAGED_PROMPT_TIMEOUT_SECONDS,
         )
-        return prompt.compile()
     except Exception as e:  # local prompt is the fallback
-        logger.warning("Brain dump greeting: Langfuse prompt fetch failed: %s", e)
+        logger.warning("Brain dump greeting: PostHog prompt fetch failed: %s", e)
         return None
 
 

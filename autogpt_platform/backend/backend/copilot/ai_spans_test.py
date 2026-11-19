@@ -2,6 +2,7 @@
 its tool calls and its expert subtasks."""
 
 import asyncio
+import contextvars
 from unittest.mock import MagicMock
 
 import pytest
@@ -20,11 +21,17 @@ from backend.copilot.ai_spans import (
     trace_id_for,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry
-from backend.copilot.llm_attribution import set_turn_impersonated, set_turn_trace_id
+from backend.copilot.llm_attribution import (
+    record_turn_prompt,
+    set_turn_impersonated,
+    set_turn_trace_id,
+    start_turn_prompt,
+)
 from backend.copilot.model import ChatMessage
 from backend.copilot.tree import TurnEnvelope
 from backend.util import posthog_client
 from backend.util.posthog_events import PostHogEvent
+from backend.util.posthog_prompts import PromptRef
 
 USER_ID = "user-1"
 SESSION_ID = "sess-1"
@@ -452,6 +459,36 @@ def test_a_reply_ends_with_its_trace_root(capture: MagicMock):
         "tool_call_count": 3,
         "impersonated": False,
     }
+
+
+def _end_a_turn_on(ref: PromptRef) -> None:
+    """End a turn that ran on *ref*, in a copy of the context so the turn's
+    prompt record ends with the test."""
+
+    def turn() -> None:
+        start_turn_prompt()
+        record_turn_prompt(ref)
+        _end(_entry())
+
+    contextvars.copy_context().run(turn)
+
+
+def test_a_reply_names_the_system_prompt_version_it_ran_on(capture: MagicMock):
+    _end_a_turn_on(PromptRef(name="copilot-prompt", version=7))
+
+    properties = capture.call_args.args[2]
+    assert properties["$ai_prompt_name"] == "copilot-prompt"
+    assert properties["$ai_prompt_version"] == 7
+    assert properties["prompt_source"] == "posthog"
+
+
+def test_a_reply_on_the_copy_in_code_has_no_prompt_version(capture: MagicMock):
+    _end_a_turn_on(PromptRef(name="copilot-prompt"))
+
+    properties = capture.call_args.args[2]
+    assert properties["$ai_prompt_name"] == "copilot-prompt"
+    assert properties["prompt_source"] == "code"
+    assert "$ai_prompt_version" not in properties
 
 
 def test_a_failed_reply_names_its_error_code(capture: MagicMock):
