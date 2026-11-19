@@ -31,6 +31,7 @@ from backend.util.file import (
     store_media_file,
 )
 from backend.util.request import Requests, Response
+from backend.util.type import check_json_value_count
 
 logger = logging.getLogger(name=__name__)
 
@@ -239,6 +240,7 @@ def _parse_response_body(response: Response, method: HttpMethod):
         bool(main_type) and len(subtype) > len("+json") and subtype.endswith("+json")
     )
     if is_json:
+        check_json_value_count(response.content)
         try:
             return response.json()
         except ValueError:

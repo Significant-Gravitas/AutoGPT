@@ -4,6 +4,9 @@ from typing import Any, Type, TypeVar, Union, cast, get_args, get_origin, overlo
 
 from prisma import Json as PrismaJson
 
+# How many values a JSON text from outside may hold before it is parsed.
+MAX_JSON_VALUES = 500_000
+
 
 def _is_type_or_subclass(origin: Any, target_type: type) -> bool:
     """Check if origin is exactly the target type or a subclass of it."""
@@ -25,8 +28,8 @@ def __convert_list(value: Any) -> list:
         value = value.strip()
         if value.startswith("[") and value.endswith("]"):
             try:
-                return json.loads(value)
-            except json.JSONDecodeError:
+                return _parse_json_text(value)
+            except ValueError:
                 return [value]
         else:
             return [value]
@@ -37,12 +40,12 @@ def __convert_list(value: Any) -> list:
 def __convert_dict(value: Any) -> dict:
     if isinstance(value, str):
         try:
-            result = json.loads(value)
+            result = _parse_json_text(value)
             if isinstance(result, dict):
                 return result
             else:
                 return {"value": result}
-        except json.JSONDecodeError:
+        except ValueError:
             return {"value": value}  # Fallback conversion
     elif isinstance(value, list):
         return {i: value[i] for i in range(len(value))}
@@ -59,9 +62,9 @@ def __convert_tuple(value: Any) -> tuple:
         value = value.strip()
         if value.startswith("[") and value.endswith("]"):
             try:
-                parsed = json.loads(value)
+                parsed = _parse_json_text(value)
                 return tuple(parsed) if isinstance(parsed, list) else (value,)
-            except json.JSONDecodeError:
+            except ValueError:
                 return (value,)
         return (value,)
     if isinstance(value, (list, set)):
@@ -81,14 +84,14 @@ def __convert_set(value: Any) -> set:
         value = value.strip()
         if value.startswith("[") and value.endswith("]"):
             try:
-                parsed = json.loads(value)
+                parsed = _parse_json_text(value)
                 if isinstance(parsed, list):
                     try:
                         return set(parsed)
                     except TypeError:
                         return {value}
                 return {value}
-            except json.JSONDecodeError:
+            except ValueError:
                 return {value}
         return {value}
     if isinstance(value, (list, tuple)):
@@ -417,3 +420,21 @@ class LongTextType(FormattedStringType):
 
 class ShortTextType(FormattedStringType):
     string_format = "short-text"
+
+
+def _parse_json_text(value: str) -> Any:
+    check_json_value_count(value)
+    return json.loads(value)
+
+
+def check_json_value_count(text: str | bytes) -> None:
+    """Refuses JSON text that may hold more than ``MAX_JSON_VALUES`` values,
+    without parsing it: every value but the first follows a ``[``, ``{`` or
+    ``,``, so counting those bounds the values (ones inside strings count too)."""
+    delimiters = (
+        sum(text.count(c) for c in "[{,")
+        if isinstance(text, str)
+        else sum(text.count(c) for c in (b"[", b"{", b","))
+    )
+    if delimiters >= MAX_JSON_VALUES:
+        raise ValueError(f"The JSON has more than {MAX_JSON_VALUES:,} values.")
