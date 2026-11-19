@@ -83,9 +83,10 @@ script to know what to expect.
   reply stops after `n` words until the journey releases its run with
   `POST /__scripted__/release?nonce=<nonce>` (`releaseHeldReply` in
   `scripted-model.ts`), for example once it has cut the connection. The script
-  needs a marker with a nonce. A release sent early lets the reply straight
-  through; a reply nobody releases finishes after two minutes and fails its
-  journal check.
+  needs a marker with a nonce. Each release lets one held reply through: one
+  sent early lets the reply straight through, and a second held reply in the
+  same run waits for a second release. A reply nobody releases finishes after
+  two minutes and fails its journal check.
 
 A request the script can't answer fails the turn with a 400 that says why:
 no marker, an unknown script, a turn past the script's end (an extra tool

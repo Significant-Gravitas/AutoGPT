@@ -21,10 +21,13 @@ import {
   scriptedRun,
 } from "./scripted-model";
 
-// One answer, streamed a word at a time. The model holds it after its first
-// words until the journey has cut the connection.
+// One answer, streamed a word at a time. The model sends its first
+// HELD_AFTER_WORDS words, then holds the rest until the journey has cut the
+// connection, so the journey waits for fewer words than that to show.
 const SCRIPT: ModelScript = slowAnswerScript;
 const ANSWER = SCRIPT.turns[0].text ?? "";
+const HELD_AFTER_WORDS = slowAnswerScript.turns[0].stream.hold_after_words;
+const STREAMING_WORDS = Math.floor(HELD_AFTER_WORDS / 2);
 
 test.describe("copilot reconnect journey", () => {
   // A resume after the turn finished finds its cursor trimmed, and the chat
@@ -85,7 +88,7 @@ async function loseConnectionMidAnswer({
   await startChat(page, `Answer me slowly. ${run.marker}`);
   const transcript = page.getByRole("log");
   await expect(
-    transcript.getByText(firstWords(ANSWER)),
+    transcript.getByText(firstWords(ANSWER, STREAMING_WORDS)),
     "the answer should start streaming",
   ).toBeVisible({ timeout: 60_000 });
 

@@ -48,6 +48,21 @@ test("an image request whose browser has gone still reads its source file", asyn
   expect(Buffer.compare(buffer, readFileSync(file))).toBe(0);
 });
 
+test("Next's ESM build builds the image fetch's response without the browser's socket too", () => {
+  // The test above runs the CommonJS build that `next start` and the
+  // standalone server load; the patch changes the ESM copy the same way.
+  const source = readFileSync(
+    require.resolve("next/dist/esm/server/image-optimizer.js"),
+    "utf8",
+  );
+  const response = /new MockedResponse\(\{([^}]*)\}\)/.exec(source);
+  expect(
+    response?.[1],
+    "the vercel/next.js#98168 backport's ESM hunk is missing from patches/next@15.5.28.patch",
+  ).toContain("maximumResponseBody");
+  expect(response?.[1]).not.toContain("socket");
+});
+
 async function settlesWithin<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {

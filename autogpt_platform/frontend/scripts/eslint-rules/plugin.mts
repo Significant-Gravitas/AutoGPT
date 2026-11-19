@@ -241,14 +241,23 @@ const noNetworkIdle: Rule.RuleModule = {
     schema: [],
   },
   create(context) {
+    function report(node: Node) {
+      context.report({
+        node,
+        message:
+          "Don't wait for the network to go idle: one open request holds it until the test times out. Wait for the page's own ready signal instead, such as a visible element or the response it renders from.",
+      });
+    }
     return {
       Literal(node) {
-        if (node.value !== "networkidle") return;
-        context.report({
-          node,
-          message:
-            "Don't wait for the network to go idle: one open request holds it until the test times out. Wait for the page's own ready signal instead, such as a visible element or the response it renders from.",
-        });
+        if (node.value === "networkidle") report(node);
+      },
+      TemplateLiteral(node) {
+        if (
+          node.expressions.length === 0 &&
+          node.quasis[0]?.value.cooked === "networkidle"
+        )
+          report(node);
       },
     };
   },

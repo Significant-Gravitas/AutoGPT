@@ -512,9 +512,8 @@ export async function clickRunButton(page: Page): Promise<void> {
 
   await page.waitForLoadState("domcontentloaded");
 
-  // The buttons render once the agent's data loads, so the poll below is
-  // the page's ready signal; a wait for the network to go idle has no
-  // deadline of its own and one hung image runs out the test.
+  // The page is ready once one of these task buttons shows; they render
+  // after the agent's data has loaded.
   const timeoutAt = Date.now() + 20000;
 
   while (Date.now() < timeoutAt) {
@@ -1063,17 +1062,23 @@ export async function importAgentFromFile(
     .then(() => true)
     .catch(() => false);
   if (sawUploadingState) {
-    // The import loads /build as soon as the graph is saved, often while this
-    // read runs. A button that has gone, or a page that has left, has nothing
-    // left to check; the poll below waits for /build itself.
-    const enabledWhileUploading = await uploadingButton
-      .first()
-      .isEnabled({ timeout: 1000 })
-      .catch(() => false);
+    // The import loads /build as soon as the graph is saved, often in the
+    // middle of this read, so a failed read is retried rather than taken as
+    // a disabled button. Only a page that has left for /build, or a button
+    // that is gone, has nothing left to check.
+    const visibleUploadingButton = uploadingButton
+      .filter({ visible: true })
+      .first();
+    let uploadingState = "unread";
+    await expect(async () => {
+      uploadingState = await readUploadingState(page, visibleUploadingButton);
+    }, 'the "Uploading..." button should be readable').toPass({
+      timeout: 30000,
+    });
     expect(
-      enabledWhileUploading,
+      uploadingState,
       'upload button should be disabled while "Uploading..." is visible',
-    ).toBe(false);
+    ).not.toBe("enabled");
   }
 
   // Upload → backend creates the graph → router pushes /build?flowID=...
@@ -1150,6 +1155,13 @@ export async function importAgentFromFile(
   ).not.toBe("");
 
   return { libraryPage, importedAgent, graphID };
+}
+
+async function readUploadingState(page: Page, button: Locator) {
+  if (/\/build/.test(page.url()) || (await button.count()) === 0) {
+    return "gone";
+  }
+  return (await button.isEnabled({ timeout: 1000 })) ? "enabled" : "disabled";
 }
 
 export async function openSavedAgentInLibrary(

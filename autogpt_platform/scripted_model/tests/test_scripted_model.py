@@ -653,23 +653,49 @@ def test_a_held_reply_waits_until_the_journey_releases_it(scripted_model, dialec
                 two_words.set()
         finished.set()
 
-    threading.Thread(target=read, daemon=True).start()
-    assert two_words.wait(timeout=10)
-    assert not finished.wait(timeout=0.5), "the reply should wait for its release"
-    assert received == ["One", " two"]
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    released = False
+    try:
+        assert two_words.wait(timeout=10)
+        assert not finished.wait(timeout=0.5), "the reply should wait for its release"
+        assert received == ["One", " two"]
 
-    _release(scripted_model, nonce)
-    assert finished.wait(timeout=10)
+        _release(scripted_model, nonce)
+        released = True
+        assert finished.wait(timeout=10)
+    finally:
+        # A failed assertion must not leave the server's handler held open.
+        if not released:
+            _release(scripted_model, nonce)
+        reader.join(timeout=10)
     assert "".join(received) == HELD_TEXT
     (entry,) = scripted_model.journal(nonce=nonce)
     assert entry["checks"] == [{"what": "held reply", "ok": True, "detail": "released"}]
 
 
-def test_a_release_sent_before_the_hold_lets_the_reply_through(scripted_model):
+def test_each_release_lets_one_held_reply_through(scripted_model):
+    """A release sent before the hold lets the reply straight through, and a
+    second held reply in the same run waits for a release of its own."""
     scripted_model.add_script("held", HELD)
-    _release(scripted_model, "early")
-    messages = [{"role": "user", "content": "[[script:held#early]]"}]
+    _release(scripted_model, "twice")
+    messages = [{"role": "user", "content": "[[script:held#twice]]"}]
     assert _stream(_anthropic(scripted_model), messages).content[0].text == HELD_TEXT
+
+    texts: list[str] = []
+
+    def stream_again() -> None:
+        texts.append(_stream(_anthropic(scripted_model), messages).content[0].text)
+
+    second = threading.Thread(target=stream_again, daemon=True)
+    second.start()
+    try:
+        second.join(timeout=0.5)
+        assert second.is_alive(), "the second reply should wait for a release"
+    finally:
+        _release(scripted_model, "twice")
+        second.join(timeout=10)
+    assert texts == [HELD_TEXT]
 
 
 def test_a_reply_nobody_releases_finishes_and_fails_its_check(

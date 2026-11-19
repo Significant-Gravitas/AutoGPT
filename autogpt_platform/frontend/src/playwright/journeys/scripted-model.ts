@@ -65,7 +65,7 @@ export async function requireScriptedModel() {
  */
 export async function releaseHeldReply(nonce: string) {
   const response = await fetch(
-    `${SCRIPTED_MODEL_URL}/__scripted__/release?nonce=${nonce}`,
+    `${SCRIPTED_MODEL_URL}/__scripted__/release?nonce=${encodeURIComponent(nonce)}`,
     { method: "POST" },
   );
   expect(response.ok, `POST release: ${response.status}`).toBe(true);
