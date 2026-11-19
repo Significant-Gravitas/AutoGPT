@@ -1,6 +1,4 @@
 import json
-import math
-import sys
 from typing import Any, List
 
 from fastapi.encoders import jsonable_encoder
@@ -824,11 +822,17 @@ def _deduplicate_list(items: List[Any]) -> List[Any]:
     seen: set = set()
     result: List[Any] = []
     for item in items:
-        item_id = _make_hashable(item)
+        item_id = _set_key(item)
         if item_id not in seen:
             seen.add(item_id)
             result.append(item)
     return result
+
+
+def _set_key(item: Any) -> str:
+    """Key for finding *item* in a set: equal items get equal strings."""
+    # A string key, so lookups don't depend on how the items themselves hash.
+    return repr(_make_hashable(item))
 
 
 def _make_hashable(item: Any):
@@ -852,16 +856,15 @@ def _make_hashable(item: Any):
         )
     if isinstance(item, (list, tuple)):
         return ("list", tuple(_make_hashable(i) for i in item))
-    if isinstance(item, set):
-        return frozenset(_make_hashable(i) for i in item)
+    if isinstance(item, (set, frozenset)):
+        # Sorted, so equal sets get the same repr in _set_key.
+        return ("set", tuple(sorted((_make_hashable(i) for i in item), key=repr)))
     if isinstance(item, bool):
         return ("bool", item)
-    if isinstance(item, float) and not math.isnan(item):
-        if not item.is_integer():
-            return ("number", repr(item))
-        item = int(item)
-    # Ints hash modulo sys.hash_info.modulus, so larger ones get a key of their own.
-    if isinstance(item, int) and abs(item) >= sys.hash_info.modulus:
+    if isinstance(item, float) and item.is_integer():
+        item = int(item)  # 1.0 equals 1, so it gets 1's key.
+    # repr() refuses ints longer than sys.get_int_max_str_digits(); hex() doesn't.
+    if isinstance(item, int) and item.bit_length() > 64:
         return ("number", hex(item))
     return item
 
@@ -1432,17 +1435,17 @@ class ListDifferenceBlock(Block):
 
     def _compute_difference(self, list_a: List[Any], list_b: List[Any]) -> List[Any]:
         """Compute elements in list_a not in list_b."""
-        b_hashes = {_make_hashable(item) for item in list_b}
-        return [item for item in list_a if _make_hashable(item) not in b_hashes]
+        b_hashes = {_set_key(item) for item in list_b}
+        return [item for item in list_a if _set_key(item) not in b_hashes]
 
     def _compute_symmetric_difference(
         self, list_a: List[Any], list_b: List[Any]
     ) -> List[Any]:
         """Compute elements in either list but not both."""
-        a_hashes = {_make_hashable(item) for item in list_a}
-        b_hashes = {_make_hashable(item) for item in list_b}
-        only_in_a = [item for item in list_a if _make_hashable(item) not in b_hashes]
-        only_in_b = [item for item in list_b if _make_hashable(item) not in a_hashes]
+        a_hashes = {_set_key(item) for item in list_a}
+        b_hashes = {_set_key(item) for item in list_b}
+        only_in_a = [item for item in list_a if _set_key(item) not in b_hashes]
+        only_in_b = [item for item in list_b if _set_key(item) not in a_hashes]
         return only_in_a + only_in_b
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -1512,11 +1515,11 @@ class ListIntersectionBlock(Block):
 
     def _compute_intersection(self, list_a: List[Any], list_b: List[Any]) -> List[Any]:
         """Compute elements present in both lists, preserving order from list_a."""
-        b_hashes = {_make_hashable(item) for item in list_b}
+        b_hashes = {_set_key(item) for item in list_b}
         seen: set = set()
         result: List[Any] = []
         for item in list_a:
-            h = _make_hashable(item)
+            h = _set_key(item)
             if h in b_hashes and h not in seen:
                 result.append(item)
                 seen.add(h)

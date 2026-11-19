@@ -281,29 +281,53 @@ class TestMakeHashable:
         assert _make_hashable(True) == ("bool", True)
 
     def test_float(self):
-        assert _make_hashable(3.14) == _make_hashable(3.14)
-        assert _make_hashable(3.14) != _make_hashable(3.15)
+        result = _make_hashable(3.14)
+        assert result == 3.14
 
-    def test_equal_numbers_share_a_key(self):
-        assert _make_hashable(1) == _make_hashable(1.0)
-        assert _make_hashable(0) == _make_hashable(-0.0)
-        assert _make_hashable(2**62) == _make_hashable(float(2**62))
-        assert _make_hashable(2**62) != _make_hashable(2**62 + 1)
 
-    def test_numbers_with_one_hash_get_distinct_keys(self):
-        # Every multiple of 2**61 - 1 hashes to 0, so as set keys they'd collide.
-        step = 2**61 - 1
-        keys = {hash(_make_hashable(k * step)) for k in range(1, 1001)}
-        assert len(keys) == 1000
+@pytest.mark.parametrize(
+    "compare",
+    [
+        _deduplicate_list,
+        lambda items: ListDifferenceBlock()._compute_difference(items, items[:1]),
+        lambda items: ListDifferenceBlock()._compute_symmetric_difference(
+            items, items[:1]
+        ),
+        lambda items: ListIntersectionBlock()._compute_intersection(items, items[1:]),
+    ],
+)
+def test_items_are_found_by_key_not_compared_with_each_other(compare):
+    compared = 0
 
-    def test_deduplicates_numbers_with_one_hash(self):
-        step = 2**61 - 1
-        items = [k * step for k in range(1, 6)]
-        # 2**62 is a float exactly, so its float form is a duplicate too.
-        assert _deduplicate_list(items + [2 * step, 2**62, float(2**62)]) == [
-            *items,
-            2**62,
-        ]
+    class Number(int):
+        def __hash__(self):
+            return 0
+
+        def __eq__(self, other):
+            nonlocal compared
+            compared += 1
+            return int.__eq__(self, other)
+
+    compare([[Number(k)] for k in range(300)])
+
+    assert compared == 0
+
+
+def test_equal_numbers_are_duplicates():
+    items = [1, 1.0, 0, -0.0, 2**62, float(2**62), 0.5, 0.5]
+
+    assert _deduplicate_list(items) == [1, 0, 2**62, 0.5]
+
+
+def test_equal_sets_are_duplicates_whatever_their_order():
+    # {8, 16} and {16, 8} share a hash slot, so they iterate in different orders.
+    assert _deduplicate_list([{8, 16}, {16, 8}]) == [{8, 16}]
+
+
+def test_numbers_too_long_for_repr_are_deduplicated():
+    big = 10**5000
+
+    assert _deduplicate_list([big, big, -big]) == [big, -big]
 
 
 class TestFilterNoneValues:
