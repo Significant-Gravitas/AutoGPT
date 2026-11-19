@@ -374,5 +374,5 @@ class WorkflowSkipPolicyTests(unittest.TestCase):
         self.assertIsNone(triggers["merge_group"])
         self.assertEqual(
             router["jobs"]["backend"]["uses"],
-            "./.github/workflows/platform-backend-ci.yml",
+            "$/.github/workflows/platform-backend-ci.yml",
         )
