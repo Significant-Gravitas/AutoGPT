@@ -12,6 +12,8 @@ import type { IconSvgElement } from "@hugeicons/react-native";
 
 export const OTHER_ROLE = "Other";
 export const OTHER_ROLE_MAX_LENGTH = 100;
+/** The backend's limit on a typed brain dump. */
+export const MAX_TYPED_CHARS = 20_000;
 const USER_NAME_MAX_LENGTH = 100;
 
 // The web's role ids (onboarding RoleStep): the backend stores them as sent.
@@ -33,6 +35,10 @@ export type OnboardingStepKey = "role" | "work" | "setup" | "plan";
 export function canContinueRole(role: string, otherRole: string) {
   if (!role) return false;
   return role !== OTHER_ROLE || otherRole.trim().length > 0;
+}
+
+export function canSendTyped(text: string) {
+  return text.trim().length > 0 && text.length <= MAX_TYPED_CHARS;
 }
 
 /** The role sent to the backend: the pick, or what was written for Other. */

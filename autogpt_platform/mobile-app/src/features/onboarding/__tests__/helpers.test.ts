@@ -1,4 +1,10 @@
-import { ROLES, canContinueRole, displayName, resolveRole } from "../helpers";
+import {
+  ROLES,
+  canContinueRole,
+  canSendTyped,
+  displayName,
+  resolveRole,
+} from "../helpers";
 
 describe("ROLES", () => {
   it("sends the same ids the web sends", () => {
@@ -41,5 +47,18 @@ describe("displayName", () => {
       "Ada",
     );
     expect(displayName({ name: "", email: "ada@northwind.co" })).toBe("ada");
+  });
+});
+
+describe("canSendTyped", () => {
+  it("needs words", () => {
+    expect(canSendTyped("")).toBe(false);
+    expect(canSendTyped("   \n")).toBe(false);
+    expect(canSendTyped("I chase invoices every Monday.")).toBe(true);
+  });
+
+  it("stops at the backend's limit", () => {
+    expect(canSendTyped("a".repeat(20_000))).toBe(true);
+    expect(canSendTyped("a".repeat(20_001))).toBe(false);
   });
 });

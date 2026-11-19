@@ -89,7 +89,7 @@ const useStyles = createStyles((colors) => ({
     flex: 1,
     flexDirection: "row",
     justifyContent: "center",
-    gap: 6,
+    gap: spacing.xs,
   },
   bar: {
     width: 28,

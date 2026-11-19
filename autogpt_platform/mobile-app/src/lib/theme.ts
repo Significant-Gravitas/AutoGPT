@@ -69,6 +69,7 @@ export const radius = { sm: 8, md: 12, lg: 18, pill: 999 } as const;
 
 export const type = {
   title: { fontSize: 28, fontWeight: "600", lineHeight: 34 },
+  display: { fontSize: 44, fontWeight: "600", lineHeight: 50 },
   headline: { fontSize: 22, fontWeight: "600", lineHeight: 28 },
   heading: { fontSize: 18, fontWeight: "600", lineHeight: 24 },
   body: { fontSize: 16, fontWeight: "400", lineHeight: 23 },
