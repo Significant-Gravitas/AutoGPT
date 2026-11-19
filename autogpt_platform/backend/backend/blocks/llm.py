@@ -98,6 +98,9 @@ def strip_prompt_value_keys(values: dict[str, str]) -> dict[str, str]:
     return stripped
 
 
+# A run makes at most this many attempts, whatever its Retry Count says.
+MAX_LLM_RETRIES = 10
+
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
 
@@ -747,7 +750,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         llm_model = input_data.model
         total_provider_cost: float | None = None
 
-        for retry_count in range(input_data.retry):
+        for retry_count in range(min(input_data.retry, MAX_LLM_RETRIES)):
             logger.debug(f"LLM request: {prompt}")
             try:
                 llm_response = await self.llm_call(
