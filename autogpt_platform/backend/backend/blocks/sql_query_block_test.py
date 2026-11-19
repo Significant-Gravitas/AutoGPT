@@ -1,9 +1,12 @@
 """Tests for SQLQueryBlock: single-statement validation, URL validation,
 error sanitization, SSRF protection, and read/write mode behavior."""
 
+import io
+import json
 import os
 import socket
-from datetime import date, datetime, time
+import sys
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,6 +26,7 @@ from backend.blocks.sql_query_helpers import (
     _configure_session,
     _execute_query,
     _execute_query_in_worker,
+    _read_worker_answer,
     _run_in_transaction,
     _sanitize_error,
     _serialize_value,
@@ -1929,3 +1933,94 @@ class TestExecuteQueryInWorker:
             )
             with pytest.raises(TimeoutError):
                 _execute_query_in_worker(url, "SELECT 1", timeout=1, max_rows=1)
+
+
+class TestWorkerAnswer:
+    """The worker's side of the exchange, run in this process, read back by the
+    caller's side. Reaches the branches a PostgreSQL test database can't."""
+
+    @pytest.mark.parametrize(
+        "outcome, expected",
+        [
+            (
+                (
+                    [
+                        {
+                            "d": timedelta(seconds=90),
+                            "a": [Decimal("2"), date(2024, 6, 15)],
+                        }
+                    ],
+                    ["d", "a"],
+                    -1,
+                    False,
+                ),
+                ([{"d": 90.0, "a": [2, "2024-06-15"]}], ["d", "a"], -1, False),
+            ),
+            (([{"s": "x" * 2_000}], ["s"], -1, False), "too large"),
+            (MemoryError(), "too large"),
+        ],
+        ids=["converted_values", "answer_over_limit", "out_of_memory"],
+    )
+    def test_answer(self, monkeypatch, outcome: Any, expected: Any):
+        raw = _serve(monkeypatch, outcome)
+        if isinstance(expected, str):
+            with pytest.raises(QueryWorkerError, match=expected):
+                _read_worker_answer(raw)
+        else:
+            assert _read_worker_answer(raw) == expected
+
+    @pytest.mark.parametrize(
+        "error, raised, text",
+        [
+            (
+                OperationalError("SELECT 1", None, Exception("server closed")),
+                OperationalError,
+                "server closed",
+            ),
+            (
+                ModuleNotFoundError("No module named 'pymssql'"),
+                ModuleNotFoundError,
+                "pymssql",
+            ),
+            (ValueError("bad value"), RuntimeError, "ValueError: bad value"),
+        ],
+        ids=["driver_error", "missing_driver", "other_error"],
+    )
+    def test_error_raised_by_the_caller(
+        self, monkeypatch, error: Exception, raised: type[Exception], text: str
+    ):
+        raw = _serve(monkeypatch, error)
+        with pytest.raises(raised) as caught:
+            _read_worker_answer(raw)
+        assert text in str(caught.value)
+        if raised is OperationalError:
+            assert str(caught.value) == str(error)
+
+
+def _serve(monkeypatch: pytest.MonkeyPatch, outcome: Any) -> bytes:
+    """Run the worker's entry point here, with ``_execute_query`` giving ``outcome``."""
+
+    def execute_query(**_kwargs: Any) -> Any:
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    request = {
+        "url": {"drivername": "postgresql", "host": "db.example.com"},
+        "query": "SELECT 1",
+        "timeout": 1,
+        "max_rows": 1,
+        "read_only": True,
+        "database_type": "postgres",
+        "memory_limit": 2**20,
+        "max_result_bytes": 1_000,
+    }
+    stdout = io.StringIO()
+    monkeypatch.setattr(sql_query_helpers, "_limit_memory", lambda _limit: None)
+    monkeypatch.setattr(sql_query_helpers, "_execute_query", execute_query)
+    monkeypatch.setattr(
+        sys, "stdin", io.TextIOWrapper(io.BytesIO(json.dumps(request).encode()))
+    )
+    monkeypatch.setattr(sys, "stdout", stdout)
+    sql_query_helpers._serve_query()
+    return stdout.getvalue().encode()
