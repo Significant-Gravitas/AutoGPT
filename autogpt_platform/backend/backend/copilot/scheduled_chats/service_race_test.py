@@ -1,10 +1,12 @@
 """Exercise scheduled-chat pause and resume races at the storage boundaries."""
 
 import asyncio
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fakeredis import FakeAsyncRedis
 from prisma.models import ExpertRoutine, ScheduledChatStreak
 from pytest_mock import MockerFixture
 
@@ -24,20 +26,47 @@ from backend.copilot.scheduled_chats.service_fixtures import (
 from backend.copilot.scheduled_chats.service_fixtures import (
     scheduler_fixture as scheduler_fixture,
 )
+from backend.copilot.scheduled_chats.service_fixtures import (
+    watch_scheduler_lock_fixture as watch_scheduler_lock_fixture,
+)
+
+
+class _PausedJobLost(AssertionError):
+    """The expired writer overwrote its successor's pause."""
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "lease_expires",
+    [
+        pytest.param(False, id="lease-held"),
+        pytest.param(
+            True,
+            id="lease-expired",
+            marks=pytest.mark.xfail(
+                strict=True,
+                raises=_PausedJobLost,
+                reason="An expired writer can replace the successor's pause record",
+            ),
+        ),
+    ],
+)
 async def test_concurrent_failures_resume_every_job_they_paused(
-    scheduler: MagicMock, mocker: MockerFixture
+    scheduler: MagicMock,
+    mocker: MockerFixture,
+    watch_scheduler_lock: Callable[[str, str], asyncio.Event],
+    lease_expires: bool,
 ):
     """Resume restores both fire times and leaves an owner-paused job alone."""
     watchdog_seconds = 30
-    # The outer watchdog bounds the race. Lock expiry is tested separately.
-    mocker.patch.object(
-        scheduler_write_lock, "_LOCK_WAIT_SECONDS", 2 * watchdog_seconds
-    )
-    redis = FakeAtResetRedis()
-    mocker.patch.object(scheduler_write_lock, "get_redis_async", return_value=redis)
+    lock_key = "copilot:scheduled_chat_lock:5:owner:routine-1"
+    contention = watch_scheduler_lock("owner", "routine-1")
+    if lease_expires:
+        # Simulate a missed renewal. Redis expires the key while the first
+        # writer's scheduler call is still in flight.
+        mocker.patch.object(
+            scheduler_write_lock, "_LOCK_RENEW_EVERY_SECONDS", 2 * watchdog_seconds
+        )
     active = {"job-a", "job-b"}
     first_paused_a = asyncio.Event()
     finish_first_pause = asyncio.Event()
@@ -123,15 +152,28 @@ async def test_concurrent_failures_resume_every_job_they_paused(
             routine_id="routine-1",
         )
 
-    async with asyncio.timeout(watchdog_seconds), asyncio.TaskGroup() as tasks:
-        tasks.create_task(record_scheduled_run(routine_run("job-a")))
-        await first_paused_a.wait()
-        tasks.create_task(record_scheduled_run(routine_run("job-b")))
-        await redis.lock_contended.wait()
-        rows.find_unique.assert_awaited_once()
-        finish_first_pause.set()
+    async with FakeAsyncRedis() as redis:
+        mocker.patch.object(scheduler_write_lock, "get_redis_async", return_value=redis)
+        async with asyncio.timeout(watchdog_seconds), asyncio.TaskGroup() as tasks:
+            first = tasks.create_task(record_scheduled_run(routine_run("job-a")))
+            await first_paused_a.wait()
+            if lease_expires:
+                assert await redis.pexpire(lock_key, 0)
+                assert not await redis.exists(lock_key)
+                await record_scheduled_run(routine_run("job-b"))
+                assert not first.done()
+                assert row is not None and row.scheduleIds == ["job-b"]
+            else:
+                tasks.create_task(record_scheduled_run(routine_run("job-b")))
+                await contention.wait()
+                rows.find_unique.assert_awaited_once()
+            finish_first_pause.set()
 
-    assert await resume_scheduled_chat("owner", "routine-1") is True
+        assert await resume_scheduled_chat("owner", "routine-1") is True
+        assert row is None
+
+    if lease_expires and active == {"job-a"}:
+        raise _PausedJobLost("Resume left job-b paused after the first writer expired")
     assert active == {"job-a", "job-b"}
 
 
