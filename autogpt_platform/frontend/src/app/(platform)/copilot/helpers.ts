@@ -33,10 +33,10 @@ export const COPILOT_COMPLETION_NOTIFICATION = {
  * impersonation works consistently across the entire copilot feature.
  */
 export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
-  const { token, error } = await getWebSocketToken();
+  const { token, error, retryable } = await getWebSocketToken();
   if (error || !token) {
     console.warn("[Copilot] Failed to get auth token:", error);
-    throw new CopilotAuthError();
+    throw new CopilotAuthError(retryable === true);
   }
   return {
     Authorization: `Bearer ${token}`,
@@ -45,9 +45,12 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   };
 }
 
-/** The server answered and has no session token: signed out, not offline. */
+/**
+ * The server answered and has no session token: signed out, not offline.
+ * `retryable` means the token service failed, and a later lookup may work.
+ */
 export class CopilotAuthError extends Error {
-  constructor() {
+  constructor(readonly retryable = false) {
     super("Authentication failed — please sign in again.");
     this.name = "CopilotAuthError";
   }

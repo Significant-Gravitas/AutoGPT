@@ -17,7 +17,7 @@ import { createUsageCapturingFetch } from "../tokenDevtool/usageTap";
 import { fetchSse, type SseFrame } from "./sseClient";
 import { TextReveal } from "./textReveal";
 import { applyEntry, type StreamEntry, type WireChunk } from "./turnConverter";
-import { appendErrorMarker, seedTurnLog, type PersistedRow } from "./turnLog";
+import { appendErrorMarker, seedTurnLog } from "./turnLog";
 import { diffRows, formatDiffs, sha256Hex } from "./turnShadow";
 import {
   checkpointOf,
@@ -291,7 +291,9 @@ export class TurnRuntime {
     this.stopped = false;
     this.suppressAttach = false;
     this.queueDeclined = false;
+    // A new send clears the last one's error, and with it one still to come.
     this.error = null;
+    this.sendBehindTurn = null;
     this.providerFailure = null;
     const message = userMessage(`local:${uuidv4({})}`, input);
     const body = streamRequestBody(this.sessionId, message, model);
@@ -314,6 +316,8 @@ export class TurnRuntime {
     this.stopped = true;
     this.suppressAttach = true;
     this.queueDeclined = true;
+    // As a stop ends a lost send's recovery, it drops one waiting on a turn.
+    this.sendBehindTurn = null;
     this.endQueueWatch();
     this.notice = null;
     this.reveal.clear();
@@ -380,8 +384,7 @@ export class TurnRuntime {
     }
     if (!running && !this.isPostPending() && !active) {
       this.settleTail(view);
-      // Not while a probe still looks for the turn that follows.
-      if (this.probes === 0) this.decideSendBehindTurn();
+      this.decideSendBehindTurn();
     }
     this.followQueue(view);
     this.emitNow();
@@ -539,13 +542,14 @@ export class TurnRuntime {
     }
   }
 
-  // A session read fails alike signed out and offline; the token tells them apart.
+  // A session read fails alike signed out and offline; only a token lookup
+  // the service answered, with no session, says the user is signed out.
   private async signedOut() {
     try {
       await this.authHeaders(null);
       return false;
     } catch (error) {
-      return error instanceof CopilotAuthError;
+      return error instanceof CopilotAuthError && !error.retryable;
     }
   }
 
@@ -836,9 +840,10 @@ export class TurnRuntime {
       }
       const attaching = this.wouldAttach(view);
       this.observe(view);
-      if (attaching) {
-        // Another's turn may hold the send queued until it ends.
-        if (this.sendInDoubt(lost, end)) this.sendBehindTurn = { lost, end };
+      // Another's running turn may hold the send queued until it ends.
+      const behind = !!this.runningTurn() && this.sendInDoubt(lost, end);
+      if (behind) this.sendBehindTurn = { lost, end };
+      if (attaching || behind) {
         this.resetFailures();
         return;
       }
@@ -899,7 +904,7 @@ export class TurnRuntime {
   ) {
     const rows = persistedRows(view.messages);
     // A prompt the session has no row for is not this turn's.
-    const unwritten = this.takeUnwrittenPrompts(rows);
+    const unwritten = this.takeUnwrittenPrompts(view);
     const checkpoint = active.checkpoint ?? null;
     const start = checkpoint
       ? checkpoint.sequence
@@ -1204,7 +1209,7 @@ export class TurnRuntime {
   // the tail's end are shown as persisted, above any prompt still without one.
   private settleTail(view: SessionView) {
     const rows = persistedRows(view.messages);
-    const unwritten = this.takeUnwrittenPrompts(rows);
+    const unwritten = this.takeUnwrittenPrompts(view);
     const last = this.segments[this.segments.length - 1];
     let placed = true;
     if (
@@ -1235,16 +1240,24 @@ export class TurnRuntime {
    * never arrived, or has not been written yet. They leave the tail while
    * the rows the session wrote meanwhile are placed, then go back after them.
    */
-  private takeUnwrittenPrompts(rows: readonly PersistedRow[]) {
+  private takeUnwrittenPrompts(view: SessionView) {
+    const rows = persistedRows(view.messages);
+    // A window that starts past a prompt's place can't show it has no row.
+    const windowStart =
+      view.has_more_messages === false
+        ? -Infinity
+        : (rows[0]?.sequence ?? Infinity);
     const taken: UserSegment[] = [];
     for (;;) {
-      const last = this.segments[this.segments.length - 1];
+      const index = this.segments.length - 1;
+      const last = this.segments[index];
       if (
         last?.kind !== "user" ||
         last.origin !== "sent" ||
         last.sequence !== null ||
         !last.persistedId ||
-        locatePrompt(last, rows, null)
+        locatePrompt(last, rows, null) ||
+        windowStart > promptFloor(this.segments, index, this.ownedFrom)
       )
         break;
       taken.unshift(last);

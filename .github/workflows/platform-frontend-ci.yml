@@ -14,6 +14,8 @@ on:
       - "autogpt_platform/frontend/**"
       # The Better Auth tables are Prisma's; auth-schema.test.ts checks them.
       - "autogpt_platform/backend/schema.prisma"
+      # The chat's prompt-row ids; turnTail.test.ts checks them.
+      - "autogpt_platform/backend/backend/copilot/expert_kickoff.py"
       - "autogpt_platform/backend/Dockerfile"
       - "autogpt_platform/docker-compose.yml"
       - "autogpt_platform/docker-compose.platform.yml"
@@ -29,6 +31,8 @@ on:
       - "autogpt_platform/frontend/**"
       # The Better Auth tables are Prisma's; auth-schema.test.ts checks them.
       - "autogpt_platform/backend/schema.prisma"
+      # The chat's prompt-row ids; turnTail.test.ts checks them.
+      - "autogpt_platform/backend/backend/copilot/expert_kickoff.py"
       - "autogpt_platform/backend/Dockerfile"
       - "autogpt_platform/docker-compose.yml"
       - "autogpt_platform/docker-compose.platform.yml"

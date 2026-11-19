@@ -13,6 +13,7 @@ const CASES = new Set<string>();
 
 const P1 = "What does example.com say?";
 const P2 = "And what about example.org?";
+const P3 = "Then compare the two.";
 const ANSWER = "assistant: Let me fetch that page.It says Example Domain.";
 const FIRST_BLOCK = "assistant: Let me fetch that page.";
 const SIGN_IN_AGAIN = "Authentication failed — please sign in again.";
@@ -23,10 +24,14 @@ const KICKOFF = {
   expertId: "3f2b8c1e-7d4a-4e9b-8c2f-1a6d5e9b0c47",
 };
 
-const auth = vi.hoisted(() => ({ signedIn: true }));
+const auth = vi.hoisted(() => ({ signedIn: true, tokenDown: false }));
 vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: async () =>
-    auth.signedIn ? { token: "token" } : { token: null, error: "No session" },
+    auth.tokenDown
+      ? { token: null, error: "Token service unavailable", retryable: true }
+      : auth.signedIn
+        ? { token: "token" }
+        : { token: null, error: "No session" },
 }));
 
 let server: FaultServer;
@@ -37,6 +42,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   setVisibility("visible");
   auth.signedIn = true;
+  auth.tokenDown = false;
   server = new FaultServer();
   tab = openTab();
 });
@@ -436,6 +442,23 @@ describe("a send", () => {
   );
 
   cell(
+    "S18b",
+    "lost while the token service is down keeps trying, and is reported once it is back",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.viewsDown = true;
+      tab.send(P1);
+      await advance(0);
+      auth.tokenDown = true;
+      await advance(20_000);
+      auth.tokenDown = false;
+      server.viewsDown = false;
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch", notice: null });
+    },
+  );
+
+  cell(
     "S19",
     "whose request hangs without reaching the server is reported once it is given up",
     async () => {
@@ -462,6 +485,25 @@ describe("a send", () => {
       setVisibility("visible");
       await advance(15_000);
       expectScreen({ error: UNCONFIRMED, notice: null, phase: "failed" });
+    },
+  );
+
+  cell(
+    "S21",
+    "lost while hidden, its prompt past the session's window on return, stays above its turn",
+    async () => {
+      server.postMode = "lost-after-receive";
+      server.window = 2;
+      setVisibility("hidden");
+      tab.send(P1);
+      await advance(60_000);
+      server.publish(19);
+      setVisibility("visible");
+      await advance(2_000);
+      expectScreen({ error: null });
+      const chat = tab.screen().chat;
+      expect(chat[0]).toBe(`user: ${P1}`);
+      expect(chat.filter((line) => line === `user: ${P1}`)).toHaveLength(1);
     },
   );
 
@@ -674,6 +716,68 @@ describe("two tabs on one chat", () => {
   );
 
   cell(
+    "M3q",
+    "a stale tab's send that never reached the server is reported once the other tab's turn ends, though the page re-reads nothing",
+    async () => {
+      const stale = openTab(0, false);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(3_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: "Failed to fetch" }, stale);
+    },
+  );
+
+  cell(
+    "M3n",
+    "a stale tab's lost send puts no error on the turn of the message sent after it",
+    async () => {
+      const stale = openTab();
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(3_000);
+      server.postMode = "stream";
+      stale.send(P3);
+      await advance(3_000);
+      server.publish();
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null }, stale);
+    },
+  );
+
+  cell(
+    "M3s",
+    "a stale tab's lost send is let go when the user stops the turn it waits on",
+    async () => {
+      const stale = openTab();
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(3_000);
+      stale.runtime.stop();
+      server.publish();
+      await advance(1_000);
+      stale.runtime.observe(server.view());
+      await advance(30_000);
+      expectScreen({ error: null }, stale);
+    },
+  );
+
+  cell(
     "M4",
     "a stale tab's send that never reached the server doesn't take the other tab's prompt that starts with its words",
     async () => {
@@ -708,6 +812,35 @@ describe("two tabs on one chat", () => {
       server.postMode = "lost-after-receive";
       stale.send(P2);
       // Longer than the send's own checks: only the turn's end can settle it.
+      await advance(10_000);
+      expectScreen({ error: null }, stale);
+      server.publish();
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen(
+        {
+          error: null,
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+        },
+        stale,
+      );
+    },
+  );
+
+  cell(
+    "M5p",
+    "a stale tab's queued send gets no error when the page attaches the other tab's turn before the send's own check",
+    async () => {
+      const stale = openTab(300);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-after-receive";
+      stale.send(P2);
+      await advance(0);
+      stale.runtime.observe(server.view());
       await advance(10_000);
       expectScreen({ error: null }, stale);
       server.publish();
@@ -794,8 +927,8 @@ function expectScreen(should: Partial<Screen>, on: Tab = tab) {
   expect(seen).toEqual(should);
 }
 
-function openTab(viewLatencyMs = 0) {
-  const opened = new Tab(server, viewLatencyMs);
+function openTab(viewLatencyMs = 0, echoes = true) {
+  const opened = new Tab(server, viewLatencyMs, echoes);
   tabs.push(opened);
   return opened;
 }

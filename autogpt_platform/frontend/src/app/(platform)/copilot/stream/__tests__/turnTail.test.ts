@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import path from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { v5 as uuidv5 } from "uuid";
 import { describe, expect, it } from "vitest";
 
@@ -17,11 +18,11 @@ import {
 
 describe("persistedPromptId", () => {
   it("is the id the backend's scoped_client_message_id gives a send's row", () => {
-    // Frontend CI runs in every merge group, so a backend change here fails it there.
+    // Pins the id scheme to backend/copilot/expert_kickoff.py's scoped_client_message_id.
     const source = readFileSync(
-      path.resolve(
-        process.cwd(),
-        "../backend/backend/copilot/expert_kickoff.py",
+      resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        "../../../../../../../backend/backend/copilot/expert_kickoff.py",
       ),
       "utf8",
     );

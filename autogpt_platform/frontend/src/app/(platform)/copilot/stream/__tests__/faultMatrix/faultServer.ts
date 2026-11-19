@@ -1,13 +1,10 @@
-import { v5 as uuidv5 } from "uuid";
-
 import { compareEntryIds } from "../../turnConverter";
 import type { PersistedRow } from "../../turnLog";
 import type { SessionView } from "../../turnRuntime";
+import { persistedPromptId } from "../../turnTail";
 import { loadRecordedTurn } from "../recordedTurns";
 
 export const USER_ID = "user-1";
-// `_CLIENT_MESSAGE_NAMESPACE` in backend/copilot/expert_kickoff.py.
-const CLIENT_MESSAGE_NAMESPACE = "d70473da-722b-55cb-963f-4729e64d7b06";
 const FIXTURE = loadRecordedTurn("baseline-tool-turn");
 const HEARTBEAT_MS = 10_000;
 const LISTENER_READ_MS = 5_000;
@@ -77,6 +74,8 @@ export class FaultServer {
   viewsDown = false;
   /** The user is at the running cap: the next send is queued. */
   queueing = false;
+  /** The session GET's window: only the latest this-many rows. */
+  window: number | null = null;
   viewReads = 0;
   private pending: { text: string; id: string }[] = [];
   private pumps = new Set<() => void>();
@@ -96,10 +95,12 @@ export class FaultServer {
       throw new TypeError("Failed to fetch");
     }
     const turn = this.current();
+    const rows =
+      this.window === null ? this.history : this.history.slice(-this.window);
     return {
       user_id: USER_ID,
-      messages: this.history.map((row) => ({ ...row })),
-      has_more_messages: false,
+      messages: rows.map((row) => ({ ...row })),
+      has_more_messages: rows.length < this.history.length,
       active_stream:
         turn?.state === "running"
           ? { turn_id: turn.id, checkpoint: this.checkpoint(turn) }
@@ -161,13 +162,19 @@ export class FaultServer {
     this.history.push(...turn.rows.slice(before, persistedRows(turn)));
     if (turn.published === turn.frames.length) {
       turn.state = "ended";
+      // `persist_pending_as_user_rows`: each queued send its own row, then the turn.
       const drained = this.pending.splice(0);
-      if (drained.length)
-        this.startTurn(
-          drained.map((p) => p.text).join("\n"),
-          "running",
-          drained[0].id,
-        );
+      const last = drained.pop();
+      for (const queued of drained) {
+        const sequence = this.history.length;
+        this.history.push({
+          ...FIXTURE.rows[0],
+          id: queued.id,
+          content: queued.text,
+          sequence,
+        });
+      }
+      if (last) this.startTurn(last.text, "running", last.id);
     }
     this.pumps.forEach((pump) => pump());
   }
@@ -343,8 +350,8 @@ export class FaultServer {
 // `scoped_client_message_id`: the backend keys a send's row on its user,
 // session and client `message_id`.
 function scopedMessageId(url: URL, clientId: string) {
-  const session = url.pathname.split("/").at(-2);
-  return uuidv5(`${USER_ID}:${session}:${clientId}`, CLIENT_MESSAGE_NAMESPACE);
+  const session = url.pathname.split("/").at(-2) ?? "";
+  return persistedPromptId(USER_ID, session, clientId);
 }
 
 function hangUntilAborted(signal: AbortSignal | null | undefined) {
