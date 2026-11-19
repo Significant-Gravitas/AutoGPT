@@ -52,7 +52,7 @@ from redis.asyncio import Redis
 
 from . import recall_forget, scope_lock
 from .client import _build_graphiti
-from .config import graphiti_config
+from .config import _get_config, graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
 from .recall_fake_redis import FakeRedis
 from .scope import MemoryScope
@@ -218,8 +218,9 @@ def placeholder_llm_key(monkeypatch: pytest.MonkeyPatch) -> None:
     A community rebuild or a warm-context refresh builds that client before
     any graph work, and openai 2.x refuses an empty key as it does. These
     tests never reach the LLM; a deployment always resolves a key
-    (``GraphitiConfig.resolve_llm_api_key``)."""
-    monkeypatch.setattr(graphiti_config, "llm_api_key", "test-llm-key")
+    (``GraphitiConfig.resolve_llm_api_key``). Set on the config itself:
+    ``graphiti_config`` is a proxy whose methods read the real instance."""
+    monkeypatch.setattr(_get_config(), "llm_api_key", "test-llm-key")
 
 
 def _new_test_group_id() -> str:

@@ -85,7 +85,9 @@ async def _sent_messages(
         ):
             pass
 
-    await asyncio.wait_for(consume(), timeout=5)
+    # A hang guard, not a time budget: the first turn in a process pays
+    # one-time setup, about 1 s on Python 3.13 and over 5 s on 3.14.
+    await asyncio.wait_for(consume(), timeout=60)
 
     assert provider.await_args is not None
     return provider.await_args.kwargs["messages"]
