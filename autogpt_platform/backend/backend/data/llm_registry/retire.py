@@ -5,6 +5,12 @@ operator flips the model's ``enabled: False`` in a catalog PR separately;
 this module rewrites existing workflow references and records the operation
 in ``LlmModelMigration`` (per-install runtime state) so it can be reverted.
 
+Only nodes of blocks whose ``model`` input is an ``LLMModel`` are rewritten.
+Other blocks name an input ``model`` too, with lists of their own (Stagehand
+offers a few Claude and GPT models, Codex its own GPT models), and a catalog
+replacement can be a value their schema refuses. Those nodes are counted and
+left alone.
+
 CLI::
 
     python -m backend.data.llm_registry.retire --usage <slug>
@@ -34,6 +40,7 @@ from pydantic import BaseModel
 
 import backend.data.db
 from backend.data.db import get_database_schema, query_raw_with_schema, transaction
+from backend.data.graph import find_llm_model_fields
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.registry import get_model, load_catalog
 
@@ -92,20 +99,52 @@ def _validate_replacement(slug: str) -> None:
         )
 
 
+def _llm_model_block_ids_json() -> str:
+    """JSON array of the blocks whose ``model`` input is an ``LLMModel``."""
+    return json.dumps(
+        sorted(
+            block_id
+            for block_id, field_name in find_llm_model_fields().items()
+            if field_name == "model"
+        )
+    )
+
+
 async def count_model_usage(slug: str) -> int:
-    """How many AgentNodes currently reference *slug*."""
+    """How many AgentNodes of LLM-model blocks reference *slug*: the nodes a
+    retirement of *slug* rewrites."""
     result = await query_raw_with_schema(
         """
         SELECT COUNT(*) as count
         FROM {schema_prefix}"AgentNode"
         WHERE "constantInput"::jsonb->>'model' = $1
+        AND "agentBlockId" IN (SELECT jsonb_array_elements_text($2::jsonb))
         """,
         slug,
+        _llm_model_block_ids_json(),
     )
     return int(result[0]["count"]) if result else 0
 
 
-async def _migrate_nodes_in_tx(tx, source_value: str, target_value: str) -> list[str]:
+async def count_other_block_usage(slug: str) -> int:
+    """How many AgentNodes of other blocks name *slug* in their own ``model``
+    input. A retirement leaves these alone."""
+    result = await query_raw_with_schema(
+        """
+        SELECT COUNT(*) as count
+        FROM {schema_prefix}"AgentNode"
+        WHERE "constantInput"::jsonb->>'model' = $1
+        AND "agentBlockId" NOT IN (SELECT jsonb_array_elements_text($2::jsonb))
+        """,
+        slug,
+        _llm_model_block_ids_json(),
+    )
+    return int(result[0]["count"]) if result else 0
+
+
+async def _migrate_nodes_in_tx(
+    tx, source_value: str, target_value: str, llm_block_ids_json: str
+) -> list[str]:
     """Lock + rewrite AgentNode model references. Returns migrated node ids."""
     node_ids_result = await tx.query_raw(
         _schema_format(
@@ -113,10 +152,12 @@ async def _migrate_nodes_in_tx(tx, source_value: str, target_value: str) -> list
             SELECT id
             FROM {schema_prefix}"AgentNode"
             WHERE "constantInput"::jsonb->>'model' = $1
+            AND "agentBlockId" IN (SELECT jsonb_array_elements_text($2::jsonb))
             FOR UPDATE
             """
         ),
         source_value,
+        llm_block_ids_json,
     )
     migrated_node_ids = [row["id"] for row in node_ids_result or []]
     if migrated_node_ids:
@@ -161,9 +202,13 @@ async def retire_model(
             slug,
         )
 
+    # Built before the transaction opens: it instantiates every block.
+    llm_block_ids_json = _llm_model_block_ids_json()
     try:
         async with transaction() as tx:
-            migrated_node_ids = await _migrate_nodes_in_tx(tx, slug, replacement_slug)
+            migrated_node_ids = await _migrate_nodes_in_tx(
+                tx, slug, replacement_slug, llm_block_ids_json
+            )
             migration_id: str | None = None
             if migrated_node_ids:
                 record = await tx.llmmodelmigration.create(
@@ -329,6 +374,7 @@ async def _run_cli(args: argparse.Namespace) -> int:
 
     if args.usage:
         print(f"{args.usage}: {await count_model_usage(args.usage)} node(s)")
+        await _print_other_block_usage(args.usage)
         return 0
     if args.revert:
         result = await revert_model_migration(args.revert)
@@ -364,14 +410,25 @@ async def _run_cli(args: argparse.Namespace) -> int:
             f"DRY RUN: would migrate {usage} node(s) from '{args.slug}' to "
             f"'{args.replacement}'. Re-run with --yes to execute."
         )
+        await _print_other_block_usage(args.slug)
         return 1
     result = await retire_model(args.slug, args.replacement, reason=args.reason)
     print(result.model_dump_json(indent=2))
+    await _print_other_block_usage(args.slug)
     print(
         "Reminder: retirement only rewrites graph nodes — flip "
         f"'{args.slug}' to enabled=False in a catalog PR to stop new use."
     )
     return 0
+
+
+async def _print_other_block_usage(slug: str) -> None:
+    other = await count_other_block_usage(slug)
+    if other:
+        print(
+            f"{other} node(s) of other blocks also name '{slug}' in their own "
+            "model list and are left alone."
+        )
 
 
 if __name__ == "__main__":

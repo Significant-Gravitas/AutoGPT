@@ -15,9 +15,14 @@ import pytest
 from prisma.errors import UniqueViolationError
 
 import backend.data.llm_registry.registry as reg
+from backend.blocks.llm import AITextGeneratorBlock
+from backend.blocks.stagehand.blocks import StagehandObserveBlock
+from backend.data.graph import migrate_llm_models
+from backend.data.llm_registry.llm_models import DEFAULT_LLM_MODEL
 from backend.data.llm_registry.registry import get_all_models, load_catalog
 from backend.data.llm_registry.retire import (
     count_model_usage,
+    count_other_block_usage,
     list_model_migrations,
     retire_model,
     revert_model_migration,
@@ -54,9 +59,18 @@ async def retirement_env(server):
         await prisma.models.AgentGraph.prisma().delete_many(where={"id": graph_id})
 
 
-async def _seed_node(created_graph_ids: list[str], model_value: str) -> str:
-    """Create a graph + one node whose constantInput uses *model_value*."""
-    block = await prisma.models.AgentBlock.prisma().find_first()
+_LLM_BLOCK_ID = AITextGeneratorBlock().id
+_STAGEHAND_BLOCK_ID = StagehandObserveBlock().id
+
+
+async def _seed_node(
+    created_graph_ids: list[str],
+    model_value: str,
+    block_id: str = _LLM_BLOCK_ID,
+) -> str:
+    """Create a graph + one node of *block_id* whose constantInput uses
+    *model_value*. Defaults to an LLM block, the kind retirement rewrites."""
+    block = await prisma.models.AgentBlock.prisma().find_unique(where={"id": block_id})
     assert block is not None, "blocks must be initialized by the server fixture"
     graph_id = str(uuid.uuid4())
     await prisma.models.AgentGraph.prisma().create(
@@ -208,6 +222,69 @@ async def test_prefixed_model_nodes_are_found_and_rewritten(retirement_env):
     revert = await revert_model_migration(result.migration_id)
     assert revert.nodes_reverted == 1
     assert await _node_model(node_id) == source
+
+
+async def test_retire_leaves_other_blocks_model_inputs_alone(
+    retirement_env, mocker, capsys
+):
+    """Stagehand lists Claude Sonnet 4.6 but not 5.5. Retiring Sonnet 4.5 onto
+    5.5 moves the LLM block's node and must leave the Stagehand node's value,
+    which 5.5 would make invalid, as it is. The dry run says so."""
+    from backend.data.llm_registry.retire import _build_parser, _run_cli
+
+    source, replacement = "claude-sonnet-4-5-20250929", "claude-sonnet-5-5"
+    llm_node = await _seed_node(retirement_env, source)
+    stagehand_node = await _seed_node(
+        retirement_env, source, block_id=_STAGEHAND_BLOCK_ID
+    )
+
+    assert await count_model_usage(source) == 1
+    assert await count_other_block_usage(source) == 1
+    mocker.patch("backend.data.db.connect", new=AsyncMock())
+    args = _build_parser().parse_args([source, "--replacement", replacement])
+    assert await _run_cli(args) == 1
+    dry_run = capsys.readouterr().out
+    assert "would migrate 1 node(s)" in dry_run
+    assert "1 node(s) of other blocks also name" in dry_run
+
+    result = await retire_model(source, replacement)
+
+    assert result.nodes_migrated == 1
+    assert await _node_model(llm_node) == replacement
+    assert await _node_model(stagehand_node) == source
+
+
+async def test_boot_pass_moves_shut_down_models_once_and_nothing_else(
+    retirement_env,
+):
+    """The next boot moves an LLM node off a model its provider has shut down,
+    in either stored spelling and from o1-mini's old target. It leaves a model
+    still being served (the retire CLI moves those), a live model and another
+    block's value alone, and a second boot changes nothing."""
+    nodes = {
+        "o3-mini": await _seed_node(retirement_env, "o3-mini"),
+        "openai/o3-mini": await _seed_node(retirement_env, "openai/o3-mini"),
+        "o1-mini": await _seed_node(retirement_env, "o1-mini"),
+        "still served": await _seed_node(retirement_env, "gpt-5-2025-08-07"),
+        "live": await _seed_node(retirement_env, "gpt-6.1-sol"),
+        "stagehand": await _seed_node(
+            retirement_env, "claude-sonnet-4-5-20250929", _STAGEHAND_BLOCK_ID
+        ),
+    }
+    expected = {
+        "o3-mini": "gpt-5.6-sol",
+        "openai/o3-mini": "gpt-5.6-sol",
+        "o1-mini": "gpt-5.6-terra",
+        "still served": "gpt-5-2025-08-07",
+        "live": "gpt-6.1-sol",
+        "stagehand": "claude-sonnet-4-5-20250929",
+    }
+
+    for _ in range(2):
+        await migrate_llm_models(DEFAULT_LLM_MODEL)
+        assert {
+            name: await _node_model(node_id) for name, node_id in nodes.items()
+        } == expected
 
 
 @pytest.mark.asyncio(loop_scope="session")

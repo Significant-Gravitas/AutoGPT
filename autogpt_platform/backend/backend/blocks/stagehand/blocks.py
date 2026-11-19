@@ -33,12 +33,19 @@ class StagehandRecommendedLLMModel(str, Enum):
     ``blocks/llm.py``) containing only the models recommended by Stagehand.
     """
 
+    @classmethod
+    def _missing_(cls, value: object) -> "StagehandRecommendedLLMModel | None":
+        # Anthropic retires Claude Sonnet 4.5 on 2026-11-30. A node saved on
+        # it runs on Sonnet 4.6, this block's default, at the same price.
+        if value == LLMModel.CLAUDE_4_5_SONNET.value:
+            return cls.CLAUDE_4_6_SONNET
+        return None
+
     # OpenAI
     GPT41 = "gpt-4.1-2025-04-14"
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
 
     # Anthropic
-    CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"  # Keep for backwards compat
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
 
     @property

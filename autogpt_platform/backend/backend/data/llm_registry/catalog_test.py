@@ -12,7 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from backend.blocks.llm import MODEL_METADATA, AITextGeneratorBlock, LLMModel
+from backend.blocks.llm import (
+    LEGACY_MODEL_MAPPINGS,
+    MODEL_METADATA,
+    AITextGeneratorBlock,
+    LLMModel,
+)
 from backend.data.block_cost_config import BLOCK_COSTS, MODEL_COST, TOKEN_COST
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CATALOG_SCHEMA_VERSION
@@ -43,13 +48,69 @@ def test_provider_and_creator_references_resolve():
 
 
 def test_fallback_references_resolve():
-    slugs = {m.slug for m in CATALOG.models}
+    by_slug = {m.slug: m for m in CATALOG.models}
     for m in CATALOG.models:
         if m.fallback_model_slug:
             assert (
-                m.fallback_model_slug in slugs
+                m.fallback_model_slug in by_slug
             ), f"{m.slug}: fallback {m.fallback_model_slug} is not in the catalog"
             assert m.fallback_model_slug != m.slug, f"{m.slug}: fallback is itself"
+            # The retire CLI refuses a disabled replacement, and a chain of
+            # fallbacks would move graphs twice.
+            assert by_slug[
+                m.fallback_model_slug
+            ].is_enabled, f"{m.slug}: fallback {m.fallback_model_slug} is disabled"
+
+
+# Models their provider has shut down, or shuts down by 2026-12-11, and the
+# replacement it lists. Read 2026-11-19 from OpenAI's
+# https://developers.openai.com/api/docs/deprecations and Anthropic's
+# https://platform.claude.com/docs/en/about-claude/model-deprecations.
+# o1-mini's listed replacement, o4-mini, is itself shut down, so o1-mini
+# follows o4-mini.
+PROVIDER_SHUTDOWNS: dict[str, tuple[str, str]] = {
+    "gpt-5-chat-latest": ("2026-07-23", "gpt-5.6-sol"),
+    "gpt-5.1-codex": ("2026-07-23", "gpt-5.6-sol"),
+    "gpt-5.3-chat-latest": ("2026-08-10", "gpt-5.6-sol"),
+    "o1": ("2026-10-23", "gpt-5.6-sol"),
+    "o1-mini": ("2025-10-27", "gpt-5.6-terra"),
+    "o3-mini": ("2026-10-23", "gpt-5.6-sol"),
+    "o4-mini": ("2026-10-23", "gpt-5.6-terra"),
+    "gpt-4.1-nano": ("2026-10-23", "gpt-5.6-luna"),
+    "claude-sonnet-4-5-20250929": ("2026-11-30", "claude-sonnet-5-5"),
+    "gpt-5-2025-08-07": ("2026-12-11", "gpt-6.1-sol"),
+    "gpt-5-pro": ("2026-12-11", "gpt-6.1-sol"),
+    "o3-2025-04-16": ("2026-12-11", "gpt-6.1-sol"),
+    "o3-pro": ("2026-12-11", "gpt-6.1-sol"),
+    "gpt-5-mini-2025-08-07": ("2026-12-11", "gpt-6.1-terra"),
+    "gpt-5-nano-2025-08-07": ("2026-12-11", "gpt-6-luna"),
+}
+
+
+@pytest.mark.parametrize("slug", sorted(PROVIDER_SHUTDOWNS))
+def test_models_their_provider_shuts_down_are_switched_off(slug: str):
+    """Off in the block picker and refused by the copilot, with the
+    provider's listed replacement as the retire CLI's default target."""
+    by_slug = {m.slug: m for m in CATALOG.models}
+    _, replacement = PROVIDER_SHUTDOWNS[slug]
+
+    assert not by_slug[slug].is_enabled
+    assert by_slug[slug].fallback_model_slug == replacement
+    assert by_slug[replacement].is_enabled
+    assert replacement not in PROVIDER_SHUTDOWNS
+
+
+def test_legacy_mappings_never_move_graphs_onto_a_shut_down_model():
+    """The boot pass rewrites each LEGACY_MODEL_MAPPINGS key to its target, so
+    a target that is off, or that its provider shuts down, strands the graph
+    again (o1-mini used to land on o3-mini)."""
+    by_slug = {m.slug: m for m in CATALOG.models}
+    stranded = {
+        legacy: target.value
+        for legacy, target in LEGACY_MODEL_MAPPINGS.items()
+        if not by_slug[target.value].is_enabled or target.value in PROVIDER_SHUTDOWNS
+    }
+    assert not stranded
 
 
 def _resolve_cell(by_slug: dict, value: str):

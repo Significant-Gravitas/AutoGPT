@@ -2955,7 +2955,7 @@ async def migrate_llm_models(fallback: LLMModel):
     Note: Only updates top level LLMModel SchemaFields of blocks (won't update nested fields).
     """
     logger.info("Migrating LLM models")
-    llm_model_fields = _find_llm_model_fields()
+    llm_model_fields = find_llm_model_fields()
     if not llm_model_fields:
         return
 
@@ -3032,7 +3032,7 @@ async def migrate_llm_models(fallback: LLMModel):
         )
 
 
-def _find_llm_model_fields() -> dict[str, str]:
+def find_llm_model_fields() -> dict[str, str]:
     """Return ``{block_id: field_name}`` for every top-level LLMModel field."""
     llm_model_fields: dict[str, str] = {}
     for block_type in get_blocks().values():

@@ -123,6 +123,10 @@ python -m backend.data.llm_registry.retire --revert <migration-id>
 
 The replacement must exist in the catalog and be enabled. Every executed retirement writes a revertable `LlmModelMigration` record; only one active migration per source model is allowed at a time.
 
+The CLI rewrites only nodes of blocks whose `model` input is an `LLMModel`. Other blocks name an input `model` too, with lists of their own (Stagehand offers a few Claude and GPT models, Codex its own GPT models), and a catalog replacement can be a value their schema refuses, so the dry run counts their nodes and the command leaves them alone. Moving those is the block's own change: Stagehand, for example, runs a node saved on Claude Sonnet 4.5 on Sonnet 4.6.
+
+Once the provider has shut a model down, its graphs fail on every run and there is nothing left to revert to. Then add it to `LEGACY_MODEL_MAPPINGS` (`llm_registry/llm_models.py`) as well: `migrate_llm_models` moves every LLM-block node and every preset that names it, in each install, self-hosted ones included, the next time the app starts.
+
 ## Reading the catalog from clients
 
 There is deliberately no public catalog API: the catalog ships inside the repo, so every deployment and self-hosted install already has the exact model list its code supports. When a frontend surface needs the live list (e.g. a catalog-driven model picker), add a small authenticated route that reads the in-process registry (`backend.data.llm_registry.registry`) — don't reach for an unauthenticated endpoint; the last one existed only to bootstrap DB-seeded installs, a problem the in-repo catalog no longer has.

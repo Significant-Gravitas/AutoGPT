@@ -3777,6 +3777,55 @@ async def test_migrate_llm_models_maps_retired_claude_aliases_to_their_family(
     assert (True, replacement.value, stored_value) in rewrites
 
 
+@pytest.mark.parametrize(
+    "stored_value, replacement",
+    [
+        ("o3-mini", LLMModel.GPT5_6_SOL),
+        ("openai/o3-mini", LLMModel.GPT5_6_SOL),
+        ("o1", LLMModel.GPT5_6_SOL),
+        ("openai/o1", LLMModel.GPT5_6_SOL),
+        ("o1-mini", LLMModel.GPT5_6_TERRA),
+        ("openai/o1-mini", LLMModel.GPT5_6_TERRA),
+        ("o4-mini", LLMModel.GPT5_6_TERRA),
+        ("openai/o4-mini", LLMModel.GPT5_6_TERRA),
+        ("gpt-4.1-nano", LLMModel.GPT5_6_LUNA),
+        ("openai/gpt-4.1-nano", LLMModel.GPT5_6_LUNA),
+        ("gpt-5-chat-latest", LLMModel.GPT5_6_SOL),
+        ("openai/gpt-5-chat-latest", LLMModel.GPT5_6_SOL),
+        ("gpt-5.1-codex", LLMModel.GPT5_6_SOL),
+        ("openai/gpt-5.1-codex", LLMModel.GPT5_6_SOL),
+        ("gpt-5.3-chat-latest", LLMModel.GPT5_6_SOL),
+        ("openai/gpt-5.3-chat-latest", LLMModel.GPT5_6_SOL),
+    ],
+)
+@pytest.mark.asyncio
+async def test_migrate_llm_models_moves_shut_down_openai_models_to_their_replacement(
+    stored_value: str, replacement: LLMModel
+):
+    """OpenAI has shut these models down, so a node or preset still naming one
+    fails on every run. The boot pass moves it to OpenAI's listed replacement,
+    in either stored spelling."""
+    with patch(
+        "backend.data.graph.execute_raw_with_schema",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        await migrate_llm_models(next(iter(LLMModel)))
+
+    # (is_preset_query, replacement, stored_value) for each targeted rewrite.
+    rewrites = {
+        ('"agentPresetId"' in call.args[0], call.args[2], call.args[-1])
+        for call in mock_execute.await_args_list
+        if "NOT IN" not in call.args[0]
+    }
+    assert (False, replacement.value, stored_value) in rewrites
+    assert (True, replacement.value, stored_value) in rewrites
+    assert not {
+        target
+        for _, target, value in rewrites
+        if value == stored_value and target != replacement.value
+    }
+
+
 @pytest.mark.asyncio
 async def test_migrate_llm_models_covers_preset_overrides():
     """Regression: migrate_llm_models must also rewrite legacy values stored

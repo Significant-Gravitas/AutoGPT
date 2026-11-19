@@ -479,6 +479,13 @@ DEFAULT_LLM_MODEL = _default_model_from_catalog()
 # migrations/20261025120000_retire_undated_claude_aliases/migration.sql.
 # Never resolve these in ``LLMModel._missing_``: the copilot's registry gate
 # accepts what the enum accepts and sends the slug unchanged.
+#
+# Some keys are still enum members: models their provider has already shut
+# down, kept in the enum (and kill-switched in the catalog) so stored graphs
+# keep validating until the next boot moves them. A model its provider still
+# serves is retired with ``python -m backend.data.llm_registry.retire``
+# instead, which records the move and can revert it. Every target must be an
+# enabled catalog model.
 LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     "claude-3-haiku-20240307": LLMModel.CLAUDE_4_5_HAIKU,
     "claude-opus-4-20250514": LLMModel.CLAUDE_4_7_OPUS,
@@ -492,8 +499,16 @@ LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     "claude-sonnet-4-0": LLMModel.CLAUDE_4_6_SONNET,
     "anthropic/claude-sonnet-4": LLMModel.CLAUDE_4_6_SONNET,
     "gpt-4-turbo": LLMModel.GPT41,
-    "o1": LLMModel.O3,
-    "o1-mini": LLMModel.O3_MINI,
+    # Shut down by OpenAI; each goes to its listed replacement (o1-mini's,
+    # o4-mini, is itself shut down, so it follows o4-mini).
+    "o1": LLMModel.GPT5_6_SOL,
+    "o1-mini": LLMModel.GPT5_6_TERRA,
+    "o3-mini": LLMModel.GPT5_6_SOL,
+    "o4-mini": LLMModel.GPT5_6_TERRA,
+    "gpt-4.1-nano": LLMModel.GPT5_6_LUNA,
+    "gpt-5-chat-latest": LLMModel.GPT5_6_SOL,
+    "gpt-5.1-codex": LLMModel.GPT5_6_SOL,
+    "gpt-5.3-chat-latest": LLMModel.GPT5_6_SOL,
     "google/gemini-2.5-pro-preview-03-25": LLMModel.GEMINI_2_5_PRO,
     "google/gemini-2.5-flash-lite-preview-06-17": LLMModel.GEMINI_2_5_FLASH,
     "cohere/command-r-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,
