@@ -398,8 +398,7 @@ class ScriptedDetails:
         self.fails = fails
         self.seen: list[list[tuple[str, str]]] = []
 
-    async def __call__(self, lines, *, live: bool) -> DetailsRead:
-        assert live
+    async def __call__(self, lines) -> DetailsRead:
         self.seen.append(list(lines))
         if self.fails:
             raise RuntimeError("vendor down")
@@ -442,7 +441,7 @@ async def test_a_profile_card_call_sends_the_persons_details_after_their_turns(r
     assert any(row.model == DETAILS_MODEL for row in call.rows)
 
 
-async def test_a_call_on_another_arm_reads_no_details(redis):
+async def test_a_call_on_an_arm_this_code_dropped_reads_no_details(redis):
     reader = ScriptedDetails()
     call = await open_call(
         redis, _two_turn_vendor(), details_reader=reader, ending="09-first-task"

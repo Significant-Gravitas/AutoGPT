@@ -1067,41 +1067,15 @@ describe("onboarding interview, with a slow flag service", () => {
 });
 
 describe("onboarding interview: the ending screens", () => {
-  const FIRST_TASK = "Sort the order emails each morning";
   const PICK_KEY = "autogpt:onboarding-ending-pick:text";
 
-  function closedOnArm(ending: string | null, firstTask: string | null) {
+  function closedOnArm(ending: string | null) {
     returnsClosed();
-    serverInterview = { ...serverInterview, ending, firstTask };
+    serverInterview = { ...serverInterview, ending };
   }
 
-  it("ends a first-task interview on its task, and hands off the person's change to it", async () => {
-    closedOnArm("09-first-task", FIRST_TASK);
-    const user = userEvent.setup();
-
-    render(<OnboardingPage />);
-
-    expect(await screen.findByText(FIRST_TASK)).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
-    expect(
-      screen
-        .getByRole("region", { name: "Your first task" })
-        .classList.contains("ph-no-capture"),
-    ).toBe(true);
-    await user.click(screen.getByRole("button", { name: "Change it" }));
-    const task = screen.getByRole("textbox", { name: "Your first task" });
-    await user.clear(task);
-    await user.type(task, "Chase unpaid invoices");
-    await user.click(screen.getByRole("button", { name: "Start this" }));
-
-    await expectPlanStep();
-    expect(JSON.parse(finishBodies[0])).toEqual({
-      corrections: "My first task should be: Chase unpaid invoices",
-    });
-  });
-
-  it("keeps Meet your team when the first task did not come", async () => {
-    closedOnArm("09-first-task", null);
+  it("ends an interview on an arm this code dropped as Default does", async () => {
+    closedOnArm("09-first-task");
 
     render(<OnboardingPage />);
 
@@ -1112,8 +1086,8 @@ describe("onboarding interview: the ending screens", () => {
 
   it("sends a tester's pick with the start and names it on the ending", async () => {
     flags[FrontendFlag.ONBOARDING_INTERVIEW_ENDING_PICKER] = true;
-    localStorage.setItem(PICK_KEY, "09-first-task");
-    closedOnArm("09-first-task", FIRST_TASK);
+    localStorage.setItem(PICK_KEY, "06-coverage-ring");
+    closedOnArm("06-coverage-ring");
     const startBodies: string[] = [];
     server.use(
       http.post(
@@ -1132,10 +1106,10 @@ describe("onboarding interview: the ending screens", () => {
     render(<OnboardingPage />);
 
     expect(
-      await screen.findByText("Ending: First task (tester pick)"),
+      await screen.findByText("Ending: Coverage ring (tester pick)"),
     ).toBeDefined();
     expect(JSON.parse(startBodies[0])).toEqual({
-      ending_pick: "09-first-task",
+      ending_pick: "06-coverage-ring",
     });
   });
 
@@ -1200,7 +1174,7 @@ describe("onboarding interview: the ending screens", () => {
   });
 
   it("ends a profile-card interview on the card read from it", async () => {
-    closedOnArm("02-profile-card", null);
+    closedOnArm("02-profile-card");
     server.use(
       getGetOnboardingInterviewDetailsMockHandler200({
         details: { business: "Fernbrook Gardens", tools: ["QuickBooks"] },
@@ -1251,9 +1225,7 @@ describe("onboarding interview: starting over", () => {
     team: "a crew of six",
     time_sinks: ["quotes"],
     tools: ["QuickBooks"],
-    facts: [{ label: "Six-person crew", quote: "a crew of six" }],
     topics: ["work", "team"],
-    words: ["I own Fernbrook Gardens with a crew of six."],
   };
 
   // The start answers the interview that is over, then, asked to start
@@ -1406,42 +1378,23 @@ describe("onboarding interview: starting over", () => {
 
   it("offers Start over under an arm's own ending too", async () => {
     returnsClosed();
-    serverInterview = {
-      ...serverInterview,
-      ending: "09-first-task",
-      firstTask: "Sort the order emails each morning",
-    };
+    serverInterview = { ...serverInterview, ending: "06-coverage-ring" };
 
     render(<OnboardingPage />);
 
     expect(
-      await screen.findByRole("button", { name: "Start this" }),
+      await screen.findByRole("button", { name: "Done, build my team" }),
     ).toBeDefined();
     expect(screen.getByRole("button", { name: "Start over" })).toBeDefined();
   });
 
   it.each([
     ["02-profile-card", "Here's what Otto has", "Fernbrook Gardens, owner"],
-    ["03-summary-chips", "Here's what Otto heard", "QuickBooks"],
-    [
-      "08-transcript-highlights",
-      "Here's what Otto took from it",
-      "Six-person crew",
-    ],
-    [
-      "09-first-task",
-      "Your team starts here",
-      "Sort the order emails each morning",
-    ],
   ])(
     "returns to a handed-off %s interview read-only, and goes on with Continue sending nothing again",
     async (arm, heading, shown) => {
       returnsClosed("handed_off");
-      serverInterview = {
-        ...serverInterview,
-        ending: arm,
-        firstTask: "Sort the order emails each morning",
-      };
+      serverInterview = { ...serverInterview, ending: arm };
       server.use(
         getGetOnboardingInterviewDetailsMockHandler200({ details: DETAILS }),
       );
@@ -1451,15 +1404,7 @@ describe("onboarding interview: starting over", () => {
       const region = await screen.findByRole("region", { name: heading });
       expect(region.classList.contains("ph-no-capture")).toBe(true);
       expect(screen.getByText(shown)).toBeDefined();
-      for (const asks of [
-        "That's me",
-        "Build my team",
-        "Looks right",
-        "Start this",
-        "Change it",
-      ]) {
-        expect(screen.queryByRole("button", { name: asks })).toBeNull();
-      }
+      expect(screen.queryByRole("button", { name: "That's me" })).toBeNull();
       expect(screen.queryByRole("button", { name: /^Edit / })).toBeNull();
       expect(screen.queryByRole("textbox")).toBeNull();
       expect(screen.getByRole("button", { name: "Start over" })).toBeDefined();

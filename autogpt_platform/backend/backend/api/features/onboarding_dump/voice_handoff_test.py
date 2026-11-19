@@ -386,7 +386,7 @@ async def test_the_sweep_hands_off_an_owed_call_nobody_polled(
 async def test_the_sweep_hands_off_a_confirm_arms_call_left_unconfirmed_an_hour(
     rig: Rig,
 ):
-    arm = InterviewEnding.FIRST_TASK.value
+    arm = InterviewEnding.PROFILE_CARD.value
     waiting = await rig.call(ending=arm, transcribed_at=time.time() - 600)
     await rig.hand_off(waiting)
     left = await rig.call(ending=arm, transcribed_at=time.time() - 3601)
@@ -454,7 +454,7 @@ async def test_an_unconfirmed_cut_off_call_handed_off_after_an_hour_takes_nothin
     open."""
     call_id = await rig.call(
         end_reason="client_gone",
-        ending=InterviewEnding.FIRST_TASK.value,
+        ending=InterviewEnding.PROFILE_CARD.value,
         transcribed_at=time.time() - 3601,
     )
 
@@ -2133,7 +2133,7 @@ async def test_the_sweeps_retry_of_a_superseded_call_runs_no_pipeline(
 async def test_finishing_a_call_the_persons_typing_superseded_runs_no_pipeline(
     rig: Rig, quality_gate: AsyncMock, dumps: DumpStore
 ):
-    call_id = await rig.call(ending=InterviewEnding.FIRST_TASK.value)
+    call_id = await rig.call(ending=InterviewEnding.PROFILE_CARD.value)
     await locks.claim_interview(rig.redis, call_id, locks.INTERVIEW_SUPERSEDED)
 
     answered = await _finish(call_id)

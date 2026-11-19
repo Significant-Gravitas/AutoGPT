@@ -5,12 +5,7 @@ import {
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 
 // The arms whose screens show what the interview heard.
-const DETAILS_ARMS = new Set([
-  "02-profile-card",
-  "03-summary-chips",
-  "06-coverage-ring",
-  "08-transcript-highlights",
-]);
+const DETAILS_ARMS = new Set(["02-profile-card", "06-coverage-ring"]);
 
 interface Args {
   sessionId: string | null;

@@ -4,11 +4,7 @@ import type { InterviewDetails } from "@/app/api/__generated__/models/interviewD
 // them, with the plain names testers pick them by.
 export const ENDING_NAMES = {
   "02-profile-card": "Profile card",
-  "03-summary-chips": "Summary chips",
-  "04-team-reveal": "Team reveal",
   "06-coverage-ring": "Coverage ring",
-  "08-transcript-highlights": "Transcript highlights",
-  "09-first-task": "First task",
 } as const;
 
 export type EndingArm = keyof typeof ENDING_NAMES;
@@ -16,29 +12,13 @@ export type EndingMode = "text" | "voice";
 
 // The arms each mode offers, as the server's MODE_ENDINGS does.
 export const MODE_ARMS: Record<EndingMode, EndingArm[]> = {
-  text: [
-    "02-profile-card",
-    "03-summary-chips",
-    "04-team-reveal",
-    "06-coverage-ring",
-    "08-transcript-highlights",
-    "09-first-task",
-  ],
-  voice: [
-    "02-profile-card",
-    "03-summary-chips",
-    "04-team-reveal",
-    "08-transcript-highlights",
-    "09-first-task",
-  ],
+  text: ["02-profile-card", "06-coverage-ring"],
+  voice: ["02-profile-card"],
 };
 
 // The arms that end on the person's confirm, as the server's CONFIRM_ENDINGS.
 export const CONFIRM_ARMS: ReadonlySet<EndingArm> = new Set<EndingArm>([
   "02-profile-card",
-  "03-summary-chips",
-  "08-transcript-highlights",
-  "09-first-task",
 ]);
 
 export function endingArmOf(value: unknown): EndingArm | null {
@@ -105,12 +85,6 @@ export function correctionsOf(lines: (string | null | undefined)[]) {
   return kept.join("\n").slice(0, MAX_CORRECTION_CHARS);
 }
 
-export function firstTaskCorrection(original: string, edited: string) {
-  const task = edited.trim();
-  if (!task || task === original.trim()) return null;
-  return `My first task should be: ${task}`;
-}
-
 export function notRightCorrection(item: string) {
   return `Not right: ${item}`;
 }
@@ -164,60 +138,6 @@ export function profileCorrections(rows: ProfileRow[], edited: ProfileRow[]) {
   );
 }
 
-// "Here's what I heard": one chip per thing heard, never the same twice.
-export function chipsOf(details: InterviewDetails | null): string[] {
-  if (!details) return [];
-  const chips = [
-    details.business,
-    details.role,
-    details.team,
-    ...(details.time_sinks ?? []),
-    ...(details.tools ?? []),
-    details.first_task,
-  ].filter((chip): chip is string => !!chip?.trim());
-  return Array.from(new Set(chips));
-}
-
-export function chipCorrections(struck: string[], added: string) {
-  return correctionsOf([
-    ...struck.map(notRightCorrection),
-    added.trim() ? alsoCorrection(added) : null,
-  ]);
-}
-
-export interface Segment {
-  text: string;
-  // The fact this part of the line says, when it is one.
-  fact: number | null;
-}
-
-// A line of the person's own words, cut where a fact's quote falls in it,
-// case aside. A quote found in no line marks nothing.
-export function highlightSegments(line: string, quotes: string[]): Segment[] {
-  const marks: { start: number; end: number; fact: number }[] = [];
-  const lower = line.toLowerCase();
-  quotes.forEach((quote, fact) => {
-    const needle = quote.trim().toLowerCase();
-    if (!needle) return;
-    const start = lower.indexOf(needle);
-    if (start < 0) return;
-    const end = start + needle.length;
-    if (marks.some((mark) => start < mark.end && end > mark.start)) return;
-    marks.push({ start, end, fact });
-  });
-  marks.sort((a, b) => a.start - b.start);
-  const segments: Segment[] = [];
-  let at = 0;
-  for (const mark of marks) {
-    if (mark.start > at)
-      segments.push({ text: line.slice(at, mark.start), fact: null });
-    segments.push({ text: line.slice(mark.start, mark.end), fact: mark.fact });
-    at = mark.end;
-  }
-  if (at < line.length) segments.push({ text: line.slice(at), fact: null });
-  return segments;
-}
-
 export const TOPIC_NAMES: Record<string, string> = {
   work: "What you do",
   team: "Your team",
@@ -231,52 +151,19 @@ export const TOPIC_NAMES: Record<string, string> = {
 export interface SettledView {
   heading: string;
   rows: { label: string; value: string }[];
-  items: string[];
 }
 
-// What a confirm arm's ending shows once the interview is handed off: what
-// was confirmed, said as a statement; null when none of it can be read.
+// What the profile card's ending shows once the interview is handed off,
+// said as a statement; null when none of it can be read.
 export function settledViewOf(
   arm: EndingArm,
   details: InterviewDetails | null,
-  firstTask: string | null,
 ): SettledView | null {
-  switch (arm) {
-    case "02-profile-card": {
-      const rows = profileRowsOf(details);
-      if (rows.length === 0) return null;
-      return {
-        heading: "Here's what Otto has",
-        rows: rows.map(({ label, value }) => ({ label, value })),
-        items: [],
-      };
-    }
-    case "03-summary-chips": {
-      const items = chipsOf(details);
-      if (items.length === 0) return null;
-      return { heading: "Here's what Otto heard", rows: [], items };
-    }
-    case "08-transcript-highlights": {
-      const items = Array.from(
-        new Set(
-          (details?.facts ?? [])
-            .map((fact) => fact.label.trim())
-            .filter((label): label is string => !!label),
-        ),
-      );
-      if (items.length === 0) return null;
-      return { heading: "Here's what Otto took from it", rows: [], items };
-    }
-    case "09-first-task": {
-      const task = firstTask?.trim();
-      if (!task) return null;
-      return {
-        heading: "Your team starts here",
-        rows: [{ label: "First task", value: task }],
-        items: [],
-      };
-    }
-    default:
-      return null;
-  }
+  if (arm !== "02-profile-card") return null;
+  const rows = profileRowsOf(details);
+  if (rows.length === 0) return null;
+  return {
+    heading: "Here's what Otto has",
+    rows: rows.map(({ label, value }) => ({ label, value })),
+  };
 }

@@ -373,24 +373,23 @@ class ReadsDetails:
         self.fails = fails
         self.seen: list[list[tuple[str, str]]] = []
 
-    async def __call__(self, lines, *, live: bool) -> DetailsRead:
-        assert not live
+    async def __call__(self, lines) -> DetailsRead:
         self.seen.append(list(lines))
         if self.fails:
             raise RuntimeError("vendor down")
         return DetailsRead(
-            details=InterviewDetails(business="Bakery", words=[t for _, t in lines]),
+            details=InterviewDetails(business="Bakery"),
             tokens_in=700,
             tokens_out=80,
             latency_s=0.4,
         )
 
 
-async def test_a_call_whose_ending_reviews_it_keeps_the_details_of_its_transcript(
+async def test_a_profile_card_call_keeps_the_details_of_its_transcript(
     rig: Rig,
 ):
     pcm, marks = recording_of(answer(), answer())
-    call_id = await rig.call(pcm, marks, ending="03-summary-chips")
+    call_id = await rig.call(pcm, marks, ending="02-profile-card")
     reader = ReadsDetails()
 
     record = await rig.run(
@@ -408,13 +407,13 @@ async def test_a_call_whose_ending_reviews_it_keeps_the_details_of_its_transcrip
 
 async def test_details_are_written_only_while_the_job_holds_its_claim(rig: Rig):
     pcm, marks = recording_of(answer())
-    call_id = await rig.call(pcm, marks, ending="03-summary-chips")
+    call_id = await rig.call(pcm, marks, ending="02-profile-card")
     redis = rig.redis
 
     class ClaimTakenMeanwhile(ReadsDetails):
-        async def __call__(self, lines, *, live: bool) -> DetailsRead:
+        async def __call__(self, lines) -> DetailsRead:
             await redis.set(locks.postcall_claim_key(call_id), "pod-b")
-            return await super().__call__(lines, live=live)
+            return await super().__call__(lines)
 
     record = await rig.run(
         rig.postcall(
@@ -428,7 +427,7 @@ async def test_details_are_written_only_while_the_job_holds_its_claim(rig: Rig):
     assert record.transcript_of_record is None
 
 
-async def test_a_call_on_another_arm_reads_no_details(rig: Rig):
+async def test_a_call_on_an_arm_this_code_dropped_reads_no_details(rig: Rig):
     pcm, marks = recording_of(answer())
     call_id = await rig.call(pcm, marks, ending="09-first-task")
     reader = ReadsDetails()

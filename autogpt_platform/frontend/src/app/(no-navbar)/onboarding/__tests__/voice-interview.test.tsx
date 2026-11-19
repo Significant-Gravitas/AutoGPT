@@ -4,7 +4,6 @@ import {
   getEndOnboardingVoiceCallMockHandler202,
   getFinalizeBrainDumpMockHandler200,
   getFinishOnboardingVoiceCallMockHandler200,
-  getGetBrainDumpPlanMockHandler200,
   getGetOnboardingInterviewMockHandler200,
   getStartOnboardingInterviewMockHandler200,
   getStartOnboardingVoiceCallMockHandler200,
@@ -3515,57 +3514,10 @@ describe("onboarding interview by voice: the ending screens", () => {
   const FIRST_TASK = "Sort the order emails each morning";
   const PICK_KEY = "autogpt:onboarding-ending-pick:voice";
 
-  function firstTaskCall(overrides: Partial<CallRecord> = {}) {
-    return callRecord({
-      status: "transcribed",
-      hand_off: null,
-      ending: "09-first-task",
-      first_task: FIRST_TASK,
-      ...overrides,
-    });
-  }
-
-  it("ends a first-task call on its task, and hands off the person's change to it as their own words", async () => {
-    callStates[CALL_ID] = [firstTaskCall()];
-    render(<OnboardingPage />);
-    const socket = await liveCall();
-    const user = userEvent.setup();
-
-    endCall(socket, "finished");
-
-    expect(await screen.findByText(FIRST_TASK)).toBeDefined();
-    expect(screen.getByText("That's everything Otto needed.")).toBeDefined();
-    expectHiddenFromReplay("Your first task");
-    expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Change it" }));
-    const task = screen.getByRole("textbox", { name: "Your first task" });
-    await user.clear(task);
-    await user.type(task, "Chase unpaid invoices");
-    await user.click(screen.getByRole("button", { name: "Start this" }));
-
-    await expectPlanStep();
-    expect(finishes).toEqual([CALL_ID]);
-    expect(JSON.parse(finishBodies[0])).toEqual({
-      corrections: "My first task should be: Chase unpaid invoices",
-    });
-  });
-
-  it("starts the first task as Otto put it with no corrections", async () => {
-    callStates[CALL_ID] = [firstTaskCall()];
-    render(<OnboardingPage />);
-    const socket = await liveCall();
-
-    endCall(socket, "finished");
-    await userEvent
-      .setup()
-      .click(await screen.findByRole("button", { name: "Start this" }));
-
-    await expectPlanStep();
-    expect(finishBodies).toEqual([""]);
-  });
-
-  it("keeps Meet your team for a first-task call whose task did not come", async () => {
-    callStates[CALL_ID] = [firstTaskCall({ first_task: null })];
+  it("ends a call on an arm this code dropped as Default does", async () => {
+    callStates[CALL_ID] = [
+      callRecord({ ending: "09-first-task", first_task: FIRST_TASK }),
+    ];
     render(<OnboardingPage />);
     const socket = await liveCall();
 
@@ -3574,7 +3526,7 @@ describe("onboarding interview by voice: the ending screens", () => {
     expect(
       await screen.findByRole("button", { name: "Meet your team" }),
     ).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Start this" })).toBeNull();
+    expect(screen.queryByText(FIRST_TASK)).toBeNull();
   });
 
   it("keeps Meet your team for a call with no arm", async () => {
@@ -3596,9 +3548,7 @@ describe("onboarding interview by voice: the ending screens", () => {
     team: "a crew of six",
     time_sinks: ["quotes", "chasing invoices"],
     tools: ["QuickBooks"],
-    facts: [{ label: "Six-person crew", quote: "a crew of six" }],
     topics: ["work", "team"],
-    words: ["I own Fernbrook Gardens with a crew of six."],
   };
 
   function reviewCall(ending: string, overrides: Partial<CallRecord> = {}) {
@@ -3659,57 +3609,7 @@ describe("onboarding interview by voice: the ending screens", () => {
     expect(screen.queryByText("What Otto has heard so far")).toBeNull();
   });
 
-  it("reviews a call as chips: struck ones and anything added go with the confirm", async () => {
-    callStates[CALL_ID] = [reviewCall("03-summary-chips")];
-    render(<OnboardingPage />);
-    const socket = await liveCall();
-    const user = userEvent.setup();
-
-    endCall(socket, "finished");
-
-    expect(await screen.findByText("Here's what I heard")).toBeDefined();
-    expectHiddenFromReplay("What Otto heard");
-    await user.click(screen.getByRole("button", { name: "QuickBooks" }));
-    expect(
-      screen
-        .getByRole("button", { name: "QuickBooks" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    await user.type(
-      screen.getByRole("textbox", { name: "Add something" }),
-      "We also do snow removal",
-    );
-    await user.click(screen.getByRole("button", { name: "Build my team" }));
-
-    await expectPlanStep();
-    expect(JSON.parse(finishBodies[0])).toEqual({
-      corrections: "Not right: QuickBooks\nAlso: We also do snow removal",
-    });
-  });
-
-  it("shows the person's words with what Otto took from them underlined, and strikes a tapped one", async () => {
-    callStates[CALL_ID] = [reviewCall("08-transcript-highlights")];
-    render(<OnboardingPage />);
-    const socket = await liveCall();
-    const user = userEvent.setup();
-
-    endCall(socket, "finished");
-
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Six-person crew: a crew of six",
-      }),
-    );
-    expectHiddenFromReplay("In your words");
-    await user.click(screen.getByRole("button", { name: "Looks right" }));
-
-    await expectPlanStep();
-    expect(JSON.parse(finishBodies[0])).toEqual({
-      corrections: "Not right: Six-person crew",
-    });
-  });
-
-  it.each(["03-summary-chips", "08-transcript-highlights", "02-profile-card"])(
+  it.each(["02-profile-card"])(
     "keeps Meet your team for a %s call whose details did not come",
     async (ending) => {
       callStates[CALL_ID] = [reviewCall(ending, { details: null })];
@@ -3724,60 +3624,28 @@ describe("onboarding interview by voice: the ending screens", () => {
     },
   );
 
-  it("reveals the proposed team once the hand-off lands, and meets it", async () => {
-    callStates[CALL_ID] = [callRecord({ ending: "04-team-reveal" })];
-    server.use(
-      getGetBrainDumpPlanMockHandler200({
-        ready: true,
-        source: "llm",
-        skipped_dump: false,
-        team: [
-          {
-            template_id: "t-1",
-            name: "Quinn",
-            role: "Bookkeeper",
-            avatar_url: null,
-          },
-        ],
-        tasks: [],
-      }),
-    );
-    render(<OnboardingPage />);
-    const socket = await liveCall();
-
-    endCall(socket, "finished");
-
-    expect(await screen.findByText("Here's your team")).toBeDefined();
-    expect(screen.getByText("Bookkeeper")).toBeDefined();
-    await userEvent
-      .setup()
-      .click(screen.getByRole("button", { name: "Meet your team" }));
-
-    await expectPlanStep();
-  });
-
   it("offers testers the ending picker, sends their pick with the call's start, and names it on the ending", async () => {
     flags[FrontendFlag.ONBOARDING_INTERVIEW_ENDING_PICKER] = true;
-    localStorage.setItem(PICK_KEY, "09-first-task");
-    callStates[CALL_ID] = [firstTaskCall()];
+    localStorage.setItem(PICK_KEY, "02-profile-card");
+    callStates[CALL_ID] = [reviewCall("02-profile-card")];
     render(<OnboardingPage />);
 
     expect(await screen.findByText("Ending (testers)")).toBeDefined();
     const socket = await liveCall();
     expect(JSON.parse(String(mintBodies[0]))).toEqual({
-      ending_pick: "09-first-task",
+      ending_pick: "02-profile-card",
       language: "en-US",
     });
 
     endCall(socket, "finished");
 
     expect(
-      await screen.findByText("Ending: First task (tester pick)"),
+      await screen.findByText("Ending: Profile card (tester pick)"),
     ).toBeDefined();
   });
 
   it("shows no picker and sends no pick while the picker is off", async () => {
-    localStorage.setItem(PICK_KEY, "09-first-task");
+    localStorage.setItem(PICK_KEY, "02-profile-card");
     render(<OnboardingPage />);
 
     await liveCall();
@@ -3805,9 +3673,7 @@ describe("onboarding interview by voice: starting over", () => {
     team: "a crew of six",
     time_sinks: ["quotes"],
     tools: ["QuickBooks"],
-    facts: [{ label: "Six-person crew", quote: "a crew of six" }],
     topics: ["work", "team"],
-    words: ["I own Fernbrook Gardens with a crew of six."],
   };
 
   // The person comes back to a call that took their interview.
@@ -4126,16 +3992,7 @@ describe("onboarding interview by voice: starting over", () => {
     expect(screen.queryByRole("button", { name: "Talk to Otto" })).toBeNull();
   });
 
-  it.each([
-    ["02-profile-card", "Here's what Otto has", "QuickBooks"],
-    ["03-summary-chips", "Here's what Otto heard", "a crew of six"],
-    [
-      "08-transcript-highlights",
-      "Here's what Otto took from it",
-      "Six-person crew",
-    ],
-    ["09-first-task", "Your team starts here", FIRST_TASK],
-  ])(
+  it.each([["02-profile-card", "Here's what Otto has", "QuickBooks"]])(
     "returns to a handed-off %s call read-only, and Continue leads on with no finish",
     async (ending, heading, shown) => {
       returnsToTakenCall({ ending, details: DETAILS, first_task: FIRST_TASK });

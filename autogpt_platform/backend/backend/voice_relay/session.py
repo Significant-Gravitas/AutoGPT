@@ -89,7 +89,7 @@ from backend.voice_relay.config import (
     RoomCloseWhy,
     Timing,
 )
-from backend.voice_relay.details import LIVE_DETAILS_ENDINGS, DetailsReader
+from backend.voice_relay.details import DETAILS_ENDINGS, DetailsReader
 from backend.voice_relay.echo import (
     ECHO_NOTE,
     Duplex,
@@ -368,7 +368,7 @@ class Session:
         self.classifier = classifier
         # The call's ending arm; one whose card fills in as the person talks
         # has their details read after each of their turns.
-        self.details_reader = details_reader if ending in LIVE_DETAILS_ENDINGS else None
+        self.details_reader = details_reader if ending in DETAILS_ENDINGS else None
         self._details_task: asyncio.Task | None = None
         self._details_again = False
         # The language the call started in, and how many of Otto's turns came
@@ -1770,7 +1770,7 @@ class Session:
             self._details_again = False
             try:
                 read = await bounded(
-                    reader(self.conversation(), live=True),
+                    reader(self.conversation()),
                     timeout=self.timing.details_timeout_s,
                 )
             except Exception as error:

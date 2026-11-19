@@ -33,21 +33,8 @@ def test_each_mode_offers_exactly_the_arms_that_fit_it() -> None:
         for mode, endings in MODE_ENDINGS.items()
     }
     assert offered == {
-        "text": {
-            "02-profile-card",
-            "03-summary-chips",
-            "04-team-reveal",
-            "06-coverage-ring",
-            "08-transcript-highlights",
-            "09-first-task",
-        },
-        "voice": {
-            "02-profile-card",
-            "03-summary-chips",
-            "04-team-reveal",
-            "08-transcript-highlights",
-            "09-first-task",
-        },
+        "text": {"02-profile-card", "06-coverage-ring"},
+        "voice": {"02-profile-card"},
     }
 
 
@@ -64,20 +51,28 @@ def test_each_mode_has_its_own_experiment() -> None:
     )
 
 
-def test_the_card_chips_highlights_and_first_task_end_on_a_confirm() -> None:
-    assert CONFIRM_ENDINGS == {
-        "02-profile-card",
-        "03-summary-chips",
-        "08-transcript-highlights",
-        "09-first-task",
-    }
+def test_the_profile_card_ends_on_a_confirm() -> None:
+    assert CONFIRM_ENDINGS == {"02-profile-card"}
     for ending in InterviewEnding:
         assert hands_off_on_close(ending.value) is (ending.value not in CONFIRM_ENDINGS)
 
 
-def test_anyone_not_enrolled_is_handed_off_as_the_interview_closes() -> None:
-    assert hands_off_on_close(None)
-    assert hands_off_on_close("an-arm-this-code-does-not-know")
+@pytest.mark.parametrize(
+    "variant",
+    [
+        None,
+        "an-arm-this-code-does-not-know",
+        # Arms of an earlier release, still stored for people enrolled then.
+        "03-summary-chips",
+        "04-team-reveal",
+        "08-transcript-highlights",
+        "09-first-task",
+    ],
+)
+def test_anyone_not_enrolled_or_on_a_dropped_arm_is_handed_off_as_it_closes(
+    variant: str | None,
+) -> None:
+    assert hands_off_on_close(variant)
 
 
 def _assignment(variant: str) -> ExperimentAssignment:
@@ -93,8 +88,8 @@ def _assignment(variant: str) -> ExperimentAssignment:
 @pytest.mark.parametrize(
     ("mode", "experiment", "arm"),
     [
-        ("text", Experiment.ONBOARDING_INTERVIEW_ENDING_TEXT, "03-summary-chips"),
-        ("voice", Experiment.ONBOARDING_INTERVIEW_ENDING_VOICE, "04-team-reveal"),
+        ("text", Experiment.ONBOARDING_INTERVIEW_ENDING_TEXT, "06-coverage-ring"),
+        ("voice", Experiment.ONBOARDING_INTERVIEW_ENDING_VOICE, "02-profile-card"),
     ],
 )
 async def test_the_arm_is_read_for_the_mode_in_use_only(
@@ -187,7 +182,7 @@ async def test_a_pick_is_ignored_while_the_picker_is_off(picker, pick_store):
 async def test_a_pick_kept_while_the_picker_was_on_lapses_once_it_is_off(
     picker, pick_store
 ):
-    await interview_endings.keep_text_pick("user-1", "03-summary-chips")
+    await interview_endings.keep_text_pick("user-1", "02-profile-card")
     picker.return_value = (False, True)
 
     # The kept pick still governs, so the close stamps no arm and enrols
@@ -214,8 +209,9 @@ async def test_a_pick_that_cannot_be_read_governs_only_for_a_tester(
 @pytest.mark.parametrize(
     ("mode", "pick", "honoured"),
     [
-        ("voice", "09-first-task", True),
+        ("voice", "02-profile-card", True),
         ("voice", "06-coverage-ring", False),
+        ("voice", "09-first-task", False),
         ("text", "06-coverage-ring", True),
         ("text", "99-an-arm-from-a-later-release", False),
         ("voice", None, False),
@@ -231,6 +227,6 @@ async def test_an_unreadable_picker_flag_honours_no_pick(picker):
     picker.side_effect = RuntimeError("flag vendor down")
 
     assert (
-        await interview_endings.honoured_pick("user-1", "voice", "09-first-task")
+        await interview_endings.honoured_pick("user-1", "voice", "02-profile-card")
         is None
     )

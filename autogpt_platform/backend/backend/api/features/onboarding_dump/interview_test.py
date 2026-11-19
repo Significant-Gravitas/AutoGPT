@@ -982,12 +982,12 @@ async def test_an_end_signal_close_is_handed_off_once_its_turn_ends(
 async def test_an_end_signal_close_stamps_the_arm_and_hands_off_by_it(
     stored: StoredInterview, dumps: DumpStore, ending: AsyncMock, turn_over: AsyncMock
 ):
-    ending.return_value = InterviewEnding.TEAM_REVEAL.value
+    ending.return_value = InterviewEnding.COVERAGE_RING.value
     _closed_by_end_signal(stored, "Answer order emails in Gmail")
 
     await interview.close_after_turn(USER_ID, stored.session.session_id)
 
-    assert stored.endings == [InterviewEnding.TEAM_REVEAL.value]
+    assert stored.endings == [InterviewEnding.COVERAGE_RING.value]
     assert stored.stages == [INTERVIEW_STAGE_HANDED_OFF]
     assert dumps.row is not None
 
@@ -997,9 +997,6 @@ async def test_an_end_signal_close_stamps_the_arm_and_hands_off_by_it(
     "arm",
     [
         InterviewEnding.PROFILE_CARD,
-        InterviewEnding.SUMMARY_CHIPS,
-        InterviewEnding.TRANSCRIPT_HIGHLIGHTS,
-        InterviewEnding.FIRST_TASK,
     ],
 )
 async def test_an_end_signal_close_on_a_confirm_arm_keeps_its_ending_screen(
@@ -1065,9 +1062,6 @@ async def test_a_cap_turn_the_end_signal_closed_is_closed_even_short_of_the_cap(
     "arm",
     [
         InterviewEnding.PROFILE_CARD,
-        InterviewEnding.SUMMARY_CHIPS,
-        InterviewEnding.TRANSCRIPT_HIGHLIGHTS,
-        InterviewEnding.FIRST_TASK,
     ],
 )
 async def test_a_request_ahead_of_the_turn_s_settle_leaves_the_close_to_the_arm(
@@ -1099,12 +1093,12 @@ async def test_a_request_ahead_of_the_turn_s_settle_hands_off_an_automatic_arm(
     ending: AsyncMock,
     jobs: dict[str, AsyncMock],
 ):
-    ending.return_value = InterviewEnding.TEAM_REVEAL.value
+    ending.return_value = InterviewEnding.COVERAGE_RING.value
     _closed_by_end_signal(stored, "Answer order emails in Gmail")
 
     await interview.hand_off_closed_interview(USER_ID, stored.session.session_id)
 
-    assert stored.endings == [InterviewEnding.TEAM_REVEAL.value]
+    assert stored.endings == [InterviewEnding.COVERAGE_RING.value]
     assert stored.stages == [INTERVIEW_STAGE_HANDED_OFF]
     assert dumps.row is not None
     jobs["greeting"].assert_awaited_once_with(SAID)
@@ -1275,7 +1269,6 @@ async def test_an_unenrolled_person_is_handed_off_as_the_interview_closes(
 @pytest.mark.parametrize(
     "arm",
     [
-        InterviewEnding.TEAM_REVEAL,
         InterviewEnding.COVERAGE_RING,
     ],
 )
@@ -1297,9 +1290,6 @@ async def test_an_automatic_arm_is_handed_off_as_the_interview_closes(
     "arm",
     [
         InterviewEnding.PROFILE_CARD,
-        InterviewEnding.SUMMARY_CHIPS,
-        InterviewEnding.TRANSCRIPT_HIGHLIGHTS,
-        InterviewEnding.FIRST_TASK,
     ],
 )
 async def test_a_confirm_arm_closes_and_waits_for_the_confirm(
@@ -1322,14 +1312,14 @@ async def test_a_testers_pick_is_stamped_in_place_of_the_experiments_arm(
     stored: StoredInterview, dumps: DumpStore, ending: AsyncMock, tester_pick
 ):
     tester_pick.return_value = TextPick(
-        arm=InterviewEnding.FIRST_TASK.value, governs=True
+        arm=InterviewEnding.PROFILE_CARD.value, governs=True
     )
-    ending.return_value = InterviewEnding.TEAM_REVEAL.value
+    ending.return_value = InterviewEnding.COVERAGE_RING.value
 
     closure = await _close(stored.session.session_id)
 
-    assert closure.ending == InterviewEnding.FIRST_TASK.value
-    assert stored.endings == [InterviewEnding.FIRST_TASK.value]
+    assert closure.ending == InterviewEnding.PROFILE_CARD.value
+    assert stored.endings == [InterviewEnding.PROFILE_CARD.value]
     # A pick is no enrolment: the experiment is never read under it.
     ending.assert_not_awaited()
     # And it ends as its arm does: on the person's confirm.
@@ -1341,7 +1331,7 @@ async def test_a_testers_pick_that_cannot_be_read_stamps_no_arm_and_enrols_nobod
     stored: StoredInterview, dumps: DumpStore, ending: AsyncMock, tester_pick
 ):
     tester_pick.return_value = TextPick(governs=True)
-    ending.return_value = InterviewEnding.TEAM_REVEAL.value
+    ending.return_value = InterviewEnding.COVERAGE_RING.value
 
     closure = await _close(stored.session.session_id)
 
@@ -1359,7 +1349,7 @@ async def test_the_confirm_hands_off_with_the_person_s_corrections(
     ending: AsyncMock,
     jobs: dict[str, AsyncMock],
 ):
-    ending.return_value = InterviewEnding.SUMMARY_CHIPS.value
+    ending.return_value = InterviewEnding.PROFILE_CARD.value
     await _close(stored.session.session_id)
 
     response, _ = await _finalize(
@@ -1461,7 +1451,7 @@ async def test_closing_again_after_the_hand_off_changes_nothing(
 async def test_someone_who_left_a_confirm_screen_is_handed_off_by_a_request_an_hour_on(
     stored: StoredInterview, dumps: DumpStore, ending: AsyncMock
 ):
-    ending.return_value = InterviewEnding.FIRST_TASK.value
+    ending.return_value = InterviewEnding.PROFILE_CARD.value
     await _close(stored.session.session_id)
     assert dumps.row is None
     stored.session.updated_at = datetime.now(UTC) - timedelta(
@@ -1479,9 +1469,6 @@ async def test_someone_who_left_a_confirm_screen_is_handed_off_by_a_request_an_h
     "arm",
     [
         InterviewEnding.PROFILE_CARD,
-        InterviewEnding.SUMMARY_CHIPS,
-        InterviewEnding.TRANSCRIPT_HIGHLIGHTS,
-        InterviewEnding.FIRST_TASK,
     ],
 )
 async def test_a_reload_of_a_confirm_screen_keeps_it_waiting_for_the_confirm(
@@ -1510,7 +1497,7 @@ async def test_an_interview_at_the_cap_that_never_closed_closes_by_its_arm(
     stored: StoredInterview, dumps: DumpStore, ending: AsyncMock
 ):
     _at_the_cap(stored.session)
-    ending.return_value = InterviewEnding.SUMMARY_CHIPS.value
+    ending.return_value = InterviewEnding.PROFILE_CARD.value
 
     await interview.hand_off_closed_interview(USER_ID, stored.session.session_id)
 
@@ -1759,7 +1746,7 @@ async def test_a_voice_call_on_an_automatic_arm_is_handed_off_when_it_ends(
         SAID,
         background,
         reason="confirmed",
-        ending=InterviewEnding.TEAM_REVEAL.value,
+        ending=InterviewEnding.COVERAGE_RING.value,
     )
     await background()
 
@@ -1822,7 +1809,7 @@ async def test_a_voice_call_hands_off_the_persons_words_not_its_end_tools_task(
         SAID,
         background,
         reason="confirmed",
-        ending=InterviewEnding.TEAM_REVEAL.value,
+        ending=InterviewEnding.COVERAGE_RING.value,
         first_task="Responder correos de pedidos",
     )
     await background()
@@ -1833,9 +1820,7 @@ async def test_a_voice_call_hands_off_the_persons_words_not_its_end_tools_task(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "arm", [InterviewEnding.FIRST_TASK, InterviewEnding.PROFILE_CARD]
-)
+@pytest.mark.parametrize("arm", [InterviewEnding.PROFILE_CARD])
 async def test_a_voice_confirm_hands_its_corrections_off_as_the_persons_words(
     dumps: DumpStore,
     ending: AsyncMock,

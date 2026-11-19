@@ -180,7 +180,7 @@ const OTHER_SURFACES: Surface[] = [
           isOver={false}
           ending={{
             arm: null,
-            data: { firstTask: null },
+            data: {},
             isTesterPick: false,
             isSettled: false,
           }}

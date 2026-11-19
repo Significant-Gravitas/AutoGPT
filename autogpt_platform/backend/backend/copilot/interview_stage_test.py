@@ -293,12 +293,12 @@ async def test_the_ending_arm_is_stamped_once_on_the_owner_s_interview() -> None
     execute = AsyncMock(return_value=1)
     with patch(_EXECUTE, execute):
         stamped = await chat_db_module.update_chat_session_interview_ending(
-            "sess-1", "user-1", "03-summary-chips"
+            "sess-1", "user-1", "02-profile-card"
         )
 
     assert stamped is True
     query, *params = execute.await_args.args
-    assert params == ["sess-1", "user-1", "03-summary-chips", ONBOARDING_INTERVIEW_KIND]
+    assert params == ["sess-1", "user-1", "02-profile-card", ONBOARDING_INTERVIEW_KIND]
     assert 'WHERE "id" = $1 AND "userId" = $2' in query
     assert "\"metadata\"->>'kind' = $4" in query
     # Never over an arm already stamped: the first one read is the one kept.
@@ -320,11 +320,11 @@ async def test_a_stamped_ending_is_written_through_the_cache() -> None:
         patch.object(model, "cache_chat_session", cache),
     ):
         assert await model.update_session_interview_ending(
-            cached.session_id, "user-1", "09-first-task"
+            cached.session_id, "user-1", "06-coverage-ring"
         )
 
     assert cache.await_args.args[0].metadata.onboarding_interview_ending == (
-        "09-first-task"
+        "06-coverage-ring"
     )
 
 
@@ -340,7 +340,7 @@ async def test_an_ending_already_stamped_leaves_the_cache_alone() -> None:
         patch.object(model, "cache_chat_session", cache),
     ):
         assert not await model.update_session_interview_ending(
-            "sess-1", "user-1", "09-first-task"
+            "sess-1", "user-1", "06-coverage-ring"
         )
 
     cache.assert_not_awaited()

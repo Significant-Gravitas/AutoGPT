@@ -107,7 +107,7 @@ export function VoiceCall({ call }: Props) {
           isLeaving={call.isLeaving}
           finishFailure={call.finishFailure}
           arm={arm}
-          endingData={{ firstTask: call.firstTask, details: call.details }}
+          endingData={{ details: call.details }}
           isTesterPick={
             call.isEndingPickerOn && !!arm && readEndingPick("voice") === arm
           }

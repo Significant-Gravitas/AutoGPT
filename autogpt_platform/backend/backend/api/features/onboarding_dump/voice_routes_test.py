@@ -1162,29 +1162,30 @@ def _picker(mocker: MockerFixture, enabled: bool) -> AsyncMock:
 
 async def test_a_testers_pick_beats_the_experiments_arm(voice_on, mocker):
     _picker(mocker, True)
-    voice_on.ending.return_value = "04-team-reveal"
+    voice_on.ending.return_value = None
 
-    body = (await start({"ending_pick": "08-transcript-highlights"})).json()
+    body = (await start({"ending_pick": "02-profile-card"})).json()
 
-    assert tokens.verify_start(body["token"]).ending == "08-transcript-highlights"
+    assert tokens.verify_start(body["token"]).ending == "02-profile-card"
     # The experiment is not read under a pick, so nobody is enrolled by it.
     voice_on.ending.assert_not_awaited()
 
 
 async def test_a_pick_is_ignored_while_the_picker_is_off(voice_on, mocker):
     _picker(mocker, False)
-    voice_on.ending.return_value = "04-team-reveal"
+    voice_on.ending.return_value = None
 
-    body = (await start({"ending_pick": "09-first-task"})).json()
+    body = (await start({"ending_pick": "02-profile-card"})).json()
 
-    assert tokens.verify_start(body["token"]).ending == "04-team-reveal"
+    assert tokens.verify_start(body["token"]).ending is None
     voice_on.ending.assert_awaited_once()
 
 
-async def test_a_pick_that_does_not_fit_a_call_is_ignored(voice_on, mocker):
+@pytest.mark.parametrize("pick", ["06-coverage-ring", "09-first-task"])
+async def test_a_pick_that_does_not_fit_a_call_is_ignored(voice_on, mocker, pick):
     picker = _picker(mocker, True)
 
-    body = (await start({"ending_pick": "06-coverage-ring"})).json()
+    body = (await start({"ending_pick": pick})).json()
 
     assert tokens.verify_start(body["token"]).ending is None
     voice_on.ending.assert_awaited_once()
@@ -1197,9 +1198,9 @@ async def test_a_testers_pick_writes_no_assignment(
     mocker.patch.object(voice, "assigned_ending", new=interview_endings.assigned_ending)
     _picker(mocker, True)
 
-    body = (await start({"ending_pick": "09-first-task"})).json()
+    body = (await start({"ending_pick": "02-profile-card"})).json()
 
-    assert tokens.verify_start(body["token"]).ending == "09-first-task"
+    assert tokens.verify_start(body["token"]).ending == "02-profile-card"
     assert voice_ending_flag == {}
 
 

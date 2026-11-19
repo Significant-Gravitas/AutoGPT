@@ -5,14 +5,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import type { ReactNode } from "react";
 import { CoverageRing } from "./components/CoverageRing";
-import { FirstTaskEnding } from "./components/FirstTaskEnding";
-import { HighlightsEnding } from "./components/HighlightsEnding";
 import { ProfileCardEnding } from "./components/ProfileCardEnding";
 import { SettledEnding } from "./components/SettledEnding";
-import { SummaryChipsEnding } from "./components/SummaryChipsEnding";
-import { TeamReveal } from "./components/TeamReveal";
 import {
-  chipsOf,
   CONFIRM_ARMS,
   type EndingArm,
   ENDING_NAMES,
@@ -21,7 +16,6 @@ import {
 } from "./helpers";
 
 export interface EndingData {
-  firstTask: string | null;
   details?: InterviewDetails | null;
 }
 
@@ -55,7 +49,7 @@ export function InterviewEnding({
 }: Props) {
   const isSettledConfirm = isSettled && !!arm && CONFIRM_ARMS.has(arm);
   const settled = isSettledConfirm
-    ? settledViewOf(arm, data.details ?? null, data.firstTask)
+    ? settledViewOf(arm, data.details ?? null)
     : null;
   const screen = isSettledConfirm
     ? settled && (
@@ -65,7 +59,7 @@ export function InterviewEnding({
           onContinue={() => onConfirm(null)}
         />
       )
-    : armScreen({ arm, data, isLeaving, onConfirm, fallback });
+    : armScreen({ arm, data, isLeaving, onConfirm });
   return (
     <div className="flex w-full flex-col items-center gap-3">
       {screen ?? fallback}
@@ -84,8 +78,7 @@ function armScreen({
   data,
   isLeaving,
   onConfirm,
-  fallback,
-}: Omit<Props, "isTesterPick" | "isSettled" | "startOver">) {
+}: Omit<Props, "isTesterPick" | "isSettled" | "startOver" | "fallback">) {
   const details = data.details ?? null;
   switch (arm) {
     case "02-profile-card": {
@@ -100,25 +93,6 @@ function armScreen({
         />
       );
     }
-    case "03-summary-chips": {
-      const chips = chipsOf(details);
-      if (chips.length === 0) return null;
-      return (
-        <SummaryChipsEnding
-          chips={chips}
-          isLeaving={isLeaving}
-          onConfirm={onConfirm}
-        />
-      );
-    }
-    case "04-team-reveal":
-      return (
-        <TeamReveal
-          isLeaving={isLeaving}
-          onMeet={() => onConfirm(null)}
-          fallback={fallback}
-        />
-      );
     case "06-coverage-ring":
       return (
         <div className="flex w-full max-w-md flex-col items-center gap-4">
@@ -133,29 +107,6 @@ function armScreen({
             Done, build my team
           </Button>
         </div>
-      );
-    case "08-transcript-highlights": {
-      const words = details?.words ?? [];
-      const facts = details?.facts ?? [];
-      if (words.length === 0 || facts.length === 0) return null;
-      return (
-        <HighlightsEnding
-          words={words}
-          facts={facts}
-          isLeaving={isLeaving}
-          onConfirm={onConfirm}
-        />
-      );
-    }
-    case "09-first-task":
-      if (!data.firstTask) return null;
-      return (
-        <FirstTaskEnding
-          firstTask={data.firstTask}
-          owner={null}
-          isLeaving={isLeaving}
-          onConfirm={onConfirm}
-        />
       );
     default:
       return null;

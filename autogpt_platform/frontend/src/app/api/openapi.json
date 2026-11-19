@@ -28429,16 +28429,6 @@
         ],
         "title": "ExpertWorkflowRef"
       },
-      "Fact": {
-        "properties": {
-          "label": { "type": "string", "maxLength": 200, "title": "Label" },
-          "quote": { "type": "string", "maxLength": 240, "title": "Quote" }
-        },
-        "type": "object",
-        "required": ["label", "quote"],
-        "title": "Fact",
-        "description": "Something the person said about their work, and their words for it."
-      },
       "FactListResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
@@ -30789,12 +30779,6 @@
             "title": "Tools",
             "default": []
           },
-          "facts": {
-            "items": { "$ref": "#/components/schemas/Fact" },
-            "type": "array",
-            "title": "Facts",
-            "default": []
-          },
           "topics": {
             "items": {
               "type": "string",
@@ -30807,12 +30791,6 @@
           "first_task": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "First Task"
-          },
-          "words": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Words",
-            "default": []
           }
         },
         "type": "object",

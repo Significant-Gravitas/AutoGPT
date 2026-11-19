@@ -77,7 +77,7 @@ from backend.voice_relay.config import (
     TRANSCRIBE_MODEL,
     transcribe_timeout_s,
 )
-from backend.voice_relay.details import POSTCALL_DETAILS_ENDINGS, DetailsReader
+from backend.voice_relay.details import DETAILS_ENDINGS, DetailsReader
 from backend.voice_relay.echo import silenced
 from backend.voice_relay.locks import CallRecord
 from backend.voice_relay.metering import (
@@ -681,22 +681,20 @@ class PostCall:
     async def _read_details(
         self, redis: AsyncRedisClient, record: CallRecord, transcript: str
     ) -> None:
-        """For an ending that reviews the call, read the person's details
+        """For the profile card's ending, read the person's details
         from the transcript and keep them on the record before the call reads
         ``transcribed``, so its ending screen finds them. A read that fails
         leaves none: the screen falls back to the plain ending."""
         reader = self.details_reader
         if (
             reader is None
-            or record.ending not in POSTCALL_DETAILS_ENDINGS
+            or record.ending not in DETAILS_ENDINGS
             or not transcript.strip()
         ):
             return
         lines = [("user", line) for line in transcript.splitlines() if line.strip()]
         try:
-            read = await bounded(
-                reader(lines, live=False), timeout=POSTCALL_DETAILS_TIMEOUT_S
-            )
+            read = await bounded(reader(lines), timeout=POSTCALL_DETAILS_TIMEOUT_S)
         except Exception as error:
             logger.warning(
                 f"Voice call {record.call_id}: details not read: {failure_of(error)}"

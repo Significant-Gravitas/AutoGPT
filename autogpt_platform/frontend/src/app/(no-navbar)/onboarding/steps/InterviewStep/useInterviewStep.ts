@@ -584,13 +584,7 @@ export function useInterviewStep() {
     repickEnding,
     typedEnding: {
       arm: typedArm,
-      data: {
-        firstTask:
-          session?.metadata?.onboarding_interview_first_task ??
-          readEnding?.firstTask ??
-          null,
-        details,
-      },
+      data: { details },
       isTesterPick:
         isEndingPickerOn && !!typedArm && readEndingPick("text") === typedArm,
       isSettled: isTypedSettled,
@@ -668,7 +662,6 @@ async function readTypedInterview() {
 interface StageRead {
   stage: string | null;
   ending: string | null;
-  firstTask: string | null;
 }
 
 async function fetchStage(sessionId: string): Promise<StageRead | null> {
@@ -679,7 +672,6 @@ async function fetchStage(sessionId: string): Promise<StageRead | null> {
     return {
       stage: metadata?.onboarding_interview_stage ?? null,
       ending: metadata?.onboarding_interview_ending ?? null,
-      firstTask: metadata?.onboarding_interview_first_task ?? null,
     };
   } catch {
     return null;

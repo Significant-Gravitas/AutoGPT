@@ -516,8 +516,8 @@ class CallRecord(BaseModel):
     # The person's words from the call, one turn per line.
     transcript_of_record: str | None = None
     # What the person said, read from the transcript of record for the
-    # ending screens that review the call; None for the other arms, and when
-    # it could not be read.
+    # profile card the call ends on; None for the other arms, and when it
+    # could not be read.
     details: InterviewDetails | None = None
     # When the transcript was stored, in seconds since the epoch.
     transcribed_at: float | None = None

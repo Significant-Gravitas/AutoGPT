@@ -466,8 +466,8 @@ class VoiceCallStatusResponse(BaseModel):
     """The first thing the team starts on, as Otto put it when he ended the
     call; None when he did not say."""
     details: InterviewDetails | None = None
-    """What the person said, read from the transcript of record for an
-    ending screen that reviews the call; None otherwise."""
+    """What the person said, read from the transcript of record for the
+    profile card the call ends on; None otherwise."""
     relay_url: str | None = None
     """The relay's call socket, which a tab holding the call's resume ticket
     rejoins it on; set only while the call is live."""

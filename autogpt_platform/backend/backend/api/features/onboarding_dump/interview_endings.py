@@ -34,11 +34,7 @@ class InterviewEnding(str, Enum):
     """The endings; each value is the variant key of the PostHog flag."""
 
     PROFILE_CARD = "02-profile-card"
-    SUMMARY_CHIPS = "03-summary-chips"
-    TEAM_REVEAL = "04-team-reveal"
     COVERAGE_RING = "06-coverage-ring"
-    TRANSCRIPT_HIGHLIGHTS = "08-transcript-highlights"
-    FIRST_TASK = "09-first-task"
 
 
 ENDING_EXPERIMENTS: dict[InterviewMode, Experiment] = {
@@ -48,37 +44,13 @@ ENDING_EXPERIMENTS: dict[InterviewMode, Experiment] = {
 
 # The arms each mode's flag offers: the ones that fit that mode.
 MODE_ENDINGS: dict[InterviewMode, frozenset[InterviewEnding]] = {
-    "text": frozenset(
-        {
-            InterviewEnding.PROFILE_CARD,
-            InterviewEnding.SUMMARY_CHIPS,
-            InterviewEnding.TEAM_REVEAL,
-            InterviewEnding.COVERAGE_RING,
-            InterviewEnding.TRANSCRIPT_HIGHLIGHTS,
-            InterviewEnding.FIRST_TASK,
-        }
-    ),
-    "voice": frozenset(
-        {
-            InterviewEnding.PROFILE_CARD,
-            InterviewEnding.SUMMARY_CHIPS,
-            InterviewEnding.TEAM_REVEAL,
-            InterviewEnding.TRANSCRIPT_HIGHLIGHTS,
-            InterviewEnding.FIRST_TASK,
-        }
-    ),
+    "text": frozenset({InterviewEnding.PROFILE_CARD, InterviewEnding.COVERAGE_RING}),
+    "voice": frozenset({InterviewEnding.PROFILE_CARD}),
 }
 
 # The arms that end on a screen the person confirms: their answers are
 # handed off on that confirm, with any corrections made there.
-CONFIRM_ENDINGS: frozenset[str] = frozenset(
-    {
-        InterviewEnding.PROFILE_CARD.value,
-        InterviewEnding.SUMMARY_CHIPS.value,
-        InterviewEnding.TRANSCRIPT_HIGHLIGHTS.value,
-        InterviewEnding.FIRST_TASK.value,
-    }
-)
+CONFIRM_ENDINGS: frozenset[str] = frozenset({InterviewEnding.PROFILE_CARD.value})
 
 # A confirm arm's interview left unconfirmed this long after it closed is
 # handed off as if confirmed: a call's from its transcript, a typed one's

@@ -187,10 +187,8 @@ export function useVoiceCall(args: Args) {
   // finished: the stage the finishing screen shows.
   const [callStatus, setCallStatus] =
     useState<VoiceCallStatusResponseStatus | null>(null);
-  // The shown call's arm of the ending experiment, and the first task Otto
-  // named as he ended it.
+  // The shown call's arm of the ending experiment.
   const [arm, setArm] = useState<string | null>(null);
-  const [firstTask, setFirstTask] = useState<string | null>(null);
   // What the person has said: live from the relay while the call runs, for
   // an ending whose card fills in as they talk, then read from the call's
   // transcript of record.
@@ -981,7 +979,6 @@ export function useVoiceCall(args: Args) {
     }
     if (call) {
       setArm(call.ending ?? null);
-      setFirstTask(call.first_task ?? null);
       if (call.details) setDetails(call.details);
     }
     setEnding(next);
@@ -1462,7 +1459,6 @@ export function useVoiceCall(args: Args) {
     setEndReason(null);
     setCallStatus(null);
     setArm(null);
-    setFirstTask(null);
     setDetails(null);
     correctionsRef.current = null;
     setFinishFailure(null);
@@ -1535,7 +1531,6 @@ export function useVoiceCall(args: Args) {
     endReason,
     callStatus,
     arm,
-    firstTask,
     details,
     finishFailure,
     isLeaving,
