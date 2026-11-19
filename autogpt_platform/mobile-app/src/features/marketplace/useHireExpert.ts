@@ -10,11 +10,10 @@ import { hireErrorMessage, withHiredExpert } from "./helpers";
 import {
   claimHire,
   hireStateFor,
-  markListed,
+  hiresSince,
   readHireState,
   recordHire,
   releaseHire,
-  unlistedHires,
   useHireStore,
 } from "./hireStore";
 
@@ -39,10 +38,7 @@ export function useHireExpert({ onHired, onError }: Args) {
       queryClient.setQueryData<Expert[]>(expertKeys.list, (old) =>
         old ? withHiredExpert(old, expert) : old,
       );
-      void queryClient.invalidateQueries({ queryKey: expertKeys.list }).then(() => {
-        const list = queryClient.getQueryData<Expert[]>(expertKeys.list);
-        if (list?.some((item) => item.id === expert.id)) markListed(template.id, generation);
-      });
+      void queryClient.invalidateQueries({ queryKey: expertKeys.list });
       onHired(expert, template);
     } catch (caught) {
       // A refusal for an account already signed out must not end the next one.
@@ -69,5 +65,10 @@ export function useHireExpert({ onHired, onError }: Args) {
     return hireStateFor(readHireState(), sessionGeneration()).hired.get(templateID) ?? null;
   }
 
-  return { hire, isHiring, justHired, hired: unlistedHires(store) };
+  /** Hires the team list, last loaded at `listUpdatedAt`, can't have yet. */
+  function newerHires(listUpdatedAt: number) {
+    return hiresSince(store, listUpdatedAt);
+  }
+
+  return { hire, isHiring, justHired, newerHires };
 }

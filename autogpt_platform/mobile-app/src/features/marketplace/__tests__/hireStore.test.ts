@@ -2,11 +2,10 @@ import type { Expert } from "../../../lib/api/experts";
 import {
   claimHire,
   hireStateFor,
-  markListed,
   readHireState,
   recordHire,
   releaseHire,
-  unlistedHires,
+  hiresSince,
 } from "../hireStore";
 
 // The store is module state; each test starts from a sign-in no other test uses.
@@ -55,14 +54,14 @@ describe("recordHire", () => {
   });
 });
 
-describe("unlistedHires", () => {
-  it("keeps a hire until the team list has shown it, then leaves it to the list", () => {
+describe("hiresSince", () => {
+  it("keeps a hire until the team list loads after it, then leaves it to the list", () => {
     claimHire("t1", generation);
     recordHire("t1", expert, generation);
-    const current = () => hireStateFor(readHireState(), generation);
-    expect([...unlistedHires(current()).keys()]).toEqual(["t1"]);
-    markListed("t1", generation);
-    expect(unlistedHires(current()).size).toBe(0);
-    expect(current().hired.get("t1")).toBe(expert);
+    const current = hireStateFor(readHireState(), generation);
+    const at = current.hiredAt.get("t1") ?? 0;
+    expect([...hiresSince(current, at - 1).keys()]).toEqual(["t1"]);
+    expect(hiresSince(current, at + 1).size).toBe(0);
+    expect(current.hired.get("t1")).toBe(expert);
   });
 });

@@ -90,15 +90,16 @@ export function useHomeScreen() {
    */
   async function recipientID() {
     if (selectedID === null || selected) return selected?.id ?? null;
+    const asked = selectedID;
     const fresh = await experts.refetch();
-    const found = fresh.data?.find((expert) => expert.id === selectedID);
+    const found = fresh.data?.find((expert) => expert.id === asked);
     if (found) return found.id;
     if (fresh.isError) {
       setError("Couldn't load your team. Try again.");
     } else {
-      // Gone from the team: the picker already shows Otto, so say so.
-      setSelectedID(null);
-      setError("That expert isn't on your team any more. Send again to ask Otto.");
+      // Gone from the team. Someone picked meanwhile keeps their place.
+      setSelectedID((current) => (current === asked ? null : current));
+      setError("That expert isn't on your team any more, so nothing was sent.");
     }
     return undefined;
   }

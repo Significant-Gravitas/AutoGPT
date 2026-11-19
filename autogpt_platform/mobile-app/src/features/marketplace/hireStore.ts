@@ -11,11 +11,11 @@ export interface HireState {
   inFlight: ReadonlySet<string>;
   /** Hires confirmed in this sign-in, by template id. */
   hired: ReadonlyMap<string, Expert>;
-  /** Of those, the ones a loaded team list has shown: from then on the list decides. */
-  listed: ReadonlySet<string>;
+  /** When each of those was confirmed. */
+  hiredAt: ReadonlyMap<string, number>;
 }
 
-let state: HireState = { generation: 0, inFlight: new Set(), hired: new Map(), listed: new Set() };
+let state: HireState = { generation: 0, inFlight: new Set(), hired: new Map(), hiredAt: new Map() };
 const listeners = new Set<() => void>();
 
 function publish(next: HireState) {
@@ -25,7 +25,7 @@ function publish(next: HireState) {
 
 function stateFor(generation: number): HireState {
   if (state.generation === generation) return state;
-  return { generation, inFlight: new Set(), hired: new Map(), listed: new Set() };
+  return { generation, inFlight: new Set(), hired: new Map(), hiredAt: new Map() };
 }
 
 /** Marks a hire as started; false when that template's hire is already running. */
@@ -45,18 +45,24 @@ export function releaseHire(templateID: string, generation: number) {
 
 export function recordHire(templateID: string, expert: Expert, generation: number) {
   if (state.generation !== generation) return;
-  publish({ ...state, hired: new Map([...state.hired, [templateID, expert]]) });
+  publish({
+    ...state,
+    hired: new Map([...state.hired, [templateID, expert]]),
+    hiredAt: new Map([...state.hiredAt, [templateID, Date.now()]]),
+  });
 }
 
-/** The team list now has this hire, so a later list without it (removed on the web) wins. */
-export function markListed(templateID: string, generation: number) {
-  if (state.generation !== generation || state.listed.has(templateID)) return;
-  publish({ ...state, listed: new Set([...state.listed, templateID]) });
-}
-
-/** Hires the team list hasn't shown yet, which the Marketplace adds to it. */
-export function unlistedHires(current: HireState) {
-  return new Map([...current.hired].filter(([templateID]) => !current.listed.has(templateID)));
+/**
+ * Hires newer than the team list's last load (`dataUpdatedAt`), which the
+ * Marketplace adds to it. Once the list has loaded after a hire it decides,
+ * so an expert removed on the web stays gone; hiring again starts afresh.
+ */
+export function hiresSince(current: HireState, listUpdatedAt: number) {
+  return new Map(
+    [...current.hired].filter(
+      ([templateID]) => (current.hiredAt.get(templateID) ?? 0) >= listUpdatedAt,
+    ),
+  );
 }
 
 /** The hire state of the given sign-in; empty for any other. */

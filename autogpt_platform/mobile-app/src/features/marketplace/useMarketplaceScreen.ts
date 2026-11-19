@@ -34,14 +34,14 @@ export function useMarketplaceScreen() {
   const { toast, show, hide } = useToast();
   // Marketplace stays mounted in the drawer: someone who left meanwhile stays where they went.
   const navigation = useNavigation();
-  const { hire, isHiring, justHired, hired } = useHireExpert({
+  const { hire, isHiring, justHired, newerHires } = useHireExpert({
     onHired: handleHired,
     onError: handleError,
   });
   // State lands a render late; the ref stops a second tap in the same frame.
   const isOpeningChat = useRef(false);
   const all = templates.data ?? [];
-  const team = hiredTeam(experts.data ?? [], hired);
+  const team = hiredTeam(experts.data ?? [], newerHires(experts.dataUpdatedAt));
   const hiredIDs = hiredTemplateIDs(team);
   const sections = areaSections(all, hiredIDs);
 
