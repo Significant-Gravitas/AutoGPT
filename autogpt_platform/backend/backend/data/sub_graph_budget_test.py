@@ -28,7 +28,9 @@ from backend.util.test import SpinTestServer
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_stored_graph_is_measured_in_the_database(server: SpinTestServer):
-    async with _saved(_values(3, linked=True)) as (graph,):
+    graph = _values(3, linked=True)
+    graph.nodes[0].input_default = {"input": "x" * 10_000}
+    async with _saved(graph) as (graph,):
         sizes = await get_sub_graph_sizes(
             [
                 (graph.id, graph.version, DEFAULT_USER_ID),
@@ -39,12 +41,16 @@ async def test_a_stored_graph_is_measured_in_the_database(server: SpinTestServer
     [(ref, size)] = sizes.items()
     assert ref == (graph.id, graph.version, DEFAULT_USER_ID)
     assert (size.nodes, size.links) == (3, 2)
-    assert size.bytes > 0
+    assert size.bytes >= 10_000
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "limit, value",
+    [("MAX_SUB_GRAPHS", 1), ("MAX_SUB_GRAPH_ROWS", 5), ("MAX_SUB_GRAPH_BYTES", 1)],
+)
 async def test_a_read_stops_before_loading_sub_graphs_past_the_bound(
-    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch, limit: str, value: int
 ):
     async with _saved(_values(3), _values(3)) as (left, right):
         async with _saved(_runs(left, right)) as (parent,):
@@ -56,7 +62,33 @@ async def test_a_read_stops_before_loading_sub_graphs_past_the_bound(
             )
             assert loaded and {g.id for g in loaded.sub_graphs} == {left.id, right.id}
 
-            monkeypatch.setattr(sub_graph_budget, "MAX_SUB_GRAPH_ROWS", 5)
+            monkeypatch.setattr(sub_graph_budget, limit, value)
+            with pytest.raises(SubGraphsTooLargeError):
+                await get_graph(
+                    parent.id,
+                    parent.version,
+                    user_id=DEFAULT_USER_ID,
+                    include_subgraphs=True,
+                )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_links_pin_names_count_toward_the_byte_bound(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    pin = "tools_^_" + "x" * 50_000
+    sub_graph = _values(2, linked=True)
+    sub_graph.links[0].sink_name = pin
+    async with _saved(sub_graph) as (sub_graph,):
+        async with _saved(_runs(sub_graph)) as (parent,):
+            [size] = (
+                await get_sub_graph_sizes(
+                    [(sub_graph.id, sub_graph.version, DEFAULT_USER_ID)]
+                )
+            ).values()
+            assert size.bytes >= 2 * len(pin)
+
+            monkeypatch.setattr(sub_graph_budget, "MAX_SUB_GRAPH_BYTES", 2 * len(pin))
             with pytest.raises(SubGraphsTooLargeError):
                 await get_graph(
                     parent.id,

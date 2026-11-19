@@ -11,7 +11,7 @@ from backend.util.exceptions import SubGraphsTooLargeError
 MAX_SUB_GRAPHS = 200
 # Nodes and links together.
 MAX_SUB_GRAPH_ROWS = 10_000
-# Node inputs and metadata, as stored.
+# Node inputs and metadata, and link pin names, as stored.
 MAX_SUB_GRAPH_BYTES = 10 * 1024 * 1024
 
 # A stored graph version, with the owner a read looks it up for.
@@ -50,7 +50,8 @@ def too_large_error() -> SubGraphsTooLargeError:
     return SubGraphsTooLargeError(
         "This workflow's sub-workflows are too large to load together: at most "
         f"{MAX_SUB_GRAPHS} sub-workflows, {MAX_SUB_GRAPH_ROWS:,} blocks and "
-        f"connections, and {MAX_SUB_GRAPH_BYTES // 2**20} MB of block settings."
+        f"connections, and {MAX_SUB_GRAPH_BYTES // 2**20} MB of block settings and "
+        "connection names."
     )
 
 
@@ -98,6 +99,12 @@ SELECT g."id", g."version", g."userId",
            AS "links",
        (SELECT COALESCE(SUM(n."bytes"), 0) FROM "nodes" n
          WHERE n."agentGraphId" = g."id" AND n."agentGraphVersion" = g."version")
+       -- A read loads each link with both of the nodes it joins.
+       + (SELECT COALESCE(SUM(2 * (octet_length(l."sourceName")
+                                   + octet_length(l."sinkName"))), 0)
+            FROM {schema_prefix}"AgentNodeLink" l
+            JOIN "nodes" n ON l."agentNodeSourceId" = n."id"
+           WHERE n."agentGraphId" = g."id" AND n."agentGraphVersion" = g."version")
            AS "bytes"
   FROM {schema_prefix}"AgentGraph" g
   JOIN "refs" r
