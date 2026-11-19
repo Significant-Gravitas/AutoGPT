@@ -236,7 +236,7 @@ async def log_system_credential_cost(
             )
             if not cred_id or not (
                 is_system_credential(cred_id)
-                or is_platform_funded_managed(cred_id, provider_name)
+                or is_platform_funded_managed(cred_id)
                 or is_subscription
             ):
                 continue

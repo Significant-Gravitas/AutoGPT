@@ -350,8 +350,7 @@ def _with_schema_defaults(block: Block, input_data: BlockInput) -> BlockInput:
             merged[field_name] = {
                 **credentials,
                 PLATFORM_FUNDED_COST_KEY: is_platform_funded_managed(
-                    str(credentials.get("id") or ""),
-                    str(credentials.get("provider") or ""),
+                    str(credentials.get("id") or "")
                 ),
             }
     return merged

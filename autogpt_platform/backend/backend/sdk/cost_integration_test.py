@@ -26,6 +26,7 @@ from backend.blocks.dataforseo.keyword_suggestions import (
 from backend.blocks.exa.search import ExaSearchBlock
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.model import (
+    PLATFORM_FUNDED_COST_KEY,
     APIKeyCredentials,
     NodeExecutionStats,
     UserPasswordCredentials,
@@ -126,12 +127,22 @@ def test_agent_mail_bills_its_run_price_on_the_managed_key():
 def test_agent_mail_platform_marker_comes_from_the_id_not_the_input():
     block = _block_loaded_like_the_executor(AgentMailListInboxesBlock)
     managed = _credentials(AGENT_MAIL_MANAGED_KEY.id, "agent_mail")
-    managed["credentials"]["platform_funded"] = False
+    managed["credentials"][PLATFORM_FUNDED_COST_KEY] = False
     own = _credentials("user-own-key", "agent_mail")
-    own["credentials"]["platform_funded"] = True
+    own["credentials"][PLATFORM_FUNDED_COST_KEY] = True
 
     assert block_usage_cost(block, managed)[0] == 1
     assert block_usage_cost(block, own)[0] == 0
+
+
+def test_agent_mail_bills_the_managed_key_under_a_legacy_provider_string():
+    block = _block_loaded_like_the_executor(AgentMailListInboxesBlock)
+
+    cost, _ = block_usage_cost(
+        block, _credentials(AGENT_MAIL_MANAGED_KEY.id, "ProviderName.AGENT_MAIL")
+    )
+
+    assert cost == 1
 
 
 def test_agent_mail_has_no_shared_key_to_run_or_bill():

@@ -22,11 +22,10 @@ async def test_provisioned_key_is_marked_platform_funded():
 
     assert credential.is_managed
     assert credential.provider == "agent_mail"
-    assert is_platform_funded_managed(credential.id, "agent_mail")
+    assert is_platform_funded_managed(credential.id)
 
 
 def test_only_minted_ids_are_platform_funded():
-    assert not is_platform_funded_managed("user-own-key", "agent_mail")
-    assert not is_platform_funded_managed("agent_mail-default", "agent_mail")
-    assert not is_platform_funded_managed("ayrshare-managed-1", "ayrshare")
-    assert not is_platform_funded_managed("agent_mail-managed-1", "ayrshare")
+    assert not is_platform_funded_managed("user-own-key")
+    assert not is_platform_funded_managed("agent_mail-default")
+    assert not is_platform_funded_managed("ayrshare-managed-1")

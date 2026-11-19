@@ -381,7 +381,7 @@ class IntegrationCredentialsStore:
         if credentials.is_managed:
             # Managed credentials are written only by `add_managed_credential`.
             raise InvalidInputError("Only user-owned credentials can be added")
-        if is_platform_funded_managed(credentials.id, credentials.provider):
+        if is_platform_funded_managed(credentials.id):
             raise InvalidInputError("Cannot create credentials with a reserved ID")
         async with await self.locked_user_integrations(user_id):
             # Check system/managed IDs without triggering provisioning
@@ -538,7 +538,11 @@ class IntegrationCredentialsStore:
         credentials: Credentials,
     ) -> Credentials:
         check_storable_size(credentials)
-        if is_system_credential(credentials.id) or credentials.is_managed:
+        if (
+            is_system_credential(credentials.id)
+            or credentials.is_managed
+            or is_platform_funded_managed(credentials.id)
+        ):
             raise ValueError("Single-provider upsert requires user-owned credentials")
 
         async with await self.locked_user_integrations(user_id):
