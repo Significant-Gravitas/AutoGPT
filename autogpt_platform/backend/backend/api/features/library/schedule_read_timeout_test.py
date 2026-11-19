@@ -22,6 +22,7 @@ from backend.api.features.library.model import ScheduleInfo
 from backend.api.model import CreateGraph
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
+from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.data import graph as graph_db
 from backend.data.user import get_or_create_user
@@ -254,6 +255,55 @@ async def test_batch_read_walks_a_failing_sub_agent_once(
     assert lookups.pop(AITextGeneratorBlock().id, 0) == single_lookups
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_batch_read_clears_picked_files_in_a_sub_agent_the_reader_does_not_own(
+    server: SpinTestServer, mocker: MockerFixture
+):
+    owner, reader = await _new_user(), await _new_user()
+    picked_file = {
+        "_credentials_id": "owner-cred",
+        "id": "file-123",
+        "name": "test.xlsx",
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+    }
+    sub_agent = await graph_db.create_graph(
+        graph_db.Graph(
+            name="Sub-agent",
+            description="",
+            nodes=[
+                graph_db.Node(
+                    block_id=GoogleSheetsReadBlock().id,
+                    input_default={"spreadsheet": picked_file, "range": "A1"},
+                )
+            ],
+        ),
+        owner.id,
+    )
+    caller = await graph_db.create_graph(
+        graph_db.Graph(
+            name="Caller",
+            description="",
+            nodes=[
+                graph_db.Node(
+                    block_id=AgentExecutorBlock().id,
+                    input_default=_runs(sub_agent, owner.id),
+                )
+            ],
+        ),
+        owner.id,
+    )
+    [agent] = await library_db.create_library_agent(
+        caller, reader.id, create_library_agents_for_sub_graphs=False
+    )
+    built = mocker.spy(graph_db, "graph_model_sharing_sub_graphs")
+
+    await _get_many.get_library_agents_by_ids([agent.id], reader.id)
+
+    [graph] = built.spy_return_list
+    [sub_graph] = graph.sub_graphs
+    assert sub_graph.nodes[0].input_default["spreadsheet"] is None
+
+
 def _count_block_lookups(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
     """Counts each `Node.block` lookup by block id; walking a graph's nodes
     looks up each node's block."""
@@ -273,25 +323,12 @@ async def _agents_running_one_sub_agent(
 ) -> tuple[str, list[str]]:
     """A new user's id, and the ids of three of their library agents that are
     each one node running the same sub-agent, itself the one node given."""
-    user = await get_or_create_user(
-        {
-            "sub": str(uuid.uuid4()),
-            "email": f"batch-{uuid.uuid4().hex[:8]}@example.com",
-            "name": "Batch Read",
-        }
-    )
+    user = await _new_user()
     sub_agent = await graph_db.create_graph(
         graph_db.Graph(name="Sub-agent", description="", nodes=[sub_agent_node]),
         user.id,
     )
-    runs_sub_agent = {
-        "user_id": user.id,
-        "graph_id": sub_agent.id,
-        "graph_version": sub_agent.version,
-        "inputs": {},
-        "input_schema": {},
-        "output_schema": {},
-    }
+    runs_sub_agent = _runs(sub_agent, user.id)
     agent_ids: list[str] = []
     for i in range(3):
         graph = await graph_db.create_graph(
@@ -311,3 +348,24 @@ async def _agents_running_one_sub_agent(
         )
         agent_ids.append(agent.id)
     return user.id, agent_ids
+
+
+def _runs(sub_agent: graph_db.GraphModel, user_id: str) -> dict:
+    return {
+        "user_id": user_id,
+        "graph_id": sub_agent.id,
+        "graph_version": sub_agent.version,
+        "inputs": {},
+        "input_schema": {},
+        "output_schema": {},
+    }
+
+
+async def _new_user():
+    return await get_or_create_user(
+        {
+            "sub": str(uuid.uuid4()),
+            "email": f"batch-{uuid.uuid4().hex[:8]}@example.com",
+            "name": "Batch Read",
+        }
+    )
