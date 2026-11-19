@@ -197,13 +197,16 @@ async def test_each_clear_preserves_its_request_context():
 
 @pytest.mark.asyncio
 async def test_cache_deletion_order_scope_and_errors_are_preserved():
+    loop_thread = threading.current_thread()
     events: list[tuple[str, str | None]] = []
     clear_calls = 0
 
     def delete_id(user_id: str) -> None:
+        assert threading.current_thread() is not loop_thread
         events.append(("id", user_id))
 
     def delete_email(email: str) -> None:
+        assert threading.current_thread() is not loop_thread
         events.append(("email", email))
 
     def clear() -> None:

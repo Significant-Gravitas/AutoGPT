@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from redis.exceptions import RedisClusterException, RedisError
@@ -53,7 +54,8 @@ async def get_public_store_agents(
     if refused:
         # The cache read and write already degrade on Redis trouble; this must too.
         try:
-            get_cached_store_agents.cache_delete(
+            await asyncio.to_thread(
+                get_cached_store_agents.cache_delete,
                 featured=featured,
                 creator=creator,
                 sorted_by=sorted_by,

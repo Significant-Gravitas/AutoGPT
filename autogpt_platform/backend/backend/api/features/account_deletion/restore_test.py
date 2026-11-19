@@ -77,7 +77,12 @@ def edges(mocker: MockerFixture) -> MagicMock:
         ("forget_store_listings", MagicMock),
         ("capture_anonymous", MagicMock),
     ):
-        parent.attach_mock(mocker.patch(f"{MODULE}.{name}", new_callable=kind), name)
+        module = (
+            "backend.api.features.account_deletion.cache"
+            if name in {"forget_refusal", "forget_store_listings"}
+            else MODULE
+        )
+        parent.attach_mock(mocker.patch(f"{module}.{name}", new_callable=kind), name)
     mocker.patch(
         f"{MODULE}.get_deletion_request",
         AsyncMock(return_value=MagicMock(eraseAfter=ERASE_AFTER)),
@@ -122,6 +127,7 @@ async def test_an_open_account_is_let_in_but_not_counted(
 
     edges.forget_account_state.assert_called_once_with(USER_ID)
     edges.capture_anonymous.assert_not_called()
+    edges.forget_store_listings.assert_not_called()
 
 
 @pytest.mark.asyncio

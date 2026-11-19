@@ -76,8 +76,13 @@ def steps(mocker: MockerFixture) -> MagicMock:
     """Every step, attached to one parent so the order of the calls is kept."""
     parent = MagicMock()
     for name in dict.fromkeys(STEPS):
+        module = (
+            "backend.api.features.account_deletion.cache"
+            if name in {"forget_refusal", "forget_store_listings"}
+            else MODULE
+        )
         step = mocker.patch(
-            f"{MODULE}.{name}",
+            f"{module}.{name}",
             new_callable=MagicMock if name in SYNC_STEPS else AsyncMock,
         )
         parent.attach_mock(step, name)

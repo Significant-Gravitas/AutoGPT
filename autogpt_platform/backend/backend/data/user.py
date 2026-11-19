@@ -153,7 +153,7 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # reset link ends in. Better Auth marks the identity verified in the
         # frontend, which can't reach this cache, so drop it here.
         try:
-            forget_user_email_verification(user.id)
+            await asyncio.to_thread(forget_user_email_verification, user.id)
         except Exception:
             # Mail eligibility only, and the entry expires on its own.
             logger.warning(
@@ -502,7 +502,7 @@ async def update_user_integrations(user_id: str, data: UserIntegrations):
         data={"integrations": encrypted_data},
     )
     # Invalidate cache for this user
-    get_user_by_id.cache_delete(user_id)
+    await asyncio.to_thread(get_user_by_id.cache_delete, user_id)
 
 
 async def get_user_credentials(user_id: str) -> list[Credentials]:
@@ -782,7 +782,7 @@ async def update_user_notification_preference(
 
         # Invalidate cache for this user since notification preferences are
         # part of user data
-        get_user_by_id.cache_delete(user_id)
+        await asyncio.to_thread(get_user_by_id.cache_delete, user_id)
         return _preference_from_user(user)
     except NotFoundError:
         raise
@@ -814,7 +814,7 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
             data={"emailVerified": verified},
         )
         # Invalidate cache for this user
-        get_user_by_id.cache_delete(user_id)
+        await asyncio.to_thread(get_user_by_id.cache_delete, user_id)
     except Exception as e:
         raise DatabaseError(
             f"Failed to set email verification status for user {user_id}: {e}"
@@ -841,7 +841,7 @@ async def disable_all_user_notifications(
     try:
         await PrismaUser.prisma().update(where={"id": user_id}, data=data)
         # Invalidate cache for this user
-        get_user_by_id.cache_delete(user_id)
+        await asyncio.to_thread(get_user_by_id.cache_delete, user_id)
         logger.info(f"Disabled all notification preferences for user {user_id}")
     except Exception as e:
         raise DatabaseError(
@@ -1272,24 +1272,19 @@ async def record_excluded_country(user_id: str, country: str) -> None:
     )
 
 
-async def _invalidate_user_caches(user_id: str, email: str | None) -> None:
-    # get_user_by_id and get_user_by_email are keyed by a single value and can
-    # be deleted surgically; get_or_create_user is keyed by the JWT-payload
-    # dict, so it can only be cleared whole. That clear SCANs every shard with
-    # the shared cache's synchronous Redis client, seconds on prod's keyspace,
-    # so it runs in a thread rather than stalling every request on this
-    # event loop.
+def _clear_user_caches(user_id: str, email: str | None) -> None:
     get_user_by_id.cache_delete(user_id)
     if email:
         get_user_by_email.cache_delete(email)
-    await _clear_get_or_create_user_cache()
+    # This cache is keyed by the full JWT payload and must be cleared whole.
+    get_or_create_user.cache_clear()
 
 
-async def _clear_get_or_create_user_cache() -> None:
-    """Serialize whole-cache clears without retaining cancelled callers."""
+async def _invalidate_user_caches(user_id: str, email: str | None) -> None:
+    """Run the deletes and whole-cache scan together, even if the caller cancels."""
     context = contextvars.copy_context()
     clear = _USER_CACHE_CLEAR_EXECUTOR.submit(
-        context.run, get_or_create_user.cache_clear
+        context.run, _clear_user_caches, user_id, email
     )
     awaiting_clear = asyncio.wrap_future(clear)
     try:

@@ -514,7 +514,7 @@ async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
         check_first=lambda tx: _check_membership_count(tx, user_id),
     )
     # New runs bill the team org's balance now, not after the cached minute.
-    forget_personal_org_owner(org_id)
+    await asyncio.to_thread(forget_personal_org_owner, org_id)
 
     return await get_org(org_id)
 

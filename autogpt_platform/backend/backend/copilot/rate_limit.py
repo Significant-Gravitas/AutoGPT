@@ -1367,8 +1367,9 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
         where={"id": user_id},
         data={"subscriptionTier": tier.value},
     )
-    get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
+    from backend.data.credit import invalidate_subscription_caches
+
+    await asyncio.to_thread(invalidate_subscription_caches, user_id)
     schedule_posthog_lifecycle_sync(user_id)
 
     # Fire-and-forget drift check so admin bulk ops don't wait on Stripe.
