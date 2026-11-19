@@ -18,6 +18,7 @@ from .agent_output import AgentOutputTool
 from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
+from .capability_gates import tool_refused_message
 from .chat_platform import (
     EditChatPlatformMessageTool,
     ListChatPlatformChannelsTool,
@@ -506,7 +507,7 @@ async def execute_tool(
             toolCallId=tool_call_id,
             toolName=tool_name,
             output=ErrorResponse(
-                message=f"{tool_name} is not available in this session.",
+                message=tool_refused_message(tool_name),
                 error="tool_disabled",
                 session_id=session.session_id,
             ).model_dump_json(),
