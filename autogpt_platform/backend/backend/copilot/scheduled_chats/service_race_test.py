@@ -31,6 +31,9 @@ async def test_concurrent_failures_resume_every_job_they_paused(
     scheduler: MagicMock, mocker: MockerFixture
 ):
     """Resume restores both fire times and leaves an owner-paused job alone."""
+    watchdog_seconds = 30
+    # The outer watchdog bounds the race. Lock expiry is tested separately.
+    mocker.patch.object(scheduler_write_lock, "_LOCK_WAIT_SECONDS", watchdog_seconds)
     mocker.patch.object(
         scheduler_write_lock, "get_redis_async", return_value=FakeAtResetRedis()
     )
@@ -127,7 +130,7 @@ async def test_concurrent_failures_resume_every_job_they_paused(
         second_started.set()
         await record_scheduled_run(routine_run("job-b"))
 
-    async with asyncio.timeout(10), asyncio.TaskGroup() as tasks:
+    async with asyncio.timeout(watchdog_seconds), asyncio.TaskGroup() as tasks:
         tasks.create_task(record_scheduled_run(routine_run("job-a")))
         await first_paused_a.wait()
         tasks.create_task(second_run())
