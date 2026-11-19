@@ -347,6 +347,9 @@ async def test_a_skill_too_long_with_its_arguments_asks_to_shorten_them(
     assert "would be longer than 200,000 characters" in message
     assert len(message) < 2 * 64_000
     assert strip_injected_context_for_display(message) == "/repeat " + "A" * 63_992
+    persist = si.persist_current_user_message
+    assert isinstance(persist, AsyncMock)
+    persist.assert_awaited_once()
 
 
 @pytest.mark.parametrize(
