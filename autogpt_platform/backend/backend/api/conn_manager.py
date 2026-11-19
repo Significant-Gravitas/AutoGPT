@@ -514,6 +514,10 @@ class _ShardStream:
         self.handlers[channel] = handler
         try:
             subscription = await self._open_or_subscribe(channel)
+            if self._stopping:
+                # Stopped while this opened its connection, so that stop
+                # closed nothing; closed below, as no pump will read it.
+                raise EventStreamLostError(f"{channel}: the stream has stopped")
         except BaseException:
             self.handlers.pop(channel, None)
             if not self.handlers:
