@@ -18,7 +18,8 @@ from backend.blocks.sql_query_helpers import (
     _DATABASE_TYPE_SCOPE_SCHEME,
     _DATABASE_TYPE_TO_DRIVER,
     DatabaseType,
-    _execute_query,
+    QueryWorkerError,
+    _execute_query_in_worker,
     _sanitize_error,
     _validate_query_is_read_only,
     _validate_single_statement,
@@ -197,10 +198,11 @@ class SQLQueryBlock(Block):
     ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
         """Execute a SQL query and return (rows, columns, affected_rows, truncated).
 
-        Delegates to ``_execute_query`` in ``sql_query_helpers``.
+        Runs ``_execute_query`` in a worker process, through
+        ``_execute_query_in_worker`` in ``sql_query_helpers``.
         Extracted as a method so it can be mocked during block tests.
         """
-        return _execute_query(
+        return _execute_query_in_worker(
             connection_url=connection_url,
             query=query,
             timeout=timeout,
@@ -301,6 +303,10 @@ class SQLQueryBlock(Block):
             yield "error", f"SQL error: {_sanitize(e)}"
         except DBAPIError as e:
             yield "error", f"Database error: {_sanitize(e)}"
+        except QueryWorkerError as e:
+            yield "error", str(e)
+        except TimeoutError:
+            yield "error", f"Query timed out after {input_data.timeout}s."
         except ModuleNotFoundError:
             yield (
                 "error",

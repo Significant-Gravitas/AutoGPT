@@ -1,6 +1,8 @@
 """Tests for SQLQueryBlock: single-statement validation, URL validation,
 error sanitization, SSRF protection, and read/write mode behavior."""
 
+import os
+import socket
 from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
@@ -9,14 +11,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.engine.url import URL, make_url
+from sqlalchemy.exc import DataError, OperationalError
 
+from backend.blocks import sql_query_helpers
 from backend.blocks.sql_query_block import SQLQueryBlock, UserPasswordCredentials
 from backend.blocks.sql_query_helpers import (
     _CONNECT_TIMEOUT_SECONDS,
     DatabaseType,
+    QueryWorkerError,
     _configure_session,
     _execute_query,
+    _execute_query_in_worker,
     _run_in_transaction,
     _sanitize_error,
     _serialize_value,
@@ -459,6 +465,25 @@ class TestSQLQueryBlockRunSSRF:
 @pytest.mark.asyncio
 class TestSQLQueryBlockRunErrorHandling:
     """Error handling: connection failures and timeouts."""
+
+    @pytest.mark.parametrize(
+        "raised, expected",
+        [
+            (TimeoutError("stopped"), "Query timed out after 30s."),
+            (
+                QueryWorkerError("Query result is too large."),
+                "Query result is too large.",
+            ),
+        ],
+    )
+    async def test_worker_failure_reported(self, raised: Exception, expected: str):
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(creds)
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+        block.execute_query = MagicMock(side_effect=raised)  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert outputs == {"error": expected}
 
     async def test_connection_failure_sanitized_no_credentials(self):
         """Connection error must not leak credentials."""
@@ -1823,3 +1848,84 @@ class TestExecuteQueryIntegration:
             mock_ce.assert_called_once()
             _, kwargs = mock_ce.call_args
             assert kwargs["connect_args"]["connect_timeout"] == _CONNECT_TIMEOUT_SECONDS
+
+
+# ---------------------------------------------------------------------------
+# The query's worker process, against the test database
+# ---------------------------------------------------------------------------
+
+
+def _test_database_url() -> URL:
+    url = make_url(os.environ["DATABASE_URL"])
+    return URL.create(
+        drivername="postgresql",
+        username=url.username,
+        password=url.password,
+        host=url.host,
+        port=url.port,
+        database=url.database,
+    )
+
+
+class TestExecuteQueryInWorker:
+    """The query runs in a worker process with a memory limit and a deadline."""
+
+    def test_rows_come_back(self):
+        result = SQLQueryBlock.execute_query(
+            connection_url=_test_database_url(),
+            query=(
+                "SELECT 1 AS n, 'x' AS s, interval '90 seconds' AS d, "
+                "ARRAY[2, 1.5]::numeric[] AS a"
+            ),
+            timeout=10,
+            max_rows=10,
+        )
+        assert result == (
+            [{"n": 1, "s": "x", "d": 90.0, "a": [2, "1.5"]}],
+            ["n", "s", "d", "a"],
+            -1,
+            False,
+        )
+
+    def test_driver_error_keeps_its_class_and_text(self):
+        with pytest.raises(DataError, match="division by zero"):
+            _execute_query_in_worker(
+                _test_database_url(), "SELECT 1/0", timeout=10, max_rows=1
+            )
+
+    def test_result_over_the_memory_limit_fails_in_the_worker(self, monkeypatch):
+        monkeypatch.setattr(sql_query_helpers, "_WORKER_MEMORY_LIMIT", 32 * 2**20)
+        monkeypatch.setattr(sql_query_helpers, "_MAX_RESULT_BYTES", 2**30)
+        with pytest.raises(OperationalError, match="memory"):
+            _execute_query_in_worker(
+                _test_database_url(),
+                f"SELECT repeat('x', {128 * 2**20})",
+                timeout=30,
+                max_rows=1,
+            )
+
+    def test_result_over_the_size_limit_refused(self, monkeypatch):
+        monkeypatch.setattr(sql_query_helpers, "_MAX_RESULT_BYTES", 2**20)
+        with pytest.raises(QueryWorkerError, match="too large"):
+            _execute_query_in_worker(
+                _test_database_url(),
+                f"SELECT repeat('x', {2 * 2**20})",
+                timeout=10,
+                max_rows=1,
+            )
+
+    def test_unanswering_server_stopped_at_the_deadline(self, monkeypatch):
+        # The worker's own connect timeout stays 10 s; the deadline here is 2 s.
+        monkeypatch.setattr(sql_query_helpers, "_CONNECT_TIMEOUT_SECONDS", 0)
+        monkeypatch.setattr(sql_query_helpers, "_WORKER_DEADLINE_SLACK_SECONDS", 1)
+        with socket.create_server(("127.0.0.1", 0)) as server:
+            url = URL.create(
+                "postgresql",
+                username="u",
+                password="p",
+                host="127.0.0.1",
+                port=server.getsockname()[1],
+                database="d",
+            )
+            with pytest.raises(TimeoutError):
+                _execute_query_in_worker(url, "SELECT 1", timeout=1, max_rows=1)

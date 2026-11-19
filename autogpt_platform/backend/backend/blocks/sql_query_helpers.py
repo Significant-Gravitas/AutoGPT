@@ -1,12 +1,24 @@
+import functools
+import json
+import logging
 import re
-from datetime import date, datetime, time
+import subprocess
+import sys
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Any
 
+import sqlalchemy.exc
 import sqlparse
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine.url import URL
+from sqlalchemy.engine.url import URL, make_url
+from sqlalchemy.exc import DBAPIError
+
+if sys.platform != "win32":
+    import resource
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseType(str, Enum):
@@ -60,6 +72,13 @@ _DATABASE_TYPE_TO_DRIVER = {
 # connection to the database server.  It is separate from the per-statement
 # timeout configured via SET commands inside _configure_session().
 _CONNECT_TIMEOUT_SECONDS = 10
+
+# A query runs in a worker process (see _execute_query_in_worker): the memory
+# it may allocate past its start, the longest answer it may send back, and how
+# long past its connect and statement timeouts it is given before it is killed.
+_WORKER_MEMORY_LIMIT = 512 * 2**20
+_MAX_RESULT_BYTES = 16 * 2**20
+_WORKER_DEADLINE_SLACK_SECONDS = 30
 
 # Default ports for each database type.
 # The scheme of a database login's scope (see backend/data/credential_scope.py).
@@ -435,3 +454,168 @@ def _execute_query(
             )
     finally:
         engine.dispose()
+
+
+class QueryWorkerError(Exception):
+    """A query's worker process ran out of memory or stopped without an answer."""
+
+
+def _execute_query_in_worker(
+    connection_url: URL | str,
+    query: str,
+    timeout: int,
+    max_rows: int,
+    read_only: bool = True,
+    database_type: DatabaseType = DatabaseType.POSTGRES,
+) -> tuple[list[dict[str, Any]], list[str], int, bool]:
+    """Run ``_execute_query`` in a fresh interpreter under a memory limit.
+
+    The worker is killed, and ``TimeoutError`` raised, once the connect and
+    statement timeouts plus ``_WORKER_DEADLINE_SLACK_SECONDS`` have passed.
+    A driver error is raised here as the same SQLAlchemy class and text.
+    """
+    if isinstance(connection_url, str):
+        connection_url = make_url(connection_url)
+    request = {
+        # Field by field: a rendered URL would be parsed again in the worker.
+        "url": {
+            "drivername": connection_url.drivername,
+            "username": connection_url.username,
+            "password": connection_url.password,
+            "host": connection_url.host,
+            "port": connection_url.port,
+            "database": connection_url.database,
+        },
+        "query": query,
+        "timeout": timeout,
+        "max_rows": max_rows,
+        "read_only": read_only,
+        "database_type": DatabaseType(database_type).value,
+        "memory_limit": _WORKER_MEMORY_LIMIT,
+        "max_result_bytes": _MAX_RESULT_BYTES,
+    }
+    deadline = _CONNECT_TIMEOUT_SECONDS + timeout + _WORKER_DEADLINE_SLACK_SECONDS
+    try:
+        finished = subprocess.run(
+            [sys.executable, "-I", "-c", _worker_bootstrap()],
+            input=json.dumps(request).encode(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=deadline,
+            env={},
+        )
+    except subprocess.TimeoutExpired as e:
+        raise TimeoutError(f"The query's worker was stopped after {deadline}s") from e
+    if not finished.stdout:
+        logger.warning(
+            f"SQL query worker exited with code {finished.returncode} and no answer"
+        )
+        raise QueryWorkerError(
+            "The query stopped without a result; it may have run out of memory."
+        )
+    return _read_worker_answer(finished.stdout)
+
+
+def _worker_bootstrap() -> str:
+    # This file alone: importing the backend.blocks package loads every block.
+    return (
+        "import importlib.util, sys; "
+        f"sys.path[:0] = {sys.path!r}; "
+        f"spec = importlib.util.spec_from_file_location('_sql_query_worker', {__file__!r}); "
+        "module = importlib.util.module_from_spec(spec); "
+        "spec.loader.exec_module(module); "
+        "module._serve_query()"
+    )
+
+
+def _read_worker_answer(
+    raw: bytes,
+) -> tuple[list[dict[str, Any]], list[str], int, bool]:
+    answer = json.loads(raw)
+    if "result" in answer:
+        rows, columns, affected, truncated = answer["result"]
+        return rows, columns, affected, truncated
+    if "too_large" in answer:
+        raise QueryWorkerError(answer["too_large"])
+    name, message = answer["error"]
+    if answer.get("dbapi"):
+        raise _rebuilt_error_class(name)(message)
+    if name == "ModuleNotFoundError":
+        raise ModuleNotFoundError(message)
+    raise RuntimeError(f"{name}: {message}")
+
+
+@functools.cache
+def _rebuilt_error_class(name: str) -> type[DBAPIError]:
+    """A subclass of the named SQLAlchemy error that carries the worker's text."""
+    base = getattr(sqlalchemy.exc, name, None)
+    if not (isinstance(base, type) and issubclass(base, DBAPIError)):
+        base = DBAPIError
+    return type(
+        base.__name__,
+        (base,),
+        {"__init__": _set_error_text, "__str__": _error_text},
+    )
+
+
+def _set_error_text(self: Exception, message: str) -> None:
+    Exception.__init__(self, message)
+
+
+def _error_text(self: Exception) -> str:
+    return self.args[0]
+
+
+def _serve_query() -> None:
+    """A query worker's entry point: one request on stdin, one answer on stdout."""
+    request = json.loads(sys.stdin.buffer.read())
+    _limit_memory(request["memory_limit"])
+    try:
+        result = _execute_query(
+            connection_url=URL.create(**request["url"]),
+            query=request["query"],
+            timeout=request["timeout"],
+            max_rows=request["max_rows"],
+            read_only=request["read_only"],
+            database_type=DatabaseType(request["database_type"]),
+        )
+        answer = json.dumps({"result": result}, default=_json_default)
+        if len(answer) > request["max_result_bytes"]:
+            answer = json.dumps({"too_large": _too_large(request)})
+    except MemoryError:
+        answer = json.dumps({"too_large": _too_large(request)})
+    except DBAPIError as e:
+        answer = json.dumps({"error": [type(e).__name__, str(e)], "dbapi": True})
+    except Exception as e:
+        answer = json.dumps({"error": [type(e).__name__, str(e)]})
+    sys.stdout.write(answer)
+    sys.stdout.flush()
+
+
+def _too_large(request: dict[str, Any]) -> str:
+    limit = request["max_result_bytes"] // 2**20
+    return f"Query result is too large (max {limit} MB); select fewer rows or columns."
+
+
+def _json_default(value: Any) -> Any:
+    # Values JSON can't hold, e.g. inside an array: the block's own conversion,
+    # seconds for an interval (as the executor's encoder gave), else the text.
+    if isinstance(value, timedelta):
+        return value.total_seconds()
+    serialized = _serialize_value(value)
+    return str(value) if serialized is value else serialized
+
+
+def _limit_memory(limit: int) -> None:
+    # Set only where it is enforced and VmData can be read
+    if sys.platform != "linux":
+        return
+    with open("/proc/self/status") as status:
+        in_use = next(
+            int(line.split()[1]) * 1024 for line in status if line.startswith("VmData:")
+        )
+    _, hard = resource.getrlimit(resource.RLIMIT_DATA)
+    soft = in_use + limit
+    if hard != resource.RLIM_INFINITY:
+        soft = min(soft, hard)
+    resource.setrlimit(resource.RLIMIT_DATA, (soft, hard))
