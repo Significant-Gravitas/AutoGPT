@@ -6,12 +6,13 @@ MRTR handling).  No network: HTTP replies are faked at ``MCPClient._post``.
 
 import base64
 import json
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.blocks.mcp.client import MCPClient, MCPClientError
+from backend.blocks.mcp.client import MAX_TOOLS_PER_SERVER, MCPClient, MCPClientError
 from backend.blocks.mcp.protocol import (
     ERROR_HEADER_MISMATCH,
     ERROR_METHOD_NOT_FOUND,
@@ -22,6 +23,7 @@ from backend.blocks.mcp.protocol import (
     HEADER_PROTOCOL_VERSION,
     HEADER_SESSION_ID,
     LEGACY_PROTOCOL_VERSION,
+    MAX_HEADER_PARAMS,
     META_CLIENT_CAPABILITIES,
     META_CLIENT_INFO,
     META_PROTOCOL_VERSION,
@@ -196,6 +198,13 @@ class TestHeaderParams:
             },
             {"oneOf": [{"properties": {"a": {"type": "string", "x-mcp-header": "A"}}}]},
             {"$defs": {"x": {"type": "string", "x-mcp-header": "A"}}},
+            # more annotated parameters than a tool may have
+            {
+                "properties": {
+                    f"p{n}": {"type": "string", "x-mcp-header": f"P{n}"}
+                    for n in range(MAX_HEADER_PARAMS + 1)
+                }
+            },
         ],
     )
     def test_invalid_annotations_are_rejected(self, schema: dict[str, Any]):
@@ -739,6 +748,71 @@ class TestSloppyServerPayloads:
         result = await _client(transport).call_tool("echo", {})
         assert result.content == [{"type": "text", "text": "plain"}, {"type": "text"}]
         assert result.is_error is False
+
+    async def test_non_object_content_items_are_logged_once(self, caplog):
+        transport = _Transport(
+            {
+                "server/discover": [_FakeResponse(200, _rpc_result(DISCOVER_RESULT))],
+                "tools/call": [_FakeResponse(200, _rpc_result({"content": [1, 2, 3]}))],
+            }
+        )
+        with caplog.at_level(logging.WARNING, logger="backend.blocks.mcp.client"):
+            result = await _client(transport).call_tool("echo", {})
+        assert len(result.content) == 3
+        assert [
+            r.getMessage() for r in caplog.records if "not objects" in r.getMessage()
+        ] == [
+            f"MCP server {SERVER_URL} returned 3 content item(s) that are not "
+            "objects; treating them as text"
+        ]
+
+    async def test_a_tool_list_is_kept_to_its_first_tools(self):
+        listed = [
+            {"name": f"tool{n}", "inputSchema": {"type": "object"}}
+            for n in range(MAX_TOOLS_PER_SERVER + 1)
+        ]
+        transport = _Transport(
+            {
+                "server/discover": [_FakeResponse(200, _rpc_result(DISCOVER_RESULT))],
+                "tools/list": [_FakeResponse(200, _rpc_result({"tools": listed}))],
+            }
+        )
+        tools = await _client(transport).list_tools()
+        assert [t.name for t in tools] == [t["name"] for t in listed[:-1]]
+
+    async def test_tools_dropped_for_their_annotations_are_logged_once(self, caplog):
+        bad = {
+            "type": "object",
+            "properties": {"a": {"type": "number", "x-mcp-header": "A"}},
+        }
+        transport = _Transport(
+            {
+                "server/discover": [_FakeResponse(200, _rpc_result(DISCOVER_RESULT))],
+                "tools/list": [
+                    _FakeResponse(
+                        200,
+                        _rpc_result(
+                            {
+                                "tools": [
+                                    {"name": "bad1", "inputSchema": bad},
+                                    {"name": "good", "inputSchema": {"type": "object"}},
+                                    {"name": "bad2", "inputSchema": bad},
+                                ]
+                            }
+                        ),
+                    )
+                ],
+            }
+        )
+        with caplog.at_level(logging.WARNING, logger="backend.blocks.mcp.client"):
+            tools = await _client(transport).list_tools()
+        assert [t.name for t in tools] == ["good"]
+        assert [
+            r.getMessage() for r in caplog.records if "Dropped" in r.getMessage()
+        ] == [
+            f"Dropped 2 MCP tool(s) from {SERVER_URL} with an invalid x-mcp-header, "
+            "first 'bad1'"
+        ]
 
 
 class TestHttpRetries:

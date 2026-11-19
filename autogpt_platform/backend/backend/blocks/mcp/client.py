@@ -62,6 +62,8 @@ _NO_FALLBACK_STATUSES = frozenset({401, 403, 407, 429})
 # Bound on ``input_required`` retries when the server only wants its
 # ``requestState`` echoed back (no interactive input requested).
 _MAX_INPUT_REQUIRED_RETRIES = 3
+# Far above any real server's tool list; the rest of a longer list is ignored.
+MAX_TOOLS_PER_SERVER = 1000
 # ``Requests`` retries throttled/5xx responses forever unless told otherwise.
 # MCP calls run inside graph executions and chat turns, so keep them bounded.
 _HTTP_RETRY_ATTEMPTS = 3
@@ -825,20 +827,24 @@ class MCPClient:
         if not result or "tools" not in result:
             return []
 
+        listed = result["tools"]
+        if len(listed) > MAX_TOOLS_PER_SERVER:
+            logger.warning(
+                f"MCP server {self.server_url} listed {len(listed)} tools; "
+                f"keeping the first {MAX_TOOLS_PER_SERVER}"
+            )
+            listed = listed[:MAX_TOOLS_PER_SERVER]
+
         tools = []
-        for tool_data in result["tools"]:
+        dropped: list[str] = []
+        for tool_data in listed:
             name = tool_data.get("name", "")
             input_schema = tool_data.get("inputSchema", {})
             if self.era is MCPProtocolEra.MODERN:
                 try:
                     self._header_params[name] = collect_header_params(input_schema)
-                except InvalidHeaderAnnotation as e:
-                    logger.warning(
-                        "Dropping MCP tool %r from %s: invalid x-mcp-header (%s)",
-                        name,
-                        self.server_url,
-                        e,
-                    )
+                except InvalidHeaderAnnotation:
+                    dropped.append(name)
                     self._header_params.pop(name, None)
                     continue
             tools.append(
@@ -849,6 +855,11 @@ class MCPClient:
                     description=tool_data.get("description") or "",
                     input_schema=input_schema,
                 )
+            )
+        if dropped:
+            logger.warning(
+                f"Dropped {len(dropped)} MCP tool(s) from {self.server_url} with an "
+                f"invalid x-mcp-header, first {str(dropped[0])[:100]!r}"
             )
         return tools
 
@@ -862,17 +873,18 @@ class MCPClient:
         if not isinstance(raw, list):
             return []
         blocks: list[dict[str, Any]] = []
+        wrapped = 0
         for item in raw:
             if isinstance(item, dict):
                 blocks.append(item)
             else:
-                logger.warning(
-                    "MCP server %s returned a %s content item, not an object; "
-                    "treating it as text",
-                    self.server_url,
-                    type(item).__name__,
-                )
+                wrapped += 1
                 blocks.append({"type": "text", "text": str(item)})
+        if wrapped:
+            logger.warning(
+                f"MCP server {self.server_url} returned {wrapped} content item(s) "
+                "that are not objects; treating them as text"
+            )
         return blocks
 
     @staticmethod
