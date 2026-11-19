@@ -114,6 +114,8 @@ export interface ChatContainerProps {
   ) => void | Promise<void>;
   /** Sends a suggested task, resolving to the chat it started. */
   onStartTask?: (message: string) => Promise<string | undefined>;
+  /** Sends again the message the chat couldn't confirm it sent. */
+  onResendUnconfirmed?: () => void;
   onStop: () => void;
   /** Called to enqueue a message while streaming (bypasses normal send flow). */
   onEnqueue?: (message: string) => void | Promise<void>;
@@ -178,6 +180,7 @@ export const ChatContainer = ({
   onCreateSession,
   onSend,
   onStartTask,
+  onResendUnconfirmed,
   onStop,
   onEnqueue,
   queuedMessages,
@@ -541,6 +544,9 @@ export const ChatContainer = ({
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
                 onRetry={handleRetry}
+                onResend={
+                  isTurnLocked || isStreaming ? undefined : onResendUnconfirmed
+                }
                 turnStats={turnStats}
                 queuedMessages={queuedMessages}
                 pendingSend={pendingSend}

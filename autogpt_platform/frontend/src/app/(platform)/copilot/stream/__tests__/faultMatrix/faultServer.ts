@@ -7,6 +7,8 @@ import { loadRecordedTurn } from "../recordedTurns";
 export const USER_ID = "user-1";
 const FIXTURE = loadRecordedTurn("baseline-tool-turn");
 const HEARTBEAT_MS = 10_000;
+// Past the client's silence abort (30 s) and its checks (4 s).
+const LATE_RECEIVE_MS = 40_000;
 const LISTENER_READ_MS = 5_000;
 const encoder = new TextEncoder();
 const QUEUED_STREAM = emptyStream();
@@ -26,6 +28,8 @@ export type PostMode =
   // The request never reaches the server and never answers, as a dead socket holds it.
   | "hang-before-send"
   | "lost-after-receive"
+  // The request reaches the server only after the client gave up on it.
+  | "late-after-receive"
   // The server started the turn; the response stays open and silent, as a frozen page sees it.
   | "silent-after-receive"
   | "route-error-after-receive"
@@ -66,6 +70,8 @@ export class FaultServer {
   turns: FaultTurn[] = [];
   connections: FaultConnection[] = [];
   requests: { method: string; url: URL }[] = [];
+  /** Each POST's `message_id`, in order. */
+  postedIds: string[] = [];
   postMode: PostMode | (() => PostMode) = "stream";
   resumeMode: ResumeMode = "stream";
   /** Session reads fail while this is above zero; each read takes one. */
@@ -91,6 +97,10 @@ export class FaultServer {
     const url = new URL(String(input));
     const method = init?.method ?? "GET";
     this.requests.push({ method, url });
+    if (method === "POST")
+      this.postedIds.push(
+        (JSON.parse(String(init?.body)) as { message_id: string }).message_id,
+      );
     return method === "POST" ? this.post(url, init) : this.resume(url, init);
   }) as typeof fetch;
 
@@ -222,6 +232,23 @@ export class FaultServer {
     const id = body.expert_kickoff
       ? "expert-kickoff-row"
       : scopedMessageId(url, body.message_id);
+    if (mode === "late-after-receive") {
+      setTimeout(
+        () => this.startTurn(body.message, "running", id),
+        LATE_RECEIVE_MS,
+      );
+      return hangUntilAborted(init?.signal);
+    }
+    // The route's claim on the id: a send it already took starts nothing, and
+    // is handed the turn running now, if any.
+    if (this.history.some((row) => row.id === id)) {
+      const running = this.running();
+      return sse(
+        running
+          ? this.open("POST", url, running, "0-0", init?.signal)
+          : emptyStream(),
+      );
+    }
     if (this.running()) {
       this.pending.push({ text: body.message, id });
       if (mode === "lost-after-receive") throw new TypeError("Failed to fetch");

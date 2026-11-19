@@ -247,6 +247,23 @@ export function useCopilotRuntimeStream({
     await runtime.send(input, copilotModel);
   }
 
+  // The message no check could confirm goes out again under its first id.
+  function resendUnconfirmed() {
+    if (!runtime || !sessionId) return false;
+    const message = runtime.resendUnconfirmed(copilotModel);
+    if (!message) return false;
+    useCopilotStreamStore.getState().updateCoord(sessionId, {
+      lastSubmittedMessageText: textOf(message),
+      lastSubmittedKickoffExpertId: getKickoffExpertIdFromMetadata(
+        message.metadata,
+      ),
+      lastSubmittedKickoffAttemptToken: getKickoffAttemptTokenFromMetadata(
+        message.metadata,
+      ),
+    });
+    return true;
+  }
+
   const stop = useCopilotStop({
     sessionId,
     stopStream: () => runtime?.stop(),
@@ -313,6 +330,7 @@ export function useCopilotRuntimeStream({
     /** Follow-ups drained into the running turns, for the chip strip. */
     drainedCount: drainedRowCount(snapshot),
     sendMessage,
+    resendUnconfirmed,
     stop,
     status: chatStatus(snapshot.phase),
     error: snapshot.error ?? undefined,

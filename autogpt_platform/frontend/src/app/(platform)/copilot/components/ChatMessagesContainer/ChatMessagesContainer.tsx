@@ -86,6 +86,8 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
+  /** Sends again a message the chat couldn't confirm it sent. */
+  onResend?: () => void;
   turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
@@ -282,6 +284,7 @@ export function ChatMessagesContainer({
   isLoadingMore,
   onLoadMore,
   onRetry,
+  onResend,
   turnStats,
   queuedMessages,
   pendingSend,
@@ -663,7 +666,7 @@ export function ChatMessagesContainer({
               </Message>
             ))}
           {!readOnly && error && !lastAssistantHasErrorMarker && (
-            <ChatErrorBanner error={error} />
+            <ChatErrorBanner error={error} onResend={onResend} />
           )}
           {!readOnly && (
             <TurnEndAnnouncer
