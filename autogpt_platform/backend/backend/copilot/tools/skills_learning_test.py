@@ -8,12 +8,13 @@ an unreadable registry fails closed for the owner's skills only, and a
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.learning import retrieval
+from backend.copilot.learning import content_checks, retrieval
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.skills import (
@@ -148,6 +149,37 @@ async def test_content_checks_block_the_write_and_the_bundle(workspace):
         )
     assert bundle_block.value.failure.file == "bundle file 1 (references/)"
     assert bundle_block.value.failure.pattern_class == "assigned_secret"
+
+
+@pytest.mark.asyncio
+async def test_content_checks_run_off_the_event_loop(workspace, fake_learning_store):
+    """A package is up to 20 MB of text, so its checks run off the event loop."""
+    scanned_on: list[tuple[str, int]] = []
+
+    def recording(check):
+        def scan(*args, **kwargs):
+            scanned_on.append((check.__name__, threading.get_ident()))
+            return check(*args, **kwargs)
+
+        return scan
+
+    with patch(
+        "backend.copilot.tools.skills.check_skill_bundle",
+        recording(content_checks.check_skill_bundle),
+    ), patch(
+        "backend.copilot.tools.skills.collect_content_approvals",
+        recording(content_checks.collect_content_approvals),
+    ):
+        await store_user_skill(
+            USER, name="ok", description="d", body="## Steps\n1. go\n"
+        )
+    # The pre-write check, its approvals, and the scan before history is kept.
+    assert [name for name, _ in scanned_on] == [
+        "check_skill_bundle",
+        "collect_content_approvals",
+        "check_skill_bundle",
+    ]
+    assert threading.get_ident() not in {thread for _, thread in scanned_on}
 
 
 @pytest.mark.asyncio
