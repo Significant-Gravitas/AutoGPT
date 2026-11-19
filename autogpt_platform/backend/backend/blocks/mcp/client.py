@@ -20,6 +20,7 @@ References:
 
 import json
 import logging
+import re
 from typing import Any, NoReturn
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -62,6 +63,7 @@ _NO_FALLBACK_STATUSES = frozenset({401, 403, 407, 429})
 # Bound on ``input_required`` retries when the server only wants its
 # ``requestState`` echoed back (no interactive input requested).
 _MAX_INPUT_REQUIRED_RETRIES = 3
+_DATED_VERSION_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 # ``Requests`` retries throttled/5xx responses forever unless told otherwise.
 # MCP calls run inside graph executions and chat turns, so keep them bounded.
 _HTTP_RETRY_ATTEMPTS = 3
@@ -373,7 +375,14 @@ class MCPClient:
         # Send initialized notification (no response expected)
         await self._send_notification("notifications/initialized")
         result = result or {}
-        self.protocol_version = result.get("protocolVersion") or LEGACY_PROTOCOL_VERSION
+        # Only a dated version is echoed back and cached; anything else falls
+        # back to the version we asked for.
+        version = result.get("protocolVersion")
+        self.protocol_version = (
+            version
+            if isinstance(version, str) and _DATED_VERSION_RE.fullmatch(version)
+            else LEGACY_PROTOCOL_VERSION
+        )
         self.server_info = result.get("serverInfo") or {}
         self.server_capabilities = result.get("capabilities") or {}
         return result

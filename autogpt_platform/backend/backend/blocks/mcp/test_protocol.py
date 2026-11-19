@@ -762,6 +762,38 @@ class TestHttpRetries:
 
 
 class TestLegacyRequests:
+    @pytest.mark.parametrize(
+        "reported, kept",
+        [
+            ("2024-11-05", "2024-11-05"),
+            ("not a version", LEGACY_PROTOCOL_VERSION),
+            ("2024-11-05" * 10, LEGACY_PROTOCOL_VERSION),
+            (20241105, LEGACY_PROTOCOL_VERSION),
+            (None, LEGACY_PROTOCOL_VERSION),
+        ],
+    )
+    async def test_only_a_dated_protocol_version_is_kept(self, reported, kept):
+        transport = _Transport(
+            {
+                "server/discover": [
+                    _FakeResponse(200, _rpc_error(ERROR_METHOD_NOT_FOUND))
+                ],
+                "initialize": [
+                    _FakeResponse(
+                        200,
+                        _rpc_result(
+                            {**LEGACY_INIT_RESULT, "protocolVersion": reported}
+                        ),
+                    )
+                ],
+            }
+        )
+        client = _client(transport)
+        await client.initialize()
+        assert client.protocol_version == kept
+        cached = era_cache.get(SERVER_URL)
+        assert cached is not None and cached.protocol_version == kept
+
     async def test_session_id_is_captured_echoed_and_released(self):
         transport = _Transport(
             {
