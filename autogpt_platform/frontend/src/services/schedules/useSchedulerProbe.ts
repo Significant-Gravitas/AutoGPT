@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGetV1ListExecutionSchedulesForAUser } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { useRecheckWhileSchedulesUnknown } from "./useRecheckWhileSchedulesUnknown";
 import { useSchedulerRetryOptions } from "./useSchedulerQueryOptions";
@@ -12,17 +12,21 @@ import { useSchedulerRetryOptions } from "./useSchedulerQueryOptions";
 // known schedules. A cached success from before the outage does not count:
 // the probe query keeps its last answer while disabled, so without this
 // the list would re-read its pages at the very start of the outage,
-// before the new probe has answered.
+// before the new probe has answered. A success stays recorded through later
+// probe errors for the same unknown period, so a flapping probe cannot
+// re-trigger the one re-read; only known schedules clear it.
 export function useSchedulerProbe(schedulesUnknown: boolean) {
   const recheck = useRecheckWhileSchedulesUnknown();
   const retryOptions = useSchedulerRetryOptions();
   const unknownSince = useRef<number | null>(null);
+  const [recovered, setRecovered] = useState(false);
 
   useEffect(() => {
     if (schedulesUnknown) {
       unknownSince.current ??= Date.now();
     } else {
       unknownSince.current = null;
+      setRecovered(false);
     }
   }, [schedulesUnknown]);
 
@@ -33,10 +37,21 @@ export function useSchedulerProbe(schedulesUnknown: boolean) {
       enabled: schedulesUnknown,
     },
   });
-  const recovered =
+
+  // Read dataUpdatedAt unconditionally: the query result only notifies this
+  // hook about properties the render reads, so a short-circuited read would
+  // leave later probe updates unobserved and `recovered` stuck false when
+  // the hook mounts with a cached success.
+  const dataUpdatedAt = probe.dataUpdatedAt;
+  const probeRecovered =
     schedulesUnknown &&
     probe.isSuccess &&
     unknownSince.current !== null &&
-    probe.dataUpdatedAt >= unknownSince.current;
+    dataUpdatedAt >= unknownSince.current;
+
+  useEffect(() => {
+    if (probeRecovered) setRecovered(true);
+  }, [probeRecovered]);
+
   return { recovered };
 }
