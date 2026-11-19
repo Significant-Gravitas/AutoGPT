@@ -76,6 +76,9 @@ export class FaultServer {
   queueing = false;
   /** The session GET's window: only the latest this-many rows. */
   window: number | null = null;
+  /** The next session GET lists this many of the newest rows late, as one
+   *  that reads the messages just before a send's row and turn land. */
+  lagRowsOnce = 0;
   viewReads = 0;
   private pending: { text: string; id: string }[] = [];
   private pumps = new Set<() => void>();
@@ -95,12 +98,14 @@ export class FaultServer {
       throw new TypeError("Failed to fetch");
     }
     const turn = this.current();
-    const rows =
-      this.window === null ? this.history : this.history.slice(-this.window);
+    const lag = this.lagRowsOnce;
+    this.lagRowsOnce = 0;
+    const read = lag ? this.history.slice(0, -lag) : this.history;
+    const rows = this.window === null ? read : read.slice(-this.window);
     return {
       user_id: USER_ID,
       messages: rows.map((row) => ({ ...row })),
-      has_more_messages: rows.length < this.history.length,
+      has_more_messages: rows.length < read.length,
       active_stream:
         turn?.state === "running"
           ? { turn_id: turn.id, checkpoint: this.checkpoint(turn) }

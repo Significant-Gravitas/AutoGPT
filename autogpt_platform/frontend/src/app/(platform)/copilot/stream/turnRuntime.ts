@@ -886,8 +886,8 @@ export class TurnRuntime {
   }
 
   // The send arrived: its prompt took its row, or the turn after it is
-  // followed. A prompt the session has no row for never stays above a turn
-  // this tab attached to, so that turn is its own.
+  // followed. A prompt the session has no row for stays above a turn this
+  // tab attached to only when the view lacked the message the turn answers.
   private lostSendLanded(promptKey: string | null) {
     const index = this.segments.findIndex((s) => s.key === promptKey);
     const prompt = this.segments[index];
@@ -912,12 +912,16 @@ export class TurnRuntime {
     view: SessionView,
   ) {
     const rows = persistedRows(view.messages);
-    // A prompt the session has no row for is not this turn's.
-    const unwritten = this.takeUnwrittenPrompts(view, rows);
     const checkpoint = active.checkpoint ?? null;
     const start = checkpoint
       ? checkpoint.sequence
       : (this.lastViewMaxSequence ?? -1) + 1;
+    // A prompt the session has no row for is not this turn's once the view
+    // shows the message the turn answers: a read can list the messages from
+    // before the turn's own prompt was written.
+    const answered = rows.find((r) => r.sequence === start - 1);
+    const unwritten =
+      answered?.role === "user" ? this.takeUnwrittenPrompts(view, rows) : [];
     // Rows another tab (or the server) persisted between the tail and this turn.
     const gap =
       this.ownedFrom === null ? null : gapSegment(this.segments, start, rows);

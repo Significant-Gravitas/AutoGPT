@@ -551,6 +551,81 @@ describe("a send", () => {
   );
 
   cell(
+    "S21w",
+    "lost while hidden, its row past the session's window under another tab's new turn on return, is not reported",
+    async () => {
+      const other = openTab();
+      server.postMode = "lost-after-receive";
+      server.window = 2;
+      setVisibility("hidden");
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      await advance(30_000);
+      server.postMode = "stream";
+      other.send(P2);
+      await advance(0);
+      // The window shows the other tab's prompt, but not where P1's row is.
+      setVisibility("visible");
+      await advance(2_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null });
+    },
+  );
+
+  cell(
+    "S23",
+    "whose response was lost, read just before its prompt row landed, stays above its answer",
+    async () => {
+      server.postMode = "lost-after-receive";
+      // The send's first check reads the turn but not yet the prompt row.
+      server.lagRowsOnce = 1;
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(2_000);
+      expectScreen({
+        error: null,
+        phase: "live",
+        chat: [`user: ${P1}`, FIRST_BLOCK],
+      });
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "S23b",
+    "a later message whose response was lost, read just before its prompt row landed, stays above its answer",
+    async () => {
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      await advance(15_000);
+      server.postMode = "lost-after-receive";
+      // The read ends at the last reply, as if the new prompt were not written.
+      server.lagRowsOnce = 1;
+      tab.send(P2);
+      await advance(0);
+      server.publish(9);
+      await advance(2_000);
+      expectScreen({
+        error: null,
+        phase: "live",
+        chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, FIRST_BLOCK],
+      });
+      server.publish();
+      await advance(30_000);
+      expectScreen({
+        error: null,
+        chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+      });
+    },
+  );
+
+  cell(
     "S20",
     "an expert's first message whose response was lost is followed into its turn",
     async () => {
