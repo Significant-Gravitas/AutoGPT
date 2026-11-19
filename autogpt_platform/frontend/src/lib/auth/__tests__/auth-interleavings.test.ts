@@ -74,6 +74,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast() {} }),
 }));
 
+import { SESSION_CHECK_DEADLINE_TIMER } from "@/lib/auth/hooks/session-check-deadline";
 import { ImpersonationCookie as cookieWriter } from "@/lib/impersonation";
 
 type StoreModule = typeof import("@/lib/auth/hooks/useAuthStore");
@@ -114,11 +115,6 @@ interface Timer {
   // The session check this timer is the deadline of.
   deadlineFor?: Pending;
 }
-
-// The name of the timer the store arms for each session check it sends
-// (lib/auth/hooks/session-check-deadline.ts), which tells it from the
-// store's other timers.
-const DEADLINE_TIMER = "sessionCheckDeadline";
 
 const SESSION_CHECKS: Kind[] = [
   "getCurrentUser",
@@ -330,8 +326,11 @@ class World {
       const tab = this.current;
       const id = ++this.timerId;
       if (tab) {
+        // The store arms one named timer for each session check it sends.
         const deadlineFor =
-          run.name === DEADLINE_TIMER ? this.deadlineFor(tab) : undefined;
+          run.name === SESSION_CHECK_DEADLINE_TIMER
+            ? this.deadlineFor(tab)
+            : undefined;
         this.timers.push({ id, tab, run, deadlineFor });
       } else this.escaped += 1;
       return id;
@@ -609,7 +608,8 @@ class World {
         ).toBeLessThanOrEqual(1);
 
         // (f) every check has its deadline. Failing for every check means the
-        // store's deadline timer no longer has the name DEADLINE_TIMER.
+        // store's deadline timer is no longer named
+        // SESSION_CHECK_DEADLINE_TIMER.
         const unbounded = checks.filter((p) => !p.deadline).map((p) => p.kind);
         expect(
           unbounded,

@@ -283,6 +283,30 @@ describe("a session check that never gets an answer (#16988)", () => {
     expect(router.push).toHaveBeenCalledWith(signedOut.redirectPath);
   });
 
+  it("acts on an answer that arrives just before the deadline", async () => {
+    const router = makeRouter();
+    useAuthStore.setState({ user: admin, hasLoadedUser: true });
+    const signedOut = {
+      user: null,
+      isValid: false,
+      redirectPath: "/login?next=%2Flibrary",
+    };
+    let answer: (value: unknown) => void = () => {};
+    actions.validateSession.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+
+    void validate(router);
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_DEADLINE_MS - 1);
+    answer(signedOut);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(router.push).toHaveBeenCalledWith(signedOut.redirectPath);
+  });
+
   it("finishes start-up when its first lookup never answers", async () => {
     actions.getCurrentUser.mockReturnValueOnce(new Promise(() => {}));
     actions.validateSession.mockResolvedValue({ user: admin, isValid: true });

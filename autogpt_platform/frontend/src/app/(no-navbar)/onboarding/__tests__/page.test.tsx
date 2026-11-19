@@ -1124,7 +1124,9 @@ describe("a setup that is slow to load (#16965)", () => {
     view.rerender(<OnboardingPage />);
 
     expect(screen.queryByRole("alert")).toBeNull();
-    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS));
+    await act(() => vi.advanceTimersByTimeAsync(SETUP_LOAD_DEADLINE_MS - 1));
+    expect(screen.queryByRole("alert")).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(1));
     expect(screen.getByRole("alert")).toBeDefined();
   });
 });

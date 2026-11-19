@@ -13,6 +13,11 @@ type SessionCheck = "getCurrentUser" | "validateSession" | "refreshSession";
 // until a navigation discards it (see #17028).
 export const SESSION_CHECK_DEADLINE_MS = 10_000;
 
+// The name of the deadline's timer function, `sessionCheckDeadline` below.
+// The auth interleavings harness tells deadlines from the store's other
+// timers by it.
+export const SESSION_CHECK_DEADLINE_TIMER = "sessionCheckDeadline";
+
 class SessionCheckTimeoutError extends Error {
   constructor(check: SessionCheck) {
     super(`${check} got no answer in time`);
