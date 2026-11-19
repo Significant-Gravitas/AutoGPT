@@ -26,12 +26,12 @@ STOP_CONCURRENCY = 4
 async def stop_member_runs(org_id: str, user_id: str) -> None:
     """Stop the runs ``user_id`` started in ``org_id`` that haven't finished.
 
-    Called once they've been removed from the org: a run they started while
-    they were a member is stopped there rather than left running, billed to
-    the org. That includes runs they deleted from their history, as deleting
-    a run doesn't stop it. The removal has already happened, so nothing here
-    fails it: a lookup or a stop that fails is logged, and the runs the other
-    lookup found are still stopped.
+    Called after the response once they've been removed from the org: a run
+    they started while they were a member is stopped there rather than left
+    running, billed to the org. That includes runs they deleted from their
+    history, as deleting a run doesn't stop it. The removal has already
+    happened, so nothing here fails it: a lookup or a stop that fails is
+    logged, and the runs the other lookup found are still stopped.
     """
     visible, deleted = await asyncio.gather(
         _unfinished_runs(org_id, user_id, deleted=False),
@@ -70,8 +70,12 @@ async def _stop(
     org_id: str, user_id: str, graph_exec_id: str, wait_timeout: float = 15.0
 ) -> None:
     try:
+        # A child run has its parent's user and org, so it is in the list itself.
         await stop_graph_execution(
-            user_id=user_id, graph_exec_id=graph_exec_id, wait_timeout=wait_timeout
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            wait_timeout=wait_timeout,
+            cascade=False,
         )
     except Exception:
         logger.warning(

@@ -61,7 +61,8 @@ async def stop_user_work(user_id: str) -> None:
     Best effort: each call that fails is logged and the rest still run, and
     this never raises, so the account can still be closed. Every call is
     bounded in time: it waits up to 5 s for running AutoPilot turns to end,
-    and with every service hung it returns in about a minute.
+    and with every service hung it returns in about a minute, plus up to
+    ``STEP_TIMEOUT_SECONDS`` for every ``STOP_CONCURRENCY`` unfinished runs.
     """
     if not user_id:
         # An empty id would turn the run listing into "every user's runs".
