@@ -69,6 +69,11 @@ _AMQP_KEYWORDS = [
 
 _AMQP_INDICATORS = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
 
+# ``InternalKeyMiddleware`` logs a refused internal call under this name. Its
+# message holds the request path, which the caller picks, so the message
+# filters below skip it: a path like "/unauthorized" must not hide a refusal.
+_SERVICE_AUTH_LOGGER = "backend.util.service_auth"
+
 # Pika reconnect noise: `conn_retry` already handles these. Drop only the
 # four known signatures so genuine pika ERRORs (auth, declare failures) still
 # reach Sentry. (AUTOGPT-SERVER-6JC/6JD/6JE/6JF.)
@@ -654,7 +659,7 @@ def _before_send(event, hint):
     if logger_name == _FALKORDB_DRIVER_LOGGER and log_msg:
         if any(sig in log_msg.lower() for sig in _FALKORDB_TEARDOWN_SIGNATURES):
             return None
-    if logger_name and log_msg:
+    if logger_name and log_msg and logger_name != _SERVICE_AUTH_LOGGER:
         msg = log_msg.lower()
         noisy_log_patterns = [
             "amqpconnection",
