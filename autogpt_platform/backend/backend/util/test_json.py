@@ -17,7 +17,11 @@ from backend.blocks.orchestrator import OrchestratorBlock
 from backend.blocks.slack.blocks import SendSlackMessageBlock
 from backend.integrations.providers import ProviderName
 from backend.util import json as json_util
-from backend.util.json import SafeJson, validate_with_jsonschema
+from backend.util.json import (
+    SafeJson,
+    describe_validation_error,
+    validate_with_jsonschema,
+)
 
 
 class SamplePydanticModel(BaseModel):
@@ -804,17 +808,107 @@ class TestValidateWithJsonschema:
             validate_with_jsonschema(self.SCHEMA, {"name": "John", "age": 30}) is None
         )
 
-    def test_type_mismatch_returns_error_message(self):
-        """A type mismatch produces the underlying jsonschema message."""
+    def test_type_mismatch_names_the_input_and_both_types(self):
         error = validate_with_jsonschema(self.SCHEMA, {"name": 1})
-        assert error is not None
-        assert "is not of type 'string'" in error
+        assert error == "name: expected string, got integer"
 
-    def test_missing_required_field_returns_error_message(self):
-        """A missing required field produces the underlying jsonschema message."""
+    def test_missing_required_field_names_the_field(self):
         error = validate_with_jsonschema(self.SCHEMA, {"age": 30})
+        assert error == "'name' is a required property"
+
+    def test_error_carries_neither_the_schema_nor_the_value(self):
+        """The raw jsonschema text appends the whole schema and the given
+        value, which can run to hundreds of lines."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "description": "schema-description-marker " * 50,
+                    "items": {"type": "string"},
+                }
+            },
+        }
+        error = validate_with_jsonschema(schema, {"items": "given-value-marker" * 50})
+        assert error == "items: expected array, got string"
+
+    def test_optional_input_lists_every_allowed_type(self):
+        schema = {
+            "type": "object",
+            "properties": {"items": {"anyOf": [{"type": "array"}, {"type": "null"}]}},
+        }
+        error = validate_with_jsonschema(schema, {"items": "text"})
+        assert error == "items: expected array or null, got string"
+
+    def test_nested_error_gives_the_path_to_the_value(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"count": {"type": "integer", "minimum": 0}},
+                    },
+                }
+            },
+        }
+        error = validate_with_jsonschema(
+            schema, {"rows": [{"count": 1}, {"count": -7}]}
+        )
+        assert error == "rows[1].count: must be >= 0"
+
+    @pytest.mark.parametrize(
+        "property_schema,value,expected",
+        [
+            ({"enum": ["a", "b"]}, "secret-z", "f: must be one of 'a', 'b'"),
+            ({"const": "a"}, "secret-z", "f: must be 'a'"),
+            ({"maxLength": 3}, "secret-z", "f: must have at most 3 characters"),
+            ({"pattern": "^a$"}, "secret-z", "f: does not match the pattern '^a$'"),
+            ({"maxItems": 1}, ["secret-z", "b"], "f: must have at most 1 items"),
+            (
+                {"type": "object", "additionalProperties": False},
+                {"secret-z": 1},
+                "f: has properties that are not allowed",
+            ),
+            (
+                {"oneOf": [{"minimum": 0}, {"maximum": 10}]},
+                5,
+                "f: matches more than one of the allowed forms",
+            ),
+            (
+                {"anyOf": [{"minimum": 10}, {"type": "string"}]},
+                5,
+                "f: does not match any of the allowed forms",
+            ),
+        ],
+    )
+    def test_each_failed_check_reads_without_the_value(
+        self, property_schema, value, expected
+    ):
+        schema = {"type": "object", "properties": {"f": property_schema}}
+        error = validate_with_jsonschema(schema, {"f": value})
+        assert error == expected
+        assert error is not None and "secret-z" not in error
+
+    def test_long_message_is_capped(self):
+        options = [f"option-{i}" for i in range(500)]
+        schema = {"type": "object", "properties": {"f": {"enum": options}}}
+        error = validate_with_jsonschema(schema, {"f": "other"})
         assert error is not None
-        assert "'name' is a required property" in error
+        assert len(error) == json_util.VALIDATION_ERROR_MAX_LENGTH
+        assert error.startswith("f: must be one of 'option-0'")
+        assert error.endswith("...")
+
+    def test_describe_names_the_field_of_a_field_schema(self):
+        with pytest.raises(jsonschema.ValidationError) as caught:
+            jsonschema.validate(
+                [1, "x"], {"type": "array", "items": {"type": "integer"}}
+            )
+        assert (
+            describe_validation_error(caught.value, field_name="numbers")
+            == "numbers[1]: expected integer, got string"
+        )
 
     def test_repeated_calls_with_one_schema_stay_correct(self):
         """The executor validates the same schema against different data on
@@ -1238,7 +1332,7 @@ class TestValidateWithJsonschema:
         try:
             jsonschema.validate(data, schema)
         except jsonschema.ValidationError as error:
-            return str(error)
+            return describe_validation_error(error)
         return None
 
 

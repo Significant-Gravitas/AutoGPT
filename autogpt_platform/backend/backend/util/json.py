@@ -294,9 +294,132 @@ def validate_with_jsonschema(
     # `jsonschema.validate()` raises best_match(iter_errors(...)), which is not
     # the same error Validator.validate() raises, so match it exactly. chain the
     # already-consumed first error back in rather than re-running iter_errors.
-    return str(
+    return describe_validation_error(
         jsonschema.exceptions.best_match(itertools.chain((first_error,), errors))
     )
+
+
+VALIDATION_ERROR_MAX_LENGTH = 300
+
+_JSON_TYPE_NAMES: dict[type, str] = {
+    type(None): "null",
+    bool: "boolean",
+    int: "integer",
+    float: "number",
+    str: "string",
+    list: "array",
+    tuple: "array",
+    dict: "object",
+}
+
+
+def describe_validation_error(
+    error: jsonschema.ValidationError, field_name: str | None = None
+) -> str:
+    """A short message for a failed check: where it failed and what was
+    expected.
+
+    ``str(error)`` carries the whole schema and the given value, which can run
+    to hundreds of lines; this carries neither. ``field_name`` names the field
+    when the schema was only that field's.
+    """
+    path: list[str | int] = [field_name] if field_name is not None else []
+    path.extend(error.absolute_path)
+    location = _format_error_path(path)
+    message = _describe_failed_check(error)
+    if location:
+        message = f"{location}: {message}"
+    if len(message) > VALIDATION_ERROR_MAX_LENGTH:
+        message = message[: VALIDATION_ERROR_MAX_LENGTH - 3] + "..."
+    return message
+
+
+def _format_error_path(path: list[str | int]) -> str:
+    location = ""
+    for part in path:
+        if isinstance(part, int):
+            location += f"[{part}]"
+        else:
+            location += f".{part}" if location else str(part)
+    return location
+
+
+def _json_type_name(value: Any) -> str:
+    return _JSON_TYPE_NAMES.get(type(value), type(value).__name__)
+
+
+def _expected_types(types: Any) -> str:
+    if isinstance(types, list):
+        return " or ".join(str(t) for t in types)
+    return str(types)
+
+
+def _describe_failed_check(error: jsonschema.ValidationError) -> str:
+    # Typed loosely: jsonschema marks these attributes as possibly unset.
+    keyword: Any = error.validator
+    expected: Any = error.validator_value
+    given: Any = error.instance
+    context: list[jsonschema.ValidationError] = list(error.context or [])
+
+    if keyword == "type":
+        return f"expected {_expected_types(expected)}, got {_json_type_name(given)}"
+    if keyword in ("anyOf", "oneOf"):
+        if context and all(
+            sub.validator == "type" and not sub.relative_path for sub in context
+        ):
+            types = [_expected_types(sub.validator_value) for sub in context]
+            return f"expected {' or '.join(types)}, got {_json_type_name(given)}"
+        if keyword == "oneOf" and not context:
+            return "matches more than one of the allowed forms"
+        return "does not match any of the allowed forms"
+    if keyword == "required":
+        present = given if isinstance(given, dict) else {}
+        missing = [name for name in expected if name not in present]
+        if missing:
+            return f"{missing[0]!r} is a required property"
+        return "is missing a required property"
+    if keyword == "enum":
+        return "must be one of " + ", ".join(repr(option) for option in expected)
+    if keyword == "const":
+        return f"must be {expected!r}"
+    if keyword in ("minimum", "exclusiveMinimum", "maximum", "exclusiveMaximum"):
+        sign = {
+            "minimum": ">=",
+            "exclusiveMinimum": ">",
+            "maximum": "<=",
+            "exclusiveMaximum": "<",
+        }[keyword]
+        return f"must be {sign} {expected}"
+    if keyword == "multipleOf":
+        return f"must be a multiple of {expected}"
+    if keyword == "minLength":
+        return f"must have at least {expected} characters"
+    if keyword == "maxLength":
+        return f"must have at most {expected} characters"
+    if keyword == "minItems":
+        return f"must have at least {expected} items"
+    if keyword == "maxItems":
+        return f"must have at most {expected} items"
+    if keyword == "uniqueItems":
+        return "must not contain duplicate items"
+    if keyword == "minProperties":
+        return f"must have at least {expected} properties"
+    if keyword == "maxProperties":
+        return f"must have at most {expected} properties"
+    if keyword == "pattern":
+        return f"does not match the pattern {expected!r}"
+    if keyword == "format":
+        return f"is not a valid {expected}"
+    if keyword in ("additionalProperties", "unevaluatedProperties"):
+        return "has properties that are not allowed"
+    if keyword in ("additionalItems", "items", "unevaluatedItems"):
+        return "has items that are not allowed"
+    if keyword == "not":
+        return "matches a form that is not allowed"
+    if keyword is None:
+        # A `false` schema, which allows no value at all.
+        return "is not allowed"
+    return f"fails the {keyword!r} check"
 
 
 def sanitize_string(value: str) -> str:
