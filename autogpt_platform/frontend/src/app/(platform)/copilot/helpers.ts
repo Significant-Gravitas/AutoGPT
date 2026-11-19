@@ -36,7 +36,7 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   const { token, error, retryable } = await getWebSocketToken();
   if (error || !token) {
     console.warn("[Copilot] Failed to get auth token:", error);
-    throw new CopilotAuthError(retryable === true);
+    throw new CopilotAuthError({ retryable: retryable === true });
   }
   return {
     Authorization: `Bearer ${token}`,
@@ -51,9 +51,12 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
  * failed instead, and a later lookup may work.
  */
 export class CopilotAuthError extends Error {
-  constructor(readonly retryable = false) {
+  readonly retryable: boolean;
+
+  constructor({ retryable = false }: { retryable?: boolean } = {}) {
     super("Authentication failed — please sign in again.");
     this.name = "CopilotAuthError";
+    this.retryable = retryable;
   }
 }
 
