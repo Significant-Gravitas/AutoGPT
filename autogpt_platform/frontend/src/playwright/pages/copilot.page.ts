@@ -7,9 +7,9 @@ export class CopilotPage extends BasePage {
   }
 
   async open(sessionId?: string): Promise<void> {
-    const url = sessionId ? `/copilot?sessionId=${sessionId}` : "/copilot";
+    const url = sessionId ? `/home?sessionId=${sessionId}` : "/home";
     await this.page.goto(url);
-    await expect(this.page).toHaveURL(/\/copilot/);
+    await expect(this.page).toHaveURL(/\/home/);
     await this.dismissNotificationPrompt();
   }
 

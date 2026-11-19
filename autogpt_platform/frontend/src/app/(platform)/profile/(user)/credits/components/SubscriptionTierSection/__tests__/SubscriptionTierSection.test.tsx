@@ -6,6 +6,7 @@ import {
   cleanup,
 } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 import { SubscriptionTierSection } from "../SubscriptionTierSection";
 
 // Mock next/navigation
@@ -27,11 +28,13 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
-// Mock feature flags — default to payment enabled so button tests work
+// Payment on by default so button tests work
 let mockPaymentEnabled = true;
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ENABLE_PLATFORM_PAYMENT: "enable-platform-payment" },
-  useGetFlag: () => mockPaymentEnabled,
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: mockPaymentEnabled,
+    isResolved: true,
+  }),
 }));
 
 // Mock generated API hooks
@@ -305,6 +308,39 @@ describe("SubscriptionTierSection", () => {
       expect(mockLocation.href).toBe("https://checkout.stripe.com/pay/cs_test");
     });
 
+    vi.unstubAllGlobals();
+  });
+
+  it("stays busy while Stripe loads, and is usable again after Back restores the page", async () => {
+    const mockLocation = { href: "" };
+    vi.stubGlobal("location", mockLocation);
+    const mutateFn = vi.fn().mockResolvedValue({
+      status: 200,
+      data: { url: "https://checkout.stripe.com/pay/cs_test" },
+    });
+    setupMocks({ mutateFn });
+    render(<SubscriptionTierSection />);
+
+    const upgrade = screen.getByRole("button", { name: /upgrade to pro/i });
+    fireEvent.click(upgrade);
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue to checkout/i }),
+    );
+    await waitFor(() =>
+      expect(mockLocation.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+    expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+    expect(mutateFn).toHaveBeenCalledTimes(1);
+
+    restoreFromBackForwardCache();
+
+    expect(upgrade.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(upgrade);
+    fireEvent.click(
+      screen.getByRole("button", { name: /continue to checkout/i }),
+    );
+    await waitFor(() => expect(mutateFn).toHaveBeenCalledTimes(2));
     vi.unstubAllGlobals();
   });
 

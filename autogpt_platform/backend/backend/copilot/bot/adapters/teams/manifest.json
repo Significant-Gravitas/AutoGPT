@@ -77,5 +77,18 @@
     "identity",
     "messageTeamMembers"
   ],
-  "validDomains": []
+  "validDomains": [],
+  "webApplicationInfo": {
+    "id": "<AZURE_BOT_APP_ID>"
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "TeamMember.Read.Group",
+          "type": "Application"
+        }
+      ]
+    }
+  }
 }

@@ -158,7 +158,7 @@ describe("FolderTool tree icons", () => {
       count: 1,
     });
     const folderButton = screen.getByRole("button", {
-      name: /Research \(2 agents\)/,
+      name: /Research \(2 workflows\)/,
     });
     const expandedGlyph = glyphs(folderButton)[0];
 

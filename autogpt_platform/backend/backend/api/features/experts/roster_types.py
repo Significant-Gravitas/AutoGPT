@@ -1,6 +1,7 @@
 """Shapes of a roster seed entry, shared by the seed and the roster modules."""
 
-from typing import TypedDict
+# typing_extensions, not typing: pydantic models carry these on Python 3.11.
+from typing_extensions import TypedDict
 
 from backend.api.features.experts.models import ExpertDayOneItem, VoiceSample
 
@@ -33,6 +34,8 @@ class RoutineSeed(TypedDict):
 
 
 class RosterEntry(TypedDict):
+    # Stable catalog key (`maria`); the template row is resolved by this.
+    key: str
     name: str
     role: str
     job_title: str

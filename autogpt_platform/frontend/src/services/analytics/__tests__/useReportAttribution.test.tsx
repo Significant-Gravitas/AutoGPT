@@ -1,11 +1,12 @@
 import { server } from "@/mocks/mock-server";
 import {
+  answerCookiebot,
   configureCookiebot,
   installCookiebot,
   removeCookiebot,
 } from "@/tests/integrations/cookiebot";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -91,6 +92,79 @@ describe("useReportAttribution", () => {
     await waitFor(() => expect(bodies).toHaveLength(1));
 
     expect(bodies[0]).toEqual({ anonymous_id: "anon-1" });
+  });
+
+  it("waits for the consent answer, then reports", async () => {
+    // A grant can still change the anonymous id the report carries.
+    const bodies = captureReports();
+    configureCookiebot();
+    installCookiebot();
+
+    renderHook(() => useReportAttribution(), { wrapper });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(bodies).toHaveLength(0);
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+  });
+
+  it("waits while Cookiebot is still loading", async () => {
+    const bodies = captureReports();
+    removeCookiebot();
+    configureCookiebot();
+    vi.spyOn(document, "readyState", "get").mockReturnValue("interactive");
+
+    renderHook(() => useReportAttribution(), { wrapper });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(bodies).toHaveLength(0);
+  });
+
+  it("reports at once when Cookiebot could not load", async () => {
+    const bodies = captureReports();
+    removeCookiebot();
+    configureCookiebot();
+    vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
+
+    renderHook(() => useReportAttribution(), { wrapper });
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+  });
+
+  it("gives a late uc.js time to arrive after the page has loaded", async () => {
+    const bodies = captureReports();
+    removeCookiebot();
+    configureCookiebot();
+    vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
+    vi.spyOn(performance, "getEntriesByType").mockReturnValue([
+      {
+        loadEventStart: 990,
+        loadEventEnd: 1000,
+      } as unknown as PerformanceEntry,
+    ]);
+    const now = vi.spyOn(performance, "now").mockReturnValue(2000);
+
+    renderHook(() => useReportAttribution(), { wrapper });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(bodies).toHaveLength(0);
+
+    now.mockReturnValue(1000 + 10_001);
+    act(() => {
+      window.dispatchEvent(new Event("load"));
+    });
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+  });
+
+  it("reports at once without a consent banner", async () => {
+    const bodies = captureReports();
+    removeCookiebot();
+    vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
+
+    renderHook(() => useReportAttribution(), { wrapper });
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
   });
 
   it("does nothing while signed out", async () => {

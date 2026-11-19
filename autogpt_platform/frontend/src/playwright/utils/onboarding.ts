@@ -1,5 +1,13 @@
 import { Page, expect } from "@playwright/test";
 
+// First-visit cards that cover the page; marked seen up front, as
+// journeys/journey-user.ts does, so none can open over a test's next click.
+const TAB_INTRO_STEPS = [
+  "AGENTS_TAB_INTRO",
+  "MARKETPLACE_TAB_INTRO",
+  "BUILD_TAB_INTRO",
+];
+
 function resolveAppUrl(page: Page, destination: string) {
   const baseURL =
     page.url().startsWith("http://") || page.url().startsWith("https://")
@@ -18,13 +26,31 @@ function resolveAppUrl(page: Page, destination: string) {
  * the page's request context, which inherits the browser's auth cookies.
  */
 export async function completeOnboardingViaAPI(page: Page) {
-  await page.request.post(
+  await completeOnboardingStep(page, "ONBOARDING_COMPLETE");
+}
+
+/**
+ * Mark the Library, Marketplace and Build tab intros as seen for the signed-in
+ * user. Takes effect from the next page load.
+ */
+export async function dismissTabIntrosViaAPI(page: Page) {
+  for (const step of TAB_INTRO_STEPS) {
+    await completeOnboardingStep(page, step);
+  }
+}
+
+async function completeOnboardingStep(page: Page, step: string) {
+  const response = await page.request.post(
     resolveAppUrl(page, "/api/proxy/api/onboarding/step"),
     {
       headers: { "Content-Type": "application/json" },
-      params: { step: "ONBOARDING_COMPLETE" },
+      params: { step },
     },
   );
+  expect(
+    response.ok(),
+    `onboarding step ${step} failed: ${response.status()}`,
+  ).toBe(true);
 }
 
 /**
@@ -40,6 +66,7 @@ export async function skipOnboardingIfPresent(
   if (!url.includes("/onboarding")) return;
 
   await completeOnboardingViaAPI(page);
+  await dismissTabIntrosViaAPI(page);
   await page.goto(resolveAppUrl(page, destination));
   await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
 }
@@ -51,7 +78,7 @@ export async function advanceToRoleStep(
   const role = page.getByText("What best describes you");
   const subscription = page.getByText(/choose the plan that.s right/i);
   const team = page.getByRole("heading", {
-    name: "Your own team of AI experts.",
+    name: "Your new team, ready on day one",
   });
   const autopilot = page.getByRole("heading", {
     name: "Meet Otto, your Head of AI.",
@@ -70,8 +97,14 @@ export async function advanceToRoleStep(
         .click();
       await expect(subscription).toBeHidden({ timeout: 10000 });
     } else {
-      const current = (await team.isVisible()) ? team : autopilot;
-      await page.getByRole("button", { name: "Next", exact: true }).click();
+      const onTeam = await team.isVisible();
+      const current = onTeam ? team : autopilot;
+      await page
+        .getByRole("button", {
+          name: onTeam ? "Meet Otto" : "Next",
+          exact: true,
+        })
+        .click();
       await expect(current).toBeHidden({ timeout: 10000 });
     }
   }
@@ -82,24 +115,24 @@ export async function completeOnboardingWizard(
   page: Page,
   options?: {
     role?: string;
-    painPoints?: string[];
     plan?: "pro" | "max";
   },
 ) {
   const role = options?.role ?? "Engineering";
-  const painPoints = options?.painPoints ?? ["Research", "Reports & data"];
   const plan = options?.plan ?? "pro";
 
   await advanceToRoleStep(page, plan);
   await page.getByText(role, { exact: false }).click();
   await page.getByRole("button", { name: "Next", exact: true }).click();
-  await expect(page.getByText("What's eating your time?")).toBeVisible({
+  const skipBrainDump = page.getByRole("button", {
+    name: "Skip for now",
+    exact: true,
+  });
+  await expect(skipBrainDump).toBeVisible({
     timeout: 5000,
   });
-  for (const point of painPoints) {
-    await page.getByText(point, { exact: true }).click();
-  }
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await skipBrainDump.click();
+  await expect(skipBrainDump).toBeHidden({ timeout: 10000 });
 
   const connect = page.getByRole("heading", {
     name: "Already paying for an AI subscription?",
@@ -107,15 +140,26 @@ export async function completeOnboardingWizard(
   const preparing = page.getByText("Preparing your workspace...", {
     exact: false,
   });
+  // The plan step: Otto's plan, then Continue (e2e runs with no paywall).
+  // Wait for the plan itself so the click lands on a settled step.
+  const planPanel = page.getByTestId("plan-panel");
+  await expect(planPanel).toBeVisible({ timeout: 10000 });
+  await expect(planPanel.getByTestId("plan-panel-pending")).toHaveCount(0, {
+    timeout: 30000,
+  });
+  const leavePlan = page.getByRole("button", { name: "Continue", exact: true });
+  await expect(leavePlan).toBeVisible({ timeout: 10000 });
+  await leavePlan.click();
+  await expect(planPanel).toBeHidden({ timeout: 10000 });
   await expect(connect.or(preparing).first()).toBeVisible({ timeout: 10000 });
   if (await connect.isVisible()) {
     await page.getByRole("button", { name: "Next", exact: true }).click();
   }
 
   await expect(preparing).toBeVisible({ timeout: 10000 });
-  await page.waitForURL(/\/copilot/, { timeout: 30000 });
+  await page.waitForURL(/\/home/, { timeout: 30000 });
   await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible({
     timeout: 15000,
   });
-  return { role, painPoints, plan };
+  return { role, plan };
 }

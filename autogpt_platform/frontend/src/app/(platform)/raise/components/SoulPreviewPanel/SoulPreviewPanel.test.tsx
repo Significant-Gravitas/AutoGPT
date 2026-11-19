@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { SoulPreviewPanel } from "./SoulPreviewPanel";
 
 const baseProps = {
-  role: null,
+  category: null,
   avatarUrl: null,
   color: null,
   about: null,

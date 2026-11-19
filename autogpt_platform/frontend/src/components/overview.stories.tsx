@@ -15,28 +15,28 @@ function RightArrow() {
 }
 
 function OverviewComponent() {
-  const linkStyle = "font-bold text-blue-600 hover:text-blue-800";
+  const linkStyle = "font-bold text-info-foreground hover:text-info-foreground";
   return (
     <div className="mx-auto max-w-6xl space-y-24 p-8">
       {/* Header Section */}
       <div className="space-y-8">
         <div className="space-y-4">
-          <h1 className="text-4xl font-bold text-gray-900">
+          <h1 className="text-title font-bold text-foreground-base">
             AutoGPT Design System
           </h1>
-          <p className="text-xl leading-relaxed text-gray-600">
+          <p className="text-lead leading-relaxed text-foreground-secondary">
             Welcome to the AutoGPT Design System - a comprehensive collection of
             reusable components, design tokens, and guidelines that power the
             AutoGPT Platform. This system ensures consistency, accessibility,
             and efficiency across all our user interfaces.
           </p>
           <div className="inline-flex items-center">
-            <strong className="text-lg">
+            <strong className="text-lead">
               <a
                 href="https://www.figma.com/design/nO9NFynNuicLtkiwvOxrbz/AutoGPT-Design-System?node-id=3-2083&m=dev"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`${linkStyle} text-md`}
+                className={linkStyle}
               >
                 📋 Figma Reference
               </a>
@@ -54,15 +54,17 @@ function OverviewComponent() {
               height={0}
               className="h-auto w-4/5 rounded-lg"
             />
-            <h4 className="text-lg font-bold text-gray-900">Design Tokens</h4>
-            <p className="text-sm leading-relaxed text-gray-600">
+            <h4 className="text-lead font-bold text-foreground-base">
+              Design Tokens
+            </h4>
+            <p className="text-body leading-relaxed text-foreground-secondary">
               The foundation of our design system. Tokens define colors,
               typography, spacing, shadows, and other visual properties that
               ensure consistency across all components and layouts.
             </p>
             <a
               href="?path=/docs/design-tokens--docs"
-              className={`inline-flex items-center text-sm ${linkStyle}`}
+              className={`inline-flex items-center text-body ${linkStyle}`}
             >
               Explore Tokens
               <RightArrow />
@@ -77,15 +79,15 @@ function OverviewComponent() {
               height={0}
               className="h-auto w-4/5 rounded-lg"
             />
-            <h4 className="text-lg font-bold text-gray-900">Atoms</h4>
-            <p className="text-sm leading-relaxed text-gray-600">
+            <h4 className="text-lead font-bold text-foreground-base">Atoms</h4>
+            <p className="text-body leading-relaxed text-foreground-secondary">
               The smallest building blocks of our interface. Atoms include
               buttons, inputs, icons, labels, and other fundamental UI elements
               that cannot be broken down further.
             </p>
             <a
               href="?path=/docs/atoms--docs"
-              className={`inline-flex items-center text-sm ${linkStyle}`}
+              className={`inline-flex items-center text-body ${linkStyle}`}
             >
               View Atoms
               <RightArrow />
@@ -100,15 +102,17 @@ function OverviewComponent() {
               height={0}
               className="h-auto w-4/5 rounded-lg"
             />
-            <h4 className="text-lg font-bold text-gray-900">Molecules</h4>
-            <p className="text-sm leading-relaxed text-gray-600">
+            <h4 className="text-lead font-bold text-foreground-base">
+              Molecules
+            </h4>
+            <p className="text-body leading-relaxed text-foreground-secondary">
               Combinations of atoms that work together as a unit. Examples
               include search bars, card components, dropdown menus, and other
               composite UI elements.
             </p>
             <a
               href="?path=/docs/molecules--docs"
-              className={`inline-flex items-center text-sm ${linkStyle}`}
+              className={`inline-flex items-center text-body ${linkStyle}`}
             >
               Browse Molecules
               <RightArrow />
@@ -120,10 +124,10 @@ function OverviewComponent() {
       {/* Technical Foundation */}
       <div className="space-y-8">
         <div className="space-y-4">
-          <h2 className="text-3xl font-bold text-gray-900">
+          <h2 className="text-heading font-bold text-foreground-base">
             Technical Foundation
           </h2>
-          <p className="text-lg text-gray-600">
+          <p className="text-lead text-foreground-secondary">
             Our design system is built on proven technologies while maintaining
             strict design consistency through custom tokens and components.
           </p>
@@ -131,10 +135,10 @@ function OverviewComponent() {
 
         <div className="grid grid-cols-1 gap-12 md:grid-cols-3">
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-gray-900">
+            <h4 className="text-lead font-semibold text-foreground-base">
               🎨 Built with Tailwind & shadcn/ui
             </h4>
-            <p className="text-sm leading-relaxed text-gray-600">
+            <p className="text-body leading-relaxed text-foreground-secondary">
               The AutoGPT Design System leverages{" "}
               <a
                 href="https://tailwindcss.com/"
@@ -158,10 +162,10 @@ function OverviewComponent() {
           </div>
 
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-gray-900">
+            <h4 className="text-lead font-semibold text-foreground-base">
               🔧 Why This Matters
             </h4>
-            <ul className="space-y-2 text-sm text-gray-600">
+            <ul className="space-y-2 text-body text-foreground-secondary">
               <li>
                 <strong>Visual Consistency:</strong> All interfaces look and
                 feel cohesive
@@ -177,10 +181,10 @@ function OverviewComponent() {
             </ul>
           </div>
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-gray-900">
+            <h4 className="text-lead font-semibold text-foreground-base">
               📚 Getting Started
             </h4>
-            <ol className="list-decimal space-y-2 text-sm text-gray-600">
+            <ol className="list-decimal space-y-2 text-body text-foreground-secondary">
               <li>
                 Review the Design Tokens, Atoms,Molecules and Contextual
                 Components for your use case
@@ -209,26 +213,26 @@ function OverviewComponent() {
       {/* Contributing Section */}
       <div className="space-y-8">
         <div className="space-y-4">
-          <h2 className="text-3xl font-bold text-gray-900">
+          <h2 className="text-heading font-bold text-foreground-base">
             Contributing to the Design System
           </h2>
-          <p className="text-lg text-gray-600">
+          <p className="text-lead text-foreground-secondary">
             Help us improve and expand the AutoGPT Design System. Whether
             you&apos;re fixing bugs, adding new components, or enhancing
             existing ones, your contributions are valuable to the community.
           </p>
         </div>
 
-        <div className="relative rounded-xl bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50 p-6">
-          <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 p-[2px]">
-            <div className="h-full w-full rounded-xl bg-white"></div>
+        <div className="relative rounded-xl bg-gradient-to-r from-info-surface via-accent-surface to-pink/10 p-6">
+          <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-info via-brand to-pink p-[2px]">
+            <div className="h-full w-full rounded-xl bg-surface"></div>
           </div>
           <div className="relative space-y-6">
             <div className="text-center">
-              <h4 className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-xl font-bold text-transparent">
+              <h4 className="bg-gradient-to-r from-info-foreground via-brand-hover to-pink-foreground bg-clip-text text-lead font-bold text-transparent">
                 ⚠️ Design System Guidelines
               </h4>
-              <p className="mt-2 text-gray-700">
+              <p className="mt-2 text-foreground-body">
                 Contributors must <strong>ONLY</strong> use the design tokens
                 and components defined in this system
               </p>
@@ -236,48 +240,48 @@ function OverviewComponent() {
 
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-4">
-                <h5 className="text-lg font-semibold text-red-600">
+                <h5 className="text-lead font-semibold text-error-foreground">
                   ❌ Don&apos;t Do This
                 </h5>
                 <div className="space-y-3">
                   <div>
-                    <p className="mb-2 text-sm font-medium text-gray-700">
+                    <p className="mb-2 text-body font-medium text-foreground-body">
                       Default Tailwind classes:
                     </p>
-                    <pre className="overflow-x-auto rounded-md bg-gray-100 p-3 text-sm">
-                      <code className="text-red-600">{`className="text-blue-500 p-4 bg-gray-200"`}</code>
+                    <pre className="overflow-x-auto rounded-md bg-surface-hover p-3 text-body">
+                      <code className="text-error-foreground">{`className="text-blue-500 p-4 bg-gray-200"`}</code>
                     </pre>
                   </div>
                   <div>
-                    <p className="mb-2 text-sm font-medium text-gray-700">
+                    <p className="mb-2 text-body font-medium text-foreground-body">
                       Arbitrary values:
                     </p>
-                    <pre className="overflow-x-auto rounded-md bg-gray-100 p-3 text-sm">
-                      <code className="text-red-600">{`className="text-[#1234ff] w-[420px]"`}</code>
+                    <pre className="overflow-x-auto rounded-md bg-surface-hover p-3 text-body">
+                      <code className="text-error-foreground">{`className="text-[#1234ff] w-[420px]"`}</code>
                     </pre>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-4">
-                <h5 className="text-lg font-semibold text-green-600">
+                <h5 className="text-lead font-semibold text-success">
                   ✅ Do This Instead
                 </h5>
                 <div className="space-y-3">
                   <div>
-                    <p className="mb-2 text-sm font-medium text-gray-700">
+                    <p className="mb-2 text-body font-medium text-foreground-body">
                       Design tokens:
                     </p>
-                    <pre className="overflow-x-auto rounded-md bg-gray-100 p-3 text-sm">
-                      <code className="text-green-600">{`className="text-primary bg-surface space-4"`}</code>
+                    <pre className="overflow-x-auto rounded-md bg-surface-hover p-3 text-body">
+                      <code className="text-success">{`className="text-action bg-surface space-4"`}</code>
                     </pre>
                   </div>
                   <div>
-                    <p className="mb-2 text-sm font-medium text-gray-700">
+                    <p className="mb-2 text-body font-medium text-foreground-body">
                       System components:
                     </p>
-                    <pre className="overflow-x-auto rounded-md bg-gray-100 p-3 text-sm">
-                      <code className="text-green-600">{`<Button variant="primary" size="md">
+                    <pre className="overflow-x-auto rounded-md bg-surface-hover p-3 text-body">
+                      <code className="text-success">{`<Button variant="primary" size="md">
   Click me
 </Button>`}</code>
                     </pre>
@@ -290,19 +294,19 @@ function OverviewComponent() {
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-gray-900">
+            <h4 className="text-lead font-semibold text-foreground-base">
               🧢 Development Workflow
             </h4>
-            <p className="text-md leading-relaxed text-gray-600">
+            <p className="leading-relaxed text-foreground-secondary">
               All design system changes should follow our established workflow
               to ensure quality and consistency.
             </p>
-            <div className="text-md space-y-4">
+            <div className="space-y-4">
               <div>
-                <strong className="text-gray-900">
+                <strong className="text-foreground-base">
                   For External Contributors:
                 </strong>
-                <ol className="mt-2 list-decimal space-y-1 pl-4 text-gray-600">
+                <ol className="mt-2 list-decimal space-y-1 pl-4 text-foreground-secondary">
                   <li>
                     Create a GitHub issue first to discuss your proposed changes
                   </li>
@@ -315,10 +319,10 @@ function OverviewComponent() {
                 </ol>
               </div>
               <div>
-                <strong className="text-gray-900">
+                <strong className="text-foreground-base">
                   For Internal Team Members:
                 </strong>
-                <ol className="mt-2 list-decimal space-y-1 pl-4 text-gray-600">
+                <ol className="mt-2 list-decimal space-y-1 pl-4 text-foreground-secondary">
                   <li>Create a feature branch from main</li>
                   <li>Implement changes and update Storybook documentation</li>
                   <li>Test components across different scenarios</li>
@@ -329,15 +333,17 @@ function OverviewComponent() {
           </div>
 
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-gray-900">
+            <h4 className="text-lead font-semibold text-foreground-base">
               📋 Component Guidelines
             </h4>
-            <p className="text-md leading-relaxed text-gray-600">
+            <p className="leading-relaxed text-foreground-secondary">
               Follow these principles when creating or modifying components:
             </p>
-            <ul className="text-md space-y-2 text-gray-600">
+            <ul className="space-y-2 text-foreground-secondary">
               <li>
-                <strong className="text-gray-900">Accessibility First</strong>
+                <strong className="text-foreground-base">
+                  Accessibility First
+                </strong>
                 <ul>
                   <li>
                     All components must meet{" "}
@@ -353,25 +359,29 @@ function OverviewComponent() {
                 </ul>
               </li>
               <li>
-                <strong className="text-gray-900">Design Token Usage</strong>
+                <strong className="text-foreground-base">
+                  Design Token Usage
+                </strong>
                 <ul>
                   <li>Use design tokens for all styling properties</li>
                 </ul>
               </li>
               <li>
-                <strong className="text-gray-900">Responsive Design</strong>
+                <strong className="text-foreground-base">
+                  Responsive Design
+                </strong>
                 <ul>
                   <li>Components should work across all screen sizes</li>
                 </ul>
               </li>
               <li>
-                <strong className="text-gray-900">TypeScript</strong>
+                <strong className="text-foreground-base">TypeScript</strong>
                 <ul>
                   <li>All components must be fully typed</li>
                 </ul>
               </li>
               <li>
-                <strong className="text-gray-900">Documentation</strong>
+                <strong className="text-foreground-base">Documentation</strong>
                 <ul>
                   <li>
                     Include comprehensive Storybook stories and JSDoc comments
@@ -379,7 +389,7 @@ function OverviewComponent() {
                 </ul>
               </li>
               <li>
-                <strong className="text-gray-900">Testing</strong>
+                <strong className="text-foreground-base">Testing</strong>
                 <ul>
                   <li>Write unit tests for component logic and interactions</li>
                 </ul>
@@ -391,8 +401,10 @@ function OverviewComponent() {
 
       {/* Social Links */}
       <div className="space-y-8">
-        <h3 className="text-3xl font-bold text-gray-900">Get Involved</h3>
-        <p className="text-md leading-relaxed text-gray-600">
+        <h3 className="text-heading font-bold text-foreground-base">
+          Get Involved
+        </h3>
+        <p className="leading-relaxed text-foreground-secondary">
           Join the AutoGPT community and help build the future of AI automation.
         </p>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
@@ -431,14 +443,14 @@ function OverviewComponent() {
                 height={32}
                 className="h-8 w-8"
               />
-              <p className="text-sm leading-relaxed text-gray-600">
+              <p className="text-body leading-relaxed text-foreground-secondary">
                 {item.title}
               </p>
               <a
                 href={item.link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
+                className="inline-flex items-center text-body text-info-foreground hover:text-info-foreground"
               >
                 {item.linkText}
                 <RightArrow />

@@ -2,8 +2,8 @@ import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Flag, useFlagStatus, useGetFlag } from "../use-get-flag";
 
-// Phase 2 replaces 75 `vi.mock("launchdarkly-react-client-sdk")` blocks with
-// this one, vendor-independent, seam. This test is what keeps it a seam.
+// Component tests control flags through this one, vendor-independent, seam.
+// This test is what keeps it a seam.
 const source = vi.hoisted(() => ({
   results: {} as Record<string, { value: unknown; resolved: boolean }>,
 }));
@@ -17,15 +17,15 @@ vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
 }));
 
-vi.mock("@/services/environment", () => ({
-  environment: { areFeatureFlagsEnabled: () => true },
-}));
-
 describe("mocking the flag source controls every flag hook", () => {
   it("drives useGetFlag without mocking any vendor SDK", () => {
-    source.results = { "hire-experts": { value: true, resolved: true } };
+    source.results = {
+      "generic-trigger-agents": { value: true, resolved: true },
+    };
 
-    const { result } = renderHook(() => useGetFlag(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useGetFlag(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toBe(true);
   });
@@ -33,7 +33,9 @@ describe("mocking the flag source controls every flag hook", () => {
   it("drives useFlagStatus, including the not-answered-yet case", () => {
     source.results = {};
 
-    const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    const { result } = renderHook(() =>
+      useFlagStatus(Flag.GENERIC_TRIGGER_AGENTS),
+    );
 
     expect(result.current).toEqual({
       enabled: false,

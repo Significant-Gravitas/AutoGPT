@@ -18,7 +18,11 @@ from backend.copilot.computer import (
     open_desktop,
     screen_is_on,
 )
-from backend.copilot.tools.e2b_sandbox import SandboxLookupError, SandboxOwner
+from backend.copilot.tools.e2b_sandbox import (
+    KEEP_CEILING,
+    SandboxLookupError,
+    SandboxOwner,
+)
 
 _C = "backend.copilot.computer"
 _USER, _EXPERT, _SESSION = "user-1", "exp-1", "sess-1"
@@ -31,7 +35,7 @@ def _info(sandbox_id: str, state: SandboxState, mounts: str = "attached"):
         started_at=datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc),
         cpu_count=1,
         memory_mb=2048,
-        template_id="agpt-desktop-1x2",
+        template_id="agpt-desktop-1x2-cfc276e0",
         metadata={"autogpt_kind": "shell", "autogpt_mounts": mounts},
     )
 
@@ -189,7 +193,7 @@ class TestOpenDesktop:
         redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
         with redis_p, get_p as get_mock, cls_p as desktop_cls, cfg_p as cfg:
             cfg.e2b_sandbox_timeout = 420
-            cfg.e2b_sandbox_template = "agpt-desktop-1x2"
+            cfg.e2b_sandbox_template = "agpt-desktop-1x2-cfc276e0"
             cfg.e2b_sandbox_on_timeout = "pause"
             stream, first_time, shared = await open_desktop(
                 owner, mounts, "k", user_id=_USER, session_id=_SESSION
@@ -202,12 +206,14 @@ class TestOpenDesktop:
             owner,
             "k",
             timeout=420,
-            template="agpt-desktop-1x2",
+            template="agpt-desktop-1x2-cfc276e0",
             on_timeout="pause",
             volume_mounts=mounts,
             user_id=_USER,
             session_id=_SESSION,
             count_turn=False,
+            # The UI has no turn, so it keeps the box's ceiling.
+            providers=KEEP_CEILING,
         )
         desktop_cls.assert_called_once_with(sandbox)
         desktop.ensure_display.assert_awaited_once()

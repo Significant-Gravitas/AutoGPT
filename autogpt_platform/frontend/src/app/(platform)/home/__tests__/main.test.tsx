@@ -1,7 +1,7 @@
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { StrictMode } from "react";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import type { HomeAgentStatus } from "@/app/api/__generated__/models/homeAgentStatus";
 import type { HomeAttentionItem } from "@/app/api/__generated__/models/homeAttentionItem";
 import type { HomeBriefingOutcome } from "@/app/api/__generated__/models/homeBriefingOutcome";
@@ -13,7 +13,7 @@ import {
   waitFor,
   within,
 } from "@/tests/integrations/test-utils";
-import HomePage from "../page";
+import { HomeRecap } from "../components/HomeRecap/HomeRecap";
 
 const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("posthog-js", () => ({ default: { capture } }));
@@ -34,10 +34,6 @@ function funnelEventNames() {
   return capture.mock.calls.map(([event]) => event as string);
 }
 
-const { setFlagStatusMock } = vi.hoisted(() => ({
-  setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
-}));
-
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   const actual =
     await importActual<
@@ -45,11 +41,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? setFlagStatusMock()
-        : actual.useFlagStatus(flag as never),
-    useGetFlag: (flag: string) => flag === actual.Flag.HIRE_EXPERTS,
+    useGetFlag: () => false,
   };
 });
 
@@ -219,10 +211,6 @@ const dashboard: HomeDashboardResponse = {
   },
 };
 
-afterEach(() => {
-  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
-});
-
 function mockDashboard(response: HomeDashboardResponse) {
   server.use(
     http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
@@ -234,9 +222,9 @@ function mockDashboard(response: HomeDashboardResponse) {
 test("renders every Home tile from the aggregate API", async () => {
   mockDashboard(dashboard);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
-  expect(await screen.findByText(/Abhi/)).toBeDefined();
+  expect(await screen.findByText("Your recap")).toBeDefined();
   expect(screen.getByRole("heading", { name: "Needs you" })).toBeDefined();
   expect(screen.getByLabelText("1 item needs your attention")).toBeDefined();
   expect(screen.getByText("Connect your calendar for Maria")).toBeDefined();
@@ -252,6 +240,18 @@ test("renders every Home tile from the aggregate API", async () => {
     screen.getAllByText("Checking recurring subscriptions").length,
   ).toBeGreaterThan(0);
   expect(screen.getByText("Spanish practice plan")).toBeDefined();
+});
+
+test.each([
+  [1, "Open team"],
+  [3, "Open team"],
+  [5, "View all 5 experts"],
+])("a team of %i links to it as %s", async (total, name) => {
+  mockDashboard({ ...dashboard, team: { ...dashboard.team, total } });
+
+  render(<HomeRecap />);
+
+  expect(await screen.findByRole("link", { name })).toBeDefined();
 });
 
 test("says which workflow is running now and shows its picture", async () => {
@@ -270,7 +270,7 @@ test("says which workflow is running now and shows its picture", async () => {
     upcoming_tasks: [],
   });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   const tile = await screen.findByRole("region", { name: "Now & next" });
   expect(within(tile).getByText("Tell me a fact!")).toBeDefined();
@@ -298,7 +298,7 @@ test("shows weekly spend per agent and on the team line", async () => {
     ],
   });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(await screen.findByText(/\$9\.00 this week/)).toBeDefined();
   expect(
@@ -327,7 +327,7 @@ test("falls back to an Unknown badge for an unrecognised agent status", async ()
     ],
   });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(await screen.findByText("Unknown")).toBeDefined();
 });
@@ -343,7 +343,7 @@ test("approving an item one-tap sends the review decision", async () => {
     }),
   );
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await user.click(
     await screen.findByRole("button", {
@@ -380,7 +380,7 @@ test("declining an item records the confirmed decline", async () => {
     }),
   );
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await user.click(
     await screen.findByRole("button", {
@@ -426,7 +426,7 @@ test("does not count a failed attention decision as actioned", async () => {
     }),
   );
 
-  render(<HomePage />);
+  render(<HomeRecap />);
   const approveButton = await screen.findByRole("button", {
     name: "Approve: Approve the camera shortlist",
   });
@@ -442,7 +442,7 @@ test("does not count a failed attention decision as actioned", async () => {
 test("keeps a Review deep link alongside the approval shortcuts", async () => {
   mockDashboard({ ...dashboard, attention: [approvalItem] });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   const reviewLink = await screen.findByRole("link", { name: "Review" });
   expect(reviewLink.getAttribute("href")).toBe("/library/runs/run-1");
@@ -467,7 +467,7 @@ test("shows calm, useful empty states and drops the empty inbox", async () => {
   });
   server.use();
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(await screen.findByText("Nothing to show yet")).toBeDefined();
   // The header already says nothing needs you, so an empty "Needs you"
@@ -485,7 +485,7 @@ test("tracks briefing outcomes and team members with useful dimensions", async (
   mockDashboard(dashboard);
   server.use();
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await user.click(
     await screen.findByRole("link", { name: /Your camera research is ready/ }),
@@ -516,7 +516,7 @@ test("shows a retryable page error when the aggregate cannot load", async () => 
   );
 
   const user = userEvent.setup();
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(
     await screen.findByText("Your Home briefing could not be loaded"),
@@ -531,26 +531,31 @@ test("shows a retryable page error when the aggregate cannot load", async () => 
   await waitFor(() => expect(funnelEventNames()).toContain("home_viewed"));
 });
 
-test("does not track home_viewed while feature state is loading", async () => {
-  setFlagStatusMock.mockReturnValueOnce({ enabled: true, ready: false });
-  server.use();
+test("does not track home_viewed until the dashboard responds", async () => {
+  let releaseDashboard!: () => void;
+  const responseReady = new Promise<void>((resolve) => {
+    releaseDashboard = resolve;
+  });
+  server.use(
+    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, async () => {
+      await responseReady;
+      return HttpResponse.json(dashboard);
+    }),
+  );
 
-  render(<HomePage />);
+  render(<HomeRecap />);
   expect(screen.getByLabelText("Loading Home…")).toBeDefined();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-
   expect(funnelEventNames()).not.toContain("home_viewed");
+  releaseDashboard();
+  await waitFor(() => expect(funnelEventNames()).toContain("home_viewed"));
 });
 
-test("calls notFound when the experts feature is disabled", () => {
+test("shows the recap without a feature flag rollout", async () => {
   mockDashboard(dashboard);
-  setFlagStatusMock.mockReturnValueOnce({ enabled: false, ready: true });
-  notFoundMock.mockClear();
-
-  try {
-    render(<HomePage />);
-  } catch {}
-  expect(notFoundMock).toHaveBeenCalled();
+  render(<HomeRecap />);
+  expect(
+    await screen.findByRole("heading", { name: "Needs you" }),
+  ).toBeDefined();
 });
 
 test("opens the briefing with the AI-written narrative when there is one", async () => {
@@ -563,7 +568,7 @@ test("opens the briefing with the AI-written narrative when there is one", async
     },
   });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(
     await screen.findByText(
@@ -582,7 +587,7 @@ test("bylines the briefing to Otto, not to the expert it reports on", async () =
     },
   });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   const byline = within(await screen.findByTestId("briefing-byline"));
   expect(byline.getByText("Otto")).toBeDefined();
@@ -595,7 +600,7 @@ test("bylines the briefing to Otto, not to the expert it reports on", async () =
 test("renders the briefing unchanged when no narrative was generated", async () => {
   mockDashboard({ ...dashboard, briefing: { ...dashboard.briefing } });
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   expect(
     await screen.findByRole("heading", { name: "Recent work" }),
@@ -607,7 +612,7 @@ test("emits the home_viewed funnel event once the dashboard mounts", async () =>
   server.use();
   mockDashboard(dashboard);
 
-  render(<HomePage />);
+  render(<HomeRecap />);
 
   await screen.findByRole("heading", { name: "Needs you" });
   await waitFor(() => expect(funnelEventNames()).toContain("home_viewed"));
@@ -626,7 +631,7 @@ test("view events fire exactly once under StrictMode effect replay", async () =>
 
   render(
     <StrictMode>
-      <HomePage />
+      <HomeRecap />
     </StrictMode>,
   );
 

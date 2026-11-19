@@ -4,15 +4,17 @@ Step 1 of the confirm-gated raise flow. The parameters mirror the raise API
 (``name`` / ``role`` / ``color`` / ``about`` / ``voice_preferences`` /
 ``weekly_budget``) plus ``boundaries``, so the model has to collect a full
 charter — what the expert owns, what good looks like, and where they stop —
-before the user is ever asked to approve.
+before the user is ever asked to approve. A new expert proposed for a task the
+user already described carries that task, like a hire (see
+``expert_handoff_proposal``): the card then creates and starts it in one click.
 """
 
 import logging
-import uuid
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.api.features.experts.avatar_catalog import DEFAULT_AVATAR_URL
 from backend.api.features.experts.copy_policy import EXPERT_CREATION_COPY_POLICY
 from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
@@ -24,15 +26,18 @@ from backend.api.features.experts.models import (
 )
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
-from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
-from .expert_avatar import AVATAR_BEARD, AVATAR_GLASSES, AVATAR_HAT, build_avatar_url
+from .expert_handoff_proposal import (
+    HANDOFF_PARAMETERS,
+    park_proposal,
+    parse_handoff,
+    proposed_message,
+)
 from .expert_proposal import (
     ExpertChangeProposal,
     autopilot_session_guard,
     capacity_error,
-    store_proposal,
     user_turn_watermark,
 )
 from .models import (
@@ -93,7 +98,7 @@ class RaiseExpertTool(BaseTool):
     def description(self) -> str:
         return (
             EXPERT_CREATION_COPY_POLICY
-            + " Preview if no template fits; never hires. Collect name, role, tagline, color and charter (ownership, success criteria, boundaries). Card shows charter; add at most one short line. Returns one-time confirmation_id; await user approval before tool:confirm_expert_change."
+            + " Preview if no template fits; never hires. Collect name, role, tagline, color and charter (ownership, success criteria, boundaries). Card shows charter; add at most one short line. Returns one-time confirmation_id; await user approval before tool:confirm_expert_change. For a task already in the chat, pass handoff_title + handoff_task."
         )
 
     @property
@@ -124,23 +129,6 @@ class RaiseExpertTool(BaseTool):
                     "enum": COLOR_TOKENS,
                     "description": "Avatar/chat accent token.",
                 },
-                "avatar_glasses": {
-                    "type": "string",
-                    "enum": list(AVATAR_GLASSES),
-                    "description": (
-                        "Role-appropriate eyewear; omit for name-seeded choice."
-                    ),
-                },
-                "avatar_beard": {
-                    "type": "string",
-                    "enum": list(AVATAR_BEARD),
-                    "description": ("Facial hair; omit for a name-seeded choice."),
-                },
-                "avatar_hat": {
-                    "type": "string",
-                    "enum": list(AVATAR_HAT),
-                    "description": ("Headwear; omit for a name-seeded choice."),
-                },
                 "about": {
                     "type": "string",
                     "description": (
@@ -162,6 +150,7 @@ class RaiseExpertTool(BaseTool):
                     "type": "integer",
                     "description": "Weekly credit cap (100 = $1); omit for default.",
                 },
+                **HANDOFF_PARAMETERS,
             },
             "required": ["name", "tagline", "about", "boundaries"],
         }
@@ -176,19 +165,22 @@ class RaiseExpertTool(BaseTool):
         job_title: str = "",
         tagline: str = "",
         color: str = "",
-        avatar_glasses: str = "",
-        avatar_beard: str = "",
-        avatar_hat: str = "",
         about: str = "",
         boundaries: str = "",
         voice_preferences: str = "",
         weekly_budget: int | None = None,
+        handoff_title: str = "",
+        handoff_task: str = "",
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
         if error := autopilot_session_guard(user_id, session):
             return error
         assert user_id is not None
+
+        handoff = parse_handoff(handoff_title, handoff_task)
+        if isinstance(handoff, str):
+            return ErrorResponse(message=handoff, session_id=session_id)
 
         color = color.strip()
         if color and color not in COLOR_TOKENS:
@@ -199,22 +191,6 @@ class RaiseExpertTool(BaseTool):
                 ),
                 session_id=session_id,
             )
-        avatar_glasses = avatar_glasses.strip()
-        avatar_beard = avatar_beard.strip()
-        avatar_hat = avatar_hat.strip()
-        for field, value, options in (
-            ("avatar_glasses", avatar_glasses, AVATAR_GLASSES),
-            ("avatar_beard", avatar_beard, AVATAR_BEARD),
-            ("avatar_hat", avatar_hat, AVATAR_HAT),
-        ):
-            if value and value not in options:
-                return ErrorResponse(
-                    message=(
-                        f"Invalid expert charter — {field} must be one of: "
-                        + ", ".join(options)
-                    ),
-                    session_id=session_id,
-                )
         try:
             params = _RaiseParams(
                 # Collapsed, not just stripped: the roster block in
@@ -278,40 +254,30 @@ class RaiseExpertTool(BaseTool):
             job_title=params.job_title,
             tagline=params.tagline,
             color=params.color,
-            avatar_url=build_avatar_url(
-                params.name,
-                glasses=avatar_glasses or None,
-                beard=avatar_beard or None,
-                hat=avatar_hat or None,
-                color_token=params.color or None,
-            ),
+            # A raised Expert starts on the General fallback; its owner picks or
+            # generates a reviewed appearance from the Team page afterwards.
+            avatar_url=DEFAULT_AVATAR_URL,
             about=soul.identity or "",
             boundaries=soul.boundaries,
             voice_preferences=soul.voice_preferences or "",
             weekly_budget=params.weekly_budget,
         )
-        confirmation_id = str(uuid.uuid4())
-        await store_proposal(
-            await get_redis_async(),
-            confirmation_id,
+        confirmation_id, handoff_confirmation_id = await park_proposal(
             ExpertChangeProposal(
                 user_id=user_id,
                 session_id=session_id,
                 preview=preview,
                 user_turn_watermark=user_turn_watermark(session),
-            ),
+                handoff=handoff,
+            )
         )
         return ExpertChangeProposedResponse(
-            message=(
-                "Nothing created yet. The user is looking at this charter on "
-                "a card with Approve and Decline buttons — do not repeat any "
-                "of it in text. Reply with one short line at most and wait. "
-                "Only after they explicitly approve, call "
-                "tool:confirm_expert_change with this confirmation_id."
-            ),
+            message=proposed_message("raise", handoff is not None),
             session_id=session_id,
             preview=preview,
             confirmation_id=confirmation_id,
+            handoff=handoff,
+            handoff_confirmation_id=handoff_confirmation_id,
         )
 
 

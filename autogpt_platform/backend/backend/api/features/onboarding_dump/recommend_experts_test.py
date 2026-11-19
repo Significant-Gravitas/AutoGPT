@@ -169,48 +169,55 @@ def test_parse_keeps_a_valid_raise_suggestion():
     assert team.raise_suggestion.reason == "Tickets pile up."
 
 
+# This roster has one expert per skill (Maria marketing, Max sales, Frankie
+# ops), so every team is all three: what matters is who leads. The experts
+# the answers point at come first; generalists fill the row.
 @pytest.mark.parametrize(
-    ("user_role", "pain_points", "expected_lead", "expected_raise"),
+    ("user_role", "pain_points", "expected_team", "expected_raise"),
     [
-        ("Marketing", [], ["Maria"], None),
-        ("Sales/BD", [], ["Max"], None),
-        ("Operations", [], ["Frankie"], None),
-        ("Product/PM", [], ["Frankie"], None),
-        ("Founder/CEO", [], ["Max", "Maria"], None),
-        ("Engineering", [], [], "developer"),
-        ("HR/People", [], ["Frankie"], "recruiter"),
-        (None, ["Social media"], ["Maria"], None),
-        (None, ["Finding leads"], ["Max"], None),
-        (None, ["Email & outreach"], ["Max"], None),
-        (None, ["Reports & data"], ["Frankie"], None),
-        (None, ["Scheduling"], ["Frankie"], None),
-        (None, ["CRM & data entry"], ["Frankie"], None),
-        (None, ["Customer support"], [], "support"),
-        (None, ["Research"], [], "researcher"),
+        ("Marketing", [], ["Maria", "Max", "Frankie"], None),
+        ("Sales/BD", [], ["Max", "Maria", "Frankie"], None),
+        ("Operations", [], ["Frankie", "Maria", "Max"], None),
+        # Nobody here does product, data or competitors: generalists only.
+        ("Product/PM", [], ["Maria", "Max", "Frankie"], None),
+        ("Founder/CEO", [], ["Max", "Maria", "Frankie"], None),
+        ("Engineering", [], ["Maria", "Max", "Frankie"], "developer"),
+        ("HR/People", [], ["Maria", "Max", "Frankie"], "recruiter"),
+        (None, ["Social media"], ["Maria", "Max", "Frankie"], None),
+        (None, ["Finding leads"], ["Max", "Maria", "Frankie"], None),
+        (None, ["Email & outreach"], ["Max", "Maria", "Frankie"], None),
+        (None, ["Reports & data"], ["Maria", "Max", "Frankie"], None),
+        (None, ["Scheduling"], ["Maria", "Max", "Frankie"], None),
+        (None, ["CRM & data entry"], ["Maria", "Max", "Frankie"], None),
+        (None, ["Customer support"], ["Maria", "Max", "Frankie"], "support"),
+        (None, ["Research"], ["Maria", "Max", "Frankie"], "researcher"),
         (
             "Marketing",
             ["Finding leads", "Scheduling"],
             ["Maria", "Max", "Frankie"],
             None,
         ),
-        ("Other", ["Something else"], [], None),
+        # The user's pain point comes before what the role only suggests.
+        (
+            "Operations",
+            ["Finding leads", "Scheduling"],
+            ["Frankie", "Max", "Maria"],
+            None,
+        ),
+        ("Other", ["Something else"], ["Maria", "Max", "Frankie"], None),
     ],
 )
 def test_the_fallback_maps_wizard_answers_to_the_roster(
     user_role: str | None,
     pain_points: list[str],
-    expected_lead: list[str],
+    expected_team: list[str],
     expected_raise: str | None,
 ):
     team = recommend_experts.fallback_expert_recommendations(
         user_role, pain_points, ROSTER
     )
 
-    names = [e.name for e in team.experts]
-    # The wizard's answers pick who leads; the rest of the roster fills in
-    # behind them so the row is never a single card.
-    assert names[: len(expected_lead)] == expected_lead
-    assert sorted(names) == sorted(t.name for t in ROSTER)
+    assert [e.name for e in team.experts] == expected_team
     assert (team.raise_suggestion.role if team.raise_suggestion else None) == (
         expected_raise
     )
@@ -223,8 +230,11 @@ def test_the_fallback_maps_wizard_answers_to_the_roster(
 @pytest.mark.parametrize(
     ("user_role", "expected_names"),
     [
-        ("Engineering", ["Eli", "Nadia"]),
-        ("HR/People", ["Rhea", "Shay", "Frankie"]),
+        # One template per skill: Eli and Rhea, the most focused, take
+        # engineering and recruiting over Nadia and Shay; generalists fill
+        # the row.
+        ("Engineering", ["Eli", "Maria", "Max"]),
+        ("HR/People", ["Rhea", "Maria", "Max"]),
     ],
 )
 def test_the_fallback_drops_the_raise_door_once_a_template_covers_it(
@@ -234,14 +244,13 @@ def test_the_fallback_drops_the_raise_door_once_a_template_covers_it(
     # would be a lie: the door only opens when the role is still a gap.
     team = recommend_experts.fallback_expert_recommendations(user_role, [], FULL_ROSTER)
 
-    names = [e.name for e in team.experts]
-    assert names[: len(expected_names)] == expected_names
-    assert len(names) == min(recommend_experts.MAX_EXPERTS, len(FULL_ROSTER))
+    assert [e.name for e in team.experts] == expected_names
     assert team.raise_suggestion is None
 
 
 def test_the_fallback_skips_roles_with_no_live_template():
-    # Content lags demand: the roster may not have every role seeded.
+    # Content lags demand: the roster may not have every role seeded, and a
+    # team is never padded with someone whose role names no skill.
     team = recommend_experts.fallback_expert_recommendations(
         "Founder/CEO", ["Scheduling"], [MARIA]
     )
@@ -293,10 +302,14 @@ def client(mocker: MockerFixture) -> MagicMock:
     return fake
 
 
-def _completion(payload: object) -> SimpleNamespace:
+def _completion(payload: object, finish_reason: str = "stop") -> SimpleNamespace:
     content = payload if isinstance(payload, str) else json.dumps(payload)
     return SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=content), finish_reason=finish_reason
+            )
+        ]
     )
 
 
@@ -317,8 +330,30 @@ async def test_a_good_generation_is_marked_as_read_from_the_transcript(
     )
 
     assert team.source == "llm"
-    assert [e.name for e in team.experts] == ["Maria"]
+    # The model's pick first, then the wizard's, so the user starts with a
+    # team of three.
+    assert [e.name for e in team.experts] == ["Maria", "Max", "Frankie"]
+    assert team.experts[0].reason == "You post weekly."
     assert team.raise_suggestion is not None
+
+
+@pytest.mark.asyncio
+async def test_a_full_generation_is_kept_as_the_model_ranked_it(client: MagicMock):
+    client.chat.completions.create.return_value = _completion(
+        {
+            "experts": [
+                {"template_id": "tpl-frankie"},
+                {"template_id": "tpl-max"},
+                {"template_id": "tpl-maria"},
+            ]
+        }
+    )
+
+    team = await recommend_experts.generate_expert_recommendations(
+        TRANSCRIPT, user_role="Marketing", pain_points=[], templates=ROSTER
+    )
+
+    assert [e.name for e in team.experts] == ["Frankie", "Max", "Maria"]
 
 
 @pytest.mark.asyncio
@@ -352,8 +387,12 @@ async def test_a_generation_with_nothing_usable_degrades_to_the_fallback(
 
 
 @pytest.mark.asyncio
-async def test_non_json_output_is_retried_once_then_falls_back(client: MagicMock):
-    client.chat.completions.create.return_value = _completion("no json here")
+async def test_non_json_output_is_retried_once_then_falls_back(
+    client: MagicMock, caplog: pytest.LogCaptureFixture
+):
+    client.chat.completions.create.return_value = _completion(
+        '{"diagnosis": "You said tickets pile', finish_reason="length"
+    )
 
     team = await recommend_experts.generate_expert_recommendations(
         TRANSCRIPT, user_role="Marketing", pain_points=[], templates=ROSTER
@@ -361,6 +400,25 @@ async def test_non_json_output_is_retried_once_then_falls_back(client: MagicMock
 
     assert team.source == "fallback"
     assert client.chat.completions.create.await_count == 2
+    # Why it failed, never what the model wrote: the output echoes the dump.
+    assert "finish_reason=length, 36 chars" in caplog.text
+    assert "tickets pile" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_the_generation_asks_for_no_reasoning(client: MagicMock):
+    # Haiku 5.5's adaptive thinking spent the whole output budget on a real
+    # brain dump and returned no JSON; the answer is a matching task.
+    client.chat.completions.create.return_value = _completion(
+        {"experts": [{"template_id": "tpl-max"}]}
+    )
+
+    await recommend_experts.generate_expert_recommendations(
+        TRANSCRIPT, user_role="Sales/BD", pain_points=[], templates=ROSTER
+    )
+
+    kwargs = client.chat.completions.create.await_args.kwargs
+    assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
 
 
 @pytest.mark.asyncio
@@ -410,16 +468,41 @@ async def test_the_prompt_carries_the_roster_and_the_wizard_answers(
     assert TRANSCRIPT in content
 
 
-def test_fallback_prioritizes_all_matching_templates_before_truncating():
-    unrelated = [_template(f"other-{i}", f"Other{i}", "Ops") for i in range(16)]
-    first = _template("sales-first", "First", "Sales")
-    second = _template("sales-second", "Second", " SALES ")
+def test_fallback_fills_one_row_and_never_with_roles_that_name_no_skill():
+    unrelated = [_template(f"other-{i}", f"Other{i}", "Astrology") for i in range(16)]
+    sales = [_template(f"sales-{i}", f"Seller{i}", " SALES ") for i in range(5)]
+    needed = [
+        *sales,
+        _template("tpl-helper", "Helper", "Executive Assistant"),
+        _template("tpl-analyst", "Analyst", "Data"),
+        _template("tpl-writer", "Writer", "Marketing"),
+    ]
+    roster = [*unrelated, *needed]
+
+    # One template per need, never a second seller for the same work; the
+    # rest of the row is generalists.
     team = recommend_experts.fallback_expert_recommendations(
-        "Sales/BD", ["Finding leads", "Email & outreach"], [*unrelated, first, second]
+        "Sales/BD", ["Finding leads", "Email & outreach"], roster
     )
-    ids = [expert.template_id for expert in team.experts]
-    assert ids[:2] == [first.id, second.id]
-    assert len(ids) == len(set(ids)) == recommend_experts.MAX_EXPERTS
+    assert [expert.template_id for expert in team.experts] == [
+        "sales-0",
+        "tpl-helper",
+        "tpl-writer",
+    ]
+
+    # The role's first need, then the user's own, up to one row: marketing
+    # and finance, inferred from the role, are cut before them.
+    team = recommend_experts.fallback_expert_recommendations(
+        "Founder/CEO", ["Scheduling", "Reports & data"], roster
+    )
+    assert [expert.name for expert in team.experts] == ["Seller0", "Helper", "Analyst"]
+    assert len(team.experts) == recommend_experts.MAX_FALLBACK_EXPERTS
+
+    team = recommend_experts.fallback_expert_recommendations("Other", [], roster)
+    assert [expert.name for expert in team.experts] == ["Writer", "Helper", "Seller0"]
+
+    team = recommend_experts.fallback_expert_recommendations("Other", [], unrelated)
+    assert team.experts == []
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,15 @@
+-- CreateIndex
+-- Built CONCURRENTLY, so cost-log reads and writes (every chat turn and
+-- graph run writes one) go on during the build; a plain CREATE INDEX would
+-- hold a SHARE lock and block those writes for the whole scan. Postgres
+-- refuses CONCURRENTLY inside a transaction block, so this is the only
+-- statement in the file: Prisma sends a migration's statements together,
+-- and a second one would put both in an implicit transaction. In its own
+-- migration for the same reason, apart from the column 20260926160000 adds.
+--
+-- A concurrent build that is interrupted leaves an INVALID index of this
+-- name, which IF NOT EXISTS then skips. To recover: DROP INDEX CONCURRENTLY
+-- "PlatformCostLog_expertId_createdAt_idx", mark this migration rolled back
+-- (prisma migrate resolve --rolled-back
+-- 20260926160001_platform_cost_log_expert_id_index) and deploy again.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "PlatformCostLog_expertId_createdAt_idx" ON "PlatformCostLog"("expertId", "createdAt");

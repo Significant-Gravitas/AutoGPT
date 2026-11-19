@@ -39,7 +39,7 @@ export function TourStreamingText({ text }: { text: string }) {
     <p>
       {revealed}
       {!isDone && (
-        <span className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-zinc-300 align-middle" />
+        <span className="ml-0.5 inline-block h-4 w-2 animate-pulse rounded-sm bg-surface-active align-middle" />
       )}
     </p>
   );

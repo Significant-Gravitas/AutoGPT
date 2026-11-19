@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from backend.api.features.subscription_trial_routes import router
 
 
-@pytest.mark.parametrize("path", ["/cancel", "/confirm"])
+@pytest.mark.parametrize("path", ["/cancel", "/resume", "/confirm"])
 def test_trial_mutation_errors_are_documented(path):
     app = FastAPI()
     app.include_router(router)

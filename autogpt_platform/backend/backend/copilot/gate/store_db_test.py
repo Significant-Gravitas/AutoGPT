@@ -1,12 +1,14 @@
 """The gate's state against Postgres: the approval mutex and the chat's mode."""
 
 import asyncio
+import json
+from datetime import datetime, timedelta
 
 import pytest
 from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
 
-from backend.copilot.gate import resolve_mode
+from backend.copilot.gate import held, reads, resolve_mode
 from backend.copilot.gate import review as review_store
 from backend.copilot.model import (
     ChatSession,
@@ -14,6 +16,8 @@ from backend.copilot.model import (
     update_session_autopilot_mode,
     upsert_chat_session,
 )
+from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.db_accessors import review_db
 
 
@@ -64,12 +68,60 @@ async def test_four_concurrent_consumes_of_one_approval_run_once(
     await PendingHumanReview.prisma().update(
         where={"nodeExecId": review_id}, data={"status": ReviewStatus.APPROVED}
     )
+    review = await review_store.find_review(review_id, test_user_id, session.session_id)
+    assert review is not None
 
     results = await asyncio.gather(
-        *(review_store.consume(review_id, test_user_id) for _ in range(4))
+        *(review_store.consume(review, test_user_id) for _ in range(4))
     )
 
     assert sorted(results) == [False, False, False, True]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_spend_takes_only_the_card_as_it_was_read(
+    setup_test_user, test_user_id
+):
+    """Its status and its creation time both: a card answered differently
+    since, or a fresh card opened under the same id, is not the card read."""
+    session = await upsert_chat_session(
+        ChatSession.new(user_id=test_user_id, dry_run=False)
+    )
+    args = {"command": "rm draft.md"}
+    review_id = review_store.review_id_for(
+        session.session_id, test_user_id, "bash_exec", args
+    )
+
+    async def approved_card(created_at: datetime | None = None):
+        assert await review_store.open_review(
+            review_id, test_user_id, session, "bash_exec", args, "needs you"
+        )
+        await PendingHumanReview.prisma().update(
+            where={"nodeExecId": review_id},
+            data={
+                "status": ReviewStatus.APPROVED,
+                **({"createdAt": created_at} if created_at else {}),
+            },
+        )
+        card = await review_store.find_review(
+            review_id, test_user_id, session.session_id
+        )
+        assert card is not None
+        return card
+
+    read = await approved_card()
+    await PendingHumanReview.prisma().update(
+        where={"nodeExecId": review_id}, data={"status": ReviewStatus.WAITING}
+    )
+    assert not await review_store.consume(read, test_user_id)
+
+    await PendingHumanReview.prisma().delete(where={"nodeExecId": review_id})
+    # A fresh card opens a few round trips later, which millisecond precision
+    # can't always tell apart on a fast runner: pin it a second on.
+    fresh = await approved_card(read.created_at + timedelta(seconds=1))
+    assert fresh.created_at != read.created_at
+    assert not await review_store.consume(read, test_user_id)
+    assert await review_store.consume(fresh, test_user_id)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -99,3 +151,44 @@ async def test_another_users_session_cannot_be_moved(setup_test_user, test_user_
     assert not await update_session_autopilot_mode(
         session.session_id, "someone-else", "unsupervised"
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "output",
+    [
+        '{"type": "web_fetch", "content": "plain page — naïve"}',
+        json.dumps({"content": [{"type": "text", "text": "\x1b[31mraw\x00\x1b[0m"}]}),
+    ],
+    ids=["registry-json", "mcp-envelope-with-control-chars"],
+)
+async def test_a_held_read_comes_back_from_its_row_byte_identical(
+    setup_test_user, test_user_id, output
+):
+    """The JSON column strips raw control characters; the seams hand it
+    escaped ones, so the late result is the bytes the model would have got."""
+    session = await upsert_chat_session(
+        ChatSession.new(user_id=test_user_id, dry_run=False)
+    )
+    args = {"path": "/tmp/page"}
+    call = held.HeldCall(
+        review_id=reads.read_review_id(
+            session.session_id, test_user_id, "read_file", args
+        ),
+        tool_name="read_file",
+        tool_call_id="call-1",
+        args=args,
+        cost_context=TrialCostContext(user_id=test_user_id, trial_id=None),
+    )
+    await reads._hold(call, test_user_id, session, "src", "passage", output, True)
+    await PendingHumanReview.prisma().update(
+        where={"nodeExecId": call.review_id}, data={"status": ReviewStatus.APPROVED}
+    )
+
+    delivered: list[PendingMessage] = []
+    async for _status in held.resolve_answered(test_user_id, session, delivered.append):
+        pass
+
+    [late] = delivered
+    assert late.metadata["held_call"]["outcome"] == "approved"
+    assert late.content.split(">\n", 1)[1] == f"{output}\n</held_call_result>"

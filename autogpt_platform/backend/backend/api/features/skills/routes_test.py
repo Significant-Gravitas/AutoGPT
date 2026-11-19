@@ -1,5 +1,6 @@
 """Tests for the copilot-skills routes."""
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -12,7 +13,7 @@ from backend.api.features.skill_zip import package_from_zip, zip_from_package
 from backend.api.features.skills.routes import router
 from backend.api.features.store.exceptions import VirusDetectedError
 from backend.api.rest_api import app as real_app
-from backend.api.rest_api import handle_internal_http_error
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.copilot.tools.skills import (
     MAX_PACKAGE_FILES,
     BuiltInSkillError,
@@ -21,6 +22,8 @@ from backend.copilot.tools.skills import (
     SkillLimitError,
     SkillNotFoundError,
     SkillPackage,
+    SkillVersionConflictError,
+    SkillWriteLockError,
     parse_skill_markdown,
     render_skill_markdown,
 )
@@ -38,15 +41,18 @@ app = fastapi.FastAPI()
 app.include_router(router, prefix="/skills")
 # ConflictError is mapped app-wide, never on the route, so without this a
 # conflict reads here as an unhandled error rather than the 409 a client gets.
-app.add_exception_handler(ConflictError, handle_internal_http_error(409))
+add_exception_handlers(app)
 client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
+def setup_app_auth(mock_jwt_user, monkeypatch):
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    monkeypatch.setattr(
+        "backend.copilot.tools.skills.record_registry_write", AsyncMock()
+    )
     yield
     app.dependency_overrides.clear()
 
@@ -126,6 +132,38 @@ def test_list_copilot_skills_returns_user_skills(
     assert body[1]["triggers"] == []
 
 
+def test_list_copilot_skills_reports_slash_command_settings(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """GET /skills carries what the chat's "/" picker lists: the argument
+    hint, and whether the skill can be run as a command at all."""
+    mocker.patch(
+        "backend.api.features.skills.routes.list_user_skills",
+        AsyncMock(
+            return_value=[
+                ParsedSkill(
+                    name="fix_issue",
+                    description="Fix a GitHub issue",
+                    body="",
+                    extra={"argument-hint": "[issue-number]"},
+                ),
+                ParsedSkill(
+                    name="house_style",
+                    description="Background knowledge",
+                    body="",
+                    extra={"user-invocable": False},
+                ),
+            ]
+        ),
+    )
+
+    body = client.get("/skills").json()
+    assert body[0]["argument_hint"] == "[issue-number]"
+    assert body[0]["user_invocable"] is True
+    assert body[1]["argument_hint"] is None
+    assert body[1]["user_invocable"] is False
+
+
 def test_delete_copilot_skill_returns_name_on_success(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -167,6 +205,27 @@ def test_delete_copilot_skill_returns_404_when_missing(
     assert response.status_code == 404
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        SkillWriteLockError("held; try again"),
+        SkillVersionConflictError("v1", "v2"),
+    ],
+)
+def test_delete_copilot_skill_returns_409_when_it_could_not_be_ordered(
+    mocker: pytest_mock.MockFixture, error: Exception
+) -> None:
+    """Nothing was deleted, so the UI can offer a retry."""
+
+    mocker.patch(
+        "backend.api.features.skills.routes.delete_user_skill",
+        AsyncMock(side_effect=error),
+    )
+
+    response = client.delete("/skills/busy")
+    assert response.status_code == 409
+
+
 def test_read_copilot_skill_returns_user_body(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -183,6 +242,13 @@ def test_read_copilot_skill_returns_user_body(
                 version="1",
             )
         ),
+    )
+    # Unstubbed, listing the files upserts the user's workspace through the
+    # session's database client from TestClient's own event loop, and that
+    # write left its connection inside an open transaction for later tests.
+    mocker.patch(
+        "backend.api.features.skills.routes.list_user_skill_files",
+        AsyncMock(return_value=[]),
     )
 
     response = client.get("/skills/oauth_flow")
@@ -277,6 +343,65 @@ def test_upload_copilot_skill_rejects_malformed_markdown() -> None:
         "/skills", json={"content": "just some text, no frontmatter"}
     )
     assert response.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "frontmatter,reason",
+    [
+        ("name: &n oauth_flow\ndescription: d", "cannot use YAML anchors"),
+        (f"name: oauth_flow\ndescription: {'x' * 20_000}", "larger than 16 KiB"),
+    ],
+    ids=["anchor", "oversized"],
+)
+def test_upload_copilot_skill_says_which_frontmatter_limit_it_broke(
+    mocker: pytest_mock.MockFixture, frontmatter: str, reason: str
+) -> None:
+    store_mock = AsyncMock()
+    mocker.patch("backend.api.features.skills.routes.store_user_skill", store_mock)
+
+    response = client.post(
+        "/skills", json={"content": f"---\n{frontmatter}\n---\n\n# Body\n"}
+    )
+
+    assert response.status_code == 400
+    assert reason in response.json()["detail"]
+    store_mock.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "upload",
+    [
+        lambda: client.post("/skills", json={"content": _CANONICAL_SKILL_MD}),
+        lambda: client.post(
+            "/skills/package",
+            files={"file": ("pkg.zip", _package_zip(), "application/zip")},
+        ),
+    ],
+    ids=["skill_md", "package"],
+)
+def test_an_uploaded_skill_md_is_parsed_on_a_worker_thread(
+    mocker: pytest_mock.MockFixture, upload
+) -> None:
+    on_event_loop: list[bool] = []
+
+    def parse(text: str) -> ParsedSkill | None:
+        try:
+            asyncio.get_running_loop()
+            on_event_loop.append(True)
+        except RuntimeError:
+            on_event_loop.append(False)
+        return parse_skill_markdown(text)
+
+    mocker.patch("backend.api.features.skills.routes.parse_skill_markdown", parse)
+    mocker.patch(
+        "backend.api.features.skills.routes.store_user_skill",
+        AsyncMock(return_value=_PARSED_VALID_SKILL),
+    )
+
+    response = upload()
+
+    assert response.status_code == 201
+    assert on_event_loop == [False]
 
 
 def test_upload_copilot_skill_returns_409_when_at_cap(
@@ -692,3 +817,27 @@ def test_download_package_returns_404_for_a_missing_skill(
         AsyncMock(return_value=None),
     )
     assert client.get("/skills/missing/package").status_code == 404
+
+
+@pytest.mark.parametrize("package", [False, True])
+@pytest.mark.parametrize("hint", ['"[issue-number]"', "[issue-number]"])
+def test_upload_returns_parsed_command_settings(package, hint):
+    content = (
+        "---\nname: command-settings\ndescription: Command settings\n"
+        f"argument-hint: {hint}\nuser-invocable: false\n---\n\nInstructions\n"
+    )
+    with _patch_skills_path(_FakeWorkspaceManager()):
+        if package:
+            archive = zip_from_package(SkillPackage(skill_md=content))
+            response = client.post(
+                "/skills/package",
+                files={"file": ("skill.zip", archive, "application/zip")},
+            )
+        else:
+            response = client.post("/skills", json={"content": content})
+        assert response.status_code == 201, response.text
+        assert response.json()["argument_hint"] == "[issue-number]"
+        assert response.json()["user_invocable"] is False
+        listed = client.get("/skills").json()
+        assert listed[0]["argument_hint"] == response.json()["argument_hint"]
+        assert listed[0]["user_invocable"] == response.json()["user_invocable"]

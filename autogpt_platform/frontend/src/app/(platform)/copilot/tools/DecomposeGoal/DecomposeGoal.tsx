@@ -38,11 +38,11 @@ export function DecomposeGoalTool({ part }: Props) {
   return (
     <div className="py-2">
       {isPending && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-body text-foreground-tertiary">
           <ToolIcon isStreaming={isStreaming} isError={isError} />
           <MorphingTextAnimation
             text={text}
-            className={isError ? "text-red-500" : undefined}
+            className={isError ? "text-error" : undefined}
           />
         </div>
       )}
@@ -72,7 +72,7 @@ export function DecomposeGoalTool({ part }: Props) {
           <ContentGrid>
             <ContentMessage>{output.message}</ContentMessage>
 
-            <div className="rounded-lg border border-border bg-card p-3">
+            <div className="rounded-lg border border-border-base bg-surface p-3">
               <div className="space-y-0.5">
                 {output.steps.map((step, i) => (
                   <StepItem

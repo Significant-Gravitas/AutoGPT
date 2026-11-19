@@ -18,7 +18,15 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useEffect, useState, useRef } from "react";
+import isEqual from "lodash/isEqual";
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+} from "react";
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,
@@ -168,6 +176,10 @@ export default function CredentialsProvider({
   // Only the newest list request may publish or retire; an older one can
   // resolve last with a response that predates an upsert.
   const loadGenerationRef = useRef(0);
+  // The handlers the published provider entries close over. A load may keep an
+  // entry whose credentials did not change only while these are the same, so
+  // a reused entry never calls a stale handler.
+  const entryHandlersRef = useRef<unknown[]>([]);
 
   const upsertCredentials = useCallback(
     (
@@ -192,18 +204,21 @@ export default function CredentialsProvider({
    * Upsert a credential straight off the API. The generated model marks several
    * fields nullable where the store's model uses `undefined`.
    */
-  function upsertFromApi(
-    provider: CredentialsProviderName,
-    credentials: GeneratedCredentialsMetaResponse,
-  ) {
-    upsertCredentials(provider, {
-      ...credentials,
-      title: credentials.title ?? undefined,
-      scopes: credentials.scopes ?? undefined,
-      username: credentials.username ?? undefined,
-      host: credentials.host ?? undefined,
-    } as CredentialsMetaResponse);
-  }
+  const upsertFromApi = useCallback(
+    (
+      provider: CredentialsProviderName,
+      credentials: GeneratedCredentialsMetaResponse,
+    ) => {
+      upsertCredentials(provider, {
+        ...credentials,
+        title: credentials.title ?? undefined,
+        scopes: credentials.scopes ?? undefined,
+        username: credentials.username ?? undefined,
+        host: credentials.host ?? undefined,
+      } as CredentialsMetaResponse);
+    },
+    [upsertCredentials],
+  );
 
   /** Wraps `BackendAPI.oAuthCallback`, and adds the result to the internal credentials store. */
   const oAuthCallback = useCallback(
@@ -442,9 +457,23 @@ export default function CredentialsProvider({
           {} as Record<CredentialsProviderName, CredentialsMetaResponse[]>,
         );
 
-        setProviders((prev) => ({
-          ...prev,
-          ...Object.fromEntries(
+        const entryHandlers = [
+          oAuthCallback,
+          mcpOAuthCallback,
+          mcpStoreToken,
+          createAPIKeyCredentials,
+          createUserPasswordCredentials,
+          createHostScopedCredentials,
+          deleteCredentials,
+        ];
+        const canReuseEntries = isEqual(
+          entryHandlersRef.current,
+          entryHandlers,
+        );
+        entryHandlersRef.current = entryHandlers;
+
+        setProviders((prev) => {
+          const loadedEntries = Object.fromEntries(
             providerNames.map((provider) => {
               const loaded = credentialsByProvider[provider] ?? [];
               const pending = pendingUpsertsRef.current[provider];
@@ -469,13 +498,26 @@ export default function CredentialsProvider({
                 }
               }
 
+              // Every invalidate/success refetch lands here; an entry that did
+              // not change keeps its identity so consumers skip a re-render.
+              const isSystemProvider = systemProviders.has(provider);
+              const existing = prev?.[provider];
+              if (
+                canReuseEntries &&
+                existing &&
+                existing.isSystemProvider === isSystemProvider &&
+                isEqual(existing.savedCredentials, providerCredentials)
+              ) {
+                return [provider, existing];
+              }
+
               return [
                 provider,
                 {
                   provider,
                   providerName: toDisplayName(provider),
                   savedCredentials: providerCredentials,
-                  isSystemProvider: systemProviders.has(provider),
+                  isSystemProvider,
                   oAuthCallback: (code: string, state_token: string) =>
                     oAuthCallback(provider, code, state_token),
                   mcpOAuthCallback,
@@ -494,8 +536,15 @@ export default function CredentialsProvider({
                 } satisfies CredentialsProviderData,
               ];
             }),
-          ),
-        }));
+          );
+          const unchanged =
+            prev !== null &&
+            Object.entries(loadedEntries).every(
+              ([provider, entry]) =>
+                prev[provider as CredentialsProviderName] === entry,
+            );
+          return unchanged ? prev : { ...prev, ...loadedEntries };
+        });
       })
       .catch(onFailToast("load credentials"));
   }, [
@@ -567,10 +616,13 @@ export default function CredentialsProvider({
     return unsubscribe;
   }, [queryClient, loadCredentials]);
 
+  const actions = useMemo(
+    () => ({ reload: loadCredentials, upsert: upsertFromApi }),
+    [loadCredentials, upsertFromApi],
+  );
+
   return (
-    <CredentialsActionsContext.Provider
-      value={{ reload: loadCredentials, upsert: upsertFromApi }}
-    >
+    <CredentialsActionsContext.Provider value={actions}>
       <CredentialsProvidersContext.Provider value={providers}>
         {children}
       </CredentialsProvidersContext.Provider>

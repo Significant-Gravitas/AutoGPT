@@ -26,7 +26,8 @@ async def _check_schedule_timezone(requested, expected):
     session.organization_id = "org"
     session.team_id = "team"
     scheduler = MagicMock(
-        add_execution_schedule=AsyncMock(side_effect=RuntimeError("captured"))
+        get_execution_schedules=AsyncMock(return_value=[]),
+        add_execution_schedule=AsyncMock(side_effect=RuntimeError("captured")),
     )
     with (
         patch(

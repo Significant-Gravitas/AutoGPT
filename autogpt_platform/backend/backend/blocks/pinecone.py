@@ -6,6 +6,7 @@ from pinecone import Pinecone, ServerlessSpec
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -61,6 +62,7 @@ class PineconeInitBlock(Block):
             categories={BlockCategory.LOGIC},
             input_schema=PineconeInitBlock.Input,
             output_schema=PineconeInitBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -122,6 +124,7 @@ class PineconeQueryBlock(Block):
             categories={BlockCategory.LOGIC},
             input_schema=PineconeQueryBlock.Input,
             output_schema=PineconeQueryBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -203,6 +206,7 @@ class PineconeInsertBlock(Block):
             categories={BlockCategory.LOGIC},
             input_schema=PineconeInsertBlock.Input,
             output_schema=PineconeInsertBlock.Output,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

@@ -10,6 +10,7 @@ from gravitas_md2gdocs import to_requests
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -228,6 +229,7 @@ class GoogleDocsReadBlock(Block):
                     "title": "Test Document",
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -320,6 +322,7 @@ class GoogleDocsCreateBlock(Block):
                     "title": "My New Document",
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -448,6 +451,7 @@ class GoogleDocsAppendPlainTextBlock(Block):
                     "characters_added": 23,
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -559,6 +563,7 @@ class GoogleDocsInsertPlainTextBlock(Block):
                     "characters_inserted": 20,
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -666,6 +671,7 @@ class GoogleDocsFindReplacePlainTextBlock(Block):
                     "replacements_made": 3,
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -791,6 +797,7 @@ class GoogleDocsGetMetadataBlock(Block):
                     "revision_id": "rev_123",
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -913,6 +920,7 @@ class GoogleDocsInsertTableBlock(Block):
                     "cells_found": 4,
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1171,6 +1179,7 @@ class GoogleDocsInsertPageBreakBlock(Block):
             test_mock={
                 "_insert_page_break": lambda *args, **kwargs: {"success": True},
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1276,6 +1285,7 @@ class GoogleDocsDeleteContentBlock(Block):
                     "characters_deleted": 40,
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1400,6 +1410,7 @@ class GoogleDocsExportBlock(Block):
                     "mime_type": "text/plain",
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -1523,6 +1534,7 @@ class GoogleDocsFormatTextBlock(Block):
             test_mock={
                 "_format_text": lambda *args, **kwargs: {"success": True},
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1709,6 +1721,7 @@ class GoogleDocsShareBlock(Block):
                 },
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -1843,6 +1856,7 @@ class GoogleDocsSetPublicAccessBlock(Block):
                 },
             },
             is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -1966,6 +1980,7 @@ class GoogleDocsAppendMarkdownBlock(Block):
                     "requests_count": 5,
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -2088,6 +2103,7 @@ class GoogleDocsReplaceAllWithMarkdownBlock(Block):
                     "requests_count": 3,
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -2213,6 +2229,7 @@ class GoogleDocsInsertMarkdownAtBlock(Block):
                     "requests_count": 3,
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -2334,6 +2351,7 @@ class GoogleDocsReplaceRangeWithMarkdownBlock(Block):
                     "characters_deleted": 40,
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -2478,6 +2496,7 @@ class GoogleDocsReplaceContentWithMarkdownBlock(Block):
                     "requests_count": 4,
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -2711,6 +2730,7 @@ class GoogleDocsGetStructureBlock(Block):
                     "structure": {},
                 },
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

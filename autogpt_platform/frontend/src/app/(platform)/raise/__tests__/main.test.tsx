@@ -18,28 +18,6 @@ import {
   VOICE_SKIPPED_LABEL,
 } from "../helpers";
 
-const { setFlagStatusMock } = vi.hoisted(() => ({
-  setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
-  const actual =
-    await importActual<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) => {
-      if (flag === "hire-experts") return setFlagStatusMock();
-      // The Hub is on here so the flow runs in the configuration production
-      // will be in: leaving it to the real hook disabled the listing query
-      // and left "Hub on and empty" — the case that drops the beat — untested.
-      if (flag === "skills-hub") return { enabled: true, ready: true };
-      return actual.useFlagStatus(flag as never);
-    },
-  };
-});
-
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isLoggedIn: true, user: { id: "user-1" } }),
 }));
@@ -49,8 +27,16 @@ const { pushMock, notFoundMock } = vi.hoisted(() => ({
   notFoundMock: vi.fn(),
 }));
 
+const { invalidateRosterMock } = vi.hoisted(() => ({
+  invalidateRosterMock: vi.fn(() => Promise.resolve([])),
+}));
+
+vi.mock("@/services/experts/invalidate-experts", () => ({
+  invalidateExpertRosterQueries: invalidateRosterMock,
+}));
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, replace: vi.fn() }),
   usePathname: () => "/raise",
   useSearchParams: () => new URLSearchParams(),
   useParams: () => ({}),
@@ -64,7 +50,7 @@ const raisedExpert = {
   id: "raised-1",
   name: "Otto",
   avatar_url: null,
-  role: "marketer",
+  role: "Marketer",
   tagline: null,
   bio: null,
   skills: [],
@@ -125,10 +111,10 @@ function seedAtBudget(name = "Otto") {
   saveDraft({
     step: "budget",
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
+    color: "rose-300",
     jobTitle: "Marketing Manager",
     name,
-    color: "rose-300",
     avatarUrl: "",
     about: "",
     voicePreferences: "",
@@ -146,10 +132,10 @@ function seedAtSkills(
   saveDraft({
     step: "skills",
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
+    color: "rose-300",
     jobTitle: "Marketing Manager",
     name,
-    color: "rose-300",
     avatarUrl: "",
     about: "",
     voicePreferences: "",
@@ -163,7 +149,7 @@ function seedAtSkills(
 beforeEach(() => {
   window.sessionStorage.clear();
   mockReducedMotion();
-  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+
   pushMock.mockClear();
   notFoundMock.mockClear();
   // One library skill is enough to keep the skills beat in the flow; with
@@ -175,14 +161,47 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("calls notFound when the experts feature is disabled", () => {
-  setFlagStatusMock.mockReturnValue({ enabled: false, ready: true });
-
-  try {
+test.each([null, "finance"])(
+  "preserves a legacy custom role on submission with stored category %s",
+  async (category) => {
+    let captured: unknown = null;
+    server.use(
+      getCreateRaisedExpertMockHandler(async (info) => {
+        captured = await info.request.json();
+        return raiseResult();
+      }),
+    );
+    seedAtSkills("Tally");
+    window.sessionStorage.setItem(
+      "raise-expert-draft",
+      JSON.stringify({
+        ...loadDraft(),
+        category,
+        role: "Invoice chaser",
+        jobTitle: "Accounts Receivable Specialist",
+      }),
+    );
+    saveDraft(loadDraft());
     renderRaise();
-  } catch {}
 
-  expect(notFoundMock).toHaveBeenCalled();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Skip" }, { timeout: 5000 }),
+    );
+
+    await waitFor(() =>
+      expect(captured).toMatchObject({
+        name: "Tally",
+        role: "Invoice chaser",
+        job_title: "Accounts Receivable Specialist",
+      }),
+    );
+  },
+);
+
+test("opens expert creation without a rollout flag", async () => {
+  renderRaise();
+  expect(await screen.findByText(/name/i)).toBeDefined();
+  expect(notFoundMock).not.toHaveBeenCalled();
 });
 
 test("skips remaining kit steps, posts null budget and empty attachments, and opens copilot", async () => {
@@ -205,7 +224,7 @@ test("skips remaining kit steps, posts null budget and empty attachments, and op
   await waitFor(() => expect(captured).not.toBeNull());
   expect(captured).toMatchObject({
     name: "Otto",
-    role: "marketer",
+    role: "Marketer",
     job_title: "Marketing Manager",
     weekly_budget: null,
     attachments: [],
@@ -214,6 +233,26 @@ test("skips remaining kit steps, posts null budget and empty attachments, and op
     expect(pushMock).toHaveBeenCalledWith(
       "/copilot?expertId=raised-1&kickoff=1",
     ),
+  );
+});
+
+test("refreshes the expert roster before opening the kickoff thread", async () => {
+  server.use(getCreateRaisedExpertMockHandler(raiseResult()));
+  seedAtSkills();
+  renderRaise();
+
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Skip" }, { timeout: 5000 }),
+  );
+
+  await waitFor(() =>
+    expect(pushMock).toHaveBeenCalledWith(
+      "/copilot?expertId=raised-1&kickoff=1",
+    ),
+  );
+  expect(invalidateRosterMock).toHaveBeenCalledTimes(1);
+  expect(invalidateRosterMock.mock.invocationCallOrder[0]).toBeLessThan(
+    pushMock.mock.invocationCallOrder[0],
   );
 });
 
@@ -379,7 +418,8 @@ test("picking a job title records it and asks for a name", async () => {
   saveDraft({
     ...EMPTY_DRAFT,
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
+    color: "rose-300",
     step: "jobTitle",
   });
   renderRaise();
@@ -408,7 +448,8 @@ test("typing a job title trims it and asks for a name", async () => {
   saveDraft({
     ...EMPTY_DRAFT,
     hasStarted: true,
-    role: "Custom role",
+    category: "research",
+    color: "lime-300",
     step: "jobTitle",
   });
   renderRaise();
@@ -435,7 +476,8 @@ test("skipping a job title records it and asks for a name", async () => {
   saveDraft({
     ...EMPTY_DRAFT,
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
+    color: "rose-300",
     step: "jobTitle",
   });
   renderRaise();
@@ -473,8 +515,6 @@ test("picking a weekly budget advances to marketplace workflows", async () => {
 
 test("drops the skills beat and raises from the marketplace step when there is nothing to add", async () => {
   let captured: unknown = null;
-  // The Hub is on for this file, so this is an empty catalogue plus an empty
-  // library — not a disabled flag.
   server.use(
     getListCopilotSkillsMockHandler([]),
     getCreateRaisedExpertMockHandler(async (info) => {
@@ -587,7 +627,7 @@ test("back returns to the previous step and the draft survives", async () => {
   expect(draft.voiceLabel).toBeNull();
   expect(draft).toMatchObject({
     hasStarted: true,
-    role: "marketer",
+    category: "marketing",
     jobTitle: "Marketing Manager",
     name: "Otto",
     color: "rose-300",

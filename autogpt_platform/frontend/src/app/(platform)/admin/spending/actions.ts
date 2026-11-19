@@ -24,7 +24,7 @@ export async function getUsersTransactionHistory(
   search?: string,
   transactionType?: CreditTransactionType,
 ): Promise<UsersBalanceHistoryResponse> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- query params of mixed types
   const data: Record<string, any> = {
     page,
     page_size: pageSize,

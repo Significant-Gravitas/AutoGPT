@@ -437,7 +437,12 @@ async def test_first_spawn_opens_the_tree_with_the_root_counted(monkeypatch) -> 
     async def _ceiling(_user_id):
         return 42
 
+    async def _auto_mode_off(*_args, **_kwargs):
+        return False
+
     monkeypatch.setattr(tree, "resolve_root_ceiling_microdollars", _ceiling)
+    # Auto mode opens the tree at the root; this is the unmetered path.
+    monkeypatch.setattr(tree, "is_feature_enabled", _auto_mode_off)
     monkeypatch.setattr(tree.config, "tree_max_nodes", 2)
     redis = FakeRedis()
     ledger = TreeLedger(cast(AsyncRedisClient, redis))
@@ -456,6 +461,13 @@ def test_all_tool_names_cover_the_denied_set() -> None:
     # A denied name that is not a real tool would be a silent no-op.
     assert DESCENT_DENIED_TOOLS <= ALL_TOOL_NAMES
     assert SPAWN_TOOLS <= ALL_TOOL_NAMES
+
+
+def test_a_tool_reserved_for_a_person_is_never_handed_to_a_child() -> None:
+    # The descent list holds whatever origin a child is stamped with.
+    from backend.copilot.tools import INTERACTIVE_ORIGIN_TOOLS
+
+    assert INTERACTIVE_ORIGIN_TOOLS <= DESCENT_DENIED_TOOLS
 
 
 # ── ceiling formula (finding 3) ────────────────────────────────────────

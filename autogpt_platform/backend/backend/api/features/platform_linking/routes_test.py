@@ -294,6 +294,39 @@ class TestAdversarialDeleteLinkId:
 
 class TestListBotPlatforms:
     @pytest.mark.asyncio
+    async def test_passes_the_dm_url_through(self):
+        from backend.api.features.platform_linking.routes import list_bot_platforms
+
+        db = _db_mock(
+            list_user_links=AsyncMock(return_value=[]),
+            list_server_links=AsyncMock(return_value=[]),
+        )
+        telegram = PlatformMeta(
+            platform="TELEGRAM",
+            display_name="Telegram",
+            icon="telegram.png",
+            server_noun="group",
+            enabled=True,
+            add_bot_url="https://t.me/AutoGPTBot?startgroup=true",
+            dm_url="https://t.me/AutoGPTBot?start=connect",
+        )
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            patch(
+                "backend.api.features.platform_linking.routes.registry.enabled_platforms",
+                return_value=[telegram, _discord_meta()],
+            ),
+        ):
+            result = await list_bot_platforms(user_id="u1")
+
+        assert result[0].dm_url == "https://t.me/AutoGPTBot?start=connect"
+        assert result[0].add_bot_url == "https://t.me/AutoGPTBot?startgroup=true"
+        assert result[1].dm_url is None
+
+    @pytest.mark.asyncio
     async def test_returns_enabled_platforms_with_no_links(self):
         from backend.api.features.platform_linking.routes import list_bot_platforms
 
