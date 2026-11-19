@@ -7,6 +7,7 @@ import { VisualAnswerEvent } from "@/services/analytics/posthog-events";
 import { AlertCircleIcon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { useCopilotChatActions } from "../../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { toastSendFailure } from "../../../helpers/sendFailureToast";
 import { type BlockTone, TEXT_TONE } from "../helpers";
 
 const ICON_BADGE: Record<BlockTone, string> = {
@@ -23,14 +24,24 @@ interface Props {
 
 export function OptionsBlockView({ block, canAct }: Props) {
   const { onSend } = useCopilotChatActions();
-  const [isSent, setIsSent] = useState(false);
-  const isDisabled = !canAct || isSent;
+  const [hasSelected, setHasSelected] = useState(false);
+  const isDisabled = !canAct || hasSelected;
 
-  function handleSelect(title: string) {
+  async function handleSelect(title: string) {
     if (isDisabled) return;
-    setIsSent(true);
+    setHasSelected(true);
     capturePostHogEvent(VisualAnswerEvent.VISUAL_OPTION_CLICKED, {});
-    void onSend(title);
+    try {
+      await onSend(title);
+    } catch (error) {
+      setHasSelected(false);
+      toastSendFailure({
+        title: "Couldn't confirm the message was sent",
+        error,
+        recovery: "check the chat before selecting the same option again",
+        paywallRecovery: "you can select the same option once you have a plan",
+      });
+    }
   }
 
   return (
@@ -43,7 +54,7 @@ export function OptionsBlockView({ block, canAct }: Props) {
             key={index}
             type="button"
             disabled={isDisabled}
-            onClick={() => handleSelect(item.title)}
+            onClick={() => void handleSelect(item.title)}
             className="group flex min-w-0 items-start gap-3 rounded-2xl bg-gradient-to-br from-surface to-accent-surface/40 p-4 text-left smooth-shadow-ring-sm transition-transform duration-150 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none disabled:pointer-events-none disabled:opacity-60 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
           >
             <span
