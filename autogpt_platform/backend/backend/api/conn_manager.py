@@ -518,9 +518,10 @@ class _ShardStream:
         self.handlers[channel] = handler
         try:
             subscription = await self._open_or_subscribe(channel)
-            if self._stopping:
+            if self._stopping or not self._outbox.is_open:
                 # Stopped while this opened its connection, so that stop
-                # closed nothing; closed below, as no pump will read it.
+                # closed nothing, or about to be, the socket having been
+                # retired meanwhile: closed below, as no pump will read it.
                 raise EventStreamLostError(f"{channel}: the stream has stopped")
         except BaseException:
             self.handlers.pop(channel, None)

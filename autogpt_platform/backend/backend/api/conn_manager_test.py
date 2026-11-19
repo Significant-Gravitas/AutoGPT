@@ -1783,7 +1783,10 @@ async def test_a_stream_stopped_while_a_subscribe_waits_keeps_nothing_running(
             pubsub.ssubscribe.side_effect = confirm_then_stop
             adding = asyncio.create_task(stream.add("{u/g}/exec/b", AsyncMock()))
             async with asyncio.timeout(_HANG_SECONDS):
-                await asyncio.wait([adding, *stopping])
+                await asyncio.wait([adding])
+                # Started during the add; a failed stop fails the test.
+                assert len(stopping) == 1
+                await stopping[0]
             channel = "{u/g}/exec/b"
         assert isinstance(adding.exception(), EventStreamLostError)
         assert channel not in stream.handlers
@@ -1849,6 +1852,83 @@ async def test_a_stream_stopped_while_it_opens_keeps_nothing_open(
         assert ("redis", 2) not in connection_manager._ws_streams[ws]
     finally:
         opened.set()
+        client.reading.set()
+        await _join(subscribing)
+
+
+@pytest.mark.asyncio
+async def test_a_subscribe_that_opens_after_its_socket_retired_fails_at_once(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A subscribe can finish opening a new shard's stream after its socket
+    fell behind, while the close is still stopping another shard. It fails
+    then and frees the shard's slot at once, rather than telling a closing
+    socket it subscribed; the close goes out after."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    fake_redis.shard_of = lambda channel: ("redis", 2 if "graph-c" in channel else 1)
+    ws: AsyncMock = AsyncMock(spec=WebSocket)
+    client = _StuckClient(ws)
+    await connection_manager.subscribe_graph_execs(
+        user_id="user-1", graph_id="graph-a", websocket=ws
+    )
+    first_stopping, first_stopped = asyncio.Event(), asyncio.Event()
+
+    async def close_first_slowly() -> None:
+        first_stopping.set()
+        await first_stopped.wait()
+
+    fake_redis.clients[0].aclose.side_effect = close_first_slowly
+    opening, opened = asyncio.Event(), asyncio.Event()
+    connect = fake_redis.connect
+
+    async def connect_slowly(channel: str) -> MagicMock:
+        if "graph-c" in channel:
+            opening.set()
+            await opened.wait()
+        return await connect(channel)
+
+    subscribing: asyncio.Task[str] | None = None
+    try:
+        with patch(
+            "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
+            side_effect=connect_slowly,
+        ):
+            subscribing = asyncio.create_task(
+                connection_manager.subscribe_graph_execs(
+                    user_id="user-1", graph_id="graph-c", websocket=ws
+                )
+            )
+            async with asyncio.timeout(_HANG_SECONDS):
+                await opening.wait()
+            second = connection_manager._ws_streams[ws][("redis", 2)]
+            await _fall_behind(connection_manager, fake_redis, ws, client)
+            async with asyncio.timeout(_HANG_SECONDS):
+                await first_stopping.wait()
+            opened.set()
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.wait([subscribing])
+            assert isinstance(subscribing.exception(), EventStreamLostError)
+            # Freed while the close still waits on the first shard.
+            assert ("redis", 2) not in connection_manager._ws_streams[ws]
+            assert ("redis", 2) not in connection_manager._streams_per_shard
+            assert second._task is None
+            fake_redis.clients[1].aclose.assert_awaited()
+            ws.close.assert_not_awaited()
+
+            first_stopped.set()
+            closer = connection_manager._outboxes[ws]._closer
+            assert closer is not None
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.wait([closer])
+        assert closer.exception() is None
+        ws.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
+        )
+    finally:
+        opened.set()
+        first_stopped.set()
         client.reading.set()
         await _join(subscribing)
 

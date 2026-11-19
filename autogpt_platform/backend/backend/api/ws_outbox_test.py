@@ -137,12 +137,12 @@ async def test_a_delivery_that_swallows_its_cancel_ends_with_nothing_counted() -
     on Python 3.11. The sender then wakes in a stopped outbox: it must just
     end, with nothing raised and nothing counted, below zero or above."""
     backlog = WSBacklog()
-    waiting, swallowed = asyncio.Event(), asyncio.Event()
+    waiting, swallowed, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
     async def swallows_its_cancel() -> None:
         waiting.set()
         try:
-            await asyncio.Event().wait()
+            await release.wait()
         except asyncio.CancelledError:
             swallowed.set()
 
@@ -163,6 +163,8 @@ async def test_a_delivery_that_swallows_its_cancel_ends_with_nothing_counted() -
         assert backlog.queued_bytes == 0
         assert _queued_bytes_gauge() == gauge_before
     finally:
+        # Lets the delivery end if the stop failed to, before closing.
+        release.set()
         await socket.close()
 
 
