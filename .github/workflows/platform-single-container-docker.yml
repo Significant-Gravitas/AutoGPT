@@ -523,6 +523,10 @@ jobs:
   attest-provenance:
     name: Attest build provenance
     needs: [publish-manifest]
+    # Runs once the publish step has written both digests, even if a later
+    # publish-manifest step (the Docker Hub Overview update) failed. When the
+    # publish step fails, it writes no digest and this job is skipped.
+    if: ${{ !cancelled() && needs.publish-manifest.outputs.release_digest != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
