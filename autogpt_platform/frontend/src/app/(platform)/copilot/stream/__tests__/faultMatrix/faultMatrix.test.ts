@@ -48,10 +48,14 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Each lost send's check ends in a verdict, a stop or a give-up, or is
+  // still held: one dropped on the way is never reported.
+  const dropped = tabs.flatMap((t) => t.runtime.droppedChecks());
   tabs.splice(0).forEach((t) => t.dispose());
   vi.restoreAllMocks();
   vi.useRealTimers();
   setVisibility("visible");
+  expect(dropped).toEqual([]);
 });
 
 it("every KNOWN_WRONG id names a case", () => {
@@ -668,6 +672,42 @@ describe("a send", () => {
   );
 
   cell(
+    "S15c",
+    "two sends lost while offline are both checked once the network returns",
+    async () => {
+      server.postMode = "lost-before-send";
+      setOnline(false);
+      tab.send(P1);
+      await advance(10_000);
+      // The second reaches the server, but its response is lost too.
+      server.postMode = "lost-after-receive";
+      tab.send(P2);
+      await advance(10_000);
+      setOnline(true);
+      await advance(5_000);
+      server.publish();
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch" });
+    },
+  );
+
+  cell(
+    "S19o",
+    "lost while offline, then stopped, shows no error when the network returns",
+    async () => {
+      server.postMode = "lost-before-send";
+      setOnline(false);
+      tab.send(P1);
+      await advance(10_000);
+      tab.runtime.stop();
+      await advance(1_000);
+      setOnline(true);
+      await advance(30_000);
+      expectScreen({ error: null });
+    },
+  );
+
+  cell(
     "S24r",
     "lost, its checks' reads failing for 25 minutes, is still reported when a check finds another's turn followed",
     async () => {
@@ -1004,6 +1044,64 @@ describe("two tabs on one chat", () => {
       server.publish();
       await advance(5_000);
       server.viewsDown = false;
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch" }, stale);
+    },
+  );
+
+  cell(
+    "M3u",
+    "two stale-tab sends behind the other tab's turn are both checked when their reads fail while the tab is hidden",
+    async () => {
+      const stale = openTab(300);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(0);
+      server.postMode = "lost-after-receive";
+      stale.send(P3);
+      await advance(3_000);
+      // P1's turn ends while the tab is hidden and every read fails.
+      setVisibility("hidden");
+      server.viewsDown = true;
+      server.publish();
+      await advance(10_000);
+      server.viewsDown = false;
+      setVisibility("visible");
+      await advance(5_000);
+      server.publish();
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch" }, stale);
+    },
+  );
+
+  cell(
+    "M3o",
+    "two stale-tab sends behind the other tab's turn are both checked when their reads fail while offline",
+    async () => {
+      const stale = openTab(300);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(0);
+      server.postMode = "lost-after-receive";
+      stale.send(P3);
+      await advance(3_000);
+      // P1's turn ends while the network is down.
+      setOnline(false);
+      server.viewsDown = true;
+      server.publish();
+      await advance(10_000);
+      server.viewsDown = false;
+      setOnline(true);
+      await advance(5_000);
+      server.publish();
       await advance(60_000);
       expectScreen({ error: "Failed to fetch" }, stale);
     },

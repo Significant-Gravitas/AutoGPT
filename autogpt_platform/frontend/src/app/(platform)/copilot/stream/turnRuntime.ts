@@ -215,6 +215,10 @@ export class TurnRuntime {
   private sendsBehindTurn: { lost: Lost; end: ConnectionEnd }[] = [];
   // The lost send whose check waits on `retryTimer`, if a check set it.
   private retryingSend: { lost: Lost; end: ConnectionEnd } | null = null;
+  // Lost sends whose check no verdict, stop or give-up has ended, and those
+  // of them reading the session now (`droppedChecks`).
+  private checks = new Set<Lost>();
+  private checking = new Set<Lost>();
   // Counts stops: one ends every lost-send recovery begun before it.
   private stops = 0;
   private providerFailure: unknown = null;
@@ -320,9 +324,12 @@ export class TurnRuntime {
     this.stopped = true;
     this.suppressAttach = true;
     this.queueDeclined = true;
-    // As a stop ends a lost send's recovery, it drops one waiting on a turn.
+    // As a stop ends a lost send's recovery, it drops those waiting on a turn
+    // or on the tab's return.
     this.stops += 1;
     this.sendsBehindTurn = [];
+    this.unresolvedPost = null;
+    this.checks.clear();
     this.endQueueWatch();
     this.notice = null;
     this.reveal.clear();
@@ -432,6 +439,7 @@ export class TurnRuntime {
     this.disposed = true;
     this.abortConnections();
     this.clearRetry();
+    this.checks.clear();
     this.reveal.dispose();
     this.endQueueWatch();
     for (const timer of [this.tickTimer, this.frozenTimer]) {
@@ -447,6 +455,24 @@ export class TurnRuntime {
       window.removeEventListener("online", this.onOnline);
       window.removeEventListener("offline", this.onOffline);
     }
+  }
+
+  /**
+   * The prompts of lost sends whose check no slot, list or running check holds
+   * and no verdict, stop or give-up ended: none, unless a path drops one.
+   */
+  droppedChecks() {
+    const held = [
+      this.unresolvedPost,
+      this.retryingSend,
+      ...this.sendsBehindTurn,
+    ];
+    return [...this.checks]
+      .filter(
+        (lost) =>
+          !this.checking.has(lost) && !held.some((h) => h?.lost === lost),
+      )
+      .map((lost) => lost.prompt);
   }
 
   isIdle() {
@@ -735,9 +761,8 @@ export class TurnRuntime {
     if (
       lost.turnId === null &&
       (offline || document.visibilityState === "hidden")
-    ) {
-      this.unresolvedPost = { lost, end };
-    }
+    )
+      this.holdUntilBack(lost, end);
     if (document.visibilityState === "hidden") return;
     if (offline) {
       this.notice = "offline";
@@ -815,6 +840,7 @@ export class TurnRuntime {
     this.clearRetry();
     this.unresolvedPost = null;
     this.sendsBehindTurn = [];
+    this.checks.clear();
     if (running) {
       this.updateTurn(running.key, (seg) => ({
         ...seg,
@@ -831,6 +857,7 @@ export class TurnRuntime {
   // A send whose stream ended before naming its turn: the session view says
   // whether the turn runs, once the tab can ask.
   private findLostTurn(lost: Lost, end: ConnectionEnd) {
+    this.checks.add(lost);
     const offline =
       typeof navigator !== "undefined" && navigator.onLine === false;
     if (offline) {
@@ -838,13 +865,30 @@ export class TurnRuntime {
       this.emitNow();
     }
     if (document.visibilityState === "hidden" || offline)
-      this.unresolvedPost = { lost, end };
+      this.holdUntilBack(lost, end);
     else void this.recoverUnknownTurn(lost, end);
+  }
+
+  // One send waits for the tab to come back; one it would replace waits on
+  // `sendsBehindTurn` instead.
+  private holdUntilBack(lost: Lost, end: ConnectionEnd) {
+    const held = this.unresolvedPost;
+    if (held && held.lost !== lost) this.sendsBehindTurn.push(held);
+    this.unresolvedPost = { lost, end };
+  }
+
+  private async recoverUnknownTurn(lost: Lost, end: ConnectionEnd) {
+    this.checking.add(lost);
+    try {
+      await this.checkLostSend(lost, end);
+    } finally {
+      this.checking.delete(lost);
+    }
   }
 
   // The turn registers a beat after the POST answers, so the view is asked a
   // few times before the send is reported as failed.
-  private async recoverUnknownTurn(lost: Lost, end: ConnectionEnd) {
+  private async checkLostSend(lost: Lost, end: ConnectionEnd) {
     // Not `stopped`: any idle view clears it, a moment after a stop.
     const stops = this.stops;
     const ended = () => this.disposed || this.stops !== stops;
@@ -864,6 +908,7 @@ export class TurnRuntime {
       const behind = !!this.runningTurn() && this.sendInDoubt(lost, end);
       if (behind) this.sendsBehindTurn.push({ lost, end });
       if (attaching || behind) {
+        if (!behind) this.checks.delete(lost);
         this.resetFailures();
         return;
       }
@@ -877,6 +922,7 @@ export class TurnRuntime {
       await sleep(FINISH_PROBE_MS);
     }
     if (ended()) return;
+    this.checks.delete(lost);
     this.resetFailures();
     if (this.sendInDoubt(lost, end)) {
       this.error =
