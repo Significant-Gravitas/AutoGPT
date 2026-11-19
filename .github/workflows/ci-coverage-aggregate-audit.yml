@@ -16,11 +16,16 @@ jobs:
         with:
           persist-credentials: false
           filter: blob:none
-          sparse-checkout: ".github
+          sparse-checkout: "/*
 
-            autogpt_platform/backend
+            !/docs/platform/.gitbook/assets/*.png
 
-            autogpt_platform/autogpt_libs"
+            !/docs/platform/.gitbook/assets/*.gif
+
+            "
+          sparse-checkout-cone-mode: false
+      - name: Verify the complete source checkout for coverage processing
+        run: python3 .github/scripts/validate_ci_checkout.py
       - name: Download and verify all 66 exact artifact IDs
         env:
           GH_TOKEN: ${{ github.token }}
