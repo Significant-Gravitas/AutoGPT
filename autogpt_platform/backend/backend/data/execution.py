@@ -962,6 +962,28 @@ async def get_graph_execution(
     )
 
 
+async def get_unfinished_child_graph_execution_ids(parent_exec_id: str) -> list[str]:
+    """The IDs of a run's child runs that have not finished, reading the `id`
+    column alone."""
+    rows = await query_raw_with_schema(
+        """
+        SELECT "id"
+        FROM {schema_prefix}"AgentGraphExecution"
+        WHERE "parentGraphExecutionId" = $1
+          AND "isDeleted" = false
+          AND "executionStatus"::text = ANY($2::text[])
+        """,
+        parent_exec_id,
+        [
+            ExecutionStatus.QUEUED.value,
+            ExecutionStatus.INCOMPLETE.value,
+            ExecutionStatus.RUNNING.value,
+            ExecutionStatus.REVIEW.value,
+        ],
+    )
+    return [row["id"] for row in rows]
+
+
 async def get_child_graph_executions(
     parent_exec_id: str,
 ) -> list[GraphExecutionMeta]:

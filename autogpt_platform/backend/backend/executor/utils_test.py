@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional, cast
 
@@ -1085,7 +1086,7 @@ async def test_stop_graph_execution_in_review_status_cancels_pending_reviews(
     mock_get_event_bus.return_value = mock_event_bus
 
     mock_get_child_executions = mocker.patch(
-        "backend.executor.utils._get_child_executions"
+        "backend.executor.utils._get_unfinished_child_execution_ids"
     )
     mock_get_child_executions.return_value = []  # No children
 
@@ -1156,7 +1157,7 @@ async def test_stop_graph_execution_with_database_manager_when_prisma_disconnect
     mock_get_event_bus.return_value = mock_event_bus
 
     mock_get_child_executions = mocker.patch(
-        "backend.executor.utils._get_child_executions"
+        "backend.executor.utils._get_unfinished_child_execution_ids"
     )
     mock_get_child_executions.return_value = []  # No children
 
@@ -1242,14 +1243,14 @@ async def test_stop_graph_execution_cascades_to_child_with_reviews(
     mock_event_bus.publish = mocker.AsyncMock()
     mock_get_event_bus.return_value = mock_event_bus
 
-    # Mock _get_child_executions to return the child
+    # Mock the child lookup to return the child
     mock_get_child_executions = mocker.patch(
-        "backend.executor.utils._get_child_executions"
+        "backend.executor.utils._get_unfinished_child_execution_ids"
     )
 
     def get_children_side_effect(parent_id):
         if parent_id == parent_exec_id:
-            return [mock_child_exec]
+            return [child_exec_id]
         return []
 
     mock_get_child_executions.side_effect = get_children_side_effect
@@ -1269,6 +1270,62 @@ async def test_stop_graph_execution_cascades_to_child_with_reviews(
 
     # Verify both parent and child status updates
     assert mock_execution_db.update_graph_execution_stats.call_count >= 1
+
+
+@pytest.fixture
+def child_stops(mocker: MockerFixture):
+    """A parent run with 12 unfinished children (no grandchildren), whose
+    cancels are recorded with how many are in flight at once."""
+    from backend.executor import utils
+
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    children = [f"child-{n}" for n in range(3 * utils.CHILD_STOP_CONCURRENCY)]
+    mocker.patch(
+        "backend.executor.utils._get_unfinished_child_execution_ids",
+        side_effect=lambda parent_id: children if parent_id == "parent" else [],
+    )
+    state = {"in_flight": 0, "most": 0, "cancelled": [], "failing": None}
+
+    async def publish_message(*, message: str, **_: object) -> None:
+        run_id = utils.CancelExecutionEvent.model_validate_json(message).graph_exec_id
+        state["in_flight"] += 1
+        state["most"] = max(state["most"], state["in_flight"])
+        await asyncio.sleep(0)
+        state["in_flight"] -= 1
+        if run_id == state["failing"]:
+            raise RuntimeError("queue unavailable")
+        state["cancelled"].append(run_id)
+
+    queue = mocker.AsyncMock()
+    queue.publish_message.side_effect = publish_message
+    mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
+    state["children"] = children
+    return state
+
+
+@pytest.mark.asyncio
+async def test_a_runs_children_are_stopped_a_few_at_a_time(child_stops):
+    from backend.executor.utils import CHILD_STOP_CONCURRENCY, stop_graph_execution
+
+    await stop_graph_execution(user_id="u", graph_exec_id="parent", wait_timeout=0)
+
+    assert sorted(child_stops["cancelled"]) == sorted(
+        child_stops["children"] + ["parent"]
+    )
+    assert child_stops["most"] == CHILD_STOP_CONCURRENCY
+
+
+@pytest.mark.asyncio
+async def test_a_child_that_fails_to_stop_does_not_stop_the_parents_cancel(
+    child_stops,
+):
+    from backend.executor.utils import stop_graph_execution
+
+    child_stops["failing"] = child_stops["children"][0]
+
+    await stop_graph_execution(user_id="u", graph_exec_id="parent", wait_timeout=0)
+
+    assert "parent" in child_stops["cancelled"]
 
 
 # ---------------------------------------------------------------------------

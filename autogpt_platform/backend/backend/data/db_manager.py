@@ -144,6 +144,7 @@ from backend.data.execution import (
     get_latest_node_execution,
     get_node_execution,
     get_node_executions,
+    get_unfinished_child_graph_execution_ids,
     set_execution_kv_data,
     update_graph_execution_start_time,
     update_graph_execution_stats,
@@ -401,6 +402,9 @@ class DatabaseManager(AppService):
 
     # ============ Graph Executions ============ #
     get_child_graph_executions = _(get_child_graph_executions)
+    get_unfinished_child_graph_execution_ids = _(
+        get_unfinished_child_graph_execution_ids
+    )
     get_graph_executions = _(get_graph_executions)
     get_graph_executions_count = _(get_graph_executions_count)
     get_graph_execution = _(get_graph_execution)
@@ -1024,6 +1028,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Graph Executions ============ #
     create_graph_execution = d.create_graph_execution
     get_child_graph_executions = d.get_child_graph_executions
+    get_unfinished_child_graph_execution_ids = (
+        d.get_unfinished_child_graph_execution_ids
+    )
     get_connected_output_nodes = d.get_connected_output_nodes
     get_latest_node_execution = d.get_latest_node_execution
     get_graph_execution = d.get_graph_execution
