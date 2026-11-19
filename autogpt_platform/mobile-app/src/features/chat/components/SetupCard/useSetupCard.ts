@@ -39,6 +39,7 @@ import {
 const LIST_STALE_MS = 10_000;
 const SEND_TRIES = 10;
 const SEND_RETRY_MS = 500;
+const GRANT_PAYWALL_MESSAGE = "Allowing access needs an active plan. Finish this on the web.";
 
 interface Args {
   sessionID: string;
@@ -99,8 +100,8 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
   const canContinue =
     isAllConnected && run.followUp === "idle" && !setup.needsInputs && (hasPicks || replyText === null);
   // A sign-in from this card in this app run sends the reply by itself; a
-  // card whose accounts were already there waits for Continue.
-  // A card the chat has already moved past waits for Continue too.
+  // card whose accounts were already there, or that the chat has moved past,
+  // waits for Continue.
   const shouldAutoSend =
     canContinue &&
     hasPicks &&
@@ -111,6 +112,7 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
   const needsWeb =
     setup.needsInputs ||
     connect.needsPlan ||
+    run.error === GRANT_PAYWALL_MESSAGE ||
     rows.some(({ status }) => status.kind === "connect" && status.method === "web");
 
   async function grantNewAccounts() {
@@ -126,9 +128,7 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
       settleFollowUp(
         cardKey,
         false,
-        isPaywall
-          ? "Allowing access needs an active plan. Finish this on the web."
-          : "Couldn't allow access. Try again.",
+        isPaywall ? GRANT_PAYWALL_MESSAGE : "Couldn't allow access. Try again.",
       );
       return false;
     }

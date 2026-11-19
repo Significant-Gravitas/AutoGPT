@@ -156,7 +156,10 @@ export function rowStatus(request: CredentialRequest, context: RowContext): RowS
     if (granted) {
       return { kind: "connected", credentialID: granted.id, label: credentialLabel(granted) };
     }
-    const offered = request.expertGrant.credentials.map(({ id, title }) => ({ id, title }));
+    // An account the backend also marked for reconnecting is not offered as is.
+    const offered = request.expertGrant.credentials
+      .filter(({ id }) => !refused.includes(id))
+      .map(({ id, title }) => ({ id, title }));
     const accounts = [
       ...offered,
       ...fitting.map(account).filter((item) => !offered.some((o) => o.id === item.id)),
