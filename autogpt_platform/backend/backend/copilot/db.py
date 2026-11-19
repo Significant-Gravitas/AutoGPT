@@ -235,7 +235,7 @@ async def _newest_rows_within(
 
 
 async def iter_chat_message_pages(
-    session_id: str, *, role: str | None = None, tx: Any | None = None
+    session_id: str, *, role: str | None = None
 ) -> AsyncIterator[list[PrismaChatMessage]]:
     """Every message of a session (of *role*, when given), newest first, in
     pages that each fit ``MAX_LOADED_CHAT_MESSAGE_BYTES``."""
@@ -253,7 +253,7 @@ async def iter_chat_message_pages(
             where["role"] = role
         if sequence_filter:
             where["sequence"] = sequence_filter
-        rows = await PrismaChatMessage.prisma(tx).find_many(
+        rows = await PrismaChatMessage.prisma().find_many(
             where=where, order={"sequence": "desc"}, take=fit.rows
         )
         if rows:

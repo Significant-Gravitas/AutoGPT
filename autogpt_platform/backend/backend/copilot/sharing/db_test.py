@@ -28,7 +28,6 @@ from prisma.models import (
 from backend.blocks._base import BlockType
 from backend.copilot.model import ChatMessage
 from backend.copilot.sharing.db import (
-    _build_shared_chat_files,
     _build_shared_execution_file_allowlist,
     _collect_execution_ids_from_messages,
     _count_referenced_workspace_files,
@@ -614,7 +613,7 @@ class TestEnableChatShareState:
 def _paged(*pages: list[Any]) -> Any:
     """The chat's rows as the pager hands them over, a page at a time."""
 
-    async def iterate(_session_id: str, *, role: str | None = None, tx: Any = None):
+    async def iterate(_session_id: str, *, role: str | None = None):
         for page in pages:
             yield [row for row in page if role is None or row.role == role]
 
@@ -622,7 +621,9 @@ def _paged(*pages: list[Any]) -> Any:
 
 
 @pytest.mark.asyncio
-async def test_the_share_scans_read_the_chat_a_page_at_a_time(mock_prisma_calls):
+async def test_the_share_scans_read_the_chat_a_page_at_a_time(
+    mock_prisma_calls, mock_transaction
+):
     file_a = "11111111-2222-3333-4444-555555555555"
     file_b = "66666666-7777-8888-9999-000000000000"
     first = _mock_tool_msg('{"type":"execution_started","execution_id":"exec-A"}')
@@ -641,17 +642,28 @@ async def test_the_share_scans_read_the_chat_a_page_at_a_time(mock_prisma_calls)
             for file_id in where["id"]["in"]
         ]
     )
-    mock_prisma_calls["file"].return_value.create = AsyncMock()
+    allowlisted = AsyncMock()
+    mock_prisma_calls["file"].return_value.create = allowlisted
+    mock_prisma_calls["file"].return_value.delete_many = AsyncMock(return_value=0)
+    mock_prisma_calls["linked"].return_value.delete_many = AsyncMock(return_value=0)
+    linked = AsyncMock(return_value=[])
+    mock_prisma_calls["execution"].return_value.find_many = linked
+    mock_prisma_calls["session"].return_value.find_first = AsyncMock(
+        return_value=_mock_session()
+    )
+    mock_prisma_calls["session"].return_value.update_many = AsyncMock(return_value=1)
 
     with _paged([first], [second]):
-        runs = await _collect_execution_ids_from_messages(session_id=SESSION_ID)
         counted = await _count_referenced_workspace_files(
             session_id=SESSION_ID, user_id=USER_ID
         )
-        built = await _build_shared_chat_files(SESSION_ID, "token", USER_ID)
+        await enable_chat_session_share(SESSION_ID, USER_ID, auto_share_executions=True)
 
-    assert runs == {"exec-A", "exec-B"}
-    assert (counted, built) == (2, 2)
+    assert counted == 2
+    assert sorted(linked.await_args.kwargs["where"]["id"]["in"]) == ["exec-A", "exec-B"]
+    assert sorted(
+        call.kwargs["data"]["fileId"] for call in allowlisted.await_args_list
+    ) == [file_a, file_b]
 
 
 def _mock_tool_msg(content: str):

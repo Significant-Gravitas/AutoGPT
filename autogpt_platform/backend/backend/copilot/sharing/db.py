@@ -126,6 +126,8 @@ async def enable_chat_session_share(
         )
     else:
         executions_to_link = []
+    # Read before the transaction: it pages through the whole chat.
+    file_ids = await _referenced_file_ids(session_id)
 
     share_token = generate_share_token()
     now = datetime.now(UTC)
@@ -148,6 +150,7 @@ async def enable_chat_session_share(
             session_id=session_id,
             share_token=share_token,
             user_id=user_id,
+            file_ids=file_ids,
             tx=tx,
         )
 
@@ -578,12 +581,12 @@ async def _build_shared_chat_files(
     session_id: str,
     share_token: str,
     user_id: str,
+    file_ids: set[str],
     *,
     tx: Any | None = None,
 ) -> int:
-    """Scan all messages in the session for workspace://<id> refs + persist
-    the allowlist of the ones that are the owner's files to share."""
-    file_ids = await _referenced_file_ids(session_id, tx=tx)
+    """Persist the allowlist of the chat's referenced *file_ids* that are the
+    owner's files to share."""
     if not file_ids:
         return 0
 
@@ -618,9 +621,10 @@ async def _build_shared_chat_files(
     return created
 
 
-async def _referenced_file_ids(session_id: str, *, tx: Any | None = None) -> set[str]:
+async def _referenced_file_ids(session_id: str) -> set[str]:
+    """Every workspace file id this chat's messages reference."""
     file_ids: set[str] = set()
-    async for rows in iter_chat_message_pages(session_id, tx=tx):
+    async for rows in iter_chat_message_pages(session_id):
         for row in rows:
             if row.content is not None:
                 file_ids |= extract_workspace_file_ids(row.content)
