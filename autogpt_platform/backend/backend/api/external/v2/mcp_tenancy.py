@@ -16,6 +16,7 @@ from typing import Any
 
 from mcp.server.fastmcp.exceptions import ToolError
 
+from backend.copilot.tools.agent_generator.core import MAX_LIBRARY_AGENT_IDS
 from backend.copilot.tools.external_scope import in_tenant
 from backend.data.db_accessors import execution_db, graph_db, library_db
 from backend.util.exceptions import NotFoundError
@@ -58,6 +59,9 @@ TENANTED_ARGS: dict[str, dict[str, IdKind]] = {
     "list_agent_triggers": {"library_agent_id": AGENT},
     "setup_agent_webhook_trigger": {"library_agent_id": AGENT, "graph_id": AGENT},
 }
+
+# Lists not named here stop at MAX_LIST_ENTRIES.
+_LIST_LIMITS = {"library_agent_ids": MAX_LIBRARY_AGENT_IDS}
 
 # Arguments that look like ids but name no organization's row, with the reason.
 UNTENANTED_ARGS: dict[str, dict[str, str]] = {
@@ -112,8 +116,9 @@ def _check_shape(arg: str, value: Any) -> None:
         return
     if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
         raise ToolError(f"{arg} must be a list of ids")
-    if len(value) > MAX_LIST_ENTRIES:
-        raise ToolError(f"{arg} takes at most {MAX_LIST_ENTRIES} ids")
+    limit = _LIST_LIMITS.get(arg, MAX_LIST_ENTRIES)
+    if len(value) > limit:
+        raise ToolError(f"{arg} takes at most {limit} ids")
 
 
 def _ids(value: Any) -> list[str]:

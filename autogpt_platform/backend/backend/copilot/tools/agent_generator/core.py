@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# As many as the generator gathers by search when it is given none.
+MAX_LIBRARY_AGENT_IDS = 15
+
 
 class ExecutionSummary(TypedDict):
     """Summary of a single execution for quality assessment."""
@@ -162,7 +165,8 @@ async def get_library_agents_by_ids(
     user_id: str,
     agent_ids: list[str],
 ) -> list[LibraryAgentSummary]:
-    """Fetch multiple library agents by their IDs.
+    """Fetch multiple library agents by their IDs, the first
+    ``MAX_LIBRARY_AGENT_IDS`` distinct ones.
 
     Args:
         user_id: The user ID
@@ -171,8 +175,14 @@ async def get_library_agents_by_ids(
     Returns:
         List of LibraryAgentSummary for found agents (silently skips not found)
     """
+    unique_ids = list(dict.fromkeys(agent_ids))
+    if len(unique_ids) > MAX_LIBRARY_AGENT_IDS:
+        logger.warning(
+            f"Fetching the first {MAX_LIBRARY_AGENT_IDS} of {len(unique_ids)} "
+            "library agents"
+        )
     agents: list[LibraryAgentSummary] = []
-    for agent_id in dict.fromkeys(agent_ids):
+    for agent_id in unique_ids[:MAX_LIBRARY_AGENT_IDS]:
         try:
             agent = await get_library_agent_by_id(user_id, agent_id)
             if agent:

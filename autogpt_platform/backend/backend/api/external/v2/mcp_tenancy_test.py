@@ -13,6 +13,7 @@ from backend.api.external.v2.mcp_tenancy import (
     check_ids_in_tenant,
 )
 from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.tools.agent_generator.core import MAX_LIBRARY_AGENT_IDS
 from backend.util.exceptions import NotFoundError
 from backend.util.text_limits import MAX_LIST_ENTRIES
 
@@ -198,6 +199,10 @@ async def test_a_list_is_resolved_in_one_read_and_each_id_once(
     "tool, args",
     [
         ("move_agents_to_folder", {"agent_ids": ["agent-1"] * (MAX_LIST_ENTRIES + 1)}),
+        (
+            "create_agent",
+            {"library_agent_ids": [f"a-{i}" for i in range(MAX_LIBRARY_AGENT_IDS + 1)]},
+        ),
         ("create_agent", {"library_agent_ids": "agent-1"}),
         ("create_agent", {"library_agent_ids": {"agent-1": "agent-2"}}),
         ("move_agents_to_folder", {"agent_ids": ["agent-1", 7]}),
