@@ -70,6 +70,25 @@ def test_a_client_is_checked_only_in_the_test_that_used_it() -> None:
     assert left_open == []
 
 
+def test_a_client_it_does_not_enforce_is_reported_not_named() -> None:
+    """The session's guard enforces only for the shared cache's clients;
+    ``redis_client``'s are reported instead until #17087 closes their leak."""
+    guard = RedisClientGuard(enforced=lambda client: False)
+    client = _new_async_redis()
+    loop = asyncio.new_event_loop()
+    try:
+        guard.start()
+        loop.run_until_complete(_ping_once(guard, client, close=False))
+        loop.close()
+        left_open = guard.stop()
+    finally:
+        _close(client, loop)
+
+    assert left_open == []
+    assert len(guard.tolerated) == 1
+    assert guard.tolerated[0].startswith("Redis Cluster client first used at ")
+
+
 async def _ping_once(guard: RedisClientGuard, client: RedisCluster, *, close: bool):
     execute = guard.wrap(_execute_past_the_session_guard)
     assert await execute(client, "PING")

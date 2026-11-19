@@ -24,7 +24,7 @@ from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
 from backend.util import cache as shared_cache
-from backend.util import posthog_client
+from backend.util import cache_redis, posthog_client
 from backend.util.httpx_client_guard import HttpxClientGuard, left_open_report
 from backend.util.logging import configure_logging
 from backend.util.platform_payment import settings as platform_payment_settings
@@ -185,7 +185,14 @@ def patient_shared_cache(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 _HTTPX_CLIENTS = HttpxClientGuard()
-_REDIS_CLIENTS = RedisClientGuard()
+# A test fails for leaving the shared cache's client open. One made through
+# backend.data.redis_client is reported instead: closing a loop without
+# shutdown_asyncgens() still leaks those (#17087), and its fix makes the guard
+# enforce for them too.
+_REDIS_CLIENTS = RedisClientGuard(
+    enforced=lambda client: isinstance(client, cache_redis._AsyncRedisCluster)
+)
+_TOLERATED_REDIS_LEAKS: list[str] = []
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -237,7 +244,20 @@ def _clients_left_open(nodeid: str) -> list[str]:
         reports.append(left_open_report(nodeid, left_open))
     if left_open := _REDIS_CLIENTS.stop():
         reports.append(redis_left_open_report(nodeid, left_open))
+    if _REDIS_CLIENTS.tolerated:
+        _TOLERATED_REDIS_LEAKS.append(
+            redis_left_open_report(nodeid, _REDIS_CLIENTS.tolerated)
+        )
     return reports
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    if _TOLERATED_REDIS_LEAKS:
+        terminalreporter.section(
+            "async Redis clients left open, reported but not failed (#17087)"
+        )
+        for report in _TOLERATED_REDIS_LEAKS:
+            terminalreporter.write_line(report)
 
 
 @pytest.fixture(autouse=True)

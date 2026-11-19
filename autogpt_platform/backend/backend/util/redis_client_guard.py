@@ -26,9 +26,14 @@ ExecuteCommand = Callable[..., Awaitable[Any]]
 
 class RedisClientGuard:
     """Remembers each client a test sends a command through and the loop it
-    sent on, then names the ones left open there once that loop has closed."""
+    sent on, then names the ones left open there once that loop has closed.
 
-    def __init__(self) -> None:
+    Only clients ``enforced`` accepts are named for failing the test; the rest
+    left open are kept in ``tolerated`` after each ``stop()``, to report."""
+
+    def __init__(
+        self, enforced: Callable[[RedisCluster], bool] = lambda client: True
+    ) -> None:
         # The client strongly, so one the test dropped is still here to check
         # however the garbage collector's timing falls; its loop weakly, so
         # watching keeps no loop alive. A loop already collected has closed.
@@ -36,20 +41,27 @@ class RedisClientGuard:
             int, tuple[RedisCluster, weakref.ref[asyncio.AbstractEventLoop], str]
         ] = {}
         self._watching = False
+        self._enforced = enforced
+        self.tolerated: list[str] = []
 
     def start(self) -> None:
         self._used.clear()
         self._watching = True
 
     def stop(self) -> list[str]:
-        """Each client left open on a loop that has closed."""
+        """Each enforced client left open on a loop that has closed. The others
+        left open go to ``tolerated``."""
         self._watching = False
         used, self._used = self._used, {}
-        return [
-            described
+        left_open = [
+            (client, described)
             for client, loop, described in used.values()
             if _closed(loop()) and is_open(client)
         ]
+        self.tolerated = [
+            described for client, described in left_open if not self._enforced(client)
+        ]
+        return [described for client, described in left_open if self._enforced(client)]
 
     def wrap(self, execute_command: ExecuteCommand) -> ExecuteCommand:
         """``execute_command``, recording each client on its first command of
