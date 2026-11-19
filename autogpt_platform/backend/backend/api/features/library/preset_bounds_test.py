@@ -14,6 +14,7 @@ import pytest
 from backend.api.features.library.db import (
     MAX_PRESET_DESCRIPTION_LENGTH,
     MAX_PRESET_INPUT_BYTES,
+    MAX_PRESET_INPUT_VALUES,
     MAX_PRESET_NAME_LENGTH,
     MAX_PRESETS_PER_PAGE,
     check_preset_text,
@@ -28,9 +29,24 @@ from backend.data.includes import MAX_NODE_INPUT_OUTPUT_FETCH
 from backend.util.exceptions import InvalidInputError
 
 
-def test_inputs_over_the_payload_bound_are_refused():
-    with pytest.raises(InvalidInputError, match="bytes"):
-        preset_input_rows({"essay": "x" * (MAX_PRESET_INPUT_BYTES + 1)})
+@pytest.mark.parametrize(
+    "inputs, expected",
+    [
+        ({"essay": "x" * (MAX_PRESET_INPUT_BYTES + 1)}, "bytes"),
+        ({"config": [[]] * MAX_PRESET_INPUT_VALUES}, "values"),
+    ],
+    ids=["bytes", "values"],
+)
+def test_inputs_over_a_payload_bound_are_refused(inputs: dict, expected: str):
+    with pytest.raises(InvalidInputError, match=expected):
+        preset_input_rows(inputs)
+
+
+def test_inputs_at_the_value_bound_are_accepted():
+    # The inputs object and the list are values too.
+    rows = preset_input_rows({"config": [[]] * (MAX_PRESET_INPUT_VALUES - 2)})
+
+    assert len(rows) == 1
 
 
 def test_one_input_under_the_payload_bound_is_accepted():
@@ -132,8 +148,9 @@ async def test_creating_a_preset_named_after_a_long_graph_is_accepted(mocker):
             "inputs and credentials together",
         ),
         ({"essay": "x" * (MAX_PRESET_INPUT_BYTES + 1)}, "inputs hold at most"),
+        ({"config": [[]] * MAX_PRESET_INPUT_VALUES}, "values"),
     ],
-    ids=["too many", "too large"],
+    ids=["too many", "too large", "too many values"],
 )
 async def test_updating_a_preset_refuses_oversized_inputs(
     mocker, inputs: dict, expected: str

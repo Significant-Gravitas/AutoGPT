@@ -108,6 +108,13 @@ You can have up to 200 schedules, paused ones included. A new one past that is r
 - **Counted per:** account.
 - **Self-hosting:** `MAX_SCHEDULES_PER_USER` (default `200`).
 
+### Templates and triggers
+
+A template's or a trigger's saved inputs, its trigger settings included, hold at most 256 KiB, measured as JSON, and at most 5,000 values, where every list item, object field and plain value counts as one. Saving one past either is refused with `400`, with a message naming the limit.
+
+- **Counted per:** template or trigger.
+- Not configurable.
+
 ### Generated workflow images
 
 The Platform generates a picture for each workflow you add to your library, sub-workflows included, and for a marketplace listing when you ask it to. It generates up to 25 a day.
