@@ -31,7 +31,12 @@ vi.mock("@/lib/auth/actions", async (importOriginal) => ({
   getWebSocketToken: async () => ({ token: "test-token" }),
 }));
 
+let releaseHeldList: (() => void) | undefined;
+
 afterEach(() => {
+  // Settle a held response even when the test failed before releasing it.
+  releaseHeldList?.();
+  releaseHeldList = undefined;
   vi.unstubAllGlobals();
 });
 
@@ -42,7 +47,9 @@ const agent = {
   name: "Workflow 1",
 };
 
-function serveLibrary(runStatus: () => AgentExecutionStatus) {
+function serveLibrary(
+  runStatus: () => AgentExecutionStatus | Promise<AgentExecutionStatus>,
+) {
   server.use(
     getGetV2ListLibraryAgentsMockHandler({
       ...getGetV2ListLibraryAgentsResponseMock(),
@@ -65,8 +72,8 @@ function serveLibrary(runStatus: () => AgentExecutionStatus) {
         },
       }),
     ),
-    getGetV1ListAllExecutionsMockHandler(() => {
-      const status = runStatus();
+    getGetV1ListAllExecutionsMockHandler(async () => {
+      const status = await runStatus();
       return [
         {
           ...getGetV1ListAllExecutionsResponseMock()[0],
@@ -95,6 +102,46 @@ test("a run that finished while the live connection was down counts as finished 
   render(<LibraryPage />);
   const first = await live.acceptNext();
   await waitFor(() => expect(tile("Running now").getByText("1")).toBeDefined());
+
+  status = AgentExecutionStatus.COMPLETED;
+  await live.drop(first);
+  await live.acceptNext();
+
+  await waitFor(
+    () => expect(tile("Recently completed").getByText("1")).toBeDefined(),
+    AFTER_RECONNECT,
+  );
+  expect(tile("Running now").getByText("0")).toBeDefined();
+});
+
+test("runs still loading when the live connection drops are read again once it reconnects", async () => {
+  let status: AgentExecutionStatus = AgentExecutionStatus.RUNNING;
+  const firstListHeld = new Promise<void>((resolve) => {
+    releaseHeldList = resolve;
+  });
+  let requests = 0;
+  serveLibrary(async () => {
+    requests += 1;
+    if (requests > 1) return status;
+    // Read while the run was going, answered only after the reconnect.
+    const read = status;
+    await firstListHeld;
+    return read;
+  });
+  const live = installLiveSocket();
+
+  render(<LibraryPage />);
+  const first = await live.acceptNext();
+  // The summary's reconnect handler is in place once it has subscribed, and
+  // its first read is out.
+  await waitFor(() =>
+    expect(
+      first.send.mock.calls.some(
+        ([data]) => JSON.parse(data).method === "subscribe_graph_executions",
+      ),
+    ).toBe(true),
+  );
+  await waitFor(() => expect(requests).toBe(1));
 
   status = AgentExecutionStatus.COMPLETED;
   await live.drop(first);

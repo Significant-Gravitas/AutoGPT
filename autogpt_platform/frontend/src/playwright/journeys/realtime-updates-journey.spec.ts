@@ -1,4 +1,4 @@
-import type { Locator, Page, WebSocketRoute } from "@playwright/test";
+import type { Locator, Page, Request, WebSocketRoute } from "@playwright/test";
 import {
   clickRunButton,
   getActiveItemId,
@@ -10,6 +10,9 @@ const COUNTDOWN_TIMER_BLOCK_ID = "d67a9c52-5e4e-11e2-bcfd-0800200c9a71";
 // Longer than the test's own timeout, so the run never ends by itself: it
 // ends only when the journey stops it, after its updates stop arriving.
 const RUN_SECONDS = 120;
+// Longer than the runs list's 2 s refresh throttle
+// (EXECUTION_REFETCH_THROTTLE_MS), whose last refresh can trail its events.
+const LISTS_QUIET_MS = 2_500;
 
 test.describe("realtime updates journey", () => {
   test("a run that ends while the server's event stream is lost shows as ended once the page reconnects, without a reload", async ({
@@ -18,6 +21,7 @@ test.describe("realtime updates journey", () => {
   }) => {
     const live = await routeLiveConnection(page);
     const agent = await createCountdownAgent(page);
+    const reads = trackListReads(page, agent.graphID);
 
     await page.goto(`/library/agents/${agent.libraryAgentID}`);
     await waitForAgentPageLoad(page);
@@ -41,8 +45,10 @@ test.describe("realtime updates journey", () => {
         /queued|running/,
       );
 
-      // The server loses its event stream, so the run's updates stop
-      // reaching the page. Only then does the run end.
+      // A read already on its way could see the run end, so let the lists'
+      // last refreshes land first. Then the server loses its event stream,
+      // so the run's updates stop reaching the page. Only then does it end.
+      await reads.settled();
       live.loseEventStream();
       await stopRun(page, agent.graphID, runID);
       expect(await runStatus(page, agent.graphID, runID)).toBe("TERMINATED");
@@ -62,7 +68,6 @@ test.describe("realtime updates journey", () => {
 
       // Then the server closes the socket, as it does whenever it loses the
       // stream (#16865), and the page reconnects by itself.
-      const reads = countListReads(page, agent.graphID);
       const connections = live.opened();
       await live.closeLikeTheServer();
       await expect
@@ -71,13 +76,14 @@ test.describe("realtime updates journey", () => {
           timeout: 30_000,
         })
         .toBeGreaterThan(connections);
+      const reopenedAt = live.reopenedAt();
       await expect
-        .poll(() => reads.runs, {
+        .poll(() => reads.runsSince(reopenedAt), {
           message: "the runs list should be read again after the reconnect",
         })
         .toBeGreaterThan(0);
       await expect
-        .poll(() => reads.activity, {
+        .poll(() => reads.activitySince(reopenedAt), {
           message: "the Activity list should be read again after the reconnect",
         })
         .toBeGreaterThan(0);
@@ -110,41 +116,59 @@ test.describe("realtime updates journey", () => {
  * arriving, then the server closes the socket with 1011.
  */
 async function routeLiveConnection(page: Page) {
-  const open: { client: WebSocketRoute; server: WebSocketRoute }[] = [];
-  const dropped: { runID: string; status: string }[] = [];
-  const forwarded: { runID: string; status: string }[] = [];
-  let opened = 0;
-  let streamLost = false;
+  const connections: Connection[] = [];
+  let closedUpTo = 0;
+  let outage = false;
 
   await page.routeWebSocket(/\/ws(\?|$)/, (client) => {
-    const server = client.connectToServer();
-    opened += 1;
-    open.push({ client, server });
-    server.onMessage((message) => {
+    const connection: Connection = {
+      client,
+      server: client.connectToServer(),
+      openedAt: Date.now(),
+      // One the page opens during the outage gets no updates either.
+      streamLost: outage,
+      dropped: [],
+      forwarded: [],
+    };
+    connections.push(connection);
+    connection.server.onMessage((message) => {
       const update = runUpdate(message);
-      if (!streamLost || !update) {
-        client.send(message);
-        if (update?.status) forwarded.push(withStatus(update));
-      } else if (update.status) {
-        dropped.push(withStatus(update));
+      if (connection.streamLost && update) {
+        if (update.status) connection.dropped.push(withStatus(update));
+        return;
       }
+      connection.client.send(message);
+      if (update?.status) connection.forwarded.push(withStatus(update));
     });
   });
 
   return {
-    opened: () => opened,
-    droppedStatuses: (runID: string) => statusesOf(dropped, runID),
-    /** Forwarded from the next time the stream is lost on. */
-    forwardedStatuses: (runID: string) => statusesOf(forwarded, runID),
+    opened: () => connections.length,
+    /** When the first connection after the last close opened. */
+    reopenedAt: () => connections[closedUpTo]?.openedAt ?? Infinity,
+    droppedStatuses: (runID: string) =>
+      statusesOf(
+        connections.flatMap((connection) => connection.dropped),
+        runID,
+      ),
+    /** Forwarded over the connections opened since the last close. */
+    forwardedStatuses: (runID: string) =>
+      statusesOf(
+        connections.slice(closedUpTo).flatMap((c) => c.forwarded),
+        runID,
+      ),
+    /** Until the server closes them, connections get no run updates. */
     loseEventStream() {
-      streamLost = true;
-      forwarded.length = 0;
+      outage = true;
+      for (const connection of connections) connection.streamLost = true;
     },
     async closeLikeTheServer() {
-      streamLost = false;
+      const closing = connections.slice(closedUpTo);
+      closedUpTo = connections.length;
+      outage = false;
       // The page's side first, so it sees 1011 rather than a normal close
       // forwarded from the server's side.
-      for (const { client, server } of open.splice(0)) {
+      for (const { client, server } of closing) {
         await client
           .close({ code: 1011, reason: "event stream lost" })
           .catch(() => undefined);
@@ -152,6 +176,15 @@ async function routeLiveConnection(page: Page) {
       }
     },
   };
+}
+
+interface Connection {
+  client: WebSocketRoute;
+  server: WebSocketRoute;
+  openedAt: number;
+  streamLost: boolean;
+  dropped: { runID: string; status: string }[];
+  forwarded: { runID: string; status: string }[];
 }
 
 function withStatus(update: { runID: string; status?: string }) {
@@ -164,18 +197,51 @@ function statusesOf(updates: { runID: string; status: string }[], id: string) {
     .map((update) => update.status);
 }
 
-/** Counts the page's reads of the runs list and the Activity list from now on. */
-function countListReads(page: Page, graphID: string) {
-  const reads = { runs: 0, activity: 0 };
-  page.on("request", (request) => {
-    if (request.method() !== "GET") return;
+/** Tracks the page's reads of the runs list and the Activity list. */
+function trackListReads(page: Page, graphID: string) {
+  const runs: number[] = [];
+  const activity: number[] = [];
+  let inFlight = 0;
+  let lastChange = Date.now();
+
+  function listOf(request: Request) {
+    if (request.method() !== "GET") return null;
     const { pathname } = new URL(request.url());
-    if (pathname === `/api/proxy/api/graphs/${graphID}/executions`) {
-      reads.runs += 1;
-    }
-    if (pathname === "/api/proxy/api/executions") reads.activity += 1;
+    if (pathname === `/api/proxy/api/graphs/${graphID}/executions`) return runs;
+    if (pathname === "/api/proxy/api/executions") return activity;
+    return null;
+  }
+  function finished(request: Request) {
+    if (!listOf(request)) return;
+    inFlight -= 1;
+    lastChange = Date.now();
+  }
+  page.on("request", (request) => {
+    const list = listOf(request);
+    if (!list) return;
+    list.push(Date.now());
+    inFlight += 1;
+    lastChange = Date.now();
   });
-  return reads;
+  page.on("requestfinished", finished);
+  page.on("requestfailed", finished);
+
+  return {
+    runsSince: (time: number) => runs.filter((at) => at >= time).length,
+    activitySince: (time: number) => activity.filter((at) => at >= time).length,
+    /** Waits until no read is out and none has started for a while. */
+    async settled() {
+      await expect
+        .poll(
+          () => inFlight === 0 && Date.now() - lastChange > LISTS_QUIET_MS,
+          {
+            message: "the lists' refreshes should settle",
+            timeout: 15_000,
+          },
+        )
+        .toBe(true);
+    },
+  };
 }
 
 /** A run's update from the server, or null for anything else. */

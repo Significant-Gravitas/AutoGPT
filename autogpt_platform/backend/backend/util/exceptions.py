@@ -412,6 +412,11 @@ class ConflictError(Exception):
     already taken, or a lost race with a concurrent change, which a retry may win."""
 
 
+class ScheduleLimitError(ValueError):
+    """The account already holds the most schedules it may (HTTP 400), so a
+    new one is refused until one is deleted."""
+
+
 class EmailUndeliverableError(ValueError):
     """The mail provider won't deliver to this address (an earlier hard bounce,
     spam complaint or suppression), so retrying the send can't succeed."""

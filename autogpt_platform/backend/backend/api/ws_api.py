@@ -22,7 +22,7 @@ from backend.api.session_auth import (
     require_active_auth_session,
 )
 from backend.api.utils.cors import build_cors_params
-from backend.api.utils.validation_errors import bounded_validation_errors
+from backend.api.utils.validation_errors import loggable_validation_errors
 from backend.data import redis_client
 from backend.data.db_accessors import auth_session_db, user_db
 from backend.data.user import is_user_banned, is_user_refused
@@ -31,8 +31,10 @@ from backend.monitoring.instrumentation import (
     start_metrics_server,
     update_websocket_connections,
 )
+from backend.util.request_credentials import remember_request_credentials
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
+from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -61,6 +63,8 @@ async def lifespan(app: FastAPI):
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
+# Keeps each connection's credentials for the error reports raised handling it.
+remember_request_credentials(app)
 _connection_manager = None
 
 # Add Prometheus instrumentation. The metrics are served by WebsocketServer.run
@@ -329,7 +333,7 @@ async def websocket_router(
                 logger.error(
                     "Invalid WebSocket message from user #%s: %s",
                     user_id,
-                    bounded_validation_errors(e),
+                    loggable_validation_errors(e),
                 )
                 await websocket.send_text(
                     WSMessage(
@@ -354,7 +358,7 @@ async def websocket_router(
                     "Validation error while handling '%s' for user #%s: %s",
                     message.method.value,
                     user_id,
-                    bounded_validation_errors(e),
+                    loggable_validation_errors(e),
                 )
                 await websocket.send_text(
                     WSMessage(
@@ -474,4 +478,7 @@ class WebsocketServer(AppProcess):
             ws="websockets-sansio",
             ws_max_size=WS_MAX_MESSAGE_BYTES,
             log_config=None,
+            forwarded_allow_ips=uvicorn_forwarded_allow_ips(
+                settings.config.trusted_proxies
+            ),
         )

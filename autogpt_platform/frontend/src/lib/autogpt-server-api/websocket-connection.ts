@@ -24,9 +24,9 @@ const MAX_RETRY_DELAY_MS = 30_000;
 const HEALTHY_AFTER_MS = 10_000;
 const HEARTBEAT_INTERVAL_MS = 100_000;
 const HEARTBEAT_TIMEOUT_MS = 10_000;
-// The server answers after every resubscription, and opening a shard's event
-// stream for the first one there can take it up to 15 s (OPEN_TIMEOUT_S in
-// backend/data/sharded_pubsub.py).
+// The server answers the ordering ping only after every resubscription, and
+// opening a shard's event stream for one can take it up to 15 s (OPEN_TIMEOUT_S
+// in backend/data/sharded_pubsub.py); each answer to a subscribe restarts this.
 const RESUBSCRIBED_TIMEOUT_MS = 30_000;
 // After a mass disconnect (a deploy) every tab reconnects in the same retry
 // window, so each waits a random part of this before its views refetch.
@@ -48,11 +48,12 @@ export class BackendWebSocket {
   private retryDelay = FIRST_RETRY_DELAY_MS;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private healthyTimer: ReturnType<typeof setTimeout> | undefined;
-  private reconnectedTimer: ReturnType<typeof setTimeout> | undefined;
+  private resubscribedTimer: ReturnType<typeof setTimeout> | undefined;
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   private heartbeatTimeout: ReturnType<typeof setTimeout> | undefined;
   private pongsOwed = 0;
   private pongsUntilResubscribed = 0;
+  private sentDuringResubscribeCheck = false;
   private watchingPage = false;
 
   constructor(
@@ -72,6 +73,8 @@ export class BackendWebSocket {
   send(message: string): boolean {
     if (!this.socket || !this.connected) return false;
     this.socket.send(message);
+    // The pong to an ordering ping already sent can't vouch for this.
+    if (this.pongsUntilResubscribed > 0) this.sentDuringResubscribeCheck = true;
     return true;
   }
 
@@ -190,6 +193,10 @@ export class BackendWebSocket {
       return;
     }
     if (!isHeartbeatPong(message)) {
+      // The server is still working through the resubscriptions.
+      if (this.pongsUntilResubscribed > 0 && answersARequest(message)) {
+        this.armDeadline(socket, generation, RESUBSCRIBED_TIMEOUT_MS);
+      }
       this.handlers.onMessage(event);
       return;
     }
@@ -201,32 +208,54 @@ export class BackendWebSocket {
       this.pongsUntilResubscribed > 0 &&
       --this.pongsUntilResubscribed === 0
     ) {
-      this.reconnectedTimer = setTimeout(
-        () => this.handlers.onReconnect(),
-        Math.random() * RECONNECT_REFETCH_SPREAD_MS,
-      );
+      if (this.sentDuringResubscribeCheck) {
+        // A view subscribed after the ping: ask again, so no view re-reads
+        // before the server has handled its subscription.
+        this.checkResubscribed(socket, generation);
+        return;
+      }
+      // A reconnect only counts as healthy once it has caught up.
+      this.startHealthyTimer();
+      this.handlers.onReconnect();
     }
   }
 
   // A pong follows backend authentication; transport open alone does not.
   private authenticated(socket: WebSocket, generation: number) {
     this.authenticatedSocket = socket;
-    this.healthyTimer = setTimeout(() => {
-      this.retryDelay = FIRST_RETRY_DELAY_MS;
-    }, HEALTHY_AFTER_MS);
-    this.heartbeatTimer = setInterval(
-      () => this.ping(socket, generation),
-      HEARTBEAT_INTERVAL_MS,
-    );
+    this.heartbeatTimer = setInterval(() => {
+      // One check at a time: another ping would push its deadline back.
+      if (this.pongsOwed === 0) this.ping(socket, generation);
+    }, HEARTBEAT_INTERVAL_MS);
     const reconnected = this.hasConnected;
     this.hasConnected = true;
     this.finishConnecting();
     this.handlers.onConnect();
-    if (!reconnected || !this.current(socket, generation)) return;
-    // The server answers a socket's messages in order, so the pong to this
-    // ping means it has handled every subscription onConnect sent again.
+    if (!reconnected) {
+      this.startHealthyTimer();
+      return;
+    }
+    this.resubscribedTimer = setTimeout(
+      () => this.checkResubscribed(socket, generation),
+      Math.random() * RECONNECT_REFETCH_SPREAD_MS,
+    );
+  }
+
+  // The server answers a socket's messages in order, so the pong to this
+  // ping means it has handled every subscription sent before it: the ones
+  // onConnect sent again, and any a view added during the spread.
+  private checkResubscribed(socket: WebSocket, generation: number) {
+    if (!this.current(socket, generation) || !this.connected) return;
+    this.sentDuringResubscribeCheck = false;
     this.ping(socket, generation, RESUBSCRIBED_TIMEOUT_MS);
     this.pongsUntilResubscribed = this.pongsOwed;
+  }
+
+  private startHealthyTimer() {
+    clearTimeout(this.healthyTimer);
+    this.healthyTimer = setTimeout(() => {
+      this.retryDelay = FIRST_RETRY_DELAY_MS;
+    }, HEALTHY_AFTER_MS);
   }
 
   private closed(socket: WebSocket, generation: number, event: CloseEvent) {
@@ -278,24 +307,29 @@ export class BackendWebSocket {
       socket.readyState !== WebSocket.OPEN
     )
       return;
+    this.armDeadline(socket, generation, timeoutMs);
+    this.pongsOwed += 1;
+    socket.send(PING);
+  }
+
+  private armDeadline(socket: WebSocket, generation: number, ms: number) {
     clearTimeout(this.heartbeatTimeout);
     this.heartbeatTimeout = setTimeout(() => {
       if (!this.current(socket, generation)) return;
       if (!hasDisconnectIntent())
         console.warn("[BackendAPI] WebSocket heartbeat timed out");
       socket.close();
-    }, timeoutMs);
-    this.pongsOwed += 1;
-    socket.send(PING);
+    }, ms);
   }
 
   private stopHealthChecks() {
     clearInterval(this.heartbeatTimer);
     clearTimeout(this.heartbeatTimeout);
     clearTimeout(this.healthyTimer);
-    clearTimeout(this.reconnectedTimer);
+    clearTimeout(this.resubscribedTimer);
     this.pongsOwed = 0;
     this.pongsUntilResubscribed = 0;
+    this.sentDuringResubscribeCheck = false;
   }
 
   private watchPage() {
@@ -346,6 +380,16 @@ function hasDisconnectIntent(): boolean {
   } catch {
     return false;
   }
+}
+
+// The server's answer to a subscribe: an acknowledgement or an error.
+function answersARequest(message: unknown): boolean {
+  if (typeof message !== "object" || message === null) return false;
+  const method = "method" in message ? message.method : undefined;
+  return (
+    method === "error" ||
+    (typeof method === "string" && method.startsWith("subscribe_"))
+  );
 }
 
 function isHeartbeatPong(message: unknown): boolean {

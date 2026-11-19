@@ -7,16 +7,20 @@ import {
   getPaginationNextPageNumber,
   unpaginate,
 } from "@/app/api/helpers";
+import { hasUnknownSchedules } from "@/services/schedules/scheduler-availability";
+import { useRecheckWhileSchedulesUnknown } from "@/services/schedules/useRecheckWhileSchedulesUnknown";
 
 interface Props {
   searchTerm: string;
 }
 
 export function useFavoriteAgents({ searchTerm }: Props) {
+  const recheckWhileSchedulesUnknown = useRecheckWhileSchedulesUnknown();
   const {
     data: agentsQueryData,
     fetchNextPage,
     hasNextPage,
+    isFetching,
     isFetchingNextPage,
     isLoading,
     isPlaceholderData,
@@ -30,6 +34,12 @@ export function useFavoriteAgents({ searchTerm }: Props) {
       query: {
         getNextPageParam: getPaginationNextPageNumber,
         placeholderData: keepPreviousData,
+        refetchInterval: (query) =>
+          recheckWhileSchedulesUnknown(
+            hasUnknownSchedules(
+              query.state.data ? unpaginate(query.state.data, "agents") : [],
+            ),
+          ),
       },
     },
   );
@@ -47,6 +57,7 @@ export function useFavoriteAgents({ searchTerm }: Props) {
     agentLoading,
     hasNextPage: hasNextPage && !isPlaceholderData,
     agentCount,
+    isFetching,
     isFetchingNextPage,
     fetchNextPage,
   };
