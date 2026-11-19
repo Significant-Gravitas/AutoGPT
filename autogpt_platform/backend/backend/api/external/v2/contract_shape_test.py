@@ -15,6 +15,8 @@ import pytest
 import backend.blocks._base as block_types
 from backend.data.model import CREDENTIALS_ADAPTER
 
+from .pagination import PageRequest
+
 # `node_exec_id` is deliberately absent: v2 renames graph executions to runs,
 # and a node execution is not one.
 RETIRED_FIELD_NAMES = {
@@ -222,7 +224,11 @@ async def test_credential_requirements_are_read_from_a_real_graph_schema() -> No
         "get_all_creds",
         new=mock.AsyncMock(return_value=[]),
     ):
-        requirements = await helpers.get_credential_requirements(schema, "user-1")
+        requirements = (
+            await helpers.get_credential_requirements(
+                schema, "user-1", PageRequest(limit=20)
+            )
+        ).items
 
     assert requirements, f"no requirements parsed from {schema}"
     assert requirements[0].provider
