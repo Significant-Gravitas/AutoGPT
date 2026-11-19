@@ -17,10 +17,11 @@ import { createUsageCapturingFetch } from "../tokenDevtool/usageTap";
 import { fetchSse, type SseFrame } from "./sseClient";
 import { TextReveal } from "./textReveal";
 import { applyEntry, type StreamEntry, type WireChunk } from "./turnConverter";
-import { appendErrorMarker, seedTurnLog } from "./turnLog";
+import { appendErrorMarker, seedTurnLog, type PersistedRow } from "./turnLog";
 import { diffRows, formatDiffs, sha256Hex } from "./turnShadow";
 import {
   checkpointOf,
+  chipKey,
   closeBlocks,
   FROZEN_NOTE,
   gapSegment,
@@ -31,6 +32,7 @@ import {
   locatePrompt,
   mergeRows,
   newTurnSegment,
+  persistedPromptId,
   persistedRows,
   promptFloor,
   lastReplySequence,
@@ -44,6 +46,7 @@ import {
   type Segment,
   type TurnCheckpoint,
   type TurnSegment,
+  type UserSegment,
 } from "./turnTail";
 
 /** No byte for this long means the connection is dead: the route and the
@@ -70,7 +73,7 @@ const QUEUE_START_GRACE_MS = 2 * 60_000;
 const FINISH_PROBE_MS = 500;
 // A server-started continuation (engine switch, approval wake) is dispatched
 // after the turn ends; its meta can lag the finish by a few seconds.
-const CONTINUATION_PROBES = 8;
+export const CONTINUATION_PROBES = 8;
 const SETTLE_PROBES = 3;
 const MAX_RESYNCS_PER_TURN = 1;
 // Resyncing on an orphan tool output, which the backend does persist, would
@@ -111,6 +114,7 @@ export interface RuntimeSnapshot {
 }
 
 export interface SessionView {
+  user_id?: string | null;
   messages?: readonly unknown[] | null;
   has_more_messages?: boolean;
   chat_status?: string | null;
@@ -169,6 +173,12 @@ type ConnectionEnd =
   | { kind: "failed"; error: unknown }
   | { kind: "denied"; error: CopilotAuthError };
 
+/** A lost send's check, held until the session can show whether it arrived. */
+interface PendingCheck {
+  lost: Lost;
+  end: ConnectionEnd;
+}
+
 interface QueueWatch {
   timer: ReturnType<typeof setTimeout> | null;
   claimedAt: number | null;
@@ -205,9 +215,23 @@ export class TurnRuntime {
   // A resync or an expiry is rebuilding the turn; it reconnects when done.
   private recovering = false;
   // A send whose stream ended before naming its turn, while hidden or offline.
-  private unresolvedPost: { lost: Lost; end: ConnectionEnd } | null = null;
+  private unresolvedPost: PendingCheck | null = null;
+  // Lost sends, with no row yet, that the next view showing nothing running
+  // decides: a turn ran when their check came due (another's may hold them
+  // queued), or their check's retry gave way to another retry.
+  private sendsBehindTurn: PendingCheck[] = [];
+  // The lost send whose check waits on `retryTimer`, if a check set it.
+  private retryingSend: PendingCheck | null = null;
+  // Lost sends whose check no verdict, stop or give-up has ended, and those
+  // of them reading the session now (`droppedChecks`).
+  private checks = new Set<Lost>();
+  private checking = new Set<Lost>();
+  // Counts stops: one ends every lost-send recovery begun before it.
+  private stops = 0;
   private providerFailure: unknown = null;
   private lastViewMaxSequence: number | null = null;
+  // The session's owner, as its views name them.
+  private userId: string | null = null;
   private turns = new Map<string, TurnBookkeeping>();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -280,33 +304,80 @@ export class TurnRuntime {
 
   /** POST a new turn: the prompt shows at once, and the turn follows it. */
   async send(input: SendInput, model: CopilotLlmModel | undefined) {
-    if (this.isPostPending()) return;
+    const message = userMessage(`local:${uuidv4({})}`, input);
+    await this.postPrompt(message, model, null);
+  }
+
+  /**
+   * Send again the message no check could confirm, under the `message_id` its
+   * first request named, so the server keeps one copy if it got both. Returns
+   * that message, or null when there is none to send now.
+   */
+  resendUnconfirmed(model: CopilotLlmModel | undefined) {
+    const error = this.error;
+    if (!(error instanceof UnconfirmedSendError) || error.prompt === null)
+      return null;
+    // A later send still waiting on its answer goes first.
+    if (this.isPostPending()) return null;
+    const index = this.segments.findIndex((s) => s.key === error.prompt);
+    const prompt = this.segments[index];
+    if (prompt?.kind !== "user" || prompt.sequence !== null) return null;
+    // A fresh id would let the server keep a second copy if it took the first.
+    if (prompt.clientMessageId === null) return null;
+    this.segments.splice(index, 1);
+    // With the model chosen now, as any send is, not the first request's.
+    // The send's end reaches the chat through onEnd; nobody awaits this.
+    this.postPrompt(prompt.message, model, prompt.clientMessageId).catch(
+      () => {},
+    );
+    return prompt.message;
+  }
+
+  private async postPrompt(
+    message: UIMessage,
+    model: CopilotLlmModel | undefined,
+    clientMessageId: string | null,
+  ) {
+    // One request at a time: a send dropped here would be lost, so its
+    // caller hears of it and keeps the message.
+    if (this.isPostPending()) throw new SendInFlightError();
     this.stopped = false;
     this.suppressAttach = false;
     this.queueDeclined = false;
     this.error = null;
     this.providerFailure = null;
-    const message = userMessage(`local:${uuidv4({})}`, input);
-    this.claimTail(this.nextSequence());
-    this.segments.push(userSegment(message, "sent"));
-    this.emitNow();
     const body = streamRequestBody(this.sessionId, message, model);
-    await this.open("post", null, this.streamUrl(), {
+    if (clientMessageId) body.message_id = clientMessageId;
+    this.claimTail(this.nextSequence());
+    this.segments.push(
+      userSegment(message, "sent", this.rowIdOf(body), body.message_id),
+    );
+    const posted = this.open("post", null, this.streamUrl(), {
       method: "POST",
       body: JSON.stringify(body),
       extraHeaders: { "Content-Type": "application/json" },
       prompt: message.id,
     });
+    // Drawn with its request open, so the render that shows the prompt also
+    // reads the send as in flight: the page queues a send made after it.
+    this.emitNow();
+    await posted;
   }
 
   /** Stop following the turn: abort, mark it stopped, and let the persisted marker reconcile into it. */
   stop() {
     const running = this.runningTurn();
     this.abortConnections();
-    this.clearRetry();
+    this.clearRetry({ keepCheck: false });
     this.stopped = true;
     this.suppressAttach = true;
     this.queueDeclined = true;
+    // As a stop ends a lost send's recovery, it drops those waiting on a turn
+    // or on the tab's return.
+    this.stops += 1;
+    this.sendsBehindTurn = [];
+    this.unresolvedPost = null;
+    this.checks.clear();
     this.endQueueWatch();
     this.notice = null;
     this.reveal.clear();
@@ -325,7 +396,7 @@ export class TurnRuntime {
     if (entries.length === 0) return;
     this.claimTail(this.nextSequence());
     for (const entry of entries) {
-      const key = `pending-chip-${entry.id}`;
+      const key = chipKey(entry.id);
       if (this.segments.some((s) => s.key === key)) continue;
       this.segments.push(
         userSegment(userMessage(key, { text: entry.text }), "chip"),
@@ -352,6 +423,7 @@ export class TurnRuntime {
    * of a running turn the server no longer runs.
    */
   observe(view: SessionView) {
+    this.userId ??= view.user_id ?? null;
     const rows = persistedRows(view.messages);
     const last = rows[rows.length - 1]?.sequence;
     if (typeof last === "number") this.lastViewMaxSequence = last;
@@ -370,9 +442,21 @@ export class TurnRuntime {
     if (running && active?.turn_id !== running.log.turnId && !running.frozen) {
       this.ensureConnected();
     }
-    if (!running && !this.isPostPending() && !active) this.settleTail(view);
+    if (!running && !this.isPostPending() && !active) {
+      this.settleTail(view, rows);
+      this.decideSendsBehindTurn();
+    }
+    this.dropConfirmedError();
     this.followQueue(view);
     this.emitNow();
+  }
+
+  // A prompt reported as unconfirmed that the session now holds was sent.
+  private dropConfirmedError() {
+    const error = this.error;
+    if (!(error instanceof UnconfirmedSendError)) return;
+    const prompt = this.segments.find((s) => s.key === error.prompt);
+    if (prompt?.kind === "user" && prompt.sequence !== null) this.error = null;
   }
 
   // ── Connection ─────────────────────────────────────────────────────────
@@ -386,7 +470,7 @@ export class TurnRuntime {
     const running = this.runningTurn();
     if (!running?.log.turnId || running.frozen || this.recovering) return;
     if (this.slot && Date.now() - this.slot.lastFrameAt < LIVENESS_MS) return;
-    this.clearRetry();
+    this.clearRetry({ keepCheck: true });
     this.resume(running);
   }
 
@@ -411,7 +495,8 @@ export class TurnRuntime {
   dispose() {
     this.disposed = true;
     this.abortConnections();
-    this.clearRetry();
+    this.clearRetry({ keepCheck: false });
+    this.checks.clear();
     this.reveal.dispose();
     this.endQueueWatch();
     for (const timer of [this.tickTimer, this.frozenTimer]) {
@@ -427,6 +512,24 @@ export class TurnRuntime {
       window.removeEventListener("online", this.onOnline);
       window.removeEventListener("offline", this.onOffline);
     }
+  }
+
+  /**
+   * The prompts of lost sends whose check no slot, list or running check holds
+   * and no verdict, stop or give-up ended: none, unless a path drops one.
+   */
+  droppedChecks() {
+    const held = [
+      this.unresolvedPost,
+      this.retryingSend,
+      ...this.sendsBehindTurn,
+    ];
+    return [...this.checks]
+      .filter(
+        (lost) =>
+          !this.checking.has(lost) && !held.some((h) => h?.lost === lost),
+      )
+      .map((lost) => lost.prompt);
   }
 
   isIdle() {
@@ -516,14 +619,25 @@ export class TurnRuntime {
 
   // The token action answers "no token" for a sign-out and for a failed lookup
   // alike, so a connection asks once more before it counts as signed out.
-  private async authHeaders(conn: Connection) {
+  private async authHeaders(conn: Connection | null) {
     try {
       return await this.deps.headers();
     } catch (error) {
       if (!(error instanceof CopilotAuthError)) throw error;
       await sleep(TOKEN_RETRY_MS);
-      if (conn.controller.signal.aborted) throw error;
+      if (conn?.controller.signal.aborted) throw error;
       return this.deps.headers();
+    }
+  }
+
+  // A session read fails alike signed out and offline; only a token lookup
+  // the service answered, with no session, says the user is signed out.
+  private async signedOut() {
+    try {
+      await this.authHeaders(null);
+      return false;
+    } catch (error) {
+      return error instanceof CopilotAuthError && !error.retryable;
     }
   }
 
@@ -704,16 +818,18 @@ export class TurnRuntime {
     if (
       lost.turnId === null &&
       (offline || document.visibilityState === "hidden")
-    ) {
-      this.unresolvedPost = { lost, end };
-    }
+    )
+      this.holdUntilBack(lost, end);
     if (document.visibilityState === "hidden") return;
     if (offline) {
       this.notice = "offline";
       this.emitNow();
       return;
     }
+    const check = lost.turnId === null ? { lost, end } : null;
     if (Date.now() - lost.openedAt >= ROTATE_AFTER_MS && running) {
+      // The check waits for the turn instead.
+      if (check) this.sendsBehindTurn.push(check);
       this.resume(running);
       return;
     }
@@ -724,11 +840,17 @@ export class TurnRuntime {
       this.deps.toast(ANOMALY_TOAST);
     }
     const delay = BACKOFF_MS[this.failures - 1] ?? ANOMALY_RETRY_MS;
-    this.clearRetry();
+    this.clearRetry({ keepCheck: true });
+    this.retryingSend = check;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
-      if (this.runningTurn()) this.ensureConnected();
-      else void this.recoverUnknownTurn(lost, end);
+      this.retryingSend = null;
+      if (!this.runningTurn()) void this.recoverUnknownTurn(lost, end);
+      else {
+        // A turn started meanwhile, maybe a later send's: the check waits.
+        if (check) this.sendsBehindTurn.push(check);
+        this.ensureConnected();
+      }
     }, delay);
     this.emitNow();
   }
@@ -772,8 +894,10 @@ export class TurnRuntime {
   private giveUp(error: Error) {
     const running = this.runningTurn();
     this.abortConnections();
-    this.clearRetry();
+    this.clearRetry({ keepCheck: false });
     this.unresolvedPost = null;
+    this.sendsBehindTurn = [];
+    this.checks.clear();
     if (running) {
       this.updateTurn(running.key, (seg) => ({
         ...seg,
@@ -790,6 +914,7 @@ export class TurnRuntime {
   // A send whose stream ended before naming its turn: the session view says
   // whether the turn runs, once the tab can ask.
   private findLostTurn(lost: Lost, end: ConnectionEnd) {
+    this.checks.add(lost);
     const offline =
       typeof navigator !== "undefined" && navigator.onLine === false;
     if (offline) {
@@ -797,26 +922,53 @@ export class TurnRuntime {
       this.emitNow();
     }
     if (document.visibilityState === "hidden" || offline)
-      this.unresolvedPost = { lost, end };
+      this.holdUntilBack(lost, end);
     else void this.recoverUnknownTurn(lost, end);
+  }
+
+  // One send waits for the tab to come back; one it would replace waits on
+  // `sendsBehindTurn` instead.
+  private holdUntilBack(lost: Lost, end: ConnectionEnd) {
+    const held = this.unresolvedPost;
+    if (held && held.lost !== lost) this.sendsBehindTurn.push(held);
+    this.unresolvedPost = { lost, end };
+  }
+
+  private async recoverUnknownTurn(lost: Lost, end: ConnectionEnd) {
+    this.checking.add(lost);
+    try {
+      await this.checkLostSend(lost, end);
+    } finally {
+      this.checking.delete(lost);
+    }
   }
 
   // The turn registers a beat after the POST answers, so the view is asked a
   // few times before the send is reported as failed.
-  private async recoverUnknownTurn(lost: Lost, end: ConnectionEnd) {
+  private async checkLostSend(lost: Lost, end: ConnectionEnd) {
+    // Not `stopped`: any idle view clears it, a moment after a stop.
+    const stops = this.stops;
+    const ended = () => this.disposed || this.stops !== stops;
     for (let i = 0; i < CONTINUATION_PROBES; i++) {
       const view = await this.fetchView();
+      if (ended()) return;
       if (!view) {
-        this.retry(lost, end);
+        const signedOut = await this.signedOut();
+        if (ended()) return;
+        if (signedOut) this.giveUp(new CopilotAuthError());
+        else this.retry(lost, end);
         return;
       }
       const attaching = this.wouldAttach(view);
       this.observe(view);
-      if (attaching) {
+      // Another's running turn may hold the send queued until it ends.
+      const behind = !!this.runningTurn() && this.sendInDoubt(lost, end);
+      if (behind) this.sendsBehindTurn.push({ lost, end });
+      if (attaching || behind) {
+        if (!behind) this.checks.delete(lost);
         this.resetFailures();
         return;
       }
-      if (this.disposed || this.stopped) return;
       // The session reads "running" from before the prompt row is written
       // until the turn is released, so a landed prompt outside it is final.
       if (
@@ -826,11 +978,10 @@ export class TurnRuntime {
         break;
       await sleep(FINISH_PROBE_MS);
     }
+    if (ended()) return;
+    this.checks.delete(lost);
     this.resetFailures();
-    if (
-      !this.lostSendLanded(lost.prompt) &&
-      (end.kind === "failed" || lost.syntheticError)
-    ) {
+    if (this.sendInDoubt(lost, end)) {
       this.error =
         end.kind === "failed" && end.error instanceof Error
           ? end.error
@@ -839,7 +990,17 @@ export class TurnRuntime {
     this.emitNow();
   }
 
-  // The send arrived: its prompt took a row, or the turn after it is followed.
+  // Its stream failed or said so, and nothing shows it arrived.
+  private sendInDoubt(lost: Lost, end: ConnectionEnd) {
+    return (
+      (end.kind === "failed" || !!lost.syntheticError) &&
+      !this.lostSendLanded(lost.prompt)
+    );
+  }
+
+  // The send arrived: its prompt took its row, or the turn after it is
+  // followed. A prompt the session has no row for stays above a turn this
+  // tab attached to only when the view lacked the message the turn answers.
   private lostSendLanded(promptKey: string | null) {
     const index = this.segments.findIndex((s) => s.key === promptKey);
     const prompt = this.segments[index];
@@ -847,6 +1008,14 @@ export class TurnRuntime {
     return (
       prompt.sequence !== null || this.segments[index + 1]?.kind === "turn"
     );
+  }
+
+  // With nothing running, the session shows whether each send that
+  // another's turn may have held queued arrived.
+  private decideSendsBehindTurn() {
+    if (this.disposed) return;
+    for (const behind of this.sendsBehindTurn.splice(0))
+      void this.recoverUnknownTurn(behind.lost, behind.end);
   }
 
   // ── The turn's lifecycle ───────────────────────────────────────────────
@@ -860,6 +1029,12 @@ export class TurnRuntime {
     const start = checkpoint
       ? checkpoint.sequence
       : (this.lastViewMaxSequence ?? -1) + 1;
+    // A prompt the session has no row for is not this turn's once the view
+    // shows the message the turn answers: a read can list the messages from
+    // before the turn's own prompt was written.
+    const answered = rows.find((r) => r.sequence === start - 1);
+    const unwritten =
+      answered?.role === "user" ? this.takeUnwrittenPrompts(view, rows) : [];
     // Rows another tab (or the server) persisted between the tail and this turn.
     const gap =
       this.ownedFrom === null ? null : gapSegment(this.segments, start, rows);
@@ -871,6 +1046,7 @@ export class TurnRuntime {
       start,
     );
     this.segments.push(seg);
+    this.putBack(unwritten);
     this.error = null;
     this.resume(seg);
   }
@@ -903,12 +1079,14 @@ export class TurnRuntime {
   ) {
     this.probes += 1;
     this.emitNow();
+    let read = false;
     try {
       for (let i = 0; i < attempts; i++) {
         await sleep(FINISH_PROBE_MS);
         if (this.disposed || this.stopped) return;
         const view = await this.fetchView();
         if (!view) continue;
+        read = true;
         this.observe(view);
         const active = view.active_stream?.turn_id ?? null;
         if (active && active !== turnId) return;
@@ -917,6 +1095,10 @@ export class TurnRuntime {
     } finally {
       this.probes -= 1;
       if (!this.disposed) this.emitNow();
+      // No view came to decide the sends waiting on the turn; their own
+      // checks read again, and retry while reads fail.
+      if (!read && !this.runningTurn() && !this.isPostPending())
+        this.decideSendsBehindTurn();
     }
   }
 
@@ -1066,7 +1248,7 @@ export class TurnRuntime {
   // Show the persisted rows with a note, and poll until the turn is over.
   private async freeze(key: string) {
     this.abortSlot();
-    this.clearRetry();
+    this.clearRetry({ keepCheck: true });
     const view = await this.fetchView();
     this.updateTurn(key, (seg) => {
       const persisted = view
@@ -1156,10 +1338,11 @@ export class TurnRuntime {
 
   // With nothing running, a prompt whose turn never reached this client (a
   // stop before its first entry, a lost send) takes its row, and rows after
-  // the tail's end are shown as persisted.
-  private settleTail(view: SessionView) {
-    const rows = persistedRows(view.messages);
+  // the tail's end are shown as persisted, above any prompt still without one.
+  private settleTail(view: SessionView, rows: readonly PersistedRow[]) {
+    const unwritten = this.takeUnwrittenPrompts(view, rows);
     const last = this.segments[this.segments.length - 1];
+    let placed = true;
     if (
       last?.kind === "user" &&
       last.origin === "sent" &&
@@ -1171,14 +1354,77 @@ export class TurnRuntime {
         this.ownedFrom,
       );
       const row = locatePrompt(last, rows, floor);
-      if (!row) return;
-      this.segments[this.segments.length - 1] = withPromptRow(last, row);
+      if (row)
+        this.segments[this.segments.length - 1] = withPromptRow(last, row);
+      else placed = false;
     }
     const gap =
-      this.ownedFrom === null
+      this.ownedFrom === null || !placed
         ? null
         : gapSegment(this.segments, Infinity, rows);
     if (gap) this.segments.push(gap);
+    this.putBack(unwritten);
+  }
+
+  /**
+   * The prompts at the tail's end the session holds no row for: a send that
+   * never arrived, or has not been written yet. They leave the tail while
+   * the rows the session wrote meanwhile are placed, then go back after them.
+   */
+  private takeUnwrittenPrompts(
+    view: SessionView,
+    rows: readonly PersistedRow[],
+  ) {
+    // A window that starts past a prompt's place can't show it has no row.
+    const windowStart =
+      view.has_more_messages === false
+        ? -Infinity
+        : (rows[0]?.sequence ?? Infinity);
+    const taken: UserSegment[] = [];
+    for (;;) {
+      const index = this.segments.length - 1;
+      const last = this.segments[index];
+      if (
+        last?.kind !== "user" ||
+        !this.isUnwritten(last, index, rows, windowStart)
+      )
+        break;
+      taken.unshift(last);
+      this.segments.pop();
+    }
+    if (taken.length && this.segments.length === 0) this.ownedFrom = null;
+    return taken;
+  }
+
+  // A send whose row the session lacks, in a window that reaches its place.
+  private isUnwritten(
+    prompt: UserSegment,
+    index: number,
+    rows: readonly PersistedRow[],
+    windowStart: number,
+  ) {
+    return (
+      prompt.origin === "sent" &&
+      prompt.sequence === null &&
+      !!prompt.persistedId &&
+      !locatePrompt(prompt, rows, null) &&
+      windowStart <= promptFloor(this.segments, index, this.ownedFrom)
+    );
+  }
+
+  private putBack(prompts: readonly UserSegment[]) {
+    if (prompts.length === 0) return;
+    this.claimTail(this.nextSequence());
+    this.segments.push(...prompts);
+  }
+
+  // The backend keys a send's row on the session's user and the send's
+  // `message_id`; a kickoff's row takes the expert's id instead. The session
+  // route serves only its owner, so the first view's `user_id` is every
+  // send's; a session other users can open would need the viewer's id.
+  private rowIdOf(body: { message_id: string; expert_kickoff: boolean }) {
+    if (!this.userId || body.expert_kickoff) return null;
+    return persistedPromptId(this.userId, this.sessionId, body.message_id);
   }
 
   private claimTail(from: number) {
@@ -1263,6 +1509,8 @@ export class TurnRuntime {
   private wake(away = 0) {
     const unresolved = this.unresolvedPost;
     this.unresolvedPost = null;
+    // A turn followed meanwhile, maybe another's, decides it once it ends.
+    if (unresolved && this.runningTurn()) this.sendsBehindTurn.push(unresolved);
     if (unresolved && !this.runningTurn())
       void this.recoverUnknownTurn(unresolved.lost, unresolved.end);
     // A send still waiting for its turn is otherwise given up only at the next tick.
@@ -1318,7 +1566,12 @@ export class TurnRuntime {
     slot.closedByClient = true;
     slot.controller.abort();
     this.slot = null;
-    if (slot.turnId === null) this.findLostTurn(slot, { kind: "closed" });
+    // A send that went silent before naming its turn may never have arrived.
+    if (slot.turnId === null)
+      this.findLostTurn(slot, {
+        kind: "failed",
+        error: new UnconfirmedSendError(slot.prompt),
+      });
     else this.retry(slot);
     return true;
   }
@@ -1358,7 +1611,9 @@ export class TurnRuntime {
     return null;
   }
 
-  private isPostPending() {
+  /** A send's request is open and has named no turn yet: a send now is
+   *  refused with `SendInFlightError`. */
+  isPostPending() {
     return this.slot?.kind === "post" && this.slot.turnId === null;
   }
 
@@ -1428,9 +1683,14 @@ export class TurnRuntime {
     }
   }
 
-  private clearRetry() {
+  // Stops the retry timer. With `keepCheck` the check it carried still decides
+  // its send, from the list; without it, that send's recovery is over.
+  private clearRetry({ keepCheck }: { keepCheck: boolean }) {
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = null;
+    if (keepCheck && this.retryingSend)
+      this.sendsBehindTurn.push(this.retryingSend);
+    this.retryingSend = null;
   }
 
   private streamUrl() {
@@ -1632,6 +1892,25 @@ export class MessageTooLongError extends SendRefusedError {
   constructor(message: string, status: number) {
     super(message, status);
     this.name = "MessageTooLongError";
+  }
+}
+
+/** A send whose connection went silent, and that the session has no row for. */
+export class UnconfirmedSendError extends Error {
+  /** `prompt`: the key of the message whose request went silent. */
+  constructor(readonly prompt: string | null = null) {
+    super("The connection stalled before the server confirmed your message.");
+    this.name = "UnconfirmedSendError";
+  }
+}
+
+/** A send while another still waits on its answer, refused rather than lost. */
+export class SendInFlightError extends Error {
+  constructor() {
+    super(
+      "Another message is still being sent. Send this one again in a moment.",
+    );
+    this.name = "SendInFlightError";
   }
 }
 

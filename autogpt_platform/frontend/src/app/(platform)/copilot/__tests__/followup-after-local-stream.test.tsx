@@ -152,6 +152,13 @@ import { useCopilotUIStore } from "../store";
 import { useCopilotPage } from "../useCopilotPage";
 import * as copilotHelpers from "../helpers";
 
+// A send that starts a turn carries the moment it was sent, for the reply
+// timing; a queued follow-up never reaches sendNewMessage.
+const TIMED_SEND = expect.objectContaining({
+  startedAt: expect.any(Number),
+  isNewChat: false,
+});
+
 function noActiveTurn() {
   const error = new Error("Session has no active turn to queue against.");
   error.name = "QueueFollowUpNotActiveError";
@@ -197,6 +204,7 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
         undefined,
         undefined,
         undefined,
+        TIMED_SEND,
       );
     },
   );
@@ -239,6 +247,7 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
         undefined,
         undefined,
         undefined,
+        TIMED_SEND,
       );
       expect(queueMessage).not.toHaveBeenCalled();
       expect(toast).not.toHaveBeenCalled();
@@ -270,6 +279,7 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
       undefined,
       undefined,
       undefined,
+      TIMED_SEND,
     );
     expect(queueMessage).not.toHaveBeenCalled();
   });
@@ -295,6 +305,43 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
     rerender();
     await send;
     expect(sendNewMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the send time across the queue request and local settlement", async () => {
+    let now = 100;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    let rejectQueue = (_reason: Error) => {};
+    queueFollowUpMessage.mockImplementation(
+      () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectQueue = reject;
+        }),
+    );
+    const { result, rerender } = renderHook(() => useCopilotPage());
+
+    const send = result.current.onSend("After the answer, continue");
+    await flush();
+    expect(queueFollowUpMessage).toHaveBeenCalledTimes(1);
+    expect(sendNewMessage).not.toHaveBeenCalled();
+
+    now = 200;
+    rejectQueue(noActiveTurn());
+    await flush();
+    expect(sendNewMessage).not.toHaveBeenCalled();
+
+    now = 2100;
+    streamState.status = "ready";
+    rerender();
+    await send;
+
+    expect(sendNewMessage).toHaveBeenCalledExactlyOnceWith(
+      "After the answer, continue",
+      undefined,
+      undefined,
+      undefined,
+      expect.objectContaining({ startedAt: 100, isNewChat: false }),
+    );
+    expect(queueMessage).not.toHaveBeenCalled();
   });
 
   it("resolves once the follow-up is dispatched, not when its answer ends", async () => {
@@ -332,6 +379,7 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
       undefined,
       undefined,
       undefined,
+      TIMED_SEND,
     );
     expect(queueMessage).toHaveBeenCalledWith("second");
     // Both held copies are released: one went out, one is now the

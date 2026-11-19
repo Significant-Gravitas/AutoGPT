@@ -945,6 +945,30 @@ describe("getCopilotAuthHeaders", () => {
       "Authentication failed — please sign in again.",
     );
   });
+
+  it.each([
+    ["no session", { token: null }, false],
+    [
+      "a refused session",
+      { token: null, error: "401", retryable: false },
+      false,
+    ],
+    [
+      "a token service outage",
+      { token: null, error: "Service unavailable", retryable: true },
+      true,
+    ],
+  ])(
+    "says whether a lookup after %s can still succeed",
+    async (_case, answer, retryable) => {
+      mockGetWebSocketToken.mockResolvedValue(answer);
+
+      await expect(getCopilotAuthHeaders()).rejects.toMatchObject({
+        name: "CopilotAuthError",
+        retryable,
+      });
+    },
+  );
 });
 
 describe("isEngineSwitchPart", () => {

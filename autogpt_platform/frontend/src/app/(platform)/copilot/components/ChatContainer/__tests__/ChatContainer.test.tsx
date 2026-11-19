@@ -136,9 +136,11 @@ vi.mock("../../ChatMessagesContainer/ChatMessagesContainer", () => ({
   ChatMessagesContainer: ({
     bottomContentPadding,
     onRetry,
+    onResend,
   }: {
     bottomContentPadding?: number;
     onRetry?: () => void;
+    onResend?: () => void;
   }) => (
     <div
       data-testid="chat-messages-container"
@@ -147,6 +149,11 @@ vi.mock("../../ChatMessagesContainer/ChatMessagesContainer", () => ({
       <button type="button" onClick={onRetry}>
         Retry message
       </button>
+      {onResend ? (
+        <button type="button" onClick={onResend}>
+          Send again
+        </button>
+      ) : null}
     </div>
   ),
 }));
@@ -378,6 +385,69 @@ describe("ChatContainer", () => {
       undefined,
       undefined,
     );
+  });
+
+  it("offers Send again for a send no check could confirm", () => {
+    const onResendUnconfirmed = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onResendUnconfirmed={onResendUnconfirmed}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send again" }));
+    expect(onResendUnconfirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds Send again back while the usage limit pauses sending", () => {
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const { rerender } = render(
+      <ChatContainer {...baseProps} onResendUnconfirmed={vi.fn()} />,
+    );
+    expect(
+      screen.getByTestId("chat-input").getAttribute("data-send-disabled"),
+    ).toBe("true");
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+
+    // A send the server just refused over the limit pauses it too.
+    mockIsUsageLimitReached.mockReturnValue(false);
+    rerender(
+      <ChatContainer
+        {...baseProps}
+        isUsageRefused
+        onResendUnconfirmed={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+  });
+
+  it("holds Send again back while a new message's files upload", () => {
+    const { rerender } = render(
+      <ChatContainer
+        {...baseProps}
+        isUploadingFiles
+        onResendUnconfirmed={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
+
+    rerender(
+      <ChatContainer
+        {...baseProps}
+        pendingSend={{
+          text: "With the report",
+          attachments: [
+            {
+              name: "report.pdf",
+              mediaType: "application/pdf",
+              isUploading: true,
+            },
+          ],
+        }}
+        onResendUnconfirmed={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Send again" })).toBeNull();
   });
 
   it("does not render the usage-limit backdrop while usage is still available", () => {

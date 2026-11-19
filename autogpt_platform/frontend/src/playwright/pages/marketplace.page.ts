@@ -196,8 +196,10 @@ export class MarketplacePage extends BasePage {
 
     for (let attempt = 0; attempt < 3; attempt++) {
       await this.page.goto(searchURL);
-      await this.page.waitForLoadState("networkidle");
 
+      // The cards render from the client's search request, after hydration,
+      // so a visible card is ready to click. Never wait for the network to go
+      // idle: the sidebar polls, and one slow image would hold it open.
       const visible = await agentCard
         .waitFor({ state: "visible", timeout: 15000 })
         .then(() => true)

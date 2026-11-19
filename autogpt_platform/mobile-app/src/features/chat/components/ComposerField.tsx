@@ -21,6 +21,15 @@ interface Props {
   action?: ReactNode;
 }
 
+// One line tall, growing to about six. DictationField stands in at this size.
+export const inputBox = {
+  minHeight: 52,
+  maxHeight: 156,
+  paddingTop: 16,
+  paddingBottom: spacing.xs,
+  paddingHorizontal: spacing.lg,
+} as const;
+
 /** The text above a row of buttons; the card around it is the composer's. */
 export function ComposerField({
   text,
@@ -88,15 +97,10 @@ export function ComposerField({
 }
 
 const useStyles = createStyles((colors) => ({
-  // One line tall, growing to about six.
   input: {
     ...type.body,
+    ...inputBox,
     color: colors.text,
-    minHeight: 52,
-    maxHeight: 156,
-    paddingTop: 16,
-    paddingBottom: spacing.xs,
-    paddingHorizontal: spacing.lg,
     textAlignVertical: "top",
   },
   row: {
