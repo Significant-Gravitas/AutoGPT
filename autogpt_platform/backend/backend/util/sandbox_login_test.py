@@ -13,6 +13,7 @@ from e2b import FileType, NotFoundException
 
 from backend.util import sandbox_login
 from backend.util.sandbox_login import (
+    MAX_PROFILE_D_FILES,
     PROFILE_D,
     READ_CAP,
     LoginChainChanged,
@@ -164,6 +165,38 @@ async def test_a_login_chain_that_cannot_be_listed_is_named_unreadable(redis):
     await record_baseline(sandbox)
     sandbox.list_error = TimeoutError()
     assert await changed_login_files(sandbox) == {PROFILE_D: None}
+
+
+async def test_more_profile_d_files_than_the_cap_are_held_unreadable_and_unread(
+    redis,
+):
+    sandbox = FakeSandbox(stock_files())
+    await record_baseline(sandbox)
+    for i in range(MAX_PROFILE_D_FILES + 1):
+        sandbox.store[f"{PROFILE_D}/{i:04}.sh"] = b""
+    read_paths: list[str] = []
+    read = sandbox.files.read
+
+    async def recording_read(path: str, **kwargs: object):
+        read_paths.append(path)
+        return await read(path, **kwargs)
+
+    sandbox.files.read = recording_read
+
+    assert await changed_login_files(sandbox) == {PROFILE_D: None}
+    assert not [path for path in read_paths if path.startswith(f"{PROFILE_D}/")]
+    with pytest.raises(LoginChainChanged):
+        await run_internal(sandbox, "true")
+
+
+async def test_profile_d_files_up_to_the_cap_are_still_read(redis):
+    sandbox = FakeSandbox(stock_files())
+    await record_baseline(sandbox)
+    added = MAX_PROFILE_D_FILES - 1
+    for i in range(added):
+        sandbox.store[f"{PROFILE_D}/{i:04}.sh"] = b"true\n"
+
+    assert len(await changed_login_files(sandbox)) == added
 
 
 async def test_an_internal_command_refuses_a_changed_system_chain_only(redis):
