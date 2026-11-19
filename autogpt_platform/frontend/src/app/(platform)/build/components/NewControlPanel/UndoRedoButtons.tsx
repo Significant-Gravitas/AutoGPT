@@ -13,7 +13,23 @@ import {
   ArrowTurnForwardIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { isEditableElement } from "@/lib/platform";
+
+const TEXT_INPUT_TYPES = new Set([
+  "text",
+  "search",
+  "email",
+  "url",
+  "tel",
+  "password",
+  "number",
+]);
+
+function hasOwnTextUndo(target: EventTarget | null): boolean {
+  if (target instanceof HTMLTextAreaElement) return !target.readOnly;
+  if (target instanceof HTMLInputElement)
+    return TEXT_INPUT_TYPES.has(target.type) && !target.readOnly;
+  return target instanceof HTMLElement && target.isContentEditable;
+}
 
 export const UndoRedoButtons = () => {
   const { undo, redo, canUndo, canRedo } = useHistoryStore();
@@ -22,8 +38,7 @@ export const UndoRedoButtons = () => {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // A text field keeps its own undo/redo, so the workflow history must not take the shortcut there.
-      if (event.target instanceof Element && isEditableElement(event.target))
-        return;
+      if (hasOwnTextUndo(event.target)) return;
 
       const isMac = /Mac/i.test(navigator.userAgent);
       const isCtrlOrCmd = isMac ? event.metaKey : event.ctrlKey;

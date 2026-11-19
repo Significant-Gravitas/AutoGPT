@@ -99,6 +99,15 @@ describe("builder undo shortcut", () => {
     expect(useHistoryStore.getState().canRedo()).toBe(false);
   });
 
+  it("leaves undo to the inline text field on the node", () => {
+    renderBuilder();
+
+    const notPrevented = pressUndo(screen.getByDisplayValue("after"));
+
+    expect(notPrevented).toBe(true);
+    expect(savedText()).toBe("after");
+  });
+
   it("still undoes the workflow when focus is on the canvas", () => {
     renderBuilder();
 
