@@ -10,7 +10,7 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 - **Chat feel:** a sent message moves to the top of the screen and the reply fills in below it at an even pace, without the view chasing it; an arrow brings you back to the end. The thread moves with the keyboard frame by frame, and dragging it down closes the keyboard. Long-press a message to copy or share it. The composer is the same card as on Home.
 - **Opening fast:** the app saves the chat list, your experts and your last few chats on the phone, so they open at once and then catch up with the server. A chat also starts loading as your finger lands on its row.
 - **Steps:** what the expert is doing shows as a live list and folds to one line when the reply lands.
-- **Attach and dictate:** in a chat, attach photos and files; anywhere the composer is, dictate into the field.
+- **Attach and dictate:** in a chat, attach photos and files; anywhere the composer is, dictate into the field. While you talk the mic button is an orb that moves with your voice; tap it to use what you said.
 - **Chat panel:** in an expert's chat, their profile with Activity (upcoming routines, recent runs, computer state) and Library (files) tabs; in a chat with Otto, the chat's files. Share the chat from its top bar.
 - **Team:** the experts you have hired; tap one to chat. Create a new expert from the header, or hire one from the Marketplace.
 - **Marketplace:** every expert you can hire, with search and areas. Hire from the list or from an expert's page, which shows what they do and their skills; the new expert says hello in their first chat.
