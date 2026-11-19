@@ -1462,8 +1462,14 @@ class TestExpertTurnsCheckTheirExpert:
                 ),
             ]
         )
-        store.expert_setup_status = AsyncMock(side_effect=["installing", "ready"])
         identities: list[str] = []
+        statuses = iter(["installing", "ready"])
+
+        async def setup_status(*args):
+            assert identities == []
+            return next(statuses)
+
+        store.expert_setup_status = AsyncMock(side_effect=setup_status)
         await self._run_turn(self._session(), store, identities)
 
         assert store.expert_setup_status.await_count == 2
