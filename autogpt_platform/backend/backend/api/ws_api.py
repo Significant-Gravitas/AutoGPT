@@ -14,6 +14,8 @@ from backend.api.conn_manager import ConnectionManager, _is_ws_close_race
 from backend.api.model import (
     WSMessage,
     WSMethod,
+    WSRequestFailed,
+    WSRequestSent,
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
@@ -22,7 +24,7 @@ from backend.api.session_auth import (
     require_active_auth_session,
 )
 from backend.api.utils.cors import build_cors_params
-from backend.api.utils.validation_errors import bounded_validation_errors
+from backend.api.utils.validation_errors import loggable_validation_errors
 from backend.data import redis_client
 from backend.data.db_accessors import auth_session_db, user_db
 from backend.data.user import is_user_banned, is_user_refused
@@ -31,8 +33,10 @@ from backend.monitoring.instrumentation import (
     start_metrics_server,
     update_websocket_connections,
 )
+from backend.util.request_credentials import remember_request_credentials
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
+from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -61,6 +65,8 @@ async def lifespan(app: FastAPI):
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
 app = FastAPI(lifespan=lifespan, docs_url=docs_url)
+# Keeps each connection's credentials for the error reports raised handling it.
+remember_request_credentials(app)
 _connection_manager = None
 
 # Add Prometheus instrumentation. The metrics are served by WebsocketServer.run
@@ -184,12 +190,8 @@ async def handle_subscribe(
     message: WSMessage,
 ):
     if not message.data:
-        await websocket.send_text(
-            WSMessage(
-                method=WSMethod.ERROR,
-                success=False,
-                error="Subscription data missing",
-            ).model_dump_json()
+        await _answer_failure(
+            websocket, message, "Subscription data missing", retryable=False
         )
         return
 
@@ -246,12 +248,8 @@ async def handle_unsubscribe(
     message: WSMessage,
 ):
     if not message.data:
-        await websocket.send_text(
-            WSMessage(
-                method=WSMethod.ERROR,
-                success=False,
-                error="Subscription data missing",
-            ).model_dump_json()
+        await _answer_failure(
+            websocket, message, "Subscription data missing", retryable=False
         )
         return
 
@@ -310,6 +308,8 @@ async def websocket_router(
 
     # Track WebSocket connection
     update_websocket_connections(user_id, 1)
+    # Each kind of failure the client may retry, once this socket has hit it.
+    failed_before: set[type[Exception]] = set()
 
     try:
         while True:
@@ -329,7 +329,7 @@ async def websocket_router(
                 logger.error(
                     "Invalid WebSocket message from user #%s: %s",
                     user_id,
-                    bounded_validation_errors(e),
+                    loggable_validation_errors(e),
                 )
                 await websocket.send_text(
                     WSMessage(
@@ -340,60 +340,12 @@ async def websocket_router(
                 )
                 continue
 
-            try:
-                if message.method in _MSG_HANDLERS:
-                    await _MSG_HANDLERS[message.method](
-                        connection_manager=manager,
-                        websocket=websocket,
-                        user_id=user_id,
-                        message=message,
-                    )
-                    continue
-            except pydantic.ValidationError as e:
-                logger.error(
-                    "Validation error while handling '%s' for user #%s: %s",
-                    message.method.value,
-                    user_id,
-                    bounded_validation_errors(e),
+            if message.method in _MSG_HANDLERS:
+                handled = await _handle_request(
+                    manager, websocket, user_id, message, failed_before
                 )
-                await websocket.send_text(
-                    WSMessage(
-                        method=WSMethod.ERROR,
-                        success=False,
-                        error="Invalid message data. Refer to the API schema",
-                    ).model_dump_json()
-                )
-                continue
-            except ValueError as e:
-                logger.warning(
-                    "Subscription rejected for user #%s on '%s': %s",
-                    user_id,
-                    message.method.value,
-                    e,
-                )
-                await websocket.send_text(
-                    WSMessage(
-                        method=WSMethod.ERROR,
-                        success=False,
-                        error=str(e),
-                    ).model_dump_json()
-                )
-                continue
-            except Exception as e:
-                # The client left mid-handler: there is no one to reply to.
-                if _is_ws_close_race(e, websocket):
+                if not handled:
                     break
-                logger.error(
-                    f"Error while handling '{message.method.value}' message "
-                    f"for user #{user_id}: {e}"
-                )
-                await websocket.send_text(
-                    WSMessage(
-                        method=WSMethod.ERROR,
-                        success=False,
-                        error=f"Could not handle '{message.method.value}'; retry",
-                    ).model_dump_json()
-                )
                 continue
 
             if message.method == WSMethod.ERROR:
@@ -404,12 +356,11 @@ async def websocket_router(
                     f"Unknown WebSocket message type {message.method} received: "
                     f"{message.data}"
                 )
-                await websocket.send_text(
-                    WSMessage(
-                        method=WSMethod.ERROR,
-                        success=False,
-                        error="Message type is not processed by the server",
-                    ).model_dump_json()
+                await _answer_failure(
+                    websocket,
+                    message,
+                    "Message type is not processed by the server",
+                    retryable=False,
                 )
 
     except WebSocketDisconnect:
@@ -421,6 +372,82 @@ async def websocket_router(
         # the loop exited — otherwise non-WebSocketDisconnect failures leak both.
         await manager.disconnect_socket(websocket, user_id=user_id)
         update_websocket_connections(user_id, -1)
+
+
+async def _handle_request(
+    manager: ConnectionManager,
+    websocket: WebSocket,
+    user_id: str,
+    message: WSMessage,
+    failed_before: set[type[Exception]],
+) -> bool:
+    """Run the request's handler, answering a failure with an error that
+    names the request and whether it may succeed if sent again. False when
+    the client left meanwhile: there is no one to answer."""
+    try:
+        await _MSG_HANDLERS[message.method](
+            connection_manager=manager,
+            websocket=websocket,
+            user_id=user_id,
+            message=message,
+        )
+    except pydantic.ValidationError as e:
+        logger.error(
+            "Validation error while handling '%s' for user #%s: %s",
+            message.method.value,
+            user_id,
+            loggable_validation_errors(e),
+        )
+        await _answer_failure(
+            websocket,
+            message,
+            "Invalid message data. Refer to the API schema",
+            retryable=False,
+        )
+    except ValueError as e:
+        # Refused: a cap reached, or a run that isn't the user's. A full
+        # shard ("Server busy") is a cap too: retried on this socket, it only
+        # adds load to a full process; the next reconnect tries again.
+        logger.warning(
+            "Subscription rejected for user #%s on '%s': %s",
+            user_id,
+            message.method.value,
+            e,
+        )
+        await _answer_failure(websocket, message, str(e), retryable=False)
+    except Exception as e:
+        if _is_ws_close_race(e, websocket):
+            return False
+        # Redis didn't confirm in time, a stream was lost, a read failed. The
+        # client sends it again, so only the socket's first failure of each
+        # kind is an error, which Sentry files; its retries' are warnings.
+        logger.log(
+            logging.WARNING if type(e) in failed_before else logging.ERROR,
+            "Error while handling '%s' message for user #%s: %s",
+            message.method.value,
+            user_id,
+            e,
+        )
+        failed_before.add(type(e))
+        await _answer_failure(
+            websocket,
+            message,
+            f"Could not handle '{message.method.value}'; retry",
+            retryable=True,
+        )
+    return True
+
+
+async def _answer_failure(
+    websocket: WebSocket, message: WSMessage, error: str, *, retryable: bool
+) -> None:
+    await websocket.send_text(
+        WSRequestFailed(
+            error=error,
+            request=WSRequestSent(method=message.method, data=message.data),
+            retryable=retryable,
+        ).model_dump_json()
+    )
 
 
 async def _refused_now(user_id: str) -> bool:
@@ -474,4 +501,7 @@ class WebsocketServer(AppProcess):
             ws="websockets-sansio",
             ws_max_size=WS_MAX_MESSAGE_BYTES,
             log_config=None,
+            forwarded_allow_ips=uvicorn_forwarded_allow_ips(
+                settings.config.trusted_proxies
+            ),
         )

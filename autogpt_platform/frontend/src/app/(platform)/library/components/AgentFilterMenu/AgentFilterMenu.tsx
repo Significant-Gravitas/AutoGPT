@@ -13,13 +13,16 @@ interface Props {
 }
 
 function buildOptions(summary: FleetSummary): SelectOption[] {
+  // Unknown while the scheduler is out: a scheduled workflow reads as idle.
+  const scheduled = summary.schedulesUnknown ? "unknown" : summary.scheduled;
+  const idle = summary.schedulesUnknown ? "unknown" : summary.idle;
   return [
     { value: "all", label: "All Workflows" },
     { value: "running", label: `Running (${summary.running})` },
     { value: "attention", label: `Needs Attention (${summary.error})` },
     { value: "listening", label: `Listening (${summary.listening})` },
-    { value: "scheduled", label: `Scheduled (${summary.scheduled})` },
-    { value: "idle", label: `Idle / Stale (${summary.idle})` },
+    { value: "scheduled", label: `Scheduled (${scheduled})` },
+    { value: "idle", label: `Idle / Stale (${idle})` },
     { value: "healthy", label: "Healthy" },
   ];
 }

@@ -169,6 +169,19 @@ export function isMicrosoftEmailVerified(profile: MicrosoftProfile): boolean {
   );
 }
 
+/** A personal account signing in with its own Outlook.com address: the
+ *  account is that mailbox (mailbox-provider.ts). */
+export function isMicrosoftMailboxAccount(profile: {
+  tid?: unknown;
+  email?: unknown;
+}): boolean {
+  return (
+    profile.tid === PERSONAL_TENANT_ID &&
+    typeof profile.email === "string" &&
+    isMicrosoftMailbox(profile.email)
+  );
+}
+
 function isGuest({ idp, tid }: MicrosoftProfile) {
   if (!idp) return false;
   return (
@@ -191,6 +204,8 @@ export function microsoftProfileToUser(profile: MicrosoftProfile) {
   return {
     // An unconfirmed address joins no existing account (Better Auth answers
     // `account_not_linked`) and creates none (microsoft-sign-up-policy.ts).
+    // A confirmed one joins only after an emailed code, unless the account is
+    // that Outlook.com mailbox (require-sign-in-code.ts).
     emailVerified: isMicrosoftEmailVerified(profile),
     email: profile.email,
   };

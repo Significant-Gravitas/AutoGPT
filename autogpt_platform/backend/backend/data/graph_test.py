@@ -48,11 +48,13 @@ from backend.data.graph import (
     Link,
     Node,
     NodeModel,
+    clear_sub_graph_refs_owned_by,
     copy_graph,
 )
 from backend.data.graph import create_graph as db_create_graph
 from backend.data.graph import (
     delete_graph,
+    foreign_sub_graph_refs,
     fork_graph,
     get_copied_graph_ids,
     get_graph,
@@ -2408,6 +2410,12 @@ async def test_admin_can_access_pending_v2_via_get_graph_as_admin() -> None:
 # version of that graph is still in their library. Non-owners stay
 # version-specific.
 #
+# A sub-graph (is_sub_graph below: a parent run is given) named by a graph
+# someone else owns passes a third gate, for which see
+# test_sub_graph_named_by_another_users_graph below. An executor from before
+# parent runs sends `is_sub_graph` alone; see
+# test_validate_graph_execution_permissions_sub_graph_flag_without_parent_run.
+#
 # | User     | Owns? | Marketplace | Library state                | is_sub_graph | Result   | Test
 # |----------|-------|-------------|------------------------------|--------------|----------|-----
 # | regular  | no    | submitted   | exact version present        | false        | ALLOW    | test_validate_graph_execution_permissions_library_member_same_version_allowed
@@ -2773,6 +2781,7 @@ async def test_validate_graph_execution_permissions_unpublished_sub_graph_withou
     with (
         patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
         patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        _parent_run_of_graph_owned_by(requester_id),
         patch(
             "backend.data.graph.is_graph_published_in_marketplace",
             new_callable=AsyncMock,
@@ -2787,7 +2796,7 @@ async def test_validate_graph_execution_permissions_unpublished_sub_graph_withou
                 user_id=requester_id,
                 graph_id=graph_id,
                 graph_version=graph_version,
-                is_sub_graph=True,
+                parent_graph_exec_id="parent-exec-id",
             )
 
     mock_is_published.assert_awaited_once_with(graph_id, graph_version)
@@ -2805,6 +2814,7 @@ async def test_validate_graph_execution_permissions_marketplace_sub_graph_withou
     with (
         patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
         patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        _parent_run_of_graph_owned_by(requester_id),
         patch(
             "backend.data.graph.is_graph_published_in_marketplace",
             new_callable=AsyncMock,
@@ -2818,7 +2828,7 @@ async def test_validate_graph_execution_permissions_marketplace_sub_graph_withou
             user_id=requester_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            is_sub_graph=True,
+            parent_graph_exec_id="parent-exec-id",
         )
 
     mock_is_published.assert_awaited_once_with(graph_id, graph_version)
@@ -2857,6 +2867,365 @@ async def test_validate_graph_execution_permissions_library_wrong_version_denied
         "where"
     ]
     assert lib_where["agentGraphVersion"] == graph_version
+
+
+# A sub-graph runs as the user running its parent graph, with their identity,
+# credentials and credits, and its outputs go back to the parent. When someone
+# else owns the parent, that owner chose the sub-graph, so it must be one they
+# could use: their own, or a published version. Never one of the runner's own,
+# published or not.
+#
+# | Parent owner | Sub-graph owner | Published | Readable from library | Result
+# |--------------|-----------------|-----------|-----------------------|---------
+# | creator      | runner          | no        | no                    | DENY
+# | creator      | runner          | yes       | yes                   | DENY
+# | creator      | creator         | yes       | no                    | ALLOW
+# | creator      | creator         | no        | no                    | DENY acc
+# | creator      | third party     | yes       | no                    | ALLOW
+# | creator      | third party     | no        | yes                   | DENY
+# | runner       | runner          | no        | no                    | ALLOW
+# | runner       | third party     | yes       | no                    | ALLOW
+
+
+@pytest.mark.parametrize(
+    "parent_owner, sub_graph_owner, published, readable, refusal",
+    [
+        pytest.param(
+            "creator", "runner", False, False, "one of yours", id="runners-own"
+        ),
+        pytest.param(
+            "creator",
+            "runner",
+            True,
+            True,
+            "one of yours",
+            id="runners-own-published",
+        ),
+        pytest.param("creator", "creator", True, False, None, id="creators-own"),
+        pytest.param(
+            "creator",
+            "creator",
+            False,
+            False,
+            "do not have access",
+            id="creators-own-unapproved",
+        ),
+        pytest.param(
+            "creator", "third-party", True, False, None, id="published-by-another"
+        ),
+        pytest.param(
+            "creator",
+            "third-party",
+            False,
+            True,
+            "isn't published",
+            id="unpublished-in-runners-library",
+        ),
+        pytest.param("runner", "runner", False, False, None, id="runners-own-parent"),
+        pytest.param(
+            "runner",
+            "third-party",
+            True,
+            False,
+            None,
+            id="runners-own-parent-published-sub-graph",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_sub_graph_named_by_another_users_graph(
+    parent_owner: str,
+    sub_graph_owner: str,
+    published: bool,
+    readable: bool,
+    refusal: str | None,
+) -> None:
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        _parent_run_of_graph_owned_by(parent_owner),
+        patch(
+            "backend.data.graph.is_graph_published_in_marketplace",
+            new_callable=AsyncMock,
+            return_value=published,
+        ),
+    ):
+        mock_ag_prisma.return_value.find_unique = AsyncMock(
+            return_value=MagicMock(userId=sub_graph_owner)
+        )
+        mock_lib_prisma.return_value.find_first = AsyncMock(
+            side_effect=[MagicMock() if readable else None, MagicMock()]
+        )
+
+        if refusal is None:
+            await _validate_sub_graph_run(user_id="runner")
+        else:
+            with pytest.raises(GraphNotAccessibleError, match=refusal):
+                await _validate_sub_graph_run(user_id="runner")
+
+
+@pytest.mark.asyncio
+async def test_sub_graph_needs_a_parent_run_of_the_users_own() -> None:
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        _parent_run_of_graph_owned_by(None) as mock_exec_prisma,
+    ):
+        mock_ag_prisma.return_value.find_unique = AsyncMock(
+            return_value=MagicMock(userId="runner")
+        )
+        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=MagicMock())
+
+        with pytest.raises(GraphNotAccessibleError, match="not found"):
+            await _validate_sub_graph_run(user_id="runner")
+
+    mock_exec_prisma.return_value.find_first.assert_awaited_once_with(
+        where={"id": "parent-exec-id", "userId": "runner"},
+        include={"AgentGraph": True},
+    )
+
+
+@pytest.mark.parametrize(
+    "published, refusal", [(True, None), (False, "do not have access")]
+)
+@pytest.mark.asyncio
+async def test_validate_graph_execution_permissions_sub_graph_flag_without_parent_run(
+    published: bool, refusal: str | None
+) -> None:
+    """An executor from before `parent_graph_exec_id` sends `is_sub_graph`
+    alone. The graph is still checked as a sub-graph, so it needn't be in the
+    user's library, and with no parent run there is none to look up."""
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        patch("backend.data.graph.AgentGraphExecution.prisma") as mock_exec_prisma,
+        patch(
+            "backend.data.graph.is_graph_published_in_marketplace",
+            new_callable=AsyncMock,
+            return_value=published,
+        ),
+    ):
+        mock_ag_prisma.return_value.find_unique = AsyncMock(
+            return_value=MagicMock(userId="creator")
+        )
+        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=None)
+        check = validate_graph_execution_permissions(
+            user_id="runner", graph_id="graph-id", graph_version=2, is_sub_graph=True
+        )
+        if refusal is None:
+            await check
+        else:
+            with pytest.raises(GraphNotAccessibleError, match=refusal):
+                await check
+
+    mock_exec_prisma.assert_not_called()
+
+
+async def _validate_sub_graph_run(user_id: str) -> None:
+    await validate_graph_execution_permissions(
+        user_id=user_id,
+        graph_id="graph-id",
+        graph_version=2,
+        parent_graph_exec_id="parent-exec-id",
+    )
+
+
+def _parent_run_of_graph_owned_by(owner_id: str | None):
+    """Patch the parent-run lookup to find a run of a graph *owner_id* owns, or,
+    with None, no run of the user's."""
+    parent_run = MagicMock(AgentGraph=MagicMock(userId=owner_id)) if owner_id else None
+    client = MagicMock()
+    client.find_first = AsyncMock(return_value=parent_run)
+    return patch("backend.data.graph.AgentGraphExecution.prisma", return_value=client)
+
+
+# --------------- sub-graphs a shared graph runs --------------- #
+
+
+def _graph_row(
+    graph_id: str, version: int, owner_id: str, refs: list[tuple[str, int]]
+) -> MagicMock:
+    return MagicMock(
+        id=graph_id,
+        version=version,
+        userId=owner_id,
+        Nodes=[
+            MagicMock(
+                agentBlockId=AgentExecutorBlock().id,
+                constantInput={"graph_id": ref_id, "graph_version": ref_version},
+            )
+            for ref_id, ref_version in refs
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_foreign_sub_graph_refs_walks_the_owners_sub_graphs() -> None:
+    """Every version of the owner's sub-graphs is walked, so two versions of
+    one are both the owner's, and another user's unpublished version named
+    deeper down is found."""
+    root = _graph_row("root", 1, "owner", [("sub", 1), ("sub", 2)])
+    levels = [
+        [
+            _graph_row("sub", 1, "owner", []),
+            _graph_row("sub", 2, "owner", [("theirs", 3), ("root", 1)]),
+        ],
+        [],
+    ]
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.StoreListingVersion.prisma") as mock_slv_prisma,
+    ):
+        mock_ag_prisma.return_value.find_many = AsyncMock(side_effect=levels)
+        mock_slv_prisma.return_value.find_many = AsyncMock(return_value=[])
+
+        assert await foreign_sub_graph_refs(root) == [("theirs", 3)]
+
+    first_level = mock_ag_prisma.return_value.find_many.await_args_list[0].kwargs
+    assert sorted(
+        (ref["id"], ref["version"], ref["userId"]) for ref in first_level["where"]["OR"]
+    ) == [("sub", 1, "owner"), ("sub", 2, "owner")]
+    published_where = mock_slv_prisma.return_value.find_many.await_args.kwargs["where"]
+    assert published_where["OR"] == [{"agentGraphId": "theirs", "agentGraphVersion": 3}]
+    assert published_where["submissionStatus"] == SubmissionStatus.APPROVED
+    assert published_where["isDeleted"] is False
+
+
+@pytest.mark.asyncio
+async def test_foreign_sub_graph_refs_allows_published_versions() -> None:
+    root = _graph_row("root", 1, "owner", [("theirs", 3)])
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.StoreListingVersion.prisma") as mock_slv_prisma,
+    ):
+        mock_ag_prisma.return_value.find_many = AsyncMock(return_value=[])
+        mock_slv_prisma.return_value.find_many = AsyncMock(
+            return_value=[MagicMock(agentGraphId="theirs", agentGraphVersion=3)]
+        )
+
+        assert await foreign_sub_graph_refs(root) == []
+
+
+@pytest.mark.asyncio
+async def test_foreign_sub_graph_refs_skips_the_lookups_without_sub_graphs() -> None:
+    root = _graph_row("root", 1, "owner", [])
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.StoreListingVersion.prisma") as mock_slv_prisma,
+    ):
+        assert await foreign_sub_graph_refs(root) == []
+
+    mock_ag_prisma.assert_not_called()
+    mock_slv_prisma.assert_not_called()
+
+
+# --------------- sub-graphs a copy keeps --------------- #
+
+
+def _sub_graph_node(graph_id: Any) -> Node:
+    return Node(
+        block_id=AgentExecutorBlock().id,
+        input_default={"graph_id": graph_id, "graph_version": 1},
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_copy_blanks_its_sub_graph_nodes_naming_the_copiers_graphs() -> None:
+    """In the copy and in each sub-graph it carries, with one lookup."""
+    copiers, carried_copiers, someone_elses = (
+        _sub_graph_node("copiers"),
+        _sub_graph_node("copiers-other"),
+        _sub_graph_node("someone-elses"),
+    )
+    copy = Graph(
+        name="Copy",
+        description="",
+        nodes=[copiers, someone_elses],
+        sub_graphs=[BaseGraph(name="Carried", description="", nodes=[carried_copiers])],
+    )
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.AgentNode.prisma") as mock_node_prisma,
+    ):
+        mock_ag_prisma.return_value.find_many = AsyncMock(
+            return_value=[MagicMock(id="copiers"), MagicMock(id="copiers-other")]
+        )
+        assert await clear_sub_graph_refs_owned_by(copy, "copier") == 2
+
+    assert [
+        node.input_default["graph_id"]
+        for node in (copiers, carried_copiers, someone_elses)
+    ] == ["", "", "someone-elses"]
+    mock_ag_prisma.return_value.find_many.assert_awaited_once_with(
+        where={
+            "id": {"in": ["copiers", "copiers-other", "someone-elses"]},
+            "userId": "copier",
+        },
+        distinct=["id"],
+    )
+    mock_node_prisma.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_edited_copy_keeps_the_sub_graph_nodes_its_editor_added() -> None:
+    """Of the copier's graphs, only those some version of the original names
+    were chosen by its owner."""
+    inherited, added = _sub_graph_node("copiers"), _sub_graph_node("copiers-other")
+    copy = Graph(name="Copy", description="", nodes=[inherited, added])
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.AgentNode.prisma") as mock_node_prisma,
+    ):
+        mock_ag_prisma.return_value.find_many = AsyncMock(
+            return_value=[MagicMock(id="copiers"), MagicMock(id="copiers-other")]
+        )
+        mock_node_prisma.return_value.find_many = AsyncMock(
+            return_value=[
+                MagicMock(constantInput={"graph_id": "copiers", "graph_version": 1}),
+                MagicMock(constantInput={"graph_id": "authors", "graph_version": 3}),
+            ]
+        )
+        assert (
+            await clear_sub_graph_refs_owned_by(copy, "copier", edited_from="original")
+            == 1
+        )
+
+    assert (inherited.input_default["graph_id"], added.input_default["graph_id"]) == (
+        "",
+        "copiers-other",
+    )
+    mock_node_prisma.return_value.find_many.assert_awaited_once_with(
+        where={"agentGraphId": "original", "agentBlockId": AgentExecutorBlock().id}
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_copy_looks_up_only_the_sub_graph_nodes_it_could_blank() -> None:
+    """Nodes naming no graph need no lookup, and with none of the copier's
+    graphs named there is no original to read."""
+    unnamed = Graph(
+        name="Copy",
+        description="",
+        nodes=[_sub_graph_node(""), _sub_graph_node(None)],
+    )
+    someone_elses = Graph(
+        name="Copy", description="", nodes=[_sub_graph_node("someone-elses")]
+    )
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.AgentNode.prisma") as mock_node_prisma,
+    ):
+        assert await clear_sub_graph_refs_owned_by(unnamed, "copier", "original") == 0
+        mock_ag_prisma.assert_not_called()
+
+        mock_ag_prisma.return_value.find_many = AsyncMock(return_value=[])
+        assert (
+            await clear_sub_graph_refs_owned_by(someone_elses, "copier", "original")
+            == 0
+        )
+
+    mock_node_prisma.assert_not_called()
+    assert someone_elses.nodes[0].input_default["graph_id"] == "someone-elses"
 
 
 # ============================================================================

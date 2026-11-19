@@ -58,10 +58,6 @@ $meta
 ## Build details
 **Build trigger:** $event_name \`$current_ref\`
 
-| Parameter      | Value        |
-| -------------- | ------------ |
-| \`no_cache\`   | \`$inputs_no_cache\` |
-
 <details>
 <summary><code>github</code> context</summary>
 

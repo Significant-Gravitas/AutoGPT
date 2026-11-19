@@ -171,6 +171,43 @@ export function categorizeExecutions(
   };
 }
 
+// GET /executions answers with the newest 250 runs (graph_executions/routes.py).
+const RUN_LIST_LIMIT = 250;
+
+/**
+ * The active runs already shown that a full run list leaves out: it holds
+ * the newest runs only, so an older one may still be going. A shorter list
+ * covers every run, so a run it omits is gone.
+ */
+/** Whether a run list holds every run, rather than only the newest. */
+export function listHasEveryRun(listed: GeneratedGraphExecutionMeta[]) {
+  return listed.length < RUN_LIST_LIMIT;
+}
+
+export function activeRunsTheListOmits(
+  shown: NotificationState,
+  listed: GeneratedGraphExecutionMeta[],
+): AgentExecutionWithInfo[] {
+  if (listHasEveryRun(listed)) return [];
+  const listedIDs = new Set(listed.map((execution) => execution.id));
+  return shown.activeExecutions.filter(
+    (execution) => !listedIDs.has(execution.id),
+  );
+}
+
+export function keepActiveRunsTheListOmits(
+  shown: NotificationState,
+  fromList: NotificationState,
+  listed: GeneratedGraphExecutionMeta[],
+): NotificationState {
+  const omitted = activeRunsTheListOmits(shown, listed);
+  if (omitted.length === 0) return fromList;
+  return calculateTotalCount({
+    ...fromList,
+    activeExecutions: [...fromList.activeExecutions, ...omitted],
+  });
+}
+
 export function relabelNotifications(
   state: NotificationState,
   agentInfoMap: Map<
@@ -262,7 +299,7 @@ export function calculateTotalCount(
 
 export function handleExecutionUpdate(
   currentState: NotificationState,
-  execution: GraphExecution,
+  execution: GraphExecution | GeneratedGraphExecutionMeta,
   agentInfoMap: Map<
     string,
     { name: string; description: string; library_agent_id?: string }
