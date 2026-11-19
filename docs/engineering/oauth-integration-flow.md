@@ -354,7 +354,11 @@ uses the backend's own OAuth client (below).
   straight to the provider, so `hooks.before` refuses any others for Google
   and Microsoft, and refuses them all when the sign-in can't connect.
 - **The tokens:** a wrapped `getUserInfo` keeps the token response of the
-  provider's redirect (`lib/auth/sign-in-connection.ts`); an ID token sent to
+  provider's redirect (`lib/auth/sign-in-connection.ts`), and only for a
+  sign-in that asked for the data scopes and was granted at least one. Google's
+  token also carries the scopes an earlier sign-in was granted, so the ask
+  itself is noted: `hooks.before` writes it into the sign-in's OAuth state
+  (`addOAuthServerContext`), which the browser can't set. An ID token sent to
   `/sign-in/social` never counts. Once the sign-in's session exists, the
   frontend's server hands the tokens to `POST /api/auth/sign-in-connection`
   with a service token naming the user. The backend
@@ -387,9 +391,14 @@ uses the backend's own OAuth client (below).
   the person may decline. A refused sign-in comes back to `/login` with
   `connect=<provider>`, and one that never came back (a Google Workspace
   block ends on Google's own error page) was noted in the tab
-  (`lib/auth/connect-attempt.ts`). Either way the login and signup pages offer
-  **Continue with Google (or Microsoft) without connecting**, which asks for
-  name and email only.
+  (`lib/auth/connect-attempt.ts`, forgotten once the tab signs in). Either way
+  the login and signup pages offer **Continue with Google (or Microsoft)
+  without connecting**, which asks for name and email only.
+- **Joining an account with a code:** a sign-in that joins an existing account
+  only after an emailed code (a Google Workspace or Microsoft work address)
+  connects nothing. The code check finishes the sign-in in a later request,
+  which the provider's tokens never reach; Settings → Integrations connects as
+  before.
 - **Returning users:** each sees the provider's consent screen once, at
   their next sign-in. Google issues a refresh token only on that screen, so a
   later sign-in without one can widen an existing connection but not start
