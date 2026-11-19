@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+import prisma.actions
 import prisma.enums
 import prisma.fields
 import prisma.models
@@ -2552,14 +2553,10 @@ async def test_migrate_webhook_presets_rekeys_input_mask(mocker):
     preset_prisma.update_many = AsyncMock(return_value=1)
     mocker.patch("prisma.models.AgentPreset.prisma", return_value=preset_prisma)
 
-    mask_row = MagicMock(
-        id="row-1",
-        agentPresetId="preset-1",
-        data={"repo": "a/b"},
+    mask_rows = mocker.patch.object(
+        db, "query_raw_with_schema", AsyncMock(return_value=[{"id": "row-1"}])
     )
-    mask_row.name = library_model.node_input_mask_key(old_trigger.id)
     io_prisma = MagicMock()
-    io_prisma.find_many = AsyncMock(return_value=[mask_row])
     io_prisma.update_many = AsyncMock(return_value=1)
     mocker.patch(
         "prisma.models.AgentNodeExecutionInputOutput.prisma",
@@ -2569,9 +2566,11 @@ async def test_migrate_webhook_presets_rekeys_input_mask(mocker):
 
     await db.migrate_webhook_presets_to_new_version("user-1", new_graph)
 
-    where = io_prisma.find_many.await_args.kwargs["where"]
-    assert where["agentPresetId"] == {"in": ["preset-1"]}
-    assert where["AgentPreset"] == {"is": {"agentGraphVersion": new_graph.version}}
+    assert mask_rows.await_args.args[1:] == (
+        ["preset-1"],
+        new_graph.version,
+        library_model.NODE_INPUT_MASK_PREFIX,
+    )
     io_prisma.update_many.assert_awaited_once_with(
         where={"id": {"in": ["row-1"]}},
         data={"name": library_model.node_input_mask_key(new_trigger.id)},
@@ -2628,8 +2627,18 @@ async def test_a_version_move_rekeys_only_the_trigger_config_row(
     )
     old_graph = MagicMock(webhook_input_node=MagicMock(block_id="block-github"))
 
+    # A preset may hold up to MAX_PRESET_INPUT_BYTES per config, so the move must
+    # never load the stored inputs to find the row it renames.
+    refuse_load = AsyncMock(side_effect=AssertionError("stored inputs were loaded"))
     try:
-        with patch.object(db.graph_db, "get_graph", AsyncMock(return_value=old_graph)):
+        with (
+            patch.object(db.graph_db, "get_graph", AsyncMock(return_value=old_graph)),
+            patch.object(
+                prisma.actions.AgentNodeExecutionInputOutputActions,
+                "find_many",
+                refuse_load,
+            ),
+        ):
             result = await db.migrate_webhook_presets_to_new_version(user_id, new_graph)
         rows = await prisma.models.AgentNodeExecutionInputOutput.prisma().find_many(
             where={"agentPresetId": preset.id}
@@ -2887,11 +2896,12 @@ async def test_presets_move_and_rekey_in_one_transaction_within_the_organization
     preset_prisma = mocker.patch(
         "prisma.models.AgentPreset.prisma", return_value=presets
     )
-    rows = MagicMock(
-        find_many=AsyncMock(return_value=[]), update_many=AsyncMock(return_value=0)
-    )
+    rows = MagicMock(update_many=AsyncMock(return_value=0))
     rows_prisma = mocker.patch(
         "prisma.models.AgentNodeExecutionInputOutput.prisma", return_value=rows
+    )
+    mask_rows = mocker.patch.object(
+        db, "query_raw_with_schema", AsyncMock(return_value=[])
     )
 
     await db.migrate_webhook_presets_to_new_version(
@@ -2905,7 +2915,8 @@ async def test_presets_move_and_rekey_in_one_transaction_within_the_organization
         "name": library_model.node_input_mask_key(new_trigger.id)
     }
     assert preset_prisma.call_args_list[-1] == call(tx)
-    assert rows_prisma.call_args_list == [call(tx), call(tx)]
+    assert rows_prisma.call_args_list == [call(tx)]
+    assert mask_rows.await_args.kwargs["client"] is tx
 
 
 @pytest.mark.asyncio
