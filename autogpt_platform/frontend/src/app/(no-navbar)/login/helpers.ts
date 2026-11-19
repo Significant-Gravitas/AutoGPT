@@ -2,6 +2,7 @@ import { withAuthTracking } from "@/lib/auth-redirect";
 import { ACCOUNT_CLOSED_PATH } from "@/lib/auth/closed-account";
 import type { EmailVerificationNotice } from "@/lib/auth/email-verification";
 import { ACCOUNT_NOT_LINKED_CODE } from "@/lib/auth/microsoft-login";
+import { SIGN_IN_CODE_START_ERRORS } from "@/lib/auth/sign-in-code";
 
 export const ACCOUNT_BANNED_NOTICE_COPY =
   "This account has been banned. If you think this is a mistake, please contact support.";
@@ -32,6 +33,10 @@ export function getSignInErrorNotice(
   provider: string | null,
 ) {
   if (error === BANNED_USER_ERROR_CODE) return ACCOUNT_BANNED_NOTICE_COPY;
+  // Any provider whose sign-in needed a code that couldn't go out.
+  if (error && Object.hasOwn(SIGN_IN_CODE_START_ERRORS, error)) {
+    return SIGN_IN_CODE_START_ERRORS[error];
+  }
   if (error === ACCOUNT_NOT_LINKED_CODE && provider !== "microsoft") {
     return ACCOUNT_NOT_LINKED_NOTICE_COPY;
   }
