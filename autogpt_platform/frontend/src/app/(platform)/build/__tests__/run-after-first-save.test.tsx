@@ -115,10 +115,9 @@ const AGENT_OUTPUT_BLOCK: BlockInfo = {
   uiType: "Output",
 };
 
-// The node ids the backend handed out in CI run 44288115319, in order. Like
-// any random ids they sort in the opposite order from the canvas's own "1"
-// and "2" about half the time, so the builder sees a change and saves; these
-// do, as they did there.
+// The node ids the backend hands out, in order. They sort the other way from
+// the canvas's own "1" and "2", as random ids do about half the time, which
+// makes the builder see a change and send a save with the canvas's ids.
 const SERVER_NODE_IDS = [
   "c019852e-7d1c-4d6e-9a43-0f3b8a2e5d11",
   "1c21c084-35a8-4f0e-8b6f-2d9c7e4a1b22",
@@ -298,7 +297,11 @@ function OpenWorkflowButton({
       type="button"
       onClick={() => setQueryStates({ flowID: graphID, flowVersion: version })}
     >
-      {version === null ? `Open ${graphID} latest` : `Open ${graphID}`}
+      {version === null
+        ? `Open ${graphID} latest`
+        : version === 1
+          ? `Open ${graphID}`
+          : `Open ${graphID} v${version}`}
     </button>
   );
 }
@@ -307,7 +310,7 @@ function renderBuilder(searchParams = "") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const builder = render(
     <QueryClientProvider client={queryClient}>
       <NuqsTestingAdapter
         searchParams={searchParams}
@@ -319,6 +322,7 @@ function renderBuilder(searchParams = "") {
             <BuilderPage />
             <OpenWorkflowButton graphID={GRAPH_ID} />
             <OpenWorkflowButton graphID={GRAPH_ID} version={null} />
+            <OpenWorkflowButton graphID={GRAPH_ID} version={2} />
             <OpenWorkflowButton graphID={BLANK_GRAPH_ID} />
             <Toaster />
           </TooltipProvider>
@@ -326,6 +330,7 @@ function renderBuilder(searchParams = "") {
       </NuqsTestingAdapter>
     </QueryClientProvider>,
   );
+  return { ...builder, queryClient };
 }
 
 // A two-block workflow, added the way the block menu and a drawn connection
@@ -375,11 +380,6 @@ function canvas(): Graph {
     nodes: useNodeStore.getState().getBackendNodes(),
     links: useEdgeStore.getState().getBackendLinks(),
   };
-}
-
-// Long enough for a Run that should have stayed cancelled to send its request.
-async function waitForStrayRequests() {
-  await act(() => new Promise((resolve) => setTimeout(resolve, 300)));
 }
 
 async function waitForTheRun() {
@@ -484,7 +484,6 @@ describe("builder Run while the workflow it runs is still loading", () => {
 
       await clickRunOnceItIsEnabled(user);
       expect(runButton().disabled, "Run can be pressed again").toBe(true);
-      await user.click(runButton());
       backend.release();
       await waitForTheRun();
 
@@ -601,14 +600,21 @@ describe("builder Run whose workflow never loads", () => {
       NETWORK_WAIT,
     );
     await clickRunOnceItIsEnabled(user);
+    const runWaitsOn = useGraphStore.getState().loadSignal;
 
     builder.unmount();
+    expect(runWaitsOn.aborted, "the closed builder's Run kept waiting").toBe(
+      true,
+    );
     backend.release();
     renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
     await waitFor(() => expect(canvas().nodes).toHaveLength(2), NETWORK_WAIT);
-    await waitForStrayRequests();
+    await clickRunOnceItIsEnabled(user);
+    await waitForTheRun();
 
-    expect(backend.executions, "the abandoned Run started").toEqual([]);
+    expect(backend.executions).toEqual([
+      { graphID: GRAPH_ID, graphVersion: 1 },
+    ]);
     expect(screen.queryByText("Error saving workflow")).toBeNull();
   });
 
@@ -623,9 +629,13 @@ describe("builder Run whose workflow never loads", () => {
       NETWORK_WAIT,
     );
     await clickRunOnceItIsEnabled(user);
+    const runWaitsOn = useGraphStore.getState().loadSignal;
 
     await user.click(
       screen.getByRole("button", { name: `Open ${BLANK_GRAPH_ID}` }),
+    );
+    await waitFor(() =>
+      expect(runWaitsOn.aborted, "the Run kept waiting").toBe(true),
     );
     backend.release();
     await waitFor(
@@ -635,9 +645,12 @@ describe("builder Run whose workflow never loads", () => {
     );
     await user.click(screen.getByRole("button", { name: `Open ${GRAPH_ID}` }));
     await waitFor(() => expect(canvas().nodes).toHaveLength(2), NETWORK_WAIT);
-    await waitForStrayRequests();
+    await clickRunOnceItIsEnabled(user);
+    await waitForTheRun();
 
-    expect(backend.executions, "the abandoned Run started").toEqual([]);
+    expect(backend.executions).toEqual([
+      { graphID: GRAPH_ID, graphVersion: 1 },
+    ]);
     expect(screen.queryByText("Error saving workflow")).toBeNull();
   });
 
@@ -720,5 +733,89 @@ describe("builder Run while the workflow it names is still loading", () => {
     ).toBeDefined();
     expect(backend.updates).toEqual([]);
     expect(backend.executions).toEqual([]);
+  });
+});
+
+describe("builder Run while the version it waits for changes", () => {
+  test("moving to another version while Run waits cancels the run, and that version runs on its own Run", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    saveVersion(SAVED_WORKFLOW);
+    const user = userEvent.setup();
+    hold("blocks");
+    renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
+    await waitFor(
+      () => expect(backend.requests.blocks).toBeGreaterThan(0),
+      NETWORK_WAIT,
+    );
+    await clickRunOnceItIsEnabled(user);
+    const runWaitsOn = useGraphStore.getState().loadSignal;
+
+    await user.click(
+      screen.getByRole("button", { name: `Open ${GRAPH_ID} v2` }),
+    );
+    await waitFor(() =>
+      expect(runWaitsOn.aborted, "the Run for version 1 kept waiting").toBe(
+        true,
+      ),
+    );
+    backend.release();
+    await waitFor(
+      () => expect(useGraphStore.getState().loadedGraph?.version).toBe(2),
+      NETWORK_WAIT,
+    );
+    await clickRunOnceItIsEnabled(user);
+    await waitForTheRun();
+
+    expect(backend.executions).toEqual([
+      { graphID: GRAPH_ID, graphVersion: 2 },
+    ]);
+  });
+
+  test("Run while a workflow opens from a URL without a version waits for it, and runs its latest version", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    saveVersion(SAVED_WORKFLOW);
+    const user = userEvent.setup();
+    hold("latest graph");
+    renderBuilder(`?flowID=${GRAPH_ID}`);
+
+    await clickRunOnceItIsEnabled(user);
+    backend.release();
+    await waitForTheRun();
+
+    expect(backend.updates, "running it saved a new version").toEqual([]);
+    expect(backend.executions).toEqual([
+      { graphID: GRAPH_ID, graphVersion: 2 },
+    ]);
+  });
+
+  test("a blocks request that succeeds when tried again clears the load error, and Run then runs", async () => {
+    saveVersion(SAVED_WORKFLOW);
+    let blockFailures = 1;
+    server.use(
+      http.get("/api/proxy/api/builder/blocks/batch", () =>
+        blockFailures-- > 0
+          ? HttpResponse.json(
+              { detail: "Blocks are unavailable" },
+              { status: 500 },
+            )
+          : HttpResponse.json([STORE_VALUE_BLOCK, AGENT_OUTPUT_BLOCK]),
+      ),
+    );
+    const user = userEvent.setup();
+    const { queryClient } = renderBuilder(`?flowID=${GRAPH_ID}&flowVersion=1`);
+    await waitFor(
+      () => expect(useGraphStore.getState().loadFailed).toBe(true),
+      NETWORK_WAIT,
+    );
+
+    await act(() => queryClient.refetchQueries({ type: "active" }));
+    await waitFor(() => expect(canvas().nodes).toHaveLength(2), NETWORK_WAIT);
+    expect(useGraphStore.getState().loadFailed).toBe(false);
+
+    await clickRunOnceItIsEnabled(user);
+    await waitForTheRun();
+    expect(backend.executions).toEqual([
+      { graphID: GRAPH_ID, graphVersion: 1 },
+    ]);
   });
 });

@@ -60,15 +60,9 @@ export const useFlow = () => {
   const setAvailableSubGraphs = useGraphStore(
     useShallow((state) => state.setAvailableSubGraphs),
   );
-  const setLoadedGraph = useGraphStore(
-    useShallow((state) => state.setLoadedGraph),
-  );
-  const setLoadSignal = useGraphStore(
-    useShallow((state) => state.setLoadSignal),
-  );
-  const setLoadFailed = useGraphStore(
-    useShallow((state) => state.setLoadFailed),
-  );
+  const setLoadedGraph = useGraphStore((state) => state.setLoadedGraph);
+  const requestLoad = useGraphStore((state) => state.requestLoad);
+  const setLoadFailed = useGraphStore((state) => state.setLoadFailed);
   const { screenToFlowPosition, fitView } = useReactFlow();
   const addBlock = useNodeStore(useShallow((state) => state.addBlock));
   const setBlockMenuOpen = useControlPanelStore(
@@ -190,6 +184,13 @@ export const useFlow = () => {
     }
   }, [availableGraphs, setAvailableSubGraphs]);
 
+  // A save waiting for the canvas gives up when the builder moves to another
+  // workflow or version, or closes (the reset below). Runs before the fill so
+  // the loaded graph is recorded against the current request.
+  useEffect(() => {
+    requestLoad(flowID, flowVersion);
+  }, [flowID, flowVersion, requestLoad]);
+
   // Nodes and links are replaced together, once the graph's block info is in,
   // so the canvas never pairs one graph's links with another's nodes.
   useEffect(() => {
@@ -213,18 +214,10 @@ export const useFlow = () => {
       useEdgeStore.getState().setEdges([]);
       useHistoryStore.getState().initializeHistory();
     }
-    setLoadedGraph(graph, flowVersion);
-  }, [graph, customNodes, flowVersion, setLoadedGraph]);
+    setLoadedGraph(graph);
+  }, [graph, customNodes, setLoadedGraph]);
 
-  // A save waiting for this workflow to load gives up when the builder moves to
-  // another workflow or closes, and fails at once if the workflow or its
-  // blocks can't load.
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoadSignal(controller.signal);
-    return () => controller.abort();
-  }, [flowID, setLoadSignal]);
-
+  // A save waiting for the canvas fails at once if it can't load.
   useEffect(() => {
     setLoadFailed(isGraphError || isBlocksError);
   }, [isGraphError, isBlocksError, setLoadFailed]);

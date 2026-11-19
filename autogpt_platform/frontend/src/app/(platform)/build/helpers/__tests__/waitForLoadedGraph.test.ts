@@ -8,6 +8,12 @@ const graph = getGetV1GetSpecificGraphResponseMock200({
   version: 2,
 });
 
+// What useFlow does as the builder loads a URL and then fills the canvas.
+function loadCanvas(version: number | null, loaded = graph) {
+  useGraphStore.getState().requestLoad("graph-1", version);
+  useGraphStore.getState().setLoadedGraph(loaded);
+}
+
 afterEach(() => {
   vi.useRealTimers();
   useGraphStore.getState().reset();
@@ -16,7 +22,7 @@ afterEach(() => {
 describe("waitForLoadedGraph", () => {
   test("resolves at once when the canvas already shows the graph", async () => {
     vi.useFakeTimers();
-    useGraphStore.getState().setLoadedGraph(graph, 2);
+    loadCanvas(2);
 
     const loaded = waitForLoadedGraph("graph-1", 2);
     await vi.advanceTimersByTimeAsync(30_000);
@@ -25,24 +31,34 @@ describe("waitForLoadedGraph", () => {
   });
 
   test("waits for the canvas to show that version of the graph", async () => {
-    useGraphStore.getState().setLoadedGraph({ ...graph, version: 1 }, 1);
+    loadCanvas(2, { ...graph, version: 1 });
 
     const loaded = waitForLoadedGraph("graph-1", 2);
-    useGraphStore.getState().setLoadedGraph(graph, 2);
+    useGraphStore.getState().setLoadedGraph(graph);
 
     await expect(loaded).resolves.toBe(graph);
   });
 
   test("with no version asked for, waits for a load made for the latest version", async () => {
-    useGraphStore.getState().setLoadedGraph({ ...graph, version: 1 }, 1);
+    loadCanvas(1, { ...graph, version: 1 });
+    useGraphStore.getState().requestLoad("graph-1", null);
 
     const loaded = waitForLoadedGraph("graph-1", null);
-    useGraphStore.getState().setLoadedGraph(graph, null);
+    useGraphStore.getState().setLoadedGraph(graph);
 
     await expect(loaded).resolves.toBe(graph);
   });
 
-  test("fails at once when the canvas can't load the workflow's blocks", async () => {
+  test("still counts a load as the latest once the URL is given its version", async () => {
+    useGraphStore.getState().requestLoad("graph-1", null);
+    const loaded = waitForLoadedGraph("graph-1", null);
+
+    loadCanvas(2);
+
+    await expect(loaded).resolves.toBe(graph);
+  });
+
+  test("fails at once when the canvas can't load the workflow", async () => {
     vi.useFakeTimers();
     const loaded = waitForLoadedGraph("graph-1", 2);
     useGraphStore.getState().setLoadFailed(true);
@@ -52,25 +68,29 @@ describe("waitForLoadedGraph", () => {
     );
   });
 
-  test("is cancelled when the builder leaves the workflow before it loads", async () => {
-    const controller = new AbortController();
-    useGraphStore.getState().setLoadSignal(controller.signal);
+  test("is cancelled when the builder moves to another workflow or version first", async () => {
+    useGraphStore.getState().requestLoad("graph-1", 1);
+    const otherWorkflow = waitForLoadedGraph("graph-1", 1);
+    useGraphStore.getState().requestLoad("graph-2", 1);
 
-    const loaded = waitForLoadedGraph("graph-1", 2);
-    controller.abort();
+    useGraphStore.getState().requestLoad("graph-1", 1);
+    const otherVersion = waitForLoadedGraph("graph-1", 1);
+    useGraphStore.getState().requestLoad("graph-1", 2);
 
-    expect(isSaveCancelled(await loaded.catch((error) => error))).toBe(true);
+    expect(isSaveCancelled(await otherWorkflow.catch((e) => e))).toBe(true);
+    expect(isSaveCancelled(await otherVersion.catch((e) => e))).toBe(true);
   });
 
-  test("isn't cancelled by a builder that closed before it started", async () => {
-    const closedBuilder = new AbortController();
-    useGraphStore.getState().setLoadSignal(closedBuilder.signal);
-    closedBuilder.abort();
+  test("is cancelled when the builder closes, without touching the next builder's", async () => {
+    useGraphStore.getState().requestLoad("graph-1", 2);
+    const beforeClosing = waitForLoadedGraph("graph-1", 2);
     useGraphStore.getState().reset();
 
-    const loaded = waitForLoadedGraph("graph-1", 2);
-    useGraphStore.getState().setLoadedGraph(graph, 2);
+    useGraphStore.getState().requestLoad("graph-1", 2);
+    const afterReopening = waitForLoadedGraph("graph-1", 2);
+    useGraphStore.getState().setLoadedGraph(graph);
 
-    await expect(loaded).resolves.toBe(graph);
+    expect(isSaveCancelled(await beforeClosing.catch((e) => e))).toBe(true);
+    await expect(afterReopening).resolves.toBe(graph);
   });
 });

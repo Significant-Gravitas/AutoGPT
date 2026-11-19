@@ -3,6 +3,28 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { GraphMeta } from "@/app/api/__generated__/models/graphMeta";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 
+// The workflow and version the builder is loading. `forLatest` when the URL
+// asked for no version; the version it is then given keeps the request.
+type LoadRequest = {
+  graphID: string | null;
+  version: number | null;
+  forLatest: boolean;
+};
+
+const NO_LOAD_REQUEST: LoadRequest = {
+  graphID: null,
+  version: null,
+  forLatest: true,
+};
+
+let loadController = new AbortController();
+
+function renewLoadSignal() {
+  loadController.abort();
+  loadController = new AbortController();
+  return loadController.signal;
+}
+
 interface GraphStore {
   graphExecutionStatus: AgentExecutionStatus | undefined;
   isGraphRunning: boolean;
@@ -23,17 +45,19 @@ interface GraphStore {
   availableSubGraphs: GraphMeta[];
   setAvailableSubGraphs: (graphs: GraphMeta[]) => void;
 
+  // Only useFlow writes the load fields below.
   // The saved graph the canvas was last loaded from, which a save of a saved
   // workflow becomes a new version of, and the version the URL asked for then
   // (null for the latest).
   loadedGraph: GraphModel | null;
   loadedForVersion: number | null;
-  setLoadedGraph: (graph: GraphModel | null, forVersion: number | null) => void;
-  // Aborted when the builder moves to another workflow or closes, so a save
-  // waiting for the canvas to load gives up.
+  setLoadedGraph: (graph: GraphModel | null) => void;
+  loadRequest: LoadRequest;
+  requestLoad: (graphID: string | null, version: number | null) => void;
+  // Aborted when the builder moves to another workflow or version, or closes,
+  // so a save waiting for the canvas to load gives up.
   loadSignal: AbortSignal;
-  setLoadSignal: (signal: AbortSignal) => void;
-  // The canvas can't load the workflow's blocks.
+  // The canvas can't load the workflow or its blocks.
   loadFailed: boolean;
   setLoadFailed: (failed: boolean) => void;
 
@@ -52,7 +76,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   availableSubGraphs: [],
   loadedGraph: null,
   loadedForVersion: null,
-  loadSignal: new AbortController().signal,
+  loadRequest: NO_LOAD_REQUEST,
+  loadSignal: loadController.signal,
   loadFailed: false,
 
   setGraphExecutionStatus: (status: AgentExecutionStatus | undefined) => {
@@ -73,10 +98,28 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   setAvailableSubGraphs: (graphs) => set({ availableSubGraphs: graphs }),
 
-  setLoadedGraph: (graph, forVersion) =>
-    set({ loadedGraph: graph, loadedForVersion: forVersion }),
+  setLoadedGraph: (graph) =>
+    set(({ loadRequest }) => ({
+      loadedGraph: graph,
+      loadedForVersion: loadRequest.forLatest ? null : loadRequest.version,
+    })),
 
-  setLoadSignal: (signal) => set({ loadSignal: signal }),
+  requestLoad: (graphID, version) => {
+    const request = get().loadRequest;
+    if (request.graphID === graphID && request.version === version) return;
+    if (
+      request.graphID === graphID &&
+      request.version === null &&
+      version !== null
+    ) {
+      set({ loadRequest: { ...request, version } });
+      return;
+    }
+    set({
+      loadRequest: { graphID, version, forLatest: version === null },
+      loadSignal: renewLoadSignal(),
+    });
+  },
 
   setLoadFailed: (failed) => set({ loadFailed: failed }),
 
@@ -103,7 +146,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       credentialsInputSchema: null,
       loadedGraph: null,
       loadedForVersion: null,
-      loadSignal: new AbortController().signal,
+      loadRequest: NO_LOAD_REQUEST,
+      loadSignal: renewLoadSignal(),
       loadFailed: false,
     }),
 }));
