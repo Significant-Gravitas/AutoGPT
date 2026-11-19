@@ -17,7 +17,7 @@ import { createUsageCapturingFetch } from "../tokenDevtool/usageTap";
 import { fetchSse, type SseFrame } from "./sseClient";
 import { TextReveal } from "./textReveal";
 import { applyEntry, type StreamEntry, type WireChunk } from "./turnConverter";
-import { appendErrorMarker, seedTurnLog } from "./turnLog";
+import { appendErrorMarker, seedTurnLog, type PersistedRow } from "./turnLog";
 import { diffRows, formatDiffs, sha256Hex } from "./turnShadow";
 import {
   checkpointOf,
@@ -31,6 +31,7 @@ import {
   locatePrompt,
   mergeRows,
   newTurnSegment,
+  persistedPromptId,
   persistedRows,
   promptFloor,
   lastReplySequence,
@@ -44,6 +45,7 @@ import {
   type Segment,
   type TurnCheckpoint,
   type TurnSegment,
+  type UserSegment,
 } from "./turnTail";
 
 /** No byte for this long means the connection is dead: the route and the
@@ -111,6 +113,7 @@ export interface RuntimeSnapshot {
 }
 
 export interface SessionView {
+  user_id?: string | null;
   messages?: readonly unknown[] | null;
   has_more_messages?: boolean;
   chat_status?: string | null;
@@ -206,8 +209,12 @@ export class TurnRuntime {
   private recovering = false;
   // A send whose stream ended before naming its turn, while hidden or offline.
   private unresolvedPost: { lost: Lost; end: ConnectionEnd } | null = null;
+  // A lost send, with no row yet, that another's turn may hold queued.
+  private sendBehindTurn: { lost: Lost; end: ConnectionEnd } | null = null;
   private providerFailure: unknown = null;
   private lastViewMaxSequence: number | null = null;
+  // The session's owner, as its views name them.
+  private userId: string | null = null;
   private turns = new Map<string, TurnBookkeeping>();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -287,10 +294,10 @@ export class TurnRuntime {
     this.error = null;
     this.providerFailure = null;
     const message = userMessage(`local:${uuidv4({})}`, input);
-    this.claimTail(this.nextSequence());
-    this.segments.push(userSegment(message, "sent"));
-    this.emitNow();
     const body = streamRequestBody(this.sessionId, message, model);
+    this.claimTail(this.nextSequence());
+    this.segments.push(userSegment(message, "sent", this.rowIdOf(body)));
+    this.emitNow();
     await this.open("post", null, this.streamUrl(), {
       method: "POST",
       body: JSON.stringify(body),
@@ -352,6 +359,7 @@ export class TurnRuntime {
    * of a running turn the server no longer runs.
    */
   observe(view: SessionView) {
+    this.userId ??= view.user_id ?? null;
     const rows = persistedRows(view.messages);
     const last = rows[rows.length - 1]?.sequence;
     if (typeof last === "number") this.lastViewMaxSequence = last;
@@ -370,7 +378,11 @@ export class TurnRuntime {
     if (running && active?.turn_id !== running.log.turnId && !running.frozen) {
       this.ensureConnected();
     }
-    if (!running && !this.isPostPending() && !active) this.settleTail(view);
+    if (!running && !this.isPostPending() && !active) {
+      this.settleTail(view);
+      // Not while a probe still looks for the turn that follows.
+      if (this.probes === 0) this.decideSendBehindTurn();
+    }
     this.followQueue(view);
     this.emitNow();
   }
@@ -516,14 +528,24 @@ export class TurnRuntime {
 
   // The token action answers "no token" for a sign-out and for a failed lookup
   // alike, so a connection asks once more before it counts as signed out.
-  private async authHeaders(conn: Connection) {
+  private async authHeaders(conn: Connection | null) {
     try {
       return await this.deps.headers();
     } catch (error) {
       if (!(error instanceof CopilotAuthError)) throw error;
       await sleep(TOKEN_RETRY_MS);
-      if (conn.controller.signal.aborted) throw error;
+      if (conn?.controller.signal.aborted) throw error;
       return this.deps.headers();
+    }
+  }
+
+  // A session read fails alike signed out and offline; the token tells them apart.
+  private async signedOut() {
+    try {
+      await this.authHeaders(null);
+      return false;
+    } catch (error) {
+      return error instanceof CopilotAuthError;
     }
   }
 
@@ -774,6 +796,7 @@ export class TurnRuntime {
     this.abortConnections();
     this.clearRetry();
     this.unresolvedPost = null;
+    this.sendBehindTurn = null;
     if (running) {
       this.updateTurn(running.key, (seg) => ({
         ...seg,
@@ -807,12 +830,15 @@ export class TurnRuntime {
     for (let i = 0; i < CONTINUATION_PROBES; i++) {
       const view = await this.fetchView();
       if (!view) {
-        this.retry(lost, end);
+        if (await this.signedOut()) this.giveUp(new CopilotAuthError());
+        else this.retry(lost, end);
         return;
       }
       const attaching = this.wouldAttach(view);
       this.observe(view);
       if (attaching) {
+        // Another's turn may hold the send queued until it ends.
+        if (this.sendInDoubt(lost, end)) this.sendBehindTurn = { lost, end };
         this.resetFailures();
         return;
       }
@@ -827,10 +853,7 @@ export class TurnRuntime {
       await sleep(FINISH_PROBE_MS);
     }
     this.resetFailures();
-    if (
-      !this.lostSendLanded(lost.prompt) &&
-      (end.kind === "failed" || lost.syntheticError)
-    ) {
+    if (this.sendInDoubt(lost, end)) {
       this.error =
         end.kind === "failed" && end.error instanceof Error
           ? end.error
@@ -839,7 +862,17 @@ export class TurnRuntime {
     this.emitNow();
   }
 
-  // The send arrived: its prompt took a row, or the turn after it is followed.
+  // Its stream failed or said so, and nothing shows it arrived.
+  private sendInDoubt(lost: Lost, end: ConnectionEnd) {
+    return (
+      (end.kind === "failed" || !!lost.syntheticError) &&
+      !this.lostSendLanded(lost.prompt)
+    );
+  }
+
+  // The send arrived: its prompt took its row, or the turn after it is
+  // followed. A prompt the session has no row for never stays above a turn
+  // this tab attached to, so that turn is its own.
   private lostSendLanded(promptKey: string | null) {
     const index = this.segments.findIndex((s) => s.key === promptKey);
     const prompt = this.segments[index];
@@ -849,6 +882,15 @@ export class TurnRuntime {
     );
   }
 
+  // With nothing running, the session shows whether a send that another's
+  // turn may have held queued arrived.
+  private decideSendBehindTurn() {
+    const behind = this.sendBehindTurn;
+    if (!behind || this.disposed) return;
+    this.sendBehindTurn = null;
+    void this.recoverUnknownTurn(behind.lost, behind.end);
+  }
+
   // ── The turn's lifecycle ───────────────────────────────────────────────
 
   private attach(
@@ -856,6 +898,8 @@ export class TurnRuntime {
     view: SessionView,
   ) {
     const rows = persistedRows(view.messages);
+    // A prompt the session has no row for is not this turn's.
+    const unwritten = this.takeUnwrittenPrompts(rows);
     const checkpoint = active.checkpoint ?? null;
     const start = checkpoint
       ? checkpoint.sequence
@@ -871,6 +915,7 @@ export class TurnRuntime {
       start,
     );
     this.segments.push(seg);
+    this.putBack(unwritten);
     this.error = null;
     this.resume(seg);
   }
@@ -1156,10 +1201,12 @@ export class TurnRuntime {
 
   // With nothing running, a prompt whose turn never reached this client (a
   // stop before its first entry, a lost send) takes its row, and rows after
-  // the tail's end are shown as persisted.
+  // the tail's end are shown as persisted, above any prompt still without one.
   private settleTail(view: SessionView) {
     const rows = persistedRows(view.messages);
+    const unwritten = this.takeUnwrittenPrompts(rows);
     const last = this.segments[this.segments.length - 1];
+    let placed = true;
     if (
       last?.kind === "user" &&
       last.origin === "sent" &&
@@ -1171,14 +1218,53 @@ export class TurnRuntime {
         this.ownedFrom,
       );
       const row = locatePrompt(last, rows, floor);
-      if (!row) return;
-      this.segments[this.segments.length - 1] = withPromptRow(last, row);
+      if (row)
+        this.segments[this.segments.length - 1] = withPromptRow(last, row);
+      else placed = false;
     }
     const gap =
-      this.ownedFrom === null
+      this.ownedFrom === null || !placed
         ? null
         : gapSegment(this.segments, Infinity, rows);
     if (gap) this.segments.push(gap);
+    this.putBack(unwritten);
+  }
+
+  /**
+   * The prompts at the tail's end the session holds no row for: a send that
+   * never arrived, or has not been written yet. They leave the tail while
+   * the rows the session wrote meanwhile are placed, then go back after them.
+   */
+  private takeUnwrittenPrompts(rows: readonly PersistedRow[]) {
+    const taken: UserSegment[] = [];
+    for (;;) {
+      const last = this.segments[this.segments.length - 1];
+      if (
+        last?.kind !== "user" ||
+        last.origin !== "sent" ||
+        last.sequence !== null ||
+        !last.persistedId ||
+        locatePrompt(last, rows, null)
+      )
+        break;
+      taken.unshift(last);
+      this.segments.pop();
+    }
+    if (taken.length && this.segments.length === 0) this.ownedFrom = null;
+    return taken;
+  }
+
+  private putBack(prompts: readonly UserSegment[]) {
+    if (prompts.length === 0) return;
+    this.claimTail(this.nextSequence());
+    this.segments.push(...prompts);
+  }
+
+  // The backend keys a send's row on the session's user and the send's
+  // `message_id`; a kickoff's row takes the expert's id instead.
+  private rowIdOf(body: { message_id: string; expert_kickoff: boolean }) {
+    if (!this.userId || body.expert_kickoff) return null;
+    return persistedPromptId(this.userId, this.sessionId, body.message_id);
   }
 
   private claimTail(from: number) {
@@ -1318,7 +1404,12 @@ export class TurnRuntime {
     slot.closedByClient = true;
     slot.controller.abort();
     this.slot = null;
-    if (slot.turnId === null) this.findLostTurn(slot, { kind: "closed" });
+    // A send that went silent before naming its turn may never have arrived.
+    if (slot.turnId === null)
+      this.findLostTurn(slot, {
+        kind: "failed",
+        error: new UnconfirmedSendError(),
+      });
     else this.retry(slot);
     return true;
   }
@@ -1632,6 +1723,14 @@ export class MessageTooLongError extends SendRefusedError {
   constructor(message: string, status: number) {
     super(message, status);
     this.name = "MessageTooLongError";
+  }
+}
+
+/** A send whose connection went silent, and that the session has no row for. */
+export class UnconfirmedSendError extends Error {
+  constructor() {
+    super("The connection stalled before the server confirmed your message.");
+    this.name = "UnconfirmedSendError";
   }
 }
 

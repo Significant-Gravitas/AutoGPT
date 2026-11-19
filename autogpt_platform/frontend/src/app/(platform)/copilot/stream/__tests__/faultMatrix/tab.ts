@@ -53,8 +53,8 @@ export class Tab {
     this.runtime.observe(this.lastView);
   }
 
-  send(text: string) {
-    void this.runtime.send({ text }, undefined);
+  send(text: string, metadata?: unknown) {
+    void this.runtime.send({ text, metadata }, undefined);
   }
 
   screen(): Screen {

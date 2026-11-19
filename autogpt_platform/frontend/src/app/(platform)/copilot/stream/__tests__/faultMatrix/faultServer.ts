@@ -1,8 +1,13 @@
+import { v5 as uuidv5 } from "uuid";
+
 import { compareEntryIds } from "../../turnConverter";
 import type { PersistedRow } from "../../turnLog";
 import type { SessionView } from "../../turnRuntime";
 import { loadRecordedTurn } from "../recordedTurns";
 
+export const USER_ID = "user-1";
+// `_CLIENT_MESSAGE_NAMESPACE` in backend/copilot/expert_kickoff.py.
+const CLIENT_MESSAGE_NAMESPACE = "d70473da-722b-55cb-963f-4729e64d7b06";
 const FIXTURE = loadRecordedTurn("baseline-tool-turn");
 const HEARTBEAT_MS = 10_000;
 const LISTENER_READ_MS = 5_000;
@@ -21,6 +26,8 @@ type Row = PersistedRow & { id: string };
 export type PostMode =
   | "stream"
   | "lost-before-send"
+  // The request never reaches the server and never answers, as a dead socket holds it.
+  | "hang-before-send"
   | "lost-after-receive"
   // The server started the turn; the response stays open and silent, as a frozen page sees it.
   | "silent-after-receive"
@@ -71,7 +78,7 @@ export class FaultServer {
   /** The user is at the running cap: the next send is queued. */
   queueing = false;
   viewReads = 0;
-  private pending: string[] = [];
+  private pending: { text: string; id: string }[] = [];
   private pumps = new Set<() => void>();
 
   fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -90,6 +97,7 @@ export class FaultServer {
     }
     const turn = this.current();
     return {
+      user_id: USER_ID,
       messages: this.history.map((row) => ({ ...row })),
       has_more_messages: false,
       active_stream:
@@ -105,8 +113,15 @@ export class FaultServer {
     };
   }
 
-  /** Persist a prompt and register its turn, as `schedule_chat_turn` does. */
-  startTurn(text: string, state: FaultTurn["state"] = "running") {
+  /**
+   * Persist a prompt and register its turn, as `schedule_chat_turn` does. A
+   * send's prompt row takes the id the backend scopes from its `message_id`.
+   */
+  startTurn(
+    text: string,
+    state: FaultTurn["state"] = "running",
+    promptId: string | null = null,
+  ) {
     const id = `turn-${this.turns.length + 1}`;
     const promptSequence = this.history.length;
     const turn: FaultTurn = {
@@ -128,7 +143,7 @@ export class FaultServer {
     this.turns.push(turn);
     this.history.push({
       ...FIXTURE.rows[0],
-      id: `row-${promptSequence}`,
+      id: promptId ?? `row-${promptSequence}`,
       content: text,
       sequence: promptSequence,
     });
@@ -146,8 +161,13 @@ export class FaultServer {
     this.history.push(...turn.rows.slice(before, persistedRows(turn)));
     if (turn.published === turn.frames.length) {
       turn.state = "ended";
-      if (this.pending.length)
-        this.startTurn(this.pending.splice(0).join("\n"));
+      const drained = this.pending.splice(0);
+      if (drained.length)
+        this.startTurn(
+          drained.map((p) => p.text).join("\n"),
+          "running",
+          drained[0].id,
+        );
     }
     this.pumps.forEach((pump) => pump());
   }
@@ -172,15 +192,29 @@ export class FaultServer {
     const mode =
       typeof this.postMode === "function" ? this.postMode() : this.postMode;
     if (mode === "lost-before-send") throw new TypeError("Failed to fetch");
+    if (mode === "hang-before-send") return hangUntilAborted(init?.signal);
     if (typeof mode === "object") return refusal(mode.status, mode.body);
-    const { message } = JSON.parse(String(init?.body)) as { message: string };
+    const body = JSON.parse(String(init?.body)) as {
+      message: string;
+      message_id: string;
+      expert_kickoff: boolean;
+    };
+    // `expert_kickoff_message_id`: a kickoff's row is keyed on its expert.
+    const id = body.expert_kickoff
+      ? "expert-kickoff-row"
+      : scopedMessageId(url, body.message_id);
     if (this.running()) {
-      this.pending.push(message);
+      this.pending.push({ text: body.message, id });
+      if (mode === "lost-after-receive") throw new TypeError("Failed to fetch");
       return sse(FOLLOW_UP_STREAM);
     }
-    const turn = this.startTurn(message, this.queueing ? "queued" : "running");
-    if (turn.state === "queued") return sse(QUEUED_STREAM);
+    const turn = this.startTurn(
+      body.message,
+      this.queueing ? "queued" : "running",
+      id,
+    );
     if (mode === "lost-after-receive") throw new TypeError("Failed to fetch");
+    if (turn.state === "queued") return sse(QUEUED_STREAM);
     if (mode === "route-error-after-receive")
       return sse(
         [
@@ -304,6 +338,21 @@ export class FaultServer {
     }
     return null;
   }
+}
+
+// `scoped_client_message_id`: the backend keys a send's row on its user,
+// session and client `message_id`.
+function scopedMessageId(url: URL, clientId: string) {
+  const session = url.pathname.split("/").at(-2);
+  return uuidv5(`${USER_ID}:${session}:${clientId}`, CLIENT_MESSAGE_NAMESPACE);
+}
+
+function hangUntilAborted(signal: AbortSignal | null | undefined) {
+  return new Promise<Response>((_, reject) => {
+    signal?.addEventListener("abort", () =>
+      reject(new DOMException("The operation was aborted.", "AbortError")),
+    );
+  });
 }
 
 // A checkpoint names how many of the turn's rows are persisted; the finish, all of them.
