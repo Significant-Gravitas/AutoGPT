@@ -101,7 +101,10 @@ _NOT_NOW = (TimeoutError, RedisTimeoutError, MaxConnectionsError)
 # concurrently, up to this many at once per function and event loop (per
 # process for the API servers, which run one loop), so a flood of distinct
 # keys, such as public store searches, can't flood the database behind them.
-# ``cached(max_concurrent_misses=...)`` overrides it.
+# ``cached(max_concurrent_misses=...)`` overrides it. A miss holds its turn
+# while the function runs, so a cached coroutine must not call itself: each
+# nested miss waits for a turn, and at this depth none is left (dev's lock
+# deadlocked at depth 1). Nothing in the backend does.
 MAX_CONCURRENT_MISSES = 8
 
 
@@ -138,6 +141,9 @@ class _InFlight:
                 caller = asyncio.current_task()
                 # Only the computation was cancelled, not this caller too.
                 if flight.cancelled() and not (caller and caller.cancelling()):
+                    # Yields before looking again, so a flight that is never
+                    # replaced can't spin the loop past every bound.
+                    await asyncio.sleep(0)
                     continue
                 raise
             return copy()

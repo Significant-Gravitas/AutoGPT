@@ -44,6 +44,7 @@ from backend.util.cache import (
 from backend.util.cache_test_helpers import (
     cache_key,
     callers_in_flight,
+    forget_connections,
     hold_cache_read,
 )
 from backend.util.redis_client_guard import is_open
@@ -2178,8 +2179,9 @@ class TestSharedCacheOnAnEventLoop:
         assert retired() is None
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("turns_before_the_change", [0, 1])
     async def test_a_waiting_caller_gets_the_value_as_computed_whatever_its_caller_does(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, turns_before_the_change: int, monkeypatch: pytest.MonkeyPatch
     ):
         """The computing caller gets the value itself and may change it before
         a waiting caller runs. The waiting one still gets the value as it was
@@ -2197,6 +2199,8 @@ class TestSharedCacheOnAnEventLoop:
 
         async def caller_that_changes_its_value() -> dict[str, str]:
             value = await lookup(key)
+            for _ in range(turns_before_the_change):
+                await asyncio.sleep(0)
             value["answer"] = "changed by its caller"
             return value
 
@@ -2362,6 +2366,256 @@ class TestSharedCacheOnAnEventLoop:
             held.release()
             async with asyncio.timeout(_HANG_SECONDS):
                 await asyncio.gather(*callers, return_exceptions=True)
+
+    @pytest.mark.asyncio
+    async def test_a_waiting_caller_that_is_cancelled_leaves_the_computation_alone(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A waiting caller's cancellation reaches only that caller: the
+        computation it waited on finishes for the caller computing it."""
+        everyone_in = callers_in_flight(monkeypatch, 2)
+        finish = asyncio.Event()
+        calls = 0
+
+        @cached(ttl_seconds=30)
+        async def lookup(key: str) -> str:
+            nonlocal calls
+            calls += 1
+            await finish.wait()
+            return key
+
+        key = _unique("waiter-cancelled")
+        callers = [asyncio.create_task(lookup(key)) for _ in range(2)]
+        try:
+            async with asyncio.timeout(_HANG_SECONDS):
+                await everyone_in.wait()
+                callers[1].cancel()
+                # Lets the cancellation reach the waiting caller first.
+                await asyncio.sleep(0)
+                await asyncio.sleep(0)
+                finish.set()
+                results = await asyncio.gather(*callers, return_exceptions=True)
+        finally:
+            finish.set()
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.gather(*callers, return_exceptions=True)
+        assert results[0] == key
+        assert isinstance(results[1], asyncio.CancelledError)
+        assert calls == 1
+
+    @pytest.mark.asyncio
+    async def test_an_error_no_caller_waited_for_is_not_reported_as_unretrieved(self):
+        """A failed computation's error is marked retrieved, so asyncio doesn't
+        log "Future exception was never retrieved" (a Sentry event) for each
+        failing call nobody waited on."""
+        reported: list[str] = []
+        loop = asyncio.get_running_loop()
+        handler = loop.get_exception_handler()
+        loop.set_exception_handler(
+            lambda _loop, context: reported.append(context["message"])
+        )
+
+        @cached(ttl_seconds=30)
+        async def failing(key: str) -> str:
+            raise ValueError(key)
+
+        try:
+            for _ in range(3):
+                with pytest.raises(ValueError):
+                    await failing(_unique("alone"))
+            for _ in range(3):
+                gc.collect()
+                await asyncio.sleep(0)
+        finally:
+            loop.set_exception_handler(handler)
+        assert reported == []
+
+    @pytest.mark.asyncio
+    async def test_a_value_stored_meanwhile_is_returned_instead_of_computed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Between a miss and its computation, another process may store the
+        value: the computation's own read of Redis finds it, and the function
+        isn't called."""
+        calls = 0
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def lookup(key: str) -> str:
+            nonlocal calls
+            calls += 1
+            return "computed here"
+
+        key = _unique("meanwhile")
+        redis_key = cache_key("lookup", key=key)
+        execute = async_cluster.RedisCluster.execute_command
+        stored = False
+
+        async def stored_elsewhere_after_the_miss(self, *args, **kwargs):
+            nonlocal stored
+            result = await execute(self, *args, **kwargs)
+            if not stored and args[:2] == ("GET", redis_key):
+                stored = True
+                payload = cache_module._sign_payload(pickle.dumps("stored elsewhere"))
+                await execute(self, "SET", redis_key, payload, "EX", 30)
+            return result
+
+        monkeypatch.setattr(
+            async_cluster.RedisCluster,
+            "execute_command",
+            stored_elsewhere_after_the_miss,
+        )
+        assert await lookup(key) == "stored elsewhere"
+        assert calls == 0
+
+    @pytest.mark.asyncio
+    async def test_a_value_that_cannot_be_pickled_is_shared_with_waiting_callers(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        everyone_in = callers_in_flight(monkeypatch, 2)
+        finish = asyncio.Event()
+        calls = 0
+
+        class Handle:
+            def __init__(self) -> None:
+                self.callback = lambda: None  # A lambda doesn't pickle.
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def lookup(key: str) -> Handle:
+            nonlocal calls
+            calls += 1
+            await finish.wait()
+            return Handle()
+
+        key = _unique("unpicklable")
+        callers = [asyncio.create_task(lookup(key)) for _ in range(2)]
+        try:
+            async with asyncio.timeout(_HANG_SECONDS):
+                await everyone_in.wait()
+                finish.set()
+                first, second = await asyncio.gather(*callers)
+        finally:
+            finish.set()
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.gather(*callers, return_exceptions=True)
+        assert isinstance(first, Handle) and isinstance(second, Handle)
+        assert calls == 1
+
+    @pytest.mark.asyncio
+    async def test_an_error_closing_the_client_does_not_keep_its_loop_open(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ):
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def lookup(key: str) -> str:
+            return key
+
+        real_close = cache_redis._close
+
+        async def closes_then_fails(client: Any) -> None:
+            await real_close(client)
+            raise RuntimeError("close failed")
+
+        def read_then_close_a_loop() -> bool:
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(lookup(_unique("close-fails")))
+                monkeypatch.setattr(cache_redis, "_close", closes_then_fails)
+                loop.close()
+                return loop.is_closed()
+            finally:
+                monkeypatch.setattr(cache_redis, "_close", real_close)
+                if not loop.is_closed():
+                    loop.close()
+
+        with caplog.at_level(logging.WARNING, logger=cache_redis.logger.name):
+            assert await asyncio.to_thread(read_then_close_a_loop)
+        assert "Could not close the cache's Redis client" in caplog.text
+
+    @pytest.mark.asyncio
+    @_ON_EVERY_KIND_OF_LOOP
+    async def test_a_loop_closes_even_when_closing_its_client_is_interrupted(
+        self, new_loop: NewLoop, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A ``KeyboardInterrupt``, or any other ``BaseException``, while the
+        client closes still lets the loop close."""
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def lookup(key: str) -> str:
+            return key
+
+        created: list[async_cluster.RedisCluster] = []
+        new_client = cache_redis._new_async_redis
+
+        def remember_new_client() -> async_cluster.RedisCluster:
+            created.append(new_client())
+            return created[-1]
+
+        monkeypatch.setattr(cache_redis, "_new_async_redis", remember_new_client)
+
+        async def interrupted(client: Any) -> None:
+            raise KeyboardInterrupt
+
+        def read_then_close_a_loop() -> bool:
+            loop = new_loop()
+            loop.run_until_complete(lookup(_unique("interrupted")))
+            monkeypatch.setattr(cache_redis, "_close", interrupted)
+            with pytest.raises(KeyboardInterrupt):
+                loop.close()
+            return loop.is_closed()
+
+        try:
+            assert await asyncio.to_thread(read_then_close_a_loop)
+        finally:
+            # Its client was never closed, so its connections are forgotten.
+            for client in created:
+                await asyncio.to_thread(forget_connections, client)
+
+    @pytest.mark.asyncio
+    async def test_closing_a_loop_gives_up_on_a_node_that_will_not_disconnect(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The close runs on every loop close in the process, so a node that
+        won't disconnect is given up on within the bound."""
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def lookup(key: str) -> str:
+            return key
+
+        created: list[async_cluster.RedisCluster] = []
+        new_client = cache_redis._new_async_redis
+
+        def remember_new_client() -> async_cluster.RedisCluster:
+            created.append(new_client())
+            return created[-1]
+
+        monkeypatch.setattr(cache_redis, "_new_async_redis", remember_new_client)
+        disconnect = async_cluster.ClusterNode.disconnect
+        stuck = threading.Event()
+
+        async def will_not_disconnect(self, *args, **kwargs):
+            stuck.set()
+            await asyncio.sleep(3 * _HANG_SECONDS)
+            return await disconnect(self, *args, **kwargs)
+
+        def read_on_a_new_loop() -> asyncio.AbstractEventLoop:
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(lookup(_unique("stuck")))
+            return loop
+
+        loop = await asyncio.to_thread(read_on_a_new_loop)
+        monkeypatch.setattr(cache_redis, "REDIS_OP_TIMEOUT_S", 0.05)
+        monkeypatch.setattr(
+            async_cluster.ClusterNode, "disconnect", will_not_disconnect
+        )
+        closing = threading.Thread(target=loop.close, daemon=True)
+        closing.start()
+        await asyncio.to_thread(closing.join, _HANG_SECONDS)
+        finished = not closing.is_alive()
+        monkeypatch.setattr(async_cluster.ClusterNode, "disconnect", disconnect)
+        await asyncio.to_thread(closing.join, 4 * _HANG_SECONDS)
+        # The node never disconnected, so its connections are forgotten.
+        for client in created:
+            await asyncio.to_thread(forget_connections, client)
+        assert finished and stuck.is_set()
 
 
 class TestSharedCacheFollowsAShardsRedirect:

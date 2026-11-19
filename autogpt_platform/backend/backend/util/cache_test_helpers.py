@@ -118,3 +118,22 @@ def callers_in_flight(monkeypatch: pytest.MonkeyPatch, expected: int) -> asyncio
 
     monkeypatch.setattr(cache_module._InFlight, "run", counted_run)
     return everyone_in
+
+
+def forget_connections(client: Any) -> None:
+    """Close what's left of an async cluster client whose loop has closed, on
+    a loop of its own. Each connection's transport belongs to the closed
+    loop, so closing one raises, and redis-py forgets it all the same."""
+    loop = asyncio.new_event_loop()
+    try:
+        for close in (
+            client.aclose,
+            client.nodes_manager.aclose,
+            lambda: client.nodes_manager.aclose("startup_nodes"),
+        ):
+            try:
+                loop.run_until_complete(close())
+            except Exception:
+                pass
+    finally:
+        loop.close()

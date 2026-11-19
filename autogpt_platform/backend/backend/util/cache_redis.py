@@ -93,14 +93,19 @@ def _close_with(loop: asyncio.AbstractEventLoop, client: AsyncRedisCluster) -> N
             return
         if vars(loop).get("close") is close:
             delattr(loop, "close")
-        if getattr(loop, _LOOP_ATTR, None) is client:
-            delattr(loop, _LOOP_ATTR)
-            if not loop.is_closed():
-                try:
-                    _run_to_completion(loop, _close(client))
-                except Exception as e:
-                    logger.warning(f"Could not close the cache's Redis client: {e!r}")
-        close_loop()
+        try:
+            if getattr(loop, _LOOP_ATTR, None) is client:
+                delattr(loop, _LOOP_ATTR)
+                if not loop.is_closed():
+                    try:
+                        _run_to_completion(loop, _close(client))
+                    except Exception as e:
+                        logger.warning(
+                            f"Could not close the cache's Redis client: {e!r}"
+                        )
+        finally:
+            # Even through a KeyboardInterrupt while the client closed.
+            close_loop()
 
     setattr(loop, "close", close)
 

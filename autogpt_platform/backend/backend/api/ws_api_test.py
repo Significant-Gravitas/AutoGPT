@@ -25,6 +25,7 @@ from backend.api.ws_api import (
 )
 from backend.data.sharded_pubsub import EventStreamLostError
 from backend.data.user import DEFAULT_USER_ID
+from backend.util import cache_redis
 
 # Only a step that never comes keeps a wait going this long.
 _HANG_SECONDS = 10.0
@@ -998,6 +999,14 @@ async def test_a_closure_lookup_that_runs_out_of_time_closes_the_socket_to_retry
     mock_websocket.close.assert_awaited_once_with(code=1013, reason="Try again")
     mock_manager.subscribe_graph_exec.assert_not_called()
     mock_websocket.send_text.assert_not_called()
+
+
+def test_the_account_checks_bound_fits_its_two_cache_reads() -> None:
+    """Every test replaces the shared cache's 1 s bound, so this checks the
+    product's: the check reads the cache twice, then the database, inside
+    ``ACCOUNT_CHECK_TIMEOUT_S``."""
+    assert cache_redis.REDIS_OP_TIMEOUT_S <= 1.0
+    assert 2 * cache_redis.REDIS_OP_TIMEOUT_S < ws_api.ACCOUNT_CHECK_TIMEOUT_S
 
 
 # ---------- get_connection_manager singleton ----------
