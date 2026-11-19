@@ -320,8 +320,7 @@ async def websocket_router(
     try:
         while True:
             data = await websocket.receive_text()
-            # A read of an already-buffered frame doesn't suspend, and neither does
-            # anything below, so without this one socket's backlog runs to the end.
+            # Give other sockets a turn between two messages.
             await asyncio.sleep(0)
             # The socket outlives its token, so a ban or a closed account ends it
             # at its first message once a recheck is due. A ban was ruled out
@@ -362,7 +361,7 @@ async def websocket_router(
                 continue
 
             if message.method == WSMethod.ERROR:
-                logger.error(f"WebSocket Error message received: {message.data}")
+                logger.debug("WebSocket error message from user #%s", user_id)
 
             else:
                 logger.warning(

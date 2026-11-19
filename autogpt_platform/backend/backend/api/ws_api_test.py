@@ -906,7 +906,6 @@ async def test_an_unreadable_ban_keeps_an_open_socket(
 async def test_other_sockets_get_a_turn_between_two_buffered_messages(
     mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
 ) -> None:
-    """Reading a buffered frame and replying both return without suspending."""
     mocker.patch(
         "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
     )
@@ -1027,6 +1026,30 @@ async def test_a_clients_invalid_message_is_logged_below_error(
     assert logging.WARNING in levels
     assert max(levels) < logging.ERROR
     assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_an_error_message_from_the_client_is_logged_below_warning(
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker, caplog
+) -> None:
+    mocker.patch(
+        "backend.api.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+    mocker.patch("backend.api.ws_api.is_user_banned", new=AsyncMock(return_value=False))
+    client_data = "client-sent detail " * 50
+    mock_websocket.receive_text.side_effect = [
+        WSMessage(method=WSMethod.ERROR, data=client_data).model_dump_json(),
+        WebSocketDisconnect(),
+    ]
+
+    with caplog.at_level(logging.DEBUG, logger="backend.api.ws_api"):
+        await websocket_router(
+            cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
+        )
+
+    records = [r for r in caplog.records if r.name == "backend.api.ws_api"]
+    assert max(r.levelno for r in records) < logging.WARNING
+    assert not any("client-sent detail" in r.getMessage() for r in records)
 
 
 # ---------- get_connection_manager singleton ----------
