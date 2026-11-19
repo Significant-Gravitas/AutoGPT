@@ -60,6 +60,7 @@ import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
+import { UnconfirmedSendError } from "../../stream/turnRuntime";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
@@ -86,6 +87,8 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
+  /** Sends again a message the chat couldn't confirm it sent. */
+  onResend?: () => void;
   turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
@@ -282,6 +285,7 @@ export function ChatMessagesContainer({
   isLoadingMore,
   onLoadMore,
   onRetry,
+  onResend,
   turnStats,
   queuedMessages,
   pendingSend,
@@ -354,8 +358,11 @@ export function ChatMessagesContainer({
   // the same error string — the marker becomes an in-line ErrorCard bubble,
   // the SSE event sets ``error`` on ``useChat``. Without dedup, the user sees
   // the same error twice. Suppress the trailing banner whenever the last
-  // assistant message already carries the marker.
-  const lastAssistantHasErrorMarker = hasTrailingErrorMarker(messages);
+  // assistant message already carries the marker. An unconfirmed send is the
+  // client's own finding, about a later prompt: no marker repeats it.
+  const isErrorShownInline =
+    !(error instanceof UnconfirmedSendError) &&
+    hasTrailingErrorMarker(messages);
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
@@ -662,8 +669,8 @@ export function ChatMessagesContainer({
                 </MessageContent>
               </Message>
             ))}
-          {!readOnly && error && !lastAssistantHasErrorMarker && (
-            <ChatErrorBanner error={error} />
+          {!readOnly && error && !isErrorShownInline && (
+            <ChatErrorBanner error={error} onResend={onResend} />
           )}
           {!readOnly && (
             <TurnEndAnnouncer

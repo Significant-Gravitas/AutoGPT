@@ -27,6 +27,10 @@ import {
   getGraphLoadErrorToast,
   retryUnlessClientError,
 } from "../../../helpers/graphLoadError";
+import {
+  showsAnotherSavedGraph,
+  showsSavedGraph,
+} from "../../../helpers/waitForLoadedGraph";
 import { useIsExecutionSubscribed } from "./useFlowRealtime";
 import {
   isSnapshotStatusCurrent,
@@ -59,6 +63,12 @@ export const useFlow = () => {
   const setAvailableSubGraphs = useGraphStore(
     useShallow((state) => state.setAvailableSubGraphs),
   );
+  const setLoadedGraph = useGraphStore((state) => state.setLoadedGraph);
+  const requestLoad = useGraphStore((state) => state.requestLoad);
+  const resolveLatestVersion = useGraphStore(
+    (state) => state.resolveLatestVersion,
+  );
+  const setLoadFailed = useGraphStore((state) => state.setLoadFailed);
   const { screenToFlowPosition, fitView } = useReactFlow();
   const addBlock = useNodeStore(useShallow((state) => state.addBlock));
   const setBlockMenuOpen = useControlPanelStore(
@@ -117,31 +127,39 @@ export const useFlow = () => {
     },
   );
 
+  // An error with no graph to show. A refetch that fails (window focus, a
+  // network blip) keeps the graph it had, and the builder keeps working.
+  const graphLoadFailed = isGraphError && !graph;
+
   // The graph couldn't load — bail out of the builder instead of falling into
   // the fully-editable "new agent" state, which would look like a wiped agent
   // and risk an empty save over the real flowID.
   useEffect(() => {
-    if (!flowID || !isGraphError) return;
+    if (!flowID || !graphLoadFailed) return;
     const { title, description } = getGraphLoadErrorToast(graphError);
     toast({ title, description, variant: "destructive" });
     router.push("/library");
-  }, [flowID, isGraphError, graphError, toast, router]);
+  }, [flowID, graphLoadFailed, graphError, toast, router]);
 
   const nodes = graph?.nodes;
   const blockIds = nodes
     ? Array.from(new Set(nodes.map((node) => node.block_id)))
     : undefined;
 
-  const { data: blocks, isLoading: isBlocksLoading } =
-    useGetV2GetSpecificBlocks(
-      { block_ids: blockIds ?? [] },
-      {
-        query: {
-          select: (res) => res.data as BlockInfo[],
-          enabled: !!flowID && !!blockIds && blockIds.length > 0,
-        },
+  const {
+    data: blocks,
+    isLoading: isBlocksLoading,
+    isError: isBlocksError,
+  } = useGetV2GetSpecificBlocks(
+    { block_ids: blockIds ?? [] },
+    {
+      query: {
+        select: (res) => res.data as BlockInfo[],
+        enabled: !!flowID && !!blockIds && blockIds.length > 0,
       },
-    );
+    },
+  );
+  const blocksLoadFailed = isBlocksError && !blocks;
 
   const customNodes = useMemo(() => {
     if (!nodes || !blocks) return [];
@@ -177,22 +195,58 @@ export const useFlow = () => {
     }
   }, [availableGraphs, setAvailableSubGraphs]);
 
-  // adding nodes
+  // A save waiting for the canvas gives up when the builder moves to another
+  // workflow or version, or closes (the reset below). Runs before the fill so
+  // the loaded graph is recorded against the current request.
   useEffect(() => {
-    if (customNodes.length > 0) {
+    requestLoad(flowID, flowVersion);
+  }, [flowID, flowVersion, requestLoad]);
+
+  // Records the version a URL without one resolved to, which the schemas
+  // effect above writes into the URL. That write keeps a waiting save; picking
+  // any other version cancels it.
+  useEffect(() => {
+    if (graph?.id && flowVersion === null) {
+      resolveLatestVersion(graph.id, graph.version ?? 1);
+    }
+  }, [graph, flowVersion, resolveLatestVersion]);
+
+  // Nodes and links are replaced together, once the graph's block info is in,
+  // so the canvas never pairs one graph's links with another's nodes. Only a
+  // workflow or version the canvas isn't showing replaces it: fetching the one
+  // it shows again (window focus, an invalidation) keeps the user's edits.
+  useEffect(() => {
+    if (customNodes.length === 0 || !graph || showsSavedGraph(graph)) return;
+    useNodeStore.getState().setNodes([]);
+    useNodeStore.getState().clearResolutionState();
+    addNodes(customNodes);
+    useEdgeStore.getState().setEdges([]);
+    addLinks(graph.links ?? []);
+  }, [customNodes, graph, addNodes, addLinks]);
+
+  // Saves wait for this (waitForLoadedGraph), so it runs after the fill. A
+  // graph with no nodes has nothing to wait for. When the canvas shows another
+  // saved graph, it is emptied first, undo included, so a save can't copy that
+  // graph's blocks into this one; an unsaved canvas keeps its blocks for it.
+  // It reruns when only the URL's version changes too: React Query can hand
+  // back an equal graph as the same object, and the load is then recorded
+  // against the new request (a URL without a version showing its latest).
+  useEffect(() => {
+    if (!graph || (customNodes.length === 0 && graph.nodes?.length)) return;
+    if (!graph.nodes?.length && showsAnotherSavedGraph(graph)) {
       useNodeStore.getState().setNodes([]);
       useNodeStore.getState().clearResolutionState();
-      addNodes(customNodes);
-    }
-  }, [customNodes, addNodes]);
-
-  // adding links
-  useEffect(() => {
-    if (graph?.links) {
       useEdgeStore.getState().setEdges([]);
-      addLinks(graph.links);
+      useHistoryStore.getState().initializeHistory();
     }
-  }, [graph?.links, addLinks]);
+    setLoadedGraph(graph);
+  }, [graph, customNodes, flowVersion, setLoadedGraph]);
+
+  // A save waiting for the canvas fails at once if the workflow or its blocks
+  // can't load. A refetch that fails keeps the data it had, so fails no save.
+  useEffect(() => {
+    setLoadFailed(graphLoadFailed || blocksLoadFailed);
+  }, [graphLoadFailed, blocksLoadFailed, setLoadFailed]);
 
   useEffect(() => {
     if (customNodes.length > 0 && graph?.links) {

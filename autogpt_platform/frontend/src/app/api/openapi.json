@@ -11460,6 +11460,18 @@
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "ID of existing credential to upgrade scopes for"
             }
+          },
+          {
+            "name": "client",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "const": "native", "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Set to native when the mobile app starts the sign-in"
+            }
           }
         ],
         "responses": {
@@ -31622,6 +31634,14 @@
             ],
             "title": "Scopes",
             "description": "OAuth scopes to request. Omit or use null to use catalogue or discovered defaults; an empty list requests no scopes."
+          },
+          "client": {
+            "anyOf": [
+              { "type": "string", "const": "native" },
+              { "type": "null" }
+            ],
+            "title": "Client",
+            "description": "Set to native when the mobile app starts the sign-in"
           }
         },
         "type": "object",

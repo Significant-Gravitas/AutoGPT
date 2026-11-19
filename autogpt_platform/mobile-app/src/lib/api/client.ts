@@ -8,18 +8,22 @@ import {
 
 export class ApiError extends Error {
   status: number;
+  /** The `code` a `{ code, message }` detail carries, e.g. MCP's "no_oauth". */
+  code: string | null;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code: string | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
 interface RequestOptions {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
+  signal?: AbortSignal;
 }
 
 export async function authHeaders(): Promise<Record<string, string>> {
@@ -45,19 +49,23 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
     assertSameSession(mark);
   }
   if (!response.ok) {
-    const message = await readErrorMessage(response);
+    const { message, code } = await readError(response);
     // Reading the body can outlast the session; a stale 401 must not reach
     // a handler that signs out whoever signed in meanwhile.
     assertSameSession(mark);
-    throw new ApiError(response.status, message);
+    throw new ApiError(response.status, message, code);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
-async function send(path: string, { method = "GET", body, query }: RequestOptions) {
+async function send(
+  path: string,
+  { method = "GET", body, query, signal }: RequestOptions,
+) {
   return fetch(apiUrl(path, query), {
     method,
+    signal,
     headers: {
       ...(await authHeaders()),
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
@@ -66,12 +74,20 @@ async function send(path: string, { method = "GET", body, query }: RequestOption
   });
 }
 
-async function readErrorMessage(response: Response) {
+async function readError(response: Response) {
+  const fallback = { message: `Request failed (${response.status})`, code: null };
   try {
     const data = (await response.json()) as { detail?: unknown };
-    if (typeof data.detail === "string") return data.detail;
+    if (typeof data.detail === "string") return { message: data.detail, code: null };
+    if (data.detail && typeof data.detail === "object") {
+      const { message, code } = data.detail as { message?: unknown; code?: unknown };
+      return {
+        message: typeof message === "string" ? message : fallback.message,
+        code: typeof code === "string" ? code : null,
+      };
+    }
   } catch {
     // Not JSON: fall through to the status line.
   }
-  return `Request failed (${response.status})`;
+  return fallback;
 }
