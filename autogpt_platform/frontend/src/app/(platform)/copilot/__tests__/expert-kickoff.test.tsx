@@ -394,6 +394,56 @@ describe("useExpertKickoff", () => {
     },
   );
 
+  it("opens the thread a server kickoff made instead of greeting again", async () => {
+    // A chat hire's kickoff is sent by the server (#16687), so this browser
+    // never kicked off. The card's "Chat with <name>" link (#16689) must open
+    // that thread, whose only history is the hidden kickoff and the reply,
+    // without sending a second kickoff.
+    let createCount = 0;
+    server.use(
+      stubTransports(),
+      http.get("*/api/chat/sessions", () =>
+        HttpResponse.json({
+          sessions: [
+            {
+              id: KICKOFF_SESSION_ID,
+              created_at: "2026-01-01T00:00:00Z",
+              updated_at: "2026-01-02T00:00:00Z",
+              is_processing: false,
+              expert_id: EXPERT_ID,
+            },
+          ],
+          total: 1,
+        }),
+      ),
+      http.get(`*/api/chat/sessions/${KICKOFF_SESSION_ID}`, () =>
+        HttpResponse.json(
+          makeSessionPayload(KICKOFF_SESSION_ID, [
+            persistedKickoffMessage(),
+            persistedAssistantMessage(),
+          ]),
+        ),
+      ),
+      http.post("*/api/chat/sessions", () => {
+        createCount += 1;
+        return HttpResponse.json({ id: "should-not-happen" });
+      }),
+    );
+
+    renderKickoff(`?expertId=${EXPERT_ID}&kickoff=1`);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("session-id").textContent).toBe(
+        KICKOFF_SESSION_ID,
+      ),
+    );
+    await waitFor(() =>
+      expect(getKickoffStatus(USER_ID, EXPERT_ID)).toBe("done"),
+    );
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(createCount).toBe(0);
+  });
+
   it("stands down while another tab holds a fresh pending latch", async () => {
     markKickoffPending(USER_ID, EXPERT_ID);
     let listCount = 0;

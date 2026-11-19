@@ -600,6 +600,25 @@ class TestCacheInvalidationListener:
         assert _token_cache[("other-user", "github")] == "untouched"
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_resync_drops_every_cached_entry(self):
+        """``None`` means changes may have been missed while unsubscribed, so
+        no entry, for any user or provider, can be trusted."""
+        _token_cache[(_USER, "github")] = "maybe-revoked"
+        _token_cache[("other-user", "notion")] = "maybe-revoked"
+        _null_cache[(_USER, "linear")] = True
+        _credential_id_cache[(_USER, "github")] = "cred-1"
+        _gh_identity_cache[(_USER, "cred-1", None)] = MagicMock()
+        _gh_identity_null_cache[("other-user", None, None)] = True
+
+        await _consume(None)
+
+        assert not _token_cache
+        assert not _null_cache
+        assert not _credential_id_cache
+        assert not _gh_identity_cache
+        assert not _gh_identity_null_cache
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_resubscribes_when_the_stream_ends(self):
         """A closed subscription must not leave the cache unwatched."""
         streams = 0
@@ -648,7 +667,7 @@ class TestCacheInvalidationListener:
             )
 
 
-async def _consume(*events: CredentialsChangedEvent) -> None:
+async def _consume(*events: CredentialsChangedEvent | None) -> None:
     """Run the listener over *events*, then stop it."""
 
     async def stream():

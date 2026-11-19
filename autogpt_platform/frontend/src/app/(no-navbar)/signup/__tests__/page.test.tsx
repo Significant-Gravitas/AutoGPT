@@ -61,10 +61,6 @@ function fillValidForm() {
   fireEvent.change(screen.getByLabelText("Password", { selector: "input" }), {
     target: { value: "validpassword123" },
   });
-  fireEvent.change(
-    screen.getByLabelText("Confirm Password", { selector: "input" }),
-    { target: { value: "validpassword123" } },
-  );
 }
 
 function getLegalLine() {
@@ -120,18 +116,11 @@ describe("SignupPage", () => {
     fireEvent.change(screen.getByLabelText("Password", { selector: "input" }), {
       target: { value: "validpassword123" },
     });
-    fireEvent.change(
-      screen.getByLabelText("Confirm Password", { selector: "input" }),
-      {
-        target: { value: "validpassword123" },
-      },
-    );
     fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
 
     await waitFor(() => {
       expect(mockSignupAction).toHaveBeenCalledWith(
         "existing@example.com",
-        "validpassword123",
         "validpassword123",
         false,
         null,
@@ -231,6 +220,23 @@ describe("SignupPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
 
     await waitFor(() => expect(mockSignupAction).toHaveBeenCalledTimes(1));
+  });
+
+  test("asks for the password once, with the Show toggle and new-password autofill", () => {
+    render(<SignupPage />);
+
+    const passwordFields = screen.getAllByLabelText(/password/i, {
+      selector: "input",
+    });
+    expect(passwordFields).toHaveLength(1);
+    const [password] = passwordFields;
+    expect(password.getAttribute("autocomplete")).toBe("new-password");
+    expect(password.getAttribute("type")).toBe("password");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+
+    expect(password.getAttribute("type")).toBe("text");
+    expect(screen.getByRole("button", { name: "Hide password" })).toBeDefined();
   });
 
   test("puts the Log in link under the title, keeping ?next=", () => {
@@ -336,7 +342,6 @@ describe("SignupPage", () => {
       expect(mockSignupAction).toHaveBeenCalledWith(
         "new@example.com",
         "validpassword123",
-        "validpassword123",
         true,
         null,
       );
@@ -363,7 +368,6 @@ describe("SignupPage", () => {
     await waitFor(() => {
       expect(mockSignupAction).toHaveBeenCalledWith(
         "new@example.com",
-        "validpassword123",
         "validpassword123",
         false,
         null,
@@ -476,7 +480,7 @@ describe("SignupPage", () => {
 
       expect(await screen.findByText("new@example.com")).toBeDefined();
       expect(setMarketingOptOutFlag.mock.calls).toEqual([[false]]);
-      expect(mockSignupAction.mock.calls[0][3]).toBe(optOut);
+      expect(mockSignupAction.mock.calls[0][2]).toBe(optOut);
     },
   );
 
@@ -496,7 +500,6 @@ describe("SignupPage", () => {
     await waitFor(() => {
       expect(mockSignupAction).toHaveBeenCalledWith(
         "new@example.com",
-        "validpassword123",
         "validpassword123",
         false,
         null,

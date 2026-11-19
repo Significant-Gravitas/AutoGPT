@@ -1032,3 +1032,29 @@ async def delete_review_by_node_exec_id(node_exec_id: str, user_id: str) -> int:
     return await PendingHumanReview.prisma().delete_many(
         where={"nodeExecId": node_exec_id, "userId": user_id}
     )
+
+
+async def delete_review_as_read(
+    node_exec_id: str, user_id: str, status: ReviewStatus, created_at: datetime
+) -> int:
+    """Delete a review only as it was read: the same row, still in ``status``.
+
+    CoPilot's gate reuses a card's id once its row is deleted (the same call
+    proposed again opens a fresh card under it), so a caller acting on a row
+    it read must not delete a later one in its place. ``createdAt`` tells the
+    rows apart, and the single DELETE is the mutex: of the callers that read
+    one row, one deletes it. The column keeps milliseconds, which is enough:
+    a later card under the same id is opened only after the user answered
+    and someone spent the one before it.
+
+    Returns:
+        1 for the caller that took the row, else 0
+    """
+    return await PendingHumanReview.prisma().delete_many(
+        where={
+            "nodeExecId": node_exec_id,
+            "userId": user_id,
+            "status": status,
+            "createdAt": created_at,
+        }
+    )
