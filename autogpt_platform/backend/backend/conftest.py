@@ -23,6 +23,7 @@ from backend.data import redis_client, versioned_cache
 from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
+from backend.util import cache as shared_cache
 from backend.util import posthog_client
 from backend.util.httpx_client_guard import HttpxClientGuard, left_open_report
 from backend.util.logging import configure_logging
@@ -172,6 +173,15 @@ async def no_leaked_db_transaction(request: pytest.FixtureRequest):
         ),
         pytrace=False,
     )
+
+
+@pytest.fixture(autouse=True)
+def patient_shared_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """In production a coroutine's shared-cache command waits for Redis
+    ``REDIS_OP_TIMEOUT_S`` (1 s), then counts as a miss and the value is
+    computed instead. A runner that pauses that long would turn a test's
+    hit into a miss, so a test waits 30 s. A test of that bound sets its own."""
+    monkeypatch.setattr(shared_cache, "REDIS_OP_TIMEOUT_S", 30.0)
 
 
 _HTTPX_CLIENTS = HttpxClientGuard()

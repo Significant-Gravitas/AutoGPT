@@ -1,5 +1,6 @@
-"""Holding a shared-cache read in Redis, as a shard that stopped answering
-would, for tests of what the rest of the process does meanwhile."""
+"""Helpers for tests of the shared cache: an entry's Redis key, a read held in
+Redis as a shard that stopped answering would hold it, and the callers that
+have reached a key's computation."""
 
 import asyncio
 import threading
@@ -9,6 +10,7 @@ import pytest
 import redis.asyncio.cluster as async_cluster
 import redis.cluster as sync_cluster
 
+from backend.util import cache as cache_module
 from backend.util.cache import _make_hashable_key, _make_redis_key
 
 
@@ -97,3 +99,22 @@ def hold_cache_read(
         async_cluster.RedisCluster, "execute_command", held_execute_async
     )
     return held
+
+
+def callers_in_flight(monkeypatch: pytest.MonkeyPatch, expected: int) -> asyncio.Event:
+    """Set once ``expected`` callers of ``@cached`` coroutines have missed and
+    reached their key's computation: computing it, waiting for a turn to,
+    or waiting for another caller's."""
+    entered = 0
+    everyone_in = asyncio.Event()
+    run = cache_module._InFlight.run
+
+    async def counted_run(self, *args, **kwargs):
+        nonlocal entered
+        entered += 1
+        if entered == expected:
+            everyone_in.set()
+        return await run(self, *args, **kwargs)
+
+    monkeypatch.setattr(cache_module._InFlight, "run", counted_run)
+    return everyone_in

@@ -98,6 +98,13 @@ _UNREACHABLE = _UnreachableType()
 # would otherwise turn every cached call into a Sentry event.
 _NOT_NOW = (TimeoutError, RedisTimeoutError, MaxConnectionsError)
 
+# A coroutine's misses of different keys compute concurrently, up to this many
+# at once per decorated function and event loop (per process for the API
+# servers, which run one loop), so a flood of distinct keys, such as public
+# store searches, can't flood the database behind them.
+# ``cached(max_concurrent_misses=...)`` overrides it.
+MAX_CONCURRENT_MISSES = 8
+
 
 def _is_hit(result: Any) -> bool:
     return result is not _MISSING and result is not _UNREACHABLE
@@ -106,11 +113,13 @@ def _is_hit(result: Any) -> bool:
 class _InFlight:
     """The computation running for each key on one event loop. Callers that
     miss the key while it runs wait for it and share its result, stored or
-    not, so one computation answers them all. For one event loop: a future
-    belongs to one."""
+    not, so one computation answers them all. At most ``max_concurrent``
+    keys compute at once; the rest wait for a turn. For one event loop: a
+    future belongs to one."""
 
-    def __init__(self) -> None:
+    def __init__(self, max_concurrent: int) -> None:
         self._flights: dict[Any, asyncio.Future[Any]] = {}
+        self._turns = asyncio.Semaphore(max_concurrent)
 
     async def run(
         self, key: Any, compute: Callable[[], Awaitable[T]], share: Callable[[T], T]
@@ -131,7 +140,8 @@ class _InFlight:
             return share(value)
         flight = self._flights[key] = asyncio.get_running_loop().create_future()
         try:
-            value = await compute()
+            async with self._turns:
+                value = await compute()
         except Exception as e:
             flight.set_exception(e)
             flight.exception()  # Retrieved: an error nobody waited for logs nothing.
@@ -247,6 +257,7 @@ def cached(
     shared_cache: bool = False,
     refresh_ttl_on_get: bool = False,
     cache_none: bool = True,
+    max_concurrent_misses: int = MAX_CONCURRENT_MISSES,
 ) -> Callable[[Callable[P, R]], CachedFunction[P, R]]:
     """
     Thundering herd safe cache decorator for both sync and async functions.
@@ -254,7 +265,8 @@ def cached(
     Uses double-checked locking to prevent multiple threads/coroutines from
     executing the expensive operation simultaneously during cache misses. For
     a coroutine, concurrent misses of one key share one computation, and
-    misses of other keys don't wait for it.
+    misses of other keys compute alongside it, up to
+    ``max_concurrent_misses`` at once.
 
     Args:
         maxsize: Maximum number of cached entries (only for in-memory cache)
@@ -268,6 +280,9 @@ def cached(
             Set to ``False`` for functions that return ``None`` to signal a
             transient error and should be re-tried on the next call without
             poisoning the cache (e.g. external API calls that may fail).
+        max_concurrent_misses: For a coroutine, how many misses of different
+            keys may compute at once on one event loop; the rest wait for a
+            turn. Bounds the load a burst of distinct keys puts behind it.
 
     Returns:
         Decorated function with caching capabilities
@@ -413,7 +428,9 @@ def cached(
                 loop = asyncio.get_running_loop()
                 in_flight = _in_flight_by_loop.get(loop)
                 if in_flight is None:
-                    in_flight = _in_flight_by_loop[loop] = _InFlight()
+                    in_flight = _in_flight_by_loop[loop] = _InFlight(
+                        max_concurrent_misses
+                    )
                 return in_flight
 
             @wraps(target_func)

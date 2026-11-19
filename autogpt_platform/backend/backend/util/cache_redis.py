@@ -1,10 +1,12 @@
 """The shared cache's Redis clients.
 
-A cache answers in milliseconds or counts as absent, so every command waits at
-most ``REDIS_OP_TIMEOUT_S``: a shard that stops answering costs a caller that
-long, never a hang. A coroutine uses its event loop's own client
-(``get_async_redis``), so the loop serves everything else while Redis answers;
-the sync client (``get_redis``) blocks the thread that calls it.
+A coroutine uses its event loop's own client (``get_async_redis``), so the
+loop serves everything else while Redis answers. A cache answers in
+milliseconds or counts as absent, so the cache gives each of its commands at
+most ``REDIS_OP_TIMEOUT_S``: a shard that stops answering costs a coroutine
+that long, never a hang. The sync client (``get_redis``) waits for Redis and
+blocks the thread that calls it: an invalidation it sends must be applied,
+not dropped.
 """
 
 import asyncio
@@ -21,7 +23,6 @@ from redis.asyncio.retry import Retry as AsyncRetry
 from redis.backoff import NoBackoff
 from redis.cluster import ClusterNode, NodesManager, RedisCluster
 from redis.exceptions import AskError, MovedError
-from redis.retry import Retry
 
 from backend.util.retry import conn_retry
 from backend.util.settings import Settings
@@ -39,8 +40,7 @@ _RETRIES = 1
 @cache
 @conn_retry("Redis", "Acquiring cache connection")
 def get_redis() -> RedisCluster:
-    """The sync client (singleton). A command waits at most
-    ``REDIS_OP_TIMEOUT_S`` per try."""
+    """The sync client (singleton)."""
     # Local import breaks the redis_client <-> cache module cycle.
     from backend.data.redis_client import _address_remap
 
@@ -52,9 +52,8 @@ def get_redis() -> RedisCluster:
         decode_responses=False,  # Binary mode for pickle
         max_connections=50,
         socket_keepalive=True,
-        socket_connect_timeout=REDIS_OP_TIMEOUT_S,
-        socket_timeout=REDIS_OP_TIMEOUT_S,
-        retry=Retry(NoBackoff(), _RETRIES),
+        socket_connect_timeout=5,
+        retry_on_timeout=True,
         address_remap=_address_remap,
     )
     c.ping()

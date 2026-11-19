@@ -28,7 +28,7 @@ import redis.connection
 from redis.cluster import ClusterNode, RedisCluster
 from redis.exceptions import AskError
 from redis.exceptions import ConnectionError as RedisConnectionError
-from redis.exceptions import MaxConnectionsError, MovedError
+from redis.exceptions import MaxConnectionsError, MovedError, ReadOnlyError
 
 from backend.util import cache as cache_module
 from backend.util import cache_redis
@@ -38,7 +38,11 @@ from backend.util.cache import (
     clear_thread_cache,
     thread_cached,
 )
-from backend.util.cache_test_helpers import cache_key, hold_cache_read
+from backend.util.cache_test_helpers import (
+    cache_key,
+    callers_in_flight,
+    hold_cache_read,
+)
 from backend.util.redis_client_guard import is_open
 
 # Only a step that never comes keeps a wait going this long.
@@ -1491,7 +1495,8 @@ class TestSharedCacheOnAnEventLoop:
                 assert await call == f"answer to {question}"
         finally:
             held.release()
-            await asyncio.gather(call, return_exceptions=True)
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.gather(call, return_exceptions=True)
 
     @pytest.mark.asyncio
     async def test_a_read_redis_does_not_answer_in_time_is_computed_instead(
@@ -1769,7 +1774,7 @@ class TestSharedCacheOnAnEventLoop:
         """``cache_none=False`` stores no ``None``. The callers that missed the
         key while it was computed get it all the same, instead of computing
         it again one after another."""
-        everyone_in = _callers_in_flight(monkeypatch, 3)
+        everyone_in = callers_in_flight(monkeypatch, 3)
         finish = asyncio.Event()
         calls = 0
 
@@ -1788,7 +1793,8 @@ class TestSharedCacheOnAnEventLoop:
                 assert await asyncio.gather(*callers) == [None] * 3
         finally:
             finish.set()
-            await asyncio.gather(*callers, return_exceptions=True)
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.gather(*callers, return_exceptions=True)
         assert calls == 1
 
     @pytest.mark.asyncio
@@ -1803,7 +1809,7 @@ class TestSharedCacheOnAnEventLoop:
             raise RedisConnectionError("Redis is unreachable")
 
         monkeypatch.setattr(cache_module, "_get_async_redis", unreachable)
-        everyone_in = _callers_in_flight(monkeypatch, 3)
+        everyone_in = callers_in_flight(monkeypatch, 3)
         finish = asyncio.Event()
         calls = 0
 
@@ -1823,7 +1829,8 @@ class TestSharedCacheOnAnEventLoop:
                 results = await asyncio.gather(*callers)
         finally:
             finish.set()
-            await asyncio.gather(*callers, return_exceptions=True)
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.gather(*callers, return_exceptions=True)
         assert results == [{"answer": key}] * 3
         assert len({id(result) for result in results}) == 3
         assert calls == 1
@@ -1832,7 +1839,7 @@ class TestSharedCacheOnAnEventLoop:
     async def test_an_error_reaches_every_caller_that_waited_for_its_computation(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        everyone_in = _callers_in_flight(monkeypatch, 3)
+        everyone_in = callers_in_flight(monkeypatch, 3)
         finish = asyncio.Event()
         calls = 0
 
@@ -1852,7 +1859,8 @@ class TestSharedCacheOnAnEventLoop:
                 results = await asyncio.gather(*callers, return_exceptions=True)
         finally:
             finish.set()
-            await asyncio.gather(*callers, return_exceptions=True)
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.gather(*callers, return_exceptions=True)
         assert [type(result) for result in results] == [ValueError] * 3
         assert calls == 1
 
@@ -1865,7 +1873,7 @@ class TestSharedCacheOnAnEventLoop:
     async def test_a_caller_waiting_on_a_cancelled_computation_computes_it_itself(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        everyone_in = _callers_in_flight(monkeypatch, 2)
+        everyone_in = callers_in_flight(monkeypatch, 2)
         computing, finish = asyncio.Event(), asyncio.Event()
         calls = 0
 
@@ -1894,7 +1902,8 @@ class TestSharedCacheOnAnEventLoop:
                 assert await follower == key
         finally:
             finish.set()
-            await asyncio.gather(*callers, return_exceptions=True)
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.gather(*callers, return_exceptions=True)
         assert leader.cancelled()
         assert calls == 2
 
@@ -1904,7 +1913,7 @@ class TestSharedCacheOnAnEventLoop:
     ):
         """As when one task group cancels both callers: the waiting one must
         not take the computation over."""
-        everyone_in = _callers_in_flight(monkeypatch, 2)
+        everyone_in = callers_in_flight(monkeypatch, 2)
         computing, finish = asyncio.Event(), asyncio.Event()
         calls = 0
 
@@ -1933,7 +1942,8 @@ class TestSharedCacheOnAnEventLoop:
                 results = await asyncio.gather(*callers, return_exceptions=True)
         finally:
             finish.set()
-            await asyncio.gather(*callers, return_exceptions=True)
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.gather(*callers, return_exceptions=True)
         assert [type(result) for result in results] == [asyncio.CancelledError] * 2
         assert calls == 1
 
@@ -1941,7 +1951,7 @@ class TestSharedCacheOnAnEventLoop:
     @pytest.mark.parametrize("ending", ["returns", "raises", "is_cancelled"])
     async def test_a_keys_computation_is_forgotten_once_it_ends(self, ending: str):
         """One entry per key ever computed would grow without end."""
-        in_flight = cache_module._InFlight()
+        in_flight = cache_module._InFlight(cache_module.MAX_CONCURRENT_MISSES)
         computing, finish = asyncio.Event(), asyncio.Event()
 
         async def compute() -> str:
@@ -1974,29 +1984,142 @@ class TestSharedCacheOnAnEventLoop:
                 await asyncio.gather(leader, follower, return_exceptions=True)
         finally:
             finish.set()
-            await asyncio.gather(
-                leader, *([follower] if follower else []), return_exceptions=True
-            )
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.gather(
+                    leader, *([follower] if follower else []), return_exceptions=True
+                )
         assert follower.cancelled()
         assert in_flight._flights == {}
 
+    @pytest.mark.asyncio
+    @_ON_EVERY_KIND_OF_LOOP
+    async def test_a_fresh_loops_concurrent_first_reads_share_one_client(
+        self, new_loop: NewLoop, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The first callers on a new loop all wait for the client the first
+        of them made, rather than each making one and leaving the rest open."""
+        created: list[async_cluster.RedisCluster] = []
+        new_client = cache_redis._new_async_redis
 
-def _callers_in_flight(monkeypatch: pytest.MonkeyPatch, expected: int) -> asyncio.Event:
-    """Set once ``expected`` callers have reached their key's computation: the
-    first computing it, the others waiting for it."""
-    entered = 0
-    everyone_in = asyncio.Event()
-    run = cache_module._InFlight.run
+        def remember_new_client() -> async_cluster.RedisCluster:
+            created.append(new_client())
+            return created[-1]
 
-    async def counted_run(self, *args, **kwargs):
-        nonlocal entered
-        entered += 1
-        if entered == expected:
-            everyone_in.set()
-        return await run(self, *args, **kwargs)
+        monkeypatch.setattr(cache_redis, "_new_async_redis", remember_new_client)
 
-    monkeypatch.setattr(cache_module._InFlight, "run", counted_run)
-    return everyone_in
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def lookup(key: str) -> str:
+            return key
+
+        keys = [_unique("first") for _ in range(8)]
+
+        async def first_reads() -> tuple[list[str], list[Any]]:
+            values = asyncio.gather(*(lookup(key) for key in keys))
+            clients = asyncio.gather(*(cache_module._get_async_redis() for _ in keys))
+            return await values, await clients
+
+        def on_a_fresh_loop() -> tuple[list[str], list[Any]]:
+            loop = new_loop()
+            try:
+                return loop.run_until_complete(first_reads())
+            finally:
+                loop.close()
+
+        values, clients = await asyncio.to_thread(on_a_fresh_loop)
+        assert values == keys
+        [client] = created
+        assert all(each is client for each in clients)
+        assert not is_open(client)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("shared_cache", [False, True], ids=["memory", "redis"])
+    async def test_misses_of_different_keys_compute_at_most_the_cap_at_once(
+        self, shared_cache: bool, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A burst of distinct keys can't flood what the function calls: the
+        misses past ``max_concurrent_misses`` wait for a turn."""
+        everyone_in = callers_in_flight(monkeypatch, 5)
+        two_running, finish = asyncio.Event(), asyncio.Event()
+        running = peak = 0
+
+        @cached(ttl_seconds=30, shared_cache=shared_cache, max_concurrent_misses=2)
+        async def capped_lookup(key: str) -> str:
+            nonlocal running, peak
+            running += 1
+            peak = max(peak, running)
+            if running == 2:
+                two_running.set()
+            await finish.wait()
+            running -= 1
+            return key
+
+        keys = [_unique("capped") for _ in range(5)]
+        callers = [asyncio.create_task(capped_lookup(key)) for key in keys]
+        try:
+            async with asyncio.timeout(_HANG_SECONDS):
+                await everyone_in.wait()
+                await two_running.wait()
+                # Every caller has missed: two compute, three wait their turn.
+                assert running == 2
+                finish.set()
+                assert await asyncio.gather(*callers) == keys
+        finally:
+            finish.set()
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.gather(*callers, return_exceptions=True)
+        assert peak == 2
+
+    @pytest.mark.asyncio
+    async def test_cancelling_a_call_waiting_on_redis_cancels_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A cancellation that reaches a call while Redis holds its read ends
+        the call, rather than counting as a cache error to compute through."""
+        calls = 0
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def held_lookup(question: str) -> str:
+            nonlocal calls
+            calls += 1
+            return question
+
+        question = _unique("cancelled")
+        monkeypatch.setattr(cache_module, "REDIS_OP_TIMEOUT_S", 3 * _HANG_SECONDS)
+        held = hold_cache_read(
+            monkeypatch, cache_key("held_lookup", question=question), _HANG_SECONDS
+        )
+        call = asyncio.create_task(held_lookup(question))
+        try:
+            async with asyncio.timeout(2 * _HANG_SECONDS):
+                await held.started()
+            call.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                async with asyncio.timeout(_HANG_SECONDS):
+                    await call
+            assert calls == 0
+        finally:
+            held.release()
+
+    @pytest.mark.asyncio
+    async def test_a_write_that_fails_does_not_fail_the_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """As during a failover, when a shard answers writes with READONLY."""
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def unwritable_lookup(question: str) -> str:
+            return question
+
+        execute = async_cluster.RedisCluster.execute_command
+
+        async def read_only(self, *args, **kwargs):
+            if args and args[0] == "SET":
+                raise ReadOnlyError("You can't write against a read only replica.")
+            return await execute(self, *args, **kwargs)
+
+        monkeypatch.setattr(async_cluster.RedisCluster, "execute_command", read_only)
+        question = _unique("read-only")
+        assert await unwritable_lookup(question) == question
 
 
 class TestSharedCacheFollowsAShardsRedirect:
