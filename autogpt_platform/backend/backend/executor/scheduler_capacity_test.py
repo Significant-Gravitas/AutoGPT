@@ -143,16 +143,50 @@ def test_a_schedule_is_stored_only_within_the_size_limit(
         full_scheduler.scheduler.add_job.assert_not_called()
 
 
-def test_editing_a_schedules_inputs_past_the_size_limit_is_refused(
-    full_scheduler: Scheduler, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("items, stored", [(900, True), (1_000, False)])
+def test_a_schedule_is_stored_only_within_the_value_limit(
+    full_scheduler: Scheduler,
+    monkeypatch: pytest.MonkeyPatch,
+    items: int,
+    stored: bool,
 ):
-    monkeypatch.setattr(scheduler_module.config, "max_schedule_payload_bytes", 4_096)
+    # Reading a schedule back costs per JSON value, which few bytes can hold.
+    monkeypatch.setattr(scheduler_module.config, "max_schedule_payload_values", 1_000)
+    args = GraphExecutionJobArgs(
+        **_graph_job_kwargs("new", "u2", "g1") | {"input_data": {"topic": [[]] * items}}
+    )
+
+    if stored:
+        _persist(full_scheduler, args)
+        full_scheduler.scheduler.add_job.assert_called_once()
+    else:
+        with pytest.raises(ValueError, match="too many items to save"):
+            _persist(full_scheduler, args)
+        full_scheduler.scheduler.add_job.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "setting, limit, topic, refusal",
+    [
+        ("max_schedule_payload_bytes", 4_096, "x" * 4_096, "too large to save"),
+        ("max_schedule_payload_values", 1_000, [[]] * 1_000, "too many items to save"),
+    ],
+)
+def test_editing_a_schedules_inputs_past_a_size_limit_is_refused(
+    full_scheduler: Scheduler,
+    monkeypatch: pytest.MonkeyPatch,
+    setting: str,
+    limit: int,
+    topic: str | list,
+    refusal: str,
+):
+    monkeypatch.setattr(scheduler_module.config, setting, limit)
     validate = MagicMock()
     monkeypatch.setattr(scheduler_module, "run_async", validate)
 
-    with pytest.raises(ValueError, match="too large to save"):
+    with pytest.raises(ValueError, match=refusal):
         full_scheduler.update_graph_execution_schedule(
-            schedule_id="held-1", user_id="u1", input_data={"topic": "x" * 4_096}
+            schedule_id="held-1", user_id="u1", input_data={"topic": topic}
         )
     validate.assert_not_called()
     full_scheduler.scheduler.modify_job.assert_not_called()

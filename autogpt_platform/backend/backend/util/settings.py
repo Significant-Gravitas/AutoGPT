@@ -805,6 +805,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "included, as compact JSON.",
     )
 
+    max_schedule_payload_values: int = Field(
+        default=10_000,
+        ge=100,
+        description="The most JSON values (list items, object fields and plain "
+        "values) one schedule may store.",
+    )
+
     schedule_read_timeout_seconds: float = Field(
         default=5.0,
         gt=0,

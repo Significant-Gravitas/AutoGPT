@@ -5311,6 +5311,26 @@ def _check_schedule_size(kwargs: dict[str, Any]) -> None:
             f"This schedule is too large to save: {size:,} bytes, over the "
             f"limit of {limit:,}. Shorten its inputs or message and try again."
         )
+    values = _json_value_count(kwargs)
+    value_limit = config.max_schedule_payload_values
+    if values > value_limit:
+        raise ValueError(
+            f"This schedule has too many items to save: {values:,}, over the "
+            f"limit of {value_limit:,}. Shorten its inputs or message and try again."
+        )
+
+
+def _json_value_count(data: Any) -> int:
+    """Every value in JSON data, containers included: what reading it back costs."""
+    count, pending = 0, [data]
+    while pending:
+        value = pending.pop()
+        count += 1
+        if isinstance(value, dict):
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+    return count
 
 
 _USER_SCHEDULE_FUNC_REFS = frozenset(
