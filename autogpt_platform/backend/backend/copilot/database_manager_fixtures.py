@@ -96,10 +96,11 @@ def fake_database_manager_clients() -> Iterator[None]:
 
     real_get_service_client = service.get_service_client
 
-    def get_service_client(client_type: type, *args: Any, **kwargs: Any) -> Any:
-        if client_type in (DatabaseManagerClient, DatabaseManagerAsyncClient):
-            return _FakeDatabaseManagerClient(client_type)
-        return real_get_service_client(client_type, *args, **kwargs)
+    # The real getter's parameter name, so keyword calls work too.
+    def get_service_client(service_client_type: type, *args: Any, **kwargs: Any) -> Any:
+        if service_client_type in (DatabaseManagerClient, DatabaseManagerAsyncClient):
+            return _FakeDatabaseManagerClient(service_client_type)
+        return real_get_service_client(service_client_type, *args, **kwargs)
 
     getters = (
         clients.get_database_manager_client,
