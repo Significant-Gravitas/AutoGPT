@@ -85,11 +85,13 @@ afterEach(() => {
 });
 
 describe("builder undo shortcut", () => {
-  it("leaves undo to the expanded text box and keeps the workflow as it is", () => {
+  it("leaves undo to the expanded text box and keeps the workflow as it is", async () => {
     renderBuilder();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand input" }));
-    const expanded = within(screen.getByRole("dialog")).getByRole("textbox");
+    const expanded = within(await screen.findByRole("dialog")).getByRole(
+      "textbox",
+    );
     fireEvent.change(expanded, { target: { value: "after, edited" } });
 
     const notPrevented = pressUndo(expanded);
