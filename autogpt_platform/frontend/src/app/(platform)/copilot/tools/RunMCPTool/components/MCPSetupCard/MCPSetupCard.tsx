@@ -241,6 +241,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   // Setter compatible with the existing call-sites — they only ever set
   // ``true`` after a successful flow or ``false`` to drop the pill.
   const setConnected = setLocalConnected;
+  const retryMessage = retryInstruction ?? "I've connected. Please retry.";
 
   useEffect(() => () => oauthRequest.current?.abort(), []);
 
@@ -267,7 +268,9 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
       }
     }
     setConnected(true);
-    onSend(retryInstruction ?? "I've connected. Please retry.");
+    // Inside a tool chain the chain sends one reply for every card, this
+    // one's line included; sending here as well gave Otto two messages.
+    if (!chainActions) onSend(retryMessage);
   }
 
   function handleGrantExisting() {
@@ -377,11 +380,13 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
   const handleConnectRef = useRef(handleConnect);
   const handleManualTokenRef = useRef(handleManualToken);
   const handleGrantRef = useRef(handleGrantExisting);
+  const retryMessageRef = useRef(retryMessage);
 
   useEffect(() => {
     handleConnectRef.current = handleConnect;
     handleManualTokenRef.current = handleManualToken;
     handleGrantRef.current = handleGrantExisting;
+    retryMessageRef.current = retryMessage;
   });
 
   // Inside a tool chain the card renders nothing itself — it registers an
@@ -392,7 +397,10 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     chainActions.register(actionId, {
       id: actionId,
       ready: connected,
-      buildMessage: () => null,
+      // Only a sign-in completed here owes Otto a line; a server that was
+      // already connected when the chat loaded stays silent.
+      justConnected: localConnected,
+      buildMessage: () => (localConnected ? retryMessageRef.current : null),
       mcp: {
         id: actionId,
         service,
@@ -417,6 +425,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     chainActions,
     actionId,
     connected,
+    localConnected,
     loading,
     error,
     grantError,
