@@ -39,6 +39,12 @@ rules:
 
   # Classic only below this line.
 
+  artipacked:
+    ignore:
+      # Classic: editing this workflow runs Classic Forge CI, whose live
+      # test_dalle fails while OpenAI answers that gpt-image-1 does not exist.
+      - classic-forge-ci.yml
+
   obfuscation:
     ignore:
       # Classic
