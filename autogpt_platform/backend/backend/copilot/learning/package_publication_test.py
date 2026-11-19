@@ -3,8 +3,15 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.copilot.learning import owner_actions, publication_validation, publish
-from backend.copilot.tools.skills import ParsedSkill, SkillFile
+from backend.copilot.learning import (
+    content_checks,
+    owner_actions,
+    publication_validation,
+    publish,
+    review_replay,
+)
+from backend.copilot.tools.skills import ParsedSkill, SkillFile, render_skill_markdown
+from backend.data.skill_reviews import LearningReviewRecord
 
 from .package_test import BODY, SCRIPT, request
 
@@ -127,6 +134,71 @@ async def test_content_checks_run_off_the_event_loop(
         "publication_validation.check_skill_bundle",
     }
     assert threading.get_ident() not in {thread for _, thread in calls}
+
+
+@pytest.mark.asyncio
+async def test_approved_existing_content_is_rechecked_off_the_event_loop(
+    fake_store, publication_files, monkeypatch
+):
+    """Stored content that matches a pattern is checked again with the owner's
+    approvals, and that second pass runs off the event loop too."""
+    existing = render_skill_markdown(
+        ParsedSkill(
+            name="normalize-input",
+            description="Normalize input",
+            body=BODY + "\n2. Read with ghp_" + "q" * 40,
+        )
+    )
+    approvals = content_checks.collect_content_approvals(
+        {"SKILL.md": existing},
+        approved_by_user_id="user-1",
+        allowed_pattern_classes=["github_token"],
+    )
+    assert approvals
+    monkeypatch.setattr(
+        publish, "read_user_skill_markdown", AsyncMock(return_value=existing)
+    )
+    monkeypatch.setattr(
+        publish, "current_content_approvals", AsyncMock(return_value=approvals)
+    )
+    rechecks: list[int] = []
+    check = publish.check_skill_bundle
+
+    def recording(bundle, *args, **kwargs):
+        if bundle.get("SKILL.md") == existing and kwargs.get("approved_matches"):
+            rechecks.append(threading.get_ident())
+        return check(bundle, *args, **kwargs)
+
+    monkeypatch.setattr(publish, "check_skill_bundle", recording)
+    outcome = await publish.publish_learned_version(request([]))
+    assert outcome.status != "blocked_content"
+    assert rechecks and threading.get_ident() not in rechecks
+
+
+@pytest.mark.asyncio
+async def test_review_replay_is_checked_off_the_event_loop(fake_store, monkeypatch):
+    checked_on: list[int] = []
+    check = review_replay.check_skill_bundle
+
+    def recording(*args, **kwargs):
+        checked_on.append(threading.get_ident())
+        return check(*args, **kwargs)
+
+    monkeypatch.setattr(review_replay, "check_skill_bundle", recording)
+    store = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        review_replay,
+        "skill_reviews_db",
+        lambda: type("Reviews", (), {"set_review_replay": store})(),
+    )
+    await review_replay.save_review_replay(
+        "user-1",
+        LearningReviewRecord.model_construct(id="review-1", run_id="run-1"),
+        request([]).model_copy(update={"expected_package_hash": "hash"}),
+        {},
+    )
+    store.assert_awaited_once()
+    assert checked_on and threading.get_ident() not in checked_on
 
 
 @pytest.mark.asyncio
