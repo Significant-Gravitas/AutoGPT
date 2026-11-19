@@ -163,7 +163,7 @@ def _serve(
         "backend.api.ws_api.is_user_banned", AsyncMock(return_value=False)
     )
     monkeypatch.setattr(
-        "backend.api.ws_api.is_user_refused", AsyncMock(return_value=False)
+        "backend.api.ws_api.is_user_account_closed", AsyncMock(return_value=False)
     )
     return asyncio.create_task(websocket_router(browser.websocket, ConnectionManager()))
 
