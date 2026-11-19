@@ -1,5 +1,5 @@
 import { Toaster } from "@/components/molecules/Toast/toaster";
-import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { ApiError } from "@/lib/api-error";
 import {
   act,
   cleanup,

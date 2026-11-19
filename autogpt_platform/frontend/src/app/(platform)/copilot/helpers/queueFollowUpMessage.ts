@@ -1,4 +1,4 @@
-import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { ApiError } from "@/lib/api-error";
 import { environment } from "@/services/environment";
 import { v4 as uuidv4 } from "uuid";
 

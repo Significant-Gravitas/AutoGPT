@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/api-error";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -137,10 +138,9 @@ describe("queueFollowUpMessage", () => {
       }),
     );
 
-    await expect(queueFollowUpMessage("sess-1", "hi")).rejects.toMatchObject({
-      name: "ApiError",
-      status: 402,
-    });
+    const queued = queueFollowUpMessage("sess-1", "hi");
+    await expect(queued).rejects.toBeInstanceOf(ApiError);
+    await expect(queued).rejects.toMatchObject({ status: 402 });
   });
 
   it("throws on 429 rate-limit response", async () => {
