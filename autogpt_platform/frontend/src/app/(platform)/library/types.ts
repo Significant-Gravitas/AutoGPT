@@ -31,6 +31,8 @@ export interface AgentStatusInfo {
   monthlySpend: number;
   nextScheduledRun: string | null;
   triggerType: string | null;
+  /** The scheduler didn't answer, so "idle" may be a scheduled workflow. */
+  scheduleUnknown?: boolean;
 }
 
 /** Fleet-wide aggregate counts used by the Briefing Panel stats grid. */
@@ -43,6 +45,8 @@ export interface FleetSummary {
   idle: number;
   /** Total spend for the current calendar month, in cents. */
   monthlySpend: number;
+  /** The scheduler didn't answer: the scheduled and idle counts are unknown. */
+  schedulesUnknown?: boolean;
 }
 
 export type SitrepPriority =

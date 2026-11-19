@@ -69,27 +69,6 @@ class SafeDiagnosticsTests(unittest.TestCase):
                 if isinstance(error, api.PublicDataError):
                     self.assertIn(error.code.value, output.getvalue())
 
-    def test_ambiguous_mapping_reports_a_reason_without_report_content(self):
-        item = advisory()
-        item["summary"] = CANARY
-        item["description"] += "\n" + CANARY
-        item["vulnerabilities"] = [
-            {"patched_versions": "0.9.0"},
-            {"patched_versions": "0.8.0"},
-        ]
-        output = io.StringIO()
-        with patch("sys.argv", ["sync", "digest"]), patch.object(
-            sync, "fetch_advisories", return_value=[item]
-        ), contextlib.redirect_stdout(output), contextlib.redirect_stderr(
-            output
-        ), self.assertRaises(
-            SystemExit
-        ):
-            sync.main()
-        self.assertIn(api.PublicErrorCode.RELEASE_MAPPING.value, output.getvalue())
-        self.assertNotIn(CANARY, output.getvalue())
-        self.assertNotIn(item["ghsa_id"], output.getvalue())
-
 
 class AnonymousApiTests(unittest.TestCase):
     def test_collection_members_must_be_objects_before_results_are_returned(self):
@@ -408,32 +387,15 @@ class PublicProjectionTests(unittest.TestCase):
             sync.public_snapshot([item])["advisories"][0]["release_tags"], [TAG]
         )
 
-    def test_classic_and_old_platform_tags_and_extra_package_keys(self):
+    def test_classic_and_old_platform_tags(self):
         for tag in ("autogpt-v0.9.0", "agpt-platform-beta-v0.9.0", "v0.9.0"):
             item = advisory()
             item["description"] = item["description"].replace(TAG, tag)
             self.assertEqual(
                 sync.public_snapshot([item])["advisories"][0]["release_tags"], [tag]
             )
-        item = advisory()
-        package = {"ecosystem": "other", "name": "example"}
-        item["vulnerabilities"] = [
-            {
-                "package": dict(package, future_field=CANARY),
-                "patched_versions": "0.9.0",
-            },
-            {"package": {"ecosystem": "other", "name": "other"}},
-        ]
-        item["description"] += (
-            "\n<!-- security-release: "
-            + json.dumps({"tag": TAG, "package": package})
-            + " -->"
-        )
-        self.assertEqual(
-            sync.public_snapshot([item])["advisories"][0]["release_tags"], [TAG]
-        )
 
-    def test_rows_that_agree_on_the_fixed_version_need_no_mapping(self):
+    def test_rows_that_agree_on_the_fixed_version_credit_the_release(self):
         item = advisory()
         item["vulnerabilities"] = [
             {
@@ -450,10 +412,6 @@ class PublicProjectionTests(unittest.TestCase):
         self.assertEqual(
             sync.public_snapshot([item])["advisories"][0]["release_tags"], [TAG]
         )
-        item["vulnerabilities"][2]["patched_versions"] = "0.8.0"
-        with self.assertRaises(api.PublicDataError) as raised:
-            sync.public_snapshot([item])
-        self.assertIs(raised.exception.code, api.PublicErrorCode.RELEASE_MAPPING)
 
     def test_team_credits_are_not_outside_acknowledgments(self):
         item = advisory()

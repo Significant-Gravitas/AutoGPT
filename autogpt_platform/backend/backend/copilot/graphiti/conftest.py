@@ -50,12 +50,18 @@ from pydantic import BaseModel
 from pytest_mock import MockerFixture
 from redis.asyncio import Redis
 
+from backend.copilot import database_manager_fixtures
+
 from . import recall_forget, scope_lock
 from .client import _build_graphiti
 from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
 from .recall_fake_redis import FakeRedis
 from .scope import MemoryScope
+
+# No database manager runs in the copilot-sdk shard (see sdk/conftest.py).
+fake_database_manager_clients = database_manager_fixtures.fake_database_manager_clients
+database_manager = database_manager_fixtures.database_manager
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
