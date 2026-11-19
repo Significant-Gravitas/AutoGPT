@@ -64,10 +64,13 @@ MAX_STREAMS_PER_SHARD = 300
 # Streams one user may open on a shard while it has room; beyond this share a
 # user may not take the shard's last quarter, so heavy users can't fill it.
 STREAMS_PER_USER_SHARE = 8
-# SSUBSCRIBE on an open shard stream has no socket timeout; give up after
-# this so the handler answers and the router reads the socket again. Opening
-# the stream is bounded by ShardedSubscription.open itself.
+# SSUBSCRIBE on an open shard stream has no socket timeout, and Redis's
+# confirmation can lag; give up after this so the handler answers and the
+# router reads the socket again. Opening the stream is bounded by
+# ShardedSubscription.open itself.
 _SUBSCRIBE_TIMEOUT_S = 15.0
+# Taking back an SSUBSCRIBE whose confirmation timed out is only a write.
+_TAKE_BACK_TIMEOUT_S = 2.0
 
 WS_CLOSE_EVENT_STREAM_LOST = 1011
 WS_CLOSE_TRY_AGAIN_LATER = 1013
@@ -436,17 +439,28 @@ class _ShardStream:
         self._task: asyncio.Task | None = None
         # SUNSUBSCRIBEs sent per channel whose confirmation is still on its way
         self._unsubscribing: Counter[str] = Counter()
+        # SSUBSCRIBEs sent on the open stream, until Redis confirms them. One
+        # per channel: ws_api handles a socket's messages one at a time, and
+        # add() refuses a second subscribe of a channel still in here.
+        self._subscribing: dict[str, asyncio.Future[None]] = {}
+        # Once the pump ends, nothing reads Redis's confirmations any more.
+        self._pump_ended = False
         self._stopping = False
 
     async def add(self, channel: str, handler: MessageHandler) -> None:
         _assert_no_wildcard(channel)
+        if channel in self._subscribing:
+            raise RuntimeError(f"{channel} is already being subscribed")
+        # In place before the SSUBSCRIBE: the pump reads a message queued
+        # right behind Redis's confirmation without pausing for this.
+        self.handlers[channel] = handler
         try:
             subscription = await self._open_or_subscribe(channel)
         except BaseException:
+            self.handlers.pop(channel, None)
             if not self.handlers:
                 await self._close_quietly()
             raise
-        self.handlers[channel] = handler
         if self._task is None:
             self._task = asyncio.create_task(self._pump(subscription))
 
@@ -456,11 +470,56 @@ class _ShardStream:
             # a bound of ours would cancel it first.
             self._subscription = await ShardedSubscription.open(channel)
         else:
-            # SSUBSCRIBE has no socket timeout of its own.
-            await asyncio.wait_for(
-                self._subscription.add(channel), _SUBSCRIBE_TIMEOUT_S
-            )
+            await self._subscribe_confirmed(self._subscription, channel)
         return self._subscription
+
+    async def _subscribe_confirmed(
+        self, subscription: ShardedSubscription, channel: str
+    ) -> None:
+        """SSUBSCRIBE and return once Redis confirms it, as ``open`` does for
+        the first channel. The socket answers the subscribe after this, and a
+        client re-reads its state then: an event Redis handled before the
+        SSUBSCRIBE would never arrive. The pump reads the confirmation."""
+        if self._pump_ended:
+            # The socket is already closing for the lost stream.
+            raise EventStreamLostError(f"{channel}: the stream has ended")
+        confirmed = asyncio.get_running_loop().create_future()
+        self._subscribing[channel] = confirmed
+        try:
+            # SSUBSCRIBE has no socket timeout of its own.
+            async with asyncio.timeout(_SUBSCRIBE_TIMEOUT_S):
+                await subscription.add(channel)
+                await confirmed
+        except TimeoutError:
+            await self._take_back(subscription, channel)
+            raise
+        finally:
+            if self._subscribing.get(channel) is confirmed:
+                del self._subscribing[channel]
+            # The pump may have failed it before the write failed too.
+            if confirmed.done() and not confirmed.cancelled():
+                confirmed.exception()
+
+    async def _take_back(self, subscription: ShardedSubscription, channel: str) -> None:
+        """SUNSUBSCRIBE a channel whose confirmation timed out: Redis may have
+        applied the SSUBSCRIBE anyway, and would then keep sending it with no
+        handler to take it until the stream closes. If even that write fails,
+        retire the stream, so the socket closes and the client resubscribes."""
+        if self._pump_ended:
+            # The socket is already closing for the lost stream.
+            return
+        self._unsubscribing[channel] += 1
+        try:
+            async with asyncio.timeout(_TAKE_BACK_TIMEOUT_S):
+                await subscription.remove(channel)
+        except Exception:
+            # Any failure: no confirmation is coming, and a stale count would
+            # hide the channel's events and a real drop.
+            self._unsubscribed(channel)
+            logger.warning(f"Could not take back {channel}", exc_info=True)
+            if not self._pump_ended:
+                await self.stop()
+                await self._on_lost()
 
     async def remove(self, channel: str) -> None:
         if self.handlers.pop(channel, None) is None:
@@ -475,10 +534,14 @@ class _ShardStream:
             await self._subscription.remove(channel)
         except Exception:
             # No confirmation is coming; a stale count would hide a real drop.
-            self._unsubscribing[channel] -= 1
-            if self._unsubscribing[channel] <= 0:
-                del self._unsubscribing[channel]
+            self._unsubscribed(channel)
             logger.warning(f"SUNSUBSCRIBE failed for {channel}", exc_info=True)
+
+    def _unsubscribed(self, channel: str) -> None:
+        """One SUNSUBSCRIBE of the channel is answered, or won't be."""
+        self._unsubscribing[channel] -= 1
+        if self._unsubscribing[channel] <= 0:
+            del self._unsubscribing[channel]
 
     async def stop(self) -> None:
         self._stopping = True
@@ -506,6 +569,14 @@ class _ShardStream:
             logger.warning(f"Pubsub stream lost: {e}")
         except Exception:
             logger.exception("Pubsub pump crashed")
+        finally:
+            # No confirmation can come once the stream is gone.
+            self._pump_ended = True
+            for confirmed in self._subscribing.values():
+                if not confirmed.done():
+                    confirmed.set_exception(
+                        EventStreamLostError("the stream ended before Redis confirmed")
+                    )
         if not self._stopping:
             await self._on_lost()
 
@@ -515,13 +586,27 @@ class _ShardStream:
             channel = message["channel"]
             if msg_type == "sunsubscribe":
                 if self._unsubscribing[channel] > 0:
-                    self._unsubscribing[channel] -= 1
-                    if self._unsubscribing[channel] <= 0:
-                        del self._unsubscribing[channel]
+                    self._unsubscribed(channel)
                     continue
                 # Not ours: the slot moved and Redis dropped the subscription.
                 return
+            if msg_type == "ssubscribe":
+                # Redis answers in order, so while a SUNSUBSCRIBE of the
+                # channel is unanswered this confirms an SSUBSCRIBE sent
+                # before it, which nothing waits on any more.
+                confirmed = self._subscribing.get(channel)
+                if (
+                    self._unsubscribing[channel] == 0
+                    and confirmed is not None
+                    and not confirmed.done()
+                ):
+                    confirmed.set_result(None)
+                continue
             if msg_type != "smessage":
+                continue
+            # Published before an unanswered SUNSUBSCRIBE: it belongs to the
+            # subscription being dropped, not to one made since.
+            if self._unsubscribing[channel] > 0:
                 continue
             handler = self.handlers.get(channel) if channel else None
             if handler is None:

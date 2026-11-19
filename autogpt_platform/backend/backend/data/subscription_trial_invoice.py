@@ -36,7 +36,7 @@ async def get_trial_payment_due(trial: TrialState) -> TrialPaymentDue | None:
             await stripe_call(
                 stripe.Subscription.retrieve_async,
                 trial.subscription_id,
-                expand=["latest_invoice"],
+                expand=["default_payment_method", "latest_invoice"],
             )
         )
     except (stripe.StripeError, ValidationError):
