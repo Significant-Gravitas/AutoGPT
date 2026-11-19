@@ -28,6 +28,12 @@ SHARD_E2E_FLAGS = {
     "util-executor": "E2E_CLAMD_CONTAINER",
 }
 
+# No test in "copilot-sdk" starts the database manager. Its conftests answer
+# database manager calls with a fake (backend/copilot/database_manager_fixtures.py);
+# this is the backstop for a call that slips past it, so it fails after a few
+# tries instead of retrying until the job's time limit.
+SHARDS_WITHOUT_DATABASE_MANAGER = {"copilot-sdk"}
+
 
 def _is_within(path: str, parent: str) -> bool:
     return path.startswith(f"{parent}/")
@@ -69,6 +75,8 @@ def main() -> int:
         pytest_args = pytest_args[1:]
     if flag := SHARD_E2E_FLAGS.get(args.shard):
         os.environ[flag] = "1"
+    if args.shard in SHARDS_WITHOUT_DATABASE_MANAGER:
+        os.environ["PYRO_CLIENT_COMM_RETRY"] = "3"
     return subprocess.run(
         ["poetry", "run", "pytest", *shard_args(args.shard), *pytest_args],
         check=False,

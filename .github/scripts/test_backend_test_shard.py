@@ -127,11 +127,15 @@ class BackendShardTests(unittest.TestCase):
                 patch.dict(os.environ),
                 patch.object(sys, "argv", ["backend_test_shard.py", shard, "--", "-q"]),
             ):
-                for flag in flags:
+                for flag in (*flags, "PYRO_CLIENT_COMM_RETRY"):
                     os.environ.pop(flag, None)
                 self.assertEqual(backend_test_shard.main(), 3)
                 self.assertEqual(
                     {f for f in flags if os.environ.get(f) == "1"}, enabled
+                )
+                self.assertEqual(
+                    os.environ.get("PYRO_CLIENT_COMM_RETRY"),
+                    "3" if shard == "copilot-sdk" else None,
                 )
                 run.assert_called_once_with(
                     ["poetry", "run", "pytest", *shard_args(shard), "-q"], check=False
