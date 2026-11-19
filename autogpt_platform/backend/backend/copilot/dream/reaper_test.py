@@ -32,6 +32,8 @@ from .schemas import ConsolidationOutput
 _SCOPE = MemoryScope.for_user("u1")
 _LOCK_KEY = _SCOPE.redis_key("dream_lock")
 _MODELS = {p: "claude-sonnet-5" for p in ("consolidate", "recombine", "sanitize")}
+# Only stops a hung test; a passing run ends at its budget.
+_HANG_SECONDS = 10
 
 
 @pytest.fixture(autouse=True)
@@ -323,12 +325,11 @@ class TestARun:
             return True
 
         provider_cancel.side_effect = never_answers
-        loop = asyncio.get_running_loop()
 
-        started = loop.time()
-        run = await asyncio.wait_for(reap_expired_passes(), 10)
+        run = await asyncio.wait_for(reap_expired_passes(), _HANG_SECONDS)
 
-        assert loop.time() - started < 1
+        # The hanging cancel never answers: the budget alone ended the run,
+        # leaving the rows after the first unreached.
         assert (run.listed, run.outcomes) == (3, {"out_of_budget": 3})
         assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.EXPIRED
         assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is not None

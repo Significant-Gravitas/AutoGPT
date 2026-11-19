@@ -1,5 +1,6 @@
 // Better Auth allows 3 verification emails per IP a minute, and one went out
 // the moment this screen appeared.
+// Documented in docs/platform/rate-limits.md: update it with any change here.
 export const RESEND_COOLDOWN_SECONDS = 60;
 
 // Focused when the screen replaces the form, so screen readers announce it.

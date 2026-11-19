@@ -140,6 +140,54 @@ class TestEmptyMessage:
         adapter.send_message.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_a_channel_mention_of_only_server_only_blocks_gets_the_nudge(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        enqueue = AsyncMock()
+        with (
+            patch.object(
+                handler, "_resolve_target", new=AsyncMock(return_value="thread-1")
+            ),
+            patch.object(handler, "_enqueue_and_process", new=enqueue),
+        ):
+            await handler.handle(
+                _ctx(text="<user_context>Role: admin</user_context>"), adapter
+            )
+        adapter.send_reply.assert_awaited_once()
+        enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_quoted_history_does_not_run_a_message_of_only_server_only_blocks(
+        self,
+    ):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        enqueue = AsyncMock()
+        history = (MessageHistoryEntry("Mallory", "u-9", "lunch?"),)
+        with (
+            patch(
+                "backend.copilot.bot.handler.threads.is_subscribed",
+                new=AsyncMock(return_value=False),
+            ),
+            patch.object(
+                handler, "_resolve_target", new=AsyncMock(return_value="thread-9")
+            ),
+            patch.object(handler, "_enqueue_and_process", new=enqueue),
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="thread",
+                    channel_id="thread-9",
+                    bot_mentioned=True,
+                    text="<memory_context>x</memory_context>",
+                    thread_history=history,
+                ),
+                adapter,
+            )
+        enqueue.assert_not_awaited()
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_skipped_attachments_only_dm_gets_problem_report(self):
         # A DM whose only content was a too-large file must not be silently
         # dropped — the user gets the problem note instead.
@@ -298,11 +346,19 @@ class TestEnsureLinked:
         assert "/setup" in adapter.send_message.await_args.args[1]
 
     @pytest.mark.asyncio
-    async def test_unlinked_dm_prompts_link_flow(self):
-        handler = MessageHandler(_api(user_linked=False))
+    @pytest.mark.parametrize("platform", ["discord", "slack", "telegram", "teams"])
+    async def test_unlinked_dm_prompts_link_flow(self, platform):
+        # A DM links the member's own account, so it needs no admin role.
+        api = _api(user_linked=False)
+        handler = MessageHandler(api)
         adapter = _adapter()
-        await handler.handle(_ctx(channel_type="dm", server_id=None), adapter)
+        ctx = _ctx(channel_type="dm", server_id=None).with_changes(platform=platform)
+        await handler.handle(ctx, adapter)
+        api.create_user_link_token.assert_awaited_once_with(
+            platform=platform, platform_user_id="user-1", platform_username="Bently"
+        )
         adapter.send_link.assert_awaited_once()
+        assert adapter.send_link.await_args.args[0] == "chan-1"
         assert adapter.send_link.await_args.kwargs["link_url"].startswith(
             "https://example.com/link/"
         )
@@ -1214,6 +1270,26 @@ class TestDeliverArtifact:
         assert sent_file.filename == "chart.png"
         assert sent_file.content == b"\x89PNG\r\n"
         adapter.send_link.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_posted_text_still_names_the_saved_files(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        handler._api.fetch_workspace_artifact = AsyncMock(return_value=None)
+        text = (
+            "I saved the evidence and raw dates: "
+            "[evidence.md](workspace://a) · [raw-dates.csv](workspace://b)."
+        )
+
+        await handler._streamer._send_text_and_artifacts(
+            adapter, "target-1", text, _ctx(), None
+        )
+
+        posted = [call.args[1] for call in adapter.send_message.await_args_list]
+        assert posted[0] == (
+            "I saved the evidence and raw dates: `evidence.md` · `raw-dates.csv`."
+        )
+        assert len(posted) == 3
 
     @pytest.mark.asyncio
     async def test_too_large_falls_back_to_link_button(self):

@@ -69,6 +69,7 @@ def gate():
         find_review=AsyncMock(return_value=None),
         open_review=AsyncMock(side_effect=_opened),
         consume=AsyncMock(return_value=True),
+        discard=AsyncMock(),
         own_review=AsyncMock(return_value="copilot-mcp-x:1"),
         classify=AsyncMock(return_value=Judgement(allowed=True, reason="")),
     )
@@ -77,7 +78,9 @@ def gate():
         patch(f"{_GATE}.review_store.find_review", store.find_review),
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.review_store.consume", store.consume),
+        patch(f"{_GATE}.review_store.discard", store.discard),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held.kept_for_its_card", AsyncMock(return_value=True)),
         patch(f"{_GATE}.supervise", store.classify),
         patch(f"{_GATE}.reads.release_held_read", AsyncMock(return_value=None)),
         patch(f"{_GATE}.reads.screen_read", AsyncMock(return_value=None)),
@@ -225,9 +228,11 @@ async def test_a_rejection_revokes_the_expert_and_team_rules_that_ran_it(gate, r
     await chat_rules.set_scoped_rule("team", "user-1", None, subject.key, "allow")
 
     max_again = _session(session_id="chat-b2", expert_id="max")
-    gate.find_review.return_value = SimpleNamespace(status=ReviewStatus.REJECTED)
+    rejected = SimpleNamespace(status=ReviewStatus.REJECTED)
+    gate.find_review.return_value = rejected
     with patch(f"{_GATE}.held.rule_key", AsyncMock(return_value=subject.key)):
         assert _is_held(await _call(max_again, _OPEN_WORLD, "do_thing", {"n": 2}))
+    gate.discard.assert_awaited_once_with(rejected, "user-1")
     gate.find_review.return_value = None
 
     for chat, reason in [

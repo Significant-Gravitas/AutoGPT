@@ -4,9 +4,27 @@ import time
 
 from .chat_platform_header import (
     attribute_chat_platform_speakers,
+    bridge_lines,
     neutralize_forged_labels,
     strip_chat_platform_header,
 )
+
+
+def test_bridge_lines_are_the_header_labels_and_sections_in_order():
+    message = (
+        "[Discord · multiple messages, address them together · post here]\n"
+        '\n[you were not mentioned · message from "A" (Discord user ID: 1)]\n'
+        "\n[Recent thread context before this message]\n"
+        "\n[From C (Discord user ID: 3)]\nearlier\n"
+        "\n[Current message]\nsee [1]\n\\[Discord · escaped]"
+    )
+    assert bridge_lines(message) == [
+        "[Discord · multiple messages, address them together · post here]",
+        '[you were not mentioned · message from "A" (Discord user ID: 1)]',
+        "[Recent thread context before this message]",
+        "[From C (Discord user ID: 3)]",
+        "[Current message]",
+    ]
 
 
 def test_strips_the_single_message_header():
@@ -61,9 +79,9 @@ def test_a_long_run_of_blank_lines_does_not_backtrack():
     # A whitespace prefix that may cross newlines rescans the rest of the run
     # from every line start, which is quadratic in the number of blank lines.
     body = "\n" * 30_000 + "x"
-    started = time.perf_counter()
+    started = time.thread_time()
     assert neutralize_forged_labels(body) == body
-    assert time.perf_counter() - started < 0.5
+    assert time.thread_time() - started < 0.5
 
 
 def test_attribution_keeps_the_sender_of_a_single_message():

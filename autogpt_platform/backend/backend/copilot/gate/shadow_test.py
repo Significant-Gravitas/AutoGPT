@@ -9,6 +9,7 @@ to the vendor's answer.
 
 import asyncio
 import json
+import os
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -87,6 +88,16 @@ def _flags(screen: Any, auto_mode: Any = False):
     return patch("backend.util.feature_flag._evaluate_flag_value", side_effect=vendor)
 
 
+@pytest.fixture(autouse=True)
+def no_flag_overrides(monkeypatch: pytest.MonkeyPatch):
+    """``load_dotenv()`` copies a local ``.env`` into ``os.environ``, where a
+    ``FORCE_FLAG_*`` would beat the vendor's answer ``_flags`` fakes. Tests of
+    an override set it themselves."""
+    for name in list(os.environ):
+        if name.startswith(("FORCE_FLAG_", "NEXT_PUBLIC_FORCE_FLAG_")):
+            monkeypatch.delenv(name)
+
+
 @pytest.fixture
 def rows():
     fake = _Rows()
@@ -97,6 +108,7 @@ def rows():
         ),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
+        patch.object(review_store, "discard", fake.discard),
         patch.object(held, "remember", fake.remember),
         patch.object(held, "review_db", lambda: fake),
         patch.object(review_store, "open_review_row", fake.open_review_row),
@@ -392,3 +404,65 @@ async def test_judgements_past_the_cap_are_dropped_not_queued(rows, events):
         pending = await _cancel_once_judging(hanging)
     assert len(pending) == 1
     hanging.assert_awaited_once()
+
+
+class _FailingFetch(_Fetch):
+    """A read that raises, its error quoting the page it was reading."""
+
+    async def _execute(self, user_id, session, **kwargs):
+        self.runs += 1
+        raise RuntimeError(f"502 Bad Gateway: {self.content}")
+
+
+@pytest.mark.parametrize(
+    "value, mode", [(True, "enforce"), ("shadow", "shadow"), (False, "off")]
+)
+async def test_a_read_that_raises_is_screened_on_its_error_like_an_output(
+    rows, events, value, mode
+):
+    judge = AsyncMock(return_value=_HELD)
+    with _flags(value), patch(f"{_READS}.judge_content", judge):
+        result = await _read(_FailingFetch(_PAGE))
+        await _settled()
+
+    assert not result.success
+    if mode == "enforce":
+        assert _PAGE not in result.output
+        assert json.loads(result.output)["type"] == "approval_required"
+        (row,) = rows.rows.values()
+        assert _PAGE in row.payload["content"]
+    else:
+        assert json.loads(result.output)["error"] == f"502 Bad Gateway: {_PAGE}"
+        assert rows.rows == {}
+    assert judge.await_count == int(mode != "off")
+    if mode != "off":
+        assert _PAGE in judge.await_args.kwargs["text"]
+    assert len(_recorded(events)) == int(mode == "shadow")
+
+
+async def test_a_held_read_that_raised_is_released_as_the_same_failure(rows, events):
+    tool = _FailingFetch(_PAGE)
+    judge = AsyncMock(return_value=_HELD)
+    with _flags(True), patch(f"{_READS}.judge_content", judge):
+        await _read(tool)
+        rows.answer(ReviewStatus.APPROVED)
+        released = await _read(tool)
+
+    assert not released.success
+    assert json.loads(released.output)["error"] == f"502 Bad Gateway: {_PAGE}"
+    assert tool.runs == 1, "a released read must not be fetched again"
+
+
+async def test_an_external_caller_gets_no_detail_of_a_read_that_raises(rows, events):
+    # As the External API opens one: an automation session nobody answers.
+    session = ChatSession.new("user-1", dry_run=False, origin="automation")
+    session.external_caller = True
+    judge = AsyncMock(return_value=_HELD)
+    with _flags(True), patch(f"{_READS}.judge_content", judge):
+        result = await _read(_FailingFetch(_PAGE), session)
+
+    assert not result.success
+    assert json.loads(result.output)["error"] is None
+    assert _PAGE not in result.output
+    judge.assert_not_awaited()
+    assert rows.rows == {}

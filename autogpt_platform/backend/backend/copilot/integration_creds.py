@@ -109,6 +109,10 @@ class _LockedTTLCache(TTLCache):
         with self._lock:
             return super().popitem()
 
+    def clear(self):
+        with self._lock:
+            super().clear()
+
     def pop_prefix(self, prefix: tuple) -> None:
         """Drop every entry whose key starts with *prefix*."""
         with self._lock:
@@ -394,8 +398,24 @@ def _ensure_cache_invalidation_listener() -> None:
 @continuous_retry(retry_delay=5.0)
 async def _consume_creds_changed_events() -> None:
     async for event in listen_creds_changed():
-        invalidate_user_provider_cache(event.user_id, event.provider)
+        if event is None:
+            # Pub/sub keeps no history: a change published while this process
+            # wasn't subscribed is gone, so nothing cached can be trusted.
+            _invalidate_all_provider_caches()
+        else:
+            invalidate_user_provider_cache(event.user_id, event.provider)
     raise RuntimeError("creds-changed subscription ended; resubscribing")
+
+
+def _invalidate_all_provider_caches() -> None:
+    for cache in (
+        _token_cache,
+        _null_cache,
+        _credential_id_cache,
+        _gh_identity_cache,
+        _gh_identity_null_cache,
+    ):
+        cache.clear()
 
 
 _listener_start_lock = threading.Lock()

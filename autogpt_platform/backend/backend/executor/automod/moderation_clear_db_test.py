@@ -7,8 +7,7 @@ together and the run kept showing the flagged content.
 
 import uuid
 from collections.abc import AsyncIterator
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma.models
 import pytest
@@ -104,15 +103,15 @@ async def _run_with_node(
 
 
 async def _moderate(graph_exec_id: str, moderation_type) -> AsyncMock:
-    db_client = SimpleNamespace(
+    db_client = MagicMock(
         get_node_executions=get_node_executions,
         mark_node_executions_moderated=mark_node_executions_moderated,
     )
     with patch.object(AutoModManager, "_load_config"), patch(
         "backend.executor.manager.send_async_execution_update", new_callable=AsyncMock
     ) as send:
-        await AutoModManager()._update_failed_nodes_for_moderation(
-            db_client, graph_exec_id, moderation_type, "cid-1"  # type: ignore[arg-type]
+        await AutoModManager().update_failed_nodes_for_moderation(
+            db_client, graph_exec_id, moderation_type, "cid-1"
         )
     return send
 

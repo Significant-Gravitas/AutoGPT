@@ -1157,6 +1157,12 @@ class TestRegressionStore:
             "backend.api.features.store.db.prisma.models.StoreListing.prisma",
             return_value=self.mock_listing_actions,
         )
+        # A submission checks the role where the workflow lives, which reads
+        # membership rows.
+        mocker.patch(
+            "backend.api.features.store.db.require_role_where_resource_lives",
+            AsyncMock(),
+        )
 
     @pytest.mark.asyncio
     async def test_regression_my_unpublished_agents_returns_only_own(self):
@@ -1668,6 +1674,14 @@ class TestPR10WebhookTenancy:
             "backend.copilot.tools.run_agent._safe_link_to_chat_share",
             AsyncMock(),
         )
+        # execute_preset checks the caller's role where the run will land,
+        # which reads membership rows.
+        self.mock_role_check = AsyncMock()
+        mocker.patch(
+            "backend.api.features.library.routes.presets"
+            ".require_role_where_resource_lives",
+            self.mock_role_check,
+        )
 
     @pytest.mark.asyncio
     async def test_copilot_agent_run_passes_org_team_to_execution(self, mocker):
@@ -1763,6 +1777,11 @@ class TestPR10WebhookTenancy:
         assert call_kwargs["organization_id"] == "org-preset"
         assert call_kwargs["team_id"] == "team-preset"
         assert call_kwargs["user_id"] == USER_ID
+        assert self.mock_role_check.await_args.args[:3] == (
+            USER_ID,
+            "org-preset",
+            "team-preset",
+        )
 
     @pytest.mark.asyncio
     async def test_preset_execution_falls_back_to_ctx_when_untagged(self):
@@ -2147,6 +2166,12 @@ class TestPR15MarketplaceOrg:
         mocker.patch(
             "backend.api.features.store.db.prisma.models.OrgMember.prisma",
             return_value=self.mock_org_member_actions,
+        )
+        # A submission checks the role where the workflow lives, which reads
+        # membership rows.
+        mocker.patch(
+            "backend.api.features.store.db.require_role_where_resource_lives",
+            AsyncMock(),
         )
 
     @pytest.mark.asyncio
