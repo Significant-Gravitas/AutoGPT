@@ -3,6 +3,11 @@ name: Classic - Publish to PyPI
 on:
   workflow_dispatch:
 
+# This job publishes to PyPI and creates a GitHub release, so it never reads
+# or writes the Actions cache: a poisoned entry saved by another workflow must
+# not reach what it publishes.
+cache-mode: none
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
