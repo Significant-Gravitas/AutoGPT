@@ -85,22 +85,33 @@ async function loseConnectionMidAnswer({
 }: Args) {
   const run = scriptedRun("slow-answer");
   await recordChatStreams(page);
-  await startChat(page, `Answer me slowly. ${run.marker}`);
   const transcript = page.getByRole("log");
-  await expect(
-    transcript.getByText(firstWords(ANSWER, STREAMING_WORDS)),
-    "the answer should start streaming",
-  ).toBeVisible({ timeout: 60_000 });
+  let reconnected: ReturnType<Page["waitForRequest"]>;
+  let released = false;
+  try {
+    await startChat(page, `Answer me slowly. ${run.marker}`);
+    await expect(
+      transcript.getByText(firstWords(ANSWER, STREAMING_WORDS)),
+      "the answer should start streaming",
+    ).toBeVisible({ timeout: 60_000 });
 
-  // The connection drops mid-answer while the model is still writing it.
-  // Online, one drop resumes silently: the chat speaks up from the second
-  // failed attempt in a row.
-  const reconnected = page.waitForRequest(isChatStream("GET"));
-  if (offline) await context.setOffline(true);
-  await cutChatStreams(page);
-  // Only now does the model write the rest, while the connection is down: the
-  // cut can't miss an answer that finished before the first words showed.
-  await releaseHeldReply(run.nonce);
+    // The connection drops mid-answer while the model is still writing it.
+    // Online, one drop resumes silently: the chat speaks up from the second
+    // failed attempt in a row.
+    reconnected = page.waitForRequest(isChatStream("GET"));
+    if (offline) await context.setOffline(true);
+    await cutChatStreams(page);
+    // Only now does the model write the rest, while the connection is down:
+    // the cut can't miss an answer that finished before the first words
+    // showed.
+    await releaseHeldReply(run.nonce);
+    released = true;
+  } finally {
+    // A journey that fails before the cut must not leave the reply held open
+    // on the scripted model. Each release lets one held reply through, so
+    // this one goes out only if the journey's own didn't.
+    if (!released) await releaseHeldReply(run.nonce).catch(() => undefined);
+  }
   if (offline) {
     await expect(
       page.getByText("You're offline", { exact: true }),

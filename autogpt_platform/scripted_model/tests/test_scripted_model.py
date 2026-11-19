@@ -640,36 +640,7 @@ def test_concurrent_runs_of_one_script_each_get_their_own_turns(scripted_model):
 def test_a_held_reply_waits_until_the_journey_releases_it(scripted_model, dialect):
     scripted_model.add_script("held", HELD)
     nonce = f"held-{dialect}"
-    received: list[str] = []
-    two_words = threading.Event()
-    finished = threading.Event()
-
-    def read() -> None:
-        for piece in _texts_as_streamed(
-            scripted_model, dialect, f"[[script:held#{nonce}]]"
-        ):
-            received.append(piece)
-            if len(received) == 2:
-                two_words.set()
-        finished.set()
-
-    reader = threading.Thread(target=read, daemon=True)
-    reader.start()
-    released = False
-    try:
-        assert two_words.wait(timeout=10)
-        assert not finished.wait(timeout=0.5), "the reply should wait for its release"
-        assert received == ["One", " two"]
-
-        _release(scripted_model, nonce)
-        released = True
-        assert finished.wait(timeout=10)
-    finally:
-        # A failed assertion must not leave the server's handler held open.
-        if not released:
-            _release(scripted_model, nonce)
-        reader.join(timeout=10)
-    assert "".join(received) == HELD_TEXT
+    assert _held_then_released(scripted_model, dialect, nonce) == HELD_TEXT
     (entry,) = scripted_model.journal(nonce=nonce)
     assert entry["checks"] == [{"what": "held reply", "ok": True, "detail": "released"}]
 
@@ -681,21 +652,7 @@ def test_each_release_lets_one_held_reply_through(scripted_model):
     _release(scripted_model, "twice")
     messages = [{"role": "user", "content": "[[script:held#twice]]"}]
     assert _stream(_anthropic(scripted_model), messages).content[0].text == HELD_TEXT
-
-    texts: list[str] = []
-
-    def stream_again() -> None:
-        texts.append(_stream(_anthropic(scripted_model), messages).content[0].text)
-
-    second = threading.Thread(target=stream_again, daemon=True)
-    second.start()
-    try:
-        second.join(timeout=0.5)
-        assert second.is_alive(), "the second reply should wait for a release"
-    finally:
-        _release(scripted_model, "twice")
-        second.join(timeout=10)
-    assert texts == [HELD_TEXT]
+    assert _held_then_released(scripted_model, "anthropic", "twice") == HELD_TEXT
 
 
 def test_a_reply_nobody_releases_finishes_and_fails_its_check(
@@ -802,6 +759,38 @@ def _texts_as_streamed(server, dialect: str, content: str):
         for choice in chunk.choices:
             if choice.delta.content:
                 yield choice.delta.content
+
+
+def _held_then_released(server, dialect: str, nonce: str) -> str:
+    """Streams the run's reply, checks it stops at its hold until released,
+    then releases it and returns the whole text. A failed check still
+    releases the run, so no handler is left held open."""
+    received: list[str] = []
+    two_words = threading.Event()
+    finished = threading.Event()
+
+    def read() -> None:
+        for piece in _texts_as_streamed(server, dialect, f"[[script:held#{nonce}]]"):
+            received.append(piece)
+            if len(received) == 2:
+                two_words.set()
+        finished.set()
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    released = False
+    try:
+        assert two_words.wait(timeout=10)
+        assert not finished.wait(timeout=0.5), "the reply should wait for its release"
+        assert received == ["One", " two"]
+        _release(server, nonce)
+        released = True
+        assert finished.wait(timeout=10)
+    finally:
+        if not released:
+            _release(server, nonce)
+        reader.join(timeout=10)
+    return "".join(received)
 
 
 def _release(server, nonce: str) -> None:
