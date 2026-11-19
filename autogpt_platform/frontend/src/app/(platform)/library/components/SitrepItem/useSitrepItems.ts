@@ -1,6 +1,7 @@
 "use client";
 
 import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { listAllExecutionsQueryFn } from "@/components/layout/Navbar/components/AgentActivityDropdown/useLiveUpdateLog";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
@@ -28,7 +29,7 @@ export function useSitrepItems(
   scheduledWithinMs?: number,
 ): SitrepItemData[] {
   const { data: executions } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    query: { select: okData, queryFn: listAllExecutionsQueryFn },
   });
 
   return useMemo(() => {

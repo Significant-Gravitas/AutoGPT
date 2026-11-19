@@ -42,7 +42,9 @@ function TestProviders({
 function customRender(
   ui: ReactElement,
   {
-    queryClient,
+    // Created once per render call, so a rerender keeps the same client and
+    // its cache: TestProviders' default would make a fresh one per render.
+    queryClient = createTestQueryClient(),
     ...options
   }: Omit<RenderOptions, "wrapper"> & {
     /** For a test that reads query state; the default retries nothing. */

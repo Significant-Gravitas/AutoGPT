@@ -27,6 +27,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentStatusFilter } from "../../types";
 import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { listAllExecutionsQueryFn } from "@/components/layout/Navbar/components/AgentActivityDropdown/useLiveUpdateLog";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { isAgentScheduled } from "../../hooks/executionHelpers";
 import { hasUnknownSchedules } from "@/services/schedules/scheduler-availability";
@@ -227,7 +228,7 @@ export function useLibraryAgentList({
   const showFolders = !isFavoritesTab;
 
   const { data: executions } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    query: { select: okData, queryFn: listAllExecutionsQueryFn },
   });
 
   const { activeGraphIds, errorGraphIds, completedGraphIds } = useMemo(() => {

@@ -81,4 +81,31 @@ describe("reads of a single run against live updates and lists", () => {
 
     expect(log.updatesNewerThan(1, [{ id: RUN }], false)).toEqual([]);
   });
+
+  test("a later capped list that leaves a run out keeps a read's completed answer for it", () => {
+    const log = createLiveUpdateLog();
+    log.startRead(RUN);
+    const completed = status(RUN, AgentExecutionStatus.COMPLETED);
+    expect(log.finishRead(RUN, completed)).toBe(true);
+    // A later list, capped at the newest runs, that leaves the run out: it
+    // says nothing about the run, so the read's answer survives.
+    const land = startList(log);
+    land(1);
+
+    expect(log.updatesNewerThan(1, [], false)).toEqual([completed]);
+  });
+
+  test("a later capped list drops a read's answer for a run past the 72-hour retention", () => {
+    const log = createLiveUpdateLog();
+    log.startRead(RUN);
+    const old = {
+      ...status(RUN, AgentExecutionStatus.COMPLETED),
+      ended_at: new Date(Date.now() - 73 * 60 * 60 * 1000),
+    };
+    expect(log.finishRead(RUN, old)).toBe(true);
+    const land = startList(log);
+    land(1);
+
+    expect(log.updatesNewerThan(1, [], false)).toEqual([]);
+  });
 });

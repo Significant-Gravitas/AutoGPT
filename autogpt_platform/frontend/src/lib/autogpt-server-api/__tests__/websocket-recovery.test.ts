@@ -311,6 +311,41 @@ describe("WebSocket recovery and logout", () => {
     expect(reconnected).toHaveBeenCalledTimes(1);
   });
 
+  it("notifies anyway once the ordering-ping rounds are capped, even when a view keeps subscribing", async () => {
+    const reconnected = vi.fn();
+    api.onWebSocketReconnect(reconnected);
+    void api.connectWebSocket();
+    const first = await socketAt();
+    first.open();
+    first.pong();
+    first.serverClose(1011);
+    await vi.advanceTimersByTimeAsync(500);
+    const second = await socketAt(1);
+    second.open();
+    second.pong();
+    await vi.advanceTimersByTimeAsync(0);
+    // A view subscribes after each ping, so each pong starts another round —
+    // until the cap, when the notice goes out anyway instead of a fourth ping.
+    for (let round = 0; round < 3; round++) {
+      void api.subscribeToGraphExecutions(`graph-${round}` as GraphID);
+      second.pong();
+      // The first two pongs restart the rounds; the third notifies.
+      if (round < 2) expect(reconnected).not.toHaveBeenCalled();
+    }
+    expect(reconnected).toHaveBeenCalledTimes(1);
+    expect(
+      second.send.mock.calls.map(([data]) => JSON.parse(data).method),
+    ).toEqual([
+      "heartbeat",
+      "heartbeat",
+      "subscribe_graph_executions",
+      "heartbeat",
+      "subscribe_graph_executions",
+      "heartbeat",
+      "subscribe_graph_executions",
+    ]);
+  });
+
   it("keeps waiting while the server is still answering the resubscriptions", async () => {
     void api.connectWebSocket();
     const first = await socketAt();

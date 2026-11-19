@@ -35,9 +35,64 @@ export function createOmittedRunChecker() {
   // run id -> when it was last read, as a count of reads
   const lastRead = new Map<string, number>();
   let reads = 0;
+  // Whether a reconnect check has run: only then does a later refresh
+  // carry runs it never got to. Before any reconnect, live updates keep
+  // the shown runs current, so no read is worth taking.
+  let checked = false;
+  // Runs a newer check asked to read again once the read now out settles.
+  // A newer list or live update that settles the run first drops the ask.
+  const queued = new Set<string>();
+  // Runs whose last read failed (a 500, say), with how many times each has
+  // been retried. A success, or a 404, clears the count.
+  const failures = new Map<string, number>();
+  const MAX_FAILED_ATTEMPTS = 3;
+
+  async function readOne(
+    run: GraphExecutionMeta,
+    { log, onRead, onGone }: Pick<Args, "log" | "onRead" | "onGone">,
+  ): Promise<void> {
+    reading.add(run.id);
+    lastRead.set(run.id, ++reads);
+    log.startRead(run.id);
+    let read: GraphExecutionMeta | undefined;
+    let gone = false;
+    try {
+      const details = okData(
+        await getV1GetExecutionDetails(run.graph_id, run.id),
+      );
+      read = details && metaOf(details);
+      failures.delete(run.id);
+    } catch (error) {
+      gone = error instanceof ApiError && error.status === 404;
+      // Any other failure keeps the run as shown; a later list reads it.
+      if (!gone) {
+        failures.set(run.id, (failures.get(run.id) ?? 0) + 1);
+      } else {
+        failures.delete(run.id);
+      }
+    } finally {
+      reading.delete(run.id);
+    }
+    const accepted = log.finishRead(run.id, read);
+    if (!accepted) {
+      // A newer list or live update settled the run first: the answer
+      // stands for nothing, and a queued fresh read is dropped with it.
+      queued.delete(run.id);
+      return;
+    }
+    if (read) onRead(read);
+    else if (gone) onGone(run.id);
+    // This check's answer predates a newer check that asked for the run
+    // again, so it can't satisfy that reconnect: read it fresh. A run
+    // that is gone is not read again.
+    if (queued.delete(run.id) && !gone) {
+      await readOne(run, { log, onRead, onGone });
+    }
+  }
 
   return {
     async check({ runs, log, onRead, onGone }: Args) {
+      checked = true;
       const leftOut = new Set(runs.map((run) => run.id));
       for (const id of Array.from(lastRead.keys())) {
         if (!leftOut.has(id)) lastRead.delete(id);
@@ -46,28 +101,39 @@ export function createOmittedRunChecker() {
         .filter((run) => !reading.has(run.id))
         .sort((a, b) => (lastRead.get(a.id) ?? 0) - (lastRead.get(b.id) ?? 0))
         .slice(0, MAX_CHECKS_PER_LIST);
+      // A run already being read gets a fresh read once that one settles:
+      // its answer predates this check, so it can't satisfy this reconnect.
+      for (const run of runs) {
+        if (reading.has(run.id)) queued.add(run.id);
+      }
       await Promise.all(
-        due.map(async (run) => {
-          reading.add(run.id);
-          lastRead.set(run.id, ++reads);
-          log.startRead(run.id);
-          let read: GraphExecutionMeta | undefined;
-          let gone = false;
-          try {
-            const details = okData(
-              await getV1GetExecutionDetails(run.graph_id, run.id),
-            );
-            read = details && metaOf(details);
-          } catch (error) {
-            gone = error instanceof ApiError && error.status === 404;
-            // Any other failure keeps the run as shown; a later list reads it.
-          } finally {
-            reading.delete(run.id);
-          }
-          if (!log.finishRead(run.id, read)) return;
-          if (read) onRead(read);
-          else if (gone) onGone(run.id);
-        }),
+        due.map((run) => readOne(run, { log, onRead, onGone })),
+      );
+    },
+
+    /**
+     * The follow-up to a later list refresh: only the runs the reconnect
+     * check never got to (past the first ten) and the reads that failed,
+     * for those runs only, a bounded number of times. Runs already read
+     * are not read again here.
+     */
+    async followUp({ runs, log, onRead, onGone }: Args) {
+      const due = runs
+        .filter((run) => !reading.has(run.id))
+        .filter(
+          (run) =>
+            (checked && !lastRead.has(run.id)) ||
+            (failures.has(run.id) &&
+              (failures.get(run.id) ?? 0) < MAX_FAILED_ATTEMPTS),
+        )
+        .sort(
+          (a, b) =>
+            (lastRead.has(a.id) ? 1 : 0) - (lastRead.has(b.id) ? 1 : 0) ||
+            (lastRead.get(a.id) ?? 0) - (lastRead.get(b.id) ?? 0),
+        )
+        .slice(0, MAX_CHECKS_PER_LIST);
+      await Promise.all(
+        due.map((run) => readOne(run, { log, onRead, onGone })),
       );
     },
   };
