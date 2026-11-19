@@ -211,6 +211,8 @@ export class TurnRuntime {
   private unresolvedPost: { lost: Lost; end: ConnectionEnd } | null = null;
   // A lost send, with no row yet, that another's turn may hold queued.
   private sendBehindTurn: { lost: Lost; end: ConnectionEnd } | null = null;
+  // Counts stops: one ends every lost-send recovery begun before it.
+  private stops = 0;
   private providerFailure: unknown = null;
   private lastViewMaxSequence: number | null = null;
   // The session's owner, as its views name them.
@@ -315,6 +317,7 @@ export class TurnRuntime {
     this.suppressAttach = true;
     this.queueDeclined = true;
     // As a stop ends a lost send's recovery, it drops one waiting on a turn.
+    this.stops += 1;
     this.sendBehindTurn = null;
     this.endQueueWatch();
     this.notice = null;
@@ -829,11 +832,15 @@ export class TurnRuntime {
   // The turn registers a beat after the POST answers, so the view is asked a
   // few times before the send is reported as failed.
   private async recoverUnknownTurn(lost: Lost, end: ConnectionEnd) {
+    // Not `stopped`: any idle view clears it, a moment after a stop.
+    const stops = this.stops;
+    const ended = () => this.disposed || this.stops !== stops;
     for (let i = 0; i < CONTINUATION_PROBES; i++) {
       const view = await this.fetchView();
+      if (ended()) return;
       if (!view) {
         const signedOut = await this.signedOut();
-        if (this.disposed || this.stopped) return;
+        if (ended()) return;
         if (signedOut) this.giveUp(new CopilotAuthError());
         else this.retry(lost, end);
         return;
@@ -847,7 +854,6 @@ export class TurnRuntime {
         this.resetFailures();
         return;
       }
-      if (this.disposed || this.stopped) return;
       // The session reads "running" from before the prompt row is written
       // until the turn is released, so a landed prompt outside it is final.
       if (
@@ -857,6 +863,7 @@ export class TurnRuntime {
         break;
       await sleep(FINISH_PROBE_MS);
     }
+    if (ended()) return;
     this.resetFailures();
     if (this.sendInDoubt(lost, end)) {
       this.error =

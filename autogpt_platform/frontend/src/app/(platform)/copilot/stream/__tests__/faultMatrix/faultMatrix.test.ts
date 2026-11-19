@@ -491,6 +491,32 @@ describe("a send", () => {
   );
 
   cell(
+    "S19s",
+    "whose request hung, stopped while its checks run, shows no error",
+    async () => {
+      server.postMode = "hang-before-send";
+      tab.send(P1);
+      await advance(31_000);
+      tab.runtime.stop();
+      await advance(30_000);
+      expectScreen({ error: null, notice: null });
+    },
+  );
+
+  cell(
+    "S19t",
+    "whose request hung, stopped during its last check, shows no error",
+    async () => {
+      server.postMode = "hang-before-send";
+      tab.send(P1);
+      await advance(33_700);
+      tab.runtime.stop();
+      await advance(30_000);
+      expectScreen({ error: null, notice: null });
+    },
+  );
+
+  cell(
     "S19h",
     "whose request hung while hidden, never reaching the server, is reported on return",
     async () => {
@@ -794,6 +820,26 @@ describe("two tabs on one chat", () => {
       server.publish();
       await advance(1_000);
       stale.runtime.observe(server.view());
+      await advance(30_000);
+      expectScreen({ error: null }, stale);
+    },
+  );
+
+  cell(
+    "M3t",
+    "a stale tab's lost send, stopped while its checks run, isn't reported when another tab's turn starts",
+    async () => {
+      const stale = openTab();
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(1_000);
+      stale.runtime.stop();
+      server.postMode = "stream";
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(1_000);
+      server.publish();
       await advance(30_000);
       expectScreen({ error: null }, stale);
     },
