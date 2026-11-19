@@ -98,15 +98,15 @@ def strip_prompt_value_keys(values: dict[str, str]) -> dict[str, str]:
     return stripped
 
 
-# A run makes at most this many attempts, whatever its Retry Count says.
-MAX_LLM_RETRIES = 10
-
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
 
 # Non-streaming calls emit no bytes until the completion is done, so this
 # budget has to span the entire generation, not time-to-first-byte.
 LLM_REQUEST_TIMEOUT_SECONDS: int = settings.config.llm_request_timeout_seconds
+
+# A run makes at most this many attempts, whatever its Retry Count says.
+MAX_LLM_RETRIES = 10
 
 # Only a cutoff that ate most of the budget was mid-inference; a fast fail burns
 # nothing, and paging on those during an outage would bury the ones that cost.
