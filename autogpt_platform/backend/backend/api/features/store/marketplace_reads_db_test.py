@@ -520,7 +520,8 @@ def _after_child_listing_read(monkeypatch, child_graph: str, action):
     async def read_then_act(actions, **kwargs):
         listing = await find_first(actions, **kwargs)
         if listing and listing.agentGraphId == child_graph and listing.Versions:
-            await action()
+            async with asyncio.timeout(10):
+                await action()
         return listing
 
     monkeypatch.setattr(listing_actions, "find_first", read_then_act)

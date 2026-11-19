@@ -1722,9 +1722,11 @@ async def review_store_submission(
 async def _withdraw_store_version(
     tx: prisma.Prisma, version: prisma.models.StoreListingVersion
 ) -> str | None:
-    """Return the reactivated version ID or None.
+    """Adjust the listing only if the locked version is still approved.
 
-    Clear the listing's flag only when no other undeleted approval remains.
+    The caller writes the rejection in the same transaction. Return the
+    reactivated version ID, if any. Clear the listing's flag only when no
+    other undeleted approval remains.
     """
     # Serialize reviews of a listing before choosing a replacement for its live version.
     rows = await query_raw_with_schema(
