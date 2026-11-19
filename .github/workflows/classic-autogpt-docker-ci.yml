@@ -92,6 +92,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # On pushes to master this job publishes the latest-dev image to Docker Hub,
+    # so it builds without the Actions cache: a poisoned entry saved by another
+    # workflow must not reach a published image.
+    cache-mode: none
 
     steps:
       - name: Check out repository
@@ -124,9 +128,6 @@ jobs:
             ${{ env.DEPLOY_IMAGE_NAME }}:${{ env.DEV_IMAGE_TAG }}
           labels: GIT_REVISION=${{ github.sha }}
           load: true # save to docker images
-          # cache layers in GitHub Actions cache to speed up builds
-          cache-from: type=gha,scope=autogpt-docker-dev
-          cache-to: type=gha,scope=autogpt-docker-dev,mode=max
 
       - id: test
         name: Run tests

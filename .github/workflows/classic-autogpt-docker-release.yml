@@ -5,13 +5,13 @@ on:
     types: [published]
 
   workflow_dispatch:
-    inputs:
-      no_cache:
-        type: boolean
-        description: 'Build from scratch, without using cached layers'
 
 permissions:
   contents: read
+
+# Release images are built from scratch and never read or write the Actions
+# cache: a poisoned entry saved by another workflow must not reach a release.
+cache-mode: none
 
 env:
   IMAGE_NAME: auto-gpt
@@ -58,10 +58,6 @@ jobs:
             ${{ env.DEPLOY_IMAGE_NAME }}:${{ steps.sanitize_tag.outputs.tag }}
           labels: GIT_REVISION=${{ github.sha }}
 
-          # cache layers in GitHub Actions cache to speed up builds
-          cache-from: ${{ !inputs.no_cache && 'type=gha' || '' }},scope=autogpt-docker-release
-          cache-to: type=gha,scope=autogpt-docker-release,mode=max
-
       - name: Push image to Docker Hub
         run: docker push --all-tags ${{ env.DEPLOY_IMAGE_NAME }}
 
@@ -70,7 +66,6 @@ jobs:
           event_name: ${{ github.event_name }}
           event_ref: ${{ github.event.ref }}
           event_ref_type: ${{ github.event.ref}}
-          inputs_no_cache: ${{ inputs.no_cache }}
 
           prod_branch: master
           dev_branch: dev
