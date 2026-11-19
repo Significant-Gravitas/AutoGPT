@@ -5,9 +5,11 @@ import {
   revokeExpertCredential,
   type ExpertCredential,
 } from "@/lib/api/integrations";
-import { queryClient } from "@/lib/session";
+import { queryClient, sessionGeneration } from "@/lib/session";
 
-function settle(expertID: string, granted: ExpertCredential[]) {
+// A grant or removal that ends after a sign-out leaves the next account's cache alone.
+function settle(expertID: string, granted: ExpertCredential[], startedIn: number) {
+  if (startedIn !== sessionGeneration()) return;
   queryClient.setQueryData(integrationKeys.expertCredentials(expertID), granted);
   // A grant can be what a scheduled workflow was waiting for.
   void queryClient.invalidateQueries({ queryKey: integrationKeys.expertSetup });
@@ -15,15 +17,17 @@ function settle(expertID: string, granted: ExpertCredential[]) {
 
 /** Lets the expert use these accounts. Granting one twice is harmless. */
 export async function allowForExpert(expertID: string, credentialIDs: string[]) {
+  const startedIn = sessionGeneration();
   const granted = await grantExpertCredentials(expertID, credentialIDs);
-  settle(expertID, granted);
+  settle(expertID, granted, startedIn);
   return granted;
 }
 
 /** Takes an account away from the expert; the account itself stays. */
 export async function removeFromExpert(expertID: string, credentialID: string) {
+  const startedIn = sessionGeneration();
   const granted = await revokeExpertCredential(expertID, credentialID);
-  settle(expertID, granted);
+  settle(expertID, granted, startedIn);
   return granted;
 }
 

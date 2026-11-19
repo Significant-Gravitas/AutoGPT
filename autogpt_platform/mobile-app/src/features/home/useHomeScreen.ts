@@ -58,6 +58,8 @@ export function useHomeScreen() {
   const suggested = (data ?? []).filter(Boolean).slice(0, 6).map(ottoWording);
   const team = experts.data ?? [];
   const selected = team.find((expert) => expert.id === selectedID) ?? null;
+  // A "new chat with this expert" link names them before the team loads.
+  const isRecipientLoading = selectedID !== null && selected === null && experts.isPending;
   // The suggestions come from what Otto knows about the user's business; an
   // expert gets starters for their own area instead.
   const ottoPrompts = suggested.length > 0 ? suggested : FALLBACK_PROMPTS;
@@ -84,6 +86,8 @@ export function useHomeScreen() {
 
   async function submit(text: string) {
     if (isStartingRef.current) return false;
+    // Sending now would start a chat with Otto instead of the expert asked for.
+    if (isRecipientLoading) return false;
     // A starter row skips the composer's own check, and the send would leave the file behind.
     if (isUploading(files.attachments)) {
       setError("Wait for your files to finish uploading.");

@@ -177,11 +177,24 @@ export function hostScopeMatches(scope: string, url: string) {
   return request.host === domain || request.host.endsWith(`.${domain}`);
 }
 
-/** The single host a host-scoped need names, as the web keys its picks. */
+/**
+ * A URL's host, with its port when that isn't the scheme's default:
+ * the backend's `host_selection_key`, and the scope a saved key needs.
+ */
+export function scopedHost(url: string) {
+  const parts = hostAndPort(url);
+  if (!parts) return null;
+  const defaultPort = /^https:\/\//i.test(url.trim()) ? 443 : 80;
+  return parts.port !== null && parts.port !== defaultPort
+    ? `${parts.host}:${parts.port}`
+    : parts.host;
+}
+
+/** The single host (and port) a host-scoped need names, as the backend keys its picks. */
 export function requestHost(request: CredentialRequest) {
   if (!request.types.includes("host_scoped")) return null;
   const hosts = [
-    ...new Set(request.discriminatorValues.flatMap((url) => hostFromURL(url) ?? [])),
+    ...new Set(request.discriminatorValues.flatMap((url) => scopedHost(url) ?? [])),
   ];
   return hosts.length === 1 ? hosts[0] : null;
 }
