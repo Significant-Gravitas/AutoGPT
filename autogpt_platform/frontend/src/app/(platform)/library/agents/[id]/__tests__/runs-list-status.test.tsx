@@ -143,10 +143,15 @@ test("the runs list reads its runs once on a first load", async () => {
   const { runReads } = serveAgentPage({
     status: () => AgentExecutionStatus.RUNNING,
   });
-  installLiveSocket();
+  const live = installLiveSocket();
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  // Pin the reconnect spread to zero: a regression that treated the first
+  // connection as a reconnect would order a second read right after it,
+  // so the test must wait past the spread and the ordering pong, not a tick.
+  vi.spyOn(Math, "random").mockReturnValue(0);
+  onTestFinished(() => vi.mocked(Math.random).mockRestore());
 
   render(
     <NuqsTestingAdapter hasMemory searchParams="activeTab=runs">
@@ -157,8 +162,12 @@ test("the runs list reads its runs once on a first load", async () => {
   expect(
     await screen.findByRole("img", { name: "Task running" }),
   ).toBeDefined();
-  // Let any read the first render started get under way.
-  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  await live.acceptNext();
+  // Let the socket settle: the auth pong, then the spread and the ordering
+  // pong a reconnect would wait for. A first connection orders no second read.
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 
   const [runs] = queryClient.getQueryCache().findAll({
     predicate: (query) =>

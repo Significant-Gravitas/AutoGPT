@@ -1,14 +1,18 @@
-import { getGetV1ListAllExecutionsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV1ListAllExecutionsQueryKey,
+  getV1ListAllExecutions,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { isActiveExecution } from "./helpers";
 
 const MAX_TRACKED_LISTS = 10;
-// A retry starts no earlier than the failure before it ("failed"), and a
-// fetch paused while offline starts when it continues; neither dispatches
-// another "fetch".
-const ATTEMPT_STARTS = new Set(["fetch", "failed", "continue"]);
+// Activity keeps a finished run only while its end is within 72 hours (see
+// categorizeExecutions in helpers.tsx): entries for runs no list covers
+// must not pile up past that.
+const MILLISECONDS_PER_72_HOURS = 72 * 60 * 60 * 1000;
 
 type RunStatus = GraphExecution | GraphExecutionMeta;
 
@@ -23,14 +27,17 @@ type RunStatus = GraphExecution | GraphExecutionMeta;
  */
 export function useLiveUpdateLog() {
   const queryClient = useQueryClient();
-  const [log] = useState(createLiveUpdateLog);
+  const [log] = useState(() => sharedLiveUpdateLog);
 
   useEffect(() => {
     const listHash = hashKey(getGetV1ListAllExecutionsQueryKey());
     return queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== "updated" || event.query.queryHash !== listHash)
         return;
-      if (ATTEMPT_STARTS.has(event.action.type)) log.recordFetchStart();
+      // Attempt starts are recorded by the shared query function, which
+      // runs on every attempt including retries (a retry dispatches no
+      // "fetch" action, so the cache events can't time it). Only the
+      // success lands here, to map the data to its fetch start.
       if (event.action.type === "success") {
         log.recordFetchSuccess(event.query.state.dataUpdatedAt);
       }
@@ -38,6 +45,22 @@ export function useLiveUpdateLog() {
   }, [log, queryClient]);
 
   return log;
+}
+
+// One log for the app: the five hooks that read the run list share one
+// query function (below), and it records each attempt's start in this log,
+// so a fetch uses the same log whichever observer's options were set last.
+const sharedLiveUpdateLog = createLiveUpdateLog();
+
+/** The shared query function for the run list, for every hook that reads it. */
+export function listAllExecutionsQueryFn({ signal }: { signal?: AbortSignal }) {
+  sharedLiveUpdateLog.recordFetchStart();
+  return getV1ListAllExecutions({ signal });
+}
+
+/** For tests that render the dropdown: drop the shared log's state. */
+export function resetSharedLiveUpdateLog() {
+  sharedLiveUpdateLog.reset();
 }
 
 export function createLiveUpdateLog() {
@@ -51,6 +74,14 @@ export function createLiveUpdateLog() {
   const reads = new Map<string, { started: number; superseded: boolean }>();
 
   return {
+    /** Drop everything: for tests that share the log across renders. */
+    reset() {
+      sequence = 0;
+      fetchStartSequence = 0;
+      updates.clear();
+      listSequences.clear();
+      reads.clear();
+    },
     recordUpdate(execution: GraphExecution) {
       sequence += 1;
       updates.delete(execution.id);
@@ -94,7 +125,10 @@ export function createLiveUpdateLog() {
      * order. Forgets the rest, which every later list includes. A read by ID
      * gives way to a list that started later and either has the run or has
      * every run (`complete`), so the run is gone. A list whose fetch start
-     * went unseen counts as older than everything.
+     * went unseen counts as older than everything. A capped list that
+     * leaves a run out says nothing about it, so its entry is replayed over
+     * the list instead of dropped — unless the run is past Activity's
+     * 72-hour retention.
      */
     updatesNewerThan(
       dataUpdatedAt: number,
@@ -110,10 +144,35 @@ export function createLiveUpdateLog() {
       });
       const newer: RunStatus[] = [];
       updates.forEach((update, id) => {
-        if (update.sequence > since) newer.push(update.execution);
-        else updates.delete(id);
+        if (update.sequence > since) {
+          newer.push(update.execution);
+        } else if (complete || listedIDs.has(id)) {
+          // The list's fetch started after this update, and the list has
+          // the run (or has every run): the list already includes it.
+          updates.delete(id);
+        } else if (!isStillRecent(update.execution)) {
+          updates.delete(id);
+        } else {
+          // A capped list that leaves the run out says nothing about it,
+          // so the entry is not in the list: replay it over the list.
+          newer.push(update.execution);
+        }
       });
       return newer;
     },
   };
+}
+
+// Whether Activity would still show this run: active runs always, and a
+// finished run only while its end is within 72 hours. A run with no end
+// recorded stays, since nothing proves it stale.
+function isStillRecent(execution: RunStatus): boolean {
+  if (isActiveExecution(execution)) return true;
+  if (execution.ended_at === undefined || execution.ended_at === null) {
+    return true;
+  }
+  return (
+    new Date(execution.ended_at).getTime() >
+    Date.now() - MILLISECONDS_PER_72_HOURS
+  );
 }
