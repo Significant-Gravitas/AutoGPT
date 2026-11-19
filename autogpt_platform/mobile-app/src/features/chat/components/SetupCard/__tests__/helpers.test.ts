@@ -180,6 +180,18 @@ describe("rowStatus", () => {
     expect(rowStatus(ask, { ...context, grantedIDs: ["cred-1"] }).kind).toBe("connected");
   });
 
+  it("asks to reconnect, not allow, an offered account that needs reconnecting", () => {
+    const [ask] = setupFor({
+      github_credentials: {
+        ...github,
+        credential_gap: { kind: "reconnect_required", credential_id: "cred-1" },
+        expert_grant: { expert_id: "e1", credentials: [{ id: "cred-1", title: "octocat", type: "oauth2" }] },
+      },
+    }).requests;
+    const status = rowStatus(ask, { ...empty, credentials: [credential()], grantedIDs: [] });
+    expect(status).toEqual({ kind: "reconnect", credentialID: "cred-1" });
+  });
+
   it.each([
     [["api_key"], "Add key"],
     [["user_password"], "Add login"],
