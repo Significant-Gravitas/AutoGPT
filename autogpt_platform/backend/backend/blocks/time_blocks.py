@@ -17,6 +17,7 @@ from backend.blocks._base import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
+from backend.util.json import dumps
 
 # Shared timezone literal type for all time/date blocks
 TimezoneLiteral = Literal[
@@ -61,6 +62,9 @@ TimezoneLiteral = Literal[
 ]
 
 logger = logging.getLogger(__name__)
+
+# The same cap as the Zip Lists block's: what repeating one message may add.
+MAX_REPEATED_MESSAGE_BYTES = 4 * 1024 * 1024
 
 
 def _get_timezone(
@@ -519,7 +523,23 @@ class CountdownTimerBlock(Block):
                 f"exceeds max ({self.MAX_TOTAL_SECONDS}s = 7 days)"
             )
 
+        repeated_bytes = _message_bytes(input_data.input_message) * repeat
+        if repeat > 1 and repeated_bytes > MAX_REPEATED_MESSAGE_BYTES:
+            raise ValueError(
+                f"Repeating the message {repeat} times would output "
+                f"{repeated_bytes / 2**20:.1f} MiB, more than the limit of "
+                f"{MAX_REPEATED_MESSAGE_BYTES / 2**20:g} MiB"
+            )
+
         for _ in range(repeat):
             if total_seconds > 0:
                 await asyncio.sleep(total_seconds)
             yield "output_message", input_data.input_message
+
+
+def _message_bytes(message: Any) -> int:
+    try:
+        return len(dumps(message).encode())
+    except TypeError:
+        # orjson stops at 64-bit integers.
+        return len(str(message).encode())
