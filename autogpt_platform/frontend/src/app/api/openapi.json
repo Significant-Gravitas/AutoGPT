@@ -22505,7 +22505,11 @@
       },
       "Body_postOauthUploadAppLogo": {
         "properties": {
-          "file": { "type": "string", "format": "binary", "title": "File" }
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
         },
         "type": "object",
         "required": ["file"],
@@ -22554,7 +22558,11 @@
       },
       "Body_postV1Upload_file_to_cloud_storage": {
         "properties": {
-          "file": { "type": "string", "format": "binary", "title": "File" }
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
         },
         "type": "object",
         "required": ["file"],
@@ -22628,7 +22636,11 @@
       },
       "Body_postV2Upload_submission_media": {
         "properties": {
-          "file": { "type": "string", "format": "binary", "title": "File" }
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
         },
         "type": "object",
         "required": ["file"],
@@ -22636,7 +22648,11 @@
       },
       "Body_uploadCopilotSkillPackage": {
         "properties": {
-          "file": { "type": "string", "format": "binary", "title": "File" }
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
         },
         "type": "object",
         "required": ["file"],
@@ -22644,7 +22660,11 @@
       },
       "Body_uploadWorkspaceFile": {
         "properties": {
-          "file": { "type": "string", "format": "binary", "title": "File" }
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
         },
         "type": "object",
         "required": ["file"],
@@ -22652,7 +22672,11 @@
       },
       "Body_upload_brain_dump_part": {
         "properties": {
-          "file": { "type": "string", "format": "binary", "title": "File" },
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
           "recording_id": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_-]{1,64}$",
