@@ -12,7 +12,7 @@ import {
   submitOnboardingProfile,
 } from "@/lib/api/onboarding";
 import { signOut } from "@/lib/session";
-import { requestWithin, withDeadline } from "@/lib/deadline";
+import { requestWithin } from "@/lib/deadline";
 import { useMountEffect } from "@/lib/useMountEffect";
 
 import {
@@ -44,7 +44,7 @@ const api: OnboardingAPI = {
     requestWithin(REQUEST_MS, (signal) => finalizeBrainDump(body, signal)),
   async isPaywalled() {
     try {
-      await withDeadline(listExperts(), REQUEST_MS);
+      await requestWithin(REQUEST_MS, (signal) => listExperts({ signal }));
       return false;
     } catch (error) {
       // Any other failure is not a paywall; the hire then says if it is one.
