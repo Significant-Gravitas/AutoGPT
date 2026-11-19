@@ -45,8 +45,8 @@ class EndInterviewTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "End the interview once they've agreed to the first thing their "
-            "team will start on. Call it in the same reply as your goodbye."
+            "End the interview once they've agreed where their team would "
+            "start. Call it in the same reply as your goodbye."
         )
 
     @property
@@ -76,8 +76,8 @@ class EndInterviewTool(BaseTool):
         if not first_task:
             return ErrorResponse(
                 message=(
-                    f"Call {self.name} with {END_SIGNAL_FIRST_TASK}: the first "
-                    "thing their team will start on, as they agreed it."
+                    f"Call {self.name} with {END_SIGNAL_FIRST_TASK}: where "
+                    "their team would start, as they agreed it."
                 ),
                 error="first_task_missing",
                 session_id=session.session_id,
@@ -90,9 +90,11 @@ class EndInterviewTool(BaseTool):
             session.metadata.onboarding_interview_stage = INTERVIEW_STAGE_CLOSED
         return InterviewEndedResponse(
             message=(
-                "The interview is closed, and their team starts on first_task "
-                "first. If you have not said goodbye yet, say a short goodbye "
-                "now, in their language, that tells them so. Ask nothing."
+                "The interview is closed, with first_task as where their team "
+                "would start. Nothing is running yet. If you have not said "
+                "goodbye yet, say a short goodbye now, in their language: "
+                "their plan comes up on their screen next, and they choose "
+                "there what their team starts on. Ask nothing."
             ),
             first_task=first_task,
             session_id=session.session_id,

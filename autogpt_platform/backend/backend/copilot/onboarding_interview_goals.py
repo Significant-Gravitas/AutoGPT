@@ -43,7 +43,7 @@ END_SIGNAL_PARAMETERS: dict[str, object] = {
         END_SIGNAL_FIRST_TASK: {
             "type": "string",
             "description": (
-                "The first thing their team will start on, as they agreed it "
+                "Where their team would start, as they agreed it "
                 "(with any correction they made), in a few words, in their "
                 "language."
             ),

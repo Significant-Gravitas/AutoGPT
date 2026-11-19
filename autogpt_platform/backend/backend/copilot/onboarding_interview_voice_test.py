@@ -48,20 +48,26 @@ def test_the_call_talks_like_a_call() -> None:
 
 def test_the_call_ends_on_an_agreed_first_task_and_the_end_tool() -> None:
     assert (
-        "When you name the first task, say in one sentence what their team "
-        "will start on (and the tool it runs on, if it needs one) and check "
+        "When you name the first task, say in one sentence where their team "
+        "would start (and the tool it runs on, if it needs one) and check "
         "that's right."
     ) in VOICE_INTERVIEW_PROMPT
     # A live voice model keeps talking after a tool call, so the call comes
     # first and the goodbye after it, before the runtime hangs up.
     assert (
         f"Once they agree or correct it, call {VOICE_INTERVIEW_END_TOOL}, then "
-        "say a short goodbye in their language."
+        "say a short goodbye in their language"
+    ) in VOICE_INTERVIEW_PROMPT
+    # The goodbye says what comes next, and claims no work has started.
+    assert (
+        "their plan comes up on their screen, and they choose there what "
+        "their team starts on."
     ) in VOICE_INTERVIEW_PROMPT
     assert (
-        "Their team starts on that first and learns the rest of their work as "
-        "it goes."
+        "never say their team is working on it, has started, or will get to "
+        "it right away."
     ) in VOICE_INTERVIEW_PROMPT
+    assert "Their team starts on that first" not in VOICE_INTERVIEW_PROMPT
     assert "sum up what you heard" not in VOICE_INTERVIEW_PROMPT
     # The goodbye is asked for in the person's language, never quoted in one.
     assert "Great, I'm putting your team together now" not in VOICE_INTERVIEW_PROMPT
@@ -84,7 +90,7 @@ def test_a_call_that_runs_long_ends_on_what_otto_has() -> None:
     from backend.copilot.onboarding_interview import get_onboarding_interview_supplement
 
     assert (
-        "say in one sentence what their team will start on (and the tool it "
+        "say in one sentence where their team would start (and the tool it "
         "runs on, if it needs one) and check that's right. If about three "
         "minutes have passed, do that with what you have. Then wait for them to "
         "answer out loud"
@@ -106,7 +112,7 @@ def test_the_end_tool_takes_what_the_typed_end_signal_takes() -> None:
     assert properties["first_task"] == {
         "type": "string",
         "description": (
-            "The first thing their team will start on, as they agreed it "
+            "Where their team would start, as they agreed it "
             "(with any correction they made), in a few words, in their "
             "language."
         ),

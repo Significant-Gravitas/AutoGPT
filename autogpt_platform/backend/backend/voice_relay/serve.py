@@ -64,8 +64,8 @@ SETTLE_S = 20.0
 POLL_S = 0.2
 
 END_TOOL_DESCRIPTION = (
-    "End the call once they've agreed to the first thing their team will start "
-    "on, or corrected it. Call it, then say a short goodbye."
+    "End the call once they've agreed where their team would start, or "
+    "corrected it. Call it, then say a short goodbye."
 )
 
 

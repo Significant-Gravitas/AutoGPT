@@ -146,8 +146,8 @@ def test_the_supplement_keeps_the_interviewer_contract() -> None:
 # The interview's ending: it stops asking as soon as their team can start on
 # something, and confirms that first task.
 _ENDING_TRIGGER = (
-    "When you name the first task, say in one sentence what their team will "
-    "start on (and the tool it runs on, if it needs one) and check that's right."
+    "When you name the first task, say in one sentence where their team would "
+    "start (and the tool it runs on, if it needs one) and check that's right."
 )
 
 
@@ -156,9 +156,15 @@ def test_the_interview_ends_once_their_team_can_start_on_something() -> None:
 
     assert (
         f"{_ENDING_TRIGGER} Once they agree or correct it, call `end_interview` "
-        "and say a short goodbye in their language. Their team starts on that "
-        "first and learns the rest of their work as it goes."
+        "and say a short goodbye in their language: their plan comes up on "
+        "their screen next, and they choose there what their team starts on."
     ) in supplement
+    # Nothing runs until they choose it, so the goodbye never says it does.
+    assert (
+        "Never say their team is working on it, has started, or will get to it "
+        "right away."
+    ) in supplement
+    assert "Their team starts on that first" not in supplement
     # The interview ends on an agreed first task, not on a confirmed summary.
     assert "sum up what you heard" not in supplement
     assert "ask if you got it right" not in supplement
@@ -373,12 +379,12 @@ def test_an_ordinary_reply_carries_no_directive() -> None:
 
 def test_the_reply_before_the_cap_asks_for_the_first_task() -> None:
     """The backstop for an interview that has not ended by itself: it closes
-    the way every interview does, on what their team will start on."""
+    the way every interview does, on where their team would start."""
     block = render_interview_state(15, 16)
 
     assert (
         "Wrap up now: in this reply, say in one sentence what you heard and "
-        "what their team will start on, and check that's right. Ask nothing "
+        "where their team would start, and check that's right. Ask nothing "
         "else."
     ) in block
 
@@ -387,7 +393,11 @@ def test_the_reply_at_the_cap_closes_the_interview() -> None:
     block = render_interview_state(16, 16)
 
     assert "The interview is over. Ask no more questions." in block
-    assert "putting their team together now" in block
+    # The goodbye says what comes next, and nothing has started yet.
+    assert "you're putting their plan together" in block
+    assert "comes up on their screen next" in block
+    assert "Never say their team is working on it or has started." in block
+    assert "putting their team together now" not in block
     # A count that stepped over the wrap-up still gets a summary.
     assert "If you have not summed up what you heard yet" in block
 
