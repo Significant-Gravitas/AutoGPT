@@ -7,6 +7,8 @@ import { loadRecordedTurn } from "../recordedTurns";
 export const USER_ID = "user-1";
 const FIXTURE = loadRecordedTurn("baseline-tool-turn");
 const HEARTBEAT_MS = 10_000;
+// Past the client's silence abort (30 s) and its checks (4 s).
+const LATE_RECEIVE_MS = 40_000;
 const LISTENER_READ_MS = 5_000;
 const encoder = new TextEncoder();
 const QUEUED_STREAM = emptyStream();
@@ -19,6 +21,13 @@ const FOLLOW_UP_STREAM = emptyStream({
 // The session GET's rows carry the message id the renderer keys a prompt on.
 type Row = PersistedRow & { id: string };
 
+interface PostedBody {
+  message: string;
+  message_id: string;
+  file_ids: string[] | null;
+  folder_ids: string[] | null;
+}
+
 /** How the next send is answered, or lost, between the client and the server. */
 export type PostMode =
   | "stream"
@@ -26,6 +35,8 @@ export type PostMode =
   // The request never reaches the server and never answers, as a dead socket holds it.
   | "hang-before-send"
   | "lost-after-receive"
+  // The request reaches the server only after the client gave up on it.
+  | "late-after-receive"
   // The server started the turn; the response stays open and silent, as a frozen page sees it.
   | "silent-after-receive"
   | "route-error-after-receive"
@@ -66,6 +77,11 @@ export class FaultServer {
   turns: FaultTurn[] = [];
   connections: FaultConnection[] = [];
   requests: { method: string; url: URL }[] = [];
+  /** Each POST's body, in order. */
+  posts: PostedBody[] = [];
+  /** The next POST's answer reaches the client this much later; the server
+   *  has the message at once, as over a slow link. */
+  respondAfterMs = 0;
   postMode: PostMode | (() => PostMode) = "stream";
   resumeMode: ResumeMode = "stream";
   /** Session reads fail while this is above zero; each read takes one. */
@@ -91,7 +107,13 @@ export class FaultServer {
     const url = new URL(String(input));
     const method = init?.method ?? "GET";
     this.requests.push({ method, url });
-    return method === "POST" ? this.post(url, init) : this.resume(url, init);
+    if (method !== "POST") return this.resume(url, init);
+    this.posts.push(JSON.parse(String(init?.body)) as PostedBody);
+    const delay = this.respondAfterMs;
+    this.respondAfterMs = 0;
+    const response = await this.post(url, init);
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    return response;
   }) as typeof fetch;
 
   view(): SessionView {
@@ -222,6 +244,20 @@ export class FaultServer {
     const id = body.expert_kickoff
       ? "expert-kickoff-row"
       : scopedMessageId(url, body.message_id);
+    if (mode === "late-after-receive") {
+      setTimeout(() => this.arrive(body.message, id), LATE_RECEIVE_MS);
+      return hangUntilAborted(init?.signal);
+    }
+    // The route's claim on the id: a send it already took starts nothing, and
+    // is handed the turn running now, if any.
+    if (this.took(id)) {
+      const running = this.running();
+      return sse(
+        running
+          ? this.open("POST", url, running, "0-0", init?.signal)
+          : emptyStream(),
+      );
+    }
     if (this.running()) {
       this.pending.push({ text: body.message, id });
       if (mode === "lost-after-receive") throw new TypeError("Failed to fetch");
@@ -337,6 +373,22 @@ export class FaultServer {
         end(() => {});
       },
     });
+  }
+
+  // The route's claim on a send's id: taken as a row, or queued.
+  private took(id: string) {
+    return (
+      this.history.some((row) => row.id === id) ||
+      this.pending.some((queued) => queued.id === id)
+    );
+  }
+
+  // A request that reaches the server after its client gave up on it: the
+  // route's claim, then the queue behind a running turn, or its own turn.
+  private arrive(text: string, id: string) {
+    if (this.took(id)) return;
+    if (this.running()) this.pending.push({ text, id });
+    else this.startTurn(text, this.queueing ? "queued" : "running", id);
   }
 
   // `is_message_duplicate`: the text of one of the trailing user rows.

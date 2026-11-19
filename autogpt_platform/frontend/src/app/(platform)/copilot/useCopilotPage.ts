@@ -558,6 +558,20 @@ function useCopilotPageChat(
     sendOrQueue(message),
   );
 
+  // Only the runtime's sends go unconfirmed; one sent again starts a turn.
+  function resendUnconfirmed() {
+    if (!runtimeStream?.resendUnconfirmed()) {
+      toast({
+        title: "Message not sent again",
+        description:
+          "Another message is still sending, or this one arrived after all.",
+      });
+      return;
+    }
+    isInflightRef.current = true;
+    markUnsettled();
+  }
+
   useWorkflowImportAutoSubmit({
     onSend: sendOrQueue,
     setPendingFileParts,
@@ -617,6 +631,7 @@ function useCopilotPageChat(
     createSession,
     onSend,
     onStartTask,
+    onResendUnconfirmed: runtimeStream ? resendUnconfirmed : undefined,
     // onEnqueue delegates to onSend, which internally routes to the queue
     // endpoint when isInflightRef.current is true.
     onEnqueue: onSend,
