@@ -390,6 +390,20 @@ async def test_pending_question_query_avoids_select_star_and_excludes_delegated(
     assert raw.call_args.kwargs["model"] is PrismaChatSession
 
 
+def test_a_stored_pending_question_is_cut_when_read():
+    metadata = ChatSessionMetadata.model_validate(
+        {
+            "pending_question": {
+                "text": "q" * (PENDING_QUESTION_MAX_LENGTH * 3),
+                "asked_at": "2026-11-19T12:00:00+00:00",
+            }
+        }
+    )
+
+    assert metadata.pending_question is not None
+    assert metadata.pending_question.text == "q" * PENDING_QUESTION_MAX_LENGTH
+
+
 @pytest.mark.asyncio
 async def test_pending_question_text_is_cut_before_it_is_stored():
     raw = AsyncMock(return_value=1)
