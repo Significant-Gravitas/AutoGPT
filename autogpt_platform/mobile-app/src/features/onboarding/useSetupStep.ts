@@ -12,6 +12,7 @@ import {
   submitOnboardingProfile,
 } from "@/lib/api/onboarding";
 import { signOut } from "@/lib/session";
+import { assertSameSession, sessionMark } from "@/lib/auth/token";
 import { requestWithin } from "@/lib/deadline";
 import { useMountEffect } from "@/lib/useMountEffect";
 
@@ -39,24 +40,36 @@ const PLAN_REQUEST_MS = 5_000;
 // Hiring a whole team takes longer than one request.
 const HIRE_MS = 60_000;
 
-const api: OnboardingAPI = {
-  submitProfile: (profile) =>
-    requestWithin(REQUEST_MS, (signal) => submitOnboardingProfile(profile, signal)),
-  finalizeDump: (body) =>
-    requestWithin(REQUEST_MS, (signal) => finalizeBrainDump(body, signal)),
-  async isPaywalled() {
-    try {
-      await requestWithin(REQUEST_MS, (signal) => listExperts({ signal }));
-      return false;
-    } catch (error) {
-      // Any other failure is not a paywall; the hire then says if it is one.
-      return isPlanRequired(error);
-    }
-  },
-  getPlan: () => requestWithin(PLAN_REQUEST_MS, getOnboardingPlan),
-  hirePlan: () => requestWithin(HIRE_MS, hireOnboardingPlan),
-  complete: () => requestWithin(REQUEST_MS, completeOnboarding),
-};
+/**
+ * The calls for one setup run, bound to the session that started it: once
+ * that session ends, nothing more is sent, so one account's answers can never
+ * go out under the next account's token.
+ */
+function apiFor(mark: string | null): OnboardingAPI {
+  function within<T>(ms: number, request: (signal: AbortSignal) => Promise<T>) {
+    // Before the request reads its token; a request in flight is checked by
+    // the token and client layers themselves.
+    assertSameSession(mark);
+    return requestWithin(ms, request);
+  }
+  return {
+    submitProfile: (profile) =>
+      within(REQUEST_MS, (signal) => submitOnboardingProfile(profile, signal)),
+    finalizeDump: (body) => within(REQUEST_MS, (signal) => finalizeBrainDump(body, signal)),
+    async isPaywalled() {
+      try {
+        await within(REQUEST_MS, (signal) => listExperts({ signal }));
+        return false;
+      } catch (error) {
+        // Any other failure is not a paywall; the hire then says if it is one.
+        return isPlanRequired(error);
+      }
+    },
+    getPlan: () => within(PLAN_REQUEST_MS, getOnboardingPlan),
+    hirePlan: () => within(HIRE_MS, hireOnboardingPlan),
+    complete: () => within(REQUEST_MS, completeOnboarding),
+  };
+}
 
 interface Args {
   userID: string;
@@ -91,7 +104,7 @@ export function useSetupStep({
     setError(null);
     try {
       const result = await finishOnboarding({
-        api,
+        api: apiFor(sessionMark()),
         userName,
         role,
         work,
