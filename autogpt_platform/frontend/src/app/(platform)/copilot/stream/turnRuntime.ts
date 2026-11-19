@@ -21,6 +21,7 @@ import { appendErrorMarker, seedTurnLog, type PersistedRow } from "./turnLog";
 import { diffRows, formatDiffs, sha256Hex } from "./turnShadow";
 import {
   checkpointOf,
+  chipKey,
   closeBlocks,
   FROZEN_NOTE,
   gapSegment,
@@ -395,7 +396,7 @@ export class TurnRuntime {
     if (entries.length === 0) return;
     this.claimTail(this.nextSequence());
     for (const entry of entries) {
-      const key = `pending-chip-${entry.id}`;
+      const key = chipKey(entry.id);
       if (this.segments.some((s) => s.key === key)) continue;
       this.segments.push(
         userSegment(userMessage(key, { text: entry.text }), "chip"),

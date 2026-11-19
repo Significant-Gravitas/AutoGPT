@@ -31,7 +31,8 @@ export function sheetLists({ services, accounts, query }: Args) {
 /** The address to sign in to, or null until it reads as an http(s) URL with a host. */
 export function serverTarget(text: string) {
   const url = text.trim();
-  if (!/^https?:\/\/[^\s/?#]+/i.test(url) || /\s/.test(url)) return null;
+  // The host must come first: "https://:8080" has none.
+  if (!/^https?:\/\/[^\s/?#:]+/i.test(url) || /\s/.test(url)) return null;
   const host = hostFromURL(url);
   return host ? { serverURL: normalizeServerURL(url), providerName: host } : null;
 }

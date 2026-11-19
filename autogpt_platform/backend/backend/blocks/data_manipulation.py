@@ -653,8 +653,7 @@ class RemoveFromListBlock(Block):
             if input_data.index is not None:
                 removed = lst.pop(input_data.index)
             elif input_data.value is not None:
-                lst.remove(input_data.value)
-                removed = input_data.value
+                removed = lst.pop(lst.index(input_data.value))
             else:
                 raise ValueError("No index or value provided for removal")
         except (IndexError, ValueError):
