@@ -602,6 +602,7 @@ async def test_org_a_key_cannot_see_or_delete_an_org_b_schedule(
         get_graph_execution_schedules=AsyncMock(
             return_value=[_schedule("s-a", ORG_A), _schedule("s-b", ORG_B)]
         ),
+        get_graph_execution_schedule=AsyncMock(return_value=_schedule("s-b", ORG_B)),
         delete_schedule=AsyncMock(),
     )
     mocker.patch(
