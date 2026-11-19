@@ -210,9 +210,11 @@ export class TurnRuntime {
   // A send whose stream ended before naming its turn, while hidden or offline.
   private unresolvedPost: { lost: Lost; end: ConnectionEnd } | null = null;
   // Lost sends, with no row yet, that the next view showing nothing running
-  // decides: another's turn may hold them queued, or a read failed while
-  // another recovery held the one retry timer.
+  // decides: another's turn may hold them queued, or their check's retry
+  // gave way to another retry, or found a turn running.
   private sendsBehindTurn: { lost: Lost; end: ConnectionEnd }[] = [];
+  // The lost send whose check waits on `retryTimer`, if a check set it.
+  private retryingSend: { lost: Lost; end: ConnectionEnd } | null = null;
   // Counts stops: one ends every lost-send recovery begun before it.
   private stops = 0;
   private providerFailure: unknown = null;
@@ -754,10 +756,17 @@ export class TurnRuntime {
     }
     const delay = BACKOFF_MS[this.failures - 1] ?? ANOMALY_RETRY_MS;
     this.clearRetry();
+    const check = lost.turnId === null ? { lost, end } : null;
+    this.retryingSend = check;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
-      if (this.runningTurn()) this.ensureConnected();
-      else void this.recoverUnknownTurn(lost, end);
+      this.retryingSend = null;
+      if (!this.runningTurn()) void this.recoverUnknownTurn(lost, end);
+      else {
+        // A turn started meanwhile, maybe a later send's: the check waits.
+        if (check) this.sendsBehindTurn.push(check);
+        this.ensureConnected();
+      }
     }, delay);
     this.emitNow();
   }
@@ -844,7 +853,6 @@ export class TurnRuntime {
         const signedOut = await this.signedOut();
         if (ended()) return;
         if (signedOut) this.giveUp(new CopilotAuthError());
-        else if (this.retryTimer) this.sendsBehindTurn.push({ lost, end });
         else this.retry(lost, end);
         return;
       }
@@ -966,12 +974,14 @@ export class TurnRuntime {
   ) {
     this.probes += 1;
     this.emitNow();
+    let read = false;
     try {
       for (let i = 0; i < attempts; i++) {
         await sleep(FINISH_PROBE_MS);
         if (this.disposed || this.stopped) return;
         const view = await this.fetchView();
         if (!view) continue;
+        read = true;
         this.observe(view);
         const active = view.active_stream?.turn_id ?? null;
         if (active && active !== turnId) return;
@@ -980,6 +990,10 @@ export class TurnRuntime {
     } finally {
       this.probes -= 1;
       if (!this.disposed) this.emitNow();
+      // No view came to decide the sends waiting on the turn; their own
+      // checks read again, and retry while reads fail.
+      if (!read && !this.runningTurn() && !this.isPostPending())
+        this.decideSendsBehindTurn();
     }
   }
 
@@ -1561,6 +1575,10 @@ export class TurnRuntime {
   private clearRetry() {
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = null;
+    // A cancelled check still decides its send; a stop or a give-up then
+    // drops the list as well.
+    if (this.retryingSend) this.sendsBehindTurn.push(this.retryingSend);
+    this.retryingSend = null;
   }
 
   private streamUrl() {

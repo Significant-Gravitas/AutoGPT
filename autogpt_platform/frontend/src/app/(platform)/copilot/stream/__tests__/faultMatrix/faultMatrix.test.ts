@@ -626,6 +626,48 @@ describe("a send", () => {
   );
 
   cell(
+    "S24",
+    "lost, its check's read failing, is still reported when its retry finds a later send's turn running",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.failViews = 1;
+      tab.send(P1);
+      await advance(0);
+      server.postMode = "stream";
+      tab.send(P2);
+      await advance(0);
+      server.publish(9);
+      // P1's retry fires while P2's turn runs.
+      await advance(2_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: "Failed to fetch" });
+    },
+  );
+
+  cell(
+    "S24c",
+    "lost, its check's read failing, is still reported when a later send's dropped stream takes the retry",
+    async () => {
+      server.postMode = "lost-before-send";
+      server.failViews = 1;
+      tab.send(P1);
+      await advance(0);
+      server.postMode = "stream";
+      tab.send(P2);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      // P2's stream drops before P1's retry fires, and its own retry replaces it.
+      server.connections[0].fail();
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: "Failed to fetch" });
+    },
+  );
+
+  cell(
     "S20",
     "an expert's first message whose response was lost is followed into its turn",
     async () => {
@@ -854,6 +896,28 @@ describe("two tabs on one chat", () => {
         },
         stale,
       );
+    },
+  );
+
+  cell(
+    "M3f",
+    "a stale tab's send that never reached the server is reported after the other tab's turn ends, though every end-of-turn read fails",
+    async () => {
+      const stale = openTab(0, false);
+      tab.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      server.postMode = "lost-before-send";
+      stale.send(P2);
+      await advance(3_000);
+      // The turn's end is seen, but no read succeeds until later.
+      server.viewsDown = true;
+      server.publish();
+      await advance(5_000);
+      server.viewsDown = false;
+      await advance(60_000);
+      expectScreen({ error: "Failed to fetch" }, stale);
     },
   );
 
