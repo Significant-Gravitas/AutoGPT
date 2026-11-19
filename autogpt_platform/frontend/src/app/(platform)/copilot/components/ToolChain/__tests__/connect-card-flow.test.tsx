@@ -1001,8 +1001,12 @@ describe("copilot Connect card, an account and an MCP server in one step", () =>
 
     // The trigger card leaves the chain once sent, which leaves the MCP row
     // as the chain's only card. Still counting as just connected, it would
-    // auto-send its line a second time.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // auto-send its line a second time, from the effect that runs once the
+    // row is alone; draining that effect's send before asserting.
+    await waitFor(() =>
+      expect(screen.getAllByText("Connected")).toHaveLength(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
@@ -1020,9 +1024,13 @@ describe("copilot Connect card, an account and an MCP server in one step", () =>
 
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     expect(onSend.mock.calls[0][0]).toBe(MCP_RETRY);
-    // The line is sent, so a Proceed left here would only send it again.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull();
+    // The line is sent, so a Proceed left here would only send it again. A
+    // regressed Proceed appears before the send and stays, so waiting for it
+    // to be gone cannot pass early.
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Proceed" })).toBeNull(),
+    );
+    expect(onSend).toHaveBeenCalledTimes(1);
   });
 });
 

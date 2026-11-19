@@ -272,7 +272,7 @@ export function MCPSetupCard({ output, retryInstruction }: Props) {
     setConnected(true);
     setLineSent(false);
     // Inside a tool chain the chain sends one reply for every card, this
-    // one's line included; sending here as well gave Otto two messages.
+    // one's line included.
     if (!chainActions) onSend(retryMessage);
   }
 
