@@ -4,12 +4,17 @@ export const MIC_DENIED_MESSAGE = "Allow microphone access in Settings to dictat
 export const DICTATION_UNAVAILABLE_MESSAGE = "Dictation isn't available right now.";
 export const NOT_CAUGHT_MESSAGE = "Couldn't catch that. Try again.";
 
-/** Dictated text goes after what is already typed, with a space when needed. */
+/** What dictated words follow: the typed text, with a space when it needs one. */
+export function dictationLead(current: string) {
+  if (!current.trim()) return "";
+  return /\s$/.test(current) ? current : `${current} `;
+}
+
+/** Dictated text goes after what is already typed. */
 export function appendDictation(current: string, dictated: string) {
   const addition = dictated.trim();
   if (!addition) return current;
-  if (!current.trim()) return addition;
-  return /\s$/.test(current) ? current + addition : `${current} ${addition}`;
+  return dictationLead(current) + addition;
 }
 
 /** `0:04`, `1:30`. */
