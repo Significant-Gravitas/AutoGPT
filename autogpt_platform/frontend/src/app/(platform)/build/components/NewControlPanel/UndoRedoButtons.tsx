@@ -13,6 +13,7 @@ import {
   ArrowTurnForwardIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { isEditableElement } from "@/lib/platform";
 
 export const UndoRedoButtons = () => {
   const { undo, redo, canUndo, canRedo } = useHistoryStore();
@@ -20,6 +21,10 @@ export const UndoRedoButtons = () => {
   // Keyboard shortcuts for undo and redo
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // A text field keeps its own undo/redo, so the workflow history must not take the shortcut there.
+      if (event.target instanceof Element && isEditableElement(event.target))
+        return;
+
       const isMac = /Mac/i.test(navigator.userAgent);
       const isCtrlOrCmd = isMac ? event.metaKey : event.ctrlKey;
 
