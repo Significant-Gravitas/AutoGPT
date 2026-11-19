@@ -9,16 +9,10 @@ export function getTrustedClientIP(ip: string | null | undefined) {
   return isForwardedForTrusted() ? ip || null : null;
 }
 
-// X-Forwarded-For is the client's only behind a proxy that overwrites it (Vercel's
-// edge, or one the operator vouches for with TRUST_X_FORWARDED_FOR=true, such as
-// single-container's nginx) or one whose hops TRUSTED_PROXIES lists. Next's own
-// server keeps whatever the caller sent.
+// X-Forwarded-For is the client's only behind Vercel's edge, which overwrites it,
+// or proxies TRUSTED_PROXIES lists. Next's own server keeps whatever the caller sent.
 export function isForwardedForTrusted() {
-  return (
-    environment.isVercel() ||
-    process.env.TRUST_X_FORWARDED_FOR === "true" ||
-    trustedProxies().length > 0
-  );
+  return environment.isVercel() || trustedProxies().length > 0;
 }
 
 // The proxies in front of us, as IP addresses or CIDR ranges: Better Auth strips
