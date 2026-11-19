@@ -43,11 +43,32 @@ class TypecheckCompatibilityTests(unittest.TestCase):
                 ),
                 patch(
                     "frontend_typecheck.subprocess.run",
-                    return_value=subprocess.CompletedProcess([], 2),
-                ),
+                    side_effect=[
+                        subprocess.CompletedProcess([], 0),
+                        subprocess.CompletedProcess([], 2),
+                    ],
+                ) as run,
             ):
                 self.assertEqual(main(), 2)
+                self.assertEqual(
+                    run.call_args_list[0].args[0], ["pnpm", "exec", "next", "typegen"]
+                )
+                self.assertEqual(run.call_args_list[1].args[0][0], "bun")
             self.assertFalse(config.exists())
+
+    def test_failed_route_generation_cannot_pass_on_stale_types(self):
+        with (
+            patch(
+                "frontend_typecheck.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 7),
+            ) as run,
+            patch("frontend_typecheck.subprocess.check_output") as show_config,
+            patch("frontend_typecheck.Path") as config,
+        ):
+            self.assertEqual(main(), 7)
+            run.assert_called_once_with(["pnpm", "exec", "next", "typegen"])
+            show_config.assert_not_called()
+            config.assert_not_called()
 
 
 if __name__ == "__main__":

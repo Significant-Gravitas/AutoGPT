@@ -32,6 +32,7 @@ ENV NODE_ENV=production \
 # package.json), so a NODE_OPTIONS cap here never took effect. A lower cap
 # doesn't get the build under 8 GiB either; see "Requirements" in
 # docs/platform/single-container.md.
+ARG NEXT_SKIP_BUILD_CHECKS=false
 RUN pnpm run generate:api \
     && pnpm run copy:vad-assets \
     && NODE_OPTIONS="--max-old-space-size=8192" pnpm exec next build --turbopack \

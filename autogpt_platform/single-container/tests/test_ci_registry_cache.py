@@ -145,3 +145,31 @@ class RegistryCacheTests(unittest.TestCase):
         self.assertNotIn("cache-to", release_job)
         self.assertNotIn("GHCR", release_job)
         self.assertNotIn("packages:", release_job)
+
+    def test_only_non_release_builds_move_frontend_checks_to_the_parallel_job(self):
+        workflow = (
+            SCRIPT.parents[1] / "workflows/platform-single-container-docker.yml"
+        ).read_text(encoding="utf-8")
+        frontend = workflow.split("  frontend-checks:", 1)[1].split(
+            "  authorize-publication:", 1
+        )[0]
+        self.assertIn("if: github.event_name != 'release'", frontend)
+        self.assertNotIn("continue-on-error", frontend)
+        self.assertIn("run: pnpm generate:api", frontend)
+        self.assertIn(
+            "run: python3 ../../.github/scripts/frontend_typecheck.py", frontend
+        )
+        self.assertIn("run: pnpm exec next lint", frontend)
+        validation = workflow.split("  build-and-scan:", 1)[1].split(
+            "  publish-platform-digests:", 1
+        )[0]
+        self.assertIn(
+            "single-container.args.NEXT_SKIP_BUILD_CHECKS=${{ github.event_name != 'release' }}",
+            validation,
+        )
+        publication = workflow.split("  publish-platform-digests:", 1)[1]
+        self.assertNotIn("NEXT_SKIP_BUILD_CHECKS", publication)
+        dockerfile = (
+            SCRIPT.parents[2] / "autogpt_platform/single-container/Dockerfile"
+        ).read_text(encoding="utf-8")
+        self.assertIn("ARG NEXT_SKIP_BUILD_CHECKS=false", dockerfile)

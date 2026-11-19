@@ -12,6 +12,8 @@ on:
       - ".github/scripts/run_unittest_junit.py"
       - ".github/scripts/verify_single_container_reports.py"
       - ".github/scripts/single_container_cache.py"
+      - ".github/scripts/frontend_typecheck.py"
+      - ".github/scripts/test_frontend_typecheck.py"
       - ".github/scripts/platform-single-container-smoke.sh"
       - ".github/workflows/platform-single-container-docker.yml"
       - "autogpt_platform/backend/Dockerfile"
@@ -48,6 +50,69 @@ env:
 cache-mode: none
 
 jobs:
+  frontend-checks:
+    name: Validate appliance frontend
+    if: github.event_name != 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+        working-directory: autogpt_platform/frontend
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      NODE_OPTIONS: --max-old-space-size=8192
+      NEXT_PUBLIC_AGPT_SERVER_URL: /_agpt/api
+      NEXT_PUBLIC_AGPT_WS_SERVER_URL: /_agpt/ws
+      NEXT_PUBLIC_FRONTEND_BASE_URL: ""
+      NEXT_PUBLIC_APP_ENV: local
+      NEXT_PUBLIC_BEHAVE_AS: LOCAL
+      NEXT_PUBLIC_SOURCEMAPS: "false"
+      NEXT_PUBLIC_TURNSTILE: disabled
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ""
+      DATABASE_URL: postgresql:///postgres?host=%2Frun%2Fpostgresql&user=autogpt_frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout: |
+            .github
+            autogpt_platform/frontend
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24.22.1"
+          package-manager-cache: false
+
+      - name: Set up Bun type checker
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate build-only auth secret
+        run: echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Generate API client
+        run: pnpm generate:api
+
+      - name: Generate Next route types and check TypeScript
+        run: python3 ../../.github/scripts/frontend_typecheck.py
+
+      - name: Lint frontend
+        run: pnpm exec next lint
+
   authorize-publication:
     name: Evaluate publication eligibility
     runs-on: ubuntu-24.04
@@ -193,6 +258,7 @@ jobs:
           set: |
             *.platform=${{ matrix.platform }}
             *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
+            single-container.args.NEXT_SKIP_BUILD_CHECKS=${{ github.event_name != 'release' }}
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
             single-container.output=type=docker,compression=uncompressed

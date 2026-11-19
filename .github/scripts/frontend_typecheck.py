@@ -25,6 +25,9 @@ def compatibility_config(options: dict, implicit_types: list[str]) -> dict:
 
 
 def main() -> int:
+    generated = subprocess.run(["pnpm", "exec", "next", "typegen"])
+    if generated.returncode:
+        return generated.returncode
     options = json.loads(
         subprocess.check_output(["pnpm", "exec", "tsc", "--showConfig"], text=True)
     )["compilerOptions"]
