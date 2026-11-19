@@ -344,9 +344,9 @@ _ANGLE_BRACKETS = re.compile(r"[<>]")
 
 # One leading ``<tag>...</tag>`` block plus the exact ``\n\n`` separator the
 # injectors write. Non-greedy with a backreference, so a block ends at its own
-# closing tag.
+# closing tag. Unanchored: callers ``match()`` it at a position.
 _LEADING_BLOCK_RE = re.compile(
-    r"^<(?P<tag>[A-Za-z_][A-Za-z0-9_]*)>.*?</(?P=tag)>\n\n", re.DOTALL
+    r"<(?P<tag>[A-Za-z_][A-Za-z0-9_]*)>.*?</(?P=tag)>\n\n", re.DOTALL
 )
 
 
@@ -487,12 +487,12 @@ def strip_injected_context_for_display(message: str) -> str:
     the business profile and plan tier — which is what #14688 did.
     """
     unknown: list[str] = []
-    rest = message
-    while match := _LEADING_BLOCK_RE.match(rest):
+    position = 0
+    while match := _LEADING_BLOCK_RE.match(message, position):
         if match["tag"].lower() not in SERVER_INJECTED_BLOCK_TAGS:
             unknown.append(match.group(0))
-        rest = rest[match.end() :]
-    return "".join(unknown) + rest
+        position = match.end()
+    return "".join(unknown) + message[position:]
 
 
 def split_leading_server_blocks(message: str) -> tuple[str, str]:
@@ -504,10 +504,10 @@ def split_leading_server_blocks(message: str) -> tuple[str, str]:
     the user's text, as :func:`strip_injected_context_for_display` shows it.
     """
     position = 0
-    while match := _LEADING_BLOCK_RE.match(message[position:]):
+    while match := _LEADING_BLOCK_RE.match(message, position):
         if match["tag"].lower() not in SERVER_INJECTED_BLOCK_TAGS:
             break
-        position += match.end()
+        position = match.end()
     return message[:position], message[position:]
 
 
