@@ -15,6 +15,7 @@ from backend.api.features.account_deletion.best_effort import (
 )
 from backend.data.execution import ExecutionStatus, get_graph_executions
 from backend.data.graph import set_node_webhook
+from backend.data.task_schedule import cancel_scheduled_tasks
 from backend.executor.scheduler import SchedulerClient
 from backend.executor.utils import stop_graph_execution
 from backend.util.clients import get_scheduler_client
@@ -41,8 +42,9 @@ async def stop_user_work(user_id: str) -> None:
     """Stop everything that can start or keep doing work for the user.
 
     In order, so nothing new starts after its kind is listed:
-    1. What starts work without a login: every schedule, the webhook
-       triggers, and the chat links that start AutoPilot turns.
+    1. What starts work without a login: every schedule, the tasks waiting
+       for a start time, the webhook triggers, and the chat links that start
+       AutoPilot turns.
     2. AutoPilot turns, queued then running (they can start runs).
     3. Unfinished graph runs.
 
@@ -67,6 +69,9 @@ async def stop_user_work(user_id: str) -> None:
         return
     await asyncio.gather(
         _remove_schedules(user_id),
+        attempt_step(
+            "cancel scheduled tasks", user_id, cancel_scheduled_tasks(user_id)
+        ),
         _stop_webhook_triggers(user_id),
         unlink_chat_platforms(user_id),
     )

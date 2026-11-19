@@ -73,6 +73,8 @@ import {
   TodoList,
 } from "./ToolResultViews";
 import { Text } from "@/components/atoms/Text/Text";
+import { CreatedTaskCard } from "../../tools/CreateTask/CreateTask";
+import { createdTaskOf } from "../../tools/CreateTask/helpers";
 
 const BOOLEAN_LABELS: Record<string, string> = {
   ok: "Done",
@@ -286,6 +288,7 @@ export const TOOL_CARD_TOOLS = [
   "ask_question",
   "list_schedules",
   "schedule_followup",
+  "create_task",
   "list_folders",
   "create_folder",
   "update_folder",
@@ -475,6 +478,10 @@ function toolCard(
       return output && str(output, "next_run_time") ? (
         <ScheduleCreatedCard output={output} />
       ) : null;
+    case "create_task": {
+      const task = createdTaskOf(output);
+      return task ? <CreatedTaskCard task={task} /> : null;
+    }
     case "list_folders": {
       const folders = output && asItems(output.folders);
       return folders ? <FolderList folders={folders} /> : null;

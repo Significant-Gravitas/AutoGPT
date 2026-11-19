@@ -41,11 +41,10 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
-    StreamToolInputAvailable,
-    StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamTurnPaused,
 )
+from backend.copilot.tool_input_stream import ToolInputStreams
 from backend.copilot.turn_pause import TurnPause
 
 from .governor import TurnGovernor
@@ -85,9 +84,16 @@ class SDKResponseAdapter:
         self,
         message_id: str | None = None,
         session_id: str | None = None,
+        stream_tool_inputs: bool = True,
     ):
         self.message_id = message_id or str(uuid.uuid4())
         self.session_id = session_id
+        # False on a Codex turn: its gateway hands the CLI each call's
+        # arguments in one piece, so its calls keep start and input together.
+        self.stream_tool_inputs = stream_tool_inputs
+        # Tool parts opened from the partial stream, awaiting their input.
+        self.tool_inputs = ToolInputStreams()
+        self._tool_use_ids_by_index: dict[int, str] = {}
         self.text_block_id = str(uuid.uuid4())
         self.has_started_text = False
         self.has_ended_text = False
@@ -179,6 +185,11 @@ class SDKResponseAdapter:
         self._pending_thinking_delta: str = ""
         self._pending_thinking_index: int | None = None
         self._last_thinking_flush_monotonic: float = 0.0
+
+    @property
+    def has_open_tool_input(self) -> bool:
+        """True while a tool part has started and its input has not arrived."""
+        return self.tool_inputs.has_open
 
     @property
     def has_unresolved_tool_calls(self) -> bool:
@@ -357,15 +368,8 @@ class SDKResponseAdapter:
                     if dispatch := resolve_tool_dispatch(tool_name, tool_input):
                         tool_name, tool_input = dispatch.name, dispatch.args
 
-                    responses.append(
-                        StreamToolInputStart(toolCallId=block.id, toolName=tool_name)
-                    )
-                    responses.append(
-                        StreamToolInputAvailable(
-                            toolCallId=block.id,
-                            toolName=tool_name,
-                            input=tool_input,
-                        )
+                    responses.extend(
+                        self.tool_inputs.complete(block.id, tool_name, tool_input)
                     )
                     self.current_tool_calls[block.id] = {
                         "name": tool_name,
@@ -468,7 +472,11 @@ class SDKResponseAdapter:
 
             # Close the current step after tool results — the next
             # AssistantMessage will open a new step for the continuation.
-            self._finish_step(responses)
+            # Not while a sibling call from the same model message is still
+            # streaming its arguments: its input must land in the step its
+            # part opened in, or the AI SDK starts a second part for it.
+            if not self.has_open_tool_input:
+                self._finish_step(responses)
 
             # Narrate the gap between "tool returned" and "model emits its
             # next chunk". Usually sub-second, but with large tool outputs
@@ -794,7 +802,8 @@ class SDKResponseAdapter:
             self.has_ended_reasoning = True
 
     def end_open_blocks(self, responses: list[StreamBaseResponse]) -> None:
-        """End any open text and reasoning block.
+        """End any open text and reasoning block, and any tool part whose
+        input never came (its call never ran).
 
         Runs before every event that clears the frontend's active parts —
         the adapter's own ``StreamFinishStep`` and the ones the service emits
@@ -803,6 +812,7 @@ class SDKResponseAdapter:
         """
         self._end_text_if_open(responses)
         self._end_reasoning_if_open(responses)
+        responses.extend(self.tool_inputs.abandon())
 
     def _finish_step(self, responses: list[StreamBaseResponse]) -> None:
         """Close the open step, ending any open block first."""
@@ -832,6 +842,7 @@ class SDKResponseAdapter:
         or diverge and fall back to re-emitting the whole block.
         """
         self._block_types_by_index = {}
+        self._tool_use_ids_by_index = {}
         self._partial_text_buffer = ""
         self._partial_thinking_buffer = ""
         self._pending_thinking_delta = ""
@@ -910,15 +921,15 @@ class SDKResponseAdapter:
         """Translate raw Anthropic streaming events into wire events.
 
         Handles four event types; everything else (``message_delta``
-        stop reasons, ``signature_delta``, ``input_json_delta``,
-        ``ping``, ...) is ignored because the summary ``AssistantMessage``
-        carries their effects.
+        stop reasons, ``signature_delta``, ``ping``, ...) is ignored because
+        the summary ``AssistantMessage`` carries their effects.
 
         * ``message_start`` — new message boundary, reset per-index maps
-        * ``content_block_start`` — open text / reasoning block on the
-          wire and remember the block type at that index
+        * ``content_block_start`` — open text / reasoning block (or tool
+          part) on the wire and remember the block type at that index
         * ``content_block_delta`` — forward ``text_delta`` immediately
-          and coalesce ``thinking_delta`` (64-char / 50 ms window)
+          and coalesce ``thinking_delta`` (64-char / 50 ms window) and
+          ``input_json_delta`` (``tool_inputs``)
         * ``content_block_stop`` — drain any buffered thinking and close
           the corresponding wire block
         """
@@ -949,10 +960,11 @@ class SDKResponseAdapter:
                 self._end_text_if_open(responses)
                 self._ensure_reasoning_started(responses)
                 self._last_thinking_flush_monotonic = time.monotonic()
-            # tool_use / server_tool_use / redacted_thinking blocks stay
-            # on the ``AssistantMessage`` path — the frontend widgets
-            # need the final ``input`` payload which only arrives in the
-            # summary.
+            elif block_type == "tool_use":
+                self._start_tool_input(index, block, responses)
+            # server_tool_use / redacted_thinking blocks stay on the
+            # ``AssistantMessage`` path; a tool_use block's input still
+            # arrives whole in the summary (``tool-input-available``).
             return
 
         if event_type == "content_block_delta":
@@ -991,8 +1003,15 @@ class SDKResponseAdapter:
                 ):
                     self._flush_pending_thinking(responses)
                     self._last_thinking_flush_monotonic = now
-            # Other delta types (``signature_delta``, ``input_json_delta``)
-            # are CLI / tool-dispatch plumbing — not surfaced on the wire.
+            elif delta_type == "input_json_delta":
+                call_id = self._tool_use_ids_by_index.get(index)
+                if call_id is not None:
+                    responses.extend(
+                        self.tool_inputs.append(
+                            call_id, delta.get("partial_json") or ""
+                        )
+                    )
+            # ``signature_delta`` is CLI plumbing — not surfaced on the wire.
             return
 
         if event_type == "content_block_stop":
@@ -1004,7 +1023,33 @@ class SDKResponseAdapter:
                 self._end_text_if_open(responses)
             elif block_type == "thinking":
                 self._end_reasoning_if_open(responses)
+            elif self._tool_use_ids_by_index.pop(index, None) is not None:
+                responses.extend(self.tool_inputs.flush())
             return
+
+    def _start_tool_input(
+        self, index: int, block: dict[str, Any], responses: list[StreamBaseResponse]
+    ) -> None:
+        """Open a tool part as the model starts the call (``tool_inputs``)."""
+        if not self.stream_tool_inputs:
+            return
+        call_id, name = block.get("id"), block.get("name")
+        if not isinstance(call_id, str) or not isinstance(name, str):
+            return
+        self._tool_use_ids_by_index[index] = call_id
+        started = self.tool_inputs.start(
+            call_id, name.strip().removeprefix(MCP_TOOL_PREFIX)
+        )
+        if not started:
+            return
+        self._end_text_if_open(responses)
+        self._end_reasoning_if_open(responses)
+        # The part must open inside the step its input lands in: after a
+        # tool result the step is closed until the summary would reopen it.
+        if not self.step_open:
+            responses.append(StreamStartStep())
+            self.step_open = True
+        responses.extend(started)
 
     def _flush_pending_thinking(self, responses: list[StreamBaseResponse]) -> None:
         """Drain the coalesce buffer into a ``StreamReasoningDelta``.
@@ -1117,7 +1162,8 @@ class SDKResponseAdapter:
             # the fallback synthesis if the model then produced no text.
             self._text_since_last_tool_result = False
             self._any_tool_results_seen = True
-            self._finish_step(responses)
+            if not self.has_open_tool_input:
+                self._finish_step(responses)
 
 
 def _extract_tool_output(content: str | list[dict[str, str]] | None) -> str:

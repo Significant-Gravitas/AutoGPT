@@ -8,6 +8,7 @@ import {
   ReceiptTextIcon,
   Robot01Icon,
   SlidersHorizontalIcon,
+  TestTube01Icon,
   UserIcon,
   UserMultipleIcon,
 } from "@hugeicons/core-free-icons";
@@ -54,6 +55,7 @@ export function getAdminNavItems(): AdminNavItem[] {
       Icon: Calculator01Icon,
     },
     { label: "Memory Inspector", href: "/admin/memory", Icon: BrainIcon },
+    { label: "Evals", href: "/admin/evals", Icon: TestTube01Icon },
     {
       label: "Admin settings",
       href: "/admin/settings",

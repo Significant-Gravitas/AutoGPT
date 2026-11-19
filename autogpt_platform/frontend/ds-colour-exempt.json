@@ -122,6 +122,18 @@
     {
       "files": "src/app/(public)/tour/chat/script/completionArtifacts.ts",
       "reason": "The tour's scripted sample documents: their support-ticket numbers (#4821, #4822, ...) read as hex, and none is a colour."
+    },
+    {
+      "files": "src/app/(platform)/admin/evals/affect/**",
+      "reason": "The Affect UI Evals block and its registry parts (shadcn add @affectui/evals), vendored for the admin-only Evals page as asked: each part ships its own scoped stylesheet with its palette and fallback colours."
+    },
+    {
+      "files": "src/app/(platform)/schedules/affect/**",
+      "reason": "The Affect UI Schedules block and its registry parts (shadcn add agent-schedules), vendored for the Schedules page as asked: each part ships its own scoped stylesheet with its palette and fallback colours."
+    },
+    {
+      "files": "src/app/(platform)/runs/affect/**",
+      "reason": "The Affect UI Run Detail block (shadcn add @affectui/agent-run-detail), vendored for the run page and the chat's run tab as asked: it ships its own scoped stylesheet with its kind palette, brand logos and fallback colours."
     }
   ]
 }

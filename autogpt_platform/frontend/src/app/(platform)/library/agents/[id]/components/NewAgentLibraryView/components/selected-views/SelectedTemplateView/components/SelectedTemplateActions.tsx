@@ -110,7 +110,7 @@ export function SelectedTemplateActions({
           <Button
             variant="icon"
             size="icon"
-            aria-label="Start task from template"
+            aria-label="Start run from template"
             onClick={onStartTask}
             disabled={isSaving || isStarting || deleteMutation.isPending}
           >

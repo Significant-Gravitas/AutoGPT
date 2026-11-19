@@ -15,6 +15,7 @@ from backend.blocks.mcp.helpers import (
     parse_mcp_content,
     server_host,
 )
+from backend.copilot import call_account
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FILE_REF_PREFIX,
@@ -262,6 +263,8 @@ class RunMCPToolTool(BaseTool):
             if creds is not None
             else None
         )
+        if creds is not None:
+            call_account.note(creds)
 
         # "Just connect" intent: return only the setup card so the user
         # gets a visible Connect/Reconnect affordance even when there's

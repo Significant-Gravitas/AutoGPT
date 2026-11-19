@@ -41,9 +41,12 @@ export function isQuestionTool(
   toolName: string | undefined,
   output: unknown,
 ): boolean {
-  return (
-    toolName === "ask_question" || outputType(output) === QUESTION_RESPONSE_TYPE
-  );
+  const type = outputType(output);
+  if (type === QUESTION_RESPONSE_TYPE) return true;
+  // A call the harness turned down ("Not asked: ...") put nothing in front
+  // of the user, so it has no card and no record.
+  if (type === "error") return false;
+  return toolName === "ask_question";
 }
 
 // Questions are pending only while the asking assistant message is the last

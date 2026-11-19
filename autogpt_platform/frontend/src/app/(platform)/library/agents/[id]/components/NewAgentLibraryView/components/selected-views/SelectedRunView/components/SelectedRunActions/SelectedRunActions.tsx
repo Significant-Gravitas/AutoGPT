@@ -57,7 +57,7 @@ export function SelectedRunActions({
         <Button
           variant="icon"
           size="icon"
-          aria-label="Rerun task"
+          aria-label="Rerun"
           onClick={handleRunAgain}
           disabled={isRunningAgain}
         >
@@ -83,7 +83,7 @@ export function SelectedRunActions({
         <Button
           variant="destructive"
           size="icon"
-          aria-label="Stop task"
+          aria-label="Stop run"
           onClick={handleStopRun}
           disabled={isStopping}
         >
@@ -97,7 +97,7 @@ export function SelectedRunActions({
           as="NextLink"
           href={openInBuilderHref}
           target="_blank"
-          aria-label="View task details"
+          aria-label="View run details"
         >
           <Icon icon={EyeIcon} size={18} />
         </Button>
@@ -113,7 +113,7 @@ export function SelectedRunActions({
           <Button
             variant="icon"
             size="icon"
-            aria-label="Save task as template"
+            aria-label="Save run as template"
             onClick={() => setIsCreateTemplateModalOpen(true)}
             title="Create template"
           >

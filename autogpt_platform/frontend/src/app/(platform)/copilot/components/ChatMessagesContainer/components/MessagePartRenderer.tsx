@@ -30,7 +30,13 @@ import { RENDER_UI_PART_TYPE } from "../../../tools/RenderUI/helpers";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
+import { TaskHandoff } from "../../TaskHandoff/TaskHandoff";
 import { TurnPausedCard } from "../../TurnPausedCard/TurnPausedCard";
+import {
+  handoffSnapshot,
+  handoffTaskID,
+  TASK_HANDOFF_PART_TYPE,
+} from "../../../helpers/backgroundSubtasks";
 import { TURN_PAUSED_PART_TYPE } from "../../../turnPause";
 import {
   parseCompactionOutput,
@@ -102,10 +108,12 @@ function TextWithArtifactCards({
   text,
   fileUrlBuilder,
   readOnly,
+  isStreaming,
 }: {
   text: string;
   fileUrlBuilder?: (fileId: string) => string;
   readOnly?: boolean;
+  isStreaming?: boolean;
 }) {
   // A settled part's text never changes, so this only re-runs for the part
   // that is streaming.
@@ -131,6 +139,7 @@ function TextWithArtifactCards({
         <CredentialMentionMarkdown
           components={STREAMDOWN_COMPONENTS}
           className="[&_li]:py-0"
+          isStreaming={isStreaming}
         >
           {resolved}
         </CredentialMentionMarkdown>
@@ -261,6 +270,7 @@ export function MessagePartRenderer({
           text={cleanText}
           fileUrlBuilder={fileUrlBuilder}
           readOnly={readOnly}
+          isStreaming={isCurrentlyStreaming && part.state === "streaming"}
         />
       );
     }
@@ -276,6 +286,17 @@ export function MessagePartRenderer({
           isStoredRow={Boolean(rowKey)}
         />
       );
+    }
+    case TASK_HANDOFF_PART_TYPE: {
+      const data = "data" in part ? part.data : undefined;
+      const taskID = handoffTaskID(data);
+      return taskID ? (
+        <TaskHandoff
+          key={key}
+          taskID={taskID}
+          snapshot={handoffSnapshot(data)}
+        />
+      ) : null;
     }
     case RENDER_UI_PART_TYPE:
       return (

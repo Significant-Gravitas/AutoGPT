@@ -81,6 +81,31 @@ describe("QuestionDock", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
+  it("starts each answer at Otto's best guess, so one click uses it", async () => {
+    const user = userEvent.setup();
+    const onSend = renderDock([
+      questionMessage([
+        {
+          question: "Which team?",
+          keyword: "team",
+          default_guess: "Sales",
+        },
+        { question: "Which format?", keyword: "format" },
+      ]),
+    ]);
+
+    expect(screen.getByLabelText("Which team?")).toHaveProperty(
+      "value",
+      "Sales",
+    );
+    await user.type(screen.getByLabelText("Which format?"), "CSV");
+    await user.click(screen.getByRole("button", { name: "Answer" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "**Here are my answers:**\n\n> Which team?\n\nSales\n\n> Which format?\n\nCSV\n\nPlease proceed.",
+    );
+  });
+
   it("keeps a multi-select answer as a list and sends the picks as bullets", async () => {
     const user = userEvent.setup();
     const onSend = renderDock([

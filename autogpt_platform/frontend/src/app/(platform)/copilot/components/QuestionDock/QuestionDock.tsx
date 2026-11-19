@@ -3,6 +3,7 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useContext, useEffect, useId, useRef, useState } from "react";
 import {
+  initialAnswers,
   isAnswered,
   toAnswerText,
   toMultiAnswer,
@@ -33,7 +34,9 @@ interface FormProps {
 export function QuestionsForm({ dockId, questions }: FormProps) {
   const actions = useContext(CopilotChatActionsContext);
   const chainActions = useContext(ChainActionsContext);
-  const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({});
+  const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>(() =>
+    initialAnswers(questions),
+  );
   const [dismissedId, setDismissedId] = useState<string | null>(null);
   const [renderedDockId, setRenderedDockId] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, { focus: () => void } | null>>({});
@@ -65,7 +68,7 @@ export function QuestionsForm({ dockId, questions }: FormProps) {
 
   if (renderedDockId !== dockId) {
     setRenderedDockId(dockId);
-    setAnswers({});
+    setAnswers(initialAnswers(questions));
   }
 
   if (!actions || dismissed) return null;

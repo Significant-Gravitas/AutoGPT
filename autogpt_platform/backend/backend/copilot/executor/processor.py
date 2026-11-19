@@ -75,6 +75,7 @@ from backend.copilot.response_model import (
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
+from backend.copilot.task_run_settle import settle_task_run_turn
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
 from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
@@ -1175,6 +1176,9 @@ class CoPilotProcessor:
                     await finish_background_execution(entry, error_msg)
                 except Exception as finish_err:
                     log.error(f"Failed to save background completion: {finish_err}")
+                # After the background record, so a wake that just came back
+                # no longer counts as work still out.
+                await settle_task_run_turn(entry, error_msg)
                 try:
                     await stream_registry.mark_session_completed(
                         entry.session_id,

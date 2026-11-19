@@ -39,10 +39,11 @@ _EC = "backend.copilot.expert_context"
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned for the seen-capabilities rule allowing an expand=true
-# describe of a listed id (SECRT-2682).
+# Last re-pinned when schedule_followup and schedule_routine were retired from
+# the model: the session-context note no longer tells it to pass a session_id
+# to schedule_followup, and later work is always a task.
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "c1d92ddf6c428f1557a927d23eb2f17fca3a00dc5dd25b84fb07269e657d213e"
+    "05f4fa6a91ccf668be176e0716d0fb3715d3ed0359a975bfc2025243ba2752e6"
 )
 
 
@@ -1380,15 +1381,23 @@ class TestRoutinesBlock:
 
     @pytest.mark.asyncio
     async def test_otto_is_told_it_can_hold_standing_work(self):
-        """The bug this closes: with nothing in its prompt naming a routine,
-        the model reached for ``schedule_followup`` — the only scheduling tool
-        it had ever been told about — and pinned a weekly job to whatever chat
-        the user happened to be in."""
+        """Standing work is a repeating task now: the block names
+        ``start_task`` with ``repeat_crons`` and neither retired tool, which
+        Otto could no longer call."""
         result = await self._otto_context([])
 
         assert "<standing_work>" in result
-        assert "`tool:schedule_routine`" in result
-        assert "`tool:list_routines`" in result
+        assert "`start_task` with `repeat_crons`" in result
+        assert "schedule_routine" not in result
+        assert "schedule_followup" not in result
+
+    @pytest.mark.asyncio
+    async def test_a_listed_routine_is_taken_on_as_a_repeating_task(self):
+        result = await self._otto_context([self._routine(enabled=False)])
+
+        assert "<routines>" in result
+        assert "make it a repeating task" in result
+        assert "schedule_routine" not in result
 
     @pytest.mark.asyncio
     async def test_the_accounts_own_routines_are_listed_to_it(self):

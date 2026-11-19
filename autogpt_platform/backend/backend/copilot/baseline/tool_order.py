@@ -21,3 +21,10 @@ def writes_files(tool_call: LLMToolCall) -> bool:
     dispatch = resolve_tool_dispatch(tool_call.name, args)
     tool = dispatch.tool if dispatch else TOOL_REGISTRY.get(tool_call.name)
     return tool is not None and tool.writes_files
+
+
+def runs_alone(tool_call: LLMToolCall) -> bool:
+    """Whether *tool_call* runs on its own: a file writer, or a question for
+    the user, which runs after the calls placed before it so that any call
+    placed after it starts once the turn is ending and is refused."""
+    return tool_call.name == "ask_question" or writes_files(tool_call)

@@ -49,7 +49,7 @@ export function CreateTemplateModal({ isOpen, onClose, onCreate }: Props) {
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
             <Text variant="body" tone="secondary">
-              Save this task as a template to reuse later with the same inputs
+              Save this run as a template to reuse later with the same inputs
               and credentials.
             </Text>
           </div>

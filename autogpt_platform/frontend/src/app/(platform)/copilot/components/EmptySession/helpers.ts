@@ -1,5 +1,22 @@
 import type { User } from "@/lib/auth/types";
+import {
+  AUTOPILOT_HEX,
+  getExpertTopicHex,
+} from "@/components/molecules/ExpertAvatar/colors";
 import { getExpertRoleLabel as getExpertDisplayRoleLabel } from "@/services/experts/expert-role-label";
+import type { RecipientOption } from "../ChatInput/components/RecipientChip";
+
+export function getRecipientHex(recipient: RecipientOption) {
+  if (recipient.id === null) return AUTOPILOT_HEX;
+  return (
+    recipient.color ?? getExpertTopicHex({ avatarUrl: recipient.avatarUrl })
+  );
+}
+
+/** A soft shadow in the expert's own colour, under their avatar. */
+export function getAvatarGlow(recipient: RecipientOption, blur = 12) {
+  return `0 4px ${blur}px -2px color-mix(in srgb, ${getRecipientHex(recipient)} 55%, transparent)`;
+}
 
 export const AUTOPILOT_INTRO =
   "Tell me about your work — I'll find what to automate.";

@@ -446,7 +446,15 @@ export const ChatInput = memo(function ChatInput({
   const hasOverflowControls = !!modeSelector || showDryRunToggle;
 
   return (
-    <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
+    <form
+      onSubmit={handleSubmit}
+      className={cn(
+        "relative flex-1",
+        // Card composer: a white card resting in a gray tray.
+        stacked && "rounded-composer-tray bg-surface-tray p-1",
+        className,
+      )}
+    >
       {mentions.isOpen && (
         <MentionDropdown
           trigger={mentions.trigger}
@@ -466,14 +474,15 @@ export const ChatInput = memo(function ChatInput({
           in the middle, quiet toggles + mic + send on the right. items-end
           keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
+        // Card composer: a soft-shadowed card instead of the pill's deep
+        // shadow; the tray around it is the form.
+        variant={stacked ? "card" : "default"}
         className={cn(
           // oxlint-disable-next-line design-system/no-arbitrary-values -- the pill composer's 2rem radius and two-layer lift; no radius or shadow token has them
-          "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-border-base shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
-          // Card composer: a hairline border and a shallow drop instead of
-          // the pill's deep shadow, so it reads as a surface the text sits on.
-          stacked &&
-            // oxlint-disable-next-line design-system/no-arbitrary-values -- the card composer's shallow two-layer drop; no shadow token has it
-            "gap-3 !rounded-3xl border-border-base px-3.5 pt-3 pb-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
+          "relative z-10 flex-col overflow-hidden !rounded-[2rem] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
+          // The pill's edge; the card variant has none.
+          !stacked &&
+            "border-border-base has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
           isCompact &&
             "!rounded-xl border-border-base shadow-message-table has-[[data-slot=input-group-control]:focus-visible]:border-foreground-subtle",
           isRecording &&

@@ -21,6 +21,8 @@ import {
 import { SidebarMenu } from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { useReducedMotion } from "framer-motion";
+import { Eclipse } from "loading-dev";
 import Link, { useLinkStatus } from "next/link";
 import { type ReactNode, useId } from "react";
 import { useExpertChatGroup } from "./useExpertChatGroup";
@@ -44,6 +46,8 @@ interface Props {
   newChatHref: string | null;
   color?: string | null;
   isAutopilot?: boolean;
+  /** How many tasks they are working on right now. */
+  workingCount?: number;
   /** Every chat in the group, not just the ones loaded. */
   total: number;
   /** The group's newest chats, as the grouped read returned them. */
@@ -64,6 +68,7 @@ export function ExpertChatGroup({
   newChatHref,
   color,
   isAutopilot,
+  workingCount = 0,
   total,
   previewSessions,
   pinnedSeparately,
@@ -97,14 +102,14 @@ export function ExpertChatGroup({
       {/* The trigger is itself a button, so the new-chat link sits beside it
           and floats over a slot the trigger reserves before the chevron —
           long labels then truncate against the link rather than under it. */}
-      <div className="group/expert-header relative mb-1 flex items-center rounded-md hover:bg-surface-hover">
+      <div className="group/expert-header relative mb-1 flex items-center rounded-lg hover:bg-shell-hover">
         <CollapsibleTrigger
           aria-label={`${label} chats`}
           aria-describedby={countID}
           // The size and weight reach ManagedExpertImage's fallback initials (a
           // span that sets its colour, not its size or weight), and the weight
           // ExpertAvatar's initial; every other piece of copy is a toned Text.
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-body leading-5 font-medium max-md:py-2 max-md:text-body-lg max-md:leading-6"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 text-left text-body leading-5 font-medium max-md:py-2 max-md:text-body-lg max-md:leading-6"
         >
           <ExpertGroupIdentity
             label={label}
@@ -112,7 +117,12 @@ export function ExpertChatGroup({
             avatarUrl={avatarUrl}
             color={color}
             isAutopilot={isAutopilot}
-            nameAccessory={<SessionCount id={countID} count={total} />}
+            nameAccessory={
+              <>
+                <SessionCount id={countID} count={total} />
+                <Working count={workingCount} />
+              </>
+            }
           />
           {newChatHref && (
             <span
@@ -160,6 +170,26 @@ export function ExpertChatGroup({
   );
 }
 
+/** The same turning mark a working task has in the chat. */
+function Working({ count }: { count: number }) {
+  const prefersReducedMotion = useReducedMotion();
+  if (count === 0) return null;
+  const label = count > 1 ? `Working on ${count} tasks` : "Working on a task";
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className="flex shrink-0 items-center text-foreground-text"
+    >
+      <Eclipse
+        size={14}
+        playState={prefersReducedMotion ? "paused" : "running"}
+      />
+    </span>
+  );
+}
+
 interface ShowMoreProps {
   label: string;
   isLoading: boolean;
@@ -184,7 +214,7 @@ function ShowMoreButton({
       }
       aria-busy={isLoading}
       onClick={onClick}
-      className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-emphasis max-md:py-2.5"
+      className="mt-0.5 flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-foreground-tertiary hover:bg-shell-hover hover:text-shell-foreground-strong max-md:py-2.5"
     >
       <Text as="span" variant="small-medium-tight-touch" tone="inherit">
         {loadFailed ? "Couldn't load. Try again" : "Show more"}
@@ -295,10 +325,9 @@ function NewChatIcon() {
   return <Icon icon={PlusSignIcon} className="size-4 max-md:size-5" />;
 }
 
+/** The group's chats, hanging off its avatar as curved branches. The trunk
+ *  starts under the avatar's centre: the header's 8px padding plus half the
+ *  32px avatar. */
 export function GroupBody({ children }: { children: ReactNode }) {
-  return (
-    <div className="relative ml-[24px] pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gradient-to-b before:from-surface-active/70 before:to-transparent">
-      {children}
-    </div>
-  );
+  return <div className="branch-list ml-6">{children}</div>;
 }

@@ -33,6 +33,9 @@ _PLATFORM_KEY_MODEL_CALLS = {
     "generate_expert_recommendations": _OUTSIDE_TURNS,
     "api/features/store/category_classifier.py classify_category": _OUTSIDE_TURNS,
     "copilot/briefing/narrative.py _complete": _OUTSIDE_TURNS,
+    "copilot/briefing/suggestions.py _complete": (
+        "the morning brief's task drafting; its refresh route is rate-limited"
+    ),
     "copilot/dream/orchestrator.py _run_phase": _DREAM_BUDGET,
     "copilot/eval/style/scorer.py judge_context": "an evaluation tool run by hand",
     "copilot/learning/reviewer.py _review_context": _DREAM_BUDGET,

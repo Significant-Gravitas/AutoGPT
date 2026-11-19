@@ -28,20 +28,20 @@ export function ConnectionsSection({ rows, mcp }: Props) {
       .map((request) => request.service),
   ];
   return (
-    <div className="overflow-hidden rounded-3xl border border-separator bg-surface">
-      <div className="flex items-center gap-3 border-b border-separator px-4 py-5">
-        <Icon icon={PlugSocketIcon} size={18} tone="subtle" />
-        <div className="min-w-0 flex-1">
-          <Text variant="large-medium-tight" as="h3" tone="primary">
+    <div className="overflow-hidden rounded-card bg-surface shadow-(--inbox-shadow-card)">
+      <div className="flex items-center gap-2.5 border-b border-border-hairline px-3 py-2">
+        <Icon icon={PlugSocketIcon} size={15} tone="quiet" />
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+          <Text variant="inbox-medium" as="h3" tone="ink">
             {remaining.length ? "Connect your apps" : "Your apps are connected"}
           </Text>
-          <Text variant="body-tight" tone="muted" className="mt-1">
+          <Text variant="small" tone="quiet">
             Choose the accounts Otto should use.
           </Text>
         </div>
         <span
           role="status"
-          className="shrink-0 rounded-full border border-separator px-2.5 py-1 text-caption text-foreground-tertiary"
+          className="shrink-0 text-caption text-foreground-quiet tabular-nums"
         >
           {rows.length + mcpRows.length - remaining.length} of{" "}
           {rows.length + mcpRows.length} ready
@@ -54,24 +54,24 @@ export function ConnectionsSection({ rows, mcp }: Props) {
         <McpConnectorRow key={request.id} request={request} />
       ))}
       {remaining.length > 0 && rows.length + mcpRows.length > 1 && (
-        <div className="border-t border-separator px-4 py-2.5">
-          <Text variant="body-tight" as="span" tone="muted">
+        <div className="border-t border-border-hairline px-3 py-1.5">
+          <Text variant="small" as="span" tone="quiet">
             Still to connect: {remaining.join(", ")}
           </Text>
         </div>
       )}
-      <div className="space-y-2 border-t border-separator bg-surface-muted px-4 py-3">
-        <Text variant="body-tight" tone="muted">
+      <div className="flex flex-wrap gap-x-2 border-t border-border-hairline bg-surface-tray px-3 py-2">
+        <Text variant="small" as="span" tone="quiet">
           {remaining.length
             ? "Once these apps are connected, Otto will continue."
             : "Connections are ready. Otto can continue setting up your workflow."}
         </Text>
-        <Text variant="body-tight" as="span" tone="muted">
+        <Text variant="small" as="span" tone="quiet">
           Looking for something else?{" "}
           <button
             type="button"
             onClick={() => openModal("integrations")}
-            className="font-medium text-foreground-strong underline underline-offset-2"
+            className="rounded-sm font-medium text-foreground-ink underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-focus-inbox"
           >
             Browse all connectors
           </button>

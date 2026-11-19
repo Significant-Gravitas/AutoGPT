@@ -104,10 +104,9 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     );
 
     // The AI SDK path swaps every id for the rows' `-seq-N` ones at the end
-    // of the turn, which remounts the transcript; the runtime adopts the rows
-    // into the messages it already drew.
-    const runtimeOnly = path === "stream runtime" ? it : it.fails;
-    runtimeOnly(
+    // of the turn, and the transcript carries each row's key across the swap;
+    // the runtime adopts the rows into the messages it already drew.
+    it(
       "the end-of-turn reconcile keeps every message's element",
       { timeout: 60_000 },
       async () => {

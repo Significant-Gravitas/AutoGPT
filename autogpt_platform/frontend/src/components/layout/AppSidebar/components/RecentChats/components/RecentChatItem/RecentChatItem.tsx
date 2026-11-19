@@ -144,7 +144,7 @@ export const RecentChatItem = memo(function RecentChatItem({
         isActive={isActive}
         tooltip={title}
         // leading-5 keeps SidebarMenuButton's 20px line-height under max-md:text-body-md.
-        className="font-normal hover:!bg-surface-hover data-[active=true]:!bg-surface-hover data-[active=true]:font-normal max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-5"
+        className="font-normal hover:!bg-shell-hover data-[active=true]:!bg-shell-hover data-[active=true]:font-normal max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-5"
       >
         <Link href={`/home?sessionId=${session.id}`}>
           {session.is_processing ? (
@@ -155,7 +155,11 @@ export const RecentChatItem = memo(function RecentChatItem({
           ) : hasPlatformLogo ? (
             <ChatOriginIcon sourcePlatform={session.source_platform} />
           ) : null}
-          <span className="truncate">{title}</span>
+          {/* On desktop the title runs on under the action, into the padding
+              the row holds for it, and fades out there. */}
+          <span className="label-fade min-w-0 flex-1 !text-clip md:-mr-7">
+            <span className="label-marquee">{title}</span>
+          </span>
           <ChatLinkLoader />
         </Link>
       </SidebarMenuButton>

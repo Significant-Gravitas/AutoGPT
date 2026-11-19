@@ -277,6 +277,14 @@ export const CARD_FIXTURES: Record<string, CardFixture> = Object.fromEntries([
     "Follow-up scheduled",
   ),
   card(
+    "create_task",
+    {
+      type: "task_created",
+      task: { id: "task-1", title: "Draft the launch email", status: "TODO" },
+    },
+    "Draft the launch email",
+  ),
+  card(
     "list_folders",
     { folders: [{ name: "Marketing", agent_count: 3 }] },
     "Marketing",

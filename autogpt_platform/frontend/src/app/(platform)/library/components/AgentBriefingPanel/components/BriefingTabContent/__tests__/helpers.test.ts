@@ -64,9 +64,9 @@ describe("getAgentStatusLabel", () => {
 
 describe("getEmptyMessage", () => {
   it("uses task terminology for completed and scheduled tabs", () => {
-    expect(getEmptyMessage("completed")).toBe("No recently completed tasks");
+    expect(getEmptyMessage("completed")).toBe("No recently completed runs");
     expect(getEmptyMessage("scheduled")).toBe(
-      "No workflows with scheduled tasks",
+      "No workflows with scheduled runs",
     );
   });
 

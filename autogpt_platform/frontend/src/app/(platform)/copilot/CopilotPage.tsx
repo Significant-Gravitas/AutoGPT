@@ -22,6 +22,10 @@ const ArtifactPanel = dynamic(
   { ssr: false },
 );
 
+const WorkArea = dynamic(
+  () => import("./components/WorkArea/WorkArea").then((m) => m.WorkArea),
+  { ssr: false },
+);
 const ContextPanel = dynamic(
   () =>
     import("./components/ContextPanel/ContextPanel").then(
@@ -62,7 +66,7 @@ export function CopilotPage() {
       // header overlays the chat (see PlatformChrome) instead of stacking
       // above it, so the full viewport is available. `svh` keeps the input
       // visible when mobile browser chrome is shown.
-      className="h-svh min-h-0"
+      className="h-(--inset-height) min-h-0"
     >
       <MainArea
         isMobile={isMobile}
@@ -119,8 +123,7 @@ function MainArea({
           />
         </FileDropZone>
       </div>
-      {!isMobile && sessionId && <ContextPanel sessionId={sessionId} />}
-      {!isMobile && sessionId && <ArtifactPanel sessionId={sessionId} />}
+      {!isMobile && <WorkArea sessionId={sessionId} />}
     </div>
   );
 }

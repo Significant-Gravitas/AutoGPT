@@ -14,6 +14,7 @@ from pydantic_core import PydanticUndefined
 from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
 from backend.blocks.helpers.review import ReviewReadError
+from backend.copilot import call_account
 from backend.copilot.capabilities import block_meta
 from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.constants import (
@@ -504,6 +505,7 @@ async def execute_block(
                         message=f"Failed to retrieve credentials for {field_name}",
                         session_id=session_id,
                     ).from_outside()
+                call_account.note(credentials)
                 exec_kwargs[field_name] = credentials
         except ValueError:
             await _release_credential_leases(credential_leases)

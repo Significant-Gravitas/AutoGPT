@@ -67,6 +67,20 @@ describe("ExpertIdentityDetails", () => {
     ).toBe(true);
     expect(container.querySelector("svg")).toBeNull();
   });
+
+  test("quiets the compact area with areaTone", () => {
+    render(
+      <ExpertIdentityDetails
+        name="Jules"
+        role="Social & Content Repurposing"
+        size="compact"
+        areaTone="secondary-soft"
+      />,
+    );
+    const area = screen.getByText("Social Media Manager");
+    expect(area.classList.contains("text-foreground-secondary/70")).toBe(true);
+    expect(area.classList.contains("text-foreground-secondary")).toBe(false);
+  });
 });
 
 test("does not grant Otto's identity exception from a specialist title", () => {

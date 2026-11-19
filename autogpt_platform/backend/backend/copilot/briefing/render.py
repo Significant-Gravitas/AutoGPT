@@ -40,6 +40,7 @@ def render_briefing_markdown(content: BriefingContent) -> str:
             f"- **{_md(item.agent_name)}**: {_md(item.summary or '')}" for item in found
         )
         lines.append("")
+    lines.extend(_task_lines(content))
     if content.decision_items:
         total = max(content.decision_total, len(content.decision_items))
         lines.append(f"**Needs your decision ({total})**")
@@ -50,6 +51,25 @@ def render_briefing_markdown(content: BriefingContent) -> str:
         if remaining > 0:
             lines.append(f"- …and {remaining} more on your home page")
     return "\n".join(lines).strip()
+
+
+def _task_lines(content: BriefingContent) -> list[str]:
+    """Your tasks: waiting on you, failed, finished, each with its line."""
+    tasks = content.tasks
+    if tasks is None or tasks.is_empty:
+        return []
+    groups = [
+        ("waiting on you", tasks.waiting),
+        ("didn't finish", tasks.failed),
+        ("finished", tasks.finished),
+    ]
+    lines = ["**Your tasks**"]
+    for state, items in groups:
+        for item in items:
+            line = f": {_md(item.line)}" if item.line else ""
+            lines.append(f"- {_md(item.title)} — {state}{line}")
+    lines.append("")
+    return lines
 
 
 def _md(text: str) -> str:

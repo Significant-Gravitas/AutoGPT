@@ -9,6 +9,7 @@ import {
 } from "framer-motion";
 import { useState } from "react";
 import { ShimmerText } from "./ShimmerText";
+import { useHeldText } from "./useHeldText";
 
 const EASE_OUT_CUBIC = [0.33, 1, 0.68, 1] as const;
 // A label that changes again while the previous swap could still be playing
@@ -31,6 +32,10 @@ interface SwapTextProps {
   text: string;
   className?: string;
   shimmer?: boolean;
+  /** Keep each label up for at least this long and then show the newest one,
+   *  for labels that can change faster than they can be read. Off under
+   *  reduced motion, where every change shows at once. */
+  minHoldMs?: number;
 }
 
 const variants = {
@@ -44,8 +49,14 @@ const variants = {
 };
 
 // Old label slides up + fades out, new one slides in from below.
-export function SwapText({ text, className, shimmer = false }: SwapTextProps) {
+export function SwapText({
+  text: latestText,
+  className,
+  shimmer = false,
+  minHoldMs = 0,
+}: SwapTextProps) {
   const reducedMotion = useReducedMotion();
+  const text = useHeldText(latestText, reducedMotion ? 0 : minHoldMs);
   const [swap, setSwap] = useState<Swap>({ text, at: 0, rapid: false });
   let current = swap;
   if (swap.text !== text) {

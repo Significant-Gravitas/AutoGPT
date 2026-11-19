@@ -18,6 +18,7 @@ import {
 } from "@/services/consent/cookiebot";
 import { environment } from "@/services/environment";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { Agentation } from "agentation";
 import { headers } from "next/headers";
 import Script from "next/script";
 import { getSiteUrl } from "@/lib/metadata";
@@ -141,6 +142,8 @@ export default async function RootLayout({
               )}
             </div>
             <Toaster />
+            {/* TEMPORARY: feedback toolbar for this branch; remove before merging. */}
+            {process.env.NODE_ENV === "development" && <Agentation />}
             <TrackerCookieCleanup />
             <ConsentWithdrawalReload />
           </Providers>

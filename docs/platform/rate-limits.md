@@ -56,6 +56,20 @@ Neither is configurable.
 
 In one chat, Otto can run each workflow up to 30 times and set up to 30 schedules for it. Past that, Otto tells you it has reached the maximum for this chat. Self-hosters can change both with `CHAT_MAX_AGENT_RUNS` and `CHAT_MAX_AGENT_SCHEDULES` (default `30` each).
 
+### Tasks Otto drafts for you
+
+Each morning, with your brief, Otto drafts up to 3 next tasks for you. At most 3 drafted tasks wait for you at a time; one you have not started or set aside within 3 days is replaced by a newer draft.
+
+Asking for more with **Suggest more** in the brief works 10 times an hour per account. The hour starts on the clock hour. Past that, the request is refused with `429`, a message saying the limit was reached, and a `Retry-After` header. Not configurable.
+
+### Tasks scheduled for later
+
+Up to 50 tasks per account can wait for a start time. Past that, Otto says the limit was reached and that cancelling a scheduled task, or starting one now, frees a slot. A scheduled task that could not start within 6 hours of its start time (for example while the platform was down) does not run by itself: it is marked as having missed its start, for you to start or cancel. Self-hosters can change these with `MAX_SCHEDULED_TASKS_PER_USER` (default `50`) and `SCHEDULED_TASK_LATE_WINDOW_SECONDS` (default `21600`).
+
+A repeating task counts as one of those 50 while it waits for its next run. Its rhythm can be as short as every minute; Otto warns that each run uses your allowance when it is shorter than 15 minutes. A run never overlaps the next one: a time that comes while a run is still going is skipped, and one that could not start within the 6 hours is skipped instead of marked missed. After 3 failed runs in a row the task pauses itself.
+
+A task that runs each time an event happens ("when a PR is opened on acme/web, review it") runs one event at a time. Up to 5 events can wait for their run; an event that arrives while 5 are waiting is dropped, and the task's activity says so. A paused task ignores events. After 3 failed runs in a row it pauses itself, like a repeating task. Each event's data is cut to 8 KB before it is kept. Waiting for an event does not count toward the 50 tasks waiting for a start time. Not configurable.
+
 ## Experts
 
 ### Weekly budget per Expert

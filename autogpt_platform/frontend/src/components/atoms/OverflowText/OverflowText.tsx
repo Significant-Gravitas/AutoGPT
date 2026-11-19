@@ -11,12 +11,16 @@ import { useEffect, useRef, useState } from "react";
 
 interface Props extends Omit<TextProps, "children"> {
   value: string | ReactNode;
+  /** How text that does not fit ends: cut with "…", or faded out at the
+   *  right edge with no ellipsis. Either way the full text is in a tooltip. */
+  overflow?: "ellipsis" | "fade";
 }
 
 export function OverflowText({
   value,
   className,
   variant = "body",
+  overflow = "ellipsis",
   ...restProps
 }: Props) {
   const elementRef = useRef<HTMLSpanElement | null>(null);
@@ -78,7 +82,10 @@ export function OverflowText({
       ref={elementRef}
       data-slot="overflow-text"
       className={cn(
-        "block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap",
+        "block min-w-0 overflow-hidden whitespace-nowrap",
+        overflow === "ellipsis" && "text-ellipsis",
+        // Only while it is cut: text that fits keeps its last letters whole.
+        overflow === "fade" && isTruncated && "mask-fade-right",
       )}
     >
       <Text

@@ -520,3 +520,107 @@ def scheduled_chats_db():
         scheduled_chats_db = get_database_manager_async_client()
 
     return scheduled_chats_db
+
+
+def task_db():
+    if db.is_connected():
+        from backend.data import task as _task_db
+
+        task_db = _task_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        task_db = get_database_manager_async_client()
+
+    return task_db
+
+
+def task_result_db():
+    if db.is_connected():
+        from backend.data import task_result as _task_result_db
+
+        task_result_db = _task_result_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        task_result_db = get_database_manager_async_client()
+
+    return task_result_db
+
+
+def task_run_db():
+    if db.is_connected():
+        from backend.data import task_run as _task_run_db
+
+        task_run_db = _task_run_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        task_run_db = get_database_manager_async_client()
+
+    return task_run_db
+
+
+def task_record_db():
+    if db.is_connected():
+        from backend.data import task_record as _task_record_db
+
+        task_record_db = _task_record_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        task_record_db = get_database_manager_async_client()
+
+    return task_record_db
+
+
+def task_suggestion_db():
+    if db.is_connected():
+        from backend.data import task_suggestion as _task_suggestion_db
+
+        task_suggestion_db = _task_suggestion_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        task_suggestion_db = get_database_manager_async_client()
+
+    return task_suggestion_db
+
+
+def task_schedule_db():
+    if db.is_connected():
+        from backend.data import task_schedule as _task_schedule_db
+
+        task_schedule_db = _task_schedule_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        task_schedule_db = get_database_manager_async_client()
+
+    return task_schedule_db
+
+
+def task_watch_db():
+    if db.is_connected():
+        from backend.data import task_watch_setup as _task_watch_db
+
+        task_watch_db = _task_watch_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        task_watch_db = get_database_manager_async_client()
+
+    return task_watch_db
+
+
+def task_due_db():
+    if db.is_connected():
+        from backend.data import task_due as _task_due_db
+
+        task_due_db = _task_due_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        task_due_db = get_database_manager_async_client()
+
+    return task_due_db

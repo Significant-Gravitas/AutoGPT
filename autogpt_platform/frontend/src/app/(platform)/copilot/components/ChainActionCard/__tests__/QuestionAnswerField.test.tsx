@@ -11,6 +11,7 @@ function renderField(value = "ねこ") {
       labelId="label-1"
       autoFocus={false}
       onChange={() => {}}
+      onPick={() => {}}
       onSubmit={onSubmit}
     />,
   );

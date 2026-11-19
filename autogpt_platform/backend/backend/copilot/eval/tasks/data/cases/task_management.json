@@ -1,0 +1,671 @@
+[
+  {
+    "id": "task_management_001",
+    "category": "task_management",
+    "world": "brightsmile_dental",
+    "title": "Cancel the Google reviews reply task",
+    "turns": [
+      {
+        "user": "Hi Otto! 😊 Please cancel the Google reviews reply task for now, Dr. Brandt wants to hold off. Thanks!"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "task_update",
+      "must": [
+        "finds the Google reviews reply task (task_3) and sets it to CANCELLED",
+        "confirms in one short warm line"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "asks whether the user is sure",
+        "cancels any other task"
+      ],
+      "checks": {
+        "tools_called": [
+          "update_task"
+        ],
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Done! 😊 I've cancelled the 'Draft HIPAA-safe replies to the latest Google reviews' task. Say the word if you want it back.",
+      "actions": [
+        "list_tasks() to find the id (task_3)",
+        "update_task(task_id='task_3', status='CANCELLED')"
+      ],
+      "why": "A plain instruction: find the task, cancel it, confirm in one line. No question and no new task."
+    }
+  },
+  {
+    "id": "task_management_002",
+    "category": "task_management",
+    "world": "forgepoint_devtools",
+    "title": "Mark the SOC 2 evidence task done",
+    "turns": [
+      {
+        "user": "Please mark the SOC 2 evidence task as done. Lukas confirmed that all 42 ERL items are uploaded to Trustwell."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "notion"
+    ],
+    "expected": {
+      "behaviour": "task_update",
+      "must": [
+        "sets the SOC 2 evidence task (task_1) to DONE",
+        "confirms in one line"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "asks for proof before marking it done",
+        "changes the Helix questionnaire or postmortem tasks"
+      ],
+      "checks": {
+        "tools_called": [
+          "update_task"
+        ],
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Done. 'Collect SOC 2 evidence for the Brightline ERL' is now marked as done.",
+      "actions": [
+        "list_tasks() to find the id (task_1)",
+        "update_task(task_id='task_1', status='DONE')"
+      ],
+      "why": "The user states the fact and the instruction; Otto records it without second-guessing."
+    }
+  },
+  {
+    "id": "task_management_003",
+    "category": "task_management",
+    "world": "greenroots_ngo",
+    "title": "What tasks are open?",
+    "turns": [
+      {
+        "user": "Dear Otto, warm greetings. What tasks are open right now? Asante."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "calls list_tasks and lists the open tasks: Larkspur narrative (in progress), cash shortfall scenario (to do), donor segmentation and thank-you emails (in progress)",
+        "may mention the MoU pack is done, and does not list it as open"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "invents tasks that are not in the list",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "list_tasks"
+        ],
+        "tools_not_called": [
+          "start_task",
+          "update_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Karibu, Amani. Open now: (1) Draft Larkspur final narrative report sections 3-5, in progress with Juniper; (2) Prepare one-page cash shortfall scenario for the board treasurer, to do; (3) Segment October donors and draft thank-you emails, in progress with Marigold. The Kasarani Hope MoU signing pack is done.",
+      "actions": [
+        "list_tasks()"
+      ],
+      "why": "A listing is a direct answer from a read tool, no task needed."
+    }
+  },
+  {
+    "id": "task_management_004",
+    "category": "task_management",
+    "world": "kestrel_agency",
+    "title": "Mark the Finlo recovery plan done",
+    "turns": [
+      {
+        "user": "- finlo roas recovery plan: mark done\n- deck already went to dana"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "task_update",
+      "must": [
+        "sets the Finlo ROAS recovery plan task (task_2) to DONE",
+        "confirms in one terse line without preamble"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "marks the October reports task as done too",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "update_task"
+        ],
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "done. finlo roas recovery plan marked done.",
+      "actions": [
+        "list_tasks() to find the id (task_2)",
+        "update_task(task_id='task_2', status='DONE')"
+      ],
+      "why": "One instruction, one update, one terse line."
+    }
+  },
+  {
+    "id": "task_management_005",
+    "category": "task_management",
+    "world": "ledgerly_accounting",
+    "title": "Cancel the weekly aged debtor report",
+    "turns": [
+      {
+        "user": "Dear Otto, please cancel the weekly aged debtor report task. Maggie will prepare it manually from now on. Kind regards, Oliver"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "stripe"
+    ],
+    "expected": {
+      "behaviour": "task_update",
+      "must": [
+        "sets the weekly aged debtor report task (task_2) to CANCELLED",
+        "confirms in one formal British-English line"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "cancels the VAT calendar task",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "update_task"
+        ],
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Dear Oliver, I have cancelled the 'Weekly aged debtor report from Stripe invoices' task. Kind regards.",
+      "actions": [
+        "list_tasks() to find the id (task_2)",
+        "update_task(task_id='task_2', status='CANCELLED')"
+      ],
+      "why": "Clear instruction about an existing task; a formal one-line confirmation."
+    }
+  },
+  {
+    "id": "task_management_006",
+    "category": "task_management",
+    "world": "lumen_skincare",
+    "title": "Start the launch email sequence",
+    "turns": [
+      {
+        "user": "pls mark the launch email sequence as in progress, nova can start now"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "task_update",
+      "must": [
+        "sets the launch email sequence task (task_2) to IN_PROGRESS",
+        "confirms in one short lowercase-friendly line"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "creates a duplicate launch email task",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "update_task"
+        ],
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "done, launch email sequence is in progress w nova",
+      "actions": [
+        "list_tasks() to find the id (task_2)",
+        "update_task(task_id='task_2', status='IN_PROGRESS')"
+      ],
+      "why": "The task already exists in TODO and Nova already owns it; only the status changes. No second task is created."
+    }
+  },
+  {
+    "id": "task_management_007",
+    "category": "task_management",
+    "world": "saffron_kitchens",
+    "title": "Cancel the Nov 9-15 rota task",
+    "turns": [
+      {
+        "user": "rota nov 9-15 wala task cancel karo, kavita ne manually kar liya"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "sheets"
+    ],
+    "expected": {
+      "behaviour": "task_update",
+      "must": [
+        "sets the Nov 9-15 rota gaps task (task_3) to CANCELLED",
+        "confirms in one short line"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "cancels the FSSAI binder or dairy tasks",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "update_task"
+        ],
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "ho gaya, 'Fill rota gaps for Nov 9-15' cancel kar diya.",
+      "actions": [
+        "list_tasks() to find the id (task_3)",
+        "update_task(task_id='task_3', status='CANCELLED')"
+      ],
+      "why": "Clear instruction; one update and a Hinglish one-liner."
+    }
+  },
+  {
+    "id": "task_management_008",
+    "category": "task_management",
+    "world": "pixelmoth_games",
+    "title": "Close the 0.9.x GitHub tracking task",
+    "turns": [
+      {
+        "user": "Salut! 0.9.4 is live ✅ so the GitHub issue tracking task for the 0.9.x patch cycle can be marked done 🙏"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "github"
+    ],
+    "expected": {
+      "behaviour": "task_update",
+      "must": [
+        "sets the GitHub issue tracking task (task_3) to DONE",
+        "confirms in one short friendly line"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "marks the press kit task as done",
+        "asks whether to keep tracking the Arc issue"
+      ],
+      "checks": {
+        "tools_called": [
+          "update_task"
+        ],
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "C'est fait ✅ I marked 'Track open GitHub issues for the 0.9.x patch cycle' as done.",
+      "actions": [
+        "list_tasks() to find the id (task_3)",
+        "update_task(task_id='task_3', status='DONE')"
+      ],
+      "why": "A simple status change on an existing task."
+    }
+  },
+  {
+    "id": "task_management_009",
+    "category": "task_management",
+    "world": "shah_realty",
+    "title": "List tasks by status",
+    "turns": [
+      {
+        "user": "Hi Otto, list all my tasks na - which are in progress and which are todo? Thanks!"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "hubspot"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "calls list_tasks and groups the tasks by status: two in progress (HRERA renewal, D-118 HDFC loan documents), one to do (B-14 listing copy)"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "invents tasks",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "list_tasks"
+        ],
+        "tools_not_called": [
+          "start_task",
+          "update_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Sure Priya! In progress: HRERA agent renewal packet and checklist (Meher), and tracking the D-118 HDFC loan documents (Meher). To do: listing copy for the Aravali Heights B-14 open house (Aarav).",
+      "actions": [
+        "list_tasks()"
+      ],
+      "why": "Listing is a direct answer from the task list."
+    }
+  },
+  {
+    "id": "task_management_010",
+    "category": "task_management",
+    "world": "oakline_furniture",
+    "title": "Hand the Cascade Marine claim pack to Wren",
+    "turns": [
+      {
+        "user": "Atlas is buried with PO-2291. Please hand the Cascade Marine claim document pack to Wren."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "task_update",
+      "must": [
+        "updates the Cascade Marine claim pack task (task_2) so that Wren (exp_support) owns it",
+        "confirms in one line, optionally noting the Nov 13 deadline"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "reassigns the PO-2291 monitoring task",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "update_task"
+        ],
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Done. The Cascade Marine claim CM-77120 document pack now belongs to Wren (the claim documents are due Nov 13).",
+      "actions": [
+        "list_tasks() to find the id (task_2)",
+        "list_team() to confirm Wren's expert id (exp_support)",
+        "update_task(task_id='task_2', expert_id='exp_support')"
+      ],
+      "why": "Reassigning an owner is an update on the task, not a new task."
+    }
+  },
+  {
+    "id": "task_management_011",
+    "category": "task_management",
+    "world": "greenroots_ngo",
+    "title": "Cancel the cash shortfall scenario task",
+    "turns": [
+      {
+        "user": "Dear Otto, please cancel the cash shortfall scenario task. Peter has prepared it himself. Asante sana."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "task_update",
+      "must": [
+        "sets the cash shortfall scenario task (task_2) to CANCELLED",
+        "confirms in one warm line"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "cancels the Larkspur narrative task",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "update_task"
+        ],
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Asante, Amani. I have cancelled 'Prepare one-page cash shortfall scenario for the board treasurer'.",
+      "actions": [
+        "list_tasks() to find the id (task_2)",
+        "update_task(task_id='task_2', status='CANCELLED')"
+      ],
+      "why": "Clear instruction on one task."
+    }
+  },
+  {
+    "id": "task_management_012",
+    "category": "task_management",
+    "world": "greenroots_ngo",
+    "title": "Close a task that is already done",
+    "turns": [
+      {
+        "user": "Please close the Kasarani Hope MoU signing pack task, it is finished. Asante."
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "reads the MoU signing pack task (task_4) and says it is already done",
+        "does not create or restart anything"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "claims it just closed the task",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Asante, Amani. That task, 'Compile Kasarani Hope MoU signing pack', is already marked done, so there is nothing to change.",
+      "actions": [
+        "list_tasks() or get_task(task_4) to see its status"
+      ],
+      "why": "A good chief of staff checks the state and tells the user it is already done instead of acting blindly."
+    }
+  },
+  {
+    "id": "task_management_013",
+    "category": "task_management",
+    "world": "ledgerly_accounting",
+    "title": "Cancel a task that does not exist",
+    "turns": [
+      {
+        "user": "Dear Otto, please cancel the Christmas rota task. Kind regards, Oliver"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "calls list_tasks and tells the user no Christmas rota task exists, naming the real open tasks"
+      ],
+      "must_not": [
+        "cancels another task by guessing",
+        "starts a new task unasked",
+        "claims it cancelled something"
+      ],
+      "checks": {
+        "tools_called": [
+          "list_tasks"
+        ],
+        "tools_not_called": [
+          "start_task",
+          "update_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Dear Oliver, there is no Christmas rota task: the open tasks are the VAT deadline calendar, the weekly aged debtor report and the NQ Brewing onboarding file. Would you like me to start a cover plan task instead?",
+      "actions": [
+        "list_tasks()"
+      ],
+      "why": "Check the list, say honestly that no such task exists, offer the likely intent."
+    }
+  },
+  {
+    "id": "task_management_014",
+    "category": "task_management",
+    "world": "kestrel_agency",
+    "title": "Rename the Dawnlight task",
+    "turns": [
+      {
+        "user": "- rename the dawnlight task to 'Dawnlight pitch narrative + 2 case studies (pitch thu 12th)'"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "task_update",
+      "must": [
+        "updates the Dawnlight pitch task (task_3) with the exact new title",
+        "confirms in a terse line"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "changes its status or owner",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "update_task"
+        ],
+        "tools_not_called": [
+          "start_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "done. renamed.",
+      "actions": [
+        "list_tasks() to find the id (task_3)",
+        "update_task(task_id='task_3', title='Dawnlight pitch narrative + 2 case studies (pitch thu 12th)')"
+      ],
+      "why": "A rename is an update on the existing task."
+    }
+  },
+  {
+    "id": "task_management_015",
+    "category": "task_management",
+    "world": "forgepoint_devtools",
+    "title": "Which tasks does Cipher have?",
+    "turns": [
+      {
+        "user": "Which tasks does Cipher have open at the moment?"
+      }
+    ],
+    "answer_sheet": [],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "reply",
+      "must": [
+        "calls list_tasks and names Cipher's two open tasks: the SOC 2 evidence collection (in progress) and the Helix questionnaire (to do)",
+        "does not list Mabel's postmortem task as Cipher's"
+      ],
+      "must_not": [
+        "starts a new task for what the user is only asking to change or list",
+        "asks a question"
+      ],
+      "checks": {
+        "tools_called": [
+          "list_tasks"
+        ],
+        "tools_not_called": [
+          "start_task",
+          "update_task"
+        ],
+        "asks_question": false
+      }
+    },
+    "human_example": {
+      "reply": "Cipher has two open tasks: 'Collect SOC 2 evidence for the Brightline ERL' (in progress) and 'Prepare answers for the Helix Payments 186-question security questionnaire' (to do).",
+      "actions": [
+        "list_tasks() (optionally filtered by Cipher's expert id exp_compliance)"
+      ],
+      "why": "A filtered listing answered directly from the task list."
+    }
+  }
+]

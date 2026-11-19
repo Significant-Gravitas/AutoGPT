@@ -1,9 +1,10 @@
 import type { ComponentProps, ReactNode } from "react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { cleanup, render, screen } from "@/tests/integrations/test-utils";
+import { act, cleanup, render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TurnStatsMap } from "../../../helpers/convertChatSessionToUiMessages";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
+import { TEXT_IDLE_MS } from "../components/ThinkingSlot/helpers";
 
 type Message = UIMessage<unknown, UIDataTypes, UITools>;
 
@@ -230,6 +231,25 @@ describe("ChatMessagesContainer — memoised transcript rows", () => {
       />,
     );
     expect(renderedRows()).toEqual(["m-10"]);
+  });
+
+  it("re-renders no row while the thinking indicator comes and goes", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    try {
+      render(<ChatMessagesContainer {...baseProps} />);
+      expect(screen.queryByRole("status")).toBeNull();
+      rowRenders.clear();
+
+      // The streaming reply has stalled, so the indicator comes back under it.
+      act(() => {
+        vi.advanceTimersByTime(TEXT_IDLE_MS);
+      });
+
+      expect(screen.getByRole("status")).toBeDefined();
+      expect(renderedRows()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("still updates the last row when the stream ends", () => {

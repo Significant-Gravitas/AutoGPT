@@ -5,6 +5,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { isAnswered } from "../../tools/clarifying-questions";
 import { ConnectionsSection } from "./ConnectionsSection";
 import { InputsSection } from "./InputsSection";
+import { QuestionDockSlot } from "./QuestionDockSlot";
 import { QuestionsSection } from "./QuestionsSection";
 import {
   toConnectorRows,
@@ -72,13 +73,17 @@ export function ChainActionCard({
       <InputsSection requests={inputs} />
 
       {hasQuestions && (
-        <div className="overflow-hidden rounded-3xl border border-separator bg-surface">
+        <QuestionDockSlot
+          question={
+            questions.flatMap((request) => request.questions)[0]?.question ?? ""
+          }
+        >
           <QuestionsSection
             requests={questions}
             isReady={questionsReady}
             onProceed={onProceed}
           />
-        </div>
+        </QuestionDockSlot>
       )}
 
       {(hasInputs || manualProceed) && !hasQuestions && (

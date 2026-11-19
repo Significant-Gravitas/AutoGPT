@@ -19,9 +19,6 @@ export const SIDEBAR_CHAT_LIMIT = 30;
 export const PHONE_GROUP_CHATS = 4;
 /** Chats each press of a group's "Show more" adds. */
 export const GROUP_SHOW_MORE_STEP = 10;
-/** Chats per request when a group pages in its older chats; above the
- *  sidebar limit, so the first "Show more" needs one request. */
-export const GROUP_PAGE_LIMIT = 40;
 
 // The key Otto's own group is remembered under; experts use their id.
 const OTTO_GROUP_KEY = "autopilot";

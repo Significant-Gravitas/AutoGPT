@@ -17,7 +17,6 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
-import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnEndAnnouncer } from "../JobStatsBar/TurnEndAnnouncer";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
@@ -33,12 +32,7 @@ import {
   splitMessagesAtDrainHints,
   turnMessagesForRow,
 } from "./midTurnSplit";
-import {
-  isBookkeepingPart,
-  PENDING_DRAINED_PART_TYPE,
-} from "../../messageParts";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
-import { TURN_PAUSED_PART_TYPE } from "../../turnPause";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
 import { getWorkRunMetadata } from "../WorkCard/helpers";
@@ -54,12 +48,17 @@ import {
   PendingUploadMessage,
 } from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { ThinkingSlot } from "./components/ThinkingSlot/ThinkingSlot";
+import { getTurnActivity } from "./thinkingActivity";
 import { getThinkerHex } from "./thinkerColor";
 import { isSessionOpeningMessage, type SentFrom } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
+import { rowKeyOf, type RowKeys } from "./stableRowKeys";
+import { useStableRowKeys } from "./useStableRowKeys";
+import { useFollowAnimation } from "./useFollowAnimation";
 
 type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
@@ -317,6 +316,9 @@ export function ChatMessagesContainer({
   }, [settled, messagesReady]);
   // opacity-0 only during the single frame between messages arriving and scroll settling
   const hideForScroll = messagesReady && !settled;
+  const { resize: followResize, widthRef: followWidthRef } = useFollowAnimation(
+    { settled, sessionID },
+  );
 
   // Rendered rows, not the array `useChat` owns: a turn whose pending buffer
   // was drained mid-stream renders as chain → follow-up bubble → chain, while
@@ -329,9 +331,10 @@ export function ChatMessagesContainer({
     [messages],
   );
   const messageIndexById = buildMessageIndexById(messages);
+  const rowKeys = useStableRowKeys(renderRows);
   const transcriptRows = useMemo(
-    () => toTranscriptRows(renderRows),
-    [renderRows],
+    () => toTranscriptRows(renderRows, rowKeys),
+    [renderRows, rowKeys],
   );
   // The minimap scrolls to rows by their DOM node; one the windowed
   // transcript has unmounted is reached through the transcript instead.
@@ -357,52 +360,7 @@ export function ChatMessagesContainer({
   // assistant message already carries the marker.
   const lastAssistantHasErrorMarker = hasTrailingErrorMarker(messages);
 
-  const hasInflight = (() => {
-    if (lastMessage?.role !== "assistant") return false;
-    // Ignore bookkeeping parts — none of them counts as "real" content that
-    // hides the Thinking indicator. See `isBookkeepingPart` for the list.
-    // A drain hint newer than the last content part is the one exception:
-    // the follow-up just landed and nothing has been produced past it, so
-    // the text or tool above it is settled and Thinking is the only sign
-    // the assistant picked the follow-up up.
-    let lastIndex = lastMessage.parts.length - 1;
-    while (lastIndex >= 0 && isBookkeepingPart(lastMessage.parts[lastIndex])) {
-      if (lastMessage.parts[lastIndex].type === PENDING_DRAINED_PART_TYPE)
-        return false;
-      lastIndex--;
-    }
-    if (lastIndex < 0) return false;
-
-    const lastPart = lastMessage.parts[lastIndex];
-
-    if (lastPart.type === "text" && lastPart.text.trim().length > 0)
-      return true;
-
-    // Reasoning chunks stream before the final text — while they have
-    // rendered content, the "Thinking..." indicator should give way to the
-    // reasoning view (e.g. Perplexity deep research streams minutes of
-    // reasoning before any answer text).
-    if (lastPart.type === "reasoning" && lastPart.text.trim().length > 0)
-      return true;
-
-    // step-start is a turn boundary emitted right before the next tool or
-    // text chunk. Treat it as inflight so the bubble transitions straight
-    // into the next part without flashing back to "Thinking...".
-    if (lastPart.type === "step-start") return true;
-
-    // A pause is how the turn ends, so nothing more is coming to wait on.
-    if (lastPart.type === TURN_PAUSED_PART_TYPE) return true;
-
-    if (
-      lastPart.type.startsWith(TOOL_PART_PREFIX) &&
-      "state" in lastPart &&
-      (lastPart.state === "input-streaming" ||
-        lastPart.state === "input-available")
-    )
-      return true;
-
-    return false;
-  })();
+  const turnActivity = getTurnActivity(lastMessage, status);
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
   const isTurnBusy =
@@ -426,30 +384,18 @@ export function ChatMessagesContainer({
       ? getLatestCompactionPhase(lastMessage.parts)
       : null;
 
-  // Suppressed during active-session restore so the ThinkingIndicator and
+  // Handed off during active-session restore so the ThinkingIndicator and
   // the "Retrieving latest messages" spinner can't both render — the
   // restore spinner wins until real content arrives (see the
   // ``hasConnectedThisMountRef`` latch in useCopilotStream for why).
-  const showThinking =
-    !isRestoringActiveSession &&
-    liveCompactionPhase === null &&
-    (status === "submitted" || (status === "streaming" && !hasInflight));
+  const thinkingHandedOff =
+    !!isRestoringActiveSession || liveCompactionPhase !== null;
   // Only the start time lives here: the indicator ticks its own label, so
   // the transcript does not re-render every second for the whole turn.
   const streamClock = useElapsedAnchor(
     isActivelyStreaming,
     activeStreamStartedAt,
   );
-  const indicator = (
-    <ThinkingIndicator
-      active={showThinking}
-      startedAtMs={streamClock.startedAtMs}
-      color={getThinkerHex({ expertIdentity, isResolvingExpertIdentity })}
-    />
-  );
-  // Public viewers of a shared chat never see a live turn, so the indicator
-  // stays out of the transcript for them wherever it would render.
-  const showIndicator = !readOnly && showThinking;
   const [showRestoreFallback, setShowRestoreFallback] = useState(false);
   useEffect(() => {
     if (!isRestoringActiveSession) {
@@ -464,7 +410,7 @@ export function ChatMessagesContainer({
   }, [isRestoringActiveSession]);
   const restoreClock = useElapsedAnchor(showRestoreFallback);
 
-  function renderRow({ message, rowIndex }: TranscriptRow) {
+  function renderRow({ message, rowIndex, key }: TranscriptRow) {
     if (getRowHeldCallKind(message) === "answered") {
       return (
         <Text tone="muted" variant="small" className="py-1 text-center">
@@ -491,6 +437,7 @@ export function ChatMessagesContainer({
     return (
       <MessageRow
         message={message}
+        rowKey={key}
         isLastAssistant={isLastAssistant}
         isCurrentlyStreaming={isCurrentlyStreaming}
         isLastInTurn={isLastInTurn}
@@ -504,7 +451,6 @@ export function ChatMessagesContainer({
             : undefined
         }
         elapsedSeconds={isLastRow ? streamClock.frozenSeconds : undefined}
-        indicator={isLastAssistant && showIndicator ? indicator : null}
         isSessionQueued={
           message.role === "user" && sessionChatStatus === "queued"
         }
@@ -539,7 +485,7 @@ export function ChatMessagesContainer({
       )}
       <Conversation
         key={sessionID ?? "new"}
-        resize="instant"
+        resize={followResize}
         className={
           "min-h-0 flex-1 " +
           (hideForScroll
@@ -549,7 +495,7 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-4 pt-14 pb-4 md:px-6",
+            "mx-auto flex min-h-full w-full max-w-[42.5rem] flex-1 flex-col gap-6 px-4 pt-14 pb-4 md:px-6",
             isCompact && "gap-4 px-4 pt-4",
             showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
@@ -591,19 +537,19 @@ export function ChatMessagesContainer({
               isCompact={isCompact}
             />
           )}
-          {showIndicator && lastMessage?.role !== "assistant" && (
-            <Message
-              from="assistant"
-              className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-            >
-              <MessageContent className="text-body-lg leading-relaxed">
-                {indicator}
-              </MessageContent>
-            </Message>
-          )}
+          {/* Public viewers of a shared chat never see a live turn. */}
+          <ThinkingSlot
+            activity={turnActivity}
+            enabled={!readOnly && isActivelyStreaming}
+            handedOff={thinkingHandedOff}
+            startedAtMs={streamClock.startedAtMs}
+            attached={lastMessage?.role === "assistant"}
+            compact={isCompact}
+            color={getThinkerHex({ expertIdentity, isResolvingExpertIdentity })}
+          />
           {!readOnly && isRestoringActiveSession && (
             <Message from="assistant">
-              <MessageContent className="text-body-lg leading-relaxed text-foreground-strong">
+              <MessageContent className="text-body leading-relaxed text-foreground-strong">
                 {showRestoreFallback ? (
                   <div className="flex flex-col gap-1 text-body text-foreground-tertiary">
                     <ThinkingIndicator
@@ -644,7 +590,7 @@ export function ChatMessagesContainer({
                     "flex flex-col gap-1 border border-dashed border-border-strong bg-surface-hover px-4 py-2.5 text-foreground-strong opacity-60",
                     isCompact
                       ? "rounded-xl text-body leading-6"
-                      : "rounded-3xl text-body-lg leading-relaxed",
+                      : "rounded-2xl text-body leading-relaxed",
                   )}
                 >
                   <span>
@@ -678,6 +624,11 @@ export function ChatMessagesContainer({
           />
         </ConversationContent>
         <ConversationScrollButton />
+        <div
+          ref={followWidthRef}
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-0"
+        />
       </Conversation>
     </>
   );
@@ -702,11 +653,14 @@ function getRowHeldCallKind(message: ChatMessage) {
 
 // A held call's result row renders nothing, so it stays out of the list: an
 // empty row would still take a gap.
-function toTranscriptRows(renderRows: ChatMessage[]): TranscriptRow[] {
+function toTranscriptRows(
+  renderRows: ChatMessage[],
+  rowKeys: RowKeys,
+): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   renderRows.forEach((message, rowIndex) => {
     if (getRowHeldCallKind(message) !== "result") {
-      rows.push({ message, rowIndex });
+      rows.push({ message, rowIndex, key: rowKeyOf(rowKeys, message.id) });
     }
   });
   return rows;

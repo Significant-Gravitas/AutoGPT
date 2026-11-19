@@ -1,0 +1,5 @@
+/* A block that has not started yet: an empty dashed ring. (The run's trace
+   is now drawn by the Affect UI Run Detail block, runs/affect.) */
+.waitingRing {
+  border: 1.5px dashed rgb(var(--color-foreground-subtle));
+}

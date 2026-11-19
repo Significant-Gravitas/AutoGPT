@@ -126,7 +126,13 @@ describe("a message sent right after Stop", () => {
     server.use(storedSessionHandler());
 
     await typeAndSend(FIRST);
-    await screen.findByText(LIVE_PARTIAL, undefined, { timeout: 5000 });
+    // While it streams, each word of the reply is its own span.
+    await screen.findByText(
+      (_, element) =>
+        element?.tagName === "P" && element.textContent === LIVE_PARTIAL,
+      undefined,
+      { timeout: 5000 },
+    );
     await clickStop();
     await waitForTurnToSettle();
 

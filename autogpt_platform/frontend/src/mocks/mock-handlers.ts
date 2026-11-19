@@ -46,6 +46,7 @@ import { getSchedulesMock } from "@/app/api/__generated__/endpoints/schedules/sc
 import { getSearchMock } from "@/app/api/__generated__/endpoints/search/search.msw";
 import { getSkillsMock } from "@/app/api/__generated__/endpoints/skills/skills.msw";
 import { getStoreMock } from "@/app/api/__generated__/endpoints/store/store.msw";
+import { getListTaskSuggestionsMockHandler200 } from "@/app/api/__generated__/endpoints/tasks/tasks.msw";
 import { getWorkspaceMock } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import { http, HttpResponse } from "msw";
 
@@ -127,5 +128,7 @@ export const mockHandlers = [
   ...getSearchMock(),
   ...getSkillsMock(),
   ...getStoreMock(),
+  // No tasks drafted by Otto unless a test sets some up: Home asks for them.
+  getListTaskSuggestionsMockHandler200({ tasks: [] }),
   ...getWorkspaceMock(),
 ];

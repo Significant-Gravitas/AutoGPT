@@ -20,7 +20,7 @@ from pydantic import BaseModel, ValidationError
 
 import backend.data.llm_registry
 from backend.blocks import get_blocks
-from backend.copilot import after_turn, engine_switch, stream_registry
+from backend.copilot import after_turn, engine_switch, stream_registry, turn_end
 from backend.copilot.executor.utils import schedule_turn
 from backend.copilot.turn_metrics import turns_counter
 from backend.data import redis_client as redis
@@ -668,6 +668,7 @@ def _dispatch_after_turn(session_id: str, turn_id: str, error_msg: str | None) -
     active_tasks cleaned), so neither the fail-close CAS nor the RMQ
     same-session duplicate rejection can kill a turn started here.
     """
+    turn_end.clear(session_id)
     switch = engine_switch.pop_switch(session_id)
     if switch is not None and error_msg is not None:
         # Turn failed — the persisted history (and thus the derived

@@ -9,6 +9,7 @@ from strenum import StrEnum
 
 import backend.data.integrations as integrations
 from backend.data.model import Credentials
+from backend.data.task_watch_lookup import is_webhook_watched
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError, WebhookRegistrationError
 from backend.util.settings import Config
@@ -168,6 +169,9 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             logger.info(
                 f"Webhook #{mask_credential(webhook_id)} kept as it has triggers in other graphs"
             )
+            return False
+        if await is_webhook_watched(webhook.user_id, webhook.id):
+            logger.info(f"Webhook #{webhook_id} kept as a task still watches it")
             return False
 
         if credentials:

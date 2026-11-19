@@ -37,6 +37,9 @@ export enum Key {
   GITHUB_STAR_PROMPT_COUNT = "github-star-prompt-count",
   NPS_CHECK = "nps-check",
   RECENT_CHATS_COLLAPSED_GROUPS = "recent-chats.collapsedGroups",
+  HOME_BRIEF_SEEN = "home-brief-seen",
+  HOME_BRIEF_AUTO_OPENED = "home.brief.autoOpened",
+  HOME_TASKS_VIEW = "home.tasks.view",
 }
 
 export const storage = createSafeStorage<Key>("local");

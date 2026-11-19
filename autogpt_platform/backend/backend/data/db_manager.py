@@ -205,6 +205,51 @@ from backend.data.subscription_trial import (
     list_trials_ending_unrenewed,
     record_subscription_trial_cost,
 )
+from backend.data.task import (
+    archive_task,
+    attach_task_session,
+    create_task,
+    detach_task_session,
+    get_task,
+    list_tasks,
+    move_session_tasks,
+    update_task,
+)
+from backend.data.task_due import (
+    claim_due_task,
+    get_scheduled_task,
+    hold_due_task,
+    list_due_tasks,
+    mark_task_missed,
+)
+from backend.data.task_record import (
+    add_activity,
+    add_evidence,
+    answer_session_asks,
+    find_open_task_by_title,
+    get_task_record,
+    open_asks,
+    record_tool_call,
+    set_progress,
+    settle_work_tasks,
+    work_tasks,
+)
+from backend.data.task_result import finish_task, is_worker_chat, task_outcome
+from backend.data.task_run import claim_task_run, settle_task_run, undo_task_run
+from backend.data.task_schedule import (
+    cancel_scheduled_tasks,
+    clear_task_repeat,
+    count_scheduled_tasks,
+    end_repeat_run,
+    set_task_start,
+)
+from backend.data.task_suggestion import (
+    create_suggested_task,
+    dismiss_task_suggestion,
+    dismissed_suggestion_titles,
+    retire_stale_suggestions,
+)
+from backend.data.task_watch_setup import release_watch_webhook, setup_task_watch
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -601,6 +646,56 @@ class DatabaseManager(AppService):
 
     # ============ Activity Events ============ #
     create_activity_event = _(create_activity_event)
+
+    # ============ Tasks ============ #
+    # The copilot executor keeps no Prisma connection; its task tools read
+    # and write through here.
+    create_task = _(create_task)
+    get_task = _(get_task)
+    list_tasks = _(list_tasks)
+    update_task = _(update_task)
+    archive_task = _(archive_task)
+    move_session_tasks = _(move_session_tasks)
+    attach_task_session = _(attach_task_session)
+    detach_task_session = _(detach_task_session)
+    # The task record: activity, asks, artifacts and evidence.
+    work_tasks = _(work_tasks)
+    find_open_task_by_title = _(find_open_task_by_title)
+    add_activity = _(add_activity)
+    set_progress = _(set_progress)
+    record_tool_call = _(record_tool_call)
+    add_evidence = _(add_evidence)
+    open_asks = _(open_asks)
+    answer_session_asks = _(answer_session_asks)
+    settle_work_tasks = _(settle_work_tasks)
+    get_task_record = _(get_task_record)
+    finish_task = _(finish_task)
+    task_outcome = _(task_outcome)
+    is_worker_chat = _(is_worker_chat)
+    # A run started from the task's page, settled when its chat's turn ends.
+    claim_task_run = _(claim_task_run)
+    undo_task_run = _(undo_task_run)
+    settle_task_run = _(settle_task_run)
+    # A task with a start time; the due-task sweep runs in the scheduler.
+    set_task_start = _(set_task_start)
+    count_scheduled_tasks = _(count_scheduled_tasks)
+    cancel_scheduled_tasks = _(cancel_scheduled_tasks)
+    list_due_tasks = _(list_due_tasks)
+    claim_due_task = _(claim_due_task)
+    get_scheduled_task = _(get_scheduled_task)
+    mark_task_missed = _(mark_task_missed)
+    hold_due_task = _(hold_due_task)
+    # A repeating task: stop only its run going now, or stop it repeating.
+    end_repeat_run = _(end_repeat_run)
+    clear_task_repeat = _(clear_task_repeat)
+    # A task that starts on an event: its webhook, set up and let go of.
+    setup_task_watch = _(setup_task_watch)
+    release_watch_webhook = _(release_watch_webhook)
+    # Tasks Otto drafts for the user; the morning job runs in the scheduler.
+    create_suggested_task = _(create_suggested_task)
+    dismiss_task_suggestion = _(dismiss_task_suggestion)
+    dismissed_suggestion_titles = _(dismissed_suggestion_titles)
+    retire_stale_suggestions = _(retire_stale_suggestions)
 
     # ============ Feedback Prompts ============ #
     claim_feedback_prompt = _(claim_feedback_prompt)
@@ -1226,6 +1321,48 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Activity Events ============ #
     create_activity_event = d.create_activity_event
+
+    # ============ Tasks ============ #
+    create_task = d.create_task
+    get_task = d.get_task
+    list_tasks = d.list_tasks
+    update_task = d.update_task
+    archive_task = d.archive_task
+    move_session_tasks = d.move_session_tasks
+    attach_task_session = d.attach_task_session
+    detach_task_session = d.detach_task_session
+    work_tasks = d.work_tasks
+    find_open_task_by_title = d.find_open_task_by_title
+    add_activity = d.add_activity
+    set_progress = d.set_progress
+    record_tool_call = d.record_tool_call
+    add_evidence = d.add_evidence
+    open_asks = d.open_asks
+    answer_session_asks = d.answer_session_asks
+    settle_work_tasks = d.settle_work_tasks
+    get_task_record = d.get_task_record
+    finish_task = d.finish_task
+    task_outcome = d.task_outcome
+    is_worker_chat = d.is_worker_chat
+    claim_task_run = d.claim_task_run
+    undo_task_run = d.undo_task_run
+    settle_task_run = d.settle_task_run
+    set_task_start = d.set_task_start
+    count_scheduled_tasks = d.count_scheduled_tasks
+    cancel_scheduled_tasks = d.cancel_scheduled_tasks
+    list_due_tasks = d.list_due_tasks
+    claim_due_task = d.claim_due_task
+    get_scheduled_task = d.get_scheduled_task
+    mark_task_missed = d.mark_task_missed
+    hold_due_task = d.hold_due_task
+    end_repeat_run = d.end_repeat_run
+    clear_task_repeat = d.clear_task_repeat
+    setup_task_watch = d.setup_task_watch
+    release_watch_webhook = d.release_watch_webhook
+    create_suggested_task = d.create_suggested_task
+    dismiss_task_suggestion = d.dismiss_task_suggestion
+    dismissed_suggestion_titles = d.dismissed_suggestion_titles
+    retire_stale_suggestions = d.retire_stale_suggestions
 
     # ============ Feedback Prompts ============ #
     claim_feedback_prompt = d.claim_feedback_prompt

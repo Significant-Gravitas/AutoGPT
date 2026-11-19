@@ -4698,6 +4698,52 @@ def test_list_sessions_empty(mocker: pytest_mock.MockerFixture) -> None:
     assert data["sessions"] == []
 
 
+@pytest.mark.parametrize(
+    ("metadata", "parent_session_id", "work_task_id"),
+    [
+        ({}, None, None),
+        ({"delegated_by_session_id": "main-1"}, "main-1", None),
+        (
+            {
+                "delegated_by_session_id": "main-1",
+                "handed_off_from_expert_id": "expert-a",
+            },
+            None,
+            None,
+        ),
+        ({"work_task_id": "task-1"}, None, "task-1"),
+    ],
+    ids=["main", "worker", "handed-off", "task-run"],
+)
+def test_list_sessions_says_which_chat_a_chat_works_for(
+    mocker: pytest_mock.MockerFixture,
+    metadata: dict[str, str],
+    parent_session_id: str | None,
+    work_task_id: str | None,
+) -> None:
+    """A worker names the chat it works for and a task's run chat its task;
+    a handed-off chat is the receiver's own, so it names no parent."""
+    session = _make_session_info("sess-1")
+    session.metadata = session.metadata.model_copy(update=metadata)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([session], 1),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes._running_session_ids",
+        new_callable=AsyncMock,
+        return_value=set(),
+    )
+
+    response = client.get("/sessions")
+
+    assert response.status_code == 200
+    summary = response.json()["sessions"][0]
+    assert summary["parent_session_id"] == parent_session_id
+    assert summary["work_task_id"] == work_task_id
+
+
 def test_list_sessions_passes_the_otto_scope_and_pinned_filter(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

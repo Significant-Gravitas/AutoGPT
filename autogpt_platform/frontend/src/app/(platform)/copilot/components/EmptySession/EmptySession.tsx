@@ -1,7 +1,7 @@
 "use client";
 
+import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
-import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
 import { tourTarget } from "@/lib/tour-targets";
 import { useFirstRunTourAutoStart } from "@/app/(platform)/components/FirstRunTour/useFirstRunTourAutoStart";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
@@ -10,19 +10,30 @@ import { motion } from "framer-motion";
 import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useCopilotUIStore } from "../../store";
+import { useWorkAreaStore } from "../../workArea";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
 import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
+import { ScaleLoader } from "../ScaleLoader/ScaleLoader";
 import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
-import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
 import { useCollapsedSuggestions } from "../SuggestedTasks/useCollapsedSuggestions";
 import { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
+import { ComposerTray } from "./components/ComposerTray/ComposerTray";
+import { DitherTrail } from "./components/DitherTrail/DitherTrail";
 import { EmptyHero } from "./components/EmptyHero";
 import { ExecutionTargetPicker } from "./components/ExecutionTargetPicker/ExecutionTargetPicker";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
 import { GreetingLoader } from "./components/GreetingLoader";
+import { HomeBoard } from "./components/HomeBoard/HomeBoard";
+import { DraftedTasksLine } from "./components/HomeToday/DraftedTasksLine";
+import { useBriefAutoOpen } from "./components/HomeToday/useBriefAutoOpen";
+import { HomeRecentRow } from "./components/HomeRecentChats/HomeRecentRow";
+import { HomeScroller } from "./components/HomeScroller";
+import { HomeViewTabs } from "./components/HomeViewTabs/HomeViewTabs";
+import { useHomeView } from "./components/HomeViewTabs/useHomeView";
+import { InfoToggle } from "./components/InfoToggle";
 import {
   getExpertInputPlaceholder,
   getGreetingName,
@@ -123,6 +134,7 @@ export function EmptySession({
   });
   const collapse = useCollapsedSuggestions();
   const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
+
   const recipientPicker = (
     <RecipientChip
       recipient={recipient}
@@ -138,6 +150,32 @@ export function EmptySession({
     greetingPath: intro.isVisible ? intro.path : null,
   });
 
+  // Home has one right sidebar: the work area. Its button brings back what
+  // was open there, or opens on the profile of who the composer talks to.
+  const isSideOpen = useWorkAreaStore((s) => s.tabCount > 0 && !s.isFolded);
+  const hasSideTabs = useWorkAreaStore((s) => s.tabCount > 0);
+  const unfoldSide = useWorkAreaStore((s) => s.unfold);
+  const openProfile = useWorkAreaStore((s) => s.openProfile);
+  const setProfileRecipient = useWorkAreaStore((s) => s.setProfileRecipient);
+  const offerProfile = useWorkAreaStore((s) => s.offerProfile);
+  const sideTabCount = useWorkAreaStore((s) => s.tabs.length);
+  // The regular hero: its composer sits in the tray, which names the
+  // recipient and the connection, and the expert's profile opens beside it.
+  const isRegularHero = !intro.isVisible && !intro.isAwaitingGreeting;
+  // Home's two tabs, held back with the hero so a load shows one loader.
+  const [homeView, setHomeView] = useHomeView();
+  // The day's brief opens itself on the first visit to Home each day.
+  useBriefAutoOpen(isRegularHero);
+
+  useEffect(() => {
+    setProfileRecipient(recipient);
+  }, [recipient, setProfileRecipient]);
+
+  // Whatever else is open beside Home, the profile is one tab away.
+  useEffect(() => {
+    if (isRegularHero && sideTabCount > 0) offerProfile();
+  }, [isRegularHero, sideTabCount, offerProfile]);
+
   useEffect(() => {
     resetNewChatExecutionTarget();
   }, [resetNewChatExecutionTarget]);
@@ -146,120 +184,175 @@ export function EmptySession({
     return <ExpertKickoffLoader expertName={expertName} />;
   }
 
-  return (
-    <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
-      {/* Which connection the new chat runs on, kept out of the composer and
-          in the page corner, level with the inset header's controls. */}
-      <div className="absolute top-3 right-3 z-30 empty:hidden">
-        <ConnectionPicker className="ml-0" />
+  if (isRegularHero && homeView === "tasks") {
+    return (
+      <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 px-4 pb-4 md:px-6">
+        <HomeViewTabs value={homeView} onChange={setHomeView} />
+        <HomeBoard />
       </div>
-      <motion.div
-        className={cn("relative z-10 w-full text-center", "max-w-[1120px]")}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
-      >
-        <div className="mx-auto max-w-[52rem] pt-6">
-          {intro.isVisible ? (
-            <OnboardingIntroCard
-              name={greetingName}
-              greeting={intro.greeting}
-              suggestions={suggestions}
-              collapse={collapse}
-              transcript={intro.transcript}
-              disabled={isComposerDisabled || !!atReset}
-            />
-          ) : intro.isAwaitingGreeting ? (
-            // For as long as the pipeline is still writing, which can be
-            // behind the first-run walkthrough. The orb it renders is the same
-            // element the card above puts in its heading, so the swap
-            // moves it there rather than replacing it.
-            <GreetingLoader />
-          ) : (
-            <EmptyHero
-              name={greetingName}
-              intro={introLine}
-              recipientPicker={recipientPicker}
-              isExpert={Boolean(selectedExpert)}
-              expertRole={selectedExpert?.role}
-            />
-          )}
+    );
+  }
 
-          {/* Held back while the greeting is on its way — it enters with
-              the greeting page instead of sitting under a bare hero. */}
-          {!intro.isAwaitingGreeting && (
-            <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
-              {isLocalPCEnabled || newChatExecutionTarget.kind === "local" ? (
-                <ExecutionTargetPicker />
-              ) : null}
-              <div
-                {...tourTarget("composer")}
-                className={cn(
-                  "text-left transition-colors duration-300 ease-out",
-                  // The greeting's prompt card bleeds 1.25rem past the text
-                  // (-mx-5); the composer stretches the same amount so their
-                  // edges line up. No chrome of its own: the composer card is
-                  // the only outline on screen. The regular hero keeps it
-                  // centered.
-                  intro.isVisible
-                    ? "-mx-5 max-w-[50.5rem]"
-                    : "mx-auto w-full max-w-[42rem]",
-                )}
-              >
-                {usageNotice && (
-                  <div className="mb-3 text-left">{usageNotice}</div>
-                )}
-                <ChatInput
-                  inputId="chat-input-empty"
-                  draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
-                  stacked
-                  voiceMode={voiceMode}
-                  modeSelector={modeSelector}
-                  onSend={onSend}
-                  disabled={isComposerDisabled}
-                  atReset={atReset}
-                  isUploadingFiles={isUploadingFiles}
-                  placeholder={
-                    atReset
-                      ? SEND_AT_RESET_PLACEHOLDER
-                      : selectedExpert
-                        ? getExpertInputPlaceholder(selectedExpert.name)
-                        : inputPlaceholder
-                  }
-                  className={cn(
-                    "w-full max-md:[&_[data-slot=input-group-control]]:min-h-16",
-                    "[&_textarea]:min-h-[4.5rem]",
-                  )}
-                  droppedFiles={droppedFiles}
-                  onDroppedFilesConsumed={onDroppedFilesConsumed}
-                  expertId={expertId}
-                  expertName={expertName}
-                  assistantName={selectedExpert?.name ?? expertName ?? null}
-                  recipientPicker={
-                    intro.isVisible ? recipientPicker : undefined
-                  }
+  const showExecutionTarget =
+    isLocalPCEnabled || newChatExecutionTarget.kind === "local";
+
+  const composer = (
+    <ChatInput
+      inputId="chat-input-empty"
+      draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
+      stacked
+      voiceMode={voiceMode}
+      modeSelector={modeSelector}
+      onSend={onSend}
+      disabled={isComposerDisabled}
+      atReset={atReset}
+      isUploadingFiles={isUploadingFiles}
+      placeholder={
+        atReset
+          ? SEND_AT_RESET_PLACEHOLDER
+          : selectedExpert
+            ? getExpertInputPlaceholder(selectedExpert.name)
+            : inputPlaceholder
+      }
+      className={cn(
+        "w-full max-md:[&_[data-slot=input-group-control]]:min-h-16",
+        "[&_textarea]:min-h-10 [&_textarea]:placeholder:text-foreground-faint",
+      )}
+      droppedFiles={droppedFiles}
+      onDroppedFilesConsumed={onDroppedFilesConsumed}
+      expertId={expertId}
+      expertName={expertName}
+      assistantName={selectedExpert?.name ?? expertName ?? null}
+      recipientPicker={intro.isVisible ? recipientPicker : undefined}
+    />
+  );
+
+  return (
+    <div className="flex h-full min-w-0 flex-1">
+      <div className="relative flex h-full min-w-0 flex-1 flex-col">
+        {/* Behind everything on the Chat tab; the content sits above it. */}
+        {isRegularHero && <DitherTrail />}
+        {isRegularHero ? (
+          <InfoToggle
+            isPanelOpen={isSideOpen}
+            onOpen={hasSideTabs ? unfoldSide : openProfile}
+          />
+        ) : (
+          // Which connection the new chat runs on, in the page corner while
+          // the composer has no tray to carry it.
+          <div className="absolute top-3 right-3 z-30 empty:hidden">
+            <ConnectionPicker className="ml-0" />
+          </div>
+        )}
+        {isRegularHero && (
+          <HomeViewTabs value={homeView} onChange={setHomeView} />
+        )}
+        <HomeScroller>
+          <motion.div
+            className="relative z-10 my-auto w-full max-w-[1120px] text-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="mx-auto max-w-[52rem] pt-6">
+              {intro.isVisible ? (
+                <OnboardingIntroCard
+                  name={greetingName}
+                  greeting={intro.greeting}
+                  suggestions={suggestions}
+                  collapse={collapse}
+                  transcript={intro.transcript}
+                  disabled={isComposerDisabled || !!atReset}
                 />
-                {lowHint}
-              </div>
+              ) : intro.isAwaitingGreeting ? (
+                // For as long as the pipeline is still writing, which can be
+                // behind the first-run walkthrough. The orb it renders is the
+                // same element the card above puts in its heading, so the
+                // swap moves it there rather than replacing it.
+                intro.isFirstRunPending ? (
+                  <GreetingLoader />
+                ) : (
+                  // An ordinary load: the page's own loader, in the same
+                  // spot, so the two read as one.
+                  <div
+                    role="status"
+                    className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center"
+                  >
+                    <span className="sr-only">Loading</span>
+                    <ScaleLoader className="text-foreground-subtle" />
+                  </div>
+                )
+              ) : (
+                // The mark, then the line that names who to tell.
+                <>
+                  <div className="mb-6 flex justify-center">
+                    <AutoGPTLogo
+                      hideText
+                      viewBox="47 -1 42 42"
+                      aria-label="AutoGPT"
+                      isMono
+                      className="size-12"
+                    />
+                  </div>
+                  <EmptyHero
+                    intro={introLine}
+                    recipient={recipient}
+                    isExpert={Boolean(selectedExpert)}
+                    expertRole={selectedExpert?.role}
+                  />
+                </>
+              )}
+
+              {/* Held back while the greeting is on its way — it enters with
+                  the greeting page instead of sitting under a bare hero. */}
+              {!intro.isAwaitingGreeting && (
+                <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
+                  {showExecutionTarget && intro.isVisible ? (
+                    <ExecutionTargetPicker />
+                  ) : null}
+                  <div
+                    {...tourTarget("composer")}
+                    className={cn(
+                      "text-left transition-colors duration-300 ease-out",
+                      // The greeting's prompt card bleeds 1.25rem past the
+                      // text (-mx-5); the composer stretches the same amount
+                      // so their edges line up. The regular hero keeps it
+                      // centered.
+                      intro.isVisible
+                        ? "-mx-5 max-w-[50.5rem]"
+                        : "mx-auto w-full max-w-[42rem]",
+                    )}
+                  >
+                    {usageNotice && (
+                      <div className="mb-3 text-left">{usageNotice}</div>
+                    )}
+                    {intro.isVisible ? (
+                      composer
+                    ) : (
+                      <ComposerTray
+                        top={
+                          showExecutionTarget ? (
+                            <ExecutionTargetPicker inTray />
+                          ) : null
+                        }
+                        recipientPicker={recipientPicker}
+                        connection={
+                          <ConnectionPicker withLabel className="ml-0" />
+                        }
+                      >
+                        {composer}
+                      </ComposerTray>
+                    )}
+                    {lowHint}
+                    {isRegularHero && <DraftedTasksLine />}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-
-          {/* The greeting's list once the greeting has retired. Each task
-              goes to its own owner, whoever the composer is addressed to. */}
-          {!intro.isVisible &&
-            !intro.isAwaitingGreeting &&
-            suggestions.isStored && (
-              <SuggestedTasksBlock
-                suggestions={suggestions}
-                collapse={collapse}
-                disabled={isComposerDisabled || !!atReset}
-                className="mx-auto mb-6 max-w-[42rem]"
-              />
-            )}
-        </div>
-
-        {!intro.isVisible && !intro.isAwaitingGreeting && <HomeRecap />}
-      </motion.div>
+            {isRegularHero && <HomeRecentRow expertId={recipient.id} />}
+          </motion.div>
+        </HomeScroller>
+      </div>
     </div>
   );
 }

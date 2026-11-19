@@ -4,11 +4,23 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from backend.copilot.model import ChatSession, PendingQuestion
-from backend.data.db_accessors import chat_db
+from prisma.enums import TaskAskKind, TaskStatus
 
+from backend.copilot import turn_end
+from backend.copilot.gate import resolve_mode
+from backend.copilot.model import ChatSession, PendingQuestion
+from backend.data.db_accessors import chat_db, task_db, task_record_db, task_result_db
+from backend.data.task_record import AskInput
+
+from . import question_rules
 from .base import BaseTool
-from .models import ClarificationNeededResponse, ClarifyingQuestion, ToolResponseBase
+from .models import (
+    QUESTION_REASONS,
+    ClarificationNeededResponse,
+    ClarifyingQuestion,
+    QuestionReason,
+    ToolResponseBase,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +30,7 @@ MAX_QUESTIONS = 10
 MAX_OPTIONS = 25
 MAX_OPTION_LENGTH = 200
 MAX_OPTION_SCAN = 500
+MAX_DEFAULT_GUESS_LENGTH = 300
 
 
 class AskQuestionTool(BaseTool):
@@ -38,7 +51,9 @@ class AskQuestionTool(BaseTool):
         return (
             "Ask the user one or more clarifying questions. Use when the "
             "request is ambiguous and you need to confirm intent, choose "
-            "between options, or gather missing details before proceeding."
+            "between options, or gather missing details before proceeding. "
+            "Give each question why it blocks you and your default answer. "
+            "Asking ends your turn: call it last, and nothing runs after it."
         )
 
     @property
@@ -78,13 +93,22 @@ class AskQuestionTool(BaseTool):
                                 "type": "string",
                                 "description": "Short label for this question.",
                             },
+                            "reason": {
+                                "type": "string",
+                                "enum": list(QUESTION_REASONS),
+                                "description": "Why you cannot go on without it.",
+                            },
+                            "default_guess": {
+                                "type": "string",
+                                "description": "Your answer if the user says guess.",
+                            },
                         },
-                        "required": ["question"],
+                        "required": ["question", "reason", "default_guess"],
                     },
                     "description": (
                         "One or more clarifying questions. Each item has "
-                        "'question' (required), 'options', 'allow_multiple' "
-                        "and 'keyword'."
+                        "'question', 'reason' and 'default_guess' (required), "
+                        "'options', 'allow_multiple' and 'keyword'."
                     ),
                 },
             },
@@ -106,20 +130,106 @@ class AskQuestionTool(BaseTool):
         if not isinstance(raw_questions, list) or not raw_questions:
             raise ValueError("ask_question requires a non-empty 'questions' array")
 
-        questions = _parse_questions(raw_questions)
+        questions = parse_questions(raw_questions)
         if not questions:
             raise ValueError(
                 "ask_question requires at least one valid question in 'questions'"
             )
 
+        if session and (
+            refused := question_rules.refusal(
+                questions,
+                resolve_mode(session),
+                question_rules.questions_in_a_row(session.messages),
+                looked=turn_end.calls_started(session.session_id) > 1,
+                background=await _is_worker_chat(session),
+            )
+        ):
+            raise ValueError(refused)
+
         text = "; ".join(q.question for q in questions)
         if session:
             await _mark_pending(session, text)
+            turn_end.request_end(session.session_id)
+            await _mark_tasks_waiting(session)
+            await _park_asks_on_task(session, questions)
         return ClarificationNeededResponse(
             message=text,
             session_id=session.session_id if session else None,
             questions=questions,
         )
+
+
+async def _is_worker_chat(session: ChatSession) -> bool:
+    """A task's background worker, which decides more and asks less.
+    Best-effort: unknown counts as a chat the user is in."""
+    if not session.user_id:
+        return False
+    try:
+        return await task_result_db().is_worker_chat(
+            session.session_id, session.user_id
+        )
+    except Exception as e:
+        logger.warning(
+            "Could not tell whether %s is a worker chat: %s", session.session_id, e
+        )
+        return False
+
+
+async def _mark_tasks_waiting(session: ChatSession) -> None:
+    """Move this chat's open tasks to NEEDS_INPUT until the user answers.
+
+    Best-effort, like ``_mark_pending``: the question matters more than the
+    status shown next to the task.
+    """
+    try:
+        await task_db().move_session_tasks(
+            session.session_id,
+            session.user_id,
+            [TaskStatus.TODO, TaskStatus.IN_PROGRESS],
+            TaskStatus.NEEDS_INPUT,
+        )
+    except Exception as e:
+        logger.warning(
+            "Could not mark tasks waiting for session %s: %s", session.session_id, e
+        )
+
+
+async def _park_asks_on_task(
+    session: ChatSession, questions: list[ClarifyingQuestion]
+) -> None:
+    """Put the questions on the task this chat is working on, so the task
+    shows what it waits on and, later, what was decided. Best-effort."""
+    if not session.user_id:
+        return
+    try:
+        await task_record_db().open_asks(
+            session.session_id,
+            session.user_id,
+            [ask_input(question) for question in questions],
+            session.expert_id,
+        )
+    except Exception as e:
+        logger.warning(
+            "Could not park asks on the task of %s: %s", session.session_id, e
+        )
+
+
+def ask_input(question: ClarifyingQuestion) -> AskInput:
+    """The task-record shape of a question: a choice between options is a
+    pick, one that cannot be undone is a decision."""
+    if question.reason == "irreversible_choice":
+        kind = TaskAskKind.DECISION
+    elif question.options:
+        kind = TaskAskKind.PICK
+    else:
+        kind = TaskAskKind.QUESTION
+    return AskInput(
+        question=question.question,
+        kind=kind,
+        options=question.options,
+        default_guess=question.default_guess,
+    )
 
 
 async def _mark_pending(session: ChatSession, text: str) -> None:
@@ -142,7 +252,7 @@ async def _mark_pending(session: ChatSession, text: str) -> None:
         )
 
 
-def _parse_questions(raw: list[Any]) -> list[ClarifyingQuestion]:
+def parse_questions(raw: list[Any]) -> list[ClarifyingQuestion]:
     """Parse and validate raw question dicts into ClarifyingQuestion objects."""
     return [
         q
@@ -173,6 +283,7 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
     )
 
     options = _parse_options(item.get("options"))
+    default_guess = _parse_default_guess(item.get("default_guess"))
 
     return ClarifyingQuestion(
         question=text.strip(),
@@ -182,7 +293,38 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
         # A free-text question has nothing to multi-select, so the flag is
         # dropped rather than sent on for the card to render a lone checkbox.
         allow_multiple=bool(options) and parse_allow_multiple(item),
+        reason=_parse_reason(item.get("reason")),
+        default_guess=default_guess,
+        recommended=recommended_option(options, default_guess),
     )
+
+
+def recommended_option(options: list[str], default_guess: str | None) -> str | None:
+    """The option the default guess points at: the one it names outright, or
+    the only one its words contain. None when it names none or several."""
+    guess = " ".join((default_guess or "").split()).casefold()
+    if not guess or not options:
+        return None
+    for option in options:
+        if option.casefold() == guess:
+            return option
+    named = [option for option in options if option.casefold() in guess]
+    return named[0] if len(named) == 1 else None
+
+
+def _parse_reason(raw: Any) -> QuestionReason | None:
+    """The reason code, or None when the model sent none or an unknown one."""
+    if not isinstance(raw, str):
+        return None
+    cleaned = raw.strip().lower()
+    return next((reason for reason in QUESTION_REASONS if reason == cleaned), None)
+
+
+def _parse_default_guess(raw: Any) -> str | None:
+    """The fallback answer, trimmed and capped; None when it is blank."""
+    if not isinstance(raw, str):
+        return None
+    return raw.strip()[:MAX_DEFAULT_GUESS_LENGTH] or None
 
 
 def _parse_options(raw: Any) -> list[str]:

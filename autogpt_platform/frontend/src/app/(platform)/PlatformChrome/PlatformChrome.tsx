@@ -5,6 +5,7 @@ import { CSSProperties, ReactNode } from "react";
 import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
 import { AppSidebarToggleProvider } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
+import { InsetSideSlot } from "@/components/layout/InsetSidePanel/InsetSidePanel";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import { ChangelogPopup } from "@/components/molecules/ChangelogPopup/ChangelogPopup";
 import {
@@ -72,7 +73,7 @@ function PlatformShell({ children, persistedSidebarOpen }: Props) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
         <TourSidebar variant="marketplace" />
-        <SidebarInset className="bg-surface-muted">
+        <SidebarInset className="bg-page">
           <div className="flex shrink-0 items-center px-4 pt-4 md:hidden">
             <SidebarTrigger />
           </div>
@@ -91,15 +92,15 @@ function PlatformShell({ children, persistedSidebarOpen }: Props) {
       <SidebarProvider
         persistState
         defaultOpen={!isBuilderRoute && openOutsideBuilder}
-        style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
+        style={{ "--sidebar-width": "16rem" } as CSSProperties}
       >
         <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
-        <AppSidebar />
+        <AppSidebar variant="inset" />
         {showChangelog && !isFirstRunTourOpen ? <ChangelogPopup /> : null}
         <FirstRunTour />
         <ContextualTips />
-        <SidebarInset className="bg-surface-muted">
+        <SidebarInset className="bg-page">
           <header
             className={cn(
               "flex shrink-0 items-center pt-6 pb-4",
@@ -124,6 +125,7 @@ function PlatformShell({ children, persistedSidebarOpen }: Props) {
             <section className="flex-1">{content}</section>
           </AppSidebarToggleProvider>
         </SidebarInset>
+        <InsetSideSlot />
       </SidebarProvider>
     );
   }

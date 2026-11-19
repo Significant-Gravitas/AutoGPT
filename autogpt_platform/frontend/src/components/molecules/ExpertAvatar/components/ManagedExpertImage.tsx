@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
+import { AVATAR_SHAPES, type AvatarShape } from "../helpers";
 
 interface Props {
   name: string;
@@ -12,6 +13,7 @@ interface Props {
   pngMaxPixels?: number;
   size: number;
   isOtto: boolean;
+  shape?: AvatarShape;
   className?: string;
 }
 
@@ -22,6 +24,7 @@ export function ManagedExpertImage({
   pngMaxPixels = 1024,
   size,
   isOtto,
+  shape,
   className,
 }: Props) {
   const [format, setFormat] = useState<"webp" | "png" | null>("webp");
@@ -30,6 +33,7 @@ export function ManagedExpertImage({
     : `${name}, AI Expert`;
   const classes = cn(
     "inline-flex shrink-0 overflow-hidden rounded-xl",
+    shape && AVATAR_SHAPES[shape],
     className,
     "size-(--avatar-size)",
   );

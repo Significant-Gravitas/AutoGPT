@@ -7,7 +7,7 @@ from backend.copilot import usage_activation
 from backend.copilot.briefing import generate as generate_module
 from backend.copilot.briefing import narrative
 from backend.copilot.briefing.generate import AgentInfo, compose_briefing
-from backend.copilot.briefing.models import BriefingContent
+from backend.copilot.briefing.models import BriefingContent, BriefingTasks
 from backend.copilot.briefing.render import render_briefing_markdown
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.data.pro_activation import UsageActivationState
@@ -27,6 +27,20 @@ def stub_narrative(monkeypatch):
     mock = AsyncMock(return_value=None)
     monkeypatch.setattr(generate_module, "compose_narrative", mock)
     return mock
+
+
+@pytest.fixture(autouse=True)
+def stub_tasks(monkeypatch):
+    """No tasks and no drafting unless a test says so; both would otherwise
+    reach for the database manager."""
+    list_tasks = AsyncMock(return_value=[])
+    monkeypatch.setattr(
+        generate_module, "task_db", lambda: MagicMock(list_tasks=list_tasks)
+    )
+    monkeypatch.setattr(
+        generate_module, "draft_task_suggestions", AsyncMock(return_value=[])
+    )
+    return list_tasks
 
 
 @pytest.fixture(autouse=True)
@@ -410,6 +424,7 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
         agent_info_by_graph_id={"g-1": AgentInfo("Lead Finder", "lib-1")},
         generated_at=fixed_now,
         tz_name="UTC",
+        task_summary=BriefingTasks(),
     )
     assert expected_content is not None
 

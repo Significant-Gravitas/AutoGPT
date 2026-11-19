@@ -1,0 +1,681 @@
+[
+  {
+    "id": "missing_account_001",
+    "category": "missing_account",
+    "world": "lumen_skincare",
+    "title": "Pull this month's HubSpot deals",
+    "turns": [
+      {
+        "user": "pull this months hubspot deals pls and tell me whats closing thx"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a HubSpot capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect HubSpot with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether HubSpot is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up HubSpot data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "HubSpot isn't connected yet, pls hit the connect button on the card and I'll pull the deals right after",
+      "actions": [
+        "find_capability('hubspot deals')",
+        "run_capability(service:hubspot/search) -> sign-in card"
+      ],
+      "why": "HubSpot is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_002",
+    "category": "missing_account",
+    "world": "lumen_skincare",
+    "title": "Stripe balance and failed payments",
+    "turns": [
+      {
+        "user": "whats our stripe balance and any failed payments this week"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a Stripe capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect Stripe with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether Stripe is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up Stripe data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Stripe isn't connected. Use the card to sign in and I'll check the balance and failed payments",
+      "actions": [
+        "find_capability('stripe balance')",
+        "run_capability(service:stripe/read) -> sign-in card"
+      ],
+      "why": "Stripe is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_003",
+    "category": "missing_account",
+    "world": "brightsmile_dental",
+    "title": "Check the front-desk Slack channel",
+    "turns": [
+      {
+        "user": "Can you check Slack for the front desk channel and tell me if Tasha posted the schedule change?! 😊"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a Slack capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect Slack with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether Slack is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up Slack data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "I can't see Slack yet, please connect it with the sign-in card! 😊 Then I'll look for Tasha's schedule change",
+      "actions": [
+        "find_capability('slack channel messages')",
+        "run_capability(service:slack/read) -> sign-in card"
+      ],
+      "why": "Slack is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_004",
+    "category": "missing_account",
+    "world": "brightsmile_dental",
+    "title": "Was Mark T.'s $85 charged in Stripe",
+    "turns": [
+      {
+        "user": "Could you look in Stripe and see if the $85 for Mark T. was ever charged? 🙏"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a Stripe capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect Stripe with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether Stripe is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up Stripe data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Stripe isn't connected yet! Tap the sign-in card and I'll look it up 🙏",
+      "actions": [
+        "find_capability('stripe charge')",
+        "run_capability(service:stripe/search) -> sign-in card"
+      ],
+      "why": "Stripe is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_005",
+    "category": "missing_account",
+    "world": "forgepoint_devtools",
+    "title": "Open HubSpot deals for Northwind and Helix",
+    "turns": [
+      {
+        "user": "Please list the open HubSpot deals for Northwind and Helix, with their expected close dates."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a HubSpot capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect HubSpot with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether HubSpot is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up HubSpot data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "HubSpot is not connected yet. Please sign in via the card and I will list both deals with close dates.",
+      "actions": [
+        "find_capability('hubspot deals')",
+        "run_capability(service:hubspot/search) -> sign-in card"
+      ],
+      "why": "HubSpot is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_006",
+    "category": "missing_account",
+    "world": "forgepoint_devtools",
+    "title": "Shopify swag orders",
+    "turns": [
+      {
+        "user": "Please check our Shopify store for the swag orders placed for the Berlin summit."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a Shopify capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect Shopify with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether Shopify is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up Shopify data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Shopify is not connected. Please connect it with the sign-in card and I will pull those orders.",
+      "actions": [
+        "find_capability('shopify orders')",
+        "run_capability(service:shopify/search) -> sign-in card"
+      ],
+      "why": "Shopify is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_007",
+    "category": "missing_account",
+    "world": "greenroots_ngo",
+    "title": "Read the programmes Slack channel",
+    "turns": [
+      {
+        "user": "Asante, Otto. Could you look in Slack, in the programmes channel, and tell me what Faith posted from the field yesterday? Warm regards, Amani"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [
+      "gmail"
+    ],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a Slack capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect Slack with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether Slack is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up Slack data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Asante, Amani. Slack isn't connected yet; please use the sign-in card and I'll read Faith's update.",
+      "actions": [
+        "find_capability('slack channel')",
+        "run_capability(service:slack/read) -> sign-in card"
+      ],
+      "why": "Slack is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_008",
+    "category": "missing_account",
+    "world": "greenroots_ngo",
+    "title": "Online donations in Stripe",
+    "turns": [
+      {
+        "user": "Could you please check Stripe for the online donations that have come in for Giving Tuesday so far? Asante."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a Stripe capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect Stripe with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether Stripe is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up Stripe data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Stripe isn't connected yet, Amani. Please connect it with the card and I'll total the Giving Tuesday donations.",
+      "actions": [
+        "find_capability('stripe payments')",
+        "run_capability(service:stripe/search) -> sign-in card"
+      ],
+      "why": "Stripe is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_009",
+    "category": "missing_account",
+    "world": "kestrel_agency",
+    "title": "Oakline Home Shopify orders",
+    "turns": [
+      {
+        "user": "- pull shopify orders for oakline home last week\n- compare to ad spend"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a Shopify capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect Shopify with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether Shopify is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up Shopify data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "- shopify not connected\n- connect via the card, then I pull orders and compare",
+      "actions": [
+        "find_capability('shopify orders')",
+        "run_capability(service:shopify/search) -> sign-in card"
+      ],
+      "why": "Shopify is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_010",
+    "category": "missing_account",
+    "world": "kestrel_agency",
+    "title": "Open GitHub issues on the reporting dashboard",
+    "turns": [
+      {
+        "user": "- check github, reporting dashboard repo\n- list open issues"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a GitHub capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect GitHub with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether GitHub is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up GitHub data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "- github not connected\n- sign in on the card and I list the issues",
+      "actions": [
+        "find_capability('github issues')",
+        "run_capability(service:github/search) -> sign-in card"
+      ],
+      "why": "GitHub is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_011",
+    "category": "missing_account",
+    "world": "ledgerly_accounting",
+    "title": "HubSpot prospects with a proposal out",
+    "turns": [
+      {
+        "user": "Dear Otto, please pull the list of prospects in HubSpot with a proposal out, together with the expected fee. Kind regards, Oliver"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a HubSpot capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect HubSpot with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether HubSpot is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up HubSpot data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Dear Oliver, HubSpot is not connected. Kindly sign in through the card and I shall pull the prospects and fees.",
+      "actions": [
+        "find_capability('hubspot prospects')",
+        "run_capability(service:hubspot/search) -> sign-in card"
+      ],
+      "why": "HubSpot is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_012",
+    "category": "missing_account",
+    "world": "oakline_furniture",
+    "title": "Trade leads in HubSpot",
+    "turns": [
+      {
+        "user": "1. Open HubSpot.\n2. List the trade leads like Lucia Verde.\n3. Tell me the stage of each."
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a HubSpot capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect HubSpot with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether HubSpot is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up HubSpot data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "HubSpot isn't connected. Please sign in via the card, then I'll list the trade leads and stages.",
+      "actions": [
+        "find_capability('hubspot contacts')",
+        "run_capability(service:hubspot/search) -> sign-in card"
+      ],
+      "why": "HubSpot is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_013",
+    "category": "missing_account",
+    "world": "pixelmoth_games",
+    "title": "Stripe pre-order revenue",
+    "turns": [
+      {
+        "user": "salut! check stripe 💸 did the pre-order thing bring anything this week?"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a Stripe capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect Stripe with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether Stripe is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up Stripe data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Salut Léa! Stripe n'est pas connecté, clique la carte pour te connecter et je regarde 💸",
+      "actions": [
+        "find_capability('stripe payments')",
+        "run_capability(service:stripe/search) -> sign-in card"
+      ],
+      "why": "Stripe is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_014",
+    "category": "missing_account",
+    "world": "saffron_kitchens",
+    "title": "Shopify catering orders",
+    "turns": [
+      {
+        "user": "shopify pe jo catering orders aaye last week woh list karo jaldi"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a Shopify capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect Shopify with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether Shopify is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up Shopify data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Shopify connected nahi hai. Card se sign in karo, phir list bana deta hoon.",
+      "actions": [
+        "find_capability('shopify orders')",
+        "run_capability(service:shopify/search) -> sign-in card"
+      ],
+      "why": "Shopify is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  },
+  {
+    "id": "missing_account_015",
+    "category": "missing_account",
+    "world": "shah_realty",
+    "title": "Slack thread on site-visit changes",
+    "turns": [
+      {
+        "user": "Hi Otto, please check Slack for the thread where Neha posted the site visit changes, and tell me what changed. Aur agar koi urgent hai toh batana!"
+      }
+    ],
+    "answer_sheet": [
+      {
+        "topic": "which account",
+        "answer": "it is not connected, show me the sign-in"
+      }
+    ],
+    "default_answer": "use your best guess",
+    "min_accounts": [],
+    "expected": {
+      "behaviour": "sign_in",
+      "must": [
+        "runs a Slack capability (find_capability, then run_capability) so the sign-in card shows",
+        "tells the user in one or two lines to connect Slack with the card, in the user's own voice"
+      ],
+      "must_not": [
+        "asks whether Slack is connected or which account to use",
+        "asks the user for an API key, password, token or a pasted export",
+        "makes up Slack data or answers from memory instead"
+      ],
+      "checks": {
+        "asks_question": false,
+        "tools_not_called": [
+          "ask_question"
+        ]
+      }
+    },
+    "human_example": {
+      "reply": "Slack connected nahi hai, Priya. Please sign in on the card and I'll read Neha's thread.",
+      "actions": [
+        "find_capability('slack thread')",
+        "run_capability(service:slack/read) -> sign-in card"
+      ],
+      "why": "Slack is not connected, and the right move is the sign-in card, not a question and not a workaround."
+    }
+  }
+]

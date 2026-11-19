@@ -60,9 +60,7 @@ export function shiftOffsetForPrepend({
   const scrollTop = virtualizer.scrollOffset;
   if (!previousFirstID || scrollTop === null) return null;
   if (scrollTop === Number.MAX_SAFE_INTEGER) return null;
-  const previousIndex = rows.findIndex(
-    (row) => row.message.id === previousFirstID,
-  );
+  const previousIndex = rows.findIndex((row) => row.key === previousFirstID);
   if (previousIndex <= 0) return null;
   virtualizer.getTotalSize();
   const previousStart = virtualizer.measurementsCache[previousIndex]?.start;

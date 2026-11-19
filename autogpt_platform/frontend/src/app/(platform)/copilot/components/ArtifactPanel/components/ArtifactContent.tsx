@@ -1,5 +1,7 @@
 "use client";
 
+import { MessageResponse } from "@/components/organisms/Message/Message";
+import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
@@ -22,12 +24,16 @@ interface Props {
   artifact: ArtifactRef;
   isSourceView: boolean;
   classification: ArtifactClassification;
+  /** Sets a written document as the chat sets its own text, inside this
+   *  padding, instead of the viewer's larger document type. */
+  prose?: string;
 }
 
 function ArtifactContentLoader({
   artifact,
   isSourceView,
   classification,
+  prose,
 }: Props) {
   const { content, pdfUrl, isLoading, error, scrollRef, retry } =
     useArtifactContent(artifact, classification);
@@ -80,6 +86,7 @@ function ArtifactContentLoader({
           pdfUrl={pdfUrl}
           isSourceView={isSourceView}
           classification={classification}
+          prose={prose}
         />
       </ArtifactErrorBoundary>
     </div>
@@ -212,12 +219,14 @@ function ArtifactRenderer({
   pdfUrl,
   isSourceView,
   classification,
+  prose,
 }: {
   artifact: ArtifactRef;
   content: string | null;
   pdfUrl: string | null;
   isSourceView: boolean;
   classification: ArtifactClassification;
+  prose?: string;
 }) {
   // Image: render directly from URL (no content fetch)
   if (classification.type === "image") {
@@ -248,7 +257,7 @@ function ArtifactRenderer({
   // Source view: always show raw text
   if (isSourceView) {
     return (
-      <div className="p-4">
+      <div className={prose ?? "p-4"}>
         <Text
           variant="body-mono-tight"
           as="pre"
@@ -257,6 +266,14 @@ function ArtifactRenderer({
         >
           {content}
         </Text>
+      </div>
+    );
+  }
+
+  if (prose && classification.type === "markdown") {
+    return (
+      <div className={cn(prose, "text-body text-foreground-base")}>
+        <MessageResponse>{content}</MessageResponse>
       </div>
     );
   }
@@ -346,7 +363,7 @@ function ArtifactRenderer({
 
   // Fallback: plain text
   return (
-    <div className="p-4">
+    <div className={prose ?? "p-4"}>
       <Text
         variant="body-mono-tight"
         as="pre"

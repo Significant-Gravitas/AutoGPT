@@ -18,6 +18,7 @@ import { capabilityTargetRow, capabilityTargetToolName } from "./capabilityRow";
 import { type ChainCategory, getCatalogLabel } from "./toolCatalog";
 import type { HeldRowInfo } from "./heldRow";
 import { heldAskText, heldToolName } from "./heldRow";
+import { completeStreamingInput } from "./partialInput";
 import { asObject, integrationIconSrc } from "./resultHelpers";
 
 export type ChainRowState = "running" | "done" | "error";
@@ -46,6 +47,9 @@ export interface ChainRow {
   held?: HeldRowInfo;
   /** A lookup that found nothing, which the label already says. */
   emptyResult?: boolean;
+  /** A finished tool row's running label, shown while a call that finished
+   *  too fast to be seen running still holds its running look. */
+  runningText?: string;
 }
 
 const SUB_SESSION_CARD_TOOLS = new Set([
@@ -229,6 +233,12 @@ export function isChainPart(part: MessagePart): boolean {
 // every sentence.
 const NARRATION_MAX_CHARS = 200;
 
+/** Text with nothing to show: one just started, or whitespace the model
+ *  wrote between tool calls, which hydration drops. */
+function isBlankText(part: MessagePart): boolean {
+  return part.type === "text" && !(part.text ?? "").trim();
+}
+
 function narrationText(part: MessagePart): string | null {
   if (part.type !== "text") return null;
   const text = typeof part.text === "string" ? part.text.trim() : "";
@@ -294,11 +304,13 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
         ? tool.errorText
         : undefined;
 
-    // While the input JSON is still streaming, labels/icons must not read
-    // it — partial subjects re-trigger the swap animation on every delta.
+    // While the input JSON is still streaming, labels and icons read only its
+    // finished arguments: a subject still being typed would re-trigger the
+    // swap animation on every delta. The row keeps no input until the call
+    // is complete, so no card renders from a half-written argument.
     const isInputStreaming = tool.state === "input-streaming";
     const stableTool = isInputStreaming
-      ? ({ ...tool, input: undefined } as ToolUIPart)
+      ? ({ ...tool, input: completeStreamingInput(tool.input) } as ToolUIPart)
       : tool;
 
     const providerIconSrc = getProviderIconSrc(stableTool);
@@ -306,37 +318,54 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
 
     const data = {
       tool: toolName,
-      input: stableTool.input,
+      input: isInputStreaming ? undefined : tool.input,
       output: tool.output,
     };
-
-    const catalogLabel = getRowCatalogLabel(
-      { key: tool.toolCallId, category: "other", text: "", state, ...data },
-      { displayName: tool.title, output: tool.output },
-    );
-    if (catalogLabel) {
-      return {
-        key: tool.toolCallId,
-        ...catalogLabel,
-        text: requiredActionLabel ?? catalogLabel.text,
-        state,
-        detail,
-        providerIconSrc,
-        requiresAction: requiredActionLabel !== null,
-        ...data,
-      };
-    }
-
-    const category = getToolCategory(toolName);
-    return {
+    const labelRow: ChainRow = {
       key: tool.toolCallId,
-      category,
-      text: getAnimationText(stableTool, category),
+      category: "other",
+      text: "",
+      state,
+      ...data,
+      input: stableTool.input,
+    };
+    const context = { displayName: tool.title, output: tool.output };
+    // A done row that never got to show itself running borrows its running
+    // label while it holds the running look (see useMinimumRunning).
+    const wantsRunningText = state === "done" && requiredActionLabel === null;
+    const shared = {
+      key: tool.toolCallId,
       state,
       detail,
       providerIconSrc,
       requiresAction: requiredActionLabel !== null,
       ...data,
+    };
+
+    const catalogLabel = getRowCatalogLabel(labelRow, context);
+    if (catalogLabel) {
+      const runningText = wantsRunningText
+        ? getRowCatalogLabel({ ...labelRow, state: "running" }, context)?.text
+        : undefined;
+      return {
+        ...catalogLabel,
+        ...shared,
+        text: requiredActionLabel ?? catalogLabel.text,
+        ...(runningText !== undefined && { runningText }),
+      };
+    }
+
+    const category = getToolCategory(toolName);
+    return {
+      ...shared,
+      category,
+      text: getAnimationText(stableTool, category),
+      ...(wantsRunningText && {
+        runningText: getAnimationText(
+          { ...stableTool, state: "input-available" } as ToolUIPart,
+          category,
+        ),
+      }),
     };
   }
   return null;
@@ -426,7 +455,7 @@ export function buildChainSegments(
   const hasChainableAhead = (from: number): boolean => {
     for (let i = from; i < parts.length; i++) {
       const part = parts[i];
-      if (part.type === "step-start") continue;
+      if (part.type === "step-start" || isBlankText(part)) continue;
       if (isChainable(part)) return true;
       if (narrationText(part) !== null) continue;
       return false;
@@ -435,7 +464,8 @@ export function buildChainSegments(
   };
 
   parts.forEach((part, index) => {
-    if (part.type === "step-start") return;
+    // A reload makes no part of blank text, so the live view skips it too.
+    if (part.type === "step-start" || isBlankText(part)) return;
     if (isExpertChangePart(part)) {
       chain = null;
       const last = segments[segments.length - 1];

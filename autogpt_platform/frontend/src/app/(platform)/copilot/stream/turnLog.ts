@@ -38,7 +38,15 @@ export interface BlockState {
 
 export interface ToolState {
   name: string;
-  phase: "input-streaming" | "input-available" | "output-available";
+  phase:
+    | "input-streaming"
+    | "input-available"
+    | "output-available"
+    | "input-error";
+  /** The argument JSON streamed so far, while the call has no row yet. */
+  inputText?: string;
+  /** Why a call whose input never completed did not run. */
+  errorText?: string;
 }
 
 export interface OverlayPart {

@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "TaskStatus" ADD VALUE 'NEEDS_INPUT' AFTER 'IN_PROGRESS';

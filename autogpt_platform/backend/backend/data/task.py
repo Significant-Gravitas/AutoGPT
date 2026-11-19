@@ -1,0 +1,491 @@
+"""Tasks: one piece of work with its own record, apart from the chat it was
+asked in.
+
+A chat can carry several tasks and a task can span several chats, linked
+through ``TaskSession``. Every read and write is scoped to the owning user;
+a task, expert or chat another user owns reads as not found.
+"""
+
+from datetime import UTC, datetime
+
+import prisma.models
+from prisma.enums import TaskAskStatus, TaskCreator, TaskStatus
+from prisma.errors import UniqueViolationError
+from prisma.types import (
+    TaskCreateInput,
+    TaskInclude,
+    TaskSessionCreateInput,
+    TaskUpdateInput,
+    TaskWhereInput,
+)
+from pydantic import BaseModel, Field
+
+from backend.data.db import transaction
+from backend.data.task_schedule_meta import TaskRepeat, read_schedule_meta
+from backend.data.task_text import SUMMARY_MAX_CHARS
+from backend.util.exceptions import NotFoundError
+
+TITLE_MAX_CHARS = 200
+DESCRIPTION_MAX_CHARS = 10_000
+LINE_MAX_CHARS = 300
+RESULT_MAX_CHARS = SUMMARY_MAX_CHARS
+LIST_LIMIT_MAX = 100
+# A task is split one level deep, into at most this many subtasks.
+MAX_SUBTASKS = 5
+OPEN_STATUSES = [TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.NEEDS_INPUT]
+SETTLED_STATUSES = [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.CANCELLED]
+
+_OPEN_ASKS = {"where": {"status": TaskAskStatus.OPEN}}
+_WITH_SESSIONS: TaskInclude = {
+    "Sessions": True,
+    "Asks": _OPEN_ASKS,
+    "Artifacts": True,
+    "Subtasks": {"where": {"isArchived": False}, "include": {"Asks": _OPEN_ASKS}},
+}
+
+
+class Task(BaseModel):
+    """A task as callers see it, with the chats it was worked on in."""
+
+    id: str
+    user_id: str
+    title: str
+    description: str | None = None
+    status: TaskStatus
+    owner_expert_id: str | None = Field(
+        default=None, description="The expert doing the work; None means Otto."
+    )
+    created_by: TaskCreator
+    created_by_expert_id: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    is_archived: bool = False
+    organization_id: str | None = None
+    team_id: str | None = None
+    session_ids: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+    parent_task_id: str | None = Field(
+        default=None, description="Set on a subtask; one level only."
+    )
+    work_session_id: str | None = Field(
+        default=None, description="The chat doing the work right now."
+    )
+    goal: str | None = None
+    done_when: str | None = None
+    status_text: str | None = Field(
+        default=None, description="Where the task is, in words."
+    )
+    next_step: str | None = None
+    result: str | None = None
+    failure_reason: str | None = None
+    attempt: int = 1
+    open_ask_count: int = Field(
+        default=0, description="Open asks on the task and its subtasks."
+    )
+    subtask_count: int = 0
+    subtasks_done: int = 0
+    artifact_count: int = 0
+    is_suggested: bool = Field(
+        default=False,
+        description="Drafted by Otto for the user to start or dismiss.",
+    )
+    suggested_reason: str | None = None
+    start_at: datetime | None = Field(
+        default=None,
+        description="When a TODO task starts by itself; a TODO task with one is "
+        "scheduled.",
+    )
+    missed_start: bool = Field(
+        default=False,
+        description="A TODO task whose start time passed without it starting; "
+        "it waits to be started or cancelled.",
+    )
+    repeat: TaskRepeat | None = Field(
+        default=None,
+        description="Set on a task that runs again and again; start_at is its "
+        "next run.",
+    )
+    events_waiting: int = Field(
+        default=0,
+        description="Events a watching task still has to run, after the run "
+        "that is going now; they run one after another.",
+    )
+
+    @classmethod
+    def from_db(cls, row: prisma.models.Task) -> "Task":
+        subtasks = row.Subtasks or []
+        return cls(
+            parent_task_id=row.parentTaskId,
+            work_session_id=row.workSessionId,
+            goal=row.goal,
+            done_when=row.doneWhen,
+            status_text=row.statusText,
+            next_step=row.nextStep,
+            result=row.result,
+            failure_reason=row.failureReason,
+            attempt=row.attempt,
+            open_ask_count=len(row.Asks or [])
+            + sum(len(child.Asks or []) for child in subtasks),
+            subtask_count=len(subtasks),
+            subtasks_done=sum(
+                1 for child in subtasks if child.status == TaskStatus.DONE
+            ),
+            artifact_count=len(row.Artifacts or []),
+            is_suggested=row.isSuggested,
+            suggested_reason=row.suggestedReason,
+            start_at=row.startAt,
+            missed_start=row.status == TaskStatus.TODO
+            and row.startAt is None
+            and read_schedule_meta(row.metadata).missed,
+            repeat=read_schedule_meta(row.metadata).repeat,
+            events_waiting=len(read_schedule_meta(row.metadata).events),
+            id=row.id,
+            user_id=row.userId,
+            title=row.title,
+            description=row.description,
+            status=TaskStatus(row.status),
+            owner_expert_id=row.ownerExpertId,
+            created_by=TaskCreator(row.createdBy),
+            created_by_expert_id=row.createdByExpertId,
+            started_at=row.startedAt,
+            completed_at=row.completedAt,
+            is_archived=row.isArchived,
+            organization_id=row.organizationId,
+            team_id=row.teamId,
+            session_ids=[link.chatSessionId for link in row.Sessions or []],
+            created_at=row.createdAt,
+            updated_at=row.updatedAt,
+        )
+
+
+class TaskPatch(BaseModel):
+    """A partial update. ``None`` leaves a field as it is, so the patch reads
+    the same after an RPC hop that sends every field."""
+
+    title: str | None = None
+    description: str | None = Field(
+        default=None, description="An empty string clears the description."
+    )
+    status: TaskStatus | None = None
+    owner_expert_id: str | None = None
+    assign_to_otto: bool = Field(
+        default=False, description="Clear the owner expert so Otto owns the task."
+    )
+    goal: str | None = None
+    done_when: str | None = None
+    status_text: str | None = None
+    next_step: str | None = None
+    result: str | None = None
+    failure_reason: str | None = None
+    work_session_id: str | None = None
+    retry: bool = Field(
+        default=False, description="Count one more attempt and clear the outcome."
+    )
+
+
+async def create_task(
+    user_id: str,
+    title: str,
+    created_by: TaskCreator,
+    description: str | None = None,
+    owner_expert_id: str | None = None,
+    created_by_expert_id: str | None = None,
+    session_id: str | None = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    goal: str | None = None,
+    done_when: str | None = None,
+    parent_task_id: str | None = None,
+) -> Task:
+    """Create a task, attached to ``session_id`` when one is given. With
+    ``parent_task_id`` it is a subtask of that task."""
+    title = _clean_title(title)
+    description = _clean_description(description)
+    if owner_expert_id:
+        await _require_expert(owner_expert_id, user_id)
+    if session_id:
+        await _require_session(session_id, user_id)
+    if parent_task_id:
+        await _require_room_for_subtask(parent_task_id, user_id)
+
+    data: TaskCreateInput = {
+        "userId": user_id,
+        "title": title,
+        "description": description,
+        "ownerExpertId": owner_expert_id,
+        "createdBy": created_by,
+        "createdByExpertId": created_by_expert_id,
+        "organizationId": organization_id,
+        "teamId": team_id,
+        "goal": _line(goal),
+        "doneWhen": _line(done_when),
+        "parentTaskId": parent_task_id,
+    }
+    async with transaction() as tx:
+        row = await prisma.models.Task.prisma(tx).create(data=data)
+        if session_id:
+            await prisma.models.TaskSession.prisma(tx).create(
+                data=_link(row.id, session_id)
+            )
+    return await _get_or_raise(row.id, user_id)
+
+
+async def get_task(task_id: str, user_id: str) -> Task | None:
+    """The user's task, or None when it is missing, archived or not theirs."""
+    row = await prisma.models.Task.prisma().find_first(
+        where={"id": task_id, "userId": user_id, "isArchived": False},
+        include=_WITH_SESSIONS,
+    )
+    return Task.from_db(row) if row else None
+
+
+async def list_tasks(
+    user_id: str,
+    status: TaskStatus | None = None,
+    owner_expert_id: str | None = None,
+    session_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    include_subtasks: bool = True,
+    parent_task_id: str | None = None,
+    suggested: bool = False,
+    scheduled: bool = False,
+) -> list[Task]:
+    """The user's live tasks, most recently updated first. Subtasks are left
+    out with ``include_subtasks=False``; ``parent_task_id`` lists one task's.
+    Tasks Otto drafted and the user has not started are listed only with
+    ``suggested=True``, which lists nothing else. ``scheduled=True`` lists only
+    the tasks waiting for their start time, soonest first."""
+    where: TaskWhereInput = {
+        "userId": user_id,
+        "isArchived": False,
+        "isSuggested": suggested,
+    }
+    if suggested:
+        where["dismissedAt"] = None
+    if parent_task_id:
+        where["parentTaskId"] = parent_task_id
+    elif not include_subtasks:
+        where["parentTaskId"] = None
+    if status:
+        where["status"] = status
+    if owner_expert_id:
+        where["ownerExpertId"] = owner_expert_id
+    if session_id:
+        where["Sessions"] = {"some": {"chatSessionId": session_id}}
+    if scheduled:
+        where["status"] = TaskStatus.TODO
+        where["startAt"] = {"not": None}
+    rows = await prisma.models.Task.prisma().find_many(
+        where=where,
+        include=_WITH_SESSIONS,
+        order={"startAt": "asc"} if scheduled else {"updatedAt": "desc"},
+        take=max(1, min(limit, LIST_LIMIT_MAX)),
+        skip=max(0, offset),
+    )
+    return [Task.from_db(row) for row in rows]
+
+
+async def update_task(task_id: str, user_id: str, patch: TaskPatch) -> Task:
+    """Apply ``patch``; a status change stamps or clears the task's times."""
+    current = await _get_or_raise(task_id, user_id)
+    data: TaskUpdateInput = {}
+    if patch.title is not None:
+        data["title"] = _clean_title(patch.title)
+    if patch.description is not None:
+        data["description"] = _clean_description(patch.description)
+    if patch.assign_to_otto:
+        data["OwnerExpert"] = {"disconnect": True}
+    elif patch.owner_expert_id:
+        await _require_expert(patch.owner_expert_id, user_id)
+        data["OwnerExpert"] = {"connect": {"id": patch.owner_expert_id}}
+    if patch.goal is not None:
+        data["goal"] = _line(patch.goal)
+    if patch.done_when is not None:
+        data["doneWhen"] = _line(patch.done_when)
+    if patch.status_text is not None:
+        data["statusText"] = _line(patch.status_text)
+    if patch.next_step is not None:
+        data["nextStep"] = _line(patch.next_step)
+    if patch.result is not None:
+        data["result"] = patch.result.strip()[:RESULT_MAX_CHARS] or None
+    if patch.failure_reason is not None:
+        data["failureReason"] = _line(patch.failure_reason)
+    if patch.work_session_id is not None:
+        data["workSessionId"] = patch.work_session_id or None
+    if patch.retry:
+        data["attempt"] = current.attempt + 1
+        data["result"] = None
+        data["failureReason"] = None
+    if patch.status is not None and patch.status != current.status:
+        data["status"] = patch.status
+        data.update(_status_times(current, patch.status, datetime.now(UTC)))
+    if not data:
+        return current
+
+    await prisma.models.Task.prisma().update(where={"id": task_id}, data=data)
+    if (
+        patch.status is not None
+        and patch.status in SETTLED_STATUSES
+        and patch.status != current.status
+    ):
+        await _close_asks_and_subtasks(task_id, patch.status)
+    return await _get_or_raise(task_id, user_id)
+
+
+async def _close_asks_and_subtasks(task_id: str, status: TaskStatus) -> None:
+    """A settled task asks nothing more, and cancelling it cancels the
+    subtasks still open under it."""
+    cancelled: list[str] = []
+    if status == TaskStatus.CANCELLED:
+        open_children = await prisma.models.Task.prisma().find_many(
+            where={"parentTaskId": task_id, "status": {"in": OPEN_STATUSES}}
+        )
+        cancelled = [child.id for child in open_children]
+        if cancelled:
+            await prisma.models.Task.prisma().update_many(
+                where={"id": {"in": cancelled}},
+                data={"status": TaskStatus.CANCELLED, "completedAt": datetime.now(UTC)},
+            )
+    await prisma.models.TaskAsk.prisma().update_many(
+        where={"taskId": {"in": [task_id, *cancelled]}, "status": TaskAskStatus.OPEN},
+        data={"status": TaskAskStatus.WITHDRAWN},
+    )
+
+
+async def archive_task(task_id: str, user_id: str) -> bool:
+    """Soft-delete the task. False when there was no live task to archive."""
+    archived = await prisma.models.Task.prisma().update_many(
+        where={"id": task_id, "userId": user_id, "isArchived": False},
+        data={"isArchived": True},
+    )
+    return archived > 0
+
+
+async def move_session_tasks(
+    session_id: str,
+    user_id: str,
+    from_statuses: list[TaskStatus],
+    to_status: TaskStatus,
+) -> int:
+    """Move the chat's live tasks in ``from_statuses`` to ``to_status``, e.g.
+    to NEEDS_INPUT when Otto asks the user something. Returns how many moved."""
+    where: TaskWhereInput = {
+        "userId": user_id,
+        "isArchived": False,
+        "status": {"in": from_statuses},
+        "Sessions": {"some": {"chatSessionId": session_id}},
+        # A task waiting for its start time is not this chat's work yet.
+        "startAt": None,
+    }
+    rows = await prisma.models.Task.prisma().find_many(where=where)
+    # Nor is a repeating task waiting, paused, for its next run.
+    ids = [
+        row.id
+        for row in rows
+        if not (
+            row.status == TaskStatus.TODO
+            and read_schedule_meta(row.metadata).repeat is not None
+        )
+    ]
+    if not ids:
+        return 0
+    where["id"] = {"in": ids}
+    return await prisma.models.Task.prisma().update_many(
+        where=where, data={"status": to_status}
+    )
+
+
+async def attach_task_session(task_id: str, session_id: str, user_id: str) -> Task:
+    """Link a chat to a task; linking it twice is a no-op."""
+    await _get_or_raise(task_id, user_id)
+    await _require_session(session_id, user_id)
+    try:
+        await prisma.models.TaskSession.prisma().create(data=_link(task_id, session_id))
+    except UniqueViolationError:
+        pass
+    return await _get_or_raise(task_id, user_id)
+
+
+async def detach_task_session(task_id: str, session_id: str, user_id: str) -> Task:
+    """Unlink a chat from a task; unlinking one that is not linked is a no-op."""
+    await _get_or_raise(task_id, user_id)
+    await prisma.models.TaskSession.prisma().delete_many(
+        where={"taskId": task_id, "chatSessionId": session_id}
+    )
+    return await _get_or_raise(task_id, user_id)
+
+
+def _link(task_id: str, session_id: str) -> TaskSessionCreateInput:
+    return {"taskId": task_id, "chatSessionId": session_id}
+
+
+def _status_times(current: Task, status: TaskStatus, now: datetime) -> TaskUpdateInput:
+    if status == TaskStatus.TODO:
+        return {"startedAt": None, "completedAt": None}
+    # Only a TODO task waits for a start time.
+    if status in (TaskStatus.IN_PROGRESS, TaskStatus.NEEDS_INPUT):
+        return {
+            "startedAt": current.started_at or now,
+            "completedAt": None,
+            "startAt": None,
+        }
+    return {"completedAt": now, "startAt": None}
+
+
+def _clean_title(title: str) -> str:
+    title = " ".join(title.split())
+    if not title:
+        raise ValueError("A task needs a title.")
+    if len(title) > TITLE_MAX_CHARS:
+        raise ValueError(f"A task title is at most {TITLE_MAX_CHARS} characters.")
+    return title
+
+
+def _clean_description(description: str | None) -> str | None:
+    description = (description or "").strip()
+    if len(description) > DESCRIPTION_MAX_CHARS:
+        raise ValueError(
+            f"A task description is at most {DESCRIPTION_MAX_CHARS} characters."
+        )
+    return description or None
+
+
+def _line(text: str | None) -> str | None:
+    """One plain line: whitespace folded, capped."""
+    text = " ".join((text or "").split())
+    return text[:LINE_MAX_CHARS] or None
+
+
+async def _require_room_for_subtask(parent_task_id: str, user_id: str) -> None:
+    parent = await _get_or_raise(parent_task_id, user_id)
+    if parent.parent_task_id:
+        raise ValueError("A subtask cannot have subtasks: do this part yourself.")
+    if parent.subtask_count >= MAX_SUBTASKS:
+        raise ValueError(
+            f"A task has at most {MAX_SUBTASKS} subtasks: do the rest yourself."
+        )
+
+
+async def _get_or_raise(task_id: str, user_id: str) -> Task:
+    task = await get_task(task_id, user_id)
+    if task is None:
+        raise NotFoundError(f"Task {task_id} not found")
+    return task
+
+
+async def _require_expert(expert_id: str, user_id: str) -> None:
+    expert = await prisma.models.Expert.prisma().find_first(
+        where={"id": expert_id, "ownerUserId": user_id, "isArchived": False}
+    )
+    if expert is None:
+        raise NotFoundError(f"Expert {expert_id} not found")
+
+
+async def _require_session(session_id: str, user_id: str) -> None:
+    session = await prisma.models.ChatSession.prisma().find_first(
+        where={"id": session_id, "userId": user_id}
+    )
+    if session is None:
+        raise NotFoundError(f"Chat {session_id} not found")

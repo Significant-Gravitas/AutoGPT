@@ -1478,6 +1478,69 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/admin/evals/runs": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "evals"],
+        "summary": "List eval runs",
+        "operationId": "getV2List eval runs",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EvalRunList" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/evals/runs/{run_id}": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "evals"],
+        "summary": "Get eval run",
+        "operationId": "getV2Get eval run",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 90,
+              "pattern": "^(task|features)-[A-Za-z0-9_-]{1,80}$",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EvalRunDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/generate-test-data": {
       "post": {
         "tags": ["v2", "admin", "test-data"],
@@ -16716,6 +16779,51 @@
         }
       }
     },
+    "/api/schedules/upcoming": {
+      "get": {
+        "tags": ["v2", "schedules"],
+        "summary": "Coming run times of my schedules",
+        "operationId": "listUpcomingScheduleRuns",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 24,
+              "minimum": 1,
+              "default": 6,
+              "title": "Count"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpcomingRunsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/schedules/{schedule_id}": {
       "delete": {
         "tags": ["v1", "schedules"],
@@ -19757,6 +19865,784 @@
                   "type": "boolean",
                   "title": "Response Deletev2Delete Store Submission"
                 }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks": {
+      "get": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "List My Tasks",
+        "operationId": "list_tasks",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/TaskStatus" },
+                { "type": "null" }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "owner_expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Owner Expert Id"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Only the tasks linked to this chat",
+              "title": "Session Id"
+            },
+            "description": "Only the tasks linked to this chat"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "include_subtasks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Also list subtasks as rows of their own",
+              "default": false,
+              "title": "Include Subtasks"
+            },
+            "description": "Also list subtasks as rows of their own"
+          },
+          {
+            "name": "scheduled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only the tasks waiting for a start time, soonest first",
+              "default": false,
+              "title": "Scheduled"
+            },
+            "description": "Only the tasks waiting for a start time, soonest first"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Create My Task",
+        "operationId": "create_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskCreateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/suggestions": {
+      "get": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "List My Task Suggestions",
+        "description": "The tasks Otto drafted that the caller has neither started nor set\naside, newest first.",
+        "operationId": "list_task_suggestions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/tasks/suggestions/refresh": {
+      "post": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Refresh My Task Suggestions",
+        "description": "Draft next tasks now, up to the cap, and return the live ones.",
+        "operationId": "refresh_task_suggestions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/tasks/{task_id}": {
+      "delete": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Archive My Task",
+        "operationId": "archive_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Get My Task",
+        "operationId": "get_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Update My Task",
+        "description": "Edit the task. ``start_at`` schedules a task that has not started,\nmoves its start or, sent as null, removes it.",
+        "operationId": "update_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/cancel": {
+      "post": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Cancel My Task",
+        "description": "Stop the work running for the task and mark it cancelled; a task\nwaiting for its start time is cancelled before it starts, a repeating one\nstops repeating, and one that is already settled is returned as it is.\n``this_run_only`` stops only a repeating task's run going now.",
+        "operationId": "cancel_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/TaskCancelRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/dismiss": {
+      "post": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Dismiss My Task Suggestion",
+        "description": "Set a suggested task aside; Otto will not suggest it again.",
+        "operationId": "dismiss_task_suggestion",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/record": {
+      "get": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Get My Task Record",
+        "description": "The task with its subtasks, activity, asks, artifacts and evidence.",
+        "operationId": "get_task_record",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskRecord" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/repeat": {
+      "delete": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Stop My Task Repeat",
+        "description": "Stop a task repeating, or watching for its event; a run going now\nstill finishes.",
+        "operationId": "stop_task_repeat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/repeat/pause": {
+      "post": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Pause My Task Repeat",
+        "description": "Pause a repeating or watching task: it keeps its rhythm and starts no\nnew run; a paused watching task ignores events.",
+        "operationId": "pause_task_repeat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/repeat/resume": {
+      "post": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Resume My Task Repeat",
+        "description": "Resume a paused repeating task at its next fire time; a watching one\nwaits for its next event.",
+        "operationId": "resume_task_repeat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/run": {
+      "post": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Run My Task",
+        "description": "Start work on a task that is not being worked on, in a chat of its\nown; the task settles when that chat's work ends. A scheduled or missed\ntask starts now and loses its start time.",
+        "operationId": "run_task",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/TaskRunRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": { "description": "Subscription required" },
+          "404": { "description": "Task not found" },
+          "409": { "description": "The task is already being worked on" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": {
+            "description": "Usage limit or concurrent-turn limit reached"
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/sessions/{session_id}": {
+      "delete": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Detach My Task Session",
+        "operationId": "detach_task_session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A chat the caller owns",
+              "title": "Session Id"
+            },
+            "description": "A chat the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Attach My Task Session",
+        "operationId": "attach_task_session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A chat the caller owns",
+              "title": "Session Id"
+            },
+            "description": "A chat the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Task" }
               }
             }
           },
@@ -22847,6 +23733,12 @@
           "narrative": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Narrative"
+          },
+          "tasks": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BriefingTasks" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -23010,6 +23902,82 @@
           "link"
         ],
         "title": "BriefingRunItem"
+      },
+      "BriefingTaskItem": {
+        "properties": {
+          "task_id": { "type": "string", "title": "Task Id" },
+          "title": { "type": "string", "title": "Title" },
+          "status": { "type": "string", "title": "Status" },
+          "owner_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Owner Expert Id"
+          },
+          "owner_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Owner Name"
+          },
+          "owner_avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Owner Avatar Url"
+          },
+          "line": { "type": "string", "title": "Line", "default": "" },
+          "occurred_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Occurred At"
+          }
+        },
+        "type": "object",
+        "required": ["task_id", "title", "status"],
+        "title": "BriefingTaskItem"
+      },
+      "BriefingTasks": {
+        "properties": {
+          "finished": {
+            "items": { "$ref": "#/components/schemas/BriefingTaskItem" },
+            "type": "array",
+            "title": "Finished"
+          },
+          "failed": {
+            "items": { "$ref": "#/components/schemas/BriefingTaskItem" },
+            "type": "array",
+            "title": "Failed"
+          },
+          "waiting": {
+            "items": { "$ref": "#/components/schemas/BriefingTaskItem" },
+            "type": "array",
+            "title": "Waiting"
+          },
+          "finished_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Finished Total",
+            "default": 0
+          },
+          "failed_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Failed Total",
+            "default": 0
+          },
+          "waiting_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Waiting Total",
+            "default": 0
+          },
+          "in_progress_total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "In Progress Total",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "BriefingTasks",
+        "description": "The user's tasks as the brief saw them. Lists are capped for reading;\nthe totals are counted before the cap."
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -23430,6 +24398,34 @@
             "type": "boolean",
             "title": "Allow Multiple",
             "default": false
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "goal_ambiguous",
+                  "user_only_fact",
+                  "irreversible_choice",
+                  "conflict",
+                  "preference",
+                  "user_requested"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Reason",
+            "description": "Why the work cannot go on without the answer."
+          },
+          "default_guess": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Guess",
+            "description": "What the assistant does if the user says to use its best guess."
+          },
+          "recommended": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended",
+            "description": "The option the default guess picks, shown as Recommended."
           }
         },
         "type": "object",
@@ -26520,6 +27516,518 @@
         "required": ["message"],
         "title": "ErrorResponse",
         "description": "Response for errors."
+      },
+      "EvalCase": {
+        "properties": {
+          "case_id": { "type": "string", "title": "Case Id" },
+          "category": { "type": "string", "title": "Category" },
+          "title": { "type": "string", "title": "Title", "default": "" },
+          "world": { "type": "string", "title": "World", "default": "" },
+          "verdict": {
+            "anyOf": [
+              { "type": "string", "enum": ["pass", "partial", "fail"] },
+              { "type": "null" }
+            ],
+            "title": "Verdict",
+            "description": "The first reviewer's; none when skipped."
+          },
+          "score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Score"
+          },
+          "previous_verdict": {
+            "anyOf": [
+              { "type": "string", "enum": ["pass", "partial", "fail"] },
+              { "type": "null" }
+            ],
+            "title": "Previous Verdict"
+          },
+          "request": { "type": "string", "title": "Request", "default": "" },
+          "expected": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/EvalExpectation" },
+              { "type": "null" }
+            ]
+          },
+          "observed": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Observed",
+            "description": "What Otto did in the first turn: reply, start_task, ask, sign_in, delegate or task_update."
+          },
+          "ratings": {
+            "items": { "$ref": "#/components/schemas/EvalRating" },
+            "type": "array",
+            "title": "Ratings"
+          },
+          "checks": {
+            "items": { "$ref": "#/components/schemas/EvalCheck" },
+            "type": "array",
+            "title": "Checks"
+          },
+          "turns": {
+            "items": { "$ref": "#/components/schemas/EvalTurn" },
+            "type": "array",
+            "title": "Turns"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "skipped": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skipped"
+          },
+          "needs": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Needs"
+          },
+          "output": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Output",
+            "description": "Feature output, JSON."
+          },
+          "detail": {
+            "type": "string",
+            "enum": ["full", "report"],
+            "title": "Detail",
+            "description": "report: only what the run's report.md kept (verdicts, failed checks, two reasons per reviewer).",
+            "default": "full"
+          }
+        },
+        "type": "object",
+        "required": ["case_id", "category"],
+        "title": "EvalCase"
+      },
+      "EvalCaseChange": {
+        "properties": {
+          "case_id": { "type": "string", "title": "Case Id" },
+          "title": { "type": "string", "title": "Title", "default": "" },
+          "category": { "type": "string", "title": "Category" },
+          "before": {
+            "type": "string",
+            "enum": ["pass", "partial", "fail"],
+            "title": "Before"
+          },
+          "after": {
+            "type": "string",
+            "enum": ["pass", "partial", "fail"],
+            "title": "After"
+          }
+        },
+        "type": "object",
+        "required": ["case_id", "category", "before", "after"],
+        "title": "EvalCaseChange"
+      },
+      "EvalCategoryChange": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "pass_rate": { "type": "number", "title": "Pass Rate" },
+          "previous_pass_rate": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Previous Pass Rate"
+          },
+          "pass_rate_delta": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Pass Rate Delta"
+          },
+          "score_delta": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Score Delta"
+          }
+        },
+        "type": "object",
+        "required": ["name", "pass_rate"],
+        "title": "EvalCategoryChange"
+      },
+      "EvalCategoryScore": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "stats": { "$ref": "#/components/schemas/EvalStats" },
+          "reviewers": {
+            "items": { "$ref": "#/components/schemas/EvalReviewerStats" },
+            "type": "array",
+            "title": "Reviewers"
+          }
+        },
+        "type": "object",
+        "required": ["name", "stats"],
+        "title": "EvalCategoryScore"
+      },
+      "EvalCheck": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "passed": { "type": "boolean", "title": "Passed" },
+          "detail": { "type": "string", "title": "Detail", "default": "" }
+        },
+        "type": "object",
+        "required": ["name", "passed"],
+        "title": "EvalCheck"
+      },
+      "EvalCommand": {
+        "properties": {
+          "label": { "type": "string", "title": "Label" },
+          "command": { "type": "string", "title": "Command" },
+          "cost": { "type": "string", "title": "Cost" }
+        },
+        "type": "object",
+        "required": ["label", "command", "cost"],
+        "title": "EvalCommand"
+      },
+      "EvalComparison": {
+        "properties": {
+          "previous_id": { "type": "string", "title": "Previous Id" },
+          "previous_label": { "type": "string", "title": "Previous Label" },
+          "pass_rate_delta": { "type": "number", "title": "Pass Rate Delta" },
+          "score_delta": { "type": "number", "title": "Score Delta" },
+          "failed_delta": { "type": "integer", "title": "Failed Delta" },
+          "categories": {
+            "items": { "$ref": "#/components/schemas/EvalCategoryChange" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "cases_compared": {
+            "type": "boolean",
+            "title": "Cases Compared",
+            "default": false
+          },
+          "improved": {
+            "items": { "$ref": "#/components/schemas/EvalCaseChange" },
+            "type": "array",
+            "title": "Improved"
+          },
+          "regressed": {
+            "items": { "$ref": "#/components/schemas/EvalCaseChange" },
+            "type": "array",
+            "title": "Regressed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "previous_id",
+          "previous_label",
+          "pass_rate_delta",
+          "score_delta",
+          "failed_delta"
+        ],
+        "title": "EvalComparison"
+      },
+      "EvalExpectation": {
+        "properties": {
+          "behaviour": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Behaviour"
+          },
+          "must": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Must"
+          },
+          "must_not": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Must Not"
+          },
+          "human_reply": {
+            "type": "string",
+            "title": "Human Reply",
+            "default": ""
+          },
+          "human_actions": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Human Actions"
+          },
+          "human_why": { "type": "string", "title": "Human Why", "default": "" }
+        },
+        "type": "object",
+        "title": "EvalExpectation"
+      },
+      "EvalHistoryPoint": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "label": { "type": "string", "title": "Label" },
+          "pass_rate": { "type": "number", "title": "Pass Rate" },
+          "score": { "type": "number", "title": "Score" },
+          "current": { "type": "boolean", "title": "Current", "default": false }
+        },
+        "type": "object",
+        "required": ["id", "label", "pass_rate", "score"],
+        "title": "EvalHistoryPoint"
+      },
+      "EvalQuestion": {
+        "properties": {
+          "question": { "type": "string", "title": "Question" },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          },
+          "default_guess": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Guess"
+          }
+        },
+        "type": "object",
+        "required": ["question"],
+        "title": "EvalQuestion"
+      },
+      "EvalRating": {
+        "properties": {
+          "reviewer": { "type": "string", "title": "Reviewer" },
+          "label": { "type": "string", "title": "Label" },
+          "verdict": {
+            "type": "string",
+            "enum": ["pass", "partial", "fail"],
+            "title": "Verdict"
+          },
+          "score": { "type": "number", "title": "Score" },
+          "reasons": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Reasons"
+          }
+        },
+        "type": "object",
+        "required": ["reviewer", "label", "verdict", "score"],
+        "title": "EvalRating"
+      },
+      "EvalReviewerStats": {
+        "properties": {
+          "reviewer": {
+            "type": "string",
+            "title": "Reviewer",
+            "description": "As the run names it, e.g. claude:<model>."
+          },
+          "label": { "type": "string", "title": "Label" },
+          "stats": { "$ref": "#/components/schemas/EvalStats" }
+        },
+        "type": "object",
+        "required": ["reviewer", "label", "stats"],
+        "title": "EvalReviewerStats"
+      },
+      "EvalRunDetail": {
+        "properties": {
+          "run": { "$ref": "#/components/schemas/EvalRunSummary" },
+          "reviewers": {
+            "items": { "$ref": "#/components/schemas/EvalReviewerStats" },
+            "type": "array",
+            "title": "Reviewers"
+          },
+          "categories": {
+            "items": { "$ref": "#/components/schemas/EvalCategoryScore" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "cases": {
+            "items": { "$ref": "#/components/schemas/EvalCase" },
+            "type": "array",
+            "title": "Cases"
+          },
+          "comparison": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/EvalComparison" },
+              { "type": "null" }
+            ]
+          },
+          "history": {
+            "items": { "$ref": "#/components/schemas/EvalHistoryPoint" },
+            "type": "array",
+            "title": "History"
+          },
+          "commands": {
+            "items": { "$ref": "#/components/schemas/EvalCommand" },
+            "type": "array",
+            "title": "Commands"
+          },
+          "seconds_per_turn": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Seconds Per Turn"
+          },
+          "prompt_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Prompt Tokens"
+          },
+          "completion_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Completion Tokens"
+          },
+          "note": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": ["run", "reviewers", "categories", "cases"],
+        "title": "EvalRunDetail"
+      },
+      "EvalRunList": {
+        "properties": {
+          "runs": {
+            "items": { "$ref": "#/components/schemas/EvalRunSummary" },
+            "type": "array",
+            "title": "Runs"
+          },
+          "commands": {
+            "items": { "$ref": "#/components/schemas/EvalCommand" },
+            "type": "array",
+            "title": "Commands"
+          }
+        },
+        "type": "object",
+        "required": ["runs", "commands"],
+        "title": "EvalRunList"
+      },
+      "EvalRunSummary": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "suite": {
+            "type": "string",
+            "enum": ["task", "features"],
+            "title": "Suite"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["baseline", "local"],
+            "title": "Source"
+          },
+          "label": { "type": "string", "title": "Label" },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "backend": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Backend"
+          },
+          "otto_model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Otto Model"
+          },
+          "user_model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Model"
+          },
+          "reviewers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Reviewers"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/EvalStats",
+            "description": "The first reviewer's figures."
+          },
+          "case_coverage": {
+            "type": "string",
+            "enum": ["all", "not_passed", "none"],
+            "title": "Case Coverage",
+            "description": "Which cases the saved files keep: every case, only the ones not passed by every reviewer, or none (totals only)."
+          },
+          "series": {
+            "type": "string",
+            "title": "Series",
+            "description": "Runs of the same setup share a series."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "suite",
+          "source",
+          "label",
+          "stats",
+          "case_coverage",
+          "series"
+        ],
+        "title": "EvalRunSummary"
+      },
+      "EvalStats": {
+        "properties": {
+          "cases": { "type": "integer", "title": "Cases" },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "Mean score, 0-100."
+          },
+          "pass_rate": {
+            "type": "number",
+            "title": "Pass Rate",
+            "description": "Share of cases passed, 0-100."
+          },
+          "passed": { "type": "integer", "title": "Passed" },
+          "partial": { "type": "integer", "title": "Partial" },
+          "failed": { "type": "integer", "title": "Failed" }
+        },
+        "type": "object",
+        "required": [
+          "cases",
+          "score",
+          "pass_rate",
+          "passed",
+          "partial",
+          "failed"
+        ],
+        "title": "EvalStats"
+      },
+      "EvalToolCall": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "service": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service"
+          },
+          "arguments": {
+            "type": "string",
+            "title": "Arguments",
+            "description": "JSON, cut to a preview.",
+            "default": ""
+          },
+          "refused": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Refused"
+          },
+          "held": { "type": "boolean", "title": "Held", "default": false },
+          "wrote": { "type": "boolean", "title": "Wrote", "default": false },
+          "failed": { "type": "boolean", "title": "Failed", "default": false },
+          "result_preview": {
+            "type": "string",
+            "title": "Result Preview",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "EvalToolCall"
+      },
+      "EvalTurn": {
+        "properties": {
+          "user": { "type": "string", "title": "User", "default": "" },
+          "reply": { "type": "string", "title": "Reply", "default": "" },
+          "final_reply": {
+            "type": "string",
+            "title": "Final Reply",
+            "default": ""
+          },
+          "ended_by": {
+            "type": "string",
+            "title": "Ended By",
+            "default": "reply"
+          },
+          "seconds": { "type": "number", "title": "Seconds", "default": 0 },
+          "tool_calls": {
+            "items": { "$ref": "#/components/schemas/EvalToolCall" },
+            "type": "array",
+            "title": "Tool Calls"
+          },
+          "questions": {
+            "items": { "$ref": "#/components/schemas/EvalQuestion" },
+            "type": "array",
+            "title": "Questions"
+          }
+        },
+        "type": "object",
+        "title": "EvalTurn"
       },
       "ExecutionAnalyticsConfig": {
         "properties": {
@@ -29854,6 +31362,12 @@
             "enum": ["persisted", "live"],
             "title": "Source",
             "default": "live"
+          },
+          "tasks": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BriefingTasks" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -35839,6 +37353,15 @@
           "folder_moved",
           "folder_deleted",
           "agents_moved_to_folder",
+          "task_created",
+          "task_list",
+          "task_details",
+          "task_updated",
+          "task_archived",
+          "task_started",
+          "task_progress",
+          "task_evidence_added",
+          "task_finished",
           "browser_navigate",
           "browser_act",
           "browser_screenshot",
@@ -36747,6 +38270,16 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "parent_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Session Id",
+            "description": "The chat this one works for, such as a task's background worker; None for a chat of its own, a handed-off one included."
+          },
+          "work_task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Work Task Id",
+            "description": "The task this chat was opened to run."
           }
         },
         "type": "object",
@@ -38993,6 +40526,448 @@
         "title": "TableBlock",
         "description": "Rows of exact values, when nothing more visual fits."
       },
+      "Task": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "title": { "type": "string", "title": "Title" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "status": { "$ref": "#/components/schemas/TaskStatus" },
+          "owner_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Owner Expert Id",
+            "description": "The expert doing the work; None means Otto."
+          },
+          "created_by": { "$ref": "#/components/schemas/TaskCreator" },
+          "created_by_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created By Expert Id"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "is_archived": {
+            "type": "boolean",
+            "title": "Is Archived",
+            "default": false
+          },
+          "organization_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Organization Id"
+          },
+          "team_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Team Id"
+          },
+          "session_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Session Ids"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "parent_task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Task Id",
+            "description": "Set on a subtask; one level only."
+          },
+          "work_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Work Session Id",
+            "description": "The chat doing the work right now."
+          },
+          "goal": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Goal"
+          },
+          "done_when": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Done When"
+          },
+          "status_text": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status Text",
+            "description": "Where the task is, in words."
+          },
+          "next_step": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Next Step"
+          },
+          "result": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Result"
+          },
+          "failure_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Failure Reason"
+          },
+          "attempt": { "type": "integer", "title": "Attempt", "default": 1 },
+          "open_ask_count": {
+            "type": "integer",
+            "title": "Open Ask Count",
+            "description": "Open asks on the task and its subtasks.",
+            "default": 0
+          },
+          "subtask_count": {
+            "type": "integer",
+            "title": "Subtask Count",
+            "default": 0
+          },
+          "subtasks_done": {
+            "type": "integer",
+            "title": "Subtasks Done",
+            "default": 0
+          },
+          "artifact_count": {
+            "type": "integer",
+            "title": "Artifact Count",
+            "default": 0
+          },
+          "is_suggested": {
+            "type": "boolean",
+            "title": "Is Suggested",
+            "description": "Drafted by Otto for the user to start or dismiss.",
+            "default": false
+          },
+          "suggested_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Suggested Reason"
+          },
+          "start_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Start At",
+            "description": "When a TODO task starts by itself; a TODO task with one is scheduled."
+          },
+          "missed_start": {
+            "type": "boolean",
+            "title": "Missed Start",
+            "description": "A TODO task whose start time passed without it starting; it waits to be started or cancelled.",
+            "default": false
+          },
+          "repeat": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskRepeat" },
+              { "type": "null" }
+            ],
+            "description": "Set on a task that runs again and again; start_at is its next run."
+          },
+          "events_waiting": {
+            "type": "integer",
+            "title": "Events Waiting",
+            "description": "Events a watching task still has to run, after the run that is going now; they run one after another.",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "title",
+          "status",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Task",
+        "description": "A task as callers see it, with the chats it was worked on in."
+      },
+      "TaskActivity": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "task_id": { "type": "string", "title": "Task Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "actor_type": { "$ref": "#/components/schemas/TaskActor" },
+          "actor_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Actor Expert Id"
+          },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
+          },
+          "kind": { "$ref": "#/components/schemas/TaskActivityKind" },
+          "text": { "type": "string", "title": "Text" },
+          "is_milestone": {
+            "type": "boolean",
+            "title": "Is Milestone",
+            "default": false
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          },
+          "account": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskActivityAccount" },
+              { "type": "null" }
+            ],
+            "description": "The connected account the step used, if known."
+          },
+          "skill": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skill",
+            "description": "The skill the step followed, if known."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "task_id",
+          "created_at",
+          "actor_type",
+          "kind",
+          "text"
+        ],
+        "title": "TaskActivity"
+      },
+      "TaskActivityAccount": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "The service's slug, e.g. google."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The service's display name, e.g. Google."
+          },
+          "label": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Label",
+            "description": "The account's email, handle or title."
+          }
+        },
+        "type": "object",
+        "required": ["service", "name"],
+        "title": "TaskActivityAccount",
+        "description": "A connected account, as the person who connected it knows it. Never a\nsecret, a credential id or a scope."
+      },
+      "TaskActivityKind": {
+        "type": "string",
+        "enum": [
+          "CREATED",
+          "STARTED",
+          "PROGRESS",
+          "TOOL",
+          "DELEGATED",
+          "ASKED",
+          "ANSWERED",
+          "ARTIFACT",
+          "EVIDENCE",
+          "STATUS",
+          "RETRIED",
+          "FAILED",
+          "DONE"
+        ],
+        "title": "TaskActivityKind"
+      },
+      "TaskActor": {
+        "type": "string",
+        "enum": ["OTTO", "EXPERT", "USER", "SYSTEM"],
+        "title": "TaskActor"
+      },
+      "TaskArtifact": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "task_id": { "type": "string", "title": "Task Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "kind": { "$ref": "#/components/schemas/TaskArtifactKind" },
+          "title": { "type": "string", "title": "Title" },
+          "workspace_file_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Workspace File Id"
+          },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          },
+          "created_by_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created By Expert Id"
+          },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
+          },
+          "is_missing": {
+            "type": "boolean",
+            "title": "Is Missing",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["id", "task_id", "created_at", "kind", "title"],
+        "title": "TaskArtifact"
+      },
+      "TaskArtifactKind": {
+        "type": "string",
+        "enum": ["FILE", "DOCUMENT", "LINK", "WORKFLOW", "MESSAGE"],
+        "title": "TaskArtifactKind"
+      },
+      "TaskAsk": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "task_id": { "type": "string", "title": "Task Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
+          },
+          "asked_by_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Asked By Expert Id"
+          },
+          "kind": { "$ref": "#/components/schemas/TaskAskKind" },
+          "question": { "type": "string", "title": "Question" },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
+          },
+          "default_guess": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Guess"
+          },
+          "status": { "$ref": "#/components/schemas/TaskAskStatus" },
+          "answer": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Answer"
+          },
+          "answered_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Answered At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "task_id",
+          "created_at",
+          "kind",
+          "question",
+          "status"
+        ],
+        "title": "TaskAsk"
+      },
+      "TaskAskKind": {
+        "type": "string",
+        "enum": ["QUESTION", "DECISION", "PICK", "APPROVAL", "SETUP"],
+        "title": "TaskAskKind"
+      },
+      "TaskAskStatus": {
+        "type": "string",
+        "enum": ["OPEN", "ANSWERED", "EXPIRED", "WITHDRAWN"],
+        "title": "TaskAskStatus"
+      },
+      "TaskCancelRequest": {
+        "properties": {
+          "this_run_only": {
+            "type": "boolean",
+            "title": "This Run Only",
+            "description": "For a repeating task: stop only the run going now, and keep the rhythm.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TaskCancelRequest"
+      },
+      "TaskCreateRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              { "type": "string", "maxLength": 10000 },
+              { "type": "null" }
+            ],
+            "title": "Description"
+          },
+          "owner_expert_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Owner Expert Id",
+            "description": "The expert who does the work; omit for Otto."
+          },
+          "session_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Session Id",
+            "description": "A chat of the caller's to attach the task to."
+          },
+          "goal": {
+            "anyOf": [
+              { "type": "string", "maxLength": 300 },
+              { "type": "null" }
+            ],
+            "title": "Goal"
+          },
+          "done_when": {
+            "anyOf": [
+              { "type": "string", "maxLength": 300 },
+              { "type": "null" }
+            ],
+            "title": "Done When"
+          }
+        },
+        "type": "object",
+        "required": ["title"],
+        "title": "TaskCreateRequest"
+      },
+      "TaskCreator": {
+        "type": "string",
+        "enum": ["USER", "OTTO", "EXPERT"],
+        "title": "TaskCreator"
+      },
       "TaskDecompositionResponse": {
         "properties": {
           "type": {
@@ -39025,6 +41000,331 @@
         "required": ["message", "goal", "steps"],
         "title": "TaskDecompositionResponse",
         "description": "Response for decompose_goal tool — shows the plan to the user."
+      },
+      "TaskEvidence": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "task_id": { "type": "string", "title": "Task Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "claim": { "type": "string", "title": "Claim" },
+          "kind": { "$ref": "#/components/schemas/TaskEvidenceKind" },
+          "tool_call_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tool Call Id"
+          },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
+          },
+          "artifact_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Artifact Id"
+          },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          },
+          "excerpt": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Excerpt"
+          },
+          "verified": {
+            "type": "boolean",
+            "title": "Verified",
+            "default": false
+          },
+          "added_by": {
+            "$ref": "#/components/schemas/TaskActor",
+            "default": "SYSTEM"
+          }
+        },
+        "type": "object",
+        "required": ["id", "task_id", "created_at", "claim", "kind"],
+        "title": "TaskEvidence"
+      },
+      "TaskEvidenceKind": {
+        "type": "string",
+        "enum": ["TOOL_RESULT", "FILE", "LINK", "QUOTE", "CHECK"],
+        "title": "TaskEvidenceKind"
+      },
+      "TaskListResponse": {
+        "properties": {
+          "tasks": {
+            "items": { "$ref": "#/components/schemas/Task" },
+            "type": "array",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": ["tasks"],
+        "title": "TaskListResponse"
+      },
+      "TaskRecord": {
+        "properties": {
+          "task": { "$ref": "#/components/schemas/Task" },
+          "subtasks": {
+            "items": { "$ref": "#/components/schemas/Task" },
+            "type": "array",
+            "title": "Subtasks"
+          },
+          "activity": {
+            "items": { "$ref": "#/components/schemas/TaskActivity" },
+            "type": "array",
+            "title": "Activity",
+            "description": "The task's and its subtasks', newest first."
+          },
+          "so_far": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "So Far",
+            "description": "The last few milestones, newest first."
+          },
+          "asks": {
+            "items": { "$ref": "#/components/schemas/TaskAsk" },
+            "type": "array",
+            "title": "Asks"
+          },
+          "artifacts": {
+            "items": { "$ref": "#/components/schemas/TaskArtifact" },
+            "type": "array",
+            "title": "Artifacts"
+          },
+          "evidence": {
+            "items": { "$ref": "#/components/schemas/TaskEvidence" },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "is_unverified": {
+            "type": "boolean",
+            "title": "Is Unverified",
+            "description": "Done with a stated done-when but no verified evidence.",
+            "default": false
+          },
+          "runs": {
+            "items": { "$ref": "#/components/schemas/TaskRun" },
+            "type": "array",
+            "title": "Runs",
+            "description": "Each run of the task, newest first."
+          }
+        },
+        "type": "object",
+        "required": ["task"],
+        "title": "TaskRecord",
+        "description": "Everything the task page shows for one task."
+      },
+      "TaskRepeat": {
+        "properties": {
+          "crons": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Crons",
+            "description": "5-field crons read in ``timezone``, the dialect routines use."
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "default": "UTC"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "How often it runs, in words."
+          },
+          "paused": {
+            "type": "boolean",
+            "title": "Paused",
+            "description": "Paused: it keeps its rhythm but does not start.",
+            "default": false
+          },
+          "failed_in_a_row": {
+            "type": "integer",
+            "title": "Failed In A Row",
+            "description": "Runs that failed one after another, up to now.",
+            "default": 0
+          },
+          "last_run": {
+            "anyOf": [
+              { "type": "string", "enum": ["done", "failed", "cancelled"] },
+              { "type": "null" }
+            ],
+            "title": "Last Run",
+            "description": "How the last run ended."
+          },
+          "watch": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskWatch" },
+              { "type": "null" }
+            ],
+            "description": "Set when an event starts each run, not a cron."
+          }
+        },
+        "type": "object",
+        "required": ["label"],
+        "title": "TaskRepeat",
+        "description": "A task that runs again and again: after each run it goes back to\nwaiting, with ``Task.startAt`` at the next fire time of ``crons``, or, for\na task that ``watch``es, with no start until the next event."
+      },
+      "TaskRun": {
+        "properties": {
+          "chat_session_id": { "type": "string", "title": "Chat Session Id" },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
+          },
+          "outcome": {
+            "anyOf": [
+              { "type": "string", "enum": ["done", "failed", "cancelled"] },
+              { "type": "null" }
+            ],
+            "title": "Outcome",
+            "description": "How it ended; None while it runs."
+          },
+          "result": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Result",
+            "description": "Its result, cut short."
+          },
+          "failure_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Failure Reason"
+          },
+          "trigger": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Trigger",
+            "description": "What started it, in a few words: an event."
+          }
+        },
+        "type": "object",
+        "required": ["chat_session_id", "started_at"],
+        "title": "TaskRun",
+        "description": "One run of a task, in the chat it ran in."
+      },
+      "TaskRunRequest": {
+        "properties": {
+          "instructions": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Instructions",
+            "description": "What to do differently this run; kept on the task's activity."
+          }
+        },
+        "type": "object",
+        "title": "TaskRunRequest"
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": [
+          "TODO",
+          "IN_PROGRESS",
+          "NEEDS_INPUT",
+          "DONE",
+          "FAILED",
+          "CANCELLED"
+        ],
+        "title": "TaskStatus"
+      },
+      "TaskUpdateRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 200, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              { "type": "string", "maxLength": 10000 },
+              { "type": "null" }
+            ],
+            "title": "Description",
+            "description": "An empty string clears the description."
+          },
+          "status": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TaskStatus" },
+              { "type": "null" }
+            ]
+          },
+          "owner_expert_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Owner Expert Id"
+          },
+          "assign_to_otto": {
+            "type": "boolean",
+            "title": "Assign To Otto",
+            "description": "Clear the owner expert so Otto owns the task.",
+            "default": false
+          },
+          "goal": {
+            "anyOf": [
+              { "type": "string", "maxLength": 300 },
+              { "type": "null" }
+            ],
+            "title": "Goal"
+          },
+          "done_when": {
+            "anyOf": [
+              { "type": "string", "maxLength": 300 },
+              { "type": "null" }
+            ],
+            "title": "Done When"
+          },
+          "start_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Start At",
+            "description": "A future time for a TODO task to start by itself; null removes the start time. A time without an offset is UTC."
+          }
+        },
+        "type": "object",
+        "title": "TaskUpdateRequest",
+        "description": "Fields left out, or sent as null, stay as they are; ``start_at`` sent\nas null removes the start time."
+      },
+      "TaskWatch": {
+        "properties": {
+          "webhook_id": { "type": "string", "title": "Webhook Id" },
+          "provider": { "type": "string", "title": "Provider" },
+          "trigger_block_id": { "type": "string", "title": "Trigger Block Id" },
+          "trigger_config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Trigger Config",
+            "description": "The trigger block's inputs (resource, event filter), without credentials."
+          },
+          "line": {
+            "type": "string",
+            "title": "Line",
+            "description": "What it watches, in words: \"PR opened on a/b\"."
+          },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url",
+            "description": "Where to send events, for a webhook the user calls."
+          }
+        },
+        "type": "object",
+        "required": ["webhook_id", "provider", "trigger_block_id", "line"],
+        "title": "TaskWatch",
+        "description": "What a task started by an event watches: one webhook of the user's,\nand the trigger block whose event filter picks the events it runs for.\nHolds no credential, secret or account name."
       },
       "TeamMemberResponse": {
         "properties": {
@@ -40383,6 +42683,41 @@
         "required": ["content_type", "content_id", "searchable_text"],
         "title": "UnifiedSearchResult",
         "description": "A single result from unified hybrid search across all content types."
+      },
+      "UpcomingRuns": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["task", "workflow"],
+            "title": "Kind"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The task's id, or the workflow schedule's id."
+          },
+          "runs": {
+            "items": { "type": "string", "format": "date-time" },
+            "type": "array",
+            "title": "Runs",
+            "description": "The next run times, soonest first."
+          }
+        },
+        "type": "object",
+        "required": ["kind", "id"],
+        "title": "UpcomingRuns"
+      },
+      "UpcomingRunsResponse": {
+        "properties": {
+          "schedules": {
+            "items": { "$ref": "#/components/schemas/UpcomingRuns" },
+            "type": "array",
+            "title": "Schedules"
+          }
+        },
+        "type": "object",
+        "required": ["schedules"],
+        "title": "UpcomingRunsResponse"
       },
       "UpdateAppLogoRequest": {
         "properties": {

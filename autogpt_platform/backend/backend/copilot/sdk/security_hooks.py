@@ -10,9 +10,11 @@ from typing import Any, cast
 
 from claude_agent_sdk.types import HookEvent, HookMatcher
 
+from backend.copilot import turn_end
 from backend.copilot.ai_spans import ToolSpanTimer
 from backend.copilot.context import get_execution_context, is_allowed_local_path
 from backend.copilot.pending_messages import drain_and_format_for_injection
+from backend.copilot.untrusted_text import HOOK_CONTEXT, contains_instructions
 
 from .governor import TurnGovernor
 from .tool_adapter import (
@@ -256,6 +258,16 @@ def create_security_hooks(
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
+            # A question for the user ends the turn: nothing runs after it.
+            _, session = get_execution_context()
+            ended = turn_end.refusal(
+                session.session_id if session is not None else None,
+                tool_name.removeprefix(MCP_TOOL_PREFIX),
+            )
+            if ended is not None:
+                logger.info("[SDK] Refusing %s: the turn is closing", tool_name)
+                return cast(SyncHookJSONOutput, _deny(ended))
+
             refusal = _landing_refusal(governor)
             if governor is not None and refusal is not None:
                 logger.info(
@@ -395,19 +407,32 @@ def create_security_hooks(
             # The drain helper also stashes a persist-queue copy so
             # ``sdk/service.py`` can append a matching user row to the UI.
             _, session = get_execution_context()
+            # A question for the user ends the turn (turn_end): no model call
+            # after it, and queued follow-ups stay queued so they start the
+            # next turn instead of being read now.
+            if session is not None and turn_end.is_ending(session.session_id):
+                return cast(SyncHookJSONOutput, {"continue_": False})
             followup = ""
             if session is not None and session.session_id:
                 followup = await drain_and_format_for_injection(
                     session.session_id,
                     log_prefix="[SDK][PostToolUse]",
                 )
-            if followup:
+            # Text in the result that orders an AI around: say so from the
+            # platform's side, where the model trusts it (untrusted_text).
+            warning = (
+                HOOK_CONTEXT
+                if contains_instructions(str(input_data.get("tool_response", "")))
+                else ""
+            )
+            context_text = "\n\n".join(part for part in (warning, followup) if part)
+            if context_text:
                 return cast(
                     SyncHookJSONOutput,
                     {
                         "hookSpecificOutput": {
                             "hookEventName": "PostToolUse",
-                            "additionalContext": followup,
+                            "additionalContext": context_text,
                         }
                     },
                 )
