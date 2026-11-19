@@ -1840,17 +1840,20 @@ async def test_a_later_irreversible_step_still_asks_after_the_run_resumes(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_auto_approving_a_card_reads_only_its_own_node_execution(
+@pytest.mark.parametrize("auto_approve_future", [True, False])
+async def test_approving_a_card_reads_only_its_own_node_execution(
     client: httpx.AsyncClient,
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
+    auto_approve_future: bool,
 ) -> None:
-    """The auto-approval reads the card's node id from the card's own row."""
+    """The card's node id is read from the card's own row, with nothing joined."""
     _, steps, _, _, _, graph_exec = await _paused_issue_run(
         mocker, test_user_id, nodes=3
     )
     node_id, node_exec_id = steps[0]
     find_many = mocker.spy(AgentNodeExecutionActions, "find_many")
+    find_first = mocker.spy(AgentNodeExecutionActions, "find_first")
 
     response = await client.post(
         "/api/review/action",
@@ -1859,7 +1862,7 @@ async def test_auto_approving_a_card_reads_only_its_own_node_execution(
                 {
                     "node_exec_id": node_exec_id,
                     "approved": True,
-                    "auto_approve_future": True,
+                    "auto_approve_future": auto_approve_future,
                 }
             ]
         },
@@ -1867,19 +1870,20 @@ async def test_auto_approving_a_card_reads_only_its_own_node_execution(
     assert response.status_code == 200
     assert response.json()["failed_count"] == 0
 
-    # The record is kept under the card's node: its next execution is approved.
-    approval = await check_approval(
-        node_exec_id="a-later-execution-of-the-node",
-        node_id=node_id,
-        user_id=test_user_id,
-        graph_exec_id=graph_exec.id,
-    )
-    assert approval is not None and approval.status == ReviewStatus.APPROVED
+    if auto_approve_future:
+        # The record is kept under the card's node: its next execution is approved.
+        approval = await check_approval(
+            node_exec_id="a-later-execution-of-the-node",
+            node_id=node_id,
+            user_id=test_user_id,
+            graph_exec_id=graph_exec.id,
+        )
+        assert approval is not None and approval.status == ReviewStatus.APPROVED
 
-    # Every batch read of node executions names the card and leaves the run out.
     assert find_many.await_count > 0
     for read in find_many.await_args_list:
         assert read.kwargs["where"].get("id") == {"in": [node_exec_id]}
+    for read in find_many.await_args_list + find_first.await_args_list:
         assert "GraphExecution" not in (read.kwargs.get("include") or {})
 
 
