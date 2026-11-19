@@ -16,6 +16,7 @@ import threading
 import time
 import traceback
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, cast
 from unittest.mock import Mock
@@ -42,6 +43,21 @@ from backend.util.redis_client_guard import is_open
 
 # Only a step that never comes keeps a wait going this long.
 _HANG_SECONDS = 10.0
+
+
+def _event_loop_factories() -> list[Any]:
+    """asyncio's own loop, which workers and tests run, and uvloop's, which
+    uvicorn runs the servers on wherever it's installed (not on Windows)."""
+    factories = [pytest.param(asyncio.new_event_loop, id="asyncio")]
+    try:
+        import uvloop
+    except ImportError:
+        return factories
+    return [*factories, pytest.param(uvloop.new_event_loop, id="uvloop")]
+
+
+_ON_EVERY_KIND_OF_LOOP = pytest.mark.parametrize("new_loop", _event_loop_factories())
+NewLoop = Callable[[], asyncio.AbstractEventLoop]
 
 
 @pytest.fixture(autouse=True)
@@ -1534,8 +1550,9 @@ class TestSharedCacheOnAnEventLoop:
                 assert await slow == slow_key
 
     @pytest.mark.asyncio
+    @_ON_EVERY_KIND_OF_LOOP
     async def test_another_event_loop_reads_the_cache_through_a_client_of_its_own(
-        self,
+        self, new_loop: NewLoop
     ):
         calls = 0
 
@@ -1548,7 +1565,7 @@ class TestSharedCacheOnAnEventLoop:
         key = _unique("loops")
         assert await lookup(key) == key
         # A loop on a thread of its own, as each copilot worker runs one.
-        other = asyncio.new_event_loop()
+        other = new_loop()
         worker = threading.Thread(target=other.run_forever, daemon=True)
         worker.start()
         try:
@@ -1566,7 +1583,8 @@ class TestSharedCacheOnAnEventLoop:
         assert calls == 1
 
     @pytest.mark.asyncio
-    async def test_closing_a_loop_closes_its_client(self):
+    @_ON_EVERY_KIND_OF_LOOP
+    async def test_closing_a_loop_closes_its_client(self, new_loop: NewLoop):
         """However a loop is closed, its client is closed first: here as a
         retired direct-block-execution worker's is, with ``loop.close()`` and
         no ``shutdown_asyncgens()``. Nothing could close it after that."""
@@ -1580,7 +1598,7 @@ class TestSharedCacheOnAnEventLoop:
             return await cache_module._get_async_redis()
 
         def retire_a_loop_after_one_read() -> bool:
-            loop = asyncio.new_event_loop()
+            loop = new_loop()
 
             def serve():
                 loop.run_forever()
@@ -1603,15 +1621,14 @@ class TestSharedCacheOnAnEventLoop:
         assert left_open == [False] * 3
 
     @pytest.mark.asyncio
+    @_ON_EVERY_KIND_OF_LOOP
     async def test_a_fresh_loops_first_read_goes_straight_to_its_keys_shard(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, new_loop: NewLoop, monkeypatch: pytest.MonkeyPatch
     ):
         """redis-py's cluster client sends a read it gets before reading the
-        slot map to a random primary, and follows the redirect to the owner's
-        announced address, which ``address_remap`` never sees: CI's cluster
-        announces hostnames the runner can't resolve. So each loop's client
-        reads the map first. A random primary owns the key a third of the
-        time, so several fresh loops read."""
+        slot map to a random primary, which redirects it, so each loop's client
+        reads the map first. A random primary owns the key a third of the time
+        on CI's cluster, so several fresh loops read."""
 
         @cached(ttl_seconds=30, shared_cache=True)
         async def lookup(key: str) -> str:
@@ -1627,7 +1644,7 @@ class TestSharedCacheOnAnEventLoop:
         monkeypatch.setattr(async_cluster.NodesManager, "move_slot", recorded_move_slot)
 
         def read_on_a_fresh_loop(key: str) -> str:
-            loop = asyncio.new_event_loop()
+            loop = new_loop()
             try:
                 return loop.run_until_complete(lookup(key))
             finally:
@@ -1639,8 +1656,9 @@ class TestSharedCacheOnAnEventLoop:
         assert redirects == []
 
     @pytest.mark.asyncio
+    @_ON_EVERY_KIND_OF_LOOP
     async def test_closing_a_loop_closes_its_client_after_a_connection_error(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, new_loop: NewLoop, monkeypatch: pytest.MonkeyPatch
     ):
         """A connection error leaves redis-py's client due to read the slot
         map again, and its ``aclose()`` then skips the client, connections and
@@ -1672,7 +1690,7 @@ class TestSharedCacheOnAnEventLoop:
         monkeypatch.setattr(cache_redis, "_new_async_redis", remember_new_client)
 
         def read_on_a_loop_then_close_it() -> str:
-            loop = asyncio.new_event_loop()
+            loop = new_loop()
             try:
                 return loop.run_until_complete(lookup(key))
             finally:
@@ -2065,6 +2083,53 @@ class TestSharedCacheFollowsAShardsRedirect:
         assert calls == 1
         assert redirects and set(redirects) == {redirect}
         assert failed_dials == []
+
+    @pytest.mark.asyncio
+    async def test_a_run_of_moved_redirects_keeps_the_clients_connections(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """redis-py 8.1's async client closes every connection on every fifth
+        MOVED, failing the other commands in flight on them: during a
+        resharding, a stream of reads failed and were computed instead. The
+        cache's client follows each MOVED on its own."""
+        sync_redis = await asyncio.to_thread(cache_module._get_redis)
+        primaries = sync_redis.get_primaries()
+        if len(primaries) < 2:
+            pytest.skip("A redirect needs a cluster of several shards, as CI's")
+        client = await cache_module._get_async_redis()
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        async def lookup(key: str) -> str:
+            return key
+
+        keys = [_unique("moved") for _ in range(5)]
+        for key in keys:
+            assert await lookup(key) == key
+        closed: list[Any] = []
+        disconnect = async_connection.AbstractConnection.disconnect
+
+        async def recorded_disconnect(self, *args, **kwargs):
+            closed.append(self)
+            return await disconnect(self, *args, **kwargs)
+
+        monkeypatch.setattr(
+            async_connection.AbstractConnection, "disconnect", recorded_disconnect
+        )
+        monkeypatch.setattr(client, "reinitialize_counter", 0)
+        redirects = _record_redirects(monkeypatch)
+        for key in keys:
+            # Each read goes to a shard that doesn't serve its slot.
+            redis_key = cache_key("lookup", key=key)
+            owner = sync_redis.get_node_from_key(redis_key)
+            other = next(node for node in primaries if node.name != owner.name)
+            stale = client.get_node(host=other.host, port=other.port)
+            monkeypatch.setitem(
+                client.nodes_manager.slots_cache, sync_redis.keyslot(redis_key), [stale]
+            )
+            assert await lookup(key) == key
+
+        assert closed == []
+        assert redirects == ["MOVED"] * 5
 
 
 def _record_redirects(monkeypatch: pytest.MonkeyPatch) -> list[str]:

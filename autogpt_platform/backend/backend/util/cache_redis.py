@@ -70,9 +70,9 @@ _LOOP_ATTR = "_shared_cache_redis"
 
 async def get_async_redis() -> AsyncRedisCluster:
     """This event loop's client, with the cluster's slot map read: an
-    uninitialized client sends its first command to any node, and redis-py
-    follows the redirect to the owner's announced address, not remapped.
-    Call it within the caller's bound, since it may read the map."""
+    uninitialized client sends its first command to any node, which then
+    redirects it. Call it within the caller's bound, since it may read the
+    map."""
     loop = asyncio.get_running_loop()
     client: AsyncRedisCluster | None = getattr(loop, _LOOP_ATTR, None)
     if client is None:
@@ -145,6 +145,11 @@ def _new_async_redis() -> AsyncRedisCluster:
         socket_connect_timeout=REDIS_OP_TIMEOUT_S,
         retry=AsyncRetry(NoBackoff(), _RETRIES),
         address_remap=_address_remap,
+        # redis-py 8.1 closes every connection on every fifth MOVED, failing
+        # the other commands in flight on them: during a resharding, a stream
+        # of reads computed instead. Follow each MOVED on its own, as redis-py
+        # does after 8.1. A connection error still makes it read the map again.
+        reinitialize_steps=0,
     )
 
 
