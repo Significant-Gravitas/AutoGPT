@@ -361,9 +361,9 @@ class TestValidatePromptDoubleCurlyBracesSpaces:
         node = _make_node(input_default={"prompt": prompt})
         agent = _make_agent(nodes=[node])
 
-        started = time.monotonic()
+        started = time.thread_time()
         assert v.validate_prompt_double_curly_braces_spaces(agent) is True
-        assert time.monotonic() - started < 2
+        assert time.thread_time() - started < 2
 
 
 # ============================================================================
@@ -1819,9 +1819,8 @@ class TestLargeGraphs:
         ]
         agent = _make_agent(nodes=nodes, links=links)
 
-        started = time.perf_counter()
+        started = time.thread_time()
         assert check(AgentValidator(), agent) is True
 
-        # One pass over the links takes well under a second; the bound leaves
-        # room for a CI pause.
-        assert time.perf_counter() - started < 10.0
+        # One pass over the links takes well under a second of CPU time.
+        assert time.thread_time() - started < 10.0

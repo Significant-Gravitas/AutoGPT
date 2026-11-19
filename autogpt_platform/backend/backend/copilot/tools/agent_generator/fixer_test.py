@@ -1153,12 +1153,12 @@ class TestLargeGraphs:
         nodes, links = make_nodes_and_links()
         agent = _make_agent(nodes=nodes, links=links)
 
-        started = time.perf_counter()
+        started = time.thread_time()
         fix(AgentFixer(), agent)
 
-        # One pass over the nodes and the links takes well under a second, so
-        # the bound only has to leave room for a CI pause.
-        assert time.perf_counter() - started < 10.0
+        # One pass over the nodes and the links takes well under a second of
+        # CPU time.
+        assert time.thread_time() - started < 10.0
 
     def test_nodes_sharing_an_id_do_not_multiply_the_fixes(self):
         """Links into an id several nodes share are handled once."""
