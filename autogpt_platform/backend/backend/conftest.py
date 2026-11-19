@@ -55,6 +55,12 @@ os.environ["DATABASE_URL"] = _with_query_param(
 configure_logging()
 logger = logging.getLogger(__name__)
 _preload_started = False
+# CI keeps its own process startup only where a service imports the backend
+# quickly. From 3.14 that import takes about 35 s: annotations are deferred
+# (PEP 649), so building prisma's ~44,000 generated TypedDicts goes through
+# annotationlib, against a few seconds on 3.13. That is past the services'
+# readiness waits, so CI preloads there as local runs do.
+_CI_PRELOADS = sys.version_info >= (3, 14)
 
 # Reduce Prisma log spam unless PRISMA_DEBUG is set
 if not os.getenv("PRISMA_DEBUG"):
@@ -66,7 +72,7 @@ def pytest_itemcollected(item: pytest.Function) -> None:
     global _preload_started
     if (
         _preload_started
-        or os.getenv("CI")
+        or (os.getenv("CI") and not _CI_PRELOADS)
         or item.config.getoption("collectonly")
         or "server" not in item.fixturenames
         or "forkserver" not in get_all_start_methods()

@@ -32,11 +32,30 @@ def test_preload_only_for_local_service_tests(
     item.config.getoption.return_value = collect_only
     with (
         patch.object(fixtures, "_preload_started", False),
+        patch.object(fixtures, "_CI_PRELOADS", False),
         patch.object(fixtures, "get_all_start_methods", return_value=methods),
         patch.object(fixtures, "Thread") as thread,
     ):
         fixtures.pytest_itemcollected(item)
     thread.assert_not_called()
+
+
+def test_ci_preloads_where_services_import_the_backend_slowly(monkeypatch):
+    monkeypatch.setenv("CI", "true")
+    item = Mock(spec=pytest.Function)
+    item.config = Mock()
+    item.fixturenames = ["server"]
+    item.config.getoption.return_value = False
+    with (
+        patch.object(fixtures, "_preload_started", False),
+        patch.object(fixtures, "_CI_PRELOADS", True),
+        patch.object(fixtures, "get_all_start_methods", return_value=["forkserver"]),
+        patch.object(fixtures, "set_forkserver_preload") as configure,
+        patch.object(fixtures, "Thread") as thread,
+    ):
+        fixtures.pytest_itemcollected(item)
+    configure.assert_called_once_with(["scripts.server_preload"])
+    thread.return_value.start.assert_called_once_with()
 
 
 def test_service_collection_starts_only_one_preload(monkeypatch):
@@ -167,6 +186,34 @@ assert "pytest" in sys.modules
 assert threading.active_count() == 1, threading.enumerate()
 assert not db.is_connected()
 assert gc.get_freeze_count() > 0
+""",
+        ],
+        check=True,
+    )
+
+
+def test_the_preloaded_forkserver_serves_without_the_backends_socket_timeout():
+    """From 3.14 the forkserver reads each request's authentication as a
+    blocking file, which a socket accepted under a default timeout is not; the
+    services it forks keep the timeout the backend sets on import."""
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import os
+import socket
+
+import scripts.server_preload
+
+assert socket.getdefaulttimeout() is None
+read, write = os.pipe()
+pid = os.fork()
+if pid == 0:
+    os.write(write, repr(socket.getdefaulttimeout()).encode())
+    os._exit(0)
+os.waitpid(pid, 0)
+assert os.read(read, 64) == b"30.0", "a forked service lost the backend's timeout"
 """,
         ],
         check=True,

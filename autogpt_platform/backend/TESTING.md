@@ -48,8 +48,10 @@ graphs and store listings before stopping them. Pure unit tests do not start
 these service processes.
 
 For local runs on platforms with `forkserver`, the service processes share
-preloaded code and models instead of importing separate copies. CI retains its
-existing process startup. The preload must stay free of
+preloaded code and models instead of importing separate copies. CI does the
+same on Python 3.14 and later, where a service that imports the backend itself
+takes about 35 s (PEP 649 makes prisma's generated TypedDicts slow to build);
+on 3.13 it retains its existing process startup. The preload must stay free of
 background threads and open database connections; `scripts/test_server_fixture.py`
 checks this contract.
 
