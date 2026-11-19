@@ -169,7 +169,11 @@ async def list_runs(
         require_resource_permission(APIKeyPermission.READ_RUN)
     ),
 ) -> Page[AgentGraphRun]:
-    """List agent runs, optionally filtered by graph, status and creation time."""
+    """List agent runs, optionally filtered by graph, status and creation time.
+
+    A run's `inputs` and `credentials_inputs` are listed when they total at most
+    16 KiB; `GET /api/v2/runs/{run_id}` always returns them.
+    """
     result = await execution_db.get_graph_executions_paginated(
         user_id=auth.user_id,
         graph_id=graph_id,
@@ -179,6 +183,7 @@ async def list_runs(
         page=page.page,
         page_size=page.limit,
         organization_id=auth.organization_id,
+        include_inputs=True,
     )
 
     return page.paged(

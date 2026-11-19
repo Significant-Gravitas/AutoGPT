@@ -8,9 +8,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Awaitable, Optional
 
+from prisma.bases import BaseAgentGraph, BaseAgentGraphExecution, BaseExpert
 from prisma.enums import ReviewStatus
 from prisma.models import (
-    AgentGraphExecution,
     AgentNodeExecution,
     ChatSession,
     LibraryAgent,
@@ -752,12 +752,31 @@ async def _node_executions_for(
     )
 
 
+class _ReviewedRunExpert(BaseExpert):
+    name: str
+    avatarUrl: Optional[str] = None
+
+
+class _ReviewedRunGraph(BaseAgentGraph):
+    name: Optional[str] = None
+
+
+class ReviewedRun(BaseAgentGraphExecution):
+    """The columns of a reviewed run that its review's attribution reads."""
+
+    id: str
+    agentGraphId: str
+    expertId: Optional[str] = None
+    Expert: Optional[_ReviewedRunExpert] = None
+    AgentGraph: Optional[_ReviewedRunGraph] = None
+
+
 async def _graph_executions_for(
     user_id: str, graph_exec_ids: list[str]
-) -> list[AgentGraphExecution]:
+) -> list[ReviewedRun]:
     if not graph_exec_ids:
         return []
-    return await AgentGraphExecution.prisma().find_many(
+    return await ReviewedRun.prisma().find_many(
         where={"id": {"in": graph_exec_ids}, "userId": user_id},
         include={"Expert": True, "AgentGraph": True},
     )

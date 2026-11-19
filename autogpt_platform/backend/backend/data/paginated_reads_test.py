@@ -24,7 +24,12 @@ def _page_and_total(model: type, total: int) -> AbstractContextManager[object]:
 
 @pytest.mark.asyncio
 async def test_a_runs_page_and_its_total_are_read_side_by_side() -> None:
-    with _page_and_total(prisma.models.AgentGraphExecution, 51):
+    page = _page_and_total(prisma.models.AgentGraphExecution, 51)
+    with page, patch.object(
+        execution_db.GraphExecutionListRow,
+        "prisma",
+        prisma.models.AgentGraphExecution.prisma,
+    ):
         result = await execution_db.get_graph_executions_paginated(
             "user-1", graph_id="graph-1", page=2, page_size=25
         )

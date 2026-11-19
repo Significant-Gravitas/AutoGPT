@@ -18,6 +18,7 @@ from typing import (
 )
 
 from prisma import Json
+from prisma.bases import BaseAgentGraphExecution
 from prisma.enums import AgentExecutionStatus, ResourceVisibility, SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
@@ -808,6 +809,73 @@ class GraphExecutionsPaginated(BaseModel):
     pagination: Pagination
 
 
+# A list carries a run's inputs only up to this size; the run itself has them all.
+MAX_LISTED_RUN_INPUT_BYTES = 16 * 1024
+
+
+class GraphExecutionListRow(BaseAgentGraphExecution):
+    """An ``AgentGraphExecution`` row without the inputs the run was started
+    with (``inputs``, ``credentialInputs``, ``nodesInputMasks``), for reads
+    of many runs at once."""
+
+    id: str
+    createdAt: datetime
+    updatedAt: Optional[datetime] = None
+    startedAt: Optional[datetime] = None
+    endedAt: Optional[datetime] = None
+    isDeleted: bool
+    executionStatus: AgentExecutionStatus
+    agentGraphId: str
+    agentGraphVersion: int
+    agentPresetId: Optional[str] = None
+    expertId: Optional[str] = None
+    triggerSource: Optional[str] = None
+    triggerRef: Optional[str] = None
+    scheduleId: Optional[str] = None
+    webhookId: Optional[str] = None
+    userId: str
+    stats: Optional[Json] = None
+    interestingness: Optional[float] = None
+    parentGraphExecutionId: Optional[str] = None
+    isShared: bool
+    shareToken: Optional[str] = None
+    sharedAt: Optional[datetime] = None
+    sharedVia: Optional[SharedVia] = None
+    organizationId: Optional[str] = None
+    teamId: Optional[str] = None
+    visibility: ResourceVisibility
+
+    def without_inputs(
+        self,
+        inputs: Any = None,
+        credential_inputs: Any = None,
+    ) -> AgentGraphExecution:
+        """The row as an ``AgentGraphExecution`` whose input columns are None
+        unless given."""
+        return AgentGraphExecution.model_construct(
+            **self.model_dump(),
+            inputs=inputs,
+            credentialInputs=credential_inputs,
+        )
+
+
+async def get_latest_executions_without_inputs(
+    user_id: str, graph_id: str, graph_version: int, limit: int
+) -> list[AgentGraphExecution]:
+    """The user's latest runs of one graph version, newest first, without
+    the inputs each was started with."""
+    rows = await GraphExecutionListRow.prisma().find_many(
+        where={
+            "userId": user_id,
+            "agentGraphId": graph_id,
+            "agentGraphVersion": graph_version,
+        },
+        order={"createdAt": "desc"},
+        take=limit,
+    )
+    return [row.without_inputs() for row in rows]
+
+
 def _execution_visibility_filters(
     user_id: str,
     organization_id: str,
@@ -837,12 +905,17 @@ async def get_graph_executions_paginated(
     created_time_gte: Optional[datetime] = None,
     created_time_lte: Optional[datetime] = None,
     organization_id: Optional[str] = None,
+    include_inputs: bool = False,
 ) -> GraphExecutionsPaginated:
     """Get paginated graph executions for a specific graph.
 
     With ``organization_id`` (from a membership-verified RequestContext),
     org/team visibility rules apply: own + org-home + member-team runs.
     Nested in ``AND`` so it can't collide with the ``statuses`` OR-clause.
+
+    The runs come without the inputs they were started with; with
+    ``include_inputs``, a run's inputs and credential inputs are added when
+    they are at most ``MAX_LISTED_RUN_INPUT_BYTES`` together.
     """
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
@@ -866,9 +939,9 @@ async def get_graph_executions_paginated(
         where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
     offset = (page - 1) * page_size
-    total_count, executions = await asyncio.gather(
+    total_count, rows = await asyncio.gather(
         AgentGraphExecution.prisma().count(where=where_filter),
-        AgentGraphExecution.prisma().find_many(
+        GraphExecutionListRow.prisma().find_many(
             where=where_filter,
             order={"createdAt": "desc"},
             take=page_size,
@@ -876,6 +949,8 @@ async def get_graph_executions_paginated(
         ),
     )
     total_pages = (total_count + page_size - 1) // page_size
+    inputs = await _small_run_inputs([row.id for row in rows]) if include_inputs else {}
+    executions = [row.without_inputs(*inputs.get(row.id, (None, None))) for row in rows]
 
     return GraphExecutionsPaginated(
         executions=[GraphExecutionMeta.from_db(execution) for execution in executions],
@@ -886,6 +961,25 @@ async def get_graph_executions_paginated(
             page_size=page_size,
         ),
     )
+
+
+async def _small_run_inputs(execution_ids: list[str]) -> dict[str, tuple[Any, Any]]:
+    """Each run's ``(inputs, credentialInputs)``, for the runs whose stored
+    inputs are at most ``MAX_LISTED_RUN_INPUT_BYTES`` together."""
+    if not execution_ids:
+        return {}
+    rows = await query_raw_with_schema(
+        """
+        SELECT id, inputs, "credentialInputs"
+        FROM {schema_prefix}"AgentGraphExecution"
+        WHERE id = ANY($1::text[])
+          AND octet_length(COALESCE(inputs::text, ''))
+            + octet_length(COALESCE("credentialInputs"::text, '')) <= $2
+        """,
+        execution_ids,
+        MAX_LISTED_RUN_INPUT_BYTES,
+    )
+    return {row["id"]: (row["inputs"], row["credentialInputs"]) for row in rows}
 
 
 async def get_graph_execution_meta(
