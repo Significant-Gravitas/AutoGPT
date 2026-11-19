@@ -7,77 +7,66 @@
 -- transaction, so the scan of existing rows holds no lock that blocks writes.
 -- teamId stays nullable: NULL is an org-home row, and deleting a team sets it.
 
--- CreateIndex
--- Declared in schema.prisma since the org tables arrived, never created by a
--- migration; IF NOT EXISTS skips any built out of band.
-CREATE INDEX IF NOT EXISTS "AgentGraph_organizationId_idx" ON "AgentGraph"("organizationId");
-CREATE INDEX IF NOT EXISTS "ChatSession_organizationId_idx" ON "ChatSession"("organizationId");
-CREATE INDEX IF NOT EXISTS "AgentPreset_organizationId_idx" ON "AgentPreset"("organizationId");
-CREATE INDEX IF NOT EXISTS "LibraryAgent_organizationId_idx" ON "LibraryAgent"("organizationId");
-CREATE INDEX IF NOT EXISTS "LibraryFolder_organizationId_idx" ON "LibraryFolder"("organizationId");
-CREATE INDEX IF NOT EXISTS "IntegrationWebhook_organizationId_idx" ON "IntegrationWebhook"("organizationId");
-CREATE INDEX IF NOT EXISTS "APIKey_organizationId_idx" ON "APIKey"("organizationId");
-CREATE INDEX IF NOT EXISTS "UserNotificationBatch_organizationId_idx" ON "UserNotificationBatch"("organizationId");
-CREATE INDEX IF NOT EXISTS "BuilderSearchHistory_organizationId_idx" ON "BuilderSearchHistory"("organizationId");
-CREATE INDEX IF NOT EXISTS "PendingHumanReview_organizationId_idx" ON "PendingHumanReview"("organizationId");
-CREATE INDEX IF NOT EXISTS "StoreListingVersion_organizationId_idx" ON "StoreListingVersion"("organizationId");
-CREATE INDEX IF NOT EXISTS "OAuthApplication_organizationId_idx" ON "OAuthApplication"("organizationId");
-CREATE INDEX IF NOT EXISTS "OrgCreditTransaction_teamId_idx" ON "OrgCreditTransaction"("teamId");
+-- The checks take an ACCESS EXCLUSIVE lock: fail rather than queue every query
+-- on a table behind a long transaction. Mark it rolled back and deploy again.
+SET LOCAL lock_timeout = '10s';
 
--- Tag rows the startup bootstrap has not reached with the owner's personal org.
+-- Tag rows the startup bootstrap has not reached with the owner's personal org
+-- and its default team; without a default team the row is an org-home row,
+-- as the bootstrap leaves it.
 UPDATE "AgentGraph" t
 SET "organizationId" = o."id", "teamId" = w."id"
 FROM "OrgMember" om
 JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" AND o."deletedAt" IS NULL
-JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
+LEFT JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
 WHERE t."userId" = om."userId" AND om."isOwner" AND t."organizationId" IS NULL;
 UPDATE "AgentGraphExecution" t
 SET "organizationId" = o."id", "teamId" = w."id"
 FROM "OrgMember" om
 JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" AND o."deletedAt" IS NULL
-JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
+LEFT JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
 WHERE t."userId" = om."userId" AND om."isOwner" AND t."organizationId" IS NULL;
 UPDATE "ChatSession" t
 SET "organizationId" = o."id", "teamId" = w."id"
 FROM "OrgMember" om
 JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" AND o."deletedAt" IS NULL
-JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
+LEFT JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
 WHERE t."userId" = om."userId" AND om."isOwner" AND t."organizationId" IS NULL;
 UPDATE "AgentPreset" t
 SET "organizationId" = o."id", "teamId" = w."id"
 FROM "OrgMember" om
 JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" AND o."deletedAt" IS NULL
-JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
+LEFT JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
 WHERE t."userId" = om."userId" AND om."isOwner" AND t."organizationId" IS NULL;
 UPDATE "LibraryAgent" t
 SET "organizationId" = o."id", "teamId" = w."id"
 FROM "OrgMember" om
 JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" AND o."deletedAt" IS NULL
-JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
+LEFT JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
 WHERE t."userId" = om."userId" AND om."isOwner" AND t."organizationId" IS NULL;
 UPDATE "LibraryFolder" t
 SET "organizationId" = o."id", "teamId" = w."id"
 FROM "OrgMember" om
 JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" AND o."deletedAt" IS NULL
-JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
+LEFT JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
 WHERE t."userId" = om."userId" AND om."isOwner" AND t."organizationId" IS NULL;
 UPDATE "IntegrationWebhook" t
 SET "organizationId" = o."id", "teamId" = w."id"
 FROM "OrgMember" om
 JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" AND o."deletedAt" IS NULL
-JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
+LEFT JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
 WHERE t."userId" = om."userId" AND om."isOwner" AND t."organizationId" IS NULL;
 UPDATE "APIKey" t
 SET "organizationId" = o."id", "teamId" = w."id"
 FROM "OrgMember" om
 JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" AND o."deletedAt" IS NULL
-JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
+LEFT JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
 WHERE t."userId" = om."userId" AND om."isOwner" AND t."organizationId" IS NULL;
 UPDATE "UserNotificationBatch" t
 SET "organizationId" = o."id", "teamId" = w."id"
 FROM "OrgMember" om
 JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" AND o."deletedAt" IS NULL
-JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
+LEFT JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault"
 WHERE t."userId" = om."userId" AND om."isOwner" AND t."organizationId" IS NULL;
 UPDATE "BuilderSearchHistory" t
 SET "organizationId" = o."id"
