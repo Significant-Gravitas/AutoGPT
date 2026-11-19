@@ -1949,7 +1949,7 @@ async def _get_folder_depths(user_id: str) -> dict[str, int]:
 def _folder_depths(parent_map: dict[str, str | None]) -> dict[str, int]:
     """Depth of each folder in an ID -> parent ID map (a missing parent is the top).
 
-    Iterative, so neither a long chain nor a cycle can exhaust the stack.
+    Walks each parent chain once, in a loop.
     """
     depths: dict[str, int] = {}
     for folder_id in parent_map:

@@ -118,13 +118,7 @@ async def test_tree_lists_folders_stored_deeper_than_the_cap_at_the_top(
 ):
     user_id = await _user()
     depth = db.MAX_FOLDER_DEPTH + 3
-    parent_id = None
-    for level in range(depth):
-        # Straight to the table: rows like these predate the cap.
-        row = await prisma.models.LibraryFolder.prisma().create(
-            data={"name": f"Level {level}", "userId": user_id, "parentId": parent_id}
-        )
-        parent_id = row.id
+    await _store_chain(user_id, depth)
 
     tree = await db.get_folder_tree(user_id)
 
@@ -134,6 +128,17 @@ async def test_tree_lists_folders_stored_deeper_than_the_cap_at_the_top(
     while node.children:
         levels, node = levels + 1, node.children[0]
     assert levels == db.MAX_FOLDER_DEPTH
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_folder_stored_deeper_than_the_cap_takes_no_new_child(
+    server: SpinTestServer,
+):
+    user_id = await _user()
+    deepest_id = await _store_chain(user_id, db.MAX_FOLDER_DEPTH + 3)
+
+    with pytest.raises(FolderValidationError):
+        await db.create_folder(user_id, "Deeper", parent_id=deepest_id)
 
 
 def test_folder_depths_survive_long_chains_and_cycles():
@@ -146,3 +151,15 @@ def test_folder_depths_survive_long_chains_and_cycles():
     # An orphan counts from the top; a cycle ends the walk instead of spinning.
     assert db._folder_depths({"orphan": "gone"}) == {"orphan": 1}
     assert set(db._folder_depths({"a": "b", "b": "a"})) == {"a", "b"}
+
+
+async def _store_chain(user_id: str, depth: int) -> str:
+    """Nest ``depth`` folders straight in the table, as rows from before the cap."""
+    parent_id: str | None = None
+    for level in range(depth):
+        row = await prisma.models.LibraryFolder.prisma().create(
+            data={"name": f"Level {level}", "userId": user_id, "parentId": parent_id}
+        )
+        parent_id = row.id
+    assert parent_id
+    return parent_id
