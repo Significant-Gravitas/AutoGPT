@@ -334,6 +334,26 @@ def test_a_refusal_cannot_forge_a_log_line(use_settings, caplog):
     assert "\\n2026-10-21 INFO forged" in caplog.text
 
 
+def test_a_refusal_is_an_error_once_per_interval(
+    use_settings, caplog, monkeypatch: pytest.MonkeyPatch
+):
+    clock = [1000.0]
+    monkeypatch.setattr(service_auth, "monotonic", lambda: clock[0])
+    client = TestClient(_app(use_settings, _settings()))
+
+    def refusal_levels() -> list[str]:
+        caplog.clear()
+        _call_add(client)
+        _call_add(client)
+        return [r.levelname for r in caplog.records if "Refused" in r.getMessage()]
+
+    assert refusal_levels() == ["ERROR", "WARNING"]
+    clock[0] += service_auth.REFUSAL_ERROR_INTERVAL - 1
+    assert refusal_levels() == ["WARNING", "WARNING"]
+    clock[0] += 1
+    assert refusal_levels() == ["ERROR", "WARNING"]
+
+
 def test_health_checks_stay_open(use_settings):
     client = TestClient(_app(use_settings, _settings()))
     for path in ("/health_check", "/health_check_async"):
