@@ -18,6 +18,9 @@ to do it:
   service with Docker Compose. Use it to develop AutoGPT, or to run each
   service in its own container.
 
+To use AutoGPT without hosting it yourself, see the
+[hosted plans and pricing](https://agpt.co/pricing/).
+
 {% hint style="warning" %}
 **DO NOT FOLLOW ANY OUTSIDE TUTORIALS AS THEY WILL LIKELY BE OUT OF DATE**
 {% endhint %}
