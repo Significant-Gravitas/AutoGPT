@@ -99,6 +99,7 @@ from backend.util.json import dumps as json_dumps
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import ConversionError, coerce_inputs_to_schema
+from backend.util.url_redaction import mask_credential
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
@@ -1691,7 +1692,7 @@ async def _add_graph_execution(
     if schedule_id and webhook_id:
         raise ValueError(
             "A run is started by a schedule or a webhook, not both: "
-            f"schedule #{schedule_id}, webhook #{webhook_id}"
+            f"schedule #{schedule_id}, webhook #{mask_credential(webhook_id)}"
         )
 
     if admin_requeue and not graph_exec_id:

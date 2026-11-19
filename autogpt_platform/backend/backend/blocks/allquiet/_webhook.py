@@ -26,6 +26,7 @@ from strenum import StrEnum
 from backend.api.features.library.model import preset_trigger_configs
 from backend.data.integrations import Webhook, WebhookWithRelations
 from backend.sdk import Credentials, ManualWebhookManagerBase
+from backend.util.url_redaction import mask_credential
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +202,7 @@ class AllQuietWebhooksManager(ManualWebhookManagerBase):
             logger.warning(
                 "Webhook %s has %d distinct signing_secret values across "
                 "attached targets; refusing the delivery.",
-                webhook.id,
+                mask_credential(webhook.id),
                 distinct_count,
             )
             raise HTTPException(

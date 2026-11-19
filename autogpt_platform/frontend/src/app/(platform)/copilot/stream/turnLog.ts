@@ -352,6 +352,7 @@ export function isMarker(row: LogRow): boolean {
 
 /** A row as `GET /sessions/{id}` returns it. */
 export interface PersistedRow {
+  id?: string | null;
   role: string;
   content?: string | null;
   tool_call_id?: string | null;
