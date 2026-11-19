@@ -784,6 +784,8 @@ class TestLegacyRequests:
             (20241105, LEGACY_PROTOCOL_VERSION),
             ("２０２４-１１-０５", LEGACY_PROTOCOL_VERSION),
             (None, LEGACY_PROTOCOL_VERSION),
+            ("", LEGACY_PROTOCOL_VERSION),
+            (["2024-11-05"], LEGACY_PROTOCOL_VERSION),
         ],
     )
     async def test_only_a_dated_protocol_version_is_kept(self, reported, kept):
@@ -803,8 +805,9 @@ class TestLegacyRequests:
             }
         )
         client = _client(transport)
-        await client.initialize()
+        result = await client.initialize()
         assert client.protocol_version == kept
+        assert result["protocolVersion"] == kept
         cached = era_cache.get(SERVER_URL)
         assert cached is not None and cached.protocol_version == kept
 

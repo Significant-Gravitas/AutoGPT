@@ -383,6 +383,7 @@ class MCPClient:
             if isinstance(version, str) and _DATED_VERSION_RE.fullmatch(version)
             else LEGACY_PROTOCOL_VERSION
         )
+        result["protocolVersion"] = self.protocol_version
         self.server_info = result.get("serverInfo") or {}
         self.server_capabilities = result.get("capabilities") or {}
         return result
