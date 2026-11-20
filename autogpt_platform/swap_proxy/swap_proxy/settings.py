@@ -31,6 +31,11 @@ class Settings:
             "SWAP_PROXY_BACKEND_URL", "http://localhost:8012"
         )
     )
+    # The key the backend's services require on internal calls: the same
+    # value as the backend's own INTERNAL_API_KEY.
+    internal_api_key: str = field(
+        default_factory=lambda: os.getenv("INTERNAL_API_KEY", "")
+    )
     # Where the CA the proxy signs with is mounted (``mitmproxy-ca.pem``: key
     # and certificate).  The boxes' image trusts its certificate, so it is one
     # CA for every replica and every restart: provisioned, never generated.
@@ -42,6 +47,20 @@ class Settings:
     # Private hosts or CIDRs boxes may reach anyway.  Empty: default deny.
     egress_allow: list[str] = field(
         default_factory=lambda: _list("SWAP_PROXY_EGRESS_ALLOW")
+    )
+    # Credentialed requests (ones that get a value swapped in) per box and per
+    # user in each window; 0 turns a limit off.  Past either, the request is
+    # not sent and the box is told why (``quota.py``).
+    quota_per_box: int = field(
+        default_factory=lambda: int(os.getenv("SWAP_PROXY_QUOTA_PER_BOX", "1000"))
+    )
+    quota_per_user: int = field(
+        default_factory=lambda: int(os.getenv("SWAP_PROXY_QUOTA_PER_USER", "3000"))
+    )
+    quota_window_seconds: int = field(
+        default_factory=lambda: int(
+            os.getenv("SWAP_PROXY_QUOTA_WINDOW_SECONDS", "3600")
+        )
     )
     redis_host: str = field(
         default_factory=lambda: os.getenv("REDIS_CLUSTER_HOST")

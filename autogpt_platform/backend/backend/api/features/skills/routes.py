@@ -4,6 +4,7 @@ from typing import Annotated
 from autogpt_libs.auth import get_user_id, requires_user
 from fastapi import (
     APIRouter,
+    Depends,
     HTTPException,
     Path,
     Query,
@@ -27,6 +28,7 @@ from backend.api.features.skills.model import (
     UploadCopilotSkillRequest,
 )
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     ParsedSkill,
@@ -38,12 +40,14 @@ from backend.copilot.tools.skills import (
     SkillWriteLockError,
     delete_user_skill,
     get_default_skill_with_body,
+    invocation_frontmatter,
     list_user_skill_files,
     list_user_skills,
     parse_skill_markdown,
     read_user_skill_package,
     read_user_skill_with_body,
     skill_folder,
+    skill_markdown_error,
     store_user_skill,
 )
 
@@ -91,12 +95,15 @@ async def list_copilot_skills(
             triggers=list(s.triggers),
             origin=s.origin,
             update=s.update,
+            argument_hint=s.extra.get("argument-hint"),
+            user_invocable=s.extra.get("user-invocable") is not False,
         )
         for s in skills
     ]
 
 
 @router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="",
     summary="Upload a copilot skill from a SKILL.md file",
     operation_id="uploadCopilotSkill",
@@ -122,24 +129,24 @@ async def upload_copilot_skill(
     409, and an existing slug is overwritten (upsert).
     """
     await _require_skill_owner(user_id, expert_id)
-    parsed = parse_skill_markdown(body.content)
-    if parsed is None:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "File is not a valid SKILL.md — expected YAML frontmatter with "
-                "'name' and 'description' followed by a markdown body."
-            ),
-        )
+    parsed = await _parse_uploaded_skill(
+        body.content,
+        "File is not a valid SKILL.md — expected YAML frontmatter with "
+        "'name' and 'description' followed by a markdown body.",
+    )
     stored = await _store_uploaded_skill(user_id, parsed, expert_id=expert_id)
+    invocation = invocation_frontmatter(parsed.extra)
     return CopilotSkillInfo(
         name=stored.name,
         description=stored.description,
         triggers=list(stored.triggers),
+        argument_hint=invocation.get("argument-hint"),
+        user_invocable=invocation.get("user-invocable") is not False,
     )
 
 
 @router.post(
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/package",
     summary="Upload a copilot skill as a zipped package",
     operation_id="uploadCopilotSkillPackage",
@@ -170,24 +177,32 @@ async def upload_copilot_skill_package(
         package = await run_in_threadpool(package_from_zip, data)
     except SkillPackageError as exc:
         raise HTTPException(status_code=413 if exc.over_limit else 400, detail=str(exc))
-    parsed = parse_skill_markdown(package.skill_md)
-    if parsed is None:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "The archive's SKILL.md is not valid — expected YAML "
-                "frontmatter with 'name' and 'description' followed by a "
-                "markdown body."
-            ),
-        )
+    parsed = await _parse_uploaded_skill(
+        package.skill_md,
+        "The archive's SKILL.md is not valid — expected YAML frontmatter "
+        "with 'name' and 'description' followed by a markdown body.",
+    )
     stored = await _store_uploaded_skill(
         user_id, parsed, expert_id=expert_id, files=package.files
     )
+    invocation = invocation_frontmatter(parsed.extra)
     return CopilotSkillInfo(
         name=stored.name,
         description=stored.description,
         triggers=list(stored.triggers),
+        argument_hint=invocation.get("argument-hint"),
+        user_invocable=invocation.get("user-invocable") is not False,
     )
+
+
+async def _parse_uploaded_skill(text: str, invalid_detail: str) -> ParsedSkill:
+    """Parse an uploaded SKILL.md on a worker thread, or answer 400 naming the
+    frontmatter limit it broke, else ``invalid_detail``."""
+    parsed = await run_in_threadpool(parse_skill_markdown, text)
+    if parsed is not None:
+        return parsed
+    detail = await run_in_threadpool(skill_markdown_error, text)
+    raise HTTPException(status_code=400, detail=detail or invalid_detail)
 
 
 async def _store_uploaded_skill(

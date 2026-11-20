@@ -5,12 +5,19 @@ import { useTabIntroCard } from "@/app/(platform)/components/TabIntroCard/useTab
 import { Store01Icon } from "@hugeicons/core-free-icons";
 import { AGENTS_SECTION_ID, FEATURED_SECTION_ID } from "./helpers";
 
+interface Props {
+  canShow?: boolean;
+}
+
 // First visit to the Marketplace tab. The CTA lands the user on the
 // hand-picked carousel rather than the top of a long page, falling back to the
 // full listing on the days nothing is featured — the card promises movement,
 // so it has to produce some.
-export function MarketplaceTabIntro() {
-  const { isOpen, dismiss, takeAction } = useTabIntroCard("marketplace");
+export function MarketplaceTabIntro({ canShow = true }: Props) {
+  const { isOpen, dismiss, takeAction } = useTabIntroCard(
+    "marketplace",
+    canShow,
+  );
 
   function browseFeatured() {
     takeAction("browse_featured");

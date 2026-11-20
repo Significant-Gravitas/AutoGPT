@@ -7,6 +7,7 @@
 {{ ui.page_open() }}
 {{ ui.masthead() }}
 {{ ui.hero_otto() }}
+{% if kind == 'payment_failed' %}{{ ui.strip_amber('NEEDS YOU · PAYMENT DECLINED') }}{% elif kind == 'final_notice' %}{{ ui.strip_amber('NEEDS YOU · FINAL PAYMENT NOTICE') }}{% endif %}
 {{ ui.sheet_open() }}
 {% if kind == 'welcome' %}
 {% call ui.eyebrow(tone='confirmed') %}PLAN ACTIVE · {{ plan.label | upper }}{% endcall %}
@@ -28,22 +29,20 @@
 {{ ui.signature('Toran Bruce Richards', 'Founder · AutoGPT', 'contact@agpt.co') }}
 {{ ui.close_row('You received this because your subscription is active.', 'Billing settings', urls.billing) }}
 {% elif kind == 'payment_failed' %}
-{{ ui.strip_amber('NEEDS YOU · PAYMENT DECLINED') }}
 {% call ui.eyebrow(tone='needs_you') %}YOUR {{ plan.name | upper }} PLAN{% endcall %}
 {% call ui.headline() %}Your payment didn't go through{% endcall %}
 {% call ui.para() %}Hi {{ user_name }}, the renewal payment for your {{ plan.name }} plan was declined. {{ preheader }}{% endcall %}
-{{ ui.kvpanel([('Amount', amount_display, true), ('Card', card.brand ~ ' ···· ' ~ card.last4, true), ('Next retry', next_retry_label ~ ' · automatic', true)]) }}
-{% call ui.para() %}Your plan and scheduled workflows keep running while we retry. If your card details have changed, update them before the next attempt.{% endcall %}
-{{ ui.cta('Update payment method', urls.billing, "Already updated your card? We'll use the new one on the next retry.") }}
+{{ ui.kvpanel([('Amount', amount_display, true), ('Card', card.brand ~ ' ···· ' ~ card.last4, true), ('Next retry', next_retry_label ~ ' · automatic' if next_retry_label else 'Check billing settings', true)]) }}
+{% call ui.para() %}Paid features and scheduled runs are paused until a payment goes through. {% if next_retry_label %}We'll retry your card automatically on {{ next_retry_label }}. If your card details have changed, update them before then and the retry will use the new card.{% else %}Open billing settings to check the invoice and update your payment method.{% endif %}{% endcall %}
+{{ ui.cta('Update payment method', urls.billing, "Already updated your card? We'll use the new one on the next retry." if next_retry_label else none) }}
 {{ ui.close_row('You received this because your renewal payment was declined.', 'Billing settings', urls.billing) }}
 {% elif kind == 'final_notice' %}
-{{ ui.strip_amber('NEEDS YOU · FINAL PAYMENT NOTICE') }}
-{% call ui.eyebrow(tone='needs_you') %}PLAN PAUSES {{ pauses_label | upper }}{% endcall %}
-{% call ui.headline() %}Keep your scheduled work running{% endcall %}
-{% call ui.para() %}Hi {{ user_name }}, we couldn't collect payment for your {{ plan.name }} plan after several attempts. {{ preheader }}{% endcall %}
-{{ ui.kvpanel([('Amount due', amount_display, true), ('Plan pauses on', pauses_label, true), ('What pauses', 'Scheduled runs and ' ~ plan.name ~ ' features', false)]) }}
-{% call ui.note_card('If the plan pauses', tone='amber') %}Scheduled workflows stop running until payment succeeds. Your workflows and their data stay saved in your account.{% endcall %}
-{{ ui.cta('Update payment method', urls.billing) }}
+{% call ui.eyebrow(tone='needs_you') %}PAYMENT OVERDUE{% endcall %}
+{% call ui.headline() %}Your plan is on hold{% endcall %}
+{% call ui.para() %}Hi {{ user_name }}, we couldn't collect payment for your {{ plan.name }} plan and automatic collection has stopped. {{ preheader }}{% endcall %}
+{{ ui.kvpanel([('Amount due', amount_display, true)] + ([('Last attempt', last_attempt_label, true)] if last_attempt_label else []) + [('What is paused', 'Scheduled runs and ' ~ plan.name ~ ' features', false)]) }}
+{% call ui.note_card('Until the invoice is paid', tone='amber') %}Your plan stays on hold. Your workflows and their data stay saved in your account, and everything resumes once a payment goes through.{% endcall %}
+{{ ui.cta('Pay now' if payment_url else 'Review invoice', payment_url or urls.billing) }}
 {{ ui.close_row('You received this because the payment retries failed.', 'Billing settings', urls.billing) }}
 {% elif kind == 'cancel_confirmed' %}
 {% call ui.eyebrow() %}YOUR PLAN · ENDS {{ access_until_label | upper }}{% endcall %}

@@ -1,7 +1,8 @@
 "use client";
 
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import type { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
+import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import type { GraphExecutionWithNodes } from "@/app/api/__generated__/models/graphExecutionWithNodes";
 import { createIconComponent } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
@@ -19,10 +20,12 @@ const WarningIcon = createIconComponent(Alert02Icon);
 const FailedIcon = createIconComponent(CancelCircleIcon);
 
 const ERROR_PREVIEW_LIMIT = 300;
-const ERROR_CLASS_NAME = "whitespace-pre-wrap break-words !text-zinc-800";
+const ERROR_CLASS_NAME =
+  // oxlint-disable-next-line design-system/no-restyle -- ShowMoreText has no tone prop yet
+  "whitespace-pre-wrap break-words !text-foreground-emphasis";
 
 interface Props {
-  run: GetV1GetExecutionDetails200;
+  run: GraphExecution | GraphExecutionWithNodes;
 }
 
 export function RunFailures({ run }: Props) {
@@ -45,42 +48,44 @@ export function RunFailures({ run }: Props) {
             ? describeFailedSteps(failedStepCount)
             : "This run failed"}
         </AlertTitle>
-        <AlertDescription className="flex flex-col gap-3">
-          {run.status === AgentExecutionStatus.COMPLETED ? (
-            <Text variant="small" className="!text-zinc-600">
-              The run still finished, so its output may be incomplete.
-            </Text>
-          ) : null}
-          {runError ? (
-            <ShowMoreText
-              variant="small"
-              previewLimit={ERROR_PREVIEW_LIMIT}
-              className={ERROR_CLASS_NAME}
-            >
-              {runError}
-            </ShowMoreText>
-          ) : steps.length > 0 ? (
-            <ul className="flex flex-col gap-3">
-              {steps.map((step) => (
-                <li key={step.id} className="flex flex-col gap-1">
-                  {step.name ? (
-                    <Text variant="body-medium">{step.name}</Text>
-                  ) : isLoadingNames ? (
-                    <Skeleton className="h-5 w-32" />
-                  ) : (
-                    <Text variant="body-medium">Unknown step</Text>
-                  )}
-                  <ShowMoreText
-                    variant="small"
-                    previewLimit={ERROR_PREVIEW_LIMIT}
-                    className={ERROR_CLASS_NAME}
-                  >
-                    {step.error}
-                  </ShowMoreText>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+        <AlertDescription>
+          <div className="flex flex-col gap-3">
+            {run.status === AgentExecutionStatus.COMPLETED ? (
+              <Text variant="small" tone="secondary">
+                The run still finished, so its output may be incomplete.
+              </Text>
+            ) : null}
+            {runError ? (
+              <ShowMoreText
+                variant="small"
+                previewLimit={ERROR_PREVIEW_LIMIT}
+                className={ERROR_CLASS_NAME}
+              >
+                {runError}
+              </ShowMoreText>
+            ) : steps.length > 0 ? (
+              <ul className="flex flex-col gap-3">
+                {steps.map((step) => (
+                  <li key={step.id} className="flex flex-col gap-1">
+                    {step.name ? (
+                      <Text variant="body-medium">{step.name}</Text>
+                    ) : isLoadingNames ? (
+                      <Skeleton className="h-5 w-32" />
+                    ) : (
+                      <Text variant="body-medium">Unknown step</Text>
+                    )}
+                    <ShowMoreText
+                      variant="small"
+                      previewLimit={ERROR_PREVIEW_LIMIT}
+                      className={ERROR_CLASS_NAME}
+                    >
+                      {step.error}
+                    </ShowMoreText>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         </AlertDescription>
       </Alert>
     </div>

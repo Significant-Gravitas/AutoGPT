@@ -2,6 +2,43 @@
 
 This guide provides context for coding agents when updating the **autogpt_platform** folder.
 
+## Linear tickets (core team)
+
+For the AutoGPT core team, whose agents reach our Linear workspace through the Linear MCP server (`https://mcp.linear.app/mcp`). Outside contributors: skip this section and link the GitHub issue your PR addresses instead.
+
+### Before you start any work
+
+Run these steps before any piece of work, even when your user asks you to start right away. If the Linear MCP is not connected, say so and ask your user for the ticket ID.
+
+1. **Find the ticket.** Search Linear for the work (title keywords, error text, PR number) and check GitHub for open PRs or branches on the same thing. When you continue work on a PR that already links a ticket, that is the ticket.
+2. **Assigned to someone else:** stop. Tell your user it is already being worked on, by whom, and link the ticket. Continue only if your user says so.
+3. **No assignee:** assign it to your user (`me` in the Linear MCP), then start.
+4. **No ticket:** create one in the right project (see below), assign it to your user, then start.
+5. **Get context before writing code:** the ticket and its project, the linked spec, related PRs on GitHub, and the project's Discord thread if you can read Discord. If you can't, ask your user for the thread.
+6. **Net-new features need an explicit ask.** We are polishing what we already ship. If the work adds something new and nothing on the ticket shows John or Toran asked for it, flag it to your user before building. Bugs, fixes and polish need no ask.
+
+### Creating a ticket
+
+- **Project**, first match wins:
+  1. An active feature or area project the work clearly belongs to, in the current quarter initiative (`Quarter N - YYYY`).
+  2. A project inside an `Exploration: ...` initiative, when the work is part of that exploration.
+  3. `<Month> <YYYY> Updates` for bugs, fixes and small polish on the live app.
+  4. `Tech Debt & Improvements (QN YYYY)` for refactors, cleanup, tests, dev experience and infra.
+  5. `Feature Suggestions (QN YYYY)` for ideas and requests nobody has committed to.
+  6. Nothing fits: leave it in Triage with a comment saying where you think it goes.
+- **Team:** Internal (`SECRT`). Use AutoGPT Open Source (`OPEN`) only for work the open source community should see.
+- **Title:** verb first, specific, under 80 characters. **Description:** what happens, what should happen, the done condition and links. End it with `Filed by <agent> for <person>`.
+- **Labels:** one of Bug, Feature or Improvement, plus an Area label when one applies (Data & Tracking covers events, dashboards, pipelines, attribution, consent and privacy).
+- Create at most 5 top-level tickets in one pass. Put the rest under a parent ticket as sub-issues.
+- Do not create, rename, close or move initiatives or projects, and do not move a ticket someone else filed, unless your user asked for that exact change.
+
+### Branches and pull requests
+
+- Branch from the ticket: use its `gitBranchName` from the Linear MCP, for example `name/secrt-123-short-title`.
+- Put `Resolves SECRT-123` in the PR description, or `Part of SECRT-123` when the PR does not finish the ticket. Linear links the PR and closes the ticket when it merges.
+
+The full system (projects, quarters, areas) lives in the team's Notion page "Linear System: how we organize initiatives, projects, tickets and PRs": https://app.notion.com/p/3f400ef5bece8178b5d3c7efabeed911
+
 ## Directory overview
 
 - `autogpt_platform/backend` – FastAPI based backend service.
@@ -40,6 +77,7 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 5. **Testing**: Integration tests (Vitest + RTL + MSW) are the default (~90%, page-level). Playwright for E2E critical flows. Storybook for design system components. See `autogpt_platform/frontend/TESTING.md`
 6. **Code conventions**: Function declarations (not arrow functions) for components/handlers
 7. **Keyboard handling**: Use `isKey(e, "Enter")` (or `isKey(e, "Enter", " ")`) from `@/lib/keyboard` instead of comparing `e.key`. It returns false while an IME is composing (Japanese, Chinese, Korean input), when Enter/Space/arrows belong to the input method, not the app. The `Input` atom drops composing keydowns before calling `onKeyDown` as a safety net; every handler on a raw `<input>`/`<textarea>`, a container, or `document` must use `isKey` itself. That atom-level guard is deliberately unconditional, so a modifier chord wired through `<Input onKeyDown>` is dropped mid-composition too — handle chords outside the atom. For focus traps and other containment handlers, which must keep holding a key even while composing, use `isKeyIgnoringComposition`. ESLint (`no-restricted-syntax`) flags direct `.key` comparisons and switches against the IME key names only; `// eslint-disable-next-line no-restricted-syntax` is the escape hatch for a domain object that merely has a `.key` field (e.g. `column.key === "Delete"`). Modifier chords like Cmd+K, `.key.toLowerCase()` and `[...].includes(e.key)` are not checked and are out of scope, since an IME never owns them. Passing `e.key` on as a function argument (e.g. into a roving-focus helper) is also invisible to the rule — guard those handlers with `isComposingEvent(e)` at the top.
+8. **Text field values**: a controlled `<input>`/`<textarea>` must show exactly what was typed, in the same render as the keystroke. If React writes any other value back (the old one, because the new one arrives a render later through a `useEffect`, a context `register` or a store; a reformatted one, such as pretty-printed JSON; or a rebuilt one, after an edit that didn't parse was dropped), the caret jumps to the end and every IME composition is cancelled (Japanese `nihongo` comes out as `nいhおnngお`). Lint can't see this, so: keep the user's text in state the field reads directly, send it up from the change handler, and replace it from outside only when the stored value really differs (`isJsonTextFor` in `@/lib/json-text` does that check for JSON). Test any field that transforms or round-trips its value with `expectTypingKept` from `@/tests/integrations/typing`.
 
 - Component props should be `interface Props { ... }` (not exported) unless the interface needs to be used outside the component
 - Separate render logic from business logic (component.tsx + useComponent.ts + helpers.ts)
@@ -78,6 +116,9 @@ Use conventional commit messages for all commits (e.g. `feat(backend): add API`)
 Types: - feat - fix - refactor - ci - dx (developer experience)
 Scopes: - platform - platform/library - platform/marketplace - backend - backend/executor - frontend - frontend/library - frontend/marketplace - blocks
 
+For a change that is complex always add an e2e test that tests the principle input and output and never the inner logic. 
+For example: if we add a agent billing per turn of a session we should have a test that is 3 turns each at 1.2 cents and the final is 3.6 cents actually billed
+
 ## Commit attribution
 
 For every commit you create in this repository, ensure the commit message includes a `Co-authored-by:` trailer identifying the large language model and agent platform:
@@ -103,4 +144,4 @@ Co-authored-by: MODEL NAME/VERSION (AGENT PLATFORM) <COAUTHOR EMAIL>
 - If adding protected frontend routes, update `autogpt_platform/frontend/src/middleware.ts`
   (matcher config) and `autogpt_platform/frontend/src/lib/auth/middleware.ts`
   (better-auth protection logic).
-- Use the linear ticket branch structure if given codex/open-1668-resume-dropped-runs
+- Core team: branch from the Linear ticket and put `Resolves SECRT-123` in the description (see **Linear tickets (core team)** above).

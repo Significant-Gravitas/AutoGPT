@@ -37,7 +37,7 @@ export function useComposerBudget({
     isPlatformChat &&
     getResetWait(budget) !== null;
   const scheduled = useScheduledSend({ sessionId, onSendNow: onSend, inputId });
-  useHandedOffSend(sessionId, scheduled.scheduleQuietly);
+  useHandedOffSend(sessionId, scheduled);
 
   // A new chat has no session to set the send on: create it, then hand the
   // message to its composer, which sets the send once the page is on it.

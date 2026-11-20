@@ -37,6 +37,7 @@ export function SwapFade({
     <AnimatePresence mode={mode} initial={false}>
       <motion.div
         key={swapKey}
+        data-slot="swap-fade"
         initial={states.initial}
         animate={states.animate}
         exit={states.exit}

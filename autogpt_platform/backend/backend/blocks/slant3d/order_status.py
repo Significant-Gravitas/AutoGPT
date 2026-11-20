@@ -98,6 +98,7 @@ class Slant3DTrackingBlock(Slant3DBlockBase):
                     "data": {"order": {"status": "PAID", "fulfillment": None}}
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

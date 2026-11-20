@@ -15,6 +15,7 @@ from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.capabilities.ranking import ConnectionState
 from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.capabilities.sources import expert_entries
+from backend.copilot.gate import ALLOW
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.model import ChatSessionMetadata
@@ -25,6 +26,7 @@ from backend.copilot.tools import (
     origin_disabled_tools,
     tool_names_in_groups,
 )
+from backend.util.testing import Rendezvous
 
 from ._test_data import make_session
 from .base import BaseTool
@@ -88,7 +90,6 @@ def team():
     db.with_bundled_skills = AsyncMock(side_effect=lambda templates, _user: templates)
     _hireable_roster.cache_clear()
     with (
-        patch(f"{_SR}.is_feature_enabled", AsyncMock(return_value=True)),
         patch(f"{_SR}.experts_db", MagicMock(return_value=db)),
         patch(f"{_SR}.is_skills_feature_enabled", AsyncMock(return_value=False)),
         patch(
@@ -154,7 +155,12 @@ async def test_describe_expert_asks_only_for_what_the_id_does_not_carry(team):
 
     assert isinstance(result, CapabilityDetailsResponse)
     assert "calls hire_expert" in result.message
-    assert set(result.parameters["properties"]) == {"name"}
+    # The task a hire is for is not carried by the id either (SECRT-3138).
+    assert set(result.parameters["properties"]) == {
+        "name",
+        "handoff_title",
+        "handoff_task",
+    }
     assert result.parameters["required"] == []
 
 
@@ -200,8 +206,11 @@ async def test_an_expert_ids_validate_only_answer_is_not_held_by_the_judge(team)
     judge = AsyncMock(return_value=ContentVerdict(held=False))
     with (
         patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch(
+            "backend.copilot.gate.reads.get_flag_variant", AsyncMock(return_value=True)
+        ),
         patch.object(review_store, "find_review", AsyncMock(return_value=None)),
-        patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, False))),
+        patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, ALLOW))),
         patch("backend.copilot.gate.reads.judge_content", judge),
     ):
         result = await RunCapabilityTool().execute(
@@ -231,6 +240,16 @@ def test_the_roster_shows_exactly_where_the_engines_let_hire_expert_run(
     assert may_hire(session) == ("hire_expert" not in hidden)
     # Teammates show whenever the flag is on, as delegate_to_expert does.
     assert "delegate_to_expert" not in hidden
+
+
+async def test_the_team_and_the_roster_are_read_side_by_side(team):
+    meet = Rendezvous(2)
+    team.list_experts.side_effect = meet.returning([HIRED_VERA])
+    team.list_templates.side_effect = meet.returning([JULES, VERA])
+
+    entries = await session_expert_entries(USER, make_session(USER))
+
+    assert {e.id for e in entries} == {"expert:tpl-jules", "teammate:exp-vera"}
 
 
 async def test_an_expert_session_sees_its_teammates_and_no_roster(team):

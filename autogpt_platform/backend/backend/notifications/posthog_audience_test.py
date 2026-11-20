@@ -75,14 +75,14 @@ def _person(*updates: PersonUpdate) -> dict[str, str]:
         (
             "sam@acme.io",
             ["credential"],
-            {"email_type": "business", "signin_method": "email"},
+            {"email_type": "business", "signin_method": "email", "is_internal": False},
         ),
         (
             "sam@gmail.com",
             ["credential", "google"],
-            {"email_type": "personal", "signin_method": "google"},
+            {"email_type": "personal", "signin_method": "google", "is_internal": False},
         ),
-        ("sam@uni.edu", [], {"email_type": "education"}),
+        ("sam@uni.edu", [], {"email_type": "education", "is_internal": False}),
     ],
 )
 def test_an_account_gets_its_email_type_and_sign_in_method(email, providers, expected):
@@ -104,6 +104,43 @@ def test_a_new_account_is_sent_from_its_signup_method(
     person = kwargs["properties"]["$set"]
     assert person["email_type"] == "business"
     assert person.get("signin_method") == expected
+
+
+# ── our own team ─────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "email, role, expected",
+    [
+        ("sam@agpt.co", None, True),
+        ("Sam@AGPT.CO ", "authenticated", True),
+        ("sam@acme.io", "admin", True),
+        ("sam@acme.io", "authenticated", False),
+        ("sam@notagpt.co", None, False),
+        ("sam@agpt.co.evil.io", None, False),
+    ],
+)
+def test_an_admin_or_a_company_email_is_internal(email, role, expected):
+    assert posthog_audience.is_internal(email, role) is expected
+    update = posthog_audience.account_update(email, [], role)
+    assert update.to_set["is_internal"] is expected
+
+
+def test_a_new_admin_account_is_sent_as_internal(capture: Mock):
+    posthog_audience.set_account_properties("user-1", "sam@acme.io", "email", "admin")
+    assert capture.call_args.kwargs["properties"]["$set"]["is_internal"] is True
+
+
+def test_an_internal_sign_in_sets_is_internal_again(capture: Mock):
+    posthog_audience.mark_internal_on_sign_in("user-1", "sam@acme.io", "admin")
+    kwargs = capture.call_args.kwargs
+    assert kwargs["distinct_id"] == "user-1"
+    assert kwargs["properties"]["$set"] == {"is_internal": True}
+
+
+def test_anyone_else_signing_in_sends_nothing(capture: Mock):
+    posthog_audience.mark_internal_on_sign_in("user-1", "sam@acme.io", "authenticated")
+    capture.assert_not_called()
 
 
 # ── checkout openers ─────────────────────────────────────────────────────────

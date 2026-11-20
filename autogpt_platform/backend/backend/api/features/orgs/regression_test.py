@@ -9,12 +9,15 @@ Tests mock at the Prisma model boundary (``ModelName.prisma()``) so the
 real Python logic is exercised while no database connection is needed.
 """
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException
+
+from backend.api.features.store.db import create_store_submission
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -1084,7 +1087,9 @@ class TestRegressionLibraryAgents:
             result = await fork_library_agent(LIBRARY_AGENT_ID, USER_ID)
 
         # fork_graph must be called with the caller's user_id
-        mock_fork.assert_called_once_with(GRAPH_ID, GRAPH_VERSION, USER_ID)
+        mock_fork.assert_called_once_with(
+            GRAPH_ID, GRAPH_VERSION, USER_ID, organization_id=None, team_id=None
+        )
         # create_library_agent must use the caller's user_id
         assert mock_create_lib.call_args.args[1] == USER_ID
         assert result.id == "lib-forked"
@@ -1118,6 +1123,14 @@ STORE_LISTING_VERSION_ID = "slv-6666"
 SLUG = "test-agent-slug"
 
 
+@pytest.fixture
+def empty_store_listing_transaction(mocker):
+    transaction = mocker.patch("backend.api.features.store.db.transaction")
+    transaction.return_value.__aenter__.return_value = MagicMock(
+        query_raw=AsyncMock(return_value=[])
+    )
+
+
 class TestRegressionStore:
     """Verify store operations are userId-isolated."""
 
@@ -1149,10 +1162,11 @@ class TestRegressionStore:
             "backend.api.features.store.db.prisma.models.StoreListingVersion.prisma",
             return_value=self.mock_slv_actions,
         )
-        self.mock_listing_actions = AsyncMock()
+        # A submission checks the role where the workflow lives, which reads
+        # membership rows.
         mocker.patch(
-            "backend.api.features.store.db.prisma.models.StoreListing.prisma",
-            return_value=self.mock_listing_actions,
+            "backend.api.features.store.db.require_role_where_resource_lives",
+            AsyncMock(),
         )
 
     @pytest.mark.asyncio
@@ -1219,20 +1233,17 @@ class TestRegressionStore:
         assert len(result.submissions) == 0
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures("empty_store_listing_transaction")
     async def test_regression_create_submission_sets_owning_user(self):
         """create_store_submission() must verify graph ownership via
         userId and set OwningUser on the StoreListing to the caller."""
+
         # Graph lookup must filter by userId
         mock_graph = MagicMock()
         mock_graph.id = GRAPH_ID
         mock_graph.User = MagicMock()
         mock_graph.User.Profile = MagicMock()
         self.mock_agent_graph_actions.find_first = AsyncMock(return_value=mock_graph)
-
-        # Transaction mocks
-        mock_listing = MagicMock()
-        mock_listing.Versions = []
-        self.mock_listing_actions.find_unique = AsyncMock(return_value=None)
 
         mock_listing_obj = MagicMock()
         mock_listing_obj.id = "listing-1"
@@ -1267,31 +1278,14 @@ class TestRegressionStore:
         mock_submission.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
         self.mock_slv_actions.create = AsyncMock(return_value=mock_submission)
 
-        with patch("backend.api.features.store.db.transaction") as mock_tx_ctx:
-            mock_tx = MagicMock()
-            mock_tx_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_tx)
-            mock_tx_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-            # Re-patch with tx-aware returns
-            with (
-                patch(
-                    "backend.api.features.store.db.prisma.models.StoreListing.prisma",
-                    return_value=self.mock_listing_actions,
-                ),
-                patch(
-                    "backend.api.features.store.db.prisma.models.StoreListingVersion.prisma",
-                    return_value=self.mock_slv_actions,
-                ),
-            ):
-                from backend.api.features.store.db import create_store_submission
-
-                await create_store_submission(
-                    user_id=USER_ID,
-                    graph_id=GRAPH_ID,
-                    graph_version=GRAPH_VERSION,
-                    slug=SLUG,
-                    name="Test Agent",
-                    sub_heading="Find test agents fast",
-                )
+        await create_store_submission(
+            user_id=USER_ID,
+            graph_id=GRAPH_ID,
+            graph_version=GRAPH_VERSION,
+            slug=SLUG,
+            name="Test Agent",
+            sub_heading="Find test agents fast",
+        )
 
         # The initial graph lookup must include userId
         self.mock_agent_graph_actions.find_first.assert_called_once()
@@ -1301,6 +1295,12 @@ class TestRegressionStore:
         )
         assert graph_where["userId"] == USER_ID
         assert graph_where["id"] == GRAPH_ID
+
+        self.mock_slv_actions.create.assert_awaited_once()
+        listing = self.mock_slv_actions.create.await_args.kwargs["data"]["StoreListing"]
+        assert listing["connect_or_create"]["create"]["OwningUser"] == {
+            "connect": {"id": USER_ID}
+        }
 
     @pytest.mark.asyncio
     async def test_regression_edit_submission_requires_ownership(self):
@@ -1665,6 +1665,14 @@ class TestPR10WebhookTenancy:
             "backend.copilot.tools.run_agent._safe_link_to_chat_share",
             AsyncMock(),
         )
+        # execute_preset checks the caller's role where the run will land,
+        # which reads membership rows.
+        self.mock_role_check = AsyncMock()
+        mocker.patch(
+            "backend.api.features.library.routes.presets"
+            ".require_role_where_resource_lives",
+            self.mock_role_check,
+        )
 
     @pytest.mark.asyncio
     async def test_copilot_agent_run_passes_org_team_to_execution(self, mocker):
@@ -1723,6 +1731,7 @@ class TestPR10WebhookTenancy:
         mock_preset.graph_version = GRAPH_VERSION
         mock_preset.inputs = {"key": "value"}
         mock_preset.credentials = {}
+        mock_preset.webhook_id = None
         mock_preset.organization_id = "org-preset"
         mock_preset.team_id = "team-preset"
 
@@ -1759,6 +1768,11 @@ class TestPR10WebhookTenancy:
         assert call_kwargs["organization_id"] == "org-preset"
         assert call_kwargs["team_id"] == "team-preset"
         assert call_kwargs["user_id"] == USER_ID
+        assert self.mock_role_check.await_args.args[:3] == (
+            USER_ID,
+            "org-preset",
+            "team-preset",
+        )
 
     @pytest.mark.asyncio
     async def test_preset_execution_falls_back_to_ctx_when_untagged(self):
@@ -1769,6 +1783,7 @@ class TestPR10WebhookTenancy:
         mock_preset.graph_version = GRAPH_VERSION
         mock_preset.inputs = {"key": "value"}
         mock_preset.credentials = {}
+        mock_preset.webhook_id = None
         mock_preset.organization_id = None
         mock_preset.team_id = None
 
@@ -2122,11 +2137,6 @@ class TestPR15MarketplaceOrg:
             "backend.api.features.store.db.prisma.models.AgentGraph.prisma",
             return_value=self.mock_agent_graph_actions,
         )
-        self.mock_listing_actions = AsyncMock()
-        mocker.patch(
-            "backend.api.features.store.db.prisma.models.StoreListing.prisma",
-            return_value=self.mock_listing_actions,
-        )
         self.mock_slv_actions = AsyncMock()
         mocker.patch(
             "backend.api.features.store.db.prisma.models.StoreListingVersion.prisma",
@@ -2143,18 +2153,23 @@ class TestPR15MarketplaceOrg:
             "backend.api.features.store.db.prisma.models.OrgMember.prisma",
             return_value=self.mock_org_member_actions,
         )
+        # A submission checks the role where the workflow lives, which reads
+        # membership rows.
+        mocker.patch(
+            "backend.api.features.store.db.require_role_where_resource_lives",
+            AsyncMock(),
+        )
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures("empty_store_listing_transaction")
     async def test_create_submission_sets_owning_org_id(self):
-        """create_store_submission with organization_id includes owningOrgId
-        in the StoreListing connect_or_create data."""
+        """A new organization listing connects the caller's organization as its owner."""
+
         mock_graph = MagicMock()
         mock_graph.id = GRAPH_ID
         mock_graph.User = MagicMock()
         mock_graph.User.Profile = MagicMock()
         self.mock_agent_graph_actions.find_first = AsyncMock(return_value=mock_graph)
-
-        self.mock_listing_actions.find_unique = AsyncMock(return_value=None)
 
         mock_submission = MagicMock()
         mock_submission.StoreListing = MagicMock()
@@ -2188,41 +2203,23 @@ class TestPR15MarketplaceOrg:
         mock_submission.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
         self.mock_slv_actions.create = AsyncMock(return_value=mock_submission)
 
-        with patch("backend.api.features.store.db.transaction") as mock_tx_ctx:
-            mock_tx = MagicMock()
-            mock_tx_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_tx)
-            mock_tx_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-            with (
-                patch(
-                    "backend.api.features.store.db.prisma.models.StoreListing.prisma",
-                    return_value=self.mock_listing_actions,
-                ),
-                patch(
-                    "backend.api.features.store.db.prisma.models.StoreListingVersion.prisma",
-                    return_value=self.mock_slv_actions,
-                ),
-            ):
-                from backend.api.features.store.db import create_store_submission
-
-                await create_store_submission(
-                    user_id=USER_ID,
-                    graph_id=GRAPH_ID,
-                    graph_version=GRAPH_VERSION,
-                    slug=SLUG,
-                    name="Test Agent",
-                    sub_heading="Find test agents fast",
-                    organization_id="org-1",
-                )
+        await create_store_submission(
+            user_id=USER_ID,
+            graph_id=GRAPH_ID,
+            graph_version=GRAPH_VERSION,
+            slug=SLUG,
+            name="Test Agent",
+            sub_heading="Find test agents fast",
+            organization_id="org-1",
+        )
 
         # Verify the SLV create call's StoreListing.connect_or_create.create
         # connects the OwningOrg relation. Must be relation-connect syntax,
         # NOT the raw owningOrgId scalar — this nested create uses checked
         # (relation) input and Prisma rejects the whole create when a raw
         # FK field is mixed in (e2e publish flow 500'd on exactly this).
-        self.mock_slv_actions.create.assert_called_once()
-        create_data = self.mock_slv_actions.create.call_args.kwargs.get(
-            "data", self.mock_slv_actions.create.call_args[1].get("data")
-        )
+        self.mock_slv_actions.create.assert_awaited_once()
+        create_data = self.mock_slv_actions.create.await_args.kwargs["data"]
         listing_create = create_data["StoreListing"]["connect_or_create"]["create"]
         assert listing_create["OwningOrg"] == {"connect": {"id": "org-1"}}
         assert "owningOrgId" not in listing_create
@@ -2232,8 +2229,6 @@ class TestPR15MarketplaceOrg:
         """create_store_submission should verify the user is a member of
         the specified organization_id before allowing submission."""
         import inspect
-
-        from backend.api.features.store.db import create_store_submission
 
         # Once membership checking is added, the function should validate
         # that user_id is a member of organization_id before proceeding.
@@ -2533,6 +2528,12 @@ class TestPR16Transfers:
         self.mock_prisma = MagicMock()
         mocker.patch("backend.api.features.transfers.db.prisma", self.mock_prisma)
 
+        @asynccontextmanager
+        async def _tx():
+            yield self.mock_prisma
+
+        mocker.patch("backend.api.features.transfers.db.transaction", _tx)
+
     def _make_transfer_row(
         self,
         *,
@@ -2622,7 +2623,10 @@ class TestPR16Transfers:
             status="SOURCE_APPROVED",
             source_approved_by=USER_ID,
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=updated)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=updated
+        )
 
         from backend.api.features.transfers.db import approve_transfer
 
@@ -2633,7 +2637,9 @@ class TestPR16Transfers:
         )
 
         assert result.status == "SOURCE_APPROVED"
-        update_data = self.mock_prisma.transferrequest.update.call_args.kwargs["data"]
+        update_data = self.mock_prisma.transferrequest.update_many.call_args.kwargs[
+            "data"
+        ]
         assert update_data["sourceApprovedByUserId"] == USER_ID
         assert update_data["status"] == "SOURCE_APPROVED"
 
@@ -2648,7 +2654,10 @@ class TestPR16Transfers:
             status="TARGET_APPROVED",
             target_approved_by="user-target",
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=updated)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=updated
+        )
 
         from backend.api.features.transfers.db import approve_transfer
 
@@ -2659,7 +2668,9 @@ class TestPR16Transfers:
         )
 
         assert result.status == "TARGET_APPROVED"
-        update_data = self.mock_prisma.transferrequest.update.call_args.kwargs["data"]
+        update_data = self.mock_prisma.transferrequest.update_many.call_args.kwargs[
+            "data"
+        ]
         assert update_data["targetApprovedByUserId"] == "user-target"
         assert update_data["status"] == "TARGET_APPROVED"
 
@@ -2680,7 +2691,13 @@ class TestPR16Transfers:
             target_approved_by="user-target",
             completed_at=datetime(2025, 7, 1, tzinfo=timezone.utc),
         )
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=completed)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=completed
+        )
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        graph_row = MagicMock()
+        graph_row.organizationId = "org-1"
+        self.mock_prisma.agentgraph.find_first = AsyncMock(return_value=graph_row)
         self.mock_prisma.agentgraph.update_many = AsyncMock(return_value=1)
         self.mock_prisma.auditlog.create = AsyncMock(return_value=MagicMock())
 
@@ -2694,12 +2711,51 @@ class TestPR16Transfers:
 
         assert result.status == "COMPLETED"
         # Verify the resource was moved to target org, ALL versions, landing
-        # at org-home (teamId=None) so it's visible in the target org.
+        # at org-home (teamId=None) so it's visible in the target org, and
+        # only while the source org still owns it (#15271).
         self.mock_prisma.agentgraph.update_many.assert_called_once()
         move_call = self.mock_prisma.agentgraph.update_many.call_args.kwargs
         assert move_call["data"]["organizationId"] == "org-2"
         assert move_call["data"]["teamId"] is None
-        assert move_call["where"] == {"id": GRAPH_ID}
+        assert move_call["where"] == {"id": GRAPH_ID, "organizationId": "org-1"}
+        # Json columns must get SafeJson, not bare dicts (#15267).
+        from prisma import Json
+
+        assert self.mock_prisma.auditlog.create.call_count == 2
+        for call in self.mock_prisma.auditlog.create.call_args_list:
+            assert isinstance(call.kwargs["data"]["afterJson"], Json)
+            assert isinstance(call.kwargs["data"]["beforeJson"], Json)
+
+    @pytest.mark.asyncio
+    async def test_execute_store_listing_move_is_scoped_to_source_org(self):
+        """A StoreListing move only matches while the source org owns it;
+        a zero-row move aborts and rejects the transfer (#15271)."""
+        approved = self._make_transfer_row(
+            status="SOURCE_APPROVED",
+            resource_type="StoreListing",
+            resource_id="listing-1",
+            source_approved_by=USER_ID,
+            target_approved_by="user-target",
+        )
+        self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=approved)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        listing = MagicMock()
+        listing.isDeleted = False
+        listing.owningOrgId = "org-1"
+        self.mock_prisma.storelisting.find_unique = AsyncMock(return_value=listing)
+        self.mock_prisma.storelisting.update_many = AsyncMock(return_value=0)
+        self.mock_prisma.auditlog.create = AsyncMock(return_value=MagicMock())
+
+        from backend.api.features.transfers.db import execute_transfer
+
+        with pytest.raises(ValueError, match="no longer belongs"):
+            await execute_transfer(transfer_id="tr-1", user_id=USER_ID, org_id="org-1")
+
+        move_call = self.mock_prisma.storelisting.update_many.call_args.kwargs
+        assert move_call["where"] == {"id": "listing-1", "owningOrgId": "org-1"}
+        self.mock_prisma.auditlog.create.assert_not_called()
+        reject_call = self.mock_prisma.transferrequest.update_many.call_args.kwargs
+        assert reject_call["data"] == {"status": "REJECTED"}
 
     @pytest.mark.asyncio
     async def test_execute_rejects_non_party_org(self):
@@ -2752,7 +2808,10 @@ class TestPR16Transfers:
         self.mock_prisma.transferrequest.find_unique = AsyncMock(return_value=pending)
 
         rejected = self._make_transfer_row(status="REJECTED")
-        self.mock_prisma.transferrequest.update = AsyncMock(return_value=rejected)
+        self.mock_prisma.transferrequest.update_many = AsyncMock(return_value=1)
+        self.mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+            return_value=rejected
+        )
 
         from backend.api.features.transfers.db import reject_transfer
 
@@ -2763,8 +2822,12 @@ class TestPR16Transfers:
         )
 
         assert result.status == "REJECTED"
-        update_data = self.mock_prisma.transferrequest.update.call_args.kwargs["data"]
-        assert update_data["status"] == "REJECTED"
+        call = self.mock_prisma.transferrequest.update_many.call_args.kwargs
+        assert call["data"] == {"status": "REJECTED"}
+        # Conditional, so it can't overwrite a transfer that just completed.
+        assert call["where"]["status"] == {
+            "not_in": ["COMPLETED", "REJECTED", "CANCELLED"]
+        }
 
     @pytest.mark.asyncio
     async def test_list_transfers_returns_both_directions(self):
@@ -3530,18 +3593,22 @@ class TestReviewFindings:
 
         async def capture_update(*, where, data):
             update_capture.update(data)
-            result = self._make_transfer(
-                status=data.get("status", "SOURCE_APPROVED"),
-                sourceApprovedByUserId=USER_ID,
-                targetApprovedByUserId="user-target",
-            )
-            return result
+            return 1
 
         with patch("backend.api.features.transfers.db.prisma") as mock_prisma:
             mock_prisma.transferrequest.find_unique = AsyncMock(
                 return_value=source_approved
             )
-            mock_prisma.transferrequest.update = AsyncMock(side_effect=capture_update)
+            mock_prisma.transferrequest.update_many = AsyncMock(
+                side_effect=capture_update
+            )
+            mock_prisma.transferrequest.find_unique_or_raise = AsyncMock(
+                side_effect=lambda **kwargs: self._make_transfer(
+                    status=update_capture.get("status", "SOURCE_APPROVED"),
+                    sourceApprovedByUserId=USER_ID,
+                    targetApprovedByUserId="user-target",
+                )
+            )
 
             from backend.api.features.transfers.db import approve_transfer
 

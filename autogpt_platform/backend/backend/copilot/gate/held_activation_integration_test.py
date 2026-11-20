@@ -2,7 +2,6 @@
 
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -14,7 +13,13 @@ from backend.copilot import rate_limit, turn_queue
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.executor import utils
 from backend.copilot.gate import held
-from backend.copilot.gate.held_db_test import _answer, _hold, _new_session, _Post
+from backend.copilot.gate.held_db_test import (
+    _answer,
+    _hold,
+    _new_session,
+    _Post,
+    _resolved,
+)
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.copilot.trial_cost_context import (
     TrialCostContext,
@@ -31,13 +36,14 @@ from backend.data.redis_client import get_redis_async
 from backend.data.subscription_trial import get_subscription_trial
 
 enrollment = fixtures.enrollment
+usage_now = fixtures.usage_now
 pytestmark = fixtures.pytestmark
 
 
 @pytest.mark.parametrize("paid_tier", [SubscriptionTier.PRO, SubscriptionTier.MAX])
 @pytest.mark.parametrize("include_paid_call", [False, True])
 async def test_queued_approvals_charge_their_original_allowances(
-    enrollment, paid_tier, include_paid_call, monkeypatch
+    enrollment, usage_now, paid_tier, include_paid_call, monkeypatch
 ):
     user_id, generation = enrollment.user_id, str(uuid4())
     await _start_trial(enrollment.id, user_id)
@@ -61,8 +67,8 @@ async def test_queued_approvals_charge_their_original_allowances(
     monkeypatch.setattr("backend.copilot.tools.get_tool", lambda _: tool)
     redis = await get_redis_async()
     keys = [
-        *usage_keys(user_id, None, datetime.now(UTC)),
-        *usage_keys(user_id, generation, datetime.now(UTC)),
+        *usage_keys(user_id, None, usage_now),
+        *usage_keys(user_id, generation, usage_now),
         held._key(session.session_id),
     ]
     try:
@@ -95,8 +101,7 @@ async def test_queued_approvals_charge_their_original_allowances(
         async def dispatch(*args, **kwargs):
             assert await capture_cost_context(user_id) == wake_origin
             results = await asyncio.gather(
-                held.resolve_answered(user_id, session),
-                held.resolve_answered(user_id, session),
+                _resolved(user_id, session), _resolved(user_id, session)
             )
             assert sum(map(len, results)) == len(review_ids)
 
@@ -106,7 +111,7 @@ async def test_queued_approvals_charge_their_original_allowances(
         assert expected_trial in origins
         assert (expected_paid in origins) == include_paid_call
         assert get_trial_cost_context(user_id) is None
-        assert await held.resolve_answered(user_id, session) == []
+        assert await _resolved(user_id, session) == []
         await verify_activation_usage(user_id, generation)
         paid_usage = 24 if include_paid_call else 7
         assert [int(await redis.get(key) or 0) for key in keys[:4]] == [

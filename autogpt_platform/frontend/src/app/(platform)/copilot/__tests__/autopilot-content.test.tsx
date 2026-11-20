@@ -51,7 +51,6 @@ const streamPath = vi.hoisted(() => ({ runtime: false }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
-    ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
     COPILOT_STREAM_RUNTIME: "copilot-stream-runtime",
   },
   useGetFlag: (flag: string) =>
@@ -263,7 +262,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
       await waitFor(
         () => {
-          expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+          expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
           expect(
             screen.queryByRole("button", { name: /submit/i }),
           ).not.toBeNull();

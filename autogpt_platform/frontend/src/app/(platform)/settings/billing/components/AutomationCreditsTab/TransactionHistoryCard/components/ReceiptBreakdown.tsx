@@ -35,12 +35,12 @@ export function ReceiptBreakdown({ transaction }: Props) {
           amount={transaction.amount}
         />
       )}
-      <dt className="mt-1 border-t border-zinc-200 pt-3">
+      <dt className="mt-1 border-t border-border-base pt-3">
         <Text variant="body-medium" as="span">
           {isRunActive(transaction) ? "Net change so far" : "Net change"}
         </Text>
       </dt>
-      <dd className="mt-1 border-t border-zinc-200 pt-3 text-right">
+      <dd className="mt-1 border-t border-border-base pt-3 text-right">
         <TransactionAmount amount={transaction.amount} />
       </dd>
     </dl>
@@ -51,12 +51,12 @@ function BreakdownLine({ label, amount }: { label: string; amount: number }) {
   return (
     <>
       <dt>
-        <Text variant="small" as="span" className="text-zinc-600">
+        <Text variant="small" as="span" tone="secondary">
           {label}
         </Text>
       </dt>
       <dd className="text-right">
-        <TransactionAmount amount={amount} className="text-xs font-normal" />
+        <TransactionAmount amount={amount} variant="small" />
       </dd>
     </>
   );

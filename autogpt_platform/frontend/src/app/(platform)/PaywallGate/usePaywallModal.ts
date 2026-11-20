@@ -8,6 +8,7 @@ import {
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
@@ -113,6 +114,8 @@ export function usePaywallModal() {
   // saved card and looks like a no-op. Stage the target tier here and surface
   // a confirmation dialog before firing the mutation.
   const [pendingTier, setPendingTier] = useState<string | null>(null);
+  const checkoutRedirect = useCheckoutRedirect();
+  const [redirectingTier, setRedirectingTier] = useState<string | null>(null);
 
   const country = COUNTRIES[0];
   const isYearly = selectedCycle === "yearly";
@@ -133,7 +136,12 @@ export function usePaywallModal() {
   // selectedTier spans the whole click: the request, the wait for the Ads
   // conversion and the start of the redirect. isPending alone ends before the
   // redirect, which left the plan buttons clickable for a second checkout.
-  const isCheckingOut = isPending || selectedTier !== null;
+  // A trial checkout, or any other checkout leaving the page, holds them too.
+  const isCheckingOut =
+    isPending ||
+    selectedTier !== null ||
+    trial.isStarting ||
+    checkoutRedirect.isRedirecting;
 
   const hasActiveStripeSubscription = Boolean(
     subscription?.has_active_stripe_subscription,
@@ -169,6 +177,8 @@ export function usePaywallModal() {
           value: apiValue ?? getSubscriptionValue(tier, cycle),
         });
         window.location.href = url;
+        setRedirectingTier(tier);
+        checkoutRedirect.markRedirecting();
       }
     } catch (error) {
       // 401 means the paywall outlived its session: checkout can never
@@ -230,10 +240,11 @@ export function usePaywallModal() {
     setPendingTier(null);
   }
 
-  // Route through the shared /logout page (same path the Navbar uses) rather
-  // than calling logOut() inline: it runs the full sign-out, then redirects to
-  // /login. Navigating away also unmounts this modal — without the redirect the
-  // user would be left logged-out but stranded behind the paywall.
+  // Route through the shared /logout page (same path the account menu uses)
+  // rather than calling logOut() inline: it runs the full sign-out, then
+  // redirects to /login. Navigating away also unmounts this modal — without
+  // the redirect the user would be left logged-out but stranded behind the
+  // paywall.
   function handleLogout() {
     router.replace("/logout");
   }
@@ -256,7 +267,9 @@ export function usePaywallModal() {
     setSelectedCycle,
     handleSelectPlan,
     isPending: isCheckingOut,
-    selectedTier,
+    selectedTier:
+      selectedTier ??
+      (checkoutRedirect.isRedirectingHere ? redirectingTier : null),
     pendingTier,
     pendingTierLabel,
     confirmPendingTier,
@@ -265,5 +278,6 @@ export function usePaywallModal() {
     handleClose: () => router.replace("/settings/billing"),
     trial,
     trialOffer,
+    pausedWorkflowSchedules: subscription?.paused_workflow_schedules ?? 0,
   };
 }

@@ -127,7 +127,7 @@ async def test_full_reconciliation_redis_error_leaves_paid_activation_recoverabl
             f"autogpt:initial-pro:{case.user_id}:{case.subscription['id']}:{case.invoice['id']}",
         )
     )
-    daily, weekly = usage_keys(case.user_id, generation, datetime.now(UTC))
+    daily, weekly = usage_keys(case.user_id, generation, case.usage_now)
     await case.redis.lpush(daily, "unavailable-counter")
     await case.redis.set(weekly, 113)
     with pytest.raises(ResponseError, match="WRONGTYPE"):

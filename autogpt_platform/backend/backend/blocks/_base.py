@@ -24,6 +24,11 @@ from jsonschema.validators import validator_for as _jsonschema_validator_for
 from pydantic import BaseModel, Field
 
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
+from backend.data.llm_registry.llm_models import (
+    is_llm_model_field,
+    resolved_model_value,
+    retired_model_fallback,
+)
 from backend.data.model import (
     Credentials,
     CredentialsFieldInfo,
@@ -43,8 +48,16 @@ from backend.util.exceptions import (
     InsufficientBalanceError,
 )
 from backend.util.settings import Config
+from backend.util.text import split_camelcase
+from backend.util.type import ConversionError, coerce_inputs_to_schema
+
+from ._preview import ChangePreview
 
 logger = logging.getLogger(__name__)
+
+# The account behind a file picker: GoogleDriveFile's ``credentials_id`` field
+# and its ``_credentials_id`` alias, either of which it accepts.
+_PICKER_ACCOUNT_KEYS = frozenset({"_credentials_id", "credentials_id"})
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
@@ -75,7 +88,12 @@ class BlockEffect(Enum):
     READ = "read"  # fetches or computes; changes nothing
     WORKSPACE = "workspace"  # writes only to the user's workspace or key-value store
     PLATFORM = "platform"  # changes only the user's own objects on the platform
-    EXTERNAL = "external"  # changes something outside the platform
+    # Changes something outside the platform where a mistake is cheap and the
+    # norms casual: a chat-channel post, a label, a draft, a new record.
+    EXTERNAL_JUDGED = "external_judged"
+    # Changes something outside the platform that is hard to take back, or reaches
+    # people or money in the user's name: an email, a payment, a delete, a public post.
+    EXTERNAL = "external"
 
 
 class BlockType(Enum):
@@ -200,6 +218,12 @@ class BlockCost(BaseModel):
             **data,
         )
 
+    @property
+    def is_free(self) -> bool:
+        """Whether this entry can never charge. Every cost type scales
+        ``cost_amount`` except TOKENS, which prices from the token rate table."""
+        return self.cost_amount == 0 and self.cost_type != BlockCostType.TOKENS
+
 
 class BlockInfo(BaseModel):
     id: str
@@ -277,8 +301,10 @@ class BlockSchema(BaseModel):
         )
 
     @classmethod
-    def get_mismatch_error(cls, data: BlockInput) -> str | None:
-        return cls.validate_data(data)
+    def get_mismatch_error(
+        cls, data: BlockInput, exclude_fields: set[str] | None = None
+    ) -> str | None:
+        return cls.validate_data(data, exclude_fields=exclude_fields)
 
     # JSON-schema keywords whose violations are NOT already prevented at the
     # widget level (number bounds and length bounds are bypassable by typing
@@ -343,7 +369,7 @@ class BlockSchema(BaseModel):
             jsonschema.validate(json.to_dict(data), property_schema)
             return None
         except jsonschema.ValidationError as e:
-            return str(e)
+            return json.describe_validation_error(e, field_name=field_name)
 
     @classmethod
     def get_fields(cls) -> set[str]:
@@ -585,6 +611,13 @@ DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS: int = 30 * 60
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     _optimized_description: ClassVar[str | None] = None
     execution_timeout_seconds: int | None = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+    # The block keeps what it creates in the vendor account behind its key, so
+    # it can't run on the platform's shared keys (a "Use Credits for X" system
+    # credential or an SDK ``<provider>-default``). Graph validation refuses
+    # those keys for it up front and the builder doesn't auto-select one; the
+    # block's own ``refuse_platform_credentials`` call in ``run`` is the
+    # backstop. See ``backend.blocks._platform_credentials``.
+    refuses_platform_credentials: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -605,6 +638,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         is_irreversible_action: bool = False,
         capability_kind: CapabilityKind | None = None,
         effect: BlockEffect | None = None,
+        display_name: str | None = None,
     ):
         """
         Initialize the block with the given schema.
@@ -631,7 +665,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 one provider and ``primitive`` otherwise; set it explicitly on
                 provider-backed generic blocks (code sandboxes, SQL, HTTP).
             effect: What running the block does; see BlockEffect. Irreversible
-                implies EXTERNAL.
+                implies EXTERNAL or EXTERNAL_JUDGED.
+            display_name: The block's name as people read it, e.g. "Create
+                Airtable table". Undeclared, it is read off the class name.
         """
         self.id = id
         self.input_schema = input_schema
@@ -650,6 +686,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.is_irreversible_action = is_irreversible_action
         self._capability_kind: CapabilityKind | None = capability_kind
         self.effect = effect
+        self._display_name = display_name
         # Read from ClassVar set by initialize_blocks()
         self.optimized_description: str | None = type(self)._optimized_description
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
@@ -741,6 +778,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         return self.__class__.__name__
 
     @property
+    def display_name(self) -> str:
+        """The block's name as people read it: the one it declares, else its
+        class name in words with " Block" dropped, which is how the builder
+        titles an undeclared block (``NewBlockMenu/Block.tsx``,
+        ``CustomNode/helpers.ts``): ``AirtableCreateTableBlock`` reads
+        "Airtable Create Table"."""
+        if self._display_name:
+            return self._display_name
+        return split_camelcase(self.name).removesuffix(" Block")
+
+    @property
     def capability_kind(self) -> CapabilityKind:
         """``service`` for a block bound to one integration, else ``primitive``.
 
@@ -772,11 +820,36 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             return "service"
         return "primitive"
 
+    def refuses_platform_credentials_for(self, input_data: BlockInput) -> bool:
+        """Whether a run with ``input_data`` refuses the platform's shared keys.
+
+        Override when only some inputs make the block keep or spend something
+        in the vendor account; inputs supplied by links at run time aren't in
+        ``input_data``, and ``run`` still refuses then.
+        """
+        return self.refuses_platform_credentials
+
+    def _input_jsonschema(self) -> dict[str, Any]:
+        """The input schema, with ``refuses_platform_credentials`` set on each
+        credentials field of a block that refuses the platform's shared keys,
+        so the frontend doesn't auto-select one for it."""
+        schema = self.input_schema.jsonschema()
+        if not self.refuses_platform_credentials:
+            return schema
+        properties = dict(schema.get("properties", {}))
+        for name in self.input_schema.get_credentials_fields():
+            if name in properties:
+                properties[name] = {
+                    **properties[name],
+                    "refuses_platform_credentials": True,
+                }
+        return {**schema, "properties": properties}
+
     def to_dict(self):
         return {
             "id": self.id,
             "name": self.name,
-            "inputSchema": self.input_schema.jsonschema(),
+            "inputSchema": self._input_jsonschema(),
             "outputSchema": self.output_schema.jsonschema(),
             "description": self.description,
             "categories": [category.dict() for category in self.categories],
@@ -793,7 +866,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         return BlockInfo(
             id=self.id,
             name=self.name,
-            inputSchema=self.input_schema.jsonschema(),
+            inputSchema=self._input_jsonschema(),
             outputSchema=self.output_schema.jsonschema(),
             costs=get_block_cost(self),
             description=self.description,
@@ -831,6 +904,13 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                     block_id=self.id,
                 ) from ex
 
+    def change_preview(self, input_data: BlockInput) -> ChangePreview | None:
+        """What these inputs would create or change in the user's connected
+        account, for an approval card to show before the block runs. None
+        where the inputs already say it plainly. Reads the model's raw call,
+        before validation, so it must not assume any input is well formed."""
+        return None
+
     async def is_block_exec_need_review(
         self,
         input_data: BlockInput,
@@ -853,14 +933,13 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             - should_pause: True if execution should be paused for review
             - input_data_to_use: The input data to use (may be modified by reviewer)
         """
-        if not (
-            self.is_irreversible_action and execution_context.sensitive_action_safe_mode
-        ):
+        if not self.is_irreversible_action:
             return False, input_data
 
         from backend.blocks.helpers.review import HITLReviewHelper
 
-        # Handle the review request and get decision
+        # A reviewer's answer on this step decides it even with the safe mode
+        # off; the safe mode only decides whether a step with none asks.
         decision = await HITLReviewHelper.handle_review_decision(
             input_data=input_data,
             user_id=user_id,
@@ -877,6 +956,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             chat_session_id=(
                 None if is_graph_execution else execution_context.session_id
             ),
+            block=self,
+            execution_context=execution_context,
+            ask=execution_context.sensitive_action_safe_mode,
         )
 
         if decision is None:
@@ -900,7 +982,64 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 block_name=self.name,
                 block_id=self.id,
             )
-        return False, reviewed_data
+        if reviewed_data == input_data:
+            # Safe mode off, an "approve future", or an approval with nothing
+            # changed: the run's own input, already coerced, runs as it is.
+            return False, input_data
+        return False, self._approved_input(input_data, reviewed_data)
+
+    def _approved_input(
+        self, input_data: BlockInput, reviewed_data: dict[str, Any]
+    ) -> BlockInput:
+        """The input as the reviewer approved it.
+
+        The reviewer's payload decides every field they could edit, and a
+        field they removed stays removed. Fields a reviewer can't edit,
+        credentials and secrets, plus the account behind a file picker, come
+        from this run's own input: the payload was stored before the run
+        resolved them (a chat's resume injects its credentials afterwards).
+        The result is coerced like the input was.
+        """
+        properties = self.input_schema.jsonschema().get("properties", {})
+        kept = {
+            name
+            for name, prop in properties.items()
+            if "credentials_provider" in prop or prop.get("secret")
+        }
+        approved = {k: v for k, v in reviewed_data.items() if k not in kept}
+        approved |= {k: v for k, v in input_data.items() if k in kept}
+        for auto in self.input_schema.get_auto_credentials_fields().values():
+            field = auto["field_name"]
+            edited, own = approved.get(field), input_data.get(field)
+            if not isinstance(edited, dict):
+                continue
+            pinned = {k: v for k, v in edited.items() if k not in _PICKER_ACCOUNT_KEYS}
+            if isinstance(own, dict):
+                pinned |= {k: v for k, v in own.items() if k in _PICKER_ACCOUNT_KEYS}
+            approved[field] = pinned
+        try:
+            coerce_inputs_to_schema(approved, self.input_schema)
+        except ConversionError as e:
+            raise BlockInputError(
+                message=f"The approved input is invalid: {e}",
+                block_name=self.name,
+                block_id=self.id,
+            ) from e
+        return approved
+
+    def with_retired_models_replaced(self, input_data: BlockInput) -> BlockInput:
+        """*input_data* with each LLM model the catalog has switched off, and
+        names a fallback for, replaced by that fallback once the model's
+        shutdown date, if it has one, has come: the model this block runs and
+        is billed for instead. Returns *input_data* itself when no value
+        changes."""
+        replaced = {
+            name: fallback.value
+            for name, field in self.input_schema.model_fields.items()
+            if is_llm_model_field(field)
+            and (fallback := retired_model_fallback(input_data.get(name))) is not None
+        }
+        return {**input_data, **replaced} if replaced else input_data
 
     async def _execute(
         self,
@@ -918,6 +1057,21 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             )
             if should_pause:
                 return
+
+        serving = self.with_retired_models_replaced(input_data)
+        if serving is not input_data:
+            # One line per run: it carries the node execution id, and the
+            # run's recorded inputs keep the stored model.
+            moved = ", ".join(
+                f"{name} {resolved_model_value(input_data[name])} -> {value}"
+                for name, value in serving.items()
+                if value != input_data.get(name)
+            )
+            logger.info(
+                f"Block {self.name} runs switched-off models' catalog fallbacks "
+                f"(node exec {execution_context.node_exec_id}): {moved}"
+            )
+            input_data = serving
 
         # Validate the input data (original or reviewer-modified) once.
         # In dry-run mode, credential fields may contain sentinel None values

@@ -72,8 +72,8 @@ RETURN ep.uuid AS uuid, ep.content AS content
 """
 
 # Each property is ``coalesce``-guarded so the query is idempotent AND a
-# partial prior run (or a real value already set by
-# ``mark_edges_superseded``) is never clobbered.
+# partial prior run (or a real value already set by a demotion) is never
+# clobbered.
 #
 # ``status`` is temporal-aware, gated on ``expired_at`` ONLY: graphiti
 # stamps ``expired_at = now()`` exactly when an edge is actually

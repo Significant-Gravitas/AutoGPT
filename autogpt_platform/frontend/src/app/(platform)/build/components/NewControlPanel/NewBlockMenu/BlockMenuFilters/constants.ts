@@ -1,15 +1,14 @@
-import { SearchEntryFilterAnyOfItem } from "@/app/api/__generated__/models/searchEntryFilterAnyOfItem";
 import { CategoryKey } from "./types";
 
 export const categories: Array<{ key: CategoryKey; name: string }> = [
-  { key: SearchEntryFilterAnyOfItem.blocks, name: "Blocks" },
+  { key: "blocks", name: "Blocks" },
   {
-    key: SearchEntryFilterAnyOfItem.integrations,
+    key: "integrations",
     name: "Integrations",
   },
   {
-    key: SearchEntryFilterAnyOfItem.marketplace_agents,
+    key: "marketplace_agents",
     name: "Marketplace workflows",
   },
-  { key: SearchEntryFilterAnyOfItem.my_agents, name: "My workflows" },
+  { key: "my_agents", name: "My workflows" },
 ];

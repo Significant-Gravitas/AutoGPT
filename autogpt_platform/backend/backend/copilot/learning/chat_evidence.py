@@ -2,6 +2,7 @@
 
 import json
 
+from backend.copilot.hidden_rows import visible_to_model
 from backend.copilot.model import ChatMessage
 from backend.data.skill_learning import MAX_OUTCOME_SIGNALS
 
@@ -23,10 +24,13 @@ def build_chat_evidence(
     last_sequence: int,
     max_chars: int,
 ) -> EvidenceBundle:
+    # The platform's notes to the owner, such as why a scheduled run was
+    # skipped, go to no model: learnt from, "usage limit reached" would read
+    # as something about the user.
     ordered = sorted(
         (
             m
-            for m in messages
+            for m in visible_to_model(messages)
             if m.sequence is not None and 0 <= m.sequence <= last_sequence
         ),
         key=lambda m: m.sequence or 0,

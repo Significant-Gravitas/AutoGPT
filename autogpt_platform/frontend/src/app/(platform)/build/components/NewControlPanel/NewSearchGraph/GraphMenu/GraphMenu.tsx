@@ -60,12 +60,13 @@ export function GraphSearchMenu() {
         <TooltipTrigger asChild>
           <PopoverTrigger asChild className="hover:cursor-pointer">
             <ControlPanelButton
+              aria-label="Search workflow"
               data-id="graph-search-control-popover-trigger"
               data-testid="graph-search-control-button"
               selected={graphSearchOpen}
               className="rounded-none"
             >
-              <Icon icon={Search01Icon} className="size-5" />
+              <Icon icon={Search01Icon} className="size-5" aria-hidden />
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>
@@ -78,7 +79,7 @@ export function GraphSearchMenu() {
         side="right"
         align="start"
         sideOffset={16}
-        className="absolute h-[75vh] w-[46.625rem] overflow-hidden rounded-[1rem] border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
+        className="absolute h-[75vh] w-[46.625rem] overflow-hidden rounded-2xl border-none p-0 shadow-sm"
         data-id="graph-search-popover-content"
       >
         <GraphSearchContent

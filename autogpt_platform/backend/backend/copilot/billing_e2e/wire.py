@@ -19,8 +19,23 @@ class Reply(BaseModel):
     text: str = ""
 
 
+def written(delta: dict[str, Any]) -> str:
+    """What the model wrote in a chat-completion delta, all billed as output:
+    its text and each tool call's name and arguments."""
+    return (delta.get("content") or "") + "".join(
+        call["function"]["name"] + call["function"]["arguments"]
+        for call in delta.get("tool_calls", [])
+    )
+
+
 def anthropic_messages(
-    *, message_id: str, model: str, reply: Reply, usage: Usage, ttl: CacheTtl | None
+    *,
+    message_id: str,
+    model: str,
+    reply: Reply,
+    usage: Usage,
+    ttl: CacheTtl | None,
+    tool_name: str = TOOL_NAME,
 ) -> str:
     """Anthropic Messages SSE, as Anthropic and OpenRouter's /messages stream it."""
     start_usage = {
@@ -37,7 +52,7 @@ def anthropic_messages(
         block: dict[str, Any] = {
             "type": "tool_use",
             "id": f"toolu_{uuid.uuid4().hex[:24]}",
-            "name": TOOL_NAME,
+            "name": tool_name,
             "input": {},
         }
         delta = {"type": "input_json_delta", "partial_json": json.dumps(TOOL_ARGUMENTS)}

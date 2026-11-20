@@ -13,6 +13,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import {
+  findCancelConfirmation,
   deferredTrialResponse,
   setTrialUser,
   trialResponse,
@@ -23,7 +24,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("@posthog/react", () => ({
   usePostHog: () => posthog,
-  useFeatureFlagVariantKey: () => undefined,
 }));
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -46,9 +46,7 @@ afterEach(() => {
 
 async function openCanceledPopup() {
   fireEvent.click(await screen.findByRole("button", { name: "Cancel trial" }));
-  const confirm = await screen.findByRole("dialog", {
-    name: "Cancel your trial?",
-  });
+  const confirm = await findCancelConfirmation();
   fireEvent.click(
     within(confirm).getByRole("button", { name: "Cancel trial" }),
   );

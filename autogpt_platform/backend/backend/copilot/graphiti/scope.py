@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .client import derive_memory_group_id, derive_memory_scope_key
 
 RedisKeyFamily = Literal[
-    "dream_lock", "last_completed", "hits", "rebuild_lock", "registration"
+    "dream_lock", "last_completed", "hits", "rebuild_lock", "write_lock"
 ]
 
 # One in-flight dream per scope (dream/locks.py).
@@ -29,6 +29,15 @@ LAST_COMPLETED_KEY_PREFIX = "dream:last_completed:"
 HIT_TRACKER_KEY_PREFIX = "mem:hits"
 # One community rebuild per graph (graphiti/communities.py).
 REBUILD_LOCK_KEY_PREFIX = "graphiti:community_rebuild_lock:"
+# One writer at a time per graph: an ingestion, a forget or the
+# legacy-forget backfill (graphiti/scope_lock.py).
+WRITE_LOCK_KEY_PREFIX = "graphiti:write_lock:"
+
+
+def write_lock_key(group_id: str) -> str:
+    """The write lock of graph ``group_id``. Keyed on the graph, not the
+    scope: the ingestion worker that takes it knows only the graph."""
+    return f"{WRITE_LOCK_KEY_PREFIX}{group_id}"
 
 
 class MemoryScope(BaseModel):
@@ -78,23 +87,14 @@ class MemoryScope(BaseModel):
     def is_expert(self) -> bool:
         return self.expert_id is not None
 
-    def redis_key(
-        self,
-        family: RedisKeyFamily,
-        *,
-        edge_uuid: str | None = None,
-        registration_prefix: str | None = None,
-    ) -> str:
+    def redis_key(self, family: RedisKeyFamily, *, edge_uuid: str | None = None) -> str:
         """This scope's Redis key for ``family``, exactly as it was keyed
         before this class existed.
 
-        Most families key on ``scope_key`` (the raw user id for the account,
-        the group id for an expert). Two do not, and keep their layouts:
-        ``rebuild_lock`` keys on ``group_id``, and ``registration`` keys on
-        the owner's user id even for an expert scope, because the dream
-        crons are registered per user. ``hits`` needs the counted
-        ``edge_uuid``; ``registration`` needs the cron's marker prefix (see
-        ``dream/scheduling.py``).
+        Every family keys on ``scope_key`` (the raw user id for the account,
+        the group id for an expert) except ``rebuild_lock`` and
+        ``write_lock``, which key on ``group_id``. ``hits`` needs the
+        counted ``edge_uuid``.
         """
         match family:
             case "dream_lock":
@@ -107,10 +107,8 @@ class MemoryScope(BaseModel):
                 return f"{HIT_TRACKER_KEY_PREFIX}:{self.scope_key}:{edge_uuid}"
             case "rebuild_lock":
                 return f"{REBUILD_LOCK_KEY_PREFIX}{self.group_id}"
-            case "registration":
-                if registration_prefix is None:
-                    raise ValueError("the registration key needs a prefix")
-                return f"{registration_prefix}:{self.owner_user_id}"
+            case "write_lock":
+                return write_lock_key(self.group_id)
 
     @model_validator(mode="after")
     def _ids_match_derivation(self) -> "MemoryScope":

@@ -5,10 +5,8 @@ import { Text } from "@/components/atoms/Text/Text";
 export default function SettingsOAuthAppsPage() {
   return (
     <>
-      <Text variant="h4" className="text-[#1F1F20]">
-        OAuth Apps
-      </Text>
-      <Text variant="large" className="mt-2 text-zinc-600">
+      <Text variant="h4">OAuth Apps</Text>
+      <Text variant="large" tone="secondary" className="mt-2">
         Coming soon.
       </Text>
     </>

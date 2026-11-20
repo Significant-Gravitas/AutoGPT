@@ -19,7 +19,7 @@ import json
 import os
 import random
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -498,13 +498,16 @@ class _Turn:
             for name, value in (
                 ("build_skills_update_notice", None),
                 ("build_session_context", ""),
+                ("first_message_expert_context", ""),
                 ("inject_user_context", None),
-                ("resolve_answered", []),
                 ("drain_pending_for_persist", []),
             ):
                 stack.enter_context(
                     patch(f"{_SVC}.{name}", new_callable=AsyncMock, return_value=value)
                 )
+            stack.enter_context(
+                patch(f"{_SVC}.resolve_answered", new=_no_answered_cards)
+            )
             stack.enter_context(
                 patch(f"{_SVC}._compute_transient_backoff", return_value=0)
             )
@@ -717,3 +720,8 @@ def _reconcile_tasks() -> list[asyncio.Task]:
         for task in sdk_service._background_tasks
         if task.get_loop() is loop and not task.done()
     ]
+
+
+async def _no_answered_cards(*_: Any, **__: Any) -> AsyncGenerator[Any, None]:
+    return
+    yield

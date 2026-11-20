@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { FakeWebSocket } from "./websocket-fake";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: vi.fn(async () => ({ token: "test-token" })),
@@ -124,32 +125,77 @@ describe("BackendAPI._makeClientRequest 204 handling", () => {
   });
 });
 
-describe("BackendAPI WebSocket failure logging", () => {
-  const sockets: FakeWebSocket[] = [];
+describe("BackendAPI on a banned account", () => {
+  const banned = JSON.stringify({
+    detail: {
+      code: "account_banned",
+      message: "This account has been banned.",
+    },
+  });
+  let replace: ReturnType<typeof vi.spyOn>;
 
-  class FakeWebSocket {
-    static readonly CONNECTING = 0;
-    static readonly OPEN = 1;
-    static readonly CLOSING = 2;
-    static readonly CLOSED = 3;
+  beforeEach(() => {
+    replace = vi
+      .spyOn(window.location, "replace")
+      .mockImplementation(() => undefined);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      return new Response(banned, {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+  });
 
-    readyState = FakeWebSocket.CONNECTING;
-    onopen: (() => void) | null = null;
-    onclose:
-      | ((event: Pick<CloseEvent, "code" | "reason" | "wasClean">) => void)
-      | null = null;
-    onerror:
-      | ((event: Pick<Event, "type"> & { target?: unknown }) => void)
-      | null = null;
-    onmessage: ((event: MessageEvent) => void) | null = null;
-    state = "connecting";
-    close = vi.fn();
-    send = vi.fn();
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
-    constructor(public url: string) {
-      sockets.push(this);
+  it.each([
+    [
+      "a request",
+      (api: BackendAPI) => (api as any)._makeClientRequest("GET", "/x"),
+    ],
+    [
+      "an upload",
+      (api: BackendAPI) =>
+        (api as any)._uploadFile("/upload", new File(["x"], "x.txt")),
+    ],
+    [
+      "an upload with progress",
+      (api: BackendAPI) => api.uploadFile(new File(["x"], "x.txt")),
+    ],
+  ])("signs the user out when %s is refused", async (_, call) => {
+    vi.stubGlobal("XMLHttpRequest", RefusedXHR);
+
+    await expect(
+      call(new BackendAPI("http://test", "ws://test")),
+    ).rejects.toThrow();
+
+    expect(replace).toHaveBeenCalledWith("/logout?reason=banned");
+  });
+
+  class RefusedXHR {
+    status = 403;
+    responseText = banned;
+    withCredentials = false;
+    upload = { addEventListener() {} };
+    private onLoad: (() => void) | undefined;
+
+    addEventListener(type: string, listener: () => void) {
+      if (type === "load") this.onLoad = listener;
+    }
+
+    open() {}
+
+    send() {
+      this.onLoad?.();
     }
   }
+});
+
+describe("BackendAPI WebSocket failure logging", () => {
+  const sockets = FakeWebSocket.instances;
 
   afterEach(() => {
     sockets.length = 0;
@@ -168,17 +214,17 @@ describe("BackendAPI WebSocket failure logging", () => {
   }
 
   it("reports the close code and reason instead of the CloseEvent object", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const consoleInfo = vi
+      .spyOn(console, "info")
       .mockImplementation(() => undefined);
     const socket = await connect();
 
     socket.onclose!({ code: 4002, reason: "Invalid token", wasClean: true });
 
-    expect(consoleError).toHaveBeenCalledTimes(1);
-    const [message, ...rest] = consoleError.mock.calls[0];
+    expect(consoleInfo).toHaveBeenCalledTimes(1);
+    const [message, ...rest] = consoleInfo.mock.calls[0];
     expect(rest).toHaveLength(0);
-    expect(message).toContain("[BackendAPI] WebSocket failed to connect");
+    expect(message).toContain("[BackendAPI] WebSocket authentication rejected");
     expect(message).toContain("4002");
     expect(message).toContain("Invalid token");
     expect(message).not.toContain("[object");
@@ -189,7 +235,8 @@ describe("BackendAPI WebSocket failure logging", () => {
       .spyOn(console, "warn")
       .mockImplementation(() => undefined);
     const socket = await connect();
-    socket.state = "connected";
+    socket.open();
+    socket.pong();
 
     socket.onclose!({ code: 1006, reason: "", wasClean: false });
 
@@ -205,7 +252,8 @@ describe("BackendAPI WebSocket failure logging", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
     const socket = await connect();
-    socket.state = "connected";
+    socket.open();
+    socket.pong();
     socket.readyState = FakeWebSocket.CLOSED;
 
     socket.onerror!({ type: "error", target: socket });

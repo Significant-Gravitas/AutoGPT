@@ -1,11 +1,20 @@
 import { useBlockMenuStore } from "@/app/(platform)/build/stores/blockMenuStore";
+import { useShallow } from "zustand/react/shallow";
 import { useState } from "react";
 import { INITIAL_CREATORS_TO_SHOW } from "./constant";
 import { CategoryKey } from "../BlockMenuFilters/types";
 
 export const useFilterSheet = () => {
   const { filters, creators_list, creators, setFilters, setCreators } =
-    useBlockMenuStore();
+    useBlockMenuStore(
+      useShallow((state) => ({
+        filters: state.filters,
+        creators_list: state.creators_list,
+        creators: state.creators,
+        setFilters: state.setFilters,
+        setCreators: state.setCreators,
+      })),
+    );
 
   const [isOpen, setIsOpen] = useState(false);
   const [localCategories, setLocalCategories] =

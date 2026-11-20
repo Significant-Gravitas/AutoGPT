@@ -5,6 +5,9 @@ import { notFound, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { Button } from "@/components/atoms/Button/Button";
+import { UsageCreditsDialog } from "@/components/organisms/UsageCreditsDialog/UsageCreditsDialog";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { useBillingStatus } from "@/hooks/useIsBillingEnabled";
 import {
   TabsLine,
@@ -18,6 +21,7 @@ import {
   usePatchV1FulfillCheckoutSession,
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import { getGetTrialsGetTrialStatusQueryKey } from "@/app/api/__generated__/endpoints/trials/trials";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
 import {
   trackCheckoutAbandoned,
@@ -25,6 +29,11 @@ import {
 } from "@/services/analytics/monetization-analytics";
 
 import { AutomationCreditsTab } from "./components/AutomationCreditsTab/AutomationCreditsTab";
+import { CheckoutAbandonedPrompt } from "./components/CheckoutAbandonedPrompt/CheckoutAbandonedPrompt";
+import {
+  readAbandonedPlan,
+  type AbandonedPlan,
+} from "./components/CheckoutAbandonedPrompt/helpers";
 import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
 
 type BillingTab = "subscription" | "automation-credits";
@@ -54,12 +63,19 @@ function SettingsBillingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const identityKey = useAuthStore((state) => state.user?.id ?? null);
   const topupStatus = searchParams.get("topup");
   const subscriptionStatus = searchParams.get("subscription");
   const trialStatus = searchParams.get("trial");
   const { mutateAsync: fulfillCheckout } = usePatchV1FulfillCheckoutSession();
   const handledTopupRef = useRef<string | null>(null);
   const handledSubscriptionRef = useRef<string | null>(null);
+  // Set on return from an upgrade checkout left unpaid; the plan is null when
+  // the cancel URL did not name one.
+  const [abandonedCheckout, setAbandonedCheckout] = useState<{
+    plan: AbandonedPlan | null;
+  } | null>(null);
+  const [isExplainerOpen, setIsExplainerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<BillingTab>(() =>
     resolveInitialTab(searchParams),
   );
@@ -79,6 +95,7 @@ function SettingsBillingPage() {
   useEffect(
     function handleTopupRedirect() {
       if (!topupStatus) return;
+      if (topupStatus === "success" && identityKey === null) return;
       // Stripe re-renders the page after redirect — guard so we don't
       // fire fulfillCheckout twice or stack duplicate toasts.
       if (handledTopupRef.current === topupStatus) return;
@@ -105,7 +122,7 @@ function SettingsBillingPage() {
 
       router.replace("/settings/billing");
     },
-    [topupStatus, fulfillCheckout, router],
+    [topupStatus, fulfillCheckout, identityKey, router],
   );
 
   useEffect(
@@ -131,16 +148,12 @@ function SettingsBillingPage() {
           checkout_kind: "subscription",
           surface: "billing",
         });
-        toast({
-          title: "Checkout cancelled",
-          description: "Your plan was not changed.",
-          variant: "destructive",
-        });
+        setAbandonedCheckout({ plan: readAbandonedPlan(searchParams) });
       }
 
       router.replace("/settings/billing");
     },
-    [subscriptionStatus, queryClient, router],
+    [subscriptionStatus, queryClient, router, searchParams],
   );
 
   useEffect(
@@ -153,9 +166,20 @@ function SettingsBillingPage() {
   return (
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-5 px-4 pb-8 sm:px-6">
       <header className="space-y-1">
-        <Text variant="h3" as="h1" className="tracking-[-0.035em]">
-          Billing &amp; usage
-        </Text>
+        <div className="flex items-center gap-1">
+          <Text variant="h3-tracking-tight" as="h1">
+            Billing &amp; usage
+          </Text>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            leadingIcon={InformationCircleIcon}
+            aria-label="How usage and credits work"
+            tone="muted"
+            onClick={() => setIsExplainerOpen(true)}
+          />
+        </div>
         <Text variant="body" tone="secondary">
           Everything you need to manage your plan.
         </Text>
@@ -177,6 +201,15 @@ function SettingsBillingPage() {
           <AutomationCreditsTab />
         </TabsLineContent>
       </TabsLine>
+
+      <UsageCreditsDialog
+        isOpen={isExplainerOpen}
+        onOpenChange={setIsExplainerOpen}
+        showBillingLink={false}
+      />
+      {abandonedCheckout ? (
+        <CheckoutAbandonedPrompt plan={abandonedCheckout.plan} />
+      ) : null}
     </div>
   );
 }

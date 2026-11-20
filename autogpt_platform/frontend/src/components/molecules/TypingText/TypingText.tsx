@@ -48,7 +48,10 @@ export function TypingText({ text, active, speed = 30, delay = 0 }: Props) {
     <>
       {text.slice(0, charCount)}
       {charCount < text.length && (
-        <span className="inline-block h-4 w-[2px] animate-pulse bg-current" />
+        <span
+          data-slot="typing-text-caret"
+          className="inline-block h-4 w-[2px] animate-pulse bg-current"
+        />
       )}
     </>
   );

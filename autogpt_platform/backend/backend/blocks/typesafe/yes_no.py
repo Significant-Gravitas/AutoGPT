@@ -2,7 +2,7 @@ from typing import Any
 
 from typesafe_sdk import Choice
 
-from backend.blocks._base import BlockCategory, BlockOutput
+from backend.blocks._base import BlockCategory, BlockEffect, BlockOutput
 from backend.data.model import SchemaField
 
 from ._base import JevBlockBase
@@ -60,6 +60,7 @@ class JevYesNoBlock(JevBlockBase):
                     {"judgment": CHOICE_ANSWER}
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(

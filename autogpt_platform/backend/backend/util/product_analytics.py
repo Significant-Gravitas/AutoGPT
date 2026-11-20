@@ -104,6 +104,7 @@ def track(
     properties: dict[str, Any] | None = None,
     *,
     dedup_key: str | None = None,
+    timestamp: datetime | None = None,
 ) -> None:
     """Send one event for *user_id*, dropping unset properties. Silently
     no-ops when analytics is off or there is no user."""
@@ -112,6 +113,7 @@ def track(
         event,
         {k: v for k, v in (properties or {}).items() if v is not None},
         dedup_key=dedup_key,
+        timestamp=timestamp,
     )
 
 

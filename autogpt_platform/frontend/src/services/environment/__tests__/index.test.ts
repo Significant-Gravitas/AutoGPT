@@ -303,3 +303,24 @@ describe("Sentry enablement", () => {
     expect(environment.isSentryEnabled()).toBe(false);
   });
 });
+
+describe("graph memory build capability", () => {
+  it.each([undefined, "enabled", "", "false", "0", "Disabled", " disabled "])(
+    "preserves availability for %s",
+    (value) => {
+      vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", value);
+      expect(environment.isGraphMemoryAvailable()).toBe(true);
+    },
+  );
+  it("disables graph memory only with the dedicated capability setting", () => {
+    vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", "disabled");
+    vi.stubEnv("NEXT_PUBLIC_FORCE_ALL_FLAGS", "true");
+    expect(environment.isGraphMemoryAvailable()).toBe(false);
+  });
+  it("ignores retired and global feature-flag overrides", () => {
+    vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", undefined);
+    vi.stubEnv("NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_MEMORY", "false");
+    vi.stubEnv("NEXT_PUBLIC_FORCE_ALL_FLAGS", "false");
+    expect(environment.isGraphMemoryAvailable()).toBe(true);
+  });
+});

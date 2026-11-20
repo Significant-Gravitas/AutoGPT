@@ -1,5 +1,5 @@
 import { render, screen } from "@/tests/integrations/test-utils";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 

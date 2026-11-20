@@ -11,11 +11,15 @@ for the existing import surface.
 import logging
 import re
 from collections.abc import Mapping
+from datetime import date, datetime, timezone
 from enum import Enum, EnumMeta
-from typing import Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CatalogPayload
+
+if TYPE_CHECKING:
+    from pydantic.fields import FieldInfo
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +150,9 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GPT6_ASTRA = "gpt-6-astra"
     GPT6_SOL = "gpt-6-sol"
     GPT6_1_SOL = "gpt-6.1-sol"
+    GPT6_2_SOL = "gpt-6.2-sol"
+    GPT6_1_TERRA = "gpt-6.1-terra"
+    GPT6_2_ASTRA = "gpt-6.2-astra"
     GPT6_LUNA = "gpt-6-luna"
     # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
@@ -187,6 +194,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     CLAUDE_5_5_SONNET = "claude-sonnet-5-5"
     CLAUDE_5_5_HAIKU = "claude-haiku-5-5"
     CLAUDE_5_1_FABLE = "claude-fable-5-1"
+    CLAUDE_5_2_FABLE = "claude-fable-5-2"
     # AI/ML API models
     AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
     # Groq models
@@ -207,8 +215,14 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
+    GEMINI_3_1_FLASH_LITE = "google/gemini-3.1-flash-lite"
+    GEMINI_3_5_FLASH = "google/gemini-3.5-flash"
+    GEMINI_3_5_FLASH_LITE = "google/gemini-3.5-flash-lite"
     GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
     GEMINI_4_ARGON = "google/gemini-4-argon"
+    GEMINI_4_HYDROGEN = "google/gemini-4-hydrogen"
+    GEMINI_4_CARBON = "google/gemini-4-carbon"
+    GEMINI_4_NEON = "google/gemini-4-neon"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     GEMMA_4_31B_IT = "google/gemma-4-31b-it"
@@ -247,6 +261,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     META_MUSE_SPARK_1_3_CONTRIBUTOR = "meta/muse-spark-1.3-contributor"
     META_MUSE_SPARK_OPEN = "meta/muse-spark-open"
     META_MUSE_WONDER = "meta/muse-wonder"
+    META_MUSE_EMBER = "meta/muse-ember"
     GROK_3 = "x-ai/grok-3"
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
@@ -259,10 +274,12 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     KIMI_K2_6 = "moonshotai/kimi-k2.6"
     KIMI_K2_THINKING = "moonshotai/kimi-k2-thinking"
     KIMI_K3 = "moonshotai/kimi-k3"
+    KIMI_K3_1_PRO = "moonshotai/kimi-k3.1-pro"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
     QWEN3_8_MAX_0902 = "qwen/qwen3.8-max-0902"
     QWEN3_8_FLASH = "qwen/qwen3.8-flash"
+    QWEN4_MAX = "qwen/qwen4-max"
     # Xiaomi models
     MIMO_V2_6_PRO = "xiaomi/mimo-v2.6-pro"
     MIMO_V2_6_FLASH = "xiaomi/mimo-v2.6-flash"
@@ -281,6 +298,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     INCEPTION_MERCURY_2_5 = "inception/mercury-2.5"
     # Tencent models
     TENCENT_HY4_PREVIEW = "tencent/hy4-preview"
+    TENCENT_HY4 = "tencent/hy4"
     # Unbiased models
     UNBIASED_PARETO = "unbiased/pareto"
     # Llama API models
@@ -408,8 +426,11 @@ def _picker_hidden_slugs(payload: "CatalogPayload") -> frozenset[str]:
     safety control. A hand-crafted graph node can still select a
     kill-switched slug; execution of stored graphs must keep working after
     a kill (and keep billing), so the block layer deliberately does not
-    veto. The hard-stop for an incident is the retirement CLI, which
-    rewrites the nodes; copilot serving IS vetoed at resolution time.
+    veto. A block given a kill-switched slug with a fallback runs, and is
+    billed for, the fallback (``RETIRED_MODEL_FALLBACKS``) from the model's
+    ``shutdown_at``, when it has one; until then, and without a fallback,
+    it runs as stored. The retirement CLI rewrites the stored nodes;
+    copilot serving IS vetoed at resolution time.
     """
     return frozenset(
         m.slug for m in payload.models if not m.is_enabled or m.visibility != "GA"
@@ -417,6 +438,85 @@ def _picker_hidden_slugs(payload: "CatalogPayload") -> frozenset[str]:
 
 
 _PICKER_HIDDEN_SLUGS = _picker_hidden_slugs(get_catalog())
+
+
+def _retired_model_fallbacks(
+    payload: "CatalogPayload",
+) -> Mapping["LLMModel", tuple["LLMModel", date | None]]:
+    """Kill-switched models whose catalog fallback is an enabled block model
+    of the same provider, so the node's credentials still fit it, each with
+    the model's shutdown date. A block given one of these runs the fallback
+    from that date: a workflow input or preset value, a schedule or an API
+    call can name a model no stored-data pass reaches, and once its provider
+    shuts it down every such run would fail.
+    """
+    members = {member.value: member for member in LLMModel}
+    by_slug = {model.slug: model for model in payload.models}
+    fallbacks: dict[LLMModel, tuple[LLMModel, date | None]] = {}
+    for model in payload.models:
+        target = by_slug.get(model.fallback_model_slug or "")
+        if (
+            model.is_enabled
+            or model.slug not in members
+            or target is None
+            or not target.is_enabled
+            or target.slug not in members
+            or target.provider != model.provider
+        ):
+            continue
+        fallbacks[members[model.slug]] = (members[target.slug], model.shutdown_at)
+    return fallbacks
+
+
+RETIRED_MODEL_FALLBACKS = _retired_model_fallbacks(get_catalog())
+
+
+def is_llm_model_field(field: "FieldInfo") -> bool:
+    """A block input the startup pass, the retire CLI and the run-time
+    fallback act on: one typed ``LLMModel``."""
+    return field.annotation is LLMModel
+
+
+def _today() -> date:
+    """Today in UTC, against which a model's shutdown date is read."""
+    return datetime.now(timezone.utc).date()
+
+
+def scheduled_model_fallback(value: object) -> "tuple[LLMModel, date | None] | None":
+    """*value*'s catalog fallback and the day blocks start running it (None:
+    at once), whether or not that day has come; None when it has none. Takes
+    any spelling the enum takes (``openai/gpt-5-2025-08-07`` too)."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return RETIRED_MODEL_FALLBACKS.get(LLMModel(value))
+    except (ValueError, RecursionError):
+        # Hundreds of provider prefixes recurse through ``_missing_``. Such a
+        # value is unknown, and the block's input check refuses it as before.
+        return None
+
+
+def resolved_model_value(value: object) -> str:
+    """The ``LLMModel`` value *value* resolves to, as a log names it: the
+    enum's spelling, not the stored one. Its text when it resolves to none."""
+    try:
+        return LLMModel(value).value
+    except (ValueError, RecursionError):
+        return str(value)
+
+
+def retired_model_fallback(value: object) -> "LLMModel | None":
+    """The model a block runs in place of *value*: its catalog fallback, once
+    the catalog has switched *value* off and its shutdown date, if it has
+    one, has come. None when *value* runs as it is. An unknown value gets
+    None, and the block's input check refuses it as before."""
+    entry = scheduled_model_fallback(value)
+    if entry is None:
+        return None
+    fallback, shutdown_at = entry
+    if shutdown_at is not None and _today() < shutdown_at:
+        return None
+    return fallback
 
 
 def _default_model_from_catalog() -> LLMModel:
@@ -461,15 +561,44 @@ DEFAULT_LLM_MODEL = _default_model_from_catalog()
 # definitions and by the boot-time safety net (`migrate_llm_models` in
 # backend/data/graph.py) so a Claude Opus user lands on a newer Opus instead of
 # the global GPT default. Keep this in sync with
-# migrations/20260512120000_retire_deprecated_llm_models/migration.sql.
+# migrations/20260512120000_retire_deprecated_llm_models/migration.sql and
+# migrations/20261025120000_retire_undated_claude_aliases/migration.sql.
+# Never resolve these in ``LLMModel._missing_``: the copilot's registry gate
+# accepts what the enum accepts and sends the slug unchanged.
+#
+# Some keys are still enum members: models their provider has already shut
+# down, kept in the enum (and kill-switched in the catalog) so stored graphs
+# keep validating until the next boot moves them. A model its provider still
+# serves is retired with ``python -m backend.data.llm_registry.retire``
+# instead, which records the move and can revert it. Every target must be an
+# enabled catalog model.
 LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     "claude-3-haiku-20240307": LLMModel.CLAUDE_4_5_HAIKU,
     "claude-opus-4-20250514": LLMModel.CLAUDE_4_7_OPUS,
     "claude-sonnet-4-20250514": LLMModel.CLAUDE_4_6_SONNET,
     "claude-opus-4-1-20250805": LLMModel.CLAUDE_4_7_OPUS,
+    # Anthropic's undated aliases and OpenRouter's slugs for the same models.
+    "claude-opus-4-1": LLMModel.CLAUDE_4_7_OPUS,
+    "anthropic/claude-opus-4.1": LLMModel.CLAUDE_4_7_OPUS,
+    "claude-opus-4-0": LLMModel.CLAUDE_4_7_OPUS,
+    "anthropic/claude-opus-4": LLMModel.CLAUDE_4_7_OPUS,
+    "claude-sonnet-4-0": LLMModel.CLAUDE_4_6_SONNET,
+    "anthropic/claude-sonnet-4": LLMModel.CLAUDE_4_6_SONNET,
     "gpt-4-turbo": LLMModel.GPT41,
-    "o1": LLMModel.O3,
-    "o1-mini": LLMModel.O3_MINI,
+    # Shut down by OpenAI. These graphs move unasked at the next start, so
+    # each goes to the current model at its price, not to OpenAI's listed
+    # GPT-5.6 replacement, which can cost several times more; o1 keeps its
+    # listed gpt-5.6-sol, which costs less than o1 did. Codex's own list also
+    # offers gpt-5.1-codex: the boot pass rewrites only LLMModel fields and
+    # presets' overrides of those nodes, so Codex nodes keep it.
+    "o1": LLMModel.GPT5_6_SOL,
+    "o1-mini": LLMModel.GPT6_1_TERRA,
+    "o3-mini": LLMModel.GPT6_1_TERRA,
+    "o4-mini": LLMModel.GPT6_1_TERRA,
+    "gpt-4.1-nano": LLMModel.GPT6_LUNA,
+    "gpt-5-chat-latest": LLMModel.GPT6_1_SOL,
+    "gpt-5.1-codex": LLMModel.GPT6_1_SOL,
+    "gpt-5.3-chat-latest": LLMModel.GPT6_1_SOL,
     "google/gemini-2.5-pro-preview-03-25": LLMModel.GEMINI_2_5_PRO,
     "google/gemini-2.5-flash-lite-preview-06-17": LLMModel.GEMINI_2_5_FLASH,
     "cohere/command-r-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,

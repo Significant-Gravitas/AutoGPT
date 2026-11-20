@@ -16,14 +16,14 @@ export function ViewToggle<T extends string>({
 }: Props<T>) {
   // Sized like the search input and filter button it sits beside.
   return (
-    <div className="flex h-9 items-center rounded-xl border border-input p-1">
+    <div className="flex h-9 items-center rounded-xl border border-border-strong p-1">
       {options.map((option) => (
         <Button
           key={option.value}
           type="button"
           variant="toggle"
           size="icon-xs"
-          className="size-7 rounded-lg"
+          className="size-7"
           leadingIcon={option.icon}
           aria-label={option.label}
           aria-pressed={value === option.value}

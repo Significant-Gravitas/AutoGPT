@@ -3,18 +3,32 @@ import {
   getDeleteV1DeleteExecutionScheduleMockHandler422,
   getGetV1ListExecutionSchedulesForAUserMockHandler,
   getListCopilotFollowupSchedulesMockHandler,
+  getListPausedScheduledChatsMockHandler,
+  getResumeScheduledChatMockHandler,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { server } from "@/mocks/mock-server";
+import { focusManager, QueryClient } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import {
+  act,
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@/tests/integrations/test-utils";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from "vitest";
 import FollowupsPage from "../page";
 
 const pushMock = vi.fn();
@@ -90,10 +104,45 @@ function defaultGraphSchedulesHandler() {
   return getGetV1ListExecutionSchedulesForAUserMockHandler([]);
 }
 
+const SCHEDULES_UNAVAILABLE =
+  "Schedules are temporarily unavailable — your schedules are safe and will run once it's back.";
+
+// What the backend answers while the scheduler restarts on a deploy. Returns
+// how many schedule reads it has answered, and when it first answered one.
+function serveSchedulerOutage() {
+  let reads = 0;
+  let firstAnsweredAt: number | undefined;
+  function schedulerOut() {
+    reads += 1;
+    firstAnsweredAt ??= Date.now();
+    return HttpResponse.json(
+      {
+        message: "Failed to process GET /api/schedules",
+        detail: "Schedules are temporarily unavailable. Try again in a moment.",
+        hint: "Retry in 15 seconds.",
+      },
+      { status: 503, headers: { "Retry-After": "15" } },
+    );
+  }
+  server.use(
+    http.get(
+      "http://localhost:3000/api/proxy/api/schedules/followups",
+      schedulerOut,
+    ),
+    http.get("http://localhost:3000/api/proxy/api/schedules", schedulerOut),
+  );
+  return {
+    reads: () => reads,
+    firstAnsweredAt: () => firstAnsweredAt ?? Date.now(),
+  };
+}
+
 describe("FollowupsPage", () => {
   beforeEach(() => {
     toastMock.mockClear();
     pushMock.mockClear();
+    // Nothing paused unless a test says so.
+    server.use(getListPausedScheduledChatsMockHandler([]));
   });
 
   afterEach(() => {
@@ -493,5 +542,382 @@ describe("FollowupsPage", () => {
     expect(await screen.findByText(/scheduled items/i)).toBeDefined();
     expect(screen.queryByTestId("followups-list")).toBeNull();
     expect(screen.queryByTestId("schedules-partial-error")).toBeNull();
+  });
+
+  test("a scheduler outage reads as temporarily unavailable, not an error or an empty list", async () => {
+    serveSchedulerOutage();
+
+    render(<FollowupsPage />);
+    // The polite live region is there before the reads settle, so the text
+    // that later lands in it is announced.
+    const region = screen.getByTestId("schedules-unavailable-status");
+    expect(region.getAttribute("role")).toBe("status");
+
+    expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
+    expect(within(region).getByText(SCHEDULES_UNAVAILABLE)).toBeDefined();
+    expect(screen.queryByText("Something went wrong")).toBeNull();
+    expect(screen.queryByTestId("followups-empty")).toBeNull();
+
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([
+        makeFollowup({ id: "f1", message: "Back after the restart" }),
+      ]),
+      defaultGraphSchedulesHandler(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    const list = await screen.findByTestId("followups-list");
+    expect(within(list).getByText("Back after the restart")).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByTestId("schedules-unavailable")).toBeNull(),
+    );
+  });
+
+  test("an outage rechecks on its own once the scheduler's Retry-After has passed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const outage = serveSchedulerOutage();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(<FollowupsPage />, { queryClient });
+    expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    // Nothing asks again well before Retry-After: 10 s after the first 503
+    // neither list has been read again, nor is a read on its way.
+    const answered = outage.reads();
+    await act(async () => {
+      vi.advanceTimersByTime(outage.firstAnsweredAt() + 10_000 - Date.now());
+    });
+    expect(queryClient.isFetching()).toBe(0);
+    expect(outage.reads()).toBe(answered);
+
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([
+        makeFollowup({ id: "f1", message: "Back after the restart" }),
+      ]),
+      defaultGraphSchedulesHandler(),
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(6_000);
+    });
+
+    const list = await screen.findByTestId("followups-list");
+    expect(within(list).getByText("Back after the restart")).toBeDefined();
+    expect(screen.queryByTestId("schedules-unavailable")).toBeNull();
+  });
+
+  test("a 503 isn't retried at once nor refetched on focus, while another error is retried", async () => {
+    const outage = serveSchedulerOutage();
+    let failures = 0;
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/schedules", () => {
+        failures += 1;
+        return HttpResponse.json(
+          { detail: "The jobstore query failed" },
+          { status: 500 },
+        );
+      }),
+    );
+    // The app's own retries, without their delay.
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: 3, retryDelay: 0 } },
+    });
+
+    render(<FollowupsPage />, { queryClient });
+
+    expect(await screen.findByText("Something went wrong")).toBeDefined();
+    // The 500 was tried four times; the 503 once.
+    expect(failures).toBe(4);
+    expect(outage.reads()).toBe(1);
+
+    onTestFinished(() => focusManager.setFocused(undefined));
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(outage.reads()).toBe(1);
+  });
+
+  test("a real failure outranks the outage notice when nothing loaded", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
+        HttpResponse.json(
+          {
+            detail:
+              "Schedules are temporarily unavailable. Try again in a moment.",
+          },
+          { status: 503 },
+        ),
+      ),
+      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+        HttpResponse.json(
+          { detail: "The jobstore query failed" },
+          { status: 500 },
+        ),
+      ),
+    );
+
+    render(<FollowupsPage />);
+
+    expect(await screen.findByText("Something went wrong")).toBeDefined();
+    expect(screen.queryByTestId("schedules-unavailable")).toBeNull();
+  });
+
+  test("a recheck still waiting on the scheduler keeps the notice, not a spinner", async () => {
+    serveSchedulerOutage();
+    render(<FollowupsPage />);
+    expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
+
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    onTestFinished(() => release());
+    let waiting = 0;
+    async function heldEmptyList() {
+      waiting += 1;
+      await held;
+      return HttpResponse.json([]);
+    }
+    server.use(
+      http.get(
+        "http://localhost:3000/api/proxy/api/schedules/followups",
+        heldEmptyList,
+      ),
+      http.get("http://localhost:3000/api/proxy/api/schedules", heldEmptyList),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(waiting).toBe(2));
+    expect(screen.getByTestId("schedules-unavailable")).toBeDefined();
+    expect(screen.queryByTestId("followups-loading")).toBeNull();
+
+    release();
+    expect(await screen.findByTestId("followups-empty")).toBeDefined();
+    expect(screen.queryByTestId("schedules-unavailable")).toBeNull();
+  });
+
+  test("an outage of one list keeps the other's schedules and says the rest are unavailable", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
+        HttpResponse.json(
+          {
+            detail:
+              "Schedules are temporarily unavailable. Try again in a moment.",
+          },
+          { status: 503 },
+        ),
+      ),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({ id: "g1", agent_name: "Still listed" }),
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    const list = await screen.findByTestId("followups-list");
+    expect(within(list).getByText(/Still listed/)).toBeDefined();
+    expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
+    expect(screen.queryByTestId("schedules-partial-error")).toBeNull();
+  });
+
+  test("a paused list that fails to load is an error, not the empty state", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      http.get(
+        "http://localhost:3000/api/proxy/api/schedules/followups/paused",
+        () => HttpResponse.error(),
+      ),
+    );
+
+    render(<FollowupsPage />);
+
+    expect(await screen.findByText(/scheduled items/i)).toBeDefined();
+    expect(screen.queryByTestId("followups-empty")).toBeNull();
+  });
+
+  test("a paused chat stays listed when the schedules fail to load", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
+        HttpResponse.error(),
+      ),
+      http.get("http://localhost:3000/api/proxy/api/schedules", () =>
+        HttpResponse.error(),
+      ),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "routine-1",
+          title: "Discord monitor",
+          session_id: "session-1",
+          reason: "chat_link",
+          provider: "discord",
+          summary: "Paused: can't post to Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+        },
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    expect(await screen.findByTestId("paused-chat-row")).toBeDefined();
+    expect(await screen.findByTestId("schedules-partial-error")).toBeDefined();
+  });
+
+  test("lists a paused scheduled chat with why, and Resume resumes it", async () => {
+    let resumedKey: string | null = null;
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "routine-1",
+          title: "Discord monitor",
+          session_id: "session-1",
+          reason: "chat_link",
+          provider: "discord",
+          summary: "Paused: can't post to Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+        },
+      ]),
+      getResumeScheduledChatMockHandler(({ params }) => {
+        resumedKey = String(params.scheduleKey);
+        return { resumed: true };
+      }),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("paused-chat-row");
+    expect(within(row).getByText("Discord monitor")).toBeDefined();
+    expect(
+      within(row).getByText("Paused: can't post to Discord"),
+    ).toBeDefined();
+    // A paused chat is still something scheduled: no empty state.
+    expect(screen.queryByTestId("followups-empty")).toBeNull();
+
+    const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Resume Discord monitor" }),
+    );
+    await waitFor(() => expect(resumedKey).toBe("routine-1"));
+    // Home lists the paused chat under Needs you, so it is refreshed too.
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: getGetHomeDashboardQueryKey(),
+      }),
+    );
+    invalidate.mockRestore();
+  });
+
+  test("a paused follow-up can be deleted from its row", async () => {
+    let deletedID: string | null = null;
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "sched-1",
+          title: "Discord monitor",
+          session_id: "session-1",
+          reason: "connection",
+          provider: "discord",
+          summary: "Paused: can't use Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+          routine: false,
+        },
+      ]),
+      getDeleteV1DeleteExecutionScheduleMockHandler(({ params }) => {
+        deletedID = String(params.scheduleId);
+        return { id: deletedID };
+      }),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("paused-chat-row");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Delete Discord monitor" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, delete" }));
+
+    await waitFor(() => expect(deletedID).toBe("sched-1"));
+  });
+
+  test("a paused follow-up whose schedule was gone already reads as deleted", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "sched-1",
+          title: "Discord monitor",
+          session_id: "session-1",
+          reason: "connection",
+          provider: "discord",
+          summary: "Paused: can't use Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+          routine: false,
+        },
+      ]),
+      http.delete("*/api/schedules/:scheduleId", () =>
+        HttpResponse.json(
+          { detail: "Schedule #sched-1 not found" },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("paused-chat-row");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Delete Discord monitor" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, delete" }));
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Scheduled chat deleted" }),
+      ),
+    );
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ variant: "destructive" }),
+    );
+  });
+
+  test("a paused routine offers no Delete: it goes with its expert", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "routine-1",
+          title: "Morning sweep",
+          session_id: "session-1",
+          reason: "connection",
+          provider: "discord",
+          summary: "Paused: can't use Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+          routine: true,
+        },
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("paused-chat-row");
+    expect(
+      within(row).getByRole("button", { name: "Resume Morning sweep" }),
+    ).toBeDefined();
+    expect(
+      within(row).queryByRole("button", { name: "Delete Morning sweep" }),
+    ).toBeNull();
   });
 });

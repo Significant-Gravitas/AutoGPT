@@ -44,7 +44,18 @@ tools are denied and everything else is allowed.  An empty list means
 ``tools_exclude=False`` — ``tools`` is a **whitelist**; only listed tools
 are allowed.
 
-``blocks_exclude`` follows the same pattern for ``blocks``.
+``blocks_exclude`` follows the same pattern for ``blocks``, and
+``providers_exclude`` for ``providers``.
+
+Providers
+---------
+``providers`` filters the connected accounts a run's sandbox may use, by
+provider slug (``github``).  It is a ceiling on credentials, not on tools: the
+backend records it on the sandbox when the box's egress is pinned
+(``backend.util.e2b_network``), and the swap proxy's credential service
+(``backend.copilot.swap_credentials``) refuses to hand out a value for a
+provider outside it.  Nothing in the sandbox enforces it, so nothing there can
+widen it.
 
 Denying a capability denies the tools that extend it (see
 ``_IMPLIED_DENIALS``); allowing a capability gate allows the tool that now
@@ -66,9 +77,12 @@ is at most as permissive as the parent:
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Literal, get_args
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 from pydantic import BaseModel, PrivateAttr
+
+from backend.copilot.providers import SUPPORTED_PROVIDERS
+from backend.integrations.providers import ProviderName
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -115,6 +129,7 @@ ToolName = Literal[
     "find_library_agent",
     "find_session",
     "fix_agent_graph",
+    "flag_mistake",
     "get_agent_building_guide",
     "get_doc_page",
     "get_platform_info",
@@ -149,7 +164,9 @@ ToolName = Literal[
     "read_skill",
     "read_workspace_file",
     "remove_expert_workflow",
+    "render_ui",
     "request_credential_grant",
+    "request_work_check",
     "resume_capability",
     "resume_schedule",
     "revoke_expert_credential",
@@ -172,6 +189,12 @@ ToolName = Literal[
     "web_fetch",
     "web_search",
     "write_workspace_file",
+    # Capability-gated Local PC tools
+    "local_pc_computer_tools",
+    "local_pc_computer",
+    "list_recordings",
+    "generate_skill_from_recording",
+    "dry_run_skill",
     # Capability gates (not tools): deny to withhold a whole kind of capability
     "run_block",
     "run_mcp_tool",
@@ -301,9 +324,23 @@ SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
     {"Agent", "Edit", "Glob", "Grep", "Read", "Task", "WebSearch", "Write"}
 )
 
-# Platform tool names — everything that isn't an SDK built-in or a gate.
+CAPABILITY_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "local_pc_computer_tools",
+        "local_pc_computer",
+        "list_recordings",
+        "generate_skill_from_recording",
+        "dry_run_skill",
+    }
+)
+
+# Platform tool names — everything that isn't an SDK built-in, a
+# capability-gated Local PC tool or a gate.
 PLATFORM_TOOL_NAMES: frozenset[str] = (
-    ALL_TOOL_NAMES - SDK_BUILTIN_TOOL_NAMES - CAPABILITY_GATE_NAMES
+    ALL_TOOL_NAMES
+    - SDK_BUILTIN_TOOL_NAMES
+    - CAPABILITY_TOOL_NAMES
+    - CAPABILITY_GATE_NAMES
 )
 
 # Compiled regex patterns for block identifier classification.
@@ -312,6 +349,9 @@ _FULL_UUID_RE = re.compile(
     re.IGNORECASE,
 )
 _PARTIAL_UUID_RE = re.compile(r"^[0-9a-f]{8}$", re.IGNORECASE)
+
+# Most entries an allow- or deny-list of blocks may hold.
+MAX_BLOCK_IDENTIFIERS = 1_000
 
 
 # Tools that a blacklist entry must deny alongside the capability named.
@@ -403,12 +443,18 @@ class CopilotPermissions(BaseModel):
             when False it is a whitelist.  Ignored when *tools* is empty.
         blocks: Block identifiers (name, full UUID, or 8-char partial UUID).
         blocks_exclude: Same semantics as *tools_exclude* but for blocks.
+        providers: Provider slugs (``github``) whose connected accounts the
+            run's sandbox may use.
+        providers_exclude: Same semantics as *tools_exclude* but for
+            providers.
     """
 
     tools: list[str] = []
     tools_exclude: bool = True
     blocks: list[str] = []
     blocks_exclude: bool = True
+    providers: list[str] = []
+    providers_exclude: bool = True
 
     # Private: parent permissions for recursion inheritance.
     # Set only by merged_with_parent(); never exposed in block input schema.
@@ -461,6 +507,38 @@ class CopilotPermissions(BaseModel):
         return not matched if self.blocks_exclude else matched
 
     # ------------------------------------------------------------------
+    # Provider helpers
+    # ------------------------------------------------------------------
+
+    def is_provider_allowed(self, provider: str) -> bool:
+        """True if the run may use the user's *provider* account; the whole
+        inheritance chain must agree."""
+        if self.providers:
+            listed = provider in self.providers
+            if listed == self.providers_exclude:
+                return False
+        if self._parent is not None:
+            return self._parent.is_provider_allowed(provider)
+        return True
+
+    def flattened_providers(self) -> tuple[list[str], bool]:
+        """``(providers, providers_exclude)`` for the effective ceiling of this
+        instance and its whole parent chain, needing no parent to read.
+
+        An allow-list of the providers left, or, when none are left, a deny
+        list of every one (an empty list means no filter at all)."""
+        if not self.providers and self._parent is None:
+            return [], True
+        allowed = [p for p in SUPPORTED_PROVIDERS if self.is_provider_allowed(p)]
+        if len(allowed) == len(SUPPORTED_PROVIDERS):
+            # No filter, not an allow-list of today's providers: one added
+            # later must not be denied to an unrestricted run.
+            return [], True
+        if allowed:
+            return allowed, False
+        return list(SUPPORTED_PROVIDERS), True
+
+    # ------------------------------------------------------------------
     # Recursion / merging
     # ------------------------------------------------------------------
 
@@ -472,8 +550,9 @@ class CopilotPermissions(BaseModel):
         """Return a new instance that is at most as permissive as *parent*.
 
         - Tools: intersection of effective-allowed sets, stored as a whitelist.
-        - Blocks: parent is stored internally; both constraints are applied
-          during :meth:`is_block_allowed`.
+        - Blocks and providers: parent is stored internally; both
+          constraints are applied during :meth:`is_block_allowed` and
+          :meth:`is_provider_allowed`.
         """
         merged_tools = self.effective_allowed_tools(
             all_tools
@@ -483,8 +562,15 @@ class CopilotPermissions(BaseModel):
             tools_exclude=False,
             blocks=self.blocks,
             blocks_exclude=self.blocks_exclude,
+            # The child's own filter first, then the parent's chain on top.
+            providers=self.providers,
+            providers_exclude=self.providers_exclude,
         )
         result._parent = parent
+        # Unlike blocks, the provider ceiling is written out in full rather
+        # than left to ``_parent``: a private attribute does not survive the
+        # executor queue's JSON, and the child turn must not come back wider.
+        result.providers, result.providers_exclude = result.flattened_providers()
         return result
 
     # ------------------------------------------------------------------
@@ -493,7 +579,12 @@ class CopilotPermissions(BaseModel):
 
     def is_empty(self) -> bool:
         """Return True when no filtering is configured (allow-all passthrough)."""
-        return not self.tools and not self.blocks and self._parent is None
+        return (
+            not self.tools
+            and not self.blocks
+            and not self.providers
+            and self._parent is None
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -529,6 +620,78 @@ def validate_tool_names(tools: list[str]) -> list[str]:
 
 
 _tool_names_checked = False
+
+
+def allowed_providers(
+    permissions: CopilotPermissions | None,
+) -> tuple[str, ...] | None:
+    """The providers a run may use, of those a sandbox can be handed; ``None``
+    when nothing restricts them, which is what a box's egress record stores
+    for "every provider"."""
+    if permissions is None or permissions.is_empty():
+        return None
+    allowed = tuple(
+        p for p in SUPPORTED_PROVIDERS if permissions.is_provider_allowed(p)
+    )
+    if len(allowed) == len(SUPPORTED_PROVIDERS):
+        return None
+    return allowed
+
+
+def _denied(permissions: CopilotPermissions, infos: Iterable[Any]) -> list[str]:
+    """The providers named by credential field specs *infos* that
+    *permissions* keeps from the run, of those the ceiling covers."""
+    named = {ProviderName(p).value for info in infos for p in info.provider}
+    return sorted(
+        p
+        for p in named
+        if p in SUPPORTED_PROVIDERS and not permissions.is_provider_allowed(p)
+    )
+
+
+def denied_block_providers(
+    permissions: CopilotPermissions | None, block: object
+) -> list[str]:
+    """The providers among *block*'s credential fields that *permissions*
+    keeps from the run, of those the providers ceiling covers
+    (``SUPPORTED_PROVIDERS``).  Empty when nothing restricts them."""
+    if permissions is None or allowed_providers(permissions) is None:
+        return []
+    schema = getattr(block, "input_schema", None)
+    fields = schema.get_credentials_fields_info() if schema is not None else {}
+    return _denied(permissions, fields.values())
+
+
+def denied_graph_providers(
+    permissions: CopilotPermissions | None, graph: Any
+) -> list[str]:
+    """``denied_block_providers`` for every block of an agent graph: an agent
+    run is its blocks acting with the user's credentials.
+
+    An AutoPilot block counts as acting with every provider: its turn runs in
+    the graph executor, which this run's ceiling does not reach, so it could
+    use any account the user connected."""
+    if permissions is None or allowed_providers(permissions) is None:
+        return []
+    fields = graph.aggregate_credentials_inputs()
+    denied = _denied(permissions, (info for info, _, _ in fields.values()))
+    if _runs_autopilot(graph):
+        denied += [
+            p
+            for p in SUPPORTED_PROVIDERS
+            if p not in denied and not permissions.is_provider_allowed(p)
+        ]
+    return denied
+
+
+def _runs_autopilot(graph: Any) -> bool:
+    from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
+
+    return any(
+        node.block_id == AUTOPILOT_BLOCK_ID
+        for g in [graph, *graph.sub_graphs]
+        for node in g.nodes
+    )
 
 
 def denied_tool_names(permissions: CopilotPermissions | None) -> frozenset[str]:
@@ -578,20 +741,43 @@ async def validate_block_identifiers(
 
     Returns:
         List of identifiers that matched no known block.
+
+    Raises:
+        ValueError: More than ``MAX_BLOCK_IDENTIFIERS`` identifiers were given.
     """
     from backend.blocks import get_blocks
 
+    if len(identifiers) > MAX_BLOCK_IDENTIFIERS:
+        raise ValueError(
+            f"At most {MAX_BLOCK_IDENTIFIERS} block identifiers are allowed, "
+            f"got {len(identifiers)}."
+        )
+
     # get_blocks() returns dict[block_id_str, BlockClass]; instantiate once to get names.
     block_registry = get_blocks()
-    block_info = {bid: cls().name for bid, cls in block_registry.items()}
-    invalid: list[str] = []
-    for ident in identifiers:
-        matched = any(
-            _block_matches(ident, bid, bname) for bid, bname in block_info.items()
-        )
-        if not matched:
-            invalid.append(ident)
-    return invalid
+    block_ids = {bid.lower() for bid in block_registry}
+    id_prefixes = {bid[:8] for bid in block_ids}
+    block_names = {cls().name.lower() for cls in block_registry.values()}
+    return [
+        ident
+        for ident in identifiers
+        if not _resolves_to_known_block(ident, block_ids, id_prefixes, block_names)
+    ]
+
+
+def _resolves_to_known_block(
+    identifier: str,
+    block_ids: set[str],
+    id_prefixes: set[str],
+    block_names: set[str],
+) -> bool:
+    """Set-lookup form of :func:`_block_matches` over the whole registry."""
+    ident = identifier.strip().lower()
+    if _FULL_UUID_RE.match(ident):
+        return ident in block_ids
+    if _PARTIAL_UUID_RE.match(ident):
+        return ident in id_prefixes
+    return ident in block_names
 
 
 # ---------------------------------------------------------------------------
@@ -604,6 +790,10 @@ def apply_tool_permissions(
     *,
     use_e2b: bool = False,
     disabled_groups: Iterable[ToolGroup] = (),
+    hidden_tool_names: Iterable[str] = (),
+    use_local_pc_computer: bool = False,
+    local_pc_computer_tool_names: Iterable[str] | None = None,
+    use_recording: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Compute (allowed_tools, extra_disallowed) for :class:`ClaudeAgentOptions`.
 
@@ -631,9 +821,14 @@ def apply_tool_permissions(
     from backend.copilot.tools import TOOL_REGISTRY
 
     base_allowed = get_copilot_tool_names(
-        use_e2b=use_e2b, disabled_groups=disabled_groups
+        use_e2b=use_e2b,
+        disabled_groups=disabled_groups,
+        hidden_tool_names=hidden_tool_names,
+        use_local_pc_computer=use_local_pc_computer,
+        local_pc_computer_tool_names=local_pc_computer_tool_names,
+        use_recording=use_recording,
     )
-    base_disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+    base_disallowed = get_sdk_disallowed_tools()
 
     if permissions.is_empty():
         return base_allowed, base_disallowed
@@ -674,6 +869,8 @@ def apply_tool_permissions(
             # matches.
             names.append(short)
         elif short in TOOL_REGISTRY:
+            names.append(f"{MCP_TOOL_PREFIX}{short}")
+        elif short in CAPABILITY_TOOL_NAMES:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
             # Offer BOTH spellings and let the ``base_allowed`` filter below

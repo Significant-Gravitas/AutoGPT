@@ -38,8 +38,11 @@ export function ActivationStatus({
     attempt?.error_code ?? "",
   );
   return (
-    <div className="space-y-6">
-      <div className="rounded-xlarge border border-zinc-200 bg-zinc-50 p-5">
+    <div data-slot="activation-status" className="space-y-6">
+      <div
+        data-slot="activation-status-panel"
+        className="rounded-xlarge border border-border-base bg-surface-muted p-5"
+      >
         <Icon
           icon={
             isReady
@@ -49,13 +52,11 @@ export function ActivationStatus({
                 : Loading03Icon
           }
           size={24}
-          className={
-            !isReady && !payment && !failed && !notApplicable
-              ? "mb-4 animate-spin text-violet-600"
-              : "mb-4 text-violet-600"
-          }
+          tone="brand"
+          spin={!isReady && !payment && !failed && !notApplicable}
+          className="mb-4"
         />
-        <Text variant="body" className="text-zinc-700">
+        <Text variant="body" tone="body">
           {isReady
             ? hasFreshUsage
               ? `Your ${plan} plan is active with fresh daily and weekly allowances. Your conversations and work are right where you left them.`

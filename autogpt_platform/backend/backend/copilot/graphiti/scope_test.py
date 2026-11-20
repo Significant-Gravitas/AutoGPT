@@ -3,17 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from backend.copilot.dream.scheduling import (
-    COMMUNITY_REBUILD_REGISTRATION_PREFIX,
-    NIGHTLY_BATCH_REGISTRATION_PREFIX,
-)
-
 from .client import derive_group_id, derive_memory_group_id, derive_memory_scope_key
 from .scope import (
     DREAM_LOCK_KEY_PREFIX,
     HIT_TRACKER_KEY_PREFIX,
     LAST_COMPLETED_KEY_PREFIX,
     REBUILD_LOCK_KEY_PREFIX,
+    WRITE_LOCK_KEY_PREFIX,
     MemoryScope,
 )
 
@@ -101,24 +97,15 @@ class TestRedisKeys:
         assert scope.redis_key("rebuild_lock") == legacy
 
     @BOTH_SCOPES
-    @pytest.mark.parametrize(
-        "prefix",
-        [COMMUNITY_REBUILD_REGISTRATION_PREFIX, NIGHTLY_BATCH_REGISTRATION_PREFIX],
-    )
-    def test_registration_keys_on_owner_user(
-        self, expert_id: str | None, prefix: str
-    ) -> None:
+    def test_write_lock_keys_on_group_id(self, expert_id: str | None) -> None:
+        """The ingestion worker takes it knowing only the graph."""
         scope = MemoryScope.build(USER_ID, expert_id)
-        legacy = f"{prefix}:{USER_ID}"
-        assert scope.redis_key("registration", registration_prefix=prefix) == legacy
+        group_id = derive_memory_group_id(USER_ID, expert_id)
+        assert scope.redis_key("write_lock") == (f"{WRITE_LOCK_KEY_PREFIX}{group_id}")
 
     def test_hits_key_requires_edge_uuid(self) -> None:
         with pytest.raises(ValueError, match="edge_uuid"):
             MemoryScope.for_user(USER_ID).redis_key("hits")
-
-    def test_registration_key_requires_prefix(self) -> None:
-        with pytest.raises(ValueError, match="prefix"):
-            MemoryScope.for_user(USER_ID).redis_key("registration")
 
 
 class TestValidation:

@@ -17,6 +17,7 @@ export function AutoGPTLogo({
 
   return (
     <svg
+      data-slot="autogpt-logo"
       viewBox="0 0 89 40"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -117,7 +118,7 @@ export function AutoGPTLogo({
           <stop offset="1" stopColor="#9900FF" />
         </linearGradient>
         <clipPath id={clipId}>
-          <rect width="88.8696" height="40" fill="white" />
+          <rect width="88.8696" height="40" />
         </clipPath>
       </defs>
     </svg>

@@ -17,7 +17,7 @@ the model database (data-as-code); splitting it would scatter the one
 place model facts live.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from backend.data.llm_registry.catalog_model import (
     CATALOG_SCHEMA_VERSION,
@@ -103,12 +103,18 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=64000,
                 price_tier=2,
+                # Anthropic list price $1/$5 per Mtok; cache read 0.1x input
+                # ($0.10), cache write (5m) 1.25x input ($1.25).
                 cost=CatalogModelCost(
                     run_credits=4,
                     input_credits_per_1m=150.0,
                     output_credits_per_1m=750.0,
                     cache_read_credits_per_1m=15.0,
                     cache_creation_credits_per_1m=188.0,
+                    provider_input_usd_per_1m=1.00,
+                    provider_output_usd_per_1m=5.00,
+                    provider_cache_read_usd_per_1m=0.10,
+                    provider_cache_creation_usd_per_1m=1.25,
                 ),
             ),
             CatalogModel(
@@ -138,6 +144,8 @@ def _build_catalog() -> CatalogPayload:
                     cache_creation_credits_per_1m=18.75,
                     provider_input_usd_per_1m=0.10,
                     provider_output_usd_per_1m=0.50,
+                    provider_cache_read_usd_per_1m=0.01,
+                    provider_cache_creation_usd_per_1m=0.125,
                 ),
             ),
             CatalogModel(
@@ -186,6 +194,10 @@ def _build_catalog() -> CatalogPayload:
                     output_credits_per_1m=3750.0,
                     cache_read_credits_per_1m=75.0,
                     cache_creation_credits_per_1m=938.0,
+                    provider_input_usd_per_1m=5.00,
+                    provider_output_usd_per_1m=25.00,
+                    provider_cache_read_usd_per_1m=0.50,
+                    provider_cache_creation_usd_per_1m=6.25,
                 ),
             ),
             CatalogModel(
@@ -208,6 +220,10 @@ def _build_catalog() -> CatalogPayload:
                     output_credits_per_1m=3750.0,
                     cache_read_credits_per_1m=75.0,
                     cache_creation_credits_per_1m=938.0,
+                    provider_input_usd_per_1m=5.00,
+                    provider_output_usd_per_1m=25.00,
+                    provider_cache_read_usd_per_1m=0.50,
+                    provider_cache_creation_usd_per_1m=6.25,
                 ),
             ),
             CatalogModel(
@@ -222,6 +238,8 @@ def _build_catalog() -> CatalogPayload:
                 supports_tools=True,
                 supports_json_output=True,
                 supports_reasoning=True,
+                # Anthropic list price $5/$25 per Mtok; cache read $0.50,
+                # cache write (5m) $6.25.
                 cost=CatalogModelCost(
                     run_credits=14,
                     input_credits_per_1m=750.0,
@@ -230,6 +248,8 @@ def _build_catalog() -> CatalogPayload:
                     cache_creation_credits_per_1m=938.0,
                     provider_input_usd_per_1m=5.00,
                     provider_output_usd_per_1m=25.00,
+                    provider_cache_read_usd_per_1m=0.50,
+                    provider_cache_creation_usd_per_1m=6.25,
                 ),
             ),
             CatalogModel(
@@ -255,6 +275,8 @@ def _build_catalog() -> CatalogPayload:
                     cache_creation_credits_per_1m=750.0,
                     provider_input_usd_per_1m=4.00,
                     provider_output_usd_per_1m=20.00,
+                    provider_cache_read_usd_per_1m=0.20,
+                    provider_cache_creation_usd_per_1m=5.00,
                 ),
             ),
             CatalogModel(
@@ -265,6 +287,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=64000,
                 price_tier=3,
+                # Anthropic retires it 2026-11-30; its listed replacement is
+                # claude-sonnet-5-5.
+                is_enabled=False,
+                fallback_model_slug="claude-sonnet-5-5",
+                shutdown_at=date(2026, 11, 30),
                 cost=CatalogModelCost(
                     run_credits=9,
                     input_credits_per_1m=450.0,
@@ -287,6 +314,10 @@ def _build_catalog() -> CatalogPayload:
                     output_credits_per_1m=2250.0,
                     cache_read_credits_per_1m=45.0,
                     cache_creation_credits_per_1m=563.0,
+                    provider_input_usd_per_1m=3.00,
+                    provider_output_usd_per_1m=15.00,
+                    provider_cache_read_usd_per_1m=0.30,
+                    provider_cache_creation_usd_per_1m=3.75,
                 ),
             ),
             CatalogModel(
@@ -304,18 +335,22 @@ def _build_catalog() -> CatalogPayload:
                 supports_tools=True,
                 supports_json_output=True,
                 supports_reasoning=True,
-                # Sticker price ($3/$15 per Mtok; intro pricing $2/$10 ends
-                # 2026-08-31 — pricing at sticker avoids a repricing PR).
-                # Credits at the standard 1.5x margin; cache read $0.30,
-                # cache write (5m) $3.75.
+                # Anthropic list price $2/$10 per Mtok; cache read $0.20,
+                # cache write (5m) $2.50. Anthropic cancelled the scheduled
+                # rise to $3/$15, so the provider USD fields carry today's
+                # price. The credits stay as set against that $3/$15
+                # sticker: they are what the platform bills, not what the
+                # provider charges.
                 cost=CatalogModelCost(
                     run_credits=9,
                     input_credits_per_1m=450.0,
                     output_credits_per_1m=2250.0,
                     cache_read_credits_per_1m=45.0,
                     cache_creation_credits_per_1m=563.0,
-                    provider_input_usd_per_1m=3.00,
-                    provider_output_usd_per_1m=15.00,
+                    provider_input_usd_per_1m=2.00,
+                    provider_output_usd_per_1m=10.00,
+                    provider_cache_read_usd_per_1m=0.20,
+                    provider_cache_creation_usd_per_1m=2.50,
                 ),
             ),
             CatalogModel(
@@ -332,20 +367,21 @@ def _build_catalog() -> CatalogPayload:
                 supports_json_output=True,
                 supports_reasoning=True,
                 # Sticker price $2/$10 per Mtok, undercutting Sonnet 5's
-                # $3/$15 sticker. Cache read $0.20/1M, cache write (5m)
-                # $2.50/1M, (1h) $4.00/1M. Verified 2026-09-28 against
-                # Anthropic's sonnet-5-5 docs, the vendored rate card and
-                # OpenRouter's live listing — no intro-pricing end date is
-                # published, unlike Sonnet 5. Credits at the standard 1.5x
-                # margin.
+                # $3/$15 sticker. Cache read $0.10/1M (5% of input on Sonnet
+                # 5.5, not the usual 10%), cache write (5m) $2.50/1M, (1h)
+                # $4.00/1M, per Anthropic's sonnet-5-5 overview (checked
+                # 2026-10-12); no intro-pricing end date is published,
+                # unlike Sonnet 5. Credits at the standard 1.5x margin.
                 cost=CatalogModelCost(
                     run_credits=9,
                     input_credits_per_1m=300.0,
                     output_credits_per_1m=1500.0,
-                    cache_read_credits_per_1m=30.0,
+                    cache_read_credits_per_1m=15.0,
                     cache_creation_credits_per_1m=375.0,
                     provider_input_usd_per_1m=2.00,
                     provider_output_usd_per_1m=10.00,
+                    provider_cache_read_usd_per_1m=0.10,
+                    provider_cache_creation_usd_per_1m=2.50,
                 ),
             ),
             CatalogModel(
@@ -376,6 +412,40 @@ def _build_catalog() -> CatalogPayload:
                     cache_creation_credits_per_1m=1875.0,
                     provider_input_usd_per_1m=10.00,
                     provider_output_usd_per_1m=50.00,
+                    provider_cache_read_usd_per_1m=0.25,
+                    provider_cache_creation_usd_per_1m=12.50,
+                ),
+            ),
+            CatalogModel(
+                slug="claude-fable-5-2",
+                display_name="Claude Fable 5.2",
+                provider="anthropic",
+                creator="anthropic",
+                # Same compaction-cap convention as the rest of the Claude
+                # 5 family: native window is 1M, capped at 200K here.
+                context_window=200000,
+                max_output_tokens=128000,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # $8/1M in, $40/1M out (Anthropic list price, 20% below
+                # Fable 5.1's $10/$50; checked 2026-11-10 against the
+                # models/fable-5-2 "What's new" pricing table) at the
+                # catalog's standard usd_per_1m x 150 factor -> 1200/6000
+                # credits. Cache reads keep Fable 5.1's 0.025x-of-input
+                # multiplier ($0.20/1M); cache writes (5m) keep the 1.25x
+                # convention ($10/1M).
+                cost=CatalogModelCost(
+                    run_credits=16,
+                    input_credits_per_1m=1200.0,
+                    output_credits_per_1m=6000.0,
+                    cache_read_credits_per_1m=30.0,
+                    cache_creation_credits_per_1m=1500.0,
+                    provider_input_usd_per_1m=8.00,
+                    provider_output_usd_per_1m=40.00,
+                    provider_cache_read_usd_per_1m=0.20,
+                    provider_cache_creation_usd_per_1m=10.00,
                 ),
             ),
             # ----- Groq -----
@@ -585,8 +655,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=38.61,
-                    output_credits_per_1m=154.305,
+                    input_credits_per_1m=48,
+                    output_credits_per_1m=133.5,
                 ),
             ),
             CatalogModel(
@@ -611,16 +681,15 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
-                # Live OpenRouter rate as of 2026-10-02: $0.03/$0.75 per
-                # 1M (cache read $0.00375), down from $0.30/$1.20 on
-                # 2026-09-26. OpenRouter reprices this route continuously
-                # (by design); this is the latest snapshot at PR time,
-                # re-checked immediately before merge. Flagged by
+                # Live OpenRouter rate as of 2026-10-19: $0.0472/$0.12 per
+                # 1M (cache read $0.00375). OpenRouter reprices this route
+                # continuously (by design); this is the latest snapshot at
+                # PR time, re-checked immediately before merge. Flagged by
                 # scripts/check_openrouter_prices.py.
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=4.5,
-                    output_credits_per_1m=112.5,
+                    input_credits_per_1m=7.08,
+                    output_credits_per_1m=18.0,
                     cache_read_credits_per_1m=0.5625,
                 ),
             ),
@@ -703,6 +772,24 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="google/gemini-3.1-flash-lite",
+                display_name="Gemini 3.1 Flash Lite",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=37.5,
+                    output_credits_per_1m=225.0,
+                    cache_read_credits_per_1m=3.75,
+                ),
+            ),
+            CatalogModel(
                 slug="google/gemini-3.1-flash-lite-preview",
                 display_name="Gemini 3.1 Flash Lite Preview",
                 provider="open_router",
@@ -731,6 +818,42 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="google/gemini-3.5-flash",
+                display_name="Gemini 3.5 Flash",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=225.0,
+                    output_credits_per_1m=1350.0,
+                    cache_read_credits_per_1m=22.5,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemini-3.5-flash-lite",
+                display_name="Gemini 3.5 Flash Lite",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=45.0,
+                    output_credits_per_1m=375.0,
+                    cache_read_credits_per_1m=4.5,
+                ),
+            ),
+            CatalogModel(
                 slug="google/gemini-3.8-flash",
                 display_name="Gemini 3.8 Flash",
                 provider="open_router",
@@ -740,8 +863,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=3,
-                    input_credits_per_1m=112.5,
-                    output_credits_per_1m=562.5,
+                    input_credits_per_1m=123.75,
+                    output_credits_per_1m=618.75,
                 ),
             ),
             CatalogModel(
@@ -766,6 +889,69 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="google/gemini-4-hydrogen",
+                display_name="Gemini 4 Hydrogen",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Live OpenRouter listing 2026-11-13: $1.50/$7.50 per Mtok,
+                # cache read $0.075/1M, cache write $0.0833/1M.
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=225.0,
+                    output_credits_per_1m=1125.0,
+                    cache_read_credits_per_1m=11.25,
+                    cache_creation_credits_per_1m=12.5,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemini-4-carbon",
+                display_name="Gemini 4 Carbon",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Live OpenRouter listing 2026-11-11: $2/$10 per Mtok,
+                # cache read $0.10/1M, cache write $0.1875/1M.
+                cost=CatalogModelCost(
+                    run_credits=5,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=15.0,
+                    cache_creation_credits_per_1m=28.125,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemini-4-neon",
+                display_name="Gemini 4 Neon",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Live OpenRouter listing 2026-11-19: $3/$15 per Mtok,
+                # cache read $0.15/1M, cache write $0.0833/1M.
+                cost=CatalogModelCost(
+                    run_credits=8,
+                    input_credits_per_1m=450.0,
+                    output_credits_per_1m=2250.0,
+                    cache_read_credits_per_1m=22.5,
+                    cache_creation_credits_per_1m=12.5,
+                ),
+            ),
+            CatalogModel(
                 slug="google/gemma-4-31b-it",
                 display_name="Gemma 4 31B",
                 provider="open_router",
@@ -773,12 +959,12 @@ def _build_catalog() -> CatalogPayload:
                 context_window=262144,
                 max_output_tokens=16384,
                 price_tier=1,
-                # Live OpenRouter rate as of 2026-09-23: $0.09/$0.34 per 1M,
-                # cache read $0.05/1M (drifted from the $0.14/$0.40 launch price).
+                # Live OpenRouter rate as of 2026-10-17: $0.20/$0.40 per 1M,
+                # cache read $0.05/1M (flagged by check_openrouter_prices.py).
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=13.5,
-                    output_credits_per_1m=51.0,
+                    input_credits_per_1m=30,
+                    output_credits_per_1m=60,
                     cache_read_credits_per_1m=7.5,
                 ),
             ),
@@ -804,13 +990,13 @@ def _build_catalog() -> CatalogPayload:
                 supports_json_output=True,
                 supports_reasoning=True,
                 supports_parallel_tool_calls=True,
-                # Live OpenRouter rate as of 2026-09-25: $0.021/$0.0616 per
-                # 1M, cache read $0.0042/1M (dropped from $0.06/$0.18,
-                # verified via check_openrouter_prices.py).
+                # Live OpenRouter rate as of 2026-10-17: $0.06/$0.18 per
+                # 1M, cache read $0.0042/1M (flagged by
+                # check_openrouter_prices.py).
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=3.15,
-                    output_credits_per_1m=9.24,
+                    input_credits_per_1m=9,
+                    output_credits_per_1m=27,
                     cache_read_credits_per_1m=0.63,
                 ),
             ),
@@ -916,6 +1102,27 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="meta/muse-ember",
+                display_name="Muse Ember",
+                provider="open_router",
+                creator="meta",
+                context_window=1048576,
+                max_output_tokens=943718,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Meta list price $0.10/$0.50 per Mtok, cache read
+                # $0.004/1M -- live OpenRouter listing 2026-11-10
+                # (meta/muse-ember).
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=15.0,
+                    output_credits_per_1m=75.0,
+                    cache_read_credits_per_1m=0.6,
+                ),
+            ),
+            CatalogModel(
                 slug="microsoft/phi-4",
                 display_name="Phi-4",
                 provider="open_router",
@@ -1018,12 +1225,13 @@ def _build_catalog() -> CatalogPayload:
                 context_window=524288,
                 max_output_tokens=262144,
                 price_tier=2,
-                # Live OpenRouter rate as of 2026-10-06: $0.68/$2.09 per 1M
-                # (cache read $0.07); 150 credits per USD.
+                # Live OpenRouter rate as of 2026-10-29: $0.70/$2.10 per 1M
+                # on every Mistral route (down from the $1.36/$4.18 seen on
+                # 2026-10-21); cache read $0.07; 150 credits per USD.
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=102.0,
-                    output_credits_per_1m=313.5,
+                    input_credits_per_1m=105.0,
+                    output_credits_per_1m=315.0,
                     cache_read_credits_per_1m=10.5,
                 ),
             ),
@@ -1123,8 +1331,8 @@ def _build_catalog() -> CatalogPayload:
                 price_tier=1,
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=67.5,
-                    output_credits_per_1m=337.5,
+                    input_credits_per_1m=75,
+                    output_credits_per_1m=375,
                 ),
             ),
             CatalogModel(
@@ -1135,13 +1343,12 @@ def _build_catalog() -> CatalogPayload:
                 context_window=262144,
                 max_output_tokens=262144,
                 price_tier=2,
-                # Live OpenRouter rate as of 2026-10-02: $0.43415/$1.828 per
-                # 1M (cheapest route, Baidu), down from $0.65/$3.41.
+                # Live OpenRouter rate as of 2026-10-19: $0.65/$3.41 per 1M.
                 # Flagged by scripts/check_openrouter_prices.py.
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=65.1225,
-                    output_credits_per_1m=274.2,
+                    input_credits_per_1m=97.5,
+                    output_credits_per_1m=511.5,
                 ),
             ),
             CatalogModel(
@@ -1176,6 +1383,29 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="moonshotai/kimi-k3.1-pro",
+                display_name="Kimi K3.1 Pro",
+                provider="open_router",
+                creator="moonshot-ai",
+                context_window=1048576,
+                max_output_tokens=943718,
+                price_tier=3,
+                supports_tools=True,
+                supports_reasoning=True,
+                # Moonshot's K3 successor (multimodal reasoning). OpenRouter's
+                # default Moonshot AI route is $2/$10 per Mtok, cache read
+                # $0.20/1M -- live listing 2026-10-24. Kimi K3 is untouched.
+                cost=CatalogModelCost(
+                    run_credits=9,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=30.0,
+                    provider_input_usd_per_1m=2.00,
+                    provider_output_usd_per_1m=10.00,
+                    provider_cache_read_usd_per_1m=0.20,
+                ),
+            ),
+            CatalogModel(
                 slug="nousresearch/hermes-3-llama-3.1-405b",
                 display_name="Hermes 3 Llama 3.1 405B",
                 provider="open_router",
@@ -1204,7 +1434,7 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=131072,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=1, input_credits_per_1m=5.55, output_credits_per_1m=25.5
+                    run_credits=1, input_credits_per_1m=22.5, output_credits_per_1m=90
                 ),
             ),
             CatalogModel(
@@ -1319,6 +1549,27 @@ def _build_catalog() -> CatalogPayload:
                     output_credits_per_1m=70.5,
                     cache_read_credits_per_1m=2.4,
                     cache_creation_credits_per_1m=30.0,
+                ),
+            ),
+            CatalogModel(
+                slug="qwen/qwen4-max",
+                display_name="Qwen 4 Max",
+                provider="open_router",
+                creator="qwen",
+                context_window=1000000,
+                max_output_tokens=393216,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Live OpenRouter listing 2026-11-17: $1.425/$4.275 per Mtok,
+                # cache read $0.07125/1M, cache write $1.78125/1M.
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=213.75,
+                    output_credits_per_1m=641.25,
+                    cache_read_credits_per_1m=10.6875,
+                    cache_creation_credits_per_1m=267.1875,
                 ),
             ),
             CatalogModel(
@@ -1582,10 +1833,16 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1047576,
                 max_output_tokens=32768,
                 price_tier=1,
+                # OpenAI list price $0.40/$1.60 per Mtok, cached input $0.10;
+                # GPT-4.1 mini bills nothing for writing the cache.
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=60.0,
                     output_credits_per_1m=240.0,
+                    provider_input_usd_per_1m=0.40,
+                    provider_output_usd_per_1m=1.60,
+                    provider_cache_read_usd_per_1m=0.10,
+                    provider_cache_creation_usd_per_1m=0.0,
                 ),
             ),
             CatalogModel(
@@ -1600,6 +1857,10 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=3,
                     input_credits_per_1m=375.0,
                     output_credits_per_1m=1500.0,
+                    provider_input_usd_per_1m=2.50,
+                    provider_output_usd_per_1m=10.00,
+                    provider_cache_read_usd_per_1m=1.25,
+                    provider_cache_creation_usd_per_1m=0.00,
                 ),
             ),
             CatalogModel(
@@ -1622,10 +1883,20 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=128000,
                 price_tier=1,
+                # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-sol.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
+                shutdown_at=date(2026, 12, 11),
+                # OpenAI list price $1.25/$10 per Mtok, cached input $0.125;
+                # GPT-5 bills nothing for writing the cache.
                 cost=CatalogModelCost(
                     run_credits=2,
                     input_credits_per_1m=188.0,
                     output_credits_per_1m=1500.0,
+                    provider_input_usd_per_1m=1.25,
+                    provider_output_usd_per_1m=10.00,
+                    provider_cache_read_usd_per_1m=0.125,
+                    provider_cache_creation_usd_per_1m=0.0,
                 ),
             ),
             CatalogModel(
@@ -1636,6 +1907,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=16384,
                 price_tier=2,
+                # Shut down by OpenAI 2026-07-23 (listed replacement gpt-5.6-sol).
+                # Graphs move unasked at boot, so to the current model at its
+                # price instead.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
                 cost=CatalogModelCost(
                     run_credits=5,
                     input_credits_per_1m=188.0,
@@ -1650,6 +1926,10 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=128000,
                 price_tier=1,
+                # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-terra.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-terra",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=38.0,
@@ -1664,6 +1944,10 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=128000,
                 price_tier=1,
+                # OpenAI shuts it down 2026-12-11; listed replacement gpt-6-luna.
+                is_enabled=False,
+                fallback_model_slug="gpt-6-luna",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=1, input_credits_per_1m=8.0, output_credits_per_1m=60.0
                 ),
@@ -1704,6 +1988,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=100000,
                 price_tier=2,
+                # Shut down by OpenAI 2026-10-23 (listed replacement gpt-5.6-terra).
+                # Graphs move unasked at boot, so to the current model at its
+                # price instead.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-terra",
                 cost=CatalogModelCost(
                     run_credits=2,
                     input_credits_per_1m=165.0,
@@ -1718,6 +2007,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=100000,
                 price_tier=3,
+                # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-sol
+                # in pro reasoning mode, which no block requests.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=30,
                     input_credits_per_1m=3000.0,
@@ -1732,6 +2026,9 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=100000,
                 price_tier=3,
+                # Shut down by OpenAI 2026-10-23; listed replacement gpt-5.6-sol.
+                is_enabled=False,
+                fallback_model_slug="gpt-5.6-sol",
                 cost=CatalogModelCost(
                     run_credits=16,
                     input_credits_per_1m=2250.0,
@@ -1746,6 +2043,10 @@ def _build_catalog() -> CatalogPayload:
                 context_window=128000,
                 max_output_tokens=65536,
                 price_tier=2,
+                # Shut down by OpenAI 2025-10-27. Its listed replacement, o4-mini,
+                # shut down 2026-10-23, so this follows o4-mini to gpt-6.1-terra.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-terra",
                 cost=CatalogModelCost(
                     run_credits=2,
                     input_credits_per_1m=165.0,
@@ -1810,6 +2111,67 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="gpt-6.2-sol",
+                display_name="GPT-6.2 Sol",
+                provider="openai",
+                creator="openai",
+                # Capped at the 272K base-price tier: OpenAI bills prompts
+                # above 272K at $4/$15 and the catalog has no tiered
+                # billing, so a larger window would under-bill.
+                context_window=272000,
+                max_output_tokens=128000,
+                # $2/1M in, $10/1M out, $0.10/1M cache read -- live
+                # OpenRouter rate as of 2026-11-18, same list price as
+                # gpt-6.1-sol (which stays listed and remains the default
+                # until Codex advertises this model). Tier 2 like gpt-6.1-sol.
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=15.0,
+                ),
+            ),
+            CatalogModel(
+                slug="gpt-6.1-terra",
+                display_name="GPT-6.1 Terra",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                # $1/1M in, $5/1M out, $0.05/1M cache read -- live
+                # OpenRouter rate as of 2026-10-27. Mid tier between
+                # gpt-6-luna and gpt-6.1-sol; gpt-5.6-terra stays listed.
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=150.0,
+                    output_credits_per_1m=750.0,
+                    cache_read_credits_per_1m=7.5,
+                ),
+            ),
+            CatalogModel(
+                slug="gpt-6.2-astra",
+                display_name="GPT-6.2 Astra",
+                provider="openai",
+                creator="openai",
+                # Capped at the 272K base-price tier: OpenAI bills prompts
+                # above 272K at $16/$60 and the catalog has no tiered
+                # billing, so a larger window would under-bill.
+                context_window=272000,
+                max_output_tokens=128000,
+                # $8/1M in, $40/1M out, $0.40/1M cache read -- live
+                # OpenRouter rate as of 2026-11-17. Cheaper successor to
+                # gpt-6-astra (which stays listed). Tier 3 like gpt-6-astra.
+                price_tier=3,
+                cost=CatalogModelCost(
+                    run_credits=16,
+                    input_credits_per_1m=1200.0,
+                    output_credits_per_1m=6000.0,
+                    cache_read_credits_per_1m=60.0,
+                ),
+            ),
+            CatalogModel(
                 slug="gpt-6-luna",
                 display_name="GPT-6 Luna",
                 provider="openai",
@@ -1823,6 +2185,10 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=1,
                     input_credits_per_1m=15.0,
                     output_credits_per_1m=75.0,
+                    provider_input_usd_per_1m=0.10,
+                    provider_output_usd_per_1m=0.50,
+                    provider_cache_read_usd_per_1m=0.01,
+                    provider_cache_creation_usd_per_1m=0.125,
                 ),
             ),
             CatalogModel(
@@ -1960,6 +2326,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=128000,
                 max_output_tokens=16384,
                 price_tier=2,
+                # Shut down by OpenAI 2026-08-10 (listed replacement gpt-5.6-sol).
+                # Graphs move unasked at boot, so to the current model at its
+                # price instead.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
                 cost=CatalogModelCost(
                     run_credits=5,
                     input_credits_per_1m=263.0,
@@ -2002,6 +2373,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=128000,
                 price_tier=2,
+                # Shut down by OpenAI 2026-07-23 (listed replacement gpt-5.6-sol).
+                # Graphs move unasked at boot, so to the current model at its
+                # price instead.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
                 cost=CatalogModelCost(
                     run_credits=5,
                     input_credits_per_1m=188.0,
@@ -2016,6 +2392,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=400000,
                 max_output_tokens=128000,
                 price_tier=3,
+                # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-sol
+                # in pro reasoning mode, which no block requests.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=60,
                     input_credits_per_1m=2250.0,
@@ -2030,6 +2411,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1047576,
                 max_output_tokens=32768,
                 price_tier=1,
+                # Shut down by OpenAI 2026-10-23 (listed replacement gpt-5.6-luna).
+                # Graphs move unasked at boot, so to the current model at its
+                # price instead.
+                is_enabled=False,
+                fallback_model_slug="gpt-6-luna",
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=15.0,
@@ -2044,6 +2430,10 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=100000,
                 price_tier=2,
+                # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-sol.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-sol",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=4,
                     input_credits_per_1m=300.0,
@@ -2058,6 +2448,11 @@ def _build_catalog() -> CatalogPayload:
                 context_window=200000,
                 max_output_tokens=100000,
                 price_tier=1,
+                # Shut down by OpenAI 2026-10-23 (listed replacement gpt-5.6-sol).
+                # Graphs move unasked at boot, so to the current model at its
+                # price instead.
+                is_enabled=False,
+                fallback_model_slug="gpt-6.1-terra",
                 cost=CatalogModelCost(
                     run_credits=2,
                     input_credits_per_1m=165.0,
@@ -2126,6 +2521,28 @@ def _build_catalog() -> CatalogPayload:
                     provider_output_usd_per_1m=2.501,
                 ),
             ),
+            CatalogModel(
+                slug="tencent/hy4",
+                display_name="Hy4",
+                provider="open_router",
+                creator="tencent",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=2,
+                supports_tools=True,
+                supports_reasoning=True,
+                # OpenRouter live pricing (Tencent fp4 endpoint): $0.417/$1.2505
+                # per Mtok, $0.021/Mtok cached input, credit rates at the
+                # standard 1.5x margin (verified live 2026-11-04).
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=62.55,
+                    output_credits_per_1m=187.575,
+                    cache_read_credits_per_1m=3.15,
+                    provider_input_usd_per_1m=0.417,
+                    provider_output_usd_per_1m=1.2505,
+                ),
+            ),
             # ----- Unbiased -----
             CatalogModel(
                 slug="unbiased/pareto",
@@ -2186,11 +2603,13 @@ def _build_catalog() -> CatalogPayload:
                     # (still selectable, still billed) -- only the default
                     # moved.
                     "standard": "gpt-6-luna",
-                    "advanced": "gpt-6-astra",
+                    # gpt-6-astra stays in the catalog (selectable, billed);
+                    # only the advanced default points at gpt-6.2-astra.
+                    "advanced": "gpt-6.2-astra",
                 },
                 "thinking": {
                     "standard": "gpt-5.6-terra",
-                    "advanced": "gpt-6-astra",
+                    "advanced": "gpt-6.2-astra",
                 },
             }
         },

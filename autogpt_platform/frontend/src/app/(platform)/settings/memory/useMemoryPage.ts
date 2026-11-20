@@ -1,4 +1,5 @@
 import {
+  getGetMyBusinessUnderstandingQueryKey,
   getGetMyExpertMemoryOverviewQueryKey,
   getGetMyMemoryOverviewQueryKey,
   getListMyExpertMemoryFactsQueryKey,
@@ -12,60 +13,34 @@ import {
   useListMyExpertMemoryFacts,
   useListMyMemoryFacts,
 } from "@/app/api/__generated__/endpoints/memory/memory";
-import { useListExperts } from "@/app/api/__generated__/endpoints/experts/experts";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import {
-  getActiveExperts,
-  getScopeName,
-  readExpertScopeFromUrl,
-  RECENT_FACTS_LIMIT,
-} from "./helpers";
+import { useMemoryScope } from "./useMemoryScope";
+import { RECENT_FACTS_LIMIT } from "./helpers";
 
-export function useMemoryPage(memoryEnabled = true) {
-  // The Soul drawer's learned-notes panel links here with ?expert=<id>, so
-  // the link opens on that expert. Read once — the dropdown owns it after.
-  const [scopeExpertID, setScopeExpertID] = useState<string | null>(
-    readExpertScopeFromUrl,
-  );
+export function useMemoryPage() {
+  const scope = useMemoryScope();
+  const { scopeExpertID } = scope;
   const queryClient = useQueryClient();
-
-  // Deliberately not gated on HIRE_EXPERTS: expert memory scopes must stay
-  // manageable here even if the hiring UI is dark.
-  const expertsQuery = useListExperts();
-  const expertsSettled = expertsQuery.data?.status === 200;
-  const experts = getActiveExperts(
-    expertsQuery.data?.status === 200 ? expertsQuery.data.data : undefined,
-  );
-
-  // A selected expert can disappear (fired in another tab, roster changed) —
-  // fall back to Otto instead of driving queries with a dead scope id.
-  useEffect(() => {
-    if (!scopeExpertID || !expertsSettled) return;
-    if (!experts.some((expert) => expert.id === scopeExpertID)) {
-      setScopeExpertID(null);
-    }
-  }, [scopeExpertID, expertsSettled, experts]);
 
   const accountFacts = useListMyMemoryFacts(
     { limit: RECENT_FACTS_LIMIT },
-    { query: { enabled: memoryEnabled && scopeExpertID === null } },
+    { query: { enabled: scopeExpertID === null } },
   );
   const expertFacts = useListMyExpertMemoryFacts(
     scopeExpertID ?? "",
     { limit: RECENT_FACTS_LIMIT },
-    { query: { enabled: memoryEnabled && scopeExpertID !== null } },
+    { query: { enabled: scopeExpertID !== null } },
   );
   const factsQuery = scopeExpertID === null ? accountFacts : expertFacts;
   const facts =
     factsQuery.data?.status === 200 ? factsQuery.data.data.items : [];
 
   const accountOverview = useGetMyMemoryOverview({
-    query: { enabled: memoryEnabled && scopeExpertID === null },
+    query: { enabled: scopeExpertID === null },
   });
   const expertOverview = useGetMyExpertMemoryOverview(scopeExpertID ?? "", {
-    query: { enabled: memoryEnabled && scopeExpertID !== null },
+    query: { enabled: scopeExpertID !== null },
   });
   const overviewQuery =
     scopeExpertID === null ? accountOverview : expertOverview;
@@ -79,6 +54,9 @@ export function useMemoryPage(memoryEnabled = true) {
       });
       queryClient.invalidateQueries({
         queryKey: getGetMyMemoryOverviewQueryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getGetMyBusinessUnderstandingQueryKey(),
       });
       return;
     }
@@ -166,15 +144,8 @@ export function useMemoryPage(memoryEnabled = true) {
     }
   }
 
-  function selectScope(value: string | null) {
-    setScopeExpertID(value);
-  }
-
   return {
-    scopeExpertID,
-    selectScope,
-    experts,
-    scopeName: getScopeName(scopeExpertID, experts),
+    ...scope,
     facts,
     isLoadingFacts: factsQuery.isLoading,
     isFactsError: factsQuery.isError,

@@ -254,12 +254,104 @@ class TestLoadPriorTranscript:
         assert builder.entry_count == 4
 
     @pytest.mark.asyncio
-    async def test_missing_transcript_allows_upload(self):
-        """Nothing in GCS → upload is safe; the turn writes the first snapshot."""
+    async def test_a_note_kept_from_the_model_stays_out_of_the_transcript(self):
+        """A scheduled chat's note between turns is the owner's card. Written
+        into the transcript this turn uploads, every later turn would read it
+        back as the model's own earlier reply (SECRT-2879)."""
+        builder = TranscriptBuilder()
+        restore = TranscriptDownload(
+            content=_make_transcript_content("user", "assistant").encode("utf-8"),
+            message_count=2,
+            mode="baseline",
+        )
+        messages = _make_session_messages(
+            "user", "assistant", "assistant", "user", "assistant", "user"
+        )
+        messages[2] = ChatMessage(
+            role="assistant",
+            content="Skipped: daily usage limit reached",
+            sequence=2,
+            metadata={"kind": "scheduled_chat_notice", "hidden_from_model": True},
+        )
+
+        with patch(
+            "backend.copilot.baseline.service.download_transcript",
+            new=AsyncMock(return_value=restore),
+        ):
+            covers, dl = await _load_prior_transcript(
+                user_id="user-1",
+                session_id="session-1",
+                session_messages=messages,
+                transcript_builder=builder,
+            )
+
+        assert covers is True and dl is not None
+        # The two real gap rows go in; the note does not.
+        assert builder.entry_count == 4
+        assert "Skipped: daily usage limit reached" not in builder.to_jsonl()
+
+    @pytest.mark.asyncio
+    async def test_missing_transcript_seeds_prior_history_for_upload(self):
         builder = TranscriptBuilder()
         with patch(
             "backend.copilot.baseline.service.download_transcript",
             new=AsyncMock(return_value=None),
+        ):
+            upload_safe, dl = await _load_prior_transcript(
+                user_id="user-1",
+                session_id="session-1",
+                session_messages=_make_session_messages("user", "assistant", "user"),
+                transcript_builder=builder,
+            )
+
+        assert upload_safe is True
+        assert dl is None
+        assert builder.entry_count == 2
+        assert builder.last_entry_type == "assistant"
+        assert "user message 0" in builder.to_jsonl()
+        assert "assistant message 1" in builder.to_jsonl()
+        assert "user message 2" not in builder.to_jsonl()
+
+    @pytest.mark.asyncio
+    async def test_missing_transcript_seed_leaves_out_rows_hidden_from_model(self):
+        """A skipped-run note in the history is the platform talking to the
+        user: seeding it would make every later turn read it back."""
+        builder = TranscriptBuilder()
+        messages = _make_session_messages("user", "assistant", "assistant", "user")
+        messages[2] = ChatMessage(
+            role="assistant",
+            content="Skipped: daily usage limit reached",
+            sequence=2,
+            metadata={"hidden_from_model": True},
+        )
+        with patch(
+            "backend.copilot.baseline.service.download_transcript",
+            new=AsyncMock(return_value=None),
+        ):
+            upload_safe, _ = await _load_prior_transcript(
+                user_id="user-1",
+                session_id="session-1",
+                session_messages=messages,
+                transcript_builder=builder,
+            )
+
+        assert upload_safe is True
+        assert builder.entry_count == 2
+        assert "assistant message 1" in builder.to_jsonl()
+        assert "usage limit reached" not in builder.to_jsonl()
+
+    @pytest.mark.asyncio
+    async def test_invalid_transcript_allows_upload(self):
+        """Corrupt file in GCS → overwriting with a valid one is better."""
+        builder = TranscriptBuilder()
+        restore = TranscriptDownload(
+            content=b'{"type":"progress","uuid":"a"}\n',
+            message_count=1,
+            mode="sdk",
+        )
+        with patch(
+            "backend.copilot.baseline.service.download_transcript",
+            new=AsyncMock(return_value=restore),
         ):
             upload_safe, dl = await _load_prior_transcript(
                 user_id="user-1",
@@ -273,11 +365,16 @@ class TestLoadPriorTranscript:
         assert builder.is_empty
 
     @pytest.mark.asyncio
-    async def test_invalid_transcript_allows_upload(self):
-        """Corrupt file in GCS → overwriting with a valid one is better."""
+    async def test_transcript_it_cannot_scrub_allows_upload(self):
+        """A line the strip cannot parse makes the file as unusable as a
+        corrupt one, instead of failing the turn."""
         builder = TranscriptBuilder()
         restore = TranscriptDownload(
-            content=b'{"type":"progress","uuid":"a"}\n',
+            content=(
+                b'{"type":"assistant","uuid":"a1","message":{"role":"assistant",'
+                b'"content":[{"type":"text","text":"hi"}]}}\n'
+                b'{"type":"attachment","attachment":{"type":"file","con\n'
+            ),
             message_count=1,
             mode="sdk",
         )

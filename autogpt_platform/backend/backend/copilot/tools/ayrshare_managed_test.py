@@ -371,7 +371,8 @@ class TestPostToUnlinkedNetwork:
         assert isinstance(result, SetupRequirementsResponse)
         assert "with the Connect button in the card" in result.message
         assert "Twitter is not linked" in result.message
-        spend.assert_not_awaited()
+        # Debited before the post, given back when Ayrshare refused it.
+        assert [c.kwargs["cost"] for c in spend.await_args_list] == [2, -2]
 
     async def test_other_ayrshare_errors_stay_errors(self):
         post = AsyncMock(
@@ -464,8 +465,10 @@ def expert_grants(allowed: list[str]) -> Iterator[None]:
     credential is the managed profile the copilot just provisioned."""
     experts = MagicMock()
     experts.expert_allowed_credential_ids = AsyncMock(return_value=allowed)
+    experts.seeded_expert_credential_ids = AsyncMock(return_value=allowed)
     with (
         patch("backend.copilot.tools.expert_scope.experts_db", return_value=experts),
+        patch("backend.data.db_accessors.experts_db", return_value=experts),
         patch.object(
             IntegrationCredentialsStore,
             "get_all_creds",

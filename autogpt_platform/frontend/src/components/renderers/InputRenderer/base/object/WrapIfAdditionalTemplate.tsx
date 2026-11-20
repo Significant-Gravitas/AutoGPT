@@ -12,6 +12,7 @@ import {
 } from "@rjsf/utils";
 
 import { Input } from "@/components/atoms/Input/Input";
+import { isPromptValuesEntry } from "../../helpers";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 
 export default function WrapIfAdditionalTemplate(
@@ -64,10 +65,13 @@ export default function WrapIfAdditionalTemplate(
   const keyId = `${id}-key`;
 
   function handleBlur(e: React.FocusEvent<HTMLInputElement>) {
-    if (e.currentTarget.value === "") {
+    const typed = e.currentTarget.value;
+    const key = isPromptValuesEntry(handleId) ? typed.trim() : typed;
+    if (key === "") {
       e.currentTarget.value = label;
       return;
     }
+    e.currentTarget.value = key;
     onKeyRenameBlur(e);
   }
 
@@ -94,7 +98,7 @@ export default function WrapIfAdditionalTemplate(
               disabled={disabled || readonly}
               id={getFieldDomId(keyId, formContext)}
               aria-describedby={accessibility["aria-describedby"]}
-              wrapperClassName="mb-2 w-30"
+              wrapperClassName="mb-2"
               name={keyId}
               onBlur={!readonly ? handleBlur : undefined}
               type="text"

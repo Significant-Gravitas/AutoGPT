@@ -1,6 +1,6 @@
 """Graphiti LLM client that runs on OpenAI's flex tier.
 
-Subclasses graphiti-core's ``OpenAIClient`` to inject
+Extends AutoGPT's ``GraphitiOpenAIClient`` compatibility adapter to inject
 ``service_tier="flex"`` on every underlying LLM call. Used by the
 nightly community-rebuild path: ~50% discount, best-effort latency
 (worst-case ~15min queue) — acceptable for scheduled non-interactive
@@ -24,16 +24,18 @@ does).
 
 from typing import Any
 
-from graphiti_core.llm_client import OpenAIClient
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel
 
+from .llm_client import GraphitiOpenAIClient
+from .models import is_luna_model
 
-class FlexOpenAIClient(OpenAIClient):
-    """Same as graphiti's ``OpenAIClient`` with ``service_tier`` injected.
 
-    Constructor mirrors ``OpenAIClient`` exactly so it slots into
-    graphiti's ``Graphiti(llm_client=...)`` without surprises.
+class FlexOpenAIClient(GraphitiOpenAIClient):
+    """Add flex-tier routing to ``GraphitiOpenAIClient``.
+
+    Luna requests delegate to the parent adapter; other models retain the
+    upstream request shape with ``service_tier`` injected here.
     """
 
     SERVICE_TIER = "flex"
@@ -48,6 +50,16 @@ class FlexOpenAIClient(OpenAIClient):
         reasoning: str | None = None,
         verbosity: str | None = None,
     ):
+        if is_luna_model(model):
+            return await super()._create_structured_completion(
+                model,
+                messages,
+                temperature,
+                max_tokens,
+                response_model,
+                reasoning,
+                verbosity,
+            )
         is_reasoning_model = (
             model.startswith("gpt-5")
             or model.startswith("o1")
@@ -84,6 +96,16 @@ class FlexOpenAIClient(OpenAIClient):
         reasoning: str | None = None,
         verbosity: str | None = None,
     ):
+        if is_luna_model(model):
+            return await super()._create_completion(
+                model,
+                messages,
+                temperature,
+                max_tokens,
+                response_model,
+                reasoning,
+                verbosity,
+            )
         is_reasoning_model = (
             model.startswith("gpt-5")
             or model.startswith("o1")

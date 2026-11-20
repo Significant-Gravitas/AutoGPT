@@ -7,7 +7,9 @@ including path parsing, client management, and signed URL generation.
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from typing import AsyncIterator
 
 import aiohttp
 from gcloud.aio import storage as async_gcs_storage
@@ -19,6 +21,12 @@ from google.cloud import storage as gcs_storage
 logger = logging.getLogger(__name__)
 
 CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
+
+# A streamed download is bounded per wait on GCS, not as a whole: the whole
+# lasts as long as the client takes to read it.
+_STREAM_FIRST_BYTE_TIMEOUT = 10
+_STREAM_CHUNK_TIMEOUT = 60
+_STREAM_RESUMES = 2
 
 
 def parse_gcs_path(path: str) -> tuple[str, str]:
@@ -137,6 +145,121 @@ async def download_range(bucket: str, blob: str, max_bytes: int) -> bytes:
             except Exception:
                 pass  # Best-effort cleanup
         await session.close()
+
+
+async def download_in_chunks(
+    bucket: str, blob: str, chunk_bytes: int
+) -> AsyncIterator[bytes]:
+    """
+    Yield a GCS object's content in chunks of at most ``chunk_bytes``, on a
+    session of its own (see ``download_with_fresh_session``).
+
+    A read that fails after the first chunk continues from the next byte with
+    a Range request, up to ``_STREAM_RESUMES`` times, so a dropped connection
+    costs the caller nothing it has already sent.
+
+    Raises:
+        FileNotFoundError: If the file doesn't exist
+    """
+    session = aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(limit=1, force_close=True)
+    )
+    client = async_gcs_storage.Storage(session=session)
+    size = sent = resumes = 0
+    try:
+        while True:
+            try:
+                response = await _open_stream(client, bucket, blob, start=sent)
+                if not sent:
+                    size = response.content_length
+                elif response.content_length != size - sent:
+                    raise RuntimeError(
+                        f"gcs://{bucket}/{blob} resumed at byte {sent} with "
+                        f"{response.content_length} bytes, not {size - sent}"
+                    )
+                async with response:
+                    while chunk := await asyncio.wait_for(
+                        response.read(chunk_bytes), _STREAM_CHUNK_TIMEOUT
+                    ):
+                        sent += len(chunk)
+                        yield chunk
+                return
+            except (aiohttp.ClientError, TimeoutError) as e:
+                # A first read is retried by the caller, while it can still
+                # answer with an error status; an unknown size cannot be resumed.
+                if not sent or not size or resumes == _STREAM_RESUMES:
+                    raise
+                resumes += 1
+                logger.warning(
+                    f"Resuming gcs://{bucket}/{blob} at byte {sent} of {size} "
+                    f"after {type(e).__name__}: {e}"
+                )
+    finally:
+        try:
+            await client.close()
+        except Exception:
+            pass  # Best-effort cleanup
+        await session.close()
+
+
+async def _open_stream(
+    client: async_gcs_storage.Storage, bucket: str, blob: str, *, start: int
+) -> async_gcs_storage.StreamResponse:
+    headers = {"Range": f"bytes={start}-"} if start else None
+    try:
+        # timeout=0 turns off aiohttp's total timeout, which covers the body.
+        return await asyncio.wait_for(
+            client.download_stream(bucket, blob, headers=headers, timeout=0),
+            _STREAM_FIRST_BYTE_TIMEOUT,
+        )
+    except aiohttp.ClientResponseError as e:
+        if is_not_found_error(e):
+            raise FileNotFoundError(f"File not found: gcs://{bucket}/{blob}") from e
+        raise
+
+
+@asynccontextmanager
+async def fresh_gcs_client() -> AsyncIterator[async_gcs_storage.Storage]:
+    """An async client on its own session, closed on exit.
+
+    Same reasoning as ``download_with_fresh_session``: a session created for
+    the call can't be tied to an event loop that is gone by the next one.
+    """
+    session = aiohttp.ClientSession(
+        connector=aiohttp.TCPConnector(limit=10, force_close=True)
+    )
+    client = async_gcs_storage.Storage(session=session)
+    try:
+        yield client
+    finally:
+        try:
+            await client.close()
+        except Exception:
+            pass  # Best-effort cleanup
+        await session.close()
+
+
+def object_created_at(item: dict) -> datetime:
+    """When GCS created the object, from its ``timeCreated`` field."""
+    # RFC 3339 with a trailing "Z", which ``fromisoformat`` only reads from
+    # Python 3.11 on.
+    created = datetime.fromisoformat(item["timeCreated"].replace("Z", "+00:00"))
+    return created if created.tzinfo else created.replace(tzinfo=timezone.utc)
+
+
+async def blob_created_at(bucket: str, blob: str) -> datetime | None:
+    """When the object was created, or ``None`` if it doesn't exist.
+
+    Errors other than a 404 propagate.
+    """
+    async with fresh_gcs_client() as client:
+        try:
+            metadata = await client.download_metadata(bucket, blob)
+        except Exception as e:
+            if is_not_found_error(e):
+                return None
+            raise
+    return object_created_at(metadata)
 
 
 async def generate_signed_url(

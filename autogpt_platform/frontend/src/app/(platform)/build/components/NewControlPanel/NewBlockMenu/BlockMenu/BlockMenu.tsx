@@ -3,7 +3,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/__legacy__/ui/popover";
+} from "@/components/molecules/Popover/Popover";
 import {
   Tooltip,
   TooltipContent,
@@ -28,25 +28,28 @@ export const BlockMenu = () => {
     >
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
-          <PopoverTrigger className="hover:cursor-pointer">
+          <PopoverTrigger asChild>
             <ControlPanelButton
+              aria-label="Blocks"
               data-id="blocks-control-popover-trigger"
               data-testid="blocks-control-blocks-button"
               selected={blockMenuOpen}
               className="rounded-none"
             >
-              <Icon icon={ToyBrickIcon} className="size-5" />
+              <Icon icon={ToyBrickIcon} className="size-5" aria-hidden />
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="right">Blocks</TooltipContent>
       </Tooltip>
 
+      {/* rounded-medium is the 12px corner this menu renders today, the old
+          popover's own corner. */}
       <PopoverContent
         side="right"
         align="start"
         sideOffset={16}
-        className="absolute h-[80vh] w-[46.625rem] overflow-hidden rounded-[1rem] border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
+        className="absolute h-[80vh] w-[46.625rem] overflow-hidden rounded-medium border-none border-border-base p-0 text-foreground-base shadow-sm"
         data-id="blocks-control-popover-content"
       >
         <BlockMenuContent />

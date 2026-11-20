@@ -1,11 +1,12 @@
 import uuid
 
 from autogpt_libs.auth import get_user_id, requires_user
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Security
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Security
 
 from backend.api.features.experts import avatar_jobs
 from backend.api.features.experts.avatar_generation import ExpertAvatarRequest
 from backend.api.features.experts.avatar_jobs import ExpertAvatarJob
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.settings import Settings
 
 router = APIRouter(
@@ -13,7 +14,12 @@ router = APIRouter(
 )
 
 
-@router.post("/generations", operation_id="generate_expert_avatar", status_code=202)
+@router.post(
+    "/generations",
+    operation_id="generate_expert_avatar",
+    status_code=202,
+    dependencies=[Depends(enforce_payment_paywall)],
+)
 async def generate_expert_avatar(
     request: ExpertAvatarRequest,
     background_tasks: BackgroundTasks,
