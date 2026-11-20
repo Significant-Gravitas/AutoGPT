@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from backend.blocks.conductor._api import API_V0, RETRY_MAX_ATTEMPTS, ConductorClient
 from backend.blocks.conductor.test_fixtures import TEST_CREDENTIALS, FakeResponse
 from backend.sdk import Requests
