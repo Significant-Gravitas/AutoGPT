@@ -1294,6 +1294,14 @@ class OrchestratorBlock(Block):
                     nodes_input_masks=nodes_input_masks,
                     graph_stats_pair=graph_stats_pair,
                 )
+                # A stop, or this block's time limit, ends in the tool node's
+                # own task, which takes the cancel and returns: end here too.
+                this_task = asyncio.current_task()
+                if node_exec_future.cancelled() or (
+                    this_task and this_task.cancelling()
+                ):
+                    node_exec_future.cancel()
+                    raise asyncio.CancelledError()
                 if tool_node_stats is None:
                     nil_err = RuntimeError(
                         f"on_node_execution returned None for node {sink_node_id} "

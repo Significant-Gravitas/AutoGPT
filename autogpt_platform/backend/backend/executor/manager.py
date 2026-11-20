@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import logging
 import os
 import threading
@@ -324,7 +325,8 @@ def execute_graph(
     cluster_lock: ClusterLock,
 ):
     """Execute graph using thread-local ExecutionProcessor instance"""
-    processor: ExecutionProcessor = _tls.processor
+    # Each run keeps its state on a copy of its own, sharing the thread's loops.
+    processor: ExecutionProcessor = copy.copy(_tls.processor)
     try:
         return processor.on_graph_execution(
             graph_exec_entry, cancel_event, cluster_lock
