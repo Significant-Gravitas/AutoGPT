@@ -100,9 +100,8 @@ async def test_a_failing_menu_publish_is_a_warning_and_the_api_still_serves(
     assert any("telegram" in r.getMessage().lower() for r in warnings)
 
 
-async def test_a_hanging_menu_publish_never_holds_up_the_boot(
-    mocker, boot_steps_stubbed
-) -> None:
+def _hanging_call() -> tuple[AsyncMock, asyncio.Event, asyncio.Event]:
+    """A Bot API call that never answers, and events for its start and cancel."""
     started = asyncio.Event()
     cancelled = asyncio.Event()
 
@@ -114,7 +113,14 @@ async def test_a_hanging_menu_publish_never_holds_up_the_boot(
             cancelled.set()
             raise
 
-    app = _api_app(_telegram_adapter(mocker, AsyncMock(side_effect=hang)))
+    return AsyncMock(side_effect=hang), started, cancelled
+
+
+async def test_a_hanging_menu_publish_never_holds_up_the_boot(
+    mocker, boot_steps_stubbed
+) -> None:
+    call, started, cancelled = _hanging_call()
+    app = _api_app(_telegram_adapter(mocker, call))
 
     async def serve_then_shut_down() -> None:
         async with app.router.lifespan_context(app):
@@ -122,3 +128,19 @@ async def test_a_hanging_menu_publish_never_holds_up_the_boot(
 
     await asyncio.wait_for(serve_then_shut_down(), _TIMEOUT_SECONDS)
     assert cancelled.is_set(), "shutdown must not leave the publish running"
+
+
+async def test_a_crash_while_serving_still_stops_a_pending_menu_publish(
+    mocker, boot_steps_stubbed
+) -> None:
+    call, started, cancelled = _hanging_call()
+    app = _api_app(_telegram_adapter(mocker, call))
+
+    async def serve_then_crash() -> None:
+        async with app.router.lifespan_context(app):
+            await started.wait()
+            raise RuntimeError("serving crashed")
+
+    with pytest.raises(RuntimeError, match="serving crashed"):
+        await asyncio.wait_for(serve_then_crash(), _TIMEOUT_SECONDS)
+    assert cancelled.is_set(), "a crashed lifespan must not leave the publish running"

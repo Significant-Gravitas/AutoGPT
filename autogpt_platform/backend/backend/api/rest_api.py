@@ -196,12 +196,13 @@ async def lifespan_context(app: fastapi.FastAPI):
         run_webhook_adapter_startup(_webhook_adapters)
     )
 
-    async with mcp_mount.running():
-        yield
-
-    webhook_startup.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await webhook_startup
+    try:
+        async with mcp_mount.running():
+            yield
+    finally:
+        webhook_startup.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await webhook_startup
 
     try:
         from backend.api.features.integrations.codex import codex_login_coordinator
