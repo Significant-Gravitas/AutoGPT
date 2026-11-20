@@ -413,7 +413,7 @@ def test_a_switched_off_model_is_charged_as_the_model_it_runs(
     assert matched["model"] == runs
     assert cost == math.ceil(TOKEN_COST[runs].input)
     assert block_usage_cost(block, stored) == block_usage_cost(block, priced_as)
-    assert executor_utils._with_schema_defaults(block, stored)["model"] == runs
+    assert executor_utils._with_schema_defaults(block, stored, None)["model"] == runs
 
 
 def test_ayrshare_price_tier_follows_the_is_video_default():

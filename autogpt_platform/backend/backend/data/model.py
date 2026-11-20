@@ -1111,6 +1111,11 @@ class NodeExecutionStats(BaseModel):
     billing_mode: Optional[str] = None
     auth_provider: Optional[str] = None
     execution_path: Optional[str] = None
+    # The model the run ran. An LLM block records the model it resolved when
+    # the run started (Block._execute: a switched-off model's fallback from
+    # its shutdown date), and billing and the cost log price and name that
+    # model, whatever the date when they read it. Codex records the model its
+    # provider reports.
     resolved_model: Optional[str] = None
     # Moderation fields
     cleared_inputs: Optional[dict[str, list[str]]] = None

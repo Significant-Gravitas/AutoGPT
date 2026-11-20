@@ -186,7 +186,9 @@ def _make_db_client() -> MagicMock:
 def _make_block(has_credentials: bool = True) -> MagicMock:
     block = MagicMock()
     block.name = "TestBlock"
-    block.with_retired_models_replaced.side_effect = lambda input_data: input_data
+    block.with_retired_models_replaced.side_effect = lambda input_data, _model: (
+        input_data
+    )
     input_schema = MagicMock()
     if has_credentials:
         input_schema.get_credentials_fields.return_value = {"credentials": MagicMock()}

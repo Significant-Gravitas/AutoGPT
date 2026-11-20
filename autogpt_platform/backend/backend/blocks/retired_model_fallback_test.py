@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+from backend.blocks import get_blocks
 from backend.blocks.llm import AITextGeneratorBlock, LLMModel, LLMResponse
 from backend.data.execution import ExecutionContext
 from backend.data.graph import Link, Node
@@ -18,6 +19,7 @@ from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CatalogPayload
 from backend.data.llm_registry.llm_models import (
     _retired_model_fallbacks,
+    is_llm_model_field,
     retired_model_fallback,
 )
 from backend.data.model import NodeExecutionStats
@@ -138,7 +140,9 @@ async def _run_ai_text_generator(model: str) -> list[LLMModel]:
     )
 
 
-async def _run_block(input_data: dict) -> list[LLMModel]:
+async def _run_block(
+    input_data: dict, block: AITextGeneratorBlock | None = None
+) -> list[LLMModel]:
     """Run the block for real down to the provider call, and return the model
     each call asked for."""
     asked: list[LLMModel] = []
@@ -155,13 +159,59 @@ async def _run_block(input_data: dict) -> list[LLMModel]:
         )
 
     with patch("backend.blocks.llm.llm_call", provider_call):
-        async for _ in AITextGeneratorBlock().execute(
+        async for _ in (block or AITextGeneratorBlock()).execute(
             input_data,
             credentials=openai_credentials,
             execution_context=ExecutionContext(user_id="user"),
         ):
             pass
     return asked
+
+
+_SCHEMA_DEFAULT = AITextGeneratorBlock.Input.model_fields["model"].default
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("saved", "day", "runs"),
+    [
+        ("gpt-5-2025-08-07", GPT_5_SHUTDOWN - timedelta(days=1), LLMModel.GPT5),
+        ("openai/gpt-5-2025-08-07", GPT_5_SHUTDOWN, LLMModel.GPT6_1_SOL),
+        (None, GPT_5_SHUTDOWN, _SCHEMA_DEFAULT),
+    ],
+    ids=["before-the-date", "on-the-day", "schema-default"],
+)
+async def test_a_run_records_the_model_it_runs_as_it_starts(
+    saved: str | None, day: date, runs: LLMModel, on_day
+):
+    """The run's stats name the model it runs, in the enum's spelling, so its
+    settlement and cost log price and name that model on any later day,
+    and the run's record shows it. Its inputs keep the stored value."""
+    on_day(day)
+    block = AITextGeneratorBlock()
+    input_data = {"prompt": "Say hello.", "credentials": PLATFORM_OPENAI}
+    if saved is not None:
+        input_data["model"] = saved
+
+    assert await _run_block(input_data, block) == [runs]
+    assert block.execution_stats.resolved_model == runs.value
+    assert input_data.get("model") == saved
+
+
+def test_a_block_has_at_most_one_llm_model_input():
+    """A run records one model (``NodeExecutionStats.resolved_model``), and
+    every ``LLMModel`` input of the block is priced as that model."""
+    llm_model_inputs = {
+        block.name: [
+            name
+            for name, field in block.input_schema.model_fields.items()
+            if is_llm_model_field(field)
+        ]
+        for block in (block_cls() for block_cls in get_blocks().values())
+    }
+    assert {
+        name: inputs for name, inputs in llm_model_inputs.items() if len(inputs) > 1
+    } == {}
 
 
 @pytest.mark.asyncio

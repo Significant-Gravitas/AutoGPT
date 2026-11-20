@@ -178,6 +178,7 @@ def block_usage_cost(
     run_time: float = 0,
     stats: NodeExecutionStats | None = None,
     use_preflight_estimate: bool = True,
+    resolved_model: str | None = None,
 ) -> tuple[int, BlockInput]:
     """Calculate the credit charge for a block invocation.
 
@@ -187,6 +188,10 @@ def block_usage_cost(
         estimate is registered for the block in `block_preflight_estimates.json`.
       - Post-flight (stats populated): dynamic types consume the captured
         stats to compute the actual charge.
+
+    The price is for the model the block runs (`_with_schema_defaults`). A
+    run that has started is priced on the model it recorded when it started:
+    ``stats.resolved_model``, or ``resolved_model`` for its pre-flight price.
 
     For SECOND/ITEMS/TOKENS cost entries, ``cost_amount`` is interpreted as
     "credits per ``cost_divisor`` units" — e.g. ``cost_amount=1,
@@ -204,7 +209,9 @@ def block_usage_cost(
     if not block_costs:
         return 0, {}
 
-    input_data = _with_schema_defaults(block, input_data)
+    input_data = _with_schema_defaults(
+        block, input_data, resolved_model or (stats.resolved_model if stats else None)
+    )
     is_preflight = stats is None and run_time == 0 and use_preflight_estimate
 
     for block_cost in block_costs:
@@ -335,22 +342,29 @@ def _coerce_usd(stats: NodeExecutionStats | None) -> float:
     return max(0.0, float(stats.provider_cost))
 
 
-def _with_schema_defaults(block: Block, input_data: BlockInput) -> BlockInput:
+def _with_schema_defaults(
+    block: Block, input_data: BlockInput, resolved_model: str | None
+) -> BlockInput:
     """The input `Block._execute` runs on: `None` values dropped, schema defaults
-    filled in, and a model the catalog has switched off replaced by its
-    fallback from its shutdown date. Cost filters are matched against this,
-    with each credentials input marked by whether the platform pays for its
-    key. The shutdown date is read when this is called, so a settlement
-    prices the model as of the day it settles: a node still running at
-    00:00 UTC on a model's shutdown date ran the model itself, but settles at
-    its fallback's rates."""
+    filled in, and each LLM model as the block runs it
+    (`Block.with_retired_models_replaced`). Cost filters are matched against
+    this, with each credentials input marked by whether the platform pays for
+    its key.
+
+    ``resolved_model`` is the model a run recorded when it started
+    (`NodeExecutionStats.resolved_model`), and a run that has started is
+    priced on it: a node still running at 00:00 UTC on its model's shutdown
+    date ran the model itself, and settles at that model's rates. Given None,
+    before a run starts, the model a run starting now runs: a switched-off
+    model's fallback from its shutdown date."""
     defaults = {
         name: field.get_default(call_default_factory=True)
         for name, field in block.input_schema.model_fields.items()
         if not field.is_required()
     }
     merged = block.with_retired_models_replaced(
-        {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
+        {**defaults, **{k: v for k, v in input_data.items() if v is not None}},
+        resolved_model,
     )
     for field_name in block.input_schema.get_credentials_fields():
         if isinstance(credentials := merged.get(field_name), dict):

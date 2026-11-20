@@ -93,7 +93,7 @@ def _block_has_paid_cost_entry(block: Block, input_data: "dict[str, Any]") -> bo
     block_costs = BLOCK_COSTS.get(type(block))
     if not block_costs:
         return False
-    input_data = _with_schema_defaults(block, input_data)
+    input_data = _with_schema_defaults(block, input_data, resolved_model=None)
     return any(
         not bc.is_free and _is_cost_filter_match(bc.cost_filter, input_data)
         for bc in block_costs
@@ -296,7 +296,7 @@ def _with_stop_estimate(
     tokens = stats.abandoned_input_token_count
     if tokens <= 0:
         return post_flight
-    input_data = _with_schema_defaults(block, input_data)
+    input_data = _with_schema_defaults(block, input_data, stats.resolved_model)
     block_cost = next(
         (
             bc
@@ -357,6 +357,10 @@ async def charge_reconciled_usage(
 
     ``bill_stop_estimate`` (see ``bills_stop_estimate``) adds the estimated
     input tokens of LLM requests a stop cut off mid-call.
+
+    The node is priced on the model it recorded when it started
+    (``stats.resolved_model``), so one still running at 00:00 UTC on its
+    model's shutdown date settles at the rates of the model it ran.
     """
     try:
         db_client = get_database_manager_async_client()
@@ -365,7 +369,11 @@ async def charge_reconciled_usage(
             return 0, 0
 
         if pre_flight_charge is None:
-            pre_flight, _ = block_usage_cost(block=block, input_data=node_exec.inputs)
+            pre_flight, _ = block_usage_cost(
+                block=block,
+                input_data=node_exec.inputs,
+                resolved_model=stats.resolved_model,
+            )
         else:
             pre_flight = pre_flight_charge
         post_flight, matching_filter = block_usage_cost(

@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.llm_registry.llm_models import (
     is_llm_model_field,
+    llm_model_named,
     resolved_model_value,
     retired_model_fallback,
 )
@@ -1027,19 +1028,46 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             ) from e
         return approved
 
-    def with_retired_models_replaced(self, input_data: BlockInput) -> BlockInput:
-        """*input_data* with each LLM model the catalog has switched off, and
-        names a fallback for, replaced by that fallback once the model's
-        shutdown date, if it has one, has come: the model this block runs and
-        is billed for instead. Returns *input_data* itself when no value
-        changes."""
+    def with_retired_models_replaced(
+        self, input_data: BlockInput, resolved_model: str | None
+    ) -> BlockInput:
+        """*input_data* with each LLM model replaced by the model this block
+        runs, and is billed for, in its place.
+
+        A run keeps the model it started on. *resolved_model* is the model a
+        run recorded when it started (``NodeExecutionStats.resolved_model``,
+        see ``_execute``): given it, this is that run's model, so the run's
+        settlement, cost log and usage record price and name the model it
+        ran, on whatever date they read it. Given None, for a run that hasn't
+        started or recorded none, a model the catalog has switched off, and
+        names a fallback for, is replaced by that fallback once the model's
+        shutdown date, if it has one, has come: the model a run starting now
+        runs. Returns *input_data* itself when no value changes."""
+        started_on = llm_model_named(resolved_model)
         replaced = {
-            name: fallback.value
+            name: runs.value
             for name, field in self.input_schema.model_fields.items()
             if is_llm_model_field(field)
-            and (fallback := retired_model_fallback(input_data.get(name))) is not None
+            and (runs := started_on or retired_model_fallback(input_data.get(name)))
+            is not None
+            and runs.value != input_data.get(name)
         }
         return {**input_data, **replaced} if replaced else input_data
+
+    def _record_resolved_model(self, input_data: BlockInput) -> None:
+        """Record the LLM model this run runs, resolved as it starts, in its
+        stats (``resolved_model``): the run's settlement, cost log and usage
+        record price and name it, whatever the date when they read it, and
+        the run's record shows it, while its recorded inputs keep the stored
+        model. A block has at most one ``LLMModel`` input."""
+        for name, field in self.input_schema.model_fields.items():
+            if not is_llm_model_field(field):
+                continue
+            value = input_data.get(name)
+            if value is None and not field.is_required():
+                value = field.get_default(call_default_factory=True)
+            if (model := llm_model_named(value)) is not None:
+                self.execution_stats.resolved_model = model.value
 
     async def _execute(
         self,
@@ -1058,7 +1086,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             if should_pause:
                 return
 
-        serving = self.with_retired_models_replaced(input_data)
+        serving = self.with_retired_models_replaced(input_data, resolved_model=None)
         if serving is not input_data:
             # One line per run: it carries the node execution id, and the
             # run's recorded inputs keep the stored model.
@@ -1072,6 +1100,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 f"(node exec {execution_context.node_exec_id}): {moved}"
             )
             input_data = serving
+        self._record_resolved_model(input_data)
 
         # Validate the input data (original or reviewer-modified) once.
         # In dry-run mode, credential fields may contain sentinel None values
