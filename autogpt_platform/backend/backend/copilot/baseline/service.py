@@ -25,6 +25,7 @@ from openai import APIConnectionError, APIError
 from openai import omit as openai_omit
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from pydantic import BaseModel
 
 from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot import engine_switch
@@ -564,6 +565,10 @@ class _BaselineStreamState:
     turn_cache_read_tokens: int = 0
     turn_cache_creation_tokens: int = 0
     cost_usd: float | None = None
+    # The turn's tool definitions and their estimated tokens. They are the
+    # same for every request in a turn, so ``_price_unreported_request``
+    # counts them once.
+    tool_tokens: tuple[Sequence[Any], int] | None = None
     # Tracks whether we've already warned about a missing `cost` field in
     # the usage chunk this stream, so non-OpenRouter providers don't
     # generate one warning per streaming call.
@@ -1191,7 +1196,9 @@ async def _baseline_llm_caller(
             if unreported:
                 # Priced now, from what was sent: the updater adds this
                 # request's output and tool results to the conversation next.
-                _price_unreported_request(state, final_messages, tools, round_text)
+                await _price_unreported_request(
+                    state, final_messages, tools, round_text
+                )
 
     finally:
         # Close open blocks on both normal and exception paths so the
@@ -1241,7 +1248,16 @@ async def _baseline_llm_caller(
     return response
 
 
-def _price_unreported_request(
+class _PricedRequest(BaseModel):
+    """One request's estimated tokens and their rate-card cost."""
+
+    prompt_tokens: int
+    completion_tokens: int
+    tool_tokens: int
+    cost_usd: float | None
+
+
+async def _price_unreported_request(
     state: _BaselineStreamState,
     messages: list[dict[str, Any]],
     tools: Sequence[Any],
@@ -1251,26 +1267,86 @@ def _price_unreported_request(
 
     Its prompt is estimated from the messages and tool definitions it sent,
     and its output from the text it streamed, so the rate card prices it at
-    the tier of its own prompt, the way Anthropic bills each request.
+    the tier of its own prompt, the way Anthropic bills each request. The
+    tokens are counted on a worker thread: a turn can send up to
+    ``agent_max_turns`` prompts of 100K+ tokens.
     """
-    prompt_tokens = max(
-        estimate_token_count(messages, model=state.model)
-        + (estimate_token_count_str(list(tools), model=state.model) if tools else 0),
-        1,
+    counted = state.tool_tokens
+    estimate = partial(
+        _estimate_request,
+        state.model,
+        messages,
+        tools,
+        counted[1] if counted is not None and counted[0] is tools else None,
+        output,
     )
-    completion_tokens = (
-        estimate_token_count_str(output, model=state.model) if output else 0
-    )
-    state.turn_prompt_tokens += prompt_tokens
-    state.turn_completion_tokens += completion_tokens
-    cost = compute_anthropic_cost_usd(
-        model=state.model,
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        cache_ttl=config.baseline_prompt_cache_ttl,
-    )
-    if cost is not None:
-        state.cost_usd = (state.cost_usd or 0.0) + cost
+    try:
+        priced = await asyncio.to_thread(estimate)
+    except asyncio.CancelledError:
+        # Stopped while counting. The request still ran, so it is counted
+        # here, blocking the loop this once, and billed before the stop
+        # goes on.
+        _add_priced_request(state, tools, estimate())
+        raise
+    _add_priced_request(state, tools, priced)
+
+
+def _estimate_request(
+    model: str,
+    messages: list[dict[str, Any]],
+    tools: Sequence[Any],
+    tool_tokens: int | None,
+    output: str,
+) -> _PricedRequest | None:
+    """Estimate and price one request; ``tool_tokens`` is None until counted.
+
+    Never raises: it runs in the request's ``finally``, where an error would
+    replace the request's own exception or fail a request that succeeded. A
+    request it can't price is logged and not billed.
+    """
+    try:
+        if tool_tokens is None:
+            tool_tokens = (
+                estimate_token_count_str(list(tools), model=model) if tools else 0
+            )
+        prompt_tokens = max(
+            estimate_token_count(messages, model=model) + tool_tokens, 1
+        )
+        completion_tokens = (
+            estimate_token_count_str(output, model=model) if output else 0
+        )
+        return _PricedRequest(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            tool_tokens=tool_tokens,
+            cost_usd=compute_anthropic_cost_usd(
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                cache_ttl=config.baseline_prompt_cache_ttl,
+            ),
+        )
+    except Exception:
+        logger.exception(
+            f"[Baseline] Could not price a {model} request that reported no "
+            "usage; it is not billed"
+        )
+        return None
+
+
+def _add_priced_request(
+    state: _BaselineStreamState,
+    tools: Sequence[Any],
+    priced: _PricedRequest | None,
+) -> None:
+    if priced is None:
+        return
+    if tools:
+        state.tool_tokens = (tools, priced.tool_tokens)
+    state.turn_prompt_tokens += priced.prompt_tokens
+    state.turn_completion_tokens += priced.completion_tokens
+    if priced.cost_usd is not None:
+        state.cost_usd = (state.cost_usd or 0.0) + priced.cost_usd
 
 
 async def _baseline_tool_executor(
