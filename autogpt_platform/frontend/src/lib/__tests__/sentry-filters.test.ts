@@ -1,4 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
+import { render } from "@testing-library/react";
+import { createElement } from "react";
 import {
   afterAll,
   afterEach,
@@ -82,7 +84,7 @@ describe("Sentry filter for Next's RSC navigation fallback", () => {
     expect(sent).toHaveLength(0);
   });
 
-  it("still reports a fetch failure captured from our own code", async () => {
+  it("leaves a fetch failure captured from our own code to the other filters", async () => {
     Sentry.captureException(new TypeError("Failed to fetch"));
     await Sentry.flush(2000);
 
@@ -176,14 +178,16 @@ describe("Sentry filter for handled network failures", () => {
     return !isHandledTransientFailure(sent[0], hints[0]);
   }
 
-  it.each(["Failed to fetch", "Load failed", "network error"])(
-    "drops a caught fetch failure logged as %j",
-    async (message) => {
-      console.error("Get user error:", new TypeError(message));
+  it.each([
+    "Failed to fetch",
+    "Load failed",
+    "network error",
+    "NetworkError when attempting to fetch resource.",
+  ])("drops a caught fetch failure logged as %j", async (message) => {
+    console.error("Get user error:", new TypeError(message));
 
-      expect(await sentAndKept()).toBe(false);
-    },
-  );
+    expect(await sentAndKept()).toBe(false);
+  });
 
   it("drops a caught fetch failure reported with captureException", async () => {
     Sentry.captureException(new TypeError("Failed to fetch"));
@@ -207,6 +211,37 @@ describe("Sentry filter for handled network failures", () => {
         handled: false,
       },
     });
+
+    expect(await sentAndKept()).toBe(true);
+  });
+
+  it("still reports a fetch failure an error boundary reports", async () => {
+    Sentry.captureException(new TypeError("Failed to fetch"), {
+      tags: { errorBoundary: "true", context: "application" },
+    });
+
+    expect(await sentAndKept()).toBe(true);
+  });
+
+  it("still reports a fetch failure that reaches the error page", async () => {
+    const { default: ErrorPage } = await import("@/app/error");
+    render(
+      createElement(ErrorPage, {
+        error: new TypeError("Failed to fetch"),
+        reset: () => {},
+      }),
+    );
+
+    expect(await sentAndKept()).toBe(true);
+  });
+
+  it("still reports an AbortError reported on purpose", async () => {
+    Sentry.captureException(
+      new DOMException(
+        "The transaction was aborted, so the request cannot be fulfilled.",
+        "AbortError",
+      ),
+    );
 
     expect(await sentAndKept()).toBe(true);
   });

@@ -47,16 +47,20 @@ export function isInjectedIframeProbe(event: Event) {
 }
 
 /**
- * True for a fetch our code caught after the network dropped or the request
- * was cancelled ("Failed to fetch", "Load failed", "network error",
- * AbortError). The catch already handles it, and minified frames open a new
- * issue for each browser and build. An uncaught one is still sent, because
- * it shows a missing catch.
+ * True for a fetch our code caught after the network dropped ("Failed to
+ * fetch", "Load failed", "network error"), or a request it cancelled and
+ * logged (AbortError). The catch already handles it, and minified frames open
+ * a new issue for each browser and build. Still sent: an uncaught one, which
+ * shows a missing catch; one an error boundary reports, because the user saw
+ * an error page; and an AbortError reported on purpose, such as an aborted
+ * IndexedDB transaction.
  */
 export function isHandledTransientFailure(event: Event, hint: EventHint) {
+  if (event.tags?.errorBoundary) return false;
+  if (event.exception?.values?.[0]?.mechanism?.handled === false) return false;
   const error = hint.originalException;
-  if (!isNetworkError(error) && !isAbortError(error)) return false;
-  return event.exception?.values?.[0]?.mechanism?.handled !== false;
+  if (isNetworkError(error)) return true;
+  return isAbortError(error) && event.logger === "console";
 }
 
 // webpack ("Loading chunk 34006 failed.", "Loading CSS chunk 123 failed.")
