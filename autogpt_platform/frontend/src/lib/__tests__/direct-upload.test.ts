@@ -224,6 +224,7 @@ describe("uploadFileDirect (workspace)", () => {
   it.each([
     "Storage limit exceeded. You've used 250 MB of your 250 MB quota. Delete some files or upgrade your plan for more storage.",
     "File exceeds maximum size of 100 MB",
+    "The request is too large. The limit is 101 MB.",
   ])("surfaces the backend's 413 reason: %s", async (detail) => {
     mockFetchOnce({
       ok: false,

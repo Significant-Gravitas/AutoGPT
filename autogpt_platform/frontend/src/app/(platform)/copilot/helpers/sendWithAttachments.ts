@@ -163,12 +163,18 @@ export function describePendingUpload(
 }
 
 const MAX_UPLOAD_FAILURE_REASON = 300;
+// What the upload route answers about the file itself: too large, over the
+// quota, a refused type or name. Anything else (a 5xx, an expired session, a
+// dropped connection) is not the user's to fix, and its text can name
+// internals, so the toast names only the file then.
+const UPLOAD_REFUSAL_STATUSES = new Set([400, 409, 413]);
 
-// A 4xx says what the user can change: the file is too large, the storage is
-// full, the type is refused. A 5xx or a dropped connection is ours to fix, and
-// its text can name internals, so the toast names only the file then.
 function describeUploadFailure(fileName: string, err: unknown): string {
-  if (!(err instanceof ApiError) || err.status >= 500 || !err.message) {
+  if (
+    !(err instanceof ApiError) ||
+    !UPLOAD_REFUSAL_STATUSES.has(err.status) ||
+    !err.message
+  ) {
     return fileName;
   }
   const reason =

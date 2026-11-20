@@ -116,11 +116,12 @@ async function readUploadError(res: Response): Promise<string> {
   } catch {
     // A body cut off mid-read still gets the status-based message below.
   }
-  let body: UploadErrorBody | null | undefined;
+  let body: UploadErrorBody | null = null;
+  let isJson = true;
   try {
     body = JSON.parse(text) as UploadErrorBody | null;
   } catch {
-    body = undefined;
+    isJson = false;
   }
   // Backend returns { detail: "..." } or { detail: { message: "..." } }. Its
   // 413s say which limit was hit: the per-file size or the storage quota.
@@ -137,7 +138,7 @@ async function readUploadError(res: Response): Promise<string> {
   // Response body wasn't JSON — surface plain text so it reaches the toast. A
   // proxy's HTML error page would only show markup there, so it gets the
   // status instead.
-  if (text && body === undefined && !isMarkup(text)) return text;
+  if (text && !isJson && !isMarkup(text)) return text;
   return res.statusText || `Upload failed (HTTP ${res.status})`;
 }
 

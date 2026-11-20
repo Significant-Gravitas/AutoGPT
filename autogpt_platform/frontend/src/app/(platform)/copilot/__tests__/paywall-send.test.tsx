@@ -258,6 +258,10 @@ describe("a refused attachment", () => {
         null,
       ),
     ],
+    [
+      "the session has expired",
+      new ApiError("Token validation failed: signature expired", 401, null),
+    ],
   ])("names only the file when %s", async (_case, error) => {
     uploadFileDirect.mockRejectedValue(error);
     render(<ComposerWithFile />);
