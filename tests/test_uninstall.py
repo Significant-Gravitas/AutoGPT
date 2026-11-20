@@ -17,7 +17,7 @@ import subprocess
 import sys
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -968,10 +968,37 @@ def test_tests_cannot_reach_the_real_service_manager(monkeypatch: pytest.MonkeyP
 
 # ── The real service managers, on a service of the test's own ────────────────
 
+
+def real_service_manager_asked_for(environ: Mapping[str, str] | None = None) -> bool:
+    """Whether the tests that register a throwaway service with the OS run:
+    in CI, or with AUTOGPT_SHIM_TEST_SERVICE_MANAGER=1. Any value used to
+    do, so `=0`, set to keep them off, turned them on."""
+    environ = os.environ if environ is None else environ
+    return bool(environ.get("CI")) or environ.get("AUTOGPT_SHIM_TEST_SERVICE_MANAGER") == "1"
+
+
+@pytest.mark.parametrize(
+    ("environ", "asked_for"),
+    [
+        ({}, False),
+        ({"AUTOGPT_SHIM_TEST_SERVICE_MANAGER": "1"}, True),
+        ({"AUTOGPT_SHIM_TEST_SERVICE_MANAGER": "0"}, False),
+        ({"AUTOGPT_SHIM_TEST_SERVICE_MANAGER": ""}, False),
+        ({"AUTOGPT_SHIM_TEST_SERVICE_MANAGER": "false"}, False),
+        ({"CI": "true"}, True),
+        ({"CI": "true", "AUTOGPT_SHIM_TEST_SERVICE_MANAGER": "0"}, True),
+    ],
+)
+def test_the_real_service_managers_are_reached_in_ci_or_when_asked_for_by_1(
+    environ: dict[str, str], asked_for: bool
+) -> None:
+    assert real_service_manager_asked_for(environ) is asked_for
+
+
 # These register a throwaway service with the OS, so they run where that is
-# expected: in CI, or where AUTOGPT_SHIM_TEST_SERVICE_MANAGER is set.
+# expected: in CI, or where AUTOGPT_SHIM_TEST_SERVICE_MANAGER is 1.
 _real_manager = pytest.mark.skipif(
-    not (os.environ.get("CI") or os.environ.get("AUTOGPT_SHIM_TEST_SERVICE_MANAGER")),
+    not real_service_manager_asked_for(),
     reason="registers a throwaway service with the OS: runs in CI, or with "
     "AUTOGPT_SHIM_TEST_SERVICE_MANAGER=1",
 )
