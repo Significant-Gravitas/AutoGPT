@@ -13,10 +13,13 @@ import re
 from collections.abc import Mapping
 from datetime import date, datetime, timezone
 from enum import Enum, EnumMeta
-from typing import Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CatalogPayload
+
+if TYPE_CHECKING:
+    from pydantic.fields import FieldInfo
 
 logger = logging.getLogger(__name__)
 
@@ -466,6 +469,12 @@ def _retired_model_fallbacks(
 
 
 RETIRED_MODEL_FALLBACKS = _retired_model_fallbacks(get_catalog())
+
+
+def is_llm_model_field(field: "FieldInfo") -> bool:
+    """A block input the startup pass, the retire CLI and the run-time
+    fallback act on: one typed ``LLMModel``."""
+    return field.annotation is LLMModel
 
 
 def _today() -> date:

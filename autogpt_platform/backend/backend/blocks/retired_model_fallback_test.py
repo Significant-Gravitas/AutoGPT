@@ -4,11 +4,13 @@ input wired into its ``model`` pin, a preset, a schedule or an API call. A
 model its provider still serves carries the provider's shutdown date, and runs
 as itself until that day."""
 
+import logging
 from datetime import date, timedelta
 from unittest.mock import patch
 
 import pytest
 
+from backend.blocks import _base
 from backend.blocks.llm import AITextGeneratorBlock, LLMModel, LLMResponse
 from backend.data.execution import ExecutionContext
 from backend.data.llm_registry import llm_models
@@ -177,3 +179,23 @@ async def test_an_llm_block_given_a_switched_off_model_runs_its_fallback(
 async def test_an_llm_block_given_an_unknown_model_still_fails():
     with pytest.raises(BlockInputError):
         await _run_ai_text_generator("gpt-0")
+
+
+@pytest.mark.asyncio
+async def test_a_swap_is_logged_once_per_process(on_day, monkeypatch, caplog):
+    """A node left on a switched-off model logs its swap on the first run
+    only, not on every run."""
+    on_day(GPT_5_SHUTDOWN)
+    monkeypatch.setattr(_base, "_LOGGED_MODEL_SWAPS", set())
+
+    with caplog.at_level(logging.INFO, logger="backend.blocks._base"):
+        assert await _run_ai_text_generator("o3-mini") == [LLMModel.GPT6_1_TERRA]
+        assert await _run_ai_text_generator("o3-mini") == [LLMModel.GPT6_1_TERRA]
+
+    swaps = [
+        record.getMessage()
+        for record in caplog.records
+        if "in place of o3-mini" in record.getMessage()
+    ]
+    assert len(swaps) == 1
+    assert "runs gpt-6.1-terra in place of o3-mini" in swaps[0]

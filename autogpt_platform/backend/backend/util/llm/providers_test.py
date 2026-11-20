@@ -12,10 +12,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import json
 import socket
 from contextlib import contextmanager
 from types import SimpleNamespace
-from typing import Self
+from typing import Literal, Self
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
@@ -886,6 +887,132 @@ class TestSmallCallNativeReasoning:
         kwargs = async_create.call_args.kwargs
         assert kwargs["max_tokens"] == 16
         assert kwargs.get("thinking") == thinking
+
+
+def _wire_body(model: str, controls: dict) -> bytes:
+    if model.startswith("claude"):
+        body = {
+            "max_tokens": 16,
+            "messages": [{"role": "user", "content": "true or false?"}],
+            "model": model,
+            **controls,
+        }
+    else:
+        body = {
+            "include": ["reasoning.encrypted_content"],
+            "input": [{"role": "user", "content": "true or false?"}],
+            "max_output_tokens": controls.pop("max_output_tokens", 16),
+            "model": model,
+            **controls,
+            "store": False,
+        }
+    return json.dumps(body, separators=(",", ":")).encode()
+
+
+class TestSmallCallWireRequest:
+    """The exact request body the real SDK clients send for each replacement on
+    a 16-token call, as AI Condition makes it."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("provider", "model", "controls"),
+        [
+            ("openai", "gpt-6-luna", {"reasoning": {"effort": "none"}}),
+            ("openai", "gpt-6.1-terra", {"reasoning": {"effort": "none"}}),
+            ("openai", "gpt-5.6-sol", {"reasoning": {"effort": "none"}}),
+            (
+                "openai",
+                "gpt-6.1-sol",
+                {
+                    "max_output_tokens": SMALL_CALL_REASONING_FLOOR,
+                    "reasoning": {"effort": "low"},
+                },
+            ),
+            ("anthropic", "claude-sonnet-5-5", {"thinking": {"type": "between_tools"}}),
+        ],
+    )
+    async def test_the_request_body_on_the_wire(
+        self, provider: Literal["openai", "anthropic"], model: str, controls: dict
+    ):
+        sent: list[bytes] = []
+
+        def reply(request: httpx.Request) -> httpx.Response:
+            sent.append(request.content)
+            if provider == "anthropic":
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": "msg_1",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": model,
+                        "content": [{"type": "text", "text": "true"}],
+                        "stop_reason": "end_turn",
+                        "stop_sequence": None,
+                        "usage": {"input_tokens": 10, "output_tokens": 1},
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "id": "resp_1",
+                    "object": "response",
+                    "created_at": 0,
+                    "model": model,
+                    "status": "completed",
+                    "output": [
+                        {
+                            "type": "message",
+                            "id": "msg_1",
+                            "role": "assistant",
+                            "status": "completed",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": "true",
+                                    "annotations": [],
+                                }
+                            ],
+                        }
+                    ],
+                    "usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 1,
+                        "total_tokens": 11,
+                        "input_tokens_details": {"cached_tokens": 0},
+                        "output_tokens_details": {"reasoning_tokens": 0},
+                    },
+                    "parallel_tool_calls": False,
+                    "tool_choice": "auto",
+                    "tools": [],
+                },
+            )
+
+        transport = httpx.MockTransport(reply)
+        real_openai, real_anthropic = openai.AsyncOpenAI, anthropic.AsyncAnthropic
+        with (
+            patch(
+                "backend.util.llm.providers.openai.AsyncOpenAI",
+                lambda **kw: real_openai(
+                    **kw, http_client=httpx.AsyncClient(transport=transport)
+                ),
+            ),
+            patch(
+                "backend.util.llm.providers.anthropic.AsyncAnthropic",
+                lambda **kw: real_anthropic(
+                    **kw, http_client=httpx.AsyncClient(transport=transport)
+                ),
+            ),
+        ):
+            await call_provider(
+                provider=provider,
+                model=model,
+                api_key="sk-test",
+                messages=[_msg("user", "true or false?")],
+                max_tokens=16,
+            )
+
+        assert sent == [_wire_body(model, dict(controls))]
 
 
 class TestSmallCallReasoning:

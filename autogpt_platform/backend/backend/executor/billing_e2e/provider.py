@@ -5,8 +5,8 @@ tool it was offered a set number of times, then finishing, and it answers the
 AI block the agent calls as a tool (its calls offer none) with text, or with
 an error when the run is scripted to fail its tool calls. It keeps an invoice
 of every reply, with the time each call came in and the model it asked for,
-and each billed reply reports one million input tokens, so it costs the platform exactly the model's price
-per million input tokens.
+and each billed reply reports one million input tokens, so it costs the
+platform exactly the model's price per million input tokens.
 """
 
 import time

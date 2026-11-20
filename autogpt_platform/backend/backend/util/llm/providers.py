@@ -44,7 +44,7 @@ import httpx
 import ollama
 import openai
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
-from openai.types.shared_params import ResponseFormatJSONObject
+from openai.types.shared_params import Reasoning, ResponseFormatJSONObject
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 
@@ -560,7 +560,7 @@ async def _call_openai_responses(
         input=messages,  # type: ignore[arg-type]
         tools=tools_param,  # type: ignore[arg-type]
         max_output_tokens=max_tokens,
-        reasoning=reasoning if reasoning is not None else openai.omit,  # type: ignore[arg-type]
+        reasoning=reasoning if reasoning is not None else openai.omit,
         # Reasoning models (o-series) reject ``temperature`` — same guard
         # as the Anthropic path: only send the field when the caller set
         # one, never a default.
@@ -1326,7 +1326,7 @@ def small_call_reasoning(model: str, max_tokens: int) -> dict[str, Any]:
 
 def small_call_openai_reasoning(
     model: str, max_tokens: int
-) -> tuple[dict[str, str] | None, int]:
+) -> tuple[Reasoning | None, int]:
     """``reasoning`` and ``max_output_tokens`` for a native OpenAI call.
 
     A call capped at ``NO_REASONING_MAX_TOKENS`` or less, on a model in
@@ -1339,7 +1339,8 @@ def small_call_openai_reasoning(
         return None, max_tokens
     if effort != "none":
         max_tokens = max(max_tokens, SMALL_CALL_REASONING_FLOOR)
-    return {"effort": effort}, max_tokens
+    # The API takes ``none``; this SDK's ``ReasoningEffort`` predates it.
+    return cast(Reasoning, {"effort": effort}), max_tokens
 
 
 def small_call_anthropic_thinking(model: str, max_tokens: int) -> dict[str, str] | None:

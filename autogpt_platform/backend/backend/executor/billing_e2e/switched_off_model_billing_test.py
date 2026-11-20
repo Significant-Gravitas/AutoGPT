@@ -23,6 +23,7 @@ from backend.blocks.llm import AITextGeneratorBlock, LLMModel
 from backend.data import graph as graph_model
 from backend.data.block_cost_config import TOKEN_COST
 from backend.data.credit import UserCredit
+from backend.data.llm_registry import llm_models
 from backend.data.user import get_or_create_user
 from backend.integrations import credentials_store
 from backend.util.test import SpinTestServer
@@ -43,11 +44,11 @@ SHUTDOWN = date(2026, 11, 30)
 def _executor_pod_on(day: date) -> str:
     """The executor pod's script, with the day a shutdown date is read
     against set to *day*."""
+    today = f"datetime.date({day.year}, {day.month}, {day.day})"
     return (
         "import datetime\n"
         "import backend.data.llm_registry.llm_models as llm_models\n"
-        f"llm_models._today = lambda: datetime.date({day.year}, {day.month}, {day.day})\n"
-        + EXECUTOR_POD
+        f"llm_models._today = lambda: {today}\n" + EXECUTOR_POD
     )
 
 
@@ -69,6 +70,9 @@ async def test_a_workflow_on_a_switched_off_model_runs_and_pays_for_its_fallback
     day: date,
     runs: LLMModel,
 ):
+    # The test process saves and starts the run, so it reads the same day as
+    # the pod, not the calendar: the test must not change meaning after 11-30.
+    monkeypatch.setattr(llm_models, "_today", lambda: day)
     monkeypatch.setattr(
         credentials_store.settings.secrets, "anthropic_api_key", PLATFORM_ANTHROPIC_KEY
     )

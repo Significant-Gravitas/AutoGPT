@@ -44,6 +44,7 @@ from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
+from backend.data.llm_registry.llm_models import is_llm_model_field
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
@@ -3084,7 +3085,7 @@ def find_llm_model_fields() -> dict[str, str]:
     for block_type in get_blocks().values():
         block = block_type()
         for field_name, field in block.input_schema.model_fields.items():
-            if field.annotation == LLMModel:
+            if is_llm_model_field(field):
                 llm_model_fields[block.id] = field_name
     return llm_model_fields
 

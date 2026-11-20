@@ -38,7 +38,7 @@ class StagehandRecommendedLLMModel(str, Enum):
     def _missing_(cls, value: object) -> "StagehandRecommendedLLMModel | None":
         """A node saved on a model this list no longer offers runs on its
         replacement (``_RETIRED_MODELS``)."""
-        return _RETIRED_MODELS.get(value) if isinstance(value, str) else None
+        return _replacement_for(value)
 
     # OpenAI
     GPT41 = "gpt-4.1-2025-04-14"
@@ -92,6 +92,11 @@ _RETIRED_MODELS: dict[str, StagehandRecommendedLLMModel] = {
 }
 
 
+def _replacement_for(value: object) -> StagehandRecommendedLLMModel | None:
+    """The current model a saved retired value runs as; None for any other."""
+    return _RETIRED_MODELS.get(value) if isinstance(value, str) else None
+
+
 class _StagehandInput(BlockSchemaInput):
     @classmethod
     def validate_data(
@@ -103,8 +108,7 @@ class _StagehandInput(BlockSchemaInput):
         schema lists only the current models, so it would refuse the saved
         value before the ``model`` field resolves it. Works on a copy, so the
         caller's data keeps the saved value."""
-        saved = data.get("model")
-        replacement = _RETIRED_MODELS.get(saved) if isinstance(saved, str) else None
+        replacement = _replacement_for(data.get("model"))
         if replacement is not None:
             data = {**data, "model": replacement.value}
         return super().validate_data(data, exclude_fields=exclude_fields)

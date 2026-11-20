@@ -128,6 +128,11 @@ The CLI rewrites only nodes of blocks whose `model` input is an `LLMModel`. Othe
 
 Once the provider has shut a model down, there is nothing left to revert to. Then add it to `LEGACY_MODEL_MAPPINGS` (`llm_registry/llm_models.py`) as well: `migrate_llm_models` rewrites every LLM-block node, and every preset override of one, that names it, in each install, self-hosted ones included, the next time the app starts. It logs, at INFO, how many nodes and preset overrides it moved from each stored value to its replacement, and keeps no record to revert, so map a model only once nothing can run on it. Use its catalog fallback as the target: a test checks the two agree.
 
+**Small calls on reasoning models.** Reasoning and thinking tokens count against a call's output cap, so a short-answer call can spend its whole cap before it answers.
+- On the native OpenAI and Anthropic paths, a call capped at 512 tokens or less (`NO_REASONING_MAX_TOKENS`) asks a model listed in `_OPENAI_LEAST_REASONING_EFFORT` or `_ANTHROPIC_NO_UPFRONT_THINKING` (`util/llm/providers.py`) for its least reasoning.
+- A model that still reasons at its least effort also gets its cap raised to `SMALL_CALL_REASONING_FLOOR` (2,048). Today that is `gpt-6.1-sol` at `low`. A block's `max_tokens` of 512 or less on it can therefore return a longer answer than the cap asked for.
+- When a retirement moves workflows onto a reasoning model, add the model to one of those maps, with the least value its model page lists. A value the model doesn't accept returns a 400.
+
 ## Reading the catalog from clients
 
 There is deliberately no public catalog API: the catalog ships inside the repo, so every deployment and self-hosted install already has the exact model list its code supports. When a frontend surface needs the live list (e.g. a catalog-driven model picker), add a small authenticated route that reads the in-process registry (`backend.data.llm_registry.registry`) — don't reach for an unauthenticated endpoint; the last one existed only to bootstrap DB-seeded installs, a problem the in-repo catalog no longer has.
