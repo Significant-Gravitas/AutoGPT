@@ -293,10 +293,14 @@ async def test_search_block_rejects_blank_key_in_api_key_mode():
 def test_platform_cost_only_applies_in_api_key_mode():
     block_class = KeenableSearchBlock
     saved_costs = BLOCK_COSTS.get(block_class)
-    saved_default_creds = keenable.default_credentials
+    # patch.object instead of assigning: List[APIKeyCredentials] is not a
+    # List[Credentials] for the type checker.
+    default_creds = mock.patch.object(
+        keenable, "default_credentials", [KEENABLE_PLATFORM_KEY]
+    )
+    default_creds.start()
     try:
         BLOCK_COSTS.pop(block_class, None)
-        keenable.default_credentials = [KEENABLE_PLATFORM_KEY]
         register_provider_costs_for_block(block_class)
         block = block_class()
         platform_key = {
@@ -315,7 +319,7 @@ def test_platform_cost_only_applies_in_api_key_mode():
             if not entry.is_free
         )
     finally:
-        keenable.default_credentials = saved_default_creds
+        default_creds.stop()
         if saved_costs is None:
             BLOCK_COSTS.pop(block_class, None)
         else:
