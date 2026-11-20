@@ -1,14 +1,77 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { v5 as uuidv5 } from "uuid";
 import { describe, expect, it } from "vitest";
 
 import { emptyTurnLog, type LogRow, type PersistedRow } from "../turnLog";
 import {
+  locatePrompt,
   mergeRows,
   newTurnSegment,
+  persistedPromptId,
   turnRows,
   userSegment,
   type Segment,
   lastReplySequence,
 } from "../turnTail";
+
+describe("persistedPromptId", () => {
+  it("is the id the backend's scoped_client_message_id gives a send's row", () => {
+    // Pins the id scheme to backend/copilot/expert_kickoff.py's scoped_client_message_id.
+    const source = readFileSync(
+      resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        "../../../../../../../backend/backend/copilot/expert_kickoff.py",
+      ),
+      "utf8",
+    );
+    const namespace =
+      /_CLIENT_MESSAGE_NAMESPACE = uuid\.UUID\("([0-9a-f-]{36})"\)/.exec(
+        source,
+      )?.[1];
+    expect(
+      source,
+      "scoped_client_message_id's uuid5 name changed: make persistedPromptId build the same one",
+    ).toMatch(
+      /uuid\.uuid5\(\s*_CLIENT_MESSAGE_NAMESPACE,\s*f"\{user_id\}:\{session_id\}:\{client_message_id\}",?\s*\)/,
+    );
+    expect(namespace).toBeDefined();
+    expect(persistedPromptId("user-a", "session-a", "click-a")).toBe(
+      uuidv5("user-a:session-a:click-a", namespace!),
+    );
+    // uuid.uuid5(_CLIENT_MESSAGE_NAMESPACE, "user-a:session-a:click-a") in Python.
+    expect(persistedPromptId("user-a", "session-a", "click-a")).toBe(
+      "540dc830-2fef-5bde-bf7c-d61d574b097f",
+    );
+  });
+});
+
+describe("locatePrompt", () => {
+  const ROWS: PersistedRow[] = [
+    { id: "other-tab", role: "user", content: "hi there", sequence: 4 },
+    { id: "reply", role: "assistant", content: "Hello", sequence: 5 },
+    { id: "own", role: "user", content: "hi", sequence: 6 },
+  ];
+
+  it("finds a send's row by its id, not another prompt that starts with its words", () => {
+    const sent = userSegment(prompt("hi"), "sent", "own");
+    expect(locatePrompt(sent, ROWS, 4)?.sequence).toBe(6);
+  });
+
+  it("finds nothing for a send the session has no row for", () => {
+    const sent = userSegment(prompt("hi"), "sent", "never-written");
+    expect(locatePrompt(sent, ROWS, 4)).toBeNull();
+    const filesOnly = userSegment(prompt(""), "sent", "never-written");
+    expect(locatePrompt(filesOnly, ROWS, 4)).toBeNull();
+  });
+
+  it("finds a promoted follow-up, which no send names, by its words", () => {
+    expect(
+      locatePrompt(userSegment(prompt("hi there"), "chip"), ROWS, 4)?.sequence,
+    ).toBe(4);
+  });
+});
 
 describe("turnRows", () => {
   it("stops a stopped turn's rows at the next prompt, before that prompt has a sequence", () => {

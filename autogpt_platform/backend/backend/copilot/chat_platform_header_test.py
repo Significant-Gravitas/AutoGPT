@@ -79,9 +79,9 @@ def test_a_long_run_of_blank_lines_does_not_backtrack():
     # A whitespace prefix that may cross newlines rescans the rest of the run
     # from every line start, which is quadratic in the number of blank lines.
     body = "\n" * 30_000 + "x"
-    started = time.perf_counter()
+    started = time.thread_time()
     assert neutralize_forged_labels(body) == body
-    assert time.perf_counter() - started < 0.5
+    assert time.thread_time() - started < 0.5
 
 
 def test_attribution_keeps_the_sender_of_a_single_message():

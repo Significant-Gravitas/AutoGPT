@@ -402,6 +402,7 @@ def test_execute_graph_uses_key_org_not_user_default(
     app.dependency_overrides[require_auth] = fake_require_auth
 
     monkeypatch.setattr(routes_mod, "enforce_payment_paywall", AsyncMock())
+    monkeypatch.setattr(routes_mod.graph_db, "get_graph", AsyncMock())
     captured: dict = {}
 
     async def fake_add(**kwargs):
@@ -445,6 +446,7 @@ def test_execute_graph_honors_key_team_restriction(
     app.dependency_overrides[require_auth] = fake_require_auth
 
     monkeypatch.setattr(routes_mod, "enforce_payment_paywall", AsyncMock())
+    monkeypatch.setattr(routes_mod.graph_db, "get_graph", AsyncMock())
     captured: dict = {}
 
     async def fake_add(**kwargs):
