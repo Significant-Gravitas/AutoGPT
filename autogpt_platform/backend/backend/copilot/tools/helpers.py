@@ -619,7 +619,9 @@ async def execute_block(
                 # judge locates the outside parts as placed, so declare these.
                 # sqlalchemy_safe=False keeps keys starting with `_sa`, which
                 # the encoder drops by default.
-                encoded = to_dict(dict(outputs), sqlalchemy_safe=False, exclude_none=True)
+                encoded = to_dict(
+                    dict(outputs), sqlalchemy_safe=False, exclude_none=True
+                )
                 return BlockOutputResponse(
                     message=f"Block '{block.name}' executed successfully",
                     block_id=block_id,
