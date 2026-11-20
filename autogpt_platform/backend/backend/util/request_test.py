@@ -24,6 +24,7 @@ from backend.util.request import (
 )
 from backend.util.request_test_helpers import ENDS_WITHIN_SECONDS, local_requests, serve
 from backend.util.settings import Config
+from backend.util.url_redaction import is_credential_header
 
 
 @pytest.mark.parametrize(
@@ -628,8 +629,10 @@ async def test_credentials_survive_a_same_origin_redirect():
 
 # The four ways a credential rides a redirect hop: a name in
 # ``SENSITIVE_HEADERS``, the two kwargs aiohttp turns into headers downstream of
-# the strip, and a name the caller declared sensitive. One origin decision in
-# the redirect branch has to cover all four, in both directions.
+# the strip, and a name the caller declared sensitive, one that
+# ``is_credential_header`` doesn't read as a credential's, so that only the
+# caller's naming it drops it. One origin decision in the redirect branch has
+# to cover all four, in both directions.
 CREDENTIAL_CARRIERS = [
     (
         {},
@@ -645,9 +648,9 @@ CREDENTIAL_CARRIERS = [
         "session=secret_session_value",
     ),
     (
-        {"sensitive_headers": ["X-Custom-Credential"]},
-        {"headers": {"X-Custom-Credential": "credential-value"}},
-        "X-Custom-Credential",
+        {"sensitive_headers": ["X-Passphrase"]},
+        {"headers": {"X-Passphrase": "credential-value"}},
+        "X-Passphrase",
         "credential-value",
     ),
 ]
@@ -794,7 +797,7 @@ def test_parse_url_names_the_host_a_backslashed_authority_resolves_to(
     assert parse_url(target).hostname == by_parse_url
 
 
-@pytest.mark.parametrize("header_name", ["X-Custom-Credential", "x-custom-credential"])
+@pytest.mark.parametrize("header_name", ["X-Passphrase", "x-passphrase"])
 @pytest.mark.parametrize(
     "new_url, expect_stripped",
     [
@@ -805,13 +808,15 @@ def test_parse_url_names_the_host_a_backslashed_authority_resolves_to(
 def test_caller_sensitive_headers_are_stripped_cross_origin(
     header_name: str, new_url: str, expect_stripped: bool
 ):
-    """Names passed as ``sensitive_headers`` join ``SENSITIVE_HEADERS``."""
+    """Names passed as ``sensitive_headers`` join ``SENSITIVE_HEADERS``, for a
+    name ``is_credential_header`` doesn't read as a credential's."""
+    assert not is_credential_header(header_name)
     headers = {header_name: "secret", "X-Keep": "kept"}
 
     result = _remove_insecure_headers(
         headers,
         _is_cross_origin(urlparse("https://example.com/a"), urlparse(new_url)),
-        sensitive_headers=["X-CUSTOM-Credential"],
+        sensitive_headers=["X-PASSphrase"],
     )
 
     assert (header_name not in result) is expect_stripped
@@ -828,7 +833,7 @@ async def test_sensitive_headers_are_not_replayed_across_a_cross_origin_redirect
     seen: dict[str, str | None] = {}
 
     async def collect(request: web.Request) -> web.Response:
-        seen["credential"] = request.headers.get("X-Custom-Credential")
+        seen["credential"] = request.headers.get("X-Passphrase")
         seen["accept"] = request.headers.get("Accept")
         return web.json_response({"ok": True})
 
@@ -841,7 +846,7 @@ async def test_sensitive_headers_are_not_replayed_across_a_cross_origin_redirect
 
     async def redirect(request: web.Request) -> web.Response:
         # Pinned, so the test cannot pass by the header never being sent.
-        seen["origin_credential"] = request.headers.get("X-Custom-Credential")
+        seen["origin_credential"] = request.headers.get("X-Passphrase")
         raise web.HTTPFound(f"http://127.0.0.1:{elsewhere_port}/collect")
 
     origin = web.Application()
@@ -854,12 +859,12 @@ async def test_sensitive_headers_are_not_replayed_across_a_cross_origin_redirect
     try:
         requests = Requests(
             trusted_origins=["127.0.0.1"],
-            sensitive_headers=["X-Custom-Credential"],
+            sensitive_headers=["X-Passphrase"],
         )
         await requests.get(
             f"http://127.0.0.1:{origin_port}/start",
             headers={
-                "X-Custom-Credential": "credential-value",
+                "X-Passphrase": "credential-value",
                 "Accept": "application/json",
             },
         )
