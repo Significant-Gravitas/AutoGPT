@@ -63,7 +63,7 @@ export function WorthDoingPanel({ offer, endsAt }: Props) {
               data-slot="worth-doing-panel-icon"
               className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-surface"
             >
-              <Icon icon={row.icon} size={14} className="text-accent-strong" />
+              <Icon icon={row.icon} size={14} tone="accent" />
             </span>
             <div
               data-slot="worth-doing-panel-content"

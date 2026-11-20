@@ -30,15 +30,13 @@ export function RecordingButton({
   return (
     <Button
       type="button"
-      variant="icon"
+      variant="tray"
       size="icon"
       aria-label={isRecording ? "Stop recording" : "Start recording"}
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "border-transparent bg-transparent text-foreground-base shadow-none hover:border-transparent hover:bg-surface-hover hover:text-foreground-base",
         className,
-        disabled && "opacity-40",
         isRecording &&
           "animate-pulse bg-error text-action-foreground hover:bg-error-hover",
         isTranscribing && "bg-surface-hover text-foreground-subtle",
@@ -49,7 +47,7 @@ export function RecordingButton({
       )}
     >
       {isTranscribing ? (
-        <Icon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
+        <Icon icon={Loading03Icon} spin className="h-4 w-4" />
       ) : (
         <Icon icon={Mic01Icon} className="h-4 w-4" />
       )}

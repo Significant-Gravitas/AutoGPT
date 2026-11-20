@@ -1,9 +1,13 @@
+"use client";
+
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
-import { formatDistanceToNow, formatDistanceStrict } from "date-fns";
+import { useNowSecond } from "@/hooks/useNowSecond";
+import { formatDistanceToNow } from "date-fns";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
+import { formatRunDuration, isLiveRun } from "./helpers";
 import { FlaskConicalIcon, TimeScheduleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
@@ -19,6 +23,9 @@ type Props = {
 
 export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
   const isBillingEnabled = useIsBillingEnabled();
+  const nowMs = useNowSecond(isLiveRun(run) && Boolean(run?.started_at));
+  const durationLabel = run ? formatRunDuration(run, nowMs) : null;
+
   return (
     <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
       <div className="flex w-full items-center justify-between">
@@ -41,10 +48,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   )}
                 </div>
               ) : scheduleRecurrence ? (
-                <div
-                  // oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
-                  className="inline-flex items-center gap-1 rounded-md bg-warning-surface p-1 text-yellow-700"
-                >
+                <div className="inline-flex items-center gap-1 rounded-md bg-warning-surface p-1 text-yellow-foreground">
                   <Icon icon={TimeScheduleIcon} size={16} />
                   <Text variant="small-medium" tone="inherit">
                     Scheduled
@@ -74,12 +78,11 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   </Text>
                 </>
               )}
-              {run.stats?.duration !== undefined && (
+              {durationLabel && (
                 <>
                   <span className="mx-1 inline-block text-border-base">|</span>
                   <Text variant="small" tone="muted">
-                    Duration:{" "}
-                    {formatDistanceStrict(0, run.stats.duration * 1000)}
+                    Duration: {durationLabel}
                   </Text>
                 </>
               )}

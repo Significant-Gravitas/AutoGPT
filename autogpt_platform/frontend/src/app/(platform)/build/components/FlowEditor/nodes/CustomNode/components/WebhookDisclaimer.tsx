@@ -52,7 +52,7 @@ export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
         </Alert>
       </div>
 
-      <Text variant="small" className="mb-4 ml-6 !text-accent-strong">
+      <Text variant="small" tone="accent" className="mb-4 ml-6">
         Below inputs are only for display purposes and cannot be edited.
       </Text>
     </>

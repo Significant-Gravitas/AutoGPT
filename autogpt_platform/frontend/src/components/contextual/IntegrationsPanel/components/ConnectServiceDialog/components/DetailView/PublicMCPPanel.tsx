@@ -40,7 +40,7 @@ export function PublicMCPPanel({ serverURL, actions }: Props) {
         </Text>
       )}
       {error && (
-        <Text variant="small" role="alert" className="text-error-foreground">
+        <Text variant="small" role="alert" tone="error-strong">
           {error}
         </Text>
       )}

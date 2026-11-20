@@ -1,7 +1,6 @@
 // Common styles as Tailwind class strings
 const commonStyles = {
-  // TODO(tokens): SECRT-3152, no text role for 18px (md:text-lg).
-  title: "font-poppins text-md md:text-lg leading-none",
+  title: "font-poppins md:text-lead leading-none",
   overlay: "fixed inset-0 z-50 bg-overlay/20 backdrop-blur-md animate-fade-in",
   content: "bg-surface p-6 fixed rounded-2xlarge flex flex-col z-50 w-full",
 };

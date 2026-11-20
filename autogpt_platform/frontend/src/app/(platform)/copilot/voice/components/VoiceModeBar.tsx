@@ -18,8 +18,8 @@ const APPEARANCE: Record<
 > = {
   listening: { source: "mic", color: "bg-success" },
   hearing: { source: "mic", color: "bg-success" },
-  transcribing: { source: "pulse", color: "bg-accent" },
-  thinking: { source: "pulse", color: "bg-accent" },
+  transcribing: { source: "pulse", color: "bg-brand" },
+  thinking: { source: "pulse", color: "bg-brand" },
   speaking: { source: "speech", color: "bg-action-hover" },
 };
 
@@ -52,7 +52,7 @@ export function VoiceModeBar({
       <div className="flex w-full flex-wrap items-center gap-2 py-1.5 pr-1.5 pl-3">
         <span
           role="alert"
-          className="min-w-0 flex-1 truncate text-sm text-error-foreground"
+          className="min-w-0 flex-1 truncate text-body text-error-foreground"
         >
           {failure.message}
         </span>

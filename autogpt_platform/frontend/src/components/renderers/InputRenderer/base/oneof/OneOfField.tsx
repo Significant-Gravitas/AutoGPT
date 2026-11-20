@@ -207,7 +207,9 @@ function DiscriminatedUnionField({
       registry={registry}
       placeholder={props.placeholder}
       autocomplete={props.autocomplete}
-      className={cn("-ml-1 h-[22px] w-fit gap-1 px-1 pl-2 text-xs font-medium")}
+      className={cn(
+        "-ml-1 h-[22px] w-fit gap-1 px-1 pl-2 text-caption font-medium",
+      )}
       autofocus={props.autofocus}
       label={schema.title ? `${schema.title} — variant` : "Variant selector"}
       hideLabel={true}

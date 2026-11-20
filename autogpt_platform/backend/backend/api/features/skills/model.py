@@ -18,6 +18,12 @@ class CopilotSkillInfo(BaseModel):
     # copy was edited, "merged" when a newer version was merged into the
     # owner's edits, "retired" when the listing is gone. Null when current.
     update: str | None = None
+    # The skill's ``argument-hint`` frontmatter, shown by the chat's "/"
+    # picker, e.g. ``[issue-number]``.
+    argument_hint: str | None = None
+    # False when the skill's frontmatter sets ``user-invocable: false``: the
+    # model may still load it, but the user cannot run it as ``/name``.
+    user_invocable: bool = True
 
 
 class CopilotSkillFile(BaseModel):

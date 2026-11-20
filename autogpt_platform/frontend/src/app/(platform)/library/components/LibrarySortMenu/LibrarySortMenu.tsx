@@ -20,13 +20,13 @@ export function LibrarySortMenu({ setLibrarySort }: Props) {
   const { handleSortChange } = useLibrarySortMenu({ setLibrarySort });
   return (
     <div className="flex items-center" data-testid="sort-by-dropdown">
-      <span className="hidden text-sm whitespace-nowrap text-foreground-tertiary sm:inline">
+      <span className="hidden text-body whitespace-nowrap text-foreground-tertiary sm:inline">
         sort by
       </span>
       <Select onValueChange={handleSortChange}>
         <SelectTrigger
           // oxlint-disable-next-line design-system/no-restyle -- Select has no inline link-style trigger variant
-          className="!m-0 ml-1 w-fit space-x-1 border-none !bg-transparent px-4 text-sm underline underline-offset-4 !shadow-none !ring-offset-transparent"
+          className="!m-0 ml-1 w-fit space-x-1 border-none !bg-transparent px-4 text-body underline underline-offset-4 !shadow-none !ring-offset-transparent"
         >
           <Icon
             aria-hidden

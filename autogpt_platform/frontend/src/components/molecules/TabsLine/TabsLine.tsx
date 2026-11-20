@@ -173,7 +173,7 @@ const TabsLineTrigger = React.forwardRef<
         variant === "pill" && [
           "flex flex-1 items-start justify-center gap-2.5 rounded-2xl px-3 py-2 text-center font-sans text-caption leading-tight font-medium whitespace-nowrap text-foreground-tertiary ring-offset-surface transition-all",
           "focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
-          "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-subtle",
+          "data-[state=active]:bg-canvas data-[state=active]:text-foreground-base data-[state=active]:shadow-subtle",
         ],
         variant !== "pill" &&
           "relative inline-flex items-center justify-center px-3 py-3 font-sans text-body leading-6 font-medium whitespace-nowrap text-foreground-body transition-all focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-brand-hover",

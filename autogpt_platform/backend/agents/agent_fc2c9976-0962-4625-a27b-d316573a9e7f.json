@@ -278,7 +278,7 @@
       "id": "510937b3-0134-4e45-b2ba-05a447bbaf50",
       "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
       "input_default": {
-        "model": "claude-sonnet-4-5-20250929",
+        "model": "claude-sonnet-5-5",
         "prompt": "<business_website>\n{{WEBSITE_CONTENT}}\n</business_website>\n\nExtract the Contact Email of {{BUSINESS_NAME}}.\n\nIf no email that can be used to contact {{BUSINESS_NAME}} is present, output `N/A`.\nDo not share any emails other than the email for this specific entity.\n\nIf multiple present pick the likely best one.\n\nRespond with the email (or N/A) inside <email></email> tags.\n\nExample Response:\n\n<thoughts_or_comments>\nThere were many emails present, but luckily one was for {{BUSINESS_NAME}} which I have included below.\n</thoughts_or_comments>\n<email>\nexample@email.com\n</email>",
         "prompt_values": {}
       },

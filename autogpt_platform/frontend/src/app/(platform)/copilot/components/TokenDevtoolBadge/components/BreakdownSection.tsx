@@ -52,7 +52,7 @@ export function BreakdownSection({ breakdown }: Props) {
         {rows.map((row) => (
           <div
             key={row.label}
-            className="flex items-baseline gap-1.5 font-mono text-xs"
+            className="flex items-baseline gap-1.5 font-mono text-caption"
           >
             <span className={`size-1.5 shrink-0 rounded-full ${row.color}`} />
             <span className="text-foreground-secondary">{row.label}</span>

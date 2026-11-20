@@ -163,8 +163,8 @@ def chat_system_prompt(expert: Expert | None) -> str:
 
 async def resolve_chat_model(config: ChatConfig) -> RoutedModel:
     """The model an expert turn runs on: the engine decision, then the
-    router's ``(mode, standard)`` cell. No user id, so LaunchDarkly is
-    skipped and this is the catalog/env layer; a proposed LD value is
+    router's ``(mode, standard)`` cell. No user id, so the per-user flag is
+    skipped and this is the catalog/env layer; a proposed flag value is
     checked by hand with ``--model``."""
     use_sdk = await resolve_use_sdk(
         None,

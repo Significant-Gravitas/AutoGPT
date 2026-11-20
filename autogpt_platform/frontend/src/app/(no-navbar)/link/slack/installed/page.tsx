@@ -16,7 +16,7 @@ export default function SlackInstalledPage() {
         className="max-w-[38rem] gap-6 p-8"
       >
         <div className="flex w-full flex-col items-center gap-7">
-          <div className="w-full rounded-xl bg-muted px-6 py-5 text-center">
+          <div className="w-full rounded-xl bg-surface-hover px-6 py-5 text-center">
             {/* The page navigates on its own, so announce it rather than
                 letting a screen reader land somewhere unexplained. */}
             <Text

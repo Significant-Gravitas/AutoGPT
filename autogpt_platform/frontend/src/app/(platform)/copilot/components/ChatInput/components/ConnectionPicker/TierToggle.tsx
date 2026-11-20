@@ -103,14 +103,15 @@ export function TierToggle({
             onClick={() => onSelect(segment.tier)}
             className={cn(
               "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-              "focus-visible:bg-background focus-visible:outline-none",
+              "focus-visible:bg-canvas focus-visible:outline-none",
             )}
           >
             <Icon
               icon={tierIcon(segment.tier)}
               size={18}
               aria-hidden
-              className="flex-none text-foreground-tertiary"
+              tone="muted"
+              className="flex-none"
             />
             <span className="flex min-w-0 flex-1 flex-col">
               <Text
@@ -122,7 +123,7 @@ export function TierToggle({
                 {segment.name ?? segment.label}
               </Text>
               {segment.model && (
-                <span className="text-sm leading-snug text-foreground-tertiary">
+                <span className="text-body leading-snug text-foreground-tertiary">
                   <Swap className="max-w-full truncate">{segment.model}</Swap>
                 </span>
               )}
@@ -131,8 +132,9 @@ export function TierToggle({
               icon={Tick02Icon}
               size={16}
               aria-hidden
+              motion="opacity"
               className={cn(
-                "flex-none text-primary transition-opacity",
+                "flex-none text-action",
                 segment.tier === value ? "opacity-100" : "opacity-0",
               )}
             />
@@ -167,7 +169,8 @@ function LockedSegment({ segment }: { segment: Segment }) {
           icon={LockIcon}
           size={14}
           aria-hidden
-          className="mt-[3px] flex-none text-foreground-subtle"
+          tone="subtle"
+          className="mt-[3px] flex-none"
         />
         <span className="flex min-w-0 flex-col">
           <Text
@@ -179,7 +182,7 @@ function LockedSegment({ segment }: { segment: Segment }) {
             {segment.name ?? segment.label}
           </Text>
           {segment.model && (
-            <span className="text-sm leading-snug text-foreground-subtle">
+            <span className="text-body leading-snug text-foreground-subtle">
               <Swap className="max-w-full truncate">{segment.model}</Swap>
             </span>
           )}

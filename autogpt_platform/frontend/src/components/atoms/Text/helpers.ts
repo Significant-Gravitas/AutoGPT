@@ -1,3 +1,6 @@
+import { cva } from "class-variance-authority";
+import { tones } from "@/components/styles/tones";
+
 export type As =
   | "h1"
   | "h2"
@@ -19,10 +22,12 @@ export type As =
   | "pre"
   | "button";
 
-// Typography comes from the size roles in globals.css (`--text-*`); each
-// bundles its line-height.
+// Typography comes from the type scale in src/app/tokens/typography.css
+// (`text-<step>`); each step bundles its line-height.
 export const variants = {
   // Headings
+  // The marketing hero: h1 at the scale's largest step.
+  hero: "font-poppins text-hero font-semibold tracking-title text-foreground-base",
   h1: "font-poppins text-display font-semibold tracking-title text-foreground-base",
   h2: "font-poppins text-title font-medium text-foreground-base tracking-title",
   h3: "font-poppins text-heading font-medium text-foreground-base tracking-title",
@@ -162,12 +167,8 @@ export const variants = {
   "caption-sm-mono":
     "font-mono text-caption-sm font-normal text-foreground-base",
 
-  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
-  "lg-semibold": "font-sans text-lg font-semibold text-foreground-base",
-  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
-  "2xl-bold": "font-sans text-2xl font-bold text-foreground-base",
-  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl); the raw size stays.
-  "2xl": "font-sans text-2xl font-normal text-foreground-base",
+  "heading-md-bold": "font-sans text-heading-md font-bold text-foreground-base",
+  "heading-md": "font-sans text-heading-md font-normal text-foreground-base",
   // TODO(tokens): no role is 0.875rem/1 (text-sm leading-none); body plus leading-none.
   "body-medium-lh-none":
     "font-sans text-body font-medium leading-none text-foreground-base",
@@ -177,11 +178,9 @@ export const variants = {
   // TODO(tokens): no role is 0.75rem/1.25 (text-xs leading-tight); caption plus leading-tight.
   "small-lh-tight":
     "font-sans text-caption font-normal leading-tight text-foreground-base",
-  // TODO(tokens): SECRT-3152 no role is 1.125rem/1.75rem (text-lg); the raw size stays.
-  "lg-medium": "font-sans text-lg font-medium text-foreground-base",
-  // TODO(tokens): SECRT-3152 no role is 1.5rem/2rem (text-2xl) and no tracking token is -0.025em (tracking-tight); the raw values stay.
-  "2xl-bold-tracking-tight":
-    "font-sans text-2xl font-bold tracking-tight text-foreground-base",
+  // TODO(tokens): no tracking token is -0.025em (tracking-tight).
+  "heading-md-bold-tracking-tight":
+    "font-sans text-heading-md font-bold tracking-tight text-foreground-base",
   // TODO(tokens): no role is 0.75rem/1rem (text-xs); caption plus leading-4.
   "small-mono-bold-tight":
     "font-mono text-caption font-bold leading-4 text-foreground-base",
@@ -194,34 +193,56 @@ export const variants = {
 
 export type Variant = keyof typeof variants;
 
-/**
- * Semantic colours, each a colour role at the hex it rendered before the
- * roles existed. Omit for the variant's own colour (foreground-base #141414).
- */
-export const tones = {
-  primary: "text-foreground-strong", // #2C2C30
-  emphasis: "text-foreground-emphasis", // #3E3E43
-  body: "text-foreground-body", // #505057
-  secondary: "text-foreground-secondary", // #68686F
-  muted: "text-foreground-tertiary", // #83838C
-  subtle: "text-foreground-subtle", // #ADADB3
-  danger: "text-error-hover", // #D93636
-  error: "text-error", // #EF4444
-  warning: "text-warning-foreground", // #B45309
-  success: "text-success", // #149443
-  disabled: "text-foreground-disabled", // #C5C5C9
-  // The parent's colour, for copy inside a control that changes it on hover.
-  inherit: "text-inherit",
-  // TODO(tokens): no light-green role for text on a dark fill; `success`
-  // (#149443) would lose its contrast there, so emerald-300 #6EE7B7 stays.
-  "success-light": "text-emerald-300",
-  "success-strong": "text-success-foreground", // #107435
-  "warning-strong": "text-warning-foreground", // #B45309
-} as const;
-
-export type Tone = keyof typeof tones;
+// The props that adjust a variant (Text.tsx). Each applies after the
+// variant's classes, so `weight="semibold"` replaces its `font-medium`.
+export const textModifiers = cva("", {
+  variants: {
+    tone: tones,
+    weight: {
+      normal: "font-normal",
+      medium: "font-medium",
+      semibold: "font-semibold",
+      bold: "font-bold",
+    },
+    mono: { true: "font-mono" },
+    tabular: { true: "tabular-nums" },
+    italic: { true: "italic" },
+    decoration: {
+      underline: "underline",
+      "line-through": "line-through",
+      none: "no-underline",
+    },
+    transform: {
+      uppercase: "uppercase",
+      lowercase: "lowercase",
+      capitalize: "capitalize",
+      none: "normal-case",
+    },
+    tracking: {
+      tight: "tracking-tight",
+      normal: "tracking-normal",
+      wide: "tracking-wide",
+      widest: "tracking-widest",
+      title: "tracking-title",
+      heading: "tracking-heading",
+      display: "tracking-display",
+      caps: "tracking-caps",
+      eyebrow: "tracking-eyebrow",
+    },
+    // Animates a colour change, e.g. a hover colour set by a parent.
+    motion: { colors: "transition-colors" },
+    align: {
+      left: "text-left",
+      center: "text-center",
+      right: "text-right",
+      start: "text-start",
+      end: "text-end",
+    },
+  },
+});
 
 export const variantElementMap: Record<Variant, As> = {
+  hero: "h1",
   h1: "h1",
   h2: "h2",
   h3: "h3",
@@ -279,14 +300,12 @@ export const variantElementMap: Record<Variant, As> = {
   label: "span",
   eyebrow: "span",
   "caption-sm-mono": "span",
-  "lg-semibold": "h3",
-  "2xl-bold": "div",
-  "2xl": "span",
+  "heading-md-bold": "div",
+  "heading-md": "span",
   "body-medium-lh-none": "span",
   "body-medium-lh-snug": "p",
   "small-lh-tight": "p",
-  "lg-medium": "h3",
-  "2xl-bold-tracking-tight": "h1",
+  "heading-md-bold-tracking-tight": "h1",
   "small-mono-bold-tight": "code",
   "h3-semibold": "h3",
   "caption-sm": "kbd",

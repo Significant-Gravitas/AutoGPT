@@ -143,7 +143,8 @@ export function WorkspaceFileList({
                 <Icon
                   icon={fileIcon}
                   size={20}
-                  className="shrink-0 text-foreground-tertiary"
+                  tone="muted"
+                  className="shrink-0"
                 />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <Text
@@ -163,7 +164,8 @@ export function WorkspaceFileList({
                 {isSelected && (
                   <Icon
                     icon={CheckmarkCircle02Icon}
-                    className="h-5 w-5 shrink-0 text-brand"
+                    tone="brand"
+                    className="h-5 w-5 shrink-0"
                   />
                 )}
               </button>

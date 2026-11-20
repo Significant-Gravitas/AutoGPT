@@ -24,7 +24,8 @@ export function PlanFooter({ onCompare }: Props) {
       <Button
         type="button"
         variant="link"
-        className="h-auto min-w-0 p-0 text-xs text-foreground-tertiary"
+        size="inline-xs"
+        tone="muted"
         onClick={onCompare}
       >
         Compare plans

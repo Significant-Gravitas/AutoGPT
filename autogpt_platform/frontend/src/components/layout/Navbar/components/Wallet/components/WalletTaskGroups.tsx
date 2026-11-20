@@ -185,10 +185,10 @@ export function TaskGroups({ groups }: Props) {
           >
             {/* Name, details and completed count */}
             <div className="flex-1">
-              <div className="text-sm font-medium text-foreground-strong">
+              <div className="text-body font-medium text-foreground-strong">
                 {group.name}
               </div>
-              <div className="mt-1 text-xs leading-tight font-normal text-foreground-tertiary">
+              <div className="mt-1 text-caption leading-tight font-normal text-foreground-tertiary">
                 {group.details}
                 <br />
                 {getCompletedCount(group.tasks)} of {group.tasks.length}{" "}
@@ -198,11 +198,11 @@ export function TaskGroups({ groups }: Props) {
             {/* Reward and chevron */}
             <div className="flex items-center gap-2">
               {isGroupCompleted(group) ? (
-                <div className="rounded-full bg-success/40 px-2.5 py-0.5 font-sans text-xs font-medium text-success-foreground">
+                <div className="rounded-full bg-success/40 px-2.5 py-0.5 font-sans text-caption font-medium text-success-foreground">
                   Done
                 </div>
               ) : (
-                <div className="text-xs leading-tight font-medium text-brand">
+                <div className="text-caption leading-tight font-medium text-brand">
                   $
                   {group.tasks
                     .reduce((sum, task) => sum + task.amount, 0)
@@ -255,7 +255,7 @@ export function TaskGroups({ groups }: Props) {
                     </div>
                     <span
                       className={cn(
-                        "text-sm font-normal",
+                        "text-body font-normal",
                         isTaskCompleted(task)
                           ? "text-foreground-tertiary line-through"
                           : "text-foreground-emphasis",
@@ -268,7 +268,7 @@ export function TaskGroups({ groups }: Props) {
                   {task.amount > 0 && (
                     <span
                       className={cn(
-                        "text-xs font-normal text-foreground-tertiary",
+                        "text-caption font-normal text-foreground-tertiary",
                         isTaskCompleted(task) ? "line-through" : "",
                       )}
                     >
@@ -291,7 +291,7 @@ export function TaskGroups({ groups }: Props) {
                         }}
                       />
                     </div>
-                    <span className="mx-1 w-8 text-right text-xs font-normal text-foreground-tertiary">
+                    <span className="mx-1 w-8 text-right text-caption font-normal text-foreground-tertiary">
                       {(
                         (task.progress.current / task.progress.target) *
                         100
@@ -305,7 +305,7 @@ export function TaskGroups({ groups }: Props) {
                   <>
                     <div
                       className={cn(
-                        "mt-0 overflow-hidden pt-0 pl-6 text-xs font-normal text-foreground-tertiary transition-all duration-300 ease-in-out",
+                        "mt-0 overflow-hidden pt-0 pl-6 text-caption font-normal text-foreground-tertiary transition-all duration-300 ease-in-out",
                         isTaskCompleted(task) && "line-through",
                         openGroups[group.name]
                           ? "max-h-[100px] opacity-100"
@@ -351,10 +351,10 @@ export function TaskGroups({ groups }: Props) {
         <div className="flex items-center justify-between p-3">
           {/* Name and details */}
           <div className="flex-1">
-            <div className="text-sm font-medium text-foreground-strong">
+            <div className="text-body font-medium text-foreground-strong">
               Hidden Tasks
             </div>
-            <div className="mt-1 text-xs leading-tight font-normal text-foreground-tertiary">
+            <div className="mt-1 text-caption leading-tight font-normal text-foreground-tertiary">
               Check back later — new tasks are on the way
             </div>
           </div>

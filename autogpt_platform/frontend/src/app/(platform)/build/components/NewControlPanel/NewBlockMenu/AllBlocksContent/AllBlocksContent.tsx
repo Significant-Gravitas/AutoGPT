@@ -63,14 +63,16 @@ export const AllBlocksContent = () => {
               <Text variant="body-medium" tone="emphasis">
                 {category.name && beautifyString(category.name)}
               </Text>
-              <Text
-                variant="body"
-                as="span"
-                tone="secondary"
-                className="rounded-full bg-surface-hover px-1.5"
-              >
-                {category.total_blocks}
-              </Text>
+              <span className="rounded-full bg-surface-hover px-1.5">
+                <Text
+                  variant="body"
+                  as="span"
+                  tone="secondary"
+                  className="block"
+                >
+                  {category.total_blocks}
+                </Text>
+              </span>
             </div>
 
             <div className="space-y-2">
@@ -116,7 +118,7 @@ export const AllBlocksContent = () => {
                     variant="body-medium"
                     as="span"
                     tone="inherit"
-                    className="underline"
+                    decoration="underline"
                   >
                     see all
                   </Text>

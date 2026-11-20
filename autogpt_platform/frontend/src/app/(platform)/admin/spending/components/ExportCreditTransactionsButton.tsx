@@ -141,32 +141,32 @@ export function ExportCreditTransactionsButton() {
         <div className="flex flex-col gap-4">
           <div className="flex gap-3">
             <div className="flex flex-1 flex-col gap-1">
-              <label htmlFor="credit-export-start" className="text-sm">
+              <label htmlFor="credit-export-start" className="text-body">
                 Start date (UTC)
               </label>
               <input
                 id="credit-export-start"
                 type="date"
-                className="rounded border px-3 py-1.5 text-sm"
+                className="rounded border px-3 py-1.5 text-body"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
               />
             </div>
             <div className="flex flex-1 flex-col gap-1">
-              <label htmlFor="credit-export-end" className="text-sm">
+              <label htmlFor="credit-export-end" className="text-body">
                 End date (UTC)
               </label>
               <input
                 id="credit-export-end"
                 type="date"
-                className="rounded border px-3 py-1.5 text-sm"
+                className="rounded border px-3 py-1.5 text-body"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
               />
             </div>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-sm" htmlFor="credit-export-type">
+            <label className="text-body" htmlFor="credit-export-type">
               Transaction type
             </label>
             <Select
@@ -186,19 +186,19 @@ export function ExportCreditTransactionsButton() {
             </Select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-sm" htmlFor="credit-export-user-id">
+            <label className="text-body" htmlFor="credit-export-user-id">
               User ID (optional)
             </label>
             <input
               id="credit-export-user-id"
               type="text"
               placeholder="Filter by a single user ID"
-              className="rounded border px-3 py-1.5 text-sm"
+              className="rounded border px-3 py-1.5 text-body"
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
             />
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-foreground-tertiary">
             Window is capped at 90 days and 100k rows. Narrow the range if the
             backend returns a 400.
           </p>

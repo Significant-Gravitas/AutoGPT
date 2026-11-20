@@ -101,7 +101,7 @@ export function FieldValue({ name, value, clipped, format }: Props) {
           </summary>
           <pre
             data-slot="field-value-json-body"
-            className="mt-1.5 max-h-64 overflow-auto rounded-lg bg-surface-muted px-3 py-2 font-mono text-xs text-foreground-emphasis"
+            className="mt-1.5 max-h-64 overflow-auto rounded-lg bg-surface-muted px-3 py-2 font-mono text-caption text-foreground-emphasis"
           >
             {JSON.stringify(value, null, 2)}
           </pre>
@@ -148,12 +148,7 @@ function LongText({ text, shortened }: LongTextProps) {
         </p>
       </div>
       {!open && (
-        <Button
-          variant="link"
-          size="small"
-          className="h-auto min-w-0 px-0 py-0 text-sm"
-          onClick={() => setOpen(true)}
-        >
+        <Button variant="link" size="inline" onClick={() => setOpen(true)}>
           {lineCount(text) > CLAMP_LINES
             ? `Show all ${lineCount(text)} lines`
             : "Show all"}

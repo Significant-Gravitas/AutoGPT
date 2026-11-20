@@ -2,10 +2,22 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { AppSidebarTrigger } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
-import { BubbleChatBlockedIcon } from "@hugeicons/core-free-icons";
+import {
+  BubbleChatBlockedIcon,
+  BubbleChatIcon,
+} from "@hugeicons/core-free-icons";
 import { parseAsString, useQueryState } from "nuqs";
+import {
+  getRemovedChatExpertHref,
+  getRemovedChatTitle,
+  type RemovedChat,
+} from "../../../helpers/removedChat";
 
-export function SessionNotFound() {
+interface Props {
+  removedChat?: RemovedChat | null;
+}
+
+export function SessionNotFound({ removedChat = null }: Props) {
   const [, setSessionId] = useQueryState("sessionId", parseAsString);
   const [, setExpertId] = useQueryState("expertId", parseAsString);
 
@@ -16,6 +28,10 @@ export function SessionNotFound() {
     setExpertId(null);
   }
 
+  // A reset expert has no chats left, so a plain new chat would open Otto:
+  // offer the expert the user was looking for instead.
+  const expertHref = removedChat ? getRemovedChatExpertHref(removedChat) : null;
+
   return (
     <div className="relative flex h-full min-h-0 w-full items-center justify-center bg-surface px-6">
       {/* An open chat's thread chip owns the mobile sidebar button; this
@@ -25,26 +41,40 @@ export function SessionNotFound() {
         role="status"
         className="flex max-w-md flex-col items-center gap-3 text-center"
       >
-        <Icon
-          icon={BubbleChatBlockedIcon}
-          size={28}
-          className="text-muted-foreground"
-        />
+        <Icon icon={BubbleChatBlockedIcon} size={28} tone="muted" />
         <Text variant="large-medium" as="h2">
-          This chat isn&apos;t available on this account
+          {removedChat
+            ? getRemovedChatTitle(removedChat)
+            : "This chat isn't available on this account"}
         </Text>
-        <Text variant="body" className="text-muted-foreground">
-          It may belong to another account you use, or it no longer exists.
+        <Text variant="body" tone="muted">
+          {removedChat
+            ? "Resetting an expert removes your chats with them, and they can't be opened again."
+            : "It may belong to another account you use, or it no longer exists."}
         </Text>
-        <Button
-          type="button"
-          variant="secondary"
-          size="small"
-          className="mt-2"
-          onClick={handleNewChat}
-        >
-          Start a new chat
-        </Button>
+        {expertHref ? (
+          <Button
+            as="NextLink"
+            href={expertHref}
+            variant="secondary"
+            size="small"
+            className="mt-2"
+            leadingIcon={BubbleChatIcon}
+            data-testid="removed-chat-expert-link"
+          >
+            Chat with {removedChat?.expertName}
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
+            className="mt-2"
+            onClick={handleNewChat}
+          >
+            Start a new chat
+          </Button>
+        )}
       </div>
     </div>
   );

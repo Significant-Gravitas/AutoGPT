@@ -13,8 +13,7 @@ const toastClassNames = {
   success:
     "[&[data-type=success]]:!bg-success [&[data-type=success]]:!border-success",
   warning:
-    // oxlint-disable-next-line design-system/no-raw-colors -- orange-600 #E77B00 has no role; warning #F59E0B is a different hue
-    "[&[data-type=warning]]:!bg-orange-600 [&[data-type=warning]]:!border-orange-600",
+    "[&[data-type=warning]]:!bg-orange-foreground [&[data-type=warning]]:!border-orange-foreground",
 };
 
 export function Toaster() {
