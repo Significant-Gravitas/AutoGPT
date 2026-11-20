@@ -633,7 +633,9 @@ def _is_throttle_error(error: BaseException) -> bool:
     )
 
 
-_Uploads = list[tuple[str, tuple[str, IO[bytes], str]]]
+# A Sequence, not a list: callers build a list of BytesIO uploads, which a
+# list of IO[bytes] would not accept, since a list's item type is invariant.
+_Uploads = Sequence[tuple[str, tuple[str, IO[bytes], str]]]
 # A stream in a request's body: an upload's handle, or a stream in ``data``.
 _Stream = IO[Any] | io.IOBase
 # Each stream in a request's body, and the position its bytes start at.
