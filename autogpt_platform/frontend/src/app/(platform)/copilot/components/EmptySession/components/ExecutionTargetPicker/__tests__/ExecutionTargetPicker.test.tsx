@@ -493,13 +493,14 @@ describe("ExecutionTargetPicker", () => {
       isExecutionTargetPickerOpen: true,
     });
     const checkStarted = vi.fn();
-    let finishCheck = () => {};
+    const heldChecks: Array<() => void> = [];
+    let checksReleased = false;
     server.use(
       http.get(EXECUTORS_URL, async () => {
         checkStarted();
-        await new Promise<void>((resolve) => {
-          finishCheck = resolve;
-        });
+        if (!checksReleased) {
+          await new Promise<void>((resolve) => heldChecks.push(resolve));
+        }
         return HttpResponse.json({ executors: [MACHINE] });
       }),
       http.post(DIRECTORIES_URL, () =>
@@ -526,7 +527,9 @@ describe("ExecutionTargetPicker", () => {
         selectedTarget,
       );
     } finally {
-      finishCheck();
+      // Frees every held check; the 3 s polls after this answer at once.
+      checksReleased = true;
+      heldChecks.splice(0).forEach((release) => release());
     }
 
     // The folders load once the computers have, so the check is over.
