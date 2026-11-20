@@ -107,7 +107,7 @@ describe("MCP sign-in started by the mobile app", () => {
     expect(response.status).toBe(302);
     const location = new URL(response.headers.get("location") ?? "");
     expect(`${location.protocol}//${location.host}${location.pathname}`).toBe(
-      "autogpt-app://integrations/oauth",
+      "autogpt-app-dev://integrations/oauth",
     );
     expect(Object.fromEntries(location.searchParams)).toEqual({
       code: "abc",
