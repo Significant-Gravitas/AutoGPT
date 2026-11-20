@@ -10,8 +10,11 @@ daemon again as those two do.
 
 from __future__ import annotations
 
+import os
+import signal
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -194,11 +197,150 @@ def test_a_real_child_is_run_again_until_it_exits_to_stop(
     assert runs.read_text(encoding="utf-8") == "xxx"
 
 
-def test_a_child_is_not_started_once_a_stop_was_asked_for() -> None:
+def test_a_child_is_not_started_once_a_stop_was_asked_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Not started at all: one started and stopped at once would return the
+    same 0."""
+
+    def started(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("a daemon was started after the stop")
+
+    monkeypatch.setattr(supervise.subprocess, "Popen", started)
     stop = threading.Event()
     stop.set()
 
     assert supervise._Child().run([sys.executable, "-c", "raise SystemExit(75)"], stop) == 0
+
+
+# ── A stop signalled while the daemon is being started ───────────────────────
+
+
+class _Daemon:
+    """A daemon's process, for a start that is interrupted: it runs until it
+    is ended."""
+
+    def __init__(self) -> None:
+        self.ended = 0
+        self.returncode: int | None = None
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.ended += 1
+        self.returncode = -15
+
+    def wait(self) -> int:
+        assert self.returncode is not None, "the supervisor waited for a daemon nobody ended"
+        return self.returncode
+
+
+def test_a_stop_signalled_while_the_daemon_is_being_started_does_not_wait_for_itself(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Python runs a signal handler on the main thread, between two of its
+    instructions, wherever that thread is: here, in the middle of starting
+    the daemon. The start held a lock while it made the process, and the
+    handler, on that same thread, waited for the lock to end the daemon:
+    for good. The supervisor never stopped, and the daemon ran on."""
+    stop = supervise._Stop()
+    child = supervise._Child()
+    daemons: list[_Daemon] = []
+
+    def start(_command: Any, **_kwargs: Any) -> _Daemon:
+        daemons.append(_Daemon())
+        # The signal lands here, with the process made and not yet the
+        # child's: what the handler does (run_supervised).
+        supervise._stop_asked(stop, child)
+        return daemons[-1]
+
+    monkeypatch.setattr(supervise.subprocess, "Popen", start)
+    exits: list[int] = []
+    running = threading.Thread(
+        target=lambda: exits.append(child.run(["daemon"], stop)), daemon=True
+    )
+
+    running.start()
+    running.join(20)
+
+    assert not running.is_alive(), "the stop waited for a lock its own thread held"
+    # The daemon the stop found no process for yet was ended once it had one.
+    [daemon] = daemons
+    assert daemon.ended == 1
+    assert exits == [-15]
+    assert stop.is_set()
+
+
+def test_a_stop_signalled_while_the_daemon_runs_ends_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    stop = supervise._Stop()
+    child = supervise._Child()
+    daemon = _Daemon()
+
+    def wait() -> int:
+        supervise._stop_asked(stop, child)
+        assert daemon.returncode is not None
+        return daemon.returncode
+
+    daemon.wait = wait  # type: ignore[method-assign]
+    monkeypatch.setattr(supervise.subprocess, "Popen", lambda _command, **_kwargs: daemon)
+
+    assert child.run(["daemon"], stop) == -15
+    assert daemon.ended == 1
+    # And with no daemon running, there is nothing to end.
+    supervise._stop_asked(stop, child)
+    assert daemon.ended == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="no signal reaches a handler on Windows")
+def test_a_real_signal_during_the_start_ends_the_daemon_and_the_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The handler itself, run by Python where the signal lands."""
+    daemons: list[_Daemon] = []
+
+    def start(_command: Any, **_kwargs: Any) -> _Daemon:
+        daemons.append(_Daemon())
+        os.kill(os.getpid(), signal.SIGTERM)
+        return daemons[-1]
+
+    monkeypatch.setattr(supervise.subprocess, "Popen", start)
+    before = signal.getsignal(signal.SIGTERM)
+
+    assert supervise.run_supervised(["start", "--supervise"]) == -15
+
+    [daemon] = daemons
+    assert daemon.ended >= 1
+    assert signal.getsignal(signal.SIGTERM) is before
+
+
+def test_the_supervisors_stop_takes_no_lock() -> None:
+    """threading.Event.set takes the lock Event.wait holds around its own
+    bookkeeping: a signal that landed there would wait for a lock its own
+    thread held. The supervisor's stop is an attribute, set with none."""
+    stop = supervise._Stop()
+    assert not isinstance(stop, threading.Event)
+    assert not any(
+        isinstance(value, type(threading.Lock()) | type(threading.RLock()) | threading.Condition)
+        for value in vars(stop).values()
+    )
+
+    assert stop.is_set() is False
+    assert stop.wait(0.01) is False
+    stop.set()
+    assert stop.is_set() is True
+    assert stop.wait(600) is True
+
+
+def test_a_pause_ends_soon_after_the_stop() -> None:
+    stop = supervise._Stop()
+    threading.Timer(0.05, stop.set).start()
+    began = time.monotonic()
+
+    assert stop.wait(600) is True
+
+    # Within a poll or two, not the ten minutes the pause was for.
+    assert time.monotonic() - began < 60
 
 
 # ── Who gets the loop ────────────────────────────────────────────────────────
