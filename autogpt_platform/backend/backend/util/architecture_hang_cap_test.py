@@ -1,26 +1,22 @@
 """Tests cap the waits they expect to finish only generously.
 
-Motivation (#16920): a CI runner can stall a test's thread for a second or
-more, so a wait the test expects to finish, capped at a second, fails while
-the code under test is fine. On 2026-11-20 every wait in
-``copilot/tools/local_pc_relay_test.py`` was capped at 1 or 2 s, and the file
-failed four times with ``Shim for session session-1 did not connect within
-1s``: in #16625's merge group, and in runs of #14409, #17103 and #17156. The
-wall-clock rule (``architecture_wall_clock_bounds_test.py``) reads asserts on
-elapsed time, which a cap is not.
+Motivation (#16920, #17157): a CI runner can stall a test's thread for a
+second or more, so a wait the test expects to finish, capped at a second,
+fails while the code under test is fine. The wall-clock rule
+(``architecture_wall_clock_bounds_test.py``) reads asserts on elapsed time,
+which a cap is not.
 
 The rule fails a cap a test puts on its own wait (``asyncio.wait_for``,
 ``asyncio.timeout``, ``asyncio.timeout_at``) under
 ``MIN_WALL_CLOCK_BOUND_SECONDS``, unless the test handles the cap's expiry
-there or the cap says why: ``# hang-cap: <reason>`` on its line or right
+there or the cap says why: ``# hang-cap: <reason>`` on its statement or right
 above. ``architecture_hang_cap_scan_test.py`` says which forms it reads.
 Files that had such caps when the rule was written are held at their counts
 in ``_HANG_CAP_COUNTS``, to be paid down.
 
-It does not read a timeout passed into the code under test, such as the
-``connect_timeout=1`` each of those failures ran out. Whether the test
-expects such a call to finish is in what it asserts afterwards, not in the
-call:
+It does not read a timeout passed into the code under test, such as
+``connect_timeout=1``. Whether the test expects such a call to finish is in
+what it asserts afterwards, not in the call:
 ``copilot/tools/bash_exec_test.py`` runs ``_run(box, timeout=2)`` and asserts
 ``timed_out is False``, then ``timeout=1`` and asserts ``timed_out is True``;
 ``copilot/sdk/tool_adapter_test.py`` expects ``wait_for_stash(timeout=1.0)``
@@ -216,6 +212,10 @@ def test_the_scan_reads_test_modules_and_only_those(tmp_path: pathlib.Path):
             "for timeout in (1, 2):\n    await asyncio.wait_for(work(), timeout)",
             [],
         ),
+        (
+            "CAP = 1\ndef poll(waiter=asyncio.wait_for(work(), CAP)):\n    CAP = 10",
+            [1.0],
+        ),
         # The handlers of its expiry, and what is not one.
         (
             "with pytest.raises(TimeoutError):\n"
@@ -257,6 +257,31 @@ def test_the_scan_reads_test_modules_and_only_those(tmp_path: pathlib.Path):
             [],
         ),
         (
+            "with pytest.raises(TimeoutError, check=lambda exc: bool(str(exc))):\n"
+            "    await asyncio.wait_for(work(), 1)",
+            [1.0],
+        ),
+        (
+            "with pytest.raises(TimeoutError, check=None):\n"
+            "    await asyncio.wait_for(work(), 1)",
+            [],
+        ),
+        (
+            "with pytest.raises(builtins.TimeoutError):\n"
+            "    await asyncio.wait_for(work(), 1)",
+            [],
+        ),
+        ("with pytest.raises(Expired):\n    await asyncio.wait_for(work(), 1)", []),
+        (
+            "with pytest.raises(AsyncTimeout):\n    await asyncio.wait_for(work(), 1)",
+            [],
+        ),
+        (
+            "try:\n    await asyncio.wait_for(work(), 1)\n"
+            "except asyncio.exceptions.TimeoutError:\n    pass",
+            [],
+        ),
+        (
             "TimeoutError = ValueError\nwith pytest.raises(TimeoutError):\n"
             "    await asyncio.wait_for(work(), 1)",
             [1.0],
@@ -285,9 +310,28 @@ def test_the_scan_reads_test_modules_and_only_those(tmp_path: pathlib.Path):
         (
             "try:\n    await asyncio.wait_for(work(), 1)\n"
             "except Exception:\n    pass",
+            [1.0],
+        ),
+        ("try:\n    await asyncio.wait_for(work(), 1)\nexcept:\n    pass", [1.0]),
+        (
+            "try:\n    await asyncio.wait_for(work(), 1)\n"
+            "except BaseException:\n    pass",
+            [1.0],
+        ),
+        (
+            "try:\n    await asyncio.wait_for(work(), 1)\n"
+            "except (TimeoutError, Exception):\n    pass",
             [],
         ),
-        ("try:\n    await asyncio.wait_for(work(), 1)\nexcept:\n    pass", []),
+        (
+            "with contextlib.suppress(Exception):\n"
+            "    await asyncio.wait_for(work(), 1)",
+            [1.0],
+        ),
+        (
+            "with pytest.raises(Exception):\n    await asyncio.wait_for(work(), 1)",
+            [1.0],
+        ),
         (
             "try:\n    await asyncio.wait_for(work(), 1)\n"
             "except ValueError:\n    pass",
@@ -305,12 +349,37 @@ def test_the_scan_reads_test_modules_and_only_those(tmp_path: pathlib.Path):
         ),
         (
             "try:\n    await asyncio.wait_for(work(), 1)\n"
-            "except Exception as exc:\n    assert 'boom' in str(exc)",
+            "except TimeoutError:\n    assert done.is_set()",
             [1.0],
         ),
         (
             "try:\n    await asyncio.wait_for(work(), 1)\n"
             "except TimeoutError:\n    def later():\n        raise ValueError",
+            [],
+        ),
+        (
+            "try:\n    await asyncio.wait_for(work(), 1)\n"
+            "except TimeoutError:\n    raise\nexcept Exception:\n    pass",
+            [1.0],
+        ),
+        (
+            "try:\n    await asyncio.wait_for(work(), 1)\n"
+            "except TimeoutError:\n    raise\nexcept asyncio.TimeoutError:\n    pass",
+            [1.0],
+        ),
+        (
+            "try:\n    await asyncio.wait_for(work(), 1)\n"
+            "except OSError:\n    pass\nexcept TimeoutError:\n    pass",
+            [1.0],
+        ),
+        (
+            "try:\n    await asyncio.wait_for(work(), 1)\n"
+            "except builtins.OSError:\n    pass\nexcept TimeoutError:\n    pass",
+            [1.0],
+        ),
+        (
+            "try:\n    await asyncio.wait_for(work(), 1)\n"
+            "except ValueError:\n    raise\nexcept TimeoutError:\n    pass",
             [],
         ),
         (
@@ -351,6 +420,24 @@ def test_the_scan_reads_test_modules_and_only_those(tmp_path: pathlib.Path):
             [],
         ),
         ("async with asyncio.timeout(1):  # hang-cap: why\n    pass", []),
+        (
+            "async with asyncio.timeout(1), aclosing(\n    stream()\n"
+            ") as frames:  # hang-cap: why\n    pass",
+            [],
+        ),
+        (
+            "async with (\n    asyncio.timeout(1),\n    aclosing(stream()) as frames,\n"
+            "):  # hang-cap: why\n    pass",
+            [],
+        ),
+        (
+            "async with asyncio.timeout(1):\n    # hang-cap: no\n    pass",
+            [1.0],
+        ),
+        (
+            "if (\n    await asyncio.wait_for(work(), 1)\n):  # hang-cap: why\n    pass",
+            [],
+        ),
         ("async with asyncio.timeout(1):\n    pass  # hang-cap: no", [1.0]),
         ("await asyncio.wait_for(work(), 1)  # hang-cap:", [1.0]),
         ("await asyncio.wait_for(work(), 1)  # wall-clock: no", [1.0]),
@@ -373,6 +460,8 @@ def test_the_scan_reads_each_form(
         "import asyncio\nimport asyncio as aio\nimport contextlib\nimport pytest\n"
         "from asyncio import wait_for as w\nfrom contextlib import suppress\n"
         "from concurrent.futures import TimeoutError as FutureTimeout\n"
+        "import builtins\nfrom builtins import TimeoutError as Expired\n"
+        "from asyncio import TimeoutError as AsyncTimeout\n"
         "from backend.fake.limits import BOUND\n\n"
         "async def case():\n" + textwrap.indent(body, "    ") + "\n"
     )
