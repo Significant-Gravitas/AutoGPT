@@ -428,6 +428,7 @@ describe("telling Sentry about session checks that never get an answer", () => {
     vi.resetModules();
     const helpers = await import("../helpers");
     const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
     const never = () => new Promise<never>(() => {});
     actions.validateSession
       .mockImplementationOnce(never)
@@ -459,7 +460,8 @@ describe("telling Sentry about session checks that never get an answer", () => {
         },
       );
     }
-    // Sentry captures console warnings as well.
+    // Sentry captures console warnings and errors as well.
     expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
   });
 });
