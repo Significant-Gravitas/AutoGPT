@@ -134,8 +134,14 @@ def test_a_junction_is_a_link_where_python_cannot_say(
 
 
 def _junction_or_skip(junction: Path, target: Path) -> None:
+    """Make `junction` point at `target`, which is beside it. cmd.exe is
+    given their two names alone, and run in their folder: given whole paths,
+    it read a temporary folder with `&` in its name (`C:\\QA&Test`) as the
+    end of the command, made no junction, and both tests here were skipped."""
+    assert junction.parent == target.parent
     made = subprocess.run(
-        ["cmd", "/c", "mklink", "/J", str(junction), str(target)],
+        ["cmd", "/c", "mklink", "/J", junction.name, target.name],
+        cwd=junction.parent,
         stdin=subprocess.DEVNULL,
         capture_output=True,
         check=False,
