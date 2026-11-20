@@ -8,6 +8,7 @@ from strenum import StrEnum
 from backend.api.features.library.model import preset_trigger_configs
 from backend.data.integrations import WebhookWithRelations
 from backend.sdk import Credentials, ManualWebhookManagerBase, Webhook
+from backend.util.url_redaction import mask_credential
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ class GenericWebhooksManager(ManualWebhookManagerBase):
                 "Webhook %s has %d distinct secret_token values across "
                 "attached targets; using the first one. All targets attached "
                 "to the same webhook must share the same secret.",
-                webhook.id,
+                mask_credential(webhook.id),
                 distinct_count,
             )
         return found[0]

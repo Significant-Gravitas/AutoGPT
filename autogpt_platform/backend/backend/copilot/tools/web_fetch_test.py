@@ -48,10 +48,10 @@ def test_extract_title_returns_none_without_a_complete_title(html: str):
 
 def test_extract_title_scans_unclosed_titles_in_linear_time():
     html = "<title>" * 20_000
-    started = time.perf_counter()
+    started = time.thread_time()
     assert _extract_title(html) is None
     # A pattern that rescans from every <title takes over 10 s on this input.
-    assert time.perf_counter() - started < 1.0
+    assert time.thread_time() - started < 1.0
 
 
 def test_is_client_rendered_shell_detects_root_div():
