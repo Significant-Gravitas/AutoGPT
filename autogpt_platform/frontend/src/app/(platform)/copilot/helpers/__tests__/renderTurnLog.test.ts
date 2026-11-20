@@ -98,6 +98,39 @@ describe("rendering a turn log", () => {
       expect(getLatestTaskList(renderer(next))).toEqual(nextTodos);
     });
 
+    it("shows a later identified orphan plan after a clear", () => {
+      const renderer = createTurnLogRenderer((id) => id);
+      const nextTodos = [{ content: "New plan", status: "pending" }];
+      const cleared = fold(
+        [
+          {
+            type: "tool-output-available",
+            toolCallId: "clear",
+            output: clearResult,
+          },
+          {
+            type: "tool-output-available",
+            toolCallId: "untyped",
+            output: { todos: nextTodos },
+          },
+        ],
+        earlier,
+      );
+      expect(getLatestTaskList(renderer(cleared))).toBe(EMPTY_TODOS);
+
+      const next = fold(
+        [
+          {
+            type: "tool-output-available",
+            toolCallId: "next",
+            output: { type: "todo_write", todos: nextTodos },
+          },
+        ],
+        cleared,
+      );
+      expect(getLatestTaskList(renderer(next))).toEqual(nextTodos);
+    });
+
     it.each([false, true])(
       "restores a clear from an active checkpoint (with assistant text: %s)",
       (withAssistantText) => {

@@ -210,7 +210,8 @@ function orphanTodoWriteResultToPart(
   if (typeof msg.content !== "string") return null;
   const parsed = safeJsonParse(msg.content);
   if (!parsed || typeof parsed !== "object") return null;
-  const { type, todos } = parsed as { type?: unknown; todos?: unknown };
+  const output = parsed as { type?: unknown; todos?: unknown };
+  const { type, todos } = output;
   if (!Array.isArray(todos) || (todos.length === 0 && type !== "todo_write"))
     return null;
   return {
@@ -218,7 +219,7 @@ function orphanTodoWriteResultToPart(
     toolCallId,
     state: "output-available",
     input: { todos },
-    output: parsed,
+    output,
   } satisfies UiPart;
 }
 
@@ -747,7 +748,7 @@ export function savedTurnBubbleIds(
 interface TurnGroup {
   key: string;
   role: "user" | "assistant";
-  /** Indices of rows that emit parts, including orphan task-list clears. */
+  /** Indices of rows that emit parts, including identified orphan task-list updates. */
   rows: number[];
   overlay: OverlayPart[];
 }
@@ -775,7 +776,7 @@ function groupTurnRows(log: TurnLog) {
         { tool_call_id: row.toolCallId, content: row.content },
         consumedToolCallIds,
       );
-      if (orphan?.input.todos.length === 0) orphanParts.set(i, orphan);
+      if (orphan?.output.type === "todo_write") orphanParts.set(i, orphan);
     }
     const last = groups[groups.length - 1];
     if (row.role === "user") {
