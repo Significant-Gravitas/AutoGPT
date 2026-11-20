@@ -20,7 +20,9 @@ from backend.util.exceptions import (
 
 from . import categories as store_categories
 from . import db
+from . import exceptions as store_exceptions
 from .model import MyAgentsSortBy, ProfileUpdateRequest, SubmissionStats
+from .submission_deletion_test_helpers import mock_submission_deletion
 
 
 @pytest.fixture(autouse=True)
@@ -1316,41 +1318,70 @@ def _submission_version(
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize(
-    ("owning_org_id", "allowed"),
-    [("org-B", False), ("org-A", True), (None, True)],
-    ids=["other-org", "same-org", "tenantless-personal-owner"],
+    "owning_org_id", ["org-A", None], ids=["same-org", "personal-owner"]
 )
-async def test_delete_store_submission_checks_listing_ownership(
-    mocker, owning_org_id, allowed
-):
-    tx = mocker.patch.object(db, "transaction").return_value.__aenter__.return_value
-    listing = _submission_version(owning_org_id).StoreListing
-    listing.id = "sl-1"
-    lock = mocker.patch.object(db, "query_raw_with_schema", new_callable=AsyncMock)
-    lock.return_value = [listing]
-    versions = AsyncMock()
-    versions.delete_many.return_value = 1
-    versions.count.return_value = 1
-    mocker.patch.object(
-        prisma.models.StoreListingVersion, "prisma", return_value=versions
+async def test_delete_store_submission_allows_owner(mocker, owning_org_id):
+    tx, versions = mock_submission_deletion(
+        mocker, owning_user_id="user-1", owning_org_id=owning_org_id
     )
-
-    result = await db.delete_store_submission(
+    await db.delete_store_submission_or_raise(
         user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
     )
 
-    assert result is allowed
-    assert lock.await_args.kwargs["client"] is tx
-    if allowed:
-        versions.delete_many.assert_awaited_once_with(
-            where={
-                "id": "slv-1",
-                "submissionStatus": {"not": prisma.enums.SubmissionStatus.APPROVED},
-            }
-        )
-        versions.count.assert_awaited_once_with(where={"storeListingId": listing.id})
-    else:
-        versions.delete_many.assert_not_awaited()
+    tx.query_raw.assert_awaited_once()
+    versions.delete_many.assert_awaited_once_with(
+        where={
+            "id": "slv-1",
+            "submissionStatus": {"not": prisma.enums.SubmissionStatus.APPROVED},
+        }
+    )
+    versions.count.assert_awaited_once_with(where={"storeListingId": "sl-1"})
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    ("owning_user_id", "owning_org_id", "caller_org_id"),
+    [
+        (None, None, "org-A"),
+        ("user-2", None, None),
+        ("user-1", "org-B", "org-A"),
+    ],
+    ids=["missing", "another-user", "another-org"],
+)
+async def test_delete_store_submission_missing_or_foreign(
+    mocker, owning_user_id, owning_org_id, caller_org_id
+):
+    _, versions = mock_submission_deletion(
+        mocker, owning_user_id=owning_user_id, owning_org_id=owning_org_id
+    )
+
+    with pytest.raises(store_exceptions.SubmissionNotFoundError):
+        await db.delete_store_submission_or_raise("user-1", "slv-1", caller_org_id)
+
+    versions.delete_many.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delete_store_submission_approved(mocker):
+    _, versions = mock_submission_deletion(
+        mocker,
+        owning_user_id="user-1",
+        owning_org_id="org-A",
+        status=prisma.enums.SubmissionStatus.APPROVED,
+    )
+
+    with pytest.raises(
+        store_exceptions.InvalidOperationError, match="approved store listings"
+    ):
+        await db.delete_store_submission_or_raise("user-1", "slv-1", "org-A")
+
+    versions.delete_many.assert_awaited_once_with(
+        where={
+            "id": "slv-1",
+            "submissionStatus": {"not": prisma.enums.SubmissionStatus.APPROVED},
+        }
+    )
+    versions.count.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -15,6 +15,9 @@ from prisma.enums import APIKeyPermission, SubmissionStatus
 from backend.api.features.library.exceptions import (
     LibraryAgentInAnotherOrganizationError,
 )
+from backend.api.features.store.submission_deletion_test_helpers import (
+    mock_submission_deletion,
+)
 
 from .errors import add_v2_exception_handlers
 from .marketplace import (
@@ -209,19 +212,8 @@ def test_a_submission_that_cannot_be_deleted_says_why(
     status: SubmissionStatus,
     expected: int,
 ):
-    mocker.patch("backend.api.features.store.db.transaction")
-    mocker.patch(
-        "backend.api.features.store.db.query_raw_with_schema",
-        new_callable=AsyncMock,
-        return_value=[
-            Mock(id="sl-1", owningOrgId=owning_org_id, owningUserId="user-1")
-        ],
-    )
-    client = AsyncMock()
-    client.delete_many.return_value = 0 if status == SubmissionStatus.APPROVED else 1
-    client.count.return_value = 1
-    mocker.patch.object(
-        prisma.models.StoreListingVersion, "prisma", return_value=client
+    mock_submission_deletion(
+        mocker, owning_user_id="user-1", owning_org_id=owning_org_id, status=status
     )
     app = fastapi.FastAPI()
     app.include_router(v2_router)

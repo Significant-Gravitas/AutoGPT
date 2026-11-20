@@ -11,7 +11,7 @@ from uuid import uuid4
 import prisma.enums
 import prisma.models
 import pytest
-from fakeredis import FakeRedis
+from fakeredis import FakeAsyncRedis, FakeRedis, FakeServer
 
 from backend.api.features.admin import store_admin_routes
 from backend.api.features.store import cache as store_cache
@@ -297,6 +297,8 @@ async def test_rejection_refreshes_a_listing_cached_after_an_overlapping_approva
             store_listing_version_id=pending, is_approved=False, comments=""
         )
         review = store_db.review_store_submission
+        read_details = AsyncMock(wraps=store_db.get_store_agent_details)
+        monkeypatch.setattr(store_db, "get_store_agent_details", read_details)
 
         async def review_with_overlap(**kwargs):
             if not kwargs["is_approved"]:
@@ -305,22 +307,30 @@ async def test_rejection_refreshes_a_listing_cached_after_an_overlapping_approva
                     request.model_copy(update={"is_approved": True}),
                     user_id=owner,
                 )
-                assert (
-                    await store_cache.get_cached_agent_details(owner, graph_id)
-                ).active_version_id == pending
+                for _ in range(2):
+                    page = await store_cache.get_cached_agent_details(owner, graph_id)
+                    assert page.active_version_id == pending
+                read_details.assert_awaited_once()
             return await review(**kwargs, notify_creator=False)
 
         monkeypatch.setattr(store_db, "review_store_submission", review_with_overlap)
         monkeypatch.setattr(store_db, "ensure_embedding", AsyncMock())
-        with FakeRedis() as redis:
+        redis_server = FakeServer()
+        with FakeRedis(server=redis_server) as redis:
             monkeypatch.setattr(cache_util, "_get_redis", lambda: redis)
-            await store_admin_routes.review_submission(pending, request, user_id=owner)
-            assert (
-                await store_db.get_store_agent_details(owner, graph_id)
-            ).active_version_id == live
-            assert (
-                await store_cache.get_cached_agent_details(owner, graph_id)
-            ).active_version_id == live
+            async with FakeAsyncRedis(server=redis_server) as async_redis:
+                monkeypatch.setattr(
+                    cache_util, "_get_async_redis", AsyncMock(return_value=async_redis)
+                )
+                await store_admin_routes.review_submission(
+                    pending, request, user_id=owner
+                )
+                assert (
+                    await store_db.get_store_agent_details(owner, graph_id)
+                ).active_version_id == live
+                assert (
+                    await store_cache.get_cached_agent_details(owner, graph_id)
+                ).active_version_id == live
     finally:
         await _clean_up(owner, [graph_id])
 

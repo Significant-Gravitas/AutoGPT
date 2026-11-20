@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Protocol
@@ -27,7 +28,7 @@ from backend.api.utils.cors import build_cors_params
 from backend.api.utils.validation_errors import loggable_validation_errors
 from backend.data import redis_client
 from backend.data.db_accessors import auth_session_db, user_db
-from backend.data.user import is_user_banned, is_user_refused
+from backend.data.user import is_user_account_closed, is_user_banned
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
     start_metrics_server,
@@ -44,6 +45,15 @@ settings = Settings()
 ACCOUNT_BANNED_CLOSE_CODE = 4004
 # Clients send only subscribe, unsubscribe and heartbeat messages of ~100 bytes.
 WS_MAX_MESSAGE_BYTES = 4096
+# The per-message account check reads the cache in milliseconds. A Redis shard
+# that stops answering costs each of its two cache reads the cache's own bound,
+# ``REDIS_OP_TIMEOUT_S``, before the database answers instead. This bounds the
+# whole check, database included, well inside the 10 s the client waits for a
+# pong.
+ACCOUNT_CHECK_TIMEOUT_S = 5.0
+# "Try again later": the client reconnects, and the connect-time checks, which
+# refuse a socket whose account can't be read, decide.
+ACCOUNT_CHECK_TIMED_OUT_CLOSE_CODE = 1013
 
 
 @asynccontextmanager
@@ -315,13 +325,8 @@ async def websocket_router(
         while True:
             data = await websocket.receive_text()
             # The socket outlives its token, so a ban or a closed account ends
-            # it at the next message. A ban was ruled out first, so a refusal
-            # here is a closed account.
-            if await _banned_now(user_id):
-                await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
-                break
-            if await _refused_now(user_id):
-                await websocket.close(code=4003, reason=ACCOUNT_CLOSED_DETAIL)
+            # it at the next message.
+            if await _closed_for_account(websocket, user_id):
                 break
             try:
                 message = WSMessage.model_validate_json(data)
@@ -450,10 +455,10 @@ async def _answer_failure(
     )
 
 
-async def _refused_now(user_id: str) -> bool:
+async def _closed_now(user_id: str) -> bool:
     """A lookup that fails keeps the socket; the next message asks again."""
     try:
-        return await is_user_refused(user_id)
+        return await is_user_account_closed(user_id)
     except Exception:
         logger.warning(
             f"Closed-account lookup failed for user #{user_id}; keeping the socket"
@@ -468,6 +473,41 @@ async def _banned_now(user_id: str) -> bool:
     except Exception:
         logger.warning(f"Ban lookup failed for user #{user_id}; keeping the socket")
         return False
+
+
+async def _closed_for_account(websocket: WebSocket, user_id: str) -> bool:
+    """Close the socket if its account may no longer use it, and say whether
+    it did: banned, or closed by its owner. A check that doesn't finish in
+    time closes it too, with a code the client retries: it never counts as
+    allowed."""
+    banned = closed = False
+    deadline = asyncio.timeout(ACCOUNT_CHECK_TIMEOUT_S)
+    try:
+        async with deadline:
+            banned = await _banned_now(user_id)
+            # A ban lookup that swallowed the cancellation leaves no second
+            # one coming, so the deadline is checked before the next lookup.
+            if not banned and not deadline.expired():
+                closed = await _closed_now(user_id)
+    except TimeoutError:
+        pass
+    # Also when a lookup swallowed the cancellation and answered anyway.
+    if deadline.expired():
+        logger.warning(
+            f"Account check for user #{user_id} took over "
+            f"{ACCOUNT_CHECK_TIMEOUT_S}s; closing the socket for it to reconnect"
+        )
+        await websocket.close(
+            code=ACCOUNT_CHECK_TIMED_OUT_CLOSE_CODE, reason="Try again"
+        )
+        return True
+    if banned:
+        await websocket.close(code=ACCOUNT_BANNED_CLOSE_CODE, reason="Banned")
+        return True
+    if closed:
+        await websocket.close(code=4003, reason=ACCOUNT_CLOSED_DETAIL)
+        return True
+    return False
 
 
 @app.get("/")

@@ -825,22 +825,6 @@ async def get_store_submissions(
         raise
 
 
-async def delete_store_submission(
-    user_id: str,
-    store_listing_version_id: str,
-    organization_id: str | None = None,
-) -> bool:
-    """`delete_store_submission_or_raise`, answering False for any failure."""
-    try:
-        await delete_store_submission_or_raise(
-            user_id, store_listing_version_id, organization_id
-        )
-        return True
-    except Exception as e:
-        logger.error(f"Error deleting store submission: {e}")
-        return False
-
-
 async def delete_store_submission_or_raise(
     user_id: str,
     store_listing_version_id: str,
