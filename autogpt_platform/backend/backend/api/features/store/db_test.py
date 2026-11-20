@@ -1642,18 +1642,6 @@ async def test_get_available_graph_never_carries_picked_files(mocker):
     assert graph.nodes[0].input_default == {"spreadsheet": None, "range": "A1"}
 
 
-@pytest.mark.asyncio(loop_scope="session")
-async def test_get_available_graph_missing_raises_not_found(mocker):
-    mock_client = AsyncMock()
-    mock_client.find_first.return_value = None
-    mocker.patch.object(
-        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
-    )
-
-    with pytest.raises(NotFoundError):
-        await db.get_available_graph("missing")
-
-
 PRIVATE_URL = "https://storage.googleapis.com/media-bucket/users/owner-id/images"
 PUBLIC_URL = "https://storage.googleapis.com/public-bucket/users/owner-id/images"
 

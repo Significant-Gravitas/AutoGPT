@@ -1,7 +1,6 @@
 import asyncio
 import datetime
 import json
-import socket
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -40,19 +39,6 @@ client = fastapi.testclient.TestClient(app)
 TEST_ORG_ID = "test-org-id"
 
 
-def _store_cache_redis_reachable() -> bool:
-    try:
-        with socket.create_connection(("127.0.0.1", 17000), timeout=0.2):
-            return True
-    except OSError:
-        return False
-
-
-def _clear_store_caches() -> None:
-    if _store_cache_redis_reachable():
-        store_routes.store_cache.clear_all_caches()
-
-
 def _test_request_context():
     from autogpt_libs.auth.models import RequestContext
 
@@ -81,12 +67,12 @@ def setup_app_auth(mock_jwt_user):
     from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
-    _clear_store_caches()
+    store_routes.store_cache.clear_all_caches()
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = _test_request_context
     yield
     app.dependency_overrides.clear()
-    _clear_store_caches()
+    store_routes.store_cache.clear_all_caches()
 
 
 def test_get_agents_defaults(
@@ -1329,7 +1315,7 @@ def test_a_billing_manager_role_is_refused_marketplace_submissions(
             "get_store_submissions",
             "create_store_submission",
             "edit_store_submission",
-            "delete_store_submission",
+            "delete_store_submission_or_raise",
         )
     ]
 
