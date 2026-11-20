@@ -32,11 +32,12 @@ def normalize_user_supplied_credentials(credentials: Credentials) -> Credentials
       left exactly as given, since it may legitimately contain surrounding
       spaces or be empty.
     - Host-scoped: the host is stripped and required, and there must be at least
-      one header. Header names and values are stripped and must not be empty.
+      one header. Header names and values are stripped and must not be empty,
+      and a name may appear only once, ignoring case.
     - The title, if any, is stripped. A blank title becomes ``None``.
 
-    OAuth credentials are returned unchanged. The object is updated in place and
-    returned.
+    OAuth tokens are left as given; only the title is touched. The object is
+    updated in place and returned.
 
     Raises:
         InvalidCredentialInputError: if a required value is blank, or an API
@@ -63,6 +64,7 @@ def normalize_user_supplied_credentials(credentials: Credentials) -> Credentials
         if not credentials.headers:
             raise InvalidCredentialInputError("At least one header is required")
         headers: dict[str, SecretStr] = {}
+        seen_names: set[str] = set()
         for name, value in credentials.headers.items():
             name = name.strip()
             stripped_value = value.get_secret_value().strip()
@@ -71,8 +73,10 @@ def normalize_user_supplied_credentials(credentials: Credentials) -> Credentials
             if not stripped_value:
                 # Name the header (not its value) so the user can find it.
                 raise InvalidCredentialInputError(f"Header '{name}' must have a value")
-            if name in headers:
+            lowered_name = name.lower()
+            if lowered_name in seen_names:
                 raise InvalidCredentialInputError(f"Header '{name}' is repeated")
+            seen_names.add(lowered_name)
             headers[name] = SecretStr(stripped_value)
         credentials.host = host
         credentials.headers = headers

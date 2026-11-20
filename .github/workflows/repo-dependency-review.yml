@@ -1,0 +1,32 @@
+name: Repo - Dependency Review
+
+# Checks the dependencies a pull request adds or changes against GitHub's
+# advisory database, and fails when one of them has a known high or critical
+# vulnerability. The action reads the dependency graph's diff between the base
+# and head commits through the API, so it needs no checkout. Advisories cover
+# only published vulnerabilities, so a brand-new malicious package still
+# passes; the cooldowns in .github/dependabot.yml and the frontend's .npmrc
+# (minimum-release-age) cover that side. To accept an advisory, for example
+# one that blocks a release pull request and has no fix yet, list its GHSA ID
+# under the action's allow-ghsas input, with a comment saying why.
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    name: dependency-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high

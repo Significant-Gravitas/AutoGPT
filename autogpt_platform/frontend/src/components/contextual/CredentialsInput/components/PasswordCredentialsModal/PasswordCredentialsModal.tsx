@@ -45,7 +45,7 @@ export function PasswordCredentialsModal({
     scheme: z.string(),
     username: z.string().trim().min(1, "Username is required"),
     password: z.string().min(1, "Password is required"),
-    title: z.string().min(1, "Name is required"),
+    title: z.string().trim().min(1, "Name is required"),
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -71,7 +71,7 @@ export function PasswordCredentialsModal({
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const newCredentials = await createUserPasswordCredentials({
-      username: values.username.trim(),
+      username: values.username,
       password: values.password,
       title: values.title,
       ...(schemes && { scope: buildServerScope(values.scheme, values.server) }),

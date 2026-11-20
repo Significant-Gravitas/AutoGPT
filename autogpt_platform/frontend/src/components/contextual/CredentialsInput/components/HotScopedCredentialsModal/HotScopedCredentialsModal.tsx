@@ -23,6 +23,7 @@ import {
   addHeaderPairToList,
   findExistingHostCredentials,
   hasExistingHostCredential,
+  hasRepeatedHeaderName,
   headerPairsToRecord,
   removeHeaderPairFromList,
   updateHeaderPairInList,
@@ -143,8 +144,8 @@ export function HostScopedCredentialsModal({
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const headers = headerPairsToRecord(headerPairs);
 
-    // Check before touching the existing credentials: submitting with no
-    // usable header must not delete a working credential for this host.
+    // Check before touching the existing credentials: a submit the backend
+    // will refuse must not delete a working credential for this host.
     if (Object.keys(headers).length === 0) {
       toast({
         title: "Add at least one header",
@@ -153,10 +154,19 @@ export function HostScopedCredentialsModal({
       });
       return;
     }
+    if (hasRepeatedHeaderName(headerPairs)) {
+      toast({
+        title: "Use each header name once",
+        description:
+          "Authorization and authorization count as the same header.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     // Delete existing host-scoped credentials for the same host to avoid duplicates.
     // Uses unfiltered provider credentials (not the hook's pre-filtered list).
-    const host = values.host.trim();
+    const host = values.host;
     const existingForHost = findExistingHostCredentials(
       allProviderCredentials,
       host,

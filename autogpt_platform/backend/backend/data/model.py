@@ -377,6 +377,33 @@ def sdk_default_refused_message(cred_id: str) -> str:
     )
 
 
+# A managed credential the platform pays for, such as AgentMail's per-user pod
+# key, has an ID like "{provider}-managed-{uuid}". Billing reads the ID alone,
+# without loading the credential or trusting its provider string (legacy rows
+# can carry "ProviderName.AGENT_MAIL"), so these runs are priced like the
+# platform's own keys while a key the user connected stays free. Ayrshare's managed key is
+# not listed: its blocks charge per post whichever key they run on.
+PLATFORM_FUNDED_MANAGED_PROVIDERS: frozenset[str] = frozenset({"agent_mail"})
+_MANAGED_ID_INFIX = "-managed-"
+
+# Set on each credentials input before cost filters are matched (see
+# `backend.executor.utils`), from the credential ID, never from the input.
+PLATFORM_FUNDED_COST_KEY = "platform_funded"
+
+
+def platform_funded_managed_id(provider: str) -> str:
+    if provider not in PLATFORM_FUNDED_MANAGED_PROVIDERS:
+        raise ValueError(f"{provider} has no platform-funded managed credential")
+    return f"{provider}{_MANAGED_ID_INFIX}{uuid4()}"
+
+
+def is_platform_funded_managed(cred_id: str) -> bool:
+    return any(
+        cred_id.startswith(f"{provider}{_MANAGED_ID_INFIX}")
+        for provider in PLATFORM_FUNDED_MANAGED_PROVIDERS
+    )
+
+
 def provider_label(provider: str) -> str:
     """The name people know a provider by, for messages about its shared key."""
     return _PROVIDER_LABELS.get(provider, provider)

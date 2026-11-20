@@ -33,9 +33,13 @@ from backend.copilot.constants import (
     EMPTY_COMPLETION_NOTICE,
     STREAM_INCOMPLETE_MARKER,
 )
+from backend.copilot.reply_timing import (
+    MODEL_OUTPUT_CHUNKS,
+    is_answer_text,
+    is_model_output,
+)
 from backend.copilot.response_model import (
     StreamBaseResponse,
-    StreamReasoningDelta,
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolInputStart,
@@ -52,9 +56,10 @@ logger = logging.getLogger(__name__)
 TURN_OP = "copilot.turn"
 TOOL_OP = "copilot.tool"
 
-MODEL_OUTPUT_CHUNKS = (StreamTextDelta, StreamReasoningDelta, StreamToolInputStart)
-"""Chunks that carry model output. The first one that isn't a notice in place
-of a reply (``NO_REPLY_NOTICES``) is the turn's first token."""
+WAITED_AFTER_S = 60.0
+"""A turn that starts this long after its chat request waited for it (queued
+behind another turn, held at a limit, redelivered), so timing it from the
+request would measure the wait rather than the reply."""
 
 NO_REPLY_NOTICES: dict[str, str] = {
     STREAM_INCOMPLETE_MARKER: "stream_incomplete",
@@ -69,10 +74,13 @@ without a word (which the SDK engine reports as an error frame)."""
 class TurnTrace:
     """One turn's timings and outcome, recorded on its transaction."""
 
-    def __init__(self, span: Span) -> None:
+    def __init__(self, span: Span, requested_at: float = 0.0) -> None:
         self.span = span
         self._started_at = time.monotonic()
+        self._requested_at = requested_at
         self._first_token_seen = False
+        self._first_text_seen = False
+        self._shape: str | None = None
         self._chunks = 0
         self._tool_calls = 0
         # The code of the notice the turn's output last ended on, if any.
@@ -117,11 +125,21 @@ class TurnTrace:
             if isinstance(chunk, StreamTextDelta)
             else None
         )
-        if self._no_reply is None and not self._first_token_seen:
+        if not self._first_token_seen and is_model_output(chunk):
             self._first_token_seen = True
             tracing.set_timing(
                 "copilot.turn.ttft_ms", self._elapsed_ms(), span=self.span
             )
+            self._time_since_request("copilot.turn.request_to_ttft_ms")
+        if self._shape is None and isinstance(chunk, StreamToolInputStart):
+            self._shape = "tool_first"
+        if not self._first_text_seen and is_answer_text(chunk):
+            self._first_text_seen = True
+            self._shape = self._shape or "text_first"
+            tracing.set_timing(
+                "copilot.turn.first_text_ms", self._elapsed_ms(), span=self.span
+            )
+            self._time_since_request("copilot.turn.request_to_first_text_ms")
 
     def set_outcome(
         self,
@@ -166,6 +184,9 @@ class TurnTrace:
         tracing.set_status(status, span=self.span)
 
     def close(self) -> None:
+        # Whether the answer's text or a tool call came first: a turn that
+        # runs tools before it answers can't show its answer as early.
+        self.span.set_tag("copilot.turn.shape", self._shape or "none")
         tracing.set_timing(
             "copilot.turn.duration_ms", self._elapsed_ms(), span=self.span
         )
@@ -211,6 +232,14 @@ class TurnTrace:
     def _elapsed_ms(self) -> float:
         return (time.monotonic() - self._started_at) * 1000
 
+    def _time_since_request(self, name: str) -> None:
+        """Time *name* from when the chat route received the message, which a
+        turn started without one (a schedule, a parent turn) doesn't have."""
+        if self._requested_at:
+            tracing.set_timing(
+                name, (time.time() - self._requested_at) * 1000, span=self.span
+            )
+
 
 @contextmanager
 def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
@@ -241,7 +270,7 @@ def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
                 (time.time() - entry.enqueued_at) * 1000,
                 span=span,
             )
-        turn = TurnTrace(span)
+        turn = TurnTrace(span, requested_at=_prompt_request_time(entry, span))
         try:
             yield turn
         except BaseException as error:
@@ -251,6 +280,16 @@ def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
             turn.close()
             turn.report_to_posthog(entry)
             turn.report_to_prometheus(entry)
+
+
+def _prompt_request_time(entry: "CoPilotExecutionEntry", span: Span) -> float:
+    """When the turn's chat request arrived, if the turn started promptly
+    after it; 0 for a turn that waited (tagged) or had no request."""
+    if not entry.request_arrival_at:
+        return 0.0
+    waited = time.time() - entry.request_arrival_at > WAITED_AFTER_S
+    span.set_tag("copilot.turn.waited", "true" if waited else "false")
+    return 0.0 if waited else entry.request_arrival_at
 
 
 def turn_origin(

@@ -59,9 +59,12 @@ export function SuggestedTasksBlock({
           tone="secondary"
           className="hover:text-foreground-body"
         >
-          {isOpen
-            ? "Hide"
-            : `${count} ${count === 1 ? "task" : "tasks"} · Show`}
+          {/* Own element, so translators cannot detach the text node. */}
+          <span>
+            {isOpen
+              ? "Hide"
+              : `${count} ${count === 1 ? "task" : "tasks"} · Show`}
+          </span>
           <Icon icon={isOpen ? ArrowUp01Icon : ArrowDown01Icon} size={14} />
         </Button>
       </div>

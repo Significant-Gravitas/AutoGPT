@@ -36,6 +36,16 @@ class TestGetSdkSupplementStaticPlaceholder:
         result = prompting.get_sdk_supplement(use_e2b=True)
         assert "<session-id>" not in result
 
+    def test_local_pc_mode_describes_the_real_machine_boundary(self):
+        result = prompting.get_local_pc_sdk_supplement()
+        assert "real local machine" in result
+        assert "not in a cloud or" in result
+        assert "shell is\n  not limited by that file jail" in result
+        assert "<local-pc-allowed-root>" in result
+        assert "Full Linux environment" not in result
+        assert "pre-authenticated" not in result
+        assert "`read_tool_result`" in result
+
     @pytest.mark.parametrize("use_e2b", [False, True])
     def test_sdk_results_use_the_mcp_read_handler(self, use_e2b):
         result = prompting.get_sdk_supplement(use_e2b=use_e2b)
@@ -165,6 +175,16 @@ class TestCredentialsSurfacingGuardrails:
         assert "only for an action it does not offer" in result
 
 
+class TestReviewCardLocation:
+    def test_supplement_says_where_a_review_card_is(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        step = result[result.index("4. `review_required`") :].split("\n", 1)[0]
+        # The result says where the card is, which depends on the surface.
+        assert "where its approval card is, as the result says" in step
+        assert "never send them to look for it in another chat" in step
+        assert "don't repeat the call to raise it again" in step
+
+
 class TestToolDiscoveryPriorityAntiPattern:
     """The supplement must send the model to the registry before it talks
     about what exists; the honest-gap wording lives in the base prompt.
@@ -237,19 +257,28 @@ class TestTeamBuildingSupplement:
         assert "handoff_title" in result
         assert "handoff_task" in result
         assert (
-            "Never ask in text whether to hand a task to a new hire from "
-            "`tool:hire_expert`." in result
+            "Never ask in text whether to hand that task to the new expert." in result
         )
 
-    def test_a_raised_expert_is_not_barred_from_being_asked_about_a_task(self):
-        """A raise_expert hire has no hand-off card, so Otto may still ask
-        before delegating to it ("Never delegate silently"). The rule that
-        forbids asking in text names only tool:hire_expert hires (#16101)."""
+    def test_a_new_expert_for_a_known_task_hands_it_off_on_the_card_too(self):
+        """SECRT-3401: raise_expert takes the task like a hire, so its card
+        creates and starts in one click; the rule names both tools."""
         result = prompting.get_team_building_supplement(
             experts_enabled=True, expert_id=None
         )
 
-        assert "Never ask in text whether to hand a task to a new hire." not in result
+        rule = next(line for line in result.splitlines() if "handoff_title" in line)
+        assert "`tool:hire_expert` or `tool:raise_expert`" in rule
+
+    def test_otto_never_points_at_a_chat_that_does_not_exist(self):
+        """SECRT-3401: told only who joined, Otto sent the user to open a new
+        expert's thread before any chat with them existed."""
+        result = prompting.get_team_building_supplement(
+            experts_enabled=True, expert_id=None
+        )
+
+        assert "A new expert has no chat until the user opens one" in result
+        assert "Never say a thread or chat with them exists" in result
 
     def test_an_expert_session_is_not_told_to_hire(self):
         result = prompting.get_team_building_supplement(
@@ -503,6 +532,13 @@ class TestPlainLanguageRules:
         assert "only when a tool result shows it" in notes
         assert "Don't guess one from a vague error" in notes
         assert "the cause isn't clear yet, and what you'll do next" in notes
+
+    def test_a_claimed_state_comes_from_a_tool_result(self):
+        """Otto called a PR "approved and ready to merge" while its GitHub
+        access was failing (SECRT-2680)."""
+        notes = prompting.SHARED_TOOL_NOTES
+        assert "Every claim about what happened must come from a tool result" in notes
+        assert "Check platform state" in notes
 
     def test_blocking_inputs_are_asked_before_building(self):
         notes = prompting.SHARED_TOOL_NOTES

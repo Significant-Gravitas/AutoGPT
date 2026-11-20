@@ -1,5 +1,4 @@
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -9,9 +8,15 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import useCredentials from "@/hooks/useCredentials";
-import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api/types";
+import type {
+  BlockIOCredentialsSubSchema,
+  CredentialsMetaResponse,
+} from "@/lib/autogpt-server-api/types";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import {
+  CredentialsProvidersContext,
+  type CredentialsProvidersContextType,
+} from "@/providers/agent-credentials/credentials-provider";
 
 import { APIKeyCredentialsModal } from "../components/APIKeyCredentialsModal/APIKeyCredentialsModal";
 import { HostScopedCredentialsModal } from "../components/HotScopedCredentialsModal/HotScopedCredentialsModal";
@@ -69,12 +74,16 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-// The dialogs' inputs don't render zod messages here, so let react-hook-form
-// finish validating and then check that nothing was sent.
-async function settle() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  });
+// The API key and host fields show no message when refused, but once
+// validation fails react-hook-form moves the cursor into the refused field.
+// The button is focused first, so only the refusal can move the cursor there.
+async function submitAndWaitForRefusal(
+  button: HTMLElement,
+  refusedField: HTMLElement,
+) {
+  button.focus();
+  fireEvent.click(button);
+  await waitFor(() => expect(document.activeElement).toBe(refusedField));
 }
 
 function type(placeholder: string, value: string) {
@@ -102,9 +111,10 @@ describe("APIKeyCredentialsModal", () => {
     type("Enter a name for this API Key...", "My key");
     type("Enter API Key...", "    ");
 
-    fireEvent.click(screen.getByRole("button", { name: "Add API Key" }));
-
-    await settle();
+    await submitAndWaitForRefusal(
+      screen.getByRole("button", { name: "Add API Key" }),
+      screen.getByPlaceholderText("Enter API Key..."),
+    );
     expect(createAPIKeyCredentials).not.toHaveBeenCalled();
   });
 
@@ -113,9 +123,10 @@ describe("APIKeyCredentialsModal", () => {
     type("Enter a name for this API Key...", "   ");
     type("Enter API Key...", "sk-abc");
 
-    fireEvent.click(screen.getByRole("button", { name: "Add API Key" }));
-
-    await settle();
+    await submitAndWaitForRefusal(
+      screen.getByRole("button", { name: "Add API Key" }),
+      screen.getByPlaceholderText("Enter a name for this API Key..."),
+    );
     expect(createAPIKeyCredentials).not.toHaveBeenCalled();
   });
 
@@ -158,7 +169,21 @@ describe("PasswordCredentialsModal", () => {
       screen.getByRole("button", { name: "Save & use this user login" }),
     );
 
-    await settle();
+    expect(await screen.findByText("Username is required")).toBeDefined();
+    expect(createUserPasswordCredentials).not.toHaveBeenCalled();
+  });
+
+  it("rejects a spaces-only name without saving", async () => {
+    renderModal();
+    type("Enter username...", "alice");
+    type("Enter password...", "pw");
+    type("Enter a name for this user login...", "   ");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save & use this user login" }),
+    );
+
+    expect(await screen.findByText("Name is required")).toBeDefined();
     expect(createUserPasswordCredentials).not.toHaveBeenCalled();
   });
 
@@ -183,7 +208,7 @@ describe("PasswordCredentialsModal", () => {
 });
 
 describe("HostScopedCredentialsModal", () => {
-  const existing = {
+  const existing: CredentialsMetaResponse = {
     id: "existing-cred",
     provider: "openai",
     type: "host_scoped",
@@ -191,15 +216,25 @@ describe("HostScopedCredentialsModal", () => {
     host: "api.example.com",
   };
 
+  const providers: CredentialsProvidersContextType = {
+    openai: {
+      provider: "openai",
+      providerName: "OpenAI",
+      savedCredentials: [existing],
+      isSystemProvider: false,
+      oAuthCallback: vi.fn(),
+      mcpOAuthCallback: vi.fn(),
+      mcpStoreToken: vi.fn(),
+      createAPIKeyCredentials,
+      createUserPasswordCredentials,
+      createHostScopedCredentials,
+      deleteCredentials,
+    },
+  };
+
   function renderModal() {
     render(
-      <CredentialsProvidersContext.Provider
-        value={
-          {
-            openai: { savedCredentials: [existing] },
-          } as any
-        }
-      >
+      <CredentialsProvidersContext.Provider value={providers}>
         <HostScopedCredentialsModal
           schema={schema}
           open
@@ -212,27 +247,72 @@ describe("HostScopedCredentialsModal", () => {
 
   function submitButton() {
     return screen.getByRole("button", {
-      name: /use these credentials/,
+      name: /^(Save|Update) & use these credentials$/,
     }) as HTMLButtonElement;
   }
 
-  it("does not delete the existing credential when every header is blank", async () => {
-    renderModal();
-    type("Enter host (e.g., api.example.com)", "api.example.com");
-    type("Header name (e.g., Authorization)", "Authorization");
-    type("Header value (e.g., Bearer token123)", "   ");
+  // The backend strips with Python's str.strip(), which also removes U+0085
+  // and U+001C-U+001F, so it refuses a header made only of them as blank.
+  it.each([
+    ["a value of spaces", "Authorization", "   "],
+    ["a value of U+0085", "Authorization", "\u0085"],
+    ["a name of U+001F", "\u001f", "Bearer x"],
+  ])(
+    "does not delete the existing credential when the only header has %s",
+    async (_, name, value) => {
+      renderModal();
+      type("Enter host (e.g., api.example.com)", "api.example.com");
+      type("Header name (e.g., Authorization)", name);
+      type("Header value (e.g., Bearer token123)", value);
 
-    expect(submitButton().disabled).toBe(true);
-    fireEvent.submit(submitButton().closest("form")!);
+      expect(submitButton().disabled).toBe(true);
+      fireEvent.submit(submitButton().closest("form")!);
 
-    await waitFor(() =>
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Add at least one header" }),
-      ),
-    );
-    expect(deleteCredentials).not.toHaveBeenCalled();
-    expect(createHostScopedCredentials).not.toHaveBeenCalled();
-  });
+      await waitFor(() =>
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Add at least one header" }),
+        ),
+      );
+      expect(deleteCredentials).not.toHaveBeenCalled();
+      expect(createHostScopedCredentials).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["exactly", "Authorization"],
+    ["with padding", " Authorization "],
+    ["with a trailing U+0085", "Authorization\u0085"],
+    ["in another case", "authorization"],
+  ])(
+    "does not delete the existing credential when a header name repeats %s",
+    async (_, repeatedName) => {
+      renderModal();
+      type("Enter host (e.g., api.example.com)", "api.example.com");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Add Another Header" }),
+      );
+      const names = screen.getAllByPlaceholderText(
+        "Header name (e.g., Authorization)",
+      );
+      const values = screen.getAllByPlaceholderText(
+        "Header value (e.g., Bearer token123)",
+      );
+      fireEvent.change(names[0], { target: { value: "Authorization" } });
+      fireEvent.change(values[0], { target: { value: "Bearer x" } });
+      fireEvent.change(names[1], { target: { value: repeatedName } });
+      fireEvent.change(values[1], { target: { value: "Bearer y" } });
+
+      fireEvent.click(submitButton());
+
+      await waitFor(() =>
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Use each header name once" }),
+        ),
+      );
+      expect(deleteCredentials).not.toHaveBeenCalled();
+      expect(createHostScopedCredentials).not.toHaveBeenCalled();
+    },
+  );
 
   it("trims the host before replacing the existing credential", async () => {
     renderModal();
@@ -258,9 +338,10 @@ describe("HostScopedCredentialsModal", () => {
     type("Header name (e.g., Authorization)", "Authorization");
     type("Header value (e.g., Bearer token123)", "Bearer x");
 
-    fireEvent.click(submitButton());
-
-    await settle();
+    await submitAndWaitForRefusal(
+      submitButton(),
+      screen.getByPlaceholderText("Enter host (e.g., api.example.com)"),
+    );
     expect(deleteCredentials).not.toHaveBeenCalled();
     expect(createHostScopedCredentials).not.toHaveBeenCalled();
   });

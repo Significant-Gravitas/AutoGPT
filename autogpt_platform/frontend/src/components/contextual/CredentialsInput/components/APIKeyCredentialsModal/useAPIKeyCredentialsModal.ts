@@ -78,8 +78,8 @@ export function useAPIKeyCredentialsModal({
         ? expiryInputToUnix(values.expiresAt)
         : undefined;
       const newCredentials = await credentials.createAPIKeyCredentials({
-        api_key: values.apiKey.trim(),
-        title: values.title.trim(),
+        api_key: values.apiKey,
+        title: values.title,
         expires_at: expiresAt,
       });
       onCredentialsCreate({

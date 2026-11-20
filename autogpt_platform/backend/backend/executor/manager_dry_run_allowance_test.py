@@ -22,7 +22,7 @@ async def test_a_spent_allowance_stops_the_block_before_it_runs(dry_run_boundari
 
     assert outputs == [("error", "You've reached your daily usage limit.")]
     block.ran.assert_not_called()
-    refusal.assert_awaited_once_with("user-1")
+    refusal.assert_awaited_once_with("user-1", surface="block")
     track.assert_not_awaited()
 
 

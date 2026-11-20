@@ -9,6 +9,7 @@ from backend.data.graph import set_node_webhook
 from backend.data.integrations import get_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import GraphActivationError, SharedCredentialsRefusedError
+from backend.util.url_redaction import mask_credential
 
 from . import get_webhook_manager, supports_webhooks
 
@@ -185,9 +186,9 @@ def _apply_credential_result(
         or creds_field_name not in block_input_schema.get_required_fields()
     )
     if creds_field_optional and not unavailable:
-        # Drop the key rather than writing `{}`: an id-less object fails the
-        # field's nested credentials schema in `validate_exec`, so the node
-        # would never be queued. An absent key means "not configured".
+        # A stored node says "not configured" by leaving the key out, as the
+        # builder does; an id-less object fails the field's credentials
+        # schema anywhere it isn't cleared first.
         _preserve_legacy_autopilot_transport(new_node, creds_field_name)
         new_node.input_default.pop(creds_field_name, None)
         logger.warning(
@@ -313,7 +314,7 @@ async def on_node_deactivate(
 
     if webhook_id := node.webhook_id:
         logger.warning(
-            f"Node #{node.id} still attached to webhook #{webhook_id} - "
+            f"Node #{node.id} still attached to webhook #{mask_credential(webhook_id)} - "
             "did migration by `migrate_legacy_triggered_graphs` fail? "
             "Triggered nodes are deprecated since Significant-Gravitas/AutoGPT#10418."
         )
@@ -326,7 +327,7 @@ async def on_node_deactivate(
         # Prune and deregister the webhook if it is no longer used anywhere
         logger.debug(
             f"Pruning{' and deregistering' if credentials else ''} "
-            f"webhook #{webhook_id}"
+            f"webhook #{mask_credential(webhook_id)}"
         )
         await webhooks_manager.prune_webhook_if_dangling(
             user_id, webhook_id, credentials
@@ -336,7 +337,7 @@ async def on_node_deactivate(
             and not credentials
         ):
             logger.warning(
-                f"Cannot deregister webhook #{webhook_id}: credentials "
+                f"Cannot deregister webhook #{mask_credential(webhook_id)}: credentials "
                 f"#{webhook.credentials_id} not available "
                 f"({webhook.provider.value} webhook ID: {webhook.provider_webhook_id})"
             )
