@@ -18,7 +18,8 @@ type TextField = HTMLInputElement | HTMLTextAreaElement;
  * to the end. Use this in the test of any field that transforms or round-trips
  * its value.
  *
- * A number input has no caret and no IME, so only its text is checked.
+ * A number input has no caret and no IME, so only its text is checked, after
+ * every keystroke.
  */
 export async function expectTypingKept(
   field: TextField,
@@ -44,15 +45,26 @@ export async function expectTypingKept(
 
 // user-event writes a number input's text as `String(Number(text))`, which
 // rounds integers past 2^53, so each keystroke is sent as a change event with
-// the text typed so far.
+// the text typed so far, which the field must still hold afterwards.
 function typeIntoNumberInput(field: TextField, text: string, at: number) {
   const before = field.value.slice(0, at);
   const after = field.value.slice(at);
   for (let end = 1; end <= text.length; end++) {
-    fireEvent.change(field, {
-      target: { value: before + text.slice(0, end) + after },
-    });
+    const typed = before + text.slice(0, end) + after;
+    fireEvent.change(field, { target: { value: typed } });
+    expect(field.value, `after typing "${typed}"`).toBe(
+      numberInputValue(typed),
+    );
   }
+}
+
+// What a number input holds for `text`: text that isn't a number yet, such
+// as a lone "-", reads as "".
+function numberInputValue(text: string) {
+  const input = document.createElement("input");
+  input.type = "number";
+  input.value = text;
+  return input.value;
 }
 
 // user-event reads `{Enter}` and `[KeyA]` as key names; doubled, they type

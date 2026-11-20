@@ -82,14 +82,14 @@ export function RunAgentInputs({
           value={value ?? ""}
           placeholder={placeholder || "Enter number"}
           onChange={(e) => {
-            const v = (e.target as HTMLInputElement).value;
-            if (!v || v.trim() === "") {
+            const v = (e.target as HTMLInputElement).value.trim();
+            if (!v) {
               onChange(undefined);
             } else if (
               valueSchema.type === "integer" &&
-              isUnsafeIntegerText(v.trim())
+              isUnsafeIntegerText(v)
             ) {
-              onChange(v.trim());
+              onChange(v);
             } else {
               const numValue = Number(v);
               onChange(isNaN(numValue) ? undefined : numValue);

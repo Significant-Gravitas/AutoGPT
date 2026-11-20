@@ -15,7 +15,7 @@ vi.mock(
 
 // The input schema of a workflow whose number input is optional, as
 // AgentNumberInputBlock's `Optional[int]` makes it.
-function optionalIntegerOutput(): AgentDetailsResponse {
+function optionalIntegerOutput(bounds = {}): AgentDetailsResponse {
   return {
     type: "agent_details",
     message: "Ready to run.",
@@ -29,7 +29,7 @@ function optionalIntegerOutput(): AgentDetailsResponse {
         properties: {
           order_id: {
             title: "Order ID",
-            anyOf: [{ type: "integer" }, { type: "null" }],
+            anyOf: [{ type: "integer", ...bounds }, { type: "null" }],
             default: null,
           },
         },
@@ -53,4 +53,17 @@ test("runs with an integer beyond 2^53 exactly as it was typed", async () => {
   expect(onSend).toHaveBeenCalledWith(
     'Run the workflow "Order Lookup" with these inputs: {\n  "order_id": "9007199254740993"\n}',
   );
+});
+
+test("keeps Proceed off for a big integer below the input's minimum", async () => {
+  render(<AgentDetailsCard output={optionalIntegerOutput({ minimum: 0 })} />);
+  const field = screen.getByRole("spinbutton") as HTMLInputElement;
+  const proceed = screen.getByRole("button", { name: "Proceed" });
+
+  await expectTypingKept(field, "-9007199254740993");
+  expect(proceed).toHaveProperty("disabled", true);
+
+  fireEvent.change(field, { target: { value: "" } });
+  await expectTypingKept(field, "9007199254740993");
+  expect(proceed).toHaveProperty("disabled", false);
 });
