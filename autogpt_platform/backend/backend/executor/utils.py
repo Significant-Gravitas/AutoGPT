@@ -378,6 +378,21 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 # Dynamic field utilities are now imported from backend.data.dynamic_fields
 
 
+def _clear_unset_optional_credentials(
+    schema: type[BlockSchema], data: BlockInput
+) -> BlockInput:
+    """Set optional credentials fields that carry no credential id to None."""
+    required_fields = schema.get_required_fields()
+    cleared = {
+        field_name: None
+        for field_name in schema.get_credentials_fields()
+        if field_name not in required_fields
+        and isinstance(value := data.get(field_name), dict)
+        and not value.get("id")
+    }
+    return {**data, **cleared} if cleared else data
+
+
 class InputMismatchError(ValueError):
     """A value the node can't use; unlike missing input, waiting won't fix it.
     ``data`` is the resolved input the node is queued with to fail."""
@@ -447,6 +462,14 @@ def validate_exec(
     data = {**input_default, **data}
     if resolve_input:
         data = merge_execution_input(data)
+
+    # An optional credentials field holding an id-less object (e.g. `{}`) means
+    # "not configured". Treat it like an unset field so it doesn't fail the
+    # nested credentials schema below; required fields stay strict. An MCP
+    # tool's arguments stand in for the block's inputs here, and a tool may
+    # declare its own `credentials`, so those are left as they are.
+    if node_block.block_type != BlockType.MCP_TOOL:
+        data = _clear_unset_optional_credentials(schema, data)
 
     # Coerce first: some blocks' missing-input checks read the converted values.
     # A value that can't be converted is reported after that check, so a node
