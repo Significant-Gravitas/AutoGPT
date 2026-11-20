@@ -4,9 +4,15 @@ import { PendingQuestionsContext } from "../../QuestionDock/PendingQuestionsCont
 import { PendingOnboardingContext } from "../../ExpertOnboardingCard/PendingOnboardingContext";
 import { act } from "@testing-library/react";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
+import { UnconfirmedSendError } from "../../../stream/turnRuntime";
 import { buildKickoffMessage } from "../../../expertKickoff";
 import type { TurnStatsMap } from "../../../helpers/convertChatSessionToUiMessages";
 
@@ -303,6 +309,109 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
   });
 
+  const finishedTool = {
+    type: "tool-find_block",
+    toolCallId: "tool-1",
+    state: "output-available",
+    input: {},
+    output: {},
+  } as Message["parts"][number];
+  const stepStart = { type: "step-start" } as Message["parts"][number];
+
+  it.each([
+    ["a turn that has only opened its first step", [stepStart]],
+    [
+      "a status line followed by the first step",
+      [
+        {
+          type: "data-status",
+          data: { message: "Preparing workspace…" },
+        } as Message["parts"][number],
+        stepStart,
+      ],
+    ],
+    ["the step opened after a finished tool", [finishedTool, stepStart]],
+    ["several steps opened in a row", [finishedTool, stepStart, stepStart]],
+    [
+      "a step opened after a follow-up was drained",
+      [
+        { type: "text", text: "Looking into it." },
+        { type: "data-pending-drained", data: {} },
+        stepStart,
+      ] as Message["parts"],
+    ],
+  ])(
+    "keeps the thinking indicator through %s, until the model writes",
+    (_label, parts) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[{ id: "assistant-stepping", role: "assistant", parts }]}
+          status="streaming"
+        />,
+      );
+
+      expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+    },
+  );
+
+  it.each([
+    ["text", [{ type: "text", text: "Looking into it." }]],
+    ["reasoning", [{ type: "reasoning", text: "Weighing the options." }]],
+    [
+      "a pause",
+      [
+        { type: "text", text: "Saved where I got to." },
+        { type: "data-turn-paused", data: { reason: "steps", steps: 450 } },
+      ],
+    ],
+    [
+      "a running tool",
+      [{ ...finishedTool, state: "input-available", output: undefined }],
+    ],
+    [
+      "a tool waiting for approval",
+      [
+        {
+          ...finishedTool,
+          state: "approval-requested",
+          output: undefined,
+          approval: { id: "approval-1" },
+        },
+      ],
+    ],
+    [
+      "a tool whose approval was just answered",
+      [
+        {
+          ...finishedTool,
+          state: "approval-responded",
+          output: undefined,
+          approval: { id: "approval-1", approved: true },
+        },
+      ],
+    ],
+  ] as Array<[string, Message["parts"]]>)(
+    "does not bring the thinking indicator back when a step opens after %s",
+    (_label, before) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={[
+            {
+              id: "assistant-then-step",
+              role: "assistant",
+              parts: [...before, stepStart],
+            },
+          ]}
+          status="streaming"
+        />,
+      );
+
+      expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+    },
+  );
+
   it("drops the thinking indicator once a streaming turn has landed on a pause", () => {
     render(
       <ChatMessagesContainer
@@ -583,6 +692,27 @@ describe("ChatMessagesContainer — error banner dedup", () => {
     expect(screen.getByTestId("chat-error-banner")).toBeDefined();
   });
 
+  it("hands a send no check could confirm to the page to send again", () => {
+    const onResend = vi.fn();
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new UnconfirmedSendError("u-1")}
+        status="error"
+        onResend={onResend}
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send again" }));
+    expect(onResend).toHaveBeenCalledTimes(1);
+  });
+
   it("suppresses the trailing banner when the last assistant message carries an error marker", () => {
     render(
       <ChatMessagesContainer
@@ -609,6 +739,43 @@ describe("ChatMessagesContainer — error banner dedup", () => {
       />,
     );
     expect(screen.queryByTestId("chat-error-banner")).toBeNull();
+  });
+
+  it("keeps Send again for an unconfirmed prompt sent after an earlier turn's error marker", () => {
+    const onResend = vi.fn();
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new UnconfirmedSendError("u-2")}
+        status="error"
+        onResend={onResend}
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+          {
+            id: "a-1",
+            role: "assistant",
+            parts: [
+              {
+                type: "text",
+                text: "[__COPILOT_ERROR_f7a1__] SDK stream error: Prompt is too long",
+              },
+            ],
+          },
+          {
+            id: "u-2",
+            role: "user",
+            parts: [{ type: "text", text: "try once more" }],
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("chat-error-banner")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Send again" }));
+    expect(onResend).toHaveBeenCalledTimes(1);
   });
 
   it("suppresses the trailing banner when the marker is retryable", () => {

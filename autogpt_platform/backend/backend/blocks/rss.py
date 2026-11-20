@@ -145,7 +145,7 @@ class ReadRSSFeedBlock(Block):
         keep_going = True
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=input_data.time_period)
         # Entries already output and dated at or after the cutoff, by a hash of
-        # their link and title, so a later poll skips them.
+        # their id, link, title and summary, so a later poll skips them.
         output: dict[int, datetime] = {}
         while keep_going:
             keep_going = input_data.run_continuously
@@ -153,23 +153,40 @@ class ReadRSSFeedBlock(Block):
             polled_at = datetime.now(timezone.utc)
             feed = await self.parse_feed(input_data.rss_url)
             all_entries = []
+            undated_count = 0
 
             for entry in feed["entries"]:
-                pub_date = datetime(*entry["published_parsed"][:6], tzinfo=timezone.utc)
-                key = hash((entry["link"], entry["title"]))
+                parsed_date = entry.get("published_parsed") or entry.get(
+                    "updated_parsed"
+                )
+                if not parsed_date:
+                    undated_count += 1
+                    continue
+                pub_date = datetime(*parsed_date[:6], tzinfo=timezone.utc)
+                title, link = entry.get("title", ""), entry.get("link", "")
+                description = entry.get("summary", "")
+                # The id and summary tell apart entries missing a title and a link.
+                key = hash((entry.get("id", ""), link, title, description))
                 if pub_date < cutoff or key in output:
                     continue
                 rss_entry = RSSEntry(
-                    title=entry["title"],
-                    link=entry["link"],
-                    description=entry.get("summary", ""),
+                    title=title,
+                    link=link,
+                    description=description,
                     pub_date=pub_date,
                     author=entry.get("author", ""),
-                    categories=[tag["term"] for tag in entry.get("tags", [])],
+                    categories=[
+                        tag["term"] for tag in entry.get("tags", []) if tag.get("term")
+                    ],
                 )
                 all_entries.append(rss_entry)
                 output[key] = pub_date
                 yield "entry", rss_entry
+
+            if undated_count:
+                logging.warning(
+                    f"Skipped {undated_count} RSS feed entries without a date"
+                )
 
             yield "entries", all_entries
             # Later polls skip what is older than the newest entry output, but a
