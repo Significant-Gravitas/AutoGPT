@@ -75,11 +75,12 @@ async def test_old_failure_with_fresh_updated_at_is_not_recent(graph):
     before_summary = await _summary()
     before_count = await diag.get_failed_executions_count(hours=24)
 
-    # updatedAt defaults to now: same state as an old failure that was just shared.
+    recent = await _execution(graph, AgentExecutionStatus.FAILED, now)
+    # Written last, so it has the newest updatedAt: the same state as an old
+    # failure that was just shared.
     old = await _execution(
         graph, AgentExecutionStatus.FAILED, now - timedelta(hours=30)
     )
-    recent = await _execution(graph, AgentExecutionStatus.FAILED, now)
 
     summary = await _summary()
     assert summary.failed_count_1h - before_summary.failed_count_1h == 1
@@ -93,13 +94,13 @@ async def test_old_failure_with_fresh_updated_at_is_not_recent(graph):
     assert old.id not in listed
     assert recent.id in listed
 
-    listed_48h = {
-        e.execution_id: e
-        for e in await diag.get_failed_executions_details(limit=1000, hours=48)
-    }
-    assert old.id in listed_48h
+    listed_48h = await diag.get_failed_executions_details(limit=1000, hours=48)
+    order = [e.execution_id for e in listed_48h]
+    assert old.id in order
+    # Newest failure first, even though the old one was written last.
+    assert order.index(recent.id) < order.index(old.id)
     assert old.endedAt is not None
-    assert listed_48h[old.id].failed_at == old.endedAt
+    assert listed_48h[order.index(old.id)].failed_at == old.endedAt
 
 
 @pytest.mark.asyncio(loop_scope="session")
