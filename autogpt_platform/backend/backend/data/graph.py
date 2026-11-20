@@ -55,7 +55,7 @@ from backend.util.exceptions import (
     NotAuthorizedError,
     NotFoundError,
 )
-from backend.util.json import SafeJson
+from backend.util.json import SafeJson, dumps
 from backend.util.models import Pagination
 from backend.util.request import parse_url
 from backend.util.text import split_camelcase
@@ -2921,6 +2921,13 @@ def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
     )
 
 
+# A preset stores its input overrides for one node under this prefix plus the
+# first segment of the node's id. ``node_input_mask_key`` in
+# backend/api/features/library/model.py builds the key; that module imports
+# this one, so the prefix lives here.
+NODE_INPUT_MASK_PREFIX = "_node_input_mask_"
+
+
 def _legacy_value_aliases(legacy_value: str, replacement: LLMModel) -> set[str]:
     """Stored-value forms that should map to ``replacement`` for one legacy slug.
 
@@ -2949,8 +2956,10 @@ async def migrate_llm_models(fallback: LLMModel):
       * ``AgentNode.constantInput`` — saved graph definitions (scoped by
         ``agentBlockId`` because we know the LLMModel field name per block).
       * ``AgentNodeExecutionInputOutput.data`` where ``agentPresetId`` is set —
-        preset input overrides; scoped only by the field-value match since
-        preset rows don't carry the block id.
+        a preset's input overrides for one node, the row named with that
+        node's ``NODE_INPUT_MASK_PREFIX`` key. A row is rewritten only when its
+        node is a block with that LLMModel field: other blocks' own ``model``
+        lists (Codex, Stagehand) share values with ``LLMModel``.
 
     Note: Only updates top level LLMModel SchemaFields of blocks (won't update nested fields).
     """
@@ -2977,18 +2986,28 @@ async def migrate_llm_models(fallback: LLMModel):
         AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
         """
     preset_targeted_query = """
-        UPDATE {schema_prefix}"AgentNodeExecutionInputOutput"
-        SET "data" = jsonb_set("data"::jsonb, $1, to_jsonb($2), true)
-        WHERE "agentPresetId" IS NOT NULL
-        AND "data"::jsonb ? ($3)::text
-        AND "data"::jsonb->>($3)::text = $4
+        UPDATE {schema_prefix}"AgentNodeExecutionInputOutput" AS io
+        SET "data" = jsonb_set(io."data"::jsonb, $1, to_jsonb($2), true)
+        FROM {schema_prefix}"AgentPreset" AS p, {schema_prefix}"AgentNode" AS n
+        WHERE io."agentPresetId" = p."id"
+        AND n."agentGraphId" = p."agentGraphId"
+        AND n."agentGraphVersion" = p."agentGraphVersion"
+        AND io."name" = ($3)::text || split_part(n."id", '-', 1)
+        AND n."agentBlockId" IN (SELECT jsonb_array_elements_text(($4)::jsonb))
+        AND io."data"::jsonb ? ($5)::text
+        AND io."data"::jsonb->>($5)::text = $6
         """
     preset_fallback_query = f"""
-        UPDATE {{schema_prefix}}"AgentNodeExecutionInputOutput"
-        SET "data" = jsonb_set("data"::jsonb, $1, to_jsonb($2), true)
-        WHERE "agentPresetId" IS NOT NULL
-        AND "data"::jsonb ? ($3)::text
-        AND "data"::jsonb->>($3)::text NOT IN {escaped_enum_values}
+        UPDATE {{schema_prefix}}"AgentNodeExecutionInputOutput" AS io
+        SET "data" = jsonb_set(io."data"::jsonb, $1, to_jsonb($2), true)
+        FROM {{schema_prefix}}"AgentPreset" AS p, {{schema_prefix}}"AgentNode" AS n
+        WHERE io."agentPresetId" = p."id"
+        AND n."agentGraphId" = p."agentGraphId"
+        AND n."agentGraphVersion" = p."agentGraphVersion"
+        AND io."name" = ($3)::text || split_part(n."id", '-', 1)
+        AND n."agentBlockId" IN (SELECT jsonb_array_elements_text(($4)::jsonb))
+        AND io."data"::jsonb ? ($5)::text
+        AND io."data"::jsonb->>($5)::text NOT IN {escaped_enum_values}
         """
 
     # AgentNode pass — per (block_id, field_name).
@@ -3011,16 +3030,20 @@ async def migrate_llm_models(fallback: LLMModel):
             path,
         )
 
-    # AgentPreset pass — per unique field name. Preset rows don't carry
-    # ``agentBlockId``, but the field-value match is tight enough on its own
-    # because no non-LLM block stores one of our retired slugs.
+    # AgentPreset pass — per unique field name, over the node overrides whose
+    # node is a block with that field.
     for path in set(llm_model_fields.values()):
+        block_ids = dumps(
+            sorted(block for block, field in llm_model_fields.items() if field == path)
+        )
         for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
             for stored_value in _legacy_value_aliases(legacy_value, replacement):
                 await execute_raw_with_schema(
                     preset_targeted_query,
                     [path],
                     replacement.value,
+                    NODE_INPUT_MASK_PREFIX,
+                    block_ids,
                     path,
                     stored_value,
                 )
@@ -3028,6 +3051,8 @@ async def migrate_llm_models(fallback: LLMModel):
             preset_fallback_query,
             [path],
             fallback.value,
+            NODE_INPUT_MASK_PREFIX,
+            block_ids,
             path,
         )
 

@@ -11,6 +11,12 @@ offers a few Claude and GPT models, Codex its own GPT models), and a catalog
 replacement can be a value their schema refuses. Those nodes are counted and
 left alone.
 
+A preset can override one node's inputs, in a row named with that node's mask
+key (``graph.NODE_INPUT_MASK_PREFIX``). Such a row is rewritten too when its
+node is one of those LLM blocks, and recorded for revert. Other preset rows
+that name the model, most often a workflow input's value, are counted and left
+alone.
+
 CLI::
 
     python -m backend.data.llm_registry.retire --usage <slug>
@@ -40,7 +46,7 @@ from pydantic import BaseModel
 
 import backend.data.db
 from backend.data.db import get_database_schema, query_raw_with_schema, transaction
-from backend.data.graph import find_llm_model_fields
+from backend.data.graph import NODE_INPUT_MASK_PREFIX, find_llm_model_fields
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.registry import get_model, load_catalog
 
@@ -51,7 +57,8 @@ class MigrationResult(BaseModel):
     source_model_slug: str
     target_model_slug: str
     nodes_migrated: int
-    migration_id: str | None  # None when no nodes referenced the model
+    preset_inputs_migrated: int
+    migration_id: str | None  # None when nothing referenced the model
 
 
 class RevertResult(BaseModel):
@@ -62,6 +69,20 @@ class RevertResult(BaseModel):
     # Nodes that were manually changed to a third model after the migration
     # are left alone (the revert UPDATE is guarded on the migrated value).
     nodes_already_changed: int
+    preset_inputs_reverted: int
+    preset_inputs_already_changed: int
+
+
+class ModelUsage(BaseModel):
+    """What a retirement of one model rewrites, and what it leaves alone."""
+
+    nodes: int
+    preset_inputs: int
+    # Nodes of other blocks whose own ``model`` list holds the same value.
+    other_block_nodes: int
+    # Preset rows naming the model that are not an LLM node's override, most
+    # often a workflow input's value.
+    other_preset_inputs: int
 
 
 def _schema_format(query_template: str) -> LiteralString:
@@ -110,36 +131,48 @@ def _llm_model_block_ids_json() -> str:
     )
 
 
-async def count_model_usage(slug: str) -> int:
-    """How many AgentNodes of LLM-model blocks reference *slug*: the nodes a
-    retirement of *slug* rewrites."""
-    result = await query_raw_with_schema(
-        """
-        SELECT COUNT(*) as count
-        FROM {schema_prefix}"AgentNode"
-        WHERE "constantInput"::jsonb->>'model' = $1
-        AND "agentBlockId" IN (SELECT jsonb_array_elements_text($2::jsonb))
+# A preset's override of one LLM-block node: the row named with that node's
+# mask key, holding the node's ``model``. $1 is the model slug, $2 a JSON
+# array of the LLM block ids, $3 ``NODE_INPUT_MASK_PREFIX``.
+_LLM_PRESET_INPUTS = """
+    FROM {schema_prefix}"AgentNodeExecutionInputOutput" AS io
+    JOIN {schema_prefix}"AgentPreset" AS p ON p."id" = io."agentPresetId"
+    JOIN {schema_prefix}"AgentNode" AS n
+        ON n."agentGraphId" = p."agentGraphId"
+        AND n."agentGraphVersion" = p."agentGraphVersion"
+        AND io."name" = $3::text || split_part(n."id", '-', 1)
+    WHERE io."data"::jsonb->>'model' = $1
+    AND n."agentBlockId" IN (SELECT jsonb_array_elements_text($2::jsonb))
+"""
+
+
+async def model_usage(slug: str) -> ModelUsage:
+    """What a retirement of *slug* would rewrite, and what it leaves alone."""
+    rows = await query_raw_with_schema(
+        'WITH llm_presets AS (SELECT io."id"'
+        + _LLM_PRESET_INPUTS
+        + """)
+        SELECT
+            (SELECT COUNT(*) FROM {schema_prefix}"AgentNode"
+             WHERE "constantInput"::jsonb->>'model' = $1
+             AND "agentBlockId" IN (SELECT jsonb_array_elements_text($2::jsonb))
+            ) AS nodes,
+            (SELECT COUNT(*) FROM llm_presets) AS preset_inputs,
+            (SELECT COUNT(*) FROM {schema_prefix}"AgentNode"
+             WHERE "constantInput"::jsonb->>'model' = $1
+             AND "agentBlockId" NOT IN (SELECT jsonb_array_elements_text($2::jsonb))
+            ) AS other_block_nodes,
+            (SELECT COUNT(*) FROM {schema_prefix}"AgentNodeExecutionInputOutput" AS io
+             WHERE io."agentPresetId" IS NOT NULL
+             AND (io."data"::jsonb->>'model' = $1 OR io."data"::jsonb #>> '{{}}' = $1)
+             AND io."id" NOT IN (SELECT "id" FROM llm_presets)
+            ) AS other_preset_inputs
         """,
         slug,
         _llm_model_block_ids_json(),
+        NODE_INPUT_MASK_PREFIX,
     )
-    return int(result[0]["count"]) if result else 0
-
-
-async def count_other_block_usage(slug: str) -> int:
-    """How many AgentNodes of other blocks name *slug* in their own ``model``
-    input. A retirement leaves these alone."""
-    result = await query_raw_with_schema(
-        """
-        SELECT COUNT(*) as count
-        FROM {schema_prefix}"AgentNode"
-        WHERE "constantInput"::jsonb->>'model' = $1
-        AND "agentBlockId" NOT IN (SELECT jsonb_array_elements_text($2::jsonb))
-        """,
-        slug,
-        _llm_model_block_ids_json(),
-    )
-    return int(result[0]["count"]) if result else 0
+    return ModelUsage(**{name: int(count) for name, count in rows[0].items()})
 
 
 async def _migrate_nodes_in_tx(
@@ -181,12 +214,40 @@ async def _migrate_nodes_in_tx(
     return migrated_node_ids
 
 
+async def _migrate_preset_inputs_in_tx(
+    tx, source_value: str, target_value: str, llm_block_ids_json: str
+) -> list[str]:
+    """Lock + rewrite the presets' overrides of LLM-block nodes. Returns the
+    rewritten row ids."""
+    rows = await tx.query_raw(
+        _schema_format('SELECT io."id"' + _LLM_PRESET_INPUTS + "FOR UPDATE OF io"),
+        source_value,
+        llm_block_ids_json,
+        NODE_INPUT_MASK_PREFIX,
+    )
+    row_ids = [row["id"] for row in rows or []]
+    if row_ids:
+        await tx.execute_raw(
+            _schema_format(
+                """
+                UPDATE {schema_prefix}"AgentNodeExecutionInputOutput"
+                SET "data" = JSONB_SET("data"::jsonb, '{{model}}', to_jsonb($1::text))
+                WHERE "id" IN (SELECT jsonb_array_elements_text($2::jsonb))
+                """
+            ),
+            target_value,
+            json.dumps(row_ids),
+        )
+    return row_ids
+
+
 async def retire_model(
     slug: str, replacement_slug: str, reason: str | None = None
 ) -> MigrationResult:
-    """Rewrite every AgentNode referencing *slug* to *replacement_slug*.
+    """Rewrite every LLM-block node referencing *slug*, and every preset
+    override of such a node, to *replacement_slug*.
 
-    Records an ``LlmModelMigration`` row when any nodes were touched; the
+    Records an ``LlmModelMigration`` row when anything was touched; the
     partial unique index rejects a second active migration for the same
     source (revert the first one before retrying).
     """
@@ -209,8 +270,11 @@ async def retire_model(
             migrated_node_ids = await _migrate_nodes_in_tx(
                 tx, slug, replacement_slug, llm_block_ids_json
             )
+            migrated_preset_input_ids = await _migrate_preset_inputs_in_tx(
+                tx, slug, replacement_slug, llm_block_ids_json
+            )
             migration_id: str | None = None
-            if migrated_node_ids:
+            if migrated_node_ids or migrated_preset_input_ids:
                 record = await tx.llmmodelmigration.create(
                     data={
                         "sourceModelSlug": slug,
@@ -218,6 +282,7 @@ async def retire_model(
                         "reason": reason,
                         "migratedNodeIds": json.dumps(migrated_node_ids),
                         "nodeCount": len(migrated_node_ids),
+                        "migratedPresetInputIds": json.dumps(migrated_preset_input_ids),
                     }
                 )
                 migration_id = record.id
@@ -231,12 +296,14 @@ async def retire_model(
         source_model_slug=slug,
         target_model_slug=replacement_slug,
         nodes_migrated=len(migrated_node_ids),
+        preset_inputs_migrated=len(migrated_preset_input_ids),
         migration_id=migration_id,
     )
 
 
 async def revert_model_migration(migration_id: str) -> RevertResult:
-    """Restore nodes touched by a migration to the original model."""
+    """Restore the nodes and preset inputs a migration touched to the
+    original model."""
     migration = await prisma.models.LlmModelMigration.prisma().find_unique(
         where={"id": migration_id}
     )
@@ -245,13 +312,10 @@ async def revert_model_migration(migration_id: str) -> RevertResult:
     if migration.isReverted:
         raise ValueError(f"Migration '{migration_id}' has already been reverted")
 
-    migrated_node_ids: list[str] = (
-        migration.migratedNodeIds
-        if isinstance(migration.migratedNodeIds, list)
-        else json.loads(str(migration.migratedNodeIds))
-    )
-    if not migrated_node_ids:
-        raise ValueError("No nodes to revert in this migration")
+    migrated_node_ids = _recorded_ids(migration.migratedNodeIds)
+    migrated_preset_input_ids = _recorded_ids(migration.migratedPresetInputIds)
+    if not migrated_node_ids and not migrated_preset_input_ids:
+        raise ValueError("Nothing to revert in this migration")
 
     async with transaction() as tx:
         # Atomic claim: the guarded update IS the lock — a concurrent revert
@@ -285,6 +349,20 @@ async def revert_model_migration(migration_id: str) -> RevertResult:
             migration.targetModelSlug,
         )
         nodes_reverted = result if isinstance(result, int) else 0
+        result = await tx.execute_raw(
+            _schema_format(
+                """
+                UPDATE {schema_prefix}"AgentNodeExecutionInputOutput"
+                SET "data" = JSONB_SET("data"::jsonb, '{{model}}', to_jsonb($1::text))
+                WHERE "id" IN (SELECT jsonb_array_elements_text($2::jsonb))
+                AND "data"::jsonb->>'model' = $3
+                """
+            ),
+            migration.sourceModelSlug,
+            json.dumps(migrated_preset_input_ids),
+            migration.targetModelSlug,
+        )
+        preset_inputs_reverted = result if isinstance(result, int) else 0
 
     if get_model(migration.sourceModelSlug) is None:
         logger.warning(
@@ -299,7 +377,17 @@ async def revert_model_migration(migration_id: str) -> RevertResult:
         target_model_slug=migration.targetModelSlug,
         nodes_reverted=nodes_reverted,
         nodes_already_changed=len(migrated_node_ids) - nodes_reverted,
+        preset_inputs_reverted=preset_inputs_reverted,
+        preset_inputs_already_changed=(
+            len(migrated_preset_input_ids) - preset_inputs_reverted
+        ),
     )
+
+
+def _recorded_ids(value: object) -> list[str]:
+    """An id list from a migration record's JSON column, which Prisma returns
+    parsed or as text."""
+    return value if isinstance(value, list) else json.loads(str(value))
 
 
 class MigrationRow(BaseModel):
@@ -310,6 +398,7 @@ class MigrationRow(BaseModel):
     target_model_slug: str
     reason: str | None
     node_count: int
+    preset_input_count: int
     is_reverted: bool
     reverted_at: str | None
     created_at: str
@@ -328,6 +417,7 @@ async def list_model_migrations(include_reverted: bool = False) -> list[Migratio
             target_model_slug=r.targetModelSlug,
             reason=r.reason,
             node_count=r.nodeCount,
+            preset_input_count=len(_recorded_ids(r.migratedPresetInputIds)),
             is_reverted=r.isReverted,
             reverted_at=r.revertedAt.isoformat() if r.revertedAt else None,
             created_at=r.createdAt.isoformat(),
@@ -350,7 +440,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--reason", help="recorded on the migration row")
     parser.add_argument("--yes", action="store_true", help="execute (no dry-run)")
-    parser.add_argument("--usage", metavar="SLUG", help="print node count and exit")
+    parser.add_argument(
+        "--usage", metavar="SLUG", help="print what retiring SLUG rewrites and exit"
+    )
     parser.add_argument("--revert", metavar="MIGRATION_ID", help="revert a migration")
     parser.add_argument("--list", action="store_true", help="list migrations")
     parser.add_argument("--include-reverted", action="store_true")
@@ -373,8 +465,12 @@ async def _run_cli(args: argparse.Namespace) -> int:
     load_catalog()
 
     if args.usage:
-        print(f"{args.usage}: {await count_model_usage(args.usage)} node(s)")
-        await _print_other_block_usage(args.usage)
+        usage = await model_usage(args.usage)
+        print(
+            f"{args.usage}: {usage.nodes} node(s), "
+            f"{usage.preset_inputs} preset input(s)"
+        )
+        _print_left_alone(args.usage, usage)
         return 0
     if args.revert:
         result = await revert_model_migration(args.revert)
@@ -403,18 +499,19 @@ async def _run_cli(args: argparse.Namespace) -> int:
         )
         return 2
 
-    usage = await count_model_usage(args.slug)
+    usage = await model_usage(args.slug)
     if not args.yes:
         _validate_replacement(args.replacement)
         print(
-            f"DRY RUN: would migrate {usage} node(s) from '{args.slug}' to "
+            f"DRY RUN: would migrate {usage.nodes} node(s) and "
+            f"{usage.preset_inputs} preset input(s) from '{args.slug}' to "
             f"'{args.replacement}'. Re-run with --yes to execute."
         )
-        await _print_other_block_usage(args.slug)
+        _print_left_alone(args.slug, usage)
         return 1
     result = await retire_model(args.slug, args.replacement, reason=args.reason)
     print(result.model_dump_json(indent=2))
-    await _print_other_block_usage(args.slug)
+    _print_left_alone(args.slug, usage)
     print(
         "Reminder: retirement only rewrites graph nodes — flip "
         f"'{args.slug}' to enabled=False in a catalog PR to stop new use."
@@ -422,12 +519,17 @@ async def _run_cli(args: argparse.Namespace) -> int:
     return 0
 
 
-async def _print_other_block_usage(slug: str) -> None:
-    other = await count_other_block_usage(slug)
-    if other:
+def _print_left_alone(slug: str, usage: ModelUsage) -> None:
+    if usage.other_block_nodes:
         print(
-            f"{other} node(s) of other blocks also name '{slug}' in their own "
-            "model list and are left alone."
+            f"{usage.other_block_nodes} node(s) of other blocks also name "
+            f"'{slug}' in their own model list and are left alone."
+        )
+    if usage.other_preset_inputs:
+        print(
+            f"{usage.other_preset_inputs} preset input(s) name '{slug}' "
+            "without overriding an LLM block's model (most often a workflow "
+            "input's value) and are left alone."
         )
 
 

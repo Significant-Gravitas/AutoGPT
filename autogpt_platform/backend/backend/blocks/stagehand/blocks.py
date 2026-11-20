@@ -12,6 +12,7 @@ from backend.blocks.llm import (
     ModelMetadata,
 )
 from backend.blocks.stagehand._config import stagehand as stagehand_provider
+from backend.data.block import BlockInput
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -35,11 +36,9 @@ class StagehandRecommendedLLMModel(str, Enum):
 
     @classmethod
     def _missing_(cls, value: object) -> "StagehandRecommendedLLMModel | None":
-        # Anthropic retires Claude Sonnet 4.5 on 2026-11-30. A node saved on
-        # it runs on Sonnet 4.6, this block's default, at the same price.
-        if value == LLMModel.CLAUDE_4_5_SONNET.value:
-            return cls.CLAUDE_4_6_SONNET
-        return None
+        """A node saved on a model this list no longer offers runs on its
+        replacement (``_RETIRED_MODELS``)."""
+        return _RETIRED_MODELS.get(value) if isinstance(value, str) else None
 
     # OpenAI
     GPT41 = "gpt-4.1-2025-04-14"
@@ -85,8 +84,34 @@ class StagehandRecommendedLLMModel(str, Enum):
         return MODEL_METADATA[LLMModel(self.value)].max_output_tokens
 
 
+# Models this block offered that their provider has retired, and what a node
+# saved on one runs on. Anthropic retires Claude Sonnet 4.5 on 2026-11-30;
+# Sonnet 4.6, this block's default, costs the same.
+_RETIRED_MODELS: dict[str, StagehandRecommendedLLMModel] = {
+    LLMModel.CLAUDE_4_5_SONNET.value: StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
+}
+
+
+class _StagehandInput(BlockSchemaInput):
+    @classmethod
+    def validate_data(
+        cls,
+        data: BlockInput,
+        exclude_fields: set[str] | None = None,
+    ) -> str | None:
+        """Check a node saved on a retired model as its replacement: the JSON
+        schema lists only the current models, so it would refuse the saved
+        value before the ``model`` field resolves it. Works on a copy, so the
+        caller's data keeps the saved value."""
+        saved = data.get("model")
+        replacement = _RETIRED_MODELS.get(saved) if isinstance(saved, str) else None
+        if replacement is not None:
+            data = {**data, "model": replacement.value}
+        return super().validate_data(data, exclude_fields=exclude_fields)
+
+
 class StagehandObserveBlock(Block):
-    class Input(BlockSchemaInput):
+    class Input(_StagehandInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(
@@ -172,7 +197,7 @@ class StagehandObserveBlock(Block):
 
 
 class StagehandActBlock(Block):
-    class Input(BlockSchemaInput):
+    class Input(_StagehandInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(
@@ -271,7 +296,7 @@ class StagehandActBlock(Block):
 
 
 class StagehandExtractBlock(Block):
-    class Input(BlockSchemaInput):
+    class Input(_StagehandInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(

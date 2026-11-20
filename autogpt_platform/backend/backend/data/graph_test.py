@@ -3841,7 +3841,7 @@ async def test_migrate_llm_models_covers_preset_overrides():
 
     queries = [call.args[0] for call in mock_execute.await_args_list]
     assert any(
-        '"AgentNodeExecutionInputOutput"' in q and '"agentPresetId" IS NOT NULL' in q
+        '"AgentNodeExecutionInputOutput"' in q and 'io."agentPresetId" = p."id"' in q
         for q in queries
     ), (
         "migrate_llm_models must run UPDATEs against AgentNodeExecutionInputOutput "

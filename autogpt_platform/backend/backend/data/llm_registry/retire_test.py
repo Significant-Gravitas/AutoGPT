@@ -1,13 +1,14 @@
 """Real-DB tests for the model retirement CLI/library.
 
-Seeds minimal User/AgentGraph/AgentNode rows, exercises retire → revert
-against the actual `{schema_prefix}` SQL, and verifies the catalog-based
+Seeds minimal User/AgentGraph/AgentNode/AgentPreset rows, exercises retire →
+revert against the actual `{schema_prefix}` SQL, and verifies the catalog-based
 validation and the active-migration partial unique index.
 """
 
 from __future__ import annotations
 
 import uuid
+from typing import Any
 from unittest.mock import AsyncMock
 
 import prisma.models
@@ -15,15 +16,16 @@ import pytest
 from prisma.errors import UniqueViolationError
 
 import backend.data.llm_registry.registry as reg
+from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock
+from backend.blocks.codex import CodeGenerationBlock
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.blocks.stagehand.blocks import StagehandObserveBlock
-from backend.data.graph import migrate_llm_models
+from backend.data.graph import NODE_INPUT_MASK_PREFIX, migrate_llm_models
 from backend.data.llm_registry.llm_models import DEFAULT_LLM_MODEL
 from backend.data.llm_registry.registry import get_all_models, load_catalog
 from backend.data.llm_registry.retire import (
-    count_model_usage,
-    count_other_block_usage,
     list_model_migrations,
+    model_usage,
     retire_model,
     revert_model_migration,
 )
@@ -55,12 +57,21 @@ async def retirement_env(server):
     yield created_graph_ids
 
     await prisma.models.LlmModelMigration.prisma().delete_many()
+    # Presets restrict their graph's deletion, and their input rows only
+    # unlink when a preset goes, so both go first.
+    created_presets = {"agentGraphId": {"in": created_graph_ids}}
+    await prisma.models.AgentNodeExecutionInputOutput.prisma().delete_many(
+        where={"AgentPreset": {"is": created_presets}}
+    )
+    await prisma.models.AgentPreset.prisma().delete_many(where=created_presets)
     for graph_id in created_graph_ids:
         await prisma.models.AgentGraph.prisma().delete_many(where={"id": graph_id})
 
 
 _LLM_BLOCK_ID = AITextGeneratorBlock().id
 _STAGEHAND_BLOCK_ID = StagehandObserveBlock().id
+_CODEX_BLOCK_ID = CodeGenerationBlock().id
+_IMAGE_BLOCK_ID = AIImageGeneratorBlock().id
 
 
 async def _seed_node(
@@ -70,6 +81,16 @@ async def _seed_node(
 ) -> str:
     """Create a graph + one node of *block_id* whose constantInput uses
     *model_value*. Defaults to an LLM block, the kind retirement rewrites."""
+    _, node_id = await _seed_graph(created_graph_ids, model_value, block_id)
+    return node_id
+
+
+async def _seed_graph(
+    created_graph_ids: list[str],
+    model_value: str,
+    block_id: str = _LLM_BLOCK_ID,
+) -> tuple[str, str]:
+    """``_seed_node``, returning the graph id too."""
     block = await prisma.models.AgentBlock.prisma().find_unique(where={"id": block_id})
     assert block is not None, "blocks must be initialized by the server fixture"
     graph_id = str(uuid.uuid4())
@@ -92,7 +113,42 @@ async def _seed_node(
             "constantInput": prisma.Json({"model": model_value}),
         }
     )
-    return node.id
+    return graph_id, node.id
+
+
+async def _seed_preset(graph_id: str, inputs: dict[str, Any]) -> dict[str, str]:
+    """Create a preset of *graph_id* holding *inputs*, one row per name as the
+    library stores them. Returns each row's id by name."""
+    preset = await prisma.models.AgentPreset.prisma().create(
+        data={
+            "name": "retire-test",
+            "description": "retire-test",
+            "userId": _TEST_USER_ID,
+            "agentGraphId": graph_id,
+            "agentGraphVersion": 1,
+            "InputPresets": {
+                "create": [
+                    {"name": name, "data": prisma.Json(data)}
+                    for name, data in inputs.items()
+                ]
+            },
+        },
+        include={"InputPresets": True},
+    )
+    return {row.name: row.id for row in preset.InputPresets or []}
+
+
+def _override_key(node_id: str) -> str:
+    """The row name a preset stores one node's input overrides under."""
+    return f"{NODE_INPUT_MASK_PREFIX}{node_id.split('-')[0]}"
+
+
+async def _preset_input(row_id: str) -> Any:
+    row = await prisma.models.AgentNodeExecutionInputOutput.prisma().find_unique(
+        where={"id": row_id}
+    )
+    assert row is not None
+    return row.data
 
 
 def _two_catalog_slugs() -> tuple[str, str]:
@@ -117,7 +173,7 @@ async def test_usage_counts_seeded_nodes(retirement_env):
     source, _ = _two_catalog_slugs()
     await _seed_node(retirement_env, _node_value(source))
 
-    assert await count_model_usage(source) == 1
+    assert (await model_usage(source)).nodes == 1
 
 
 async def test_retire_rewrites_nodes_and_records(retirement_env):
@@ -214,7 +270,7 @@ async def test_prefixed_model_nodes_are_found_and_rewritten(retirement_env):
     replacement = "moonshotai/kimi-k2.6"
     node_id = await _seed_node(retirement_env, source)
 
-    assert await count_model_usage(source) == 1
+    assert (await model_usage(source)).nodes == 1
     result = await retire_model(source, replacement, reason="prefix regression")
     assert result.nodes_migrated == 1
     assert await _node_model(node_id) == replacement
@@ -238,13 +294,13 @@ async def test_retire_leaves_other_blocks_model_inputs_alone(
         retirement_env, source, block_id=_STAGEHAND_BLOCK_ID
     )
 
-    assert await count_model_usage(source) == 1
-    assert await count_other_block_usage(source) == 1
+    usage = await model_usage(source)
+    assert (usage.nodes, usage.other_block_nodes) == (1, 1)
     mocker.patch("backend.data.db.connect", new=AsyncMock())
     args = _build_parser().parse_args([source, "--replacement", replacement])
     assert await _run_cli(args) == 1
     dry_run = capsys.readouterr().out
-    assert "would migrate 1 node(s)" in dry_run
+    assert "would migrate 1 node(s) and 0 preset input(s)" in dry_run
     assert "1 node(s) of other blocks also name" in dry_run
 
     result = await retire_model(source, replacement)
@@ -285,6 +341,139 @@ async def test_boot_pass_moves_shut_down_models_once_and_nothing_else(
         assert {
             name: await _node_model(node_id) for name, node_id in nodes.items()
         } == expected
+
+
+async def test_boot_pass_rewrites_only_llm_block_preset_overrides(retirement_env):
+    """A preset's override of an LLM node moves off a model OpenAI has shut
+    down. The same value in a Codex node's override (Codex's own list offers
+    gpt-5.1-codex), an image node's override, and objects a workflow input
+    holds stay as they are, also under the catch-all that sends values outside
+    ``LLMModel`` to the default model."""
+    llm_graph, llm_node = await _seed_graph(retirement_env, "gpt-6.1-sol")
+    codex_graph, codex_node = await _seed_graph(
+        retirement_env, "gpt-5.1-codex", _CODEX_BLOCK_ID
+    )
+    image_graph, image_node = await _seed_graph(
+        retirement_env, "Flux 1.1 Pro", _IMAGE_BLOCK_ID
+    )
+    llm_rows = await _seed_preset(
+        llm_graph,
+        {
+            _override_key(llm_node): {"model": "gpt-5.1-codex", "prompt": "hi"},
+            "settings": {"model": "gpt-5.1-codex"},
+            "image_settings": {"model": "Flux 1.1 Pro"},
+        },
+    )
+    codex_rows = await _seed_preset(
+        codex_graph, {_override_key(codex_node): {"model": "gpt-5.1-codex"}}
+    )
+    image_rows = await _seed_preset(
+        image_graph, {_override_key(image_node): {"model": "Flux 1.1 Pro"}}
+    )
+    expected = {
+        llm_rows[_override_key(llm_node)]: {"model": "gpt-5.6-sol", "prompt": "hi"},
+        llm_rows["settings"]: {"model": "gpt-5.1-codex"},
+        llm_rows["image_settings"]: {"model": "Flux 1.1 Pro"},
+        codex_rows[_override_key(codex_node)]: {"model": "gpt-5.1-codex"},
+        image_rows[_override_key(image_node)]: {"model": "Flux 1.1 Pro"},
+    }
+
+    for _ in range(2):
+        await migrate_llm_models(DEFAULT_LLM_MODEL)
+        assert {row: await _preset_input(row) for row in expected} == expected
+        assert await _node_model(codex_node) == "gpt-5.1-codex"
+
+
+async def test_retire_moves_llm_preset_overrides_and_reverts_them(
+    retirement_env, mocker, capsys
+):
+    """The CLI moves the LLM node and the preset's override of it, records
+    both, reports the Codex override and a workflow input's value that it
+    leaves alone, does nothing on a second run, and a revert restores
+    exactly the rows it moved."""
+    from backend.data.llm_registry.retire import _build_parser, _run_cli
+
+    source, replacement = "gpt-5.1-codex", "gpt-5.6-sol"
+    llm_graph, llm_node = await _seed_graph(retirement_env, source)
+    codex_graph, codex_node = await _seed_graph(retirement_env, source, _CODEX_BLOCK_ID)
+    llm_rows = await _seed_preset(
+        llm_graph,
+        {
+            _override_key(llm_node): {"model": source, "sys_prompt": "be brief"},
+            "model_choice": source,
+        },
+    )
+    codex_rows = await _seed_preset(
+        codex_graph, {_override_key(codex_node): {"model": source}}
+    )
+    override = llm_rows[_override_key(llm_node)]
+    untouched = {
+        llm_rows["model_choice"]: source,
+        codex_rows[_override_key(codex_node)]: {"model": source},
+    }
+
+    usage = await model_usage(source)
+    assert usage.model_dump() == {
+        "nodes": 1,
+        "preset_inputs": 1,
+        "other_block_nodes": 1,
+        "other_preset_inputs": 2,
+    }
+    mocker.patch("backend.data.db.connect", new=AsyncMock())
+    args = _build_parser().parse_args([source, "--replacement", replacement])
+    assert await _run_cli(args) == 1
+    dry_run = capsys.readouterr().out
+    assert "would migrate 1 node(s) and 1 preset input(s)" in dry_run
+    assert "2 preset input(s) name 'gpt-5.1-codex'" in dry_run
+
+    result = await retire_model(source, replacement)
+
+    assert (result.nodes_migrated, result.preset_inputs_migrated) == (1, 1)
+    assert await _node_model(llm_node) == replacement
+    assert await _preset_input(override) == {
+        "model": replacement,
+        "sys_prompt": "be brief",
+    }
+    assert await _node_model(codex_node) == source
+    assert {row: await _preset_input(row) for row in untouched} == untouched
+    [row] = await list_model_migrations()
+    assert row.preset_input_count == 1
+
+    again = await retire_model(source, replacement)
+    assert (again.nodes_migrated, again.preset_inputs_migrated) == (0, 0)
+    assert again.migration_id is None
+
+    assert result.migration_id is not None
+    reverted = await revert_model_migration(result.migration_id)
+
+    assert (reverted.nodes_reverted, reverted.preset_inputs_reverted) == (1, 1)
+    assert reverted.preset_inputs_already_changed == 0
+    assert await _node_model(llm_node) == source
+    assert await _preset_input(override) == {"model": source, "sys_prompt": "be brief"}
+    assert {row: await _preset_input(row) for row in untouched} == untouched
+
+
+async def test_revert_leaves_a_repointed_preset_override_alone(retirement_env):
+    """Like nodes, a preset override someone moved to a third model since the
+    retirement keeps that model when the retirement is reverted."""
+    source, replacement = _two_catalog_slugs()
+    graph_id, node_id = await _seed_graph(retirement_env, source)
+    rows = await _seed_preset(graph_id, {_override_key(node_id): {"model": source}})
+    override = rows[_override_key(node_id)]
+    result = await retire_model(source, replacement)
+    assert result.migration_id is not None
+    await prisma.models.AgentNodeExecutionInputOutput.prisma().update(
+        where={"id": override}, data={"data": prisma.Json({"model": "user/picked"})}
+    )
+
+    reverted = await revert_model_migration(result.migration_id)
+
+    assert (
+        reverted.preset_inputs_reverted,
+        reverted.preset_inputs_already_changed,
+    ) == (0, 1)
+    assert await _preset_input(override) == {"model": "user/picked"}
+    assert await _node_model(node_id) == source
 
 
 @pytest.mark.asyncio(loop_scope="session")
