@@ -375,7 +375,8 @@ async def execute_block(
                     session_id=session_id,
                 ).from_outside(sim_error[0])
 
-            encoded = to_dict(dict(outputs))
+            # Encoded like the real run's outputs below.
+            encoded = to_dict(dict(outputs), sqlalchemy_safe=False)
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
@@ -616,7 +617,9 @@ async def execute_block(
                 # Encoded by alias like stored graph outputs, so a Drive file keeps
                 # the `_credentials_id` the next block's picker field reads. The
                 # judge locates the outside parts as placed, so declare these.
-                encoded = to_dict(dict(outputs))
+                # sqlalchemy_safe=False keeps keys starting with `_sa`, which
+                # the encoder drops by default.
+                encoded = to_dict(dict(outputs), sqlalchemy_safe=False)
                 return BlockOutputResponse(
                     message=f"Block '{block.name}' executed successfully",
                     block_id=block_id,

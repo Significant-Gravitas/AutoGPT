@@ -2395,6 +2395,40 @@ async def test_a_drive_file_from_one_block_runs_the_next_without_the_picker():
     creds_manager_cls.return_value.acquire.assert_awaited_once_with(_USER, "cred-1")
 
 
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_output_keys_starting_with_sa_are_kept(dry_run: bool):
+    """The encoder drops keys starting with `_sa` unless told not to."""
+    value = {"_sales_total": 42, "rows": [{"_sa_region": "EMEA"}]}
+
+    async def _yield_value(*args: Any, **kwargs: Any):
+        yield "result", value
+
+    block = _make_block()
+    block.execute = _yield_value
+    credit_patch, _ = _patch_credit_db()
+    with (
+        _patch_workspace(),
+        patch("backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})),
+        credit_patch,
+        patch("backend.copilot.tools.helpers.simulate_block", _yield_value),
+    ):
+        response = await execute_block(
+            block=block,
+            block_id="block-1",
+            input_data={},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-1",
+            matched_credentials={},
+            dry_run=dry_run,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert bool(response.is_dry_run) is dry_run
+    assert response.outputs == {"result": [value]}
+
+
 # ---------------------------------------------------------------------------
 # Credential choice on unattended turns (SECRT-2804)
 # ---------------------------------------------------------------------------
