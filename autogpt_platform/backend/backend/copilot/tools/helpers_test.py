@@ -1,6 +1,7 @@
 """Tests for execute_block, prepare_block_for_execution, and check_hitl_review."""
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from typing import Any, ClassVar, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -2330,40 +2331,68 @@ async def _store_workspace_file(path: str):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_outputs_keep_field_aliases_so_drive_files_chain():
-    """A Drive file a block returns keeps `_credentials_id`, as stored graph
-    outputs do, so the model can pass it to the next block's picker field."""
-    block = _make_block()
+async def test_a_drive_file_from_one_block_runs_the_next_without_the_picker():
+    """The model passes a Drive file on as it read it in a block's output.
+    Encoded by alias, as stored graph outputs are, it keeps the
+    `_credentials_id` the next block's picker field authenticates with."""
+    producer = _make_block()
 
     async def _execute(
         input_data: dict, **kwargs: Any
     ) -> AsyncIterator[tuple[str, Any]]:
         yield "file", GoogleDriveFile.model_validate(
-            {"id": "file-1", "name": "Q3 report", "_credentials_id": "cred-1"}
+            {
+                "id": "file-1",
+                "name": "Q3 report",
+                "mimeType": "application/vnd.google-apps.spreadsheet",
+                "_credentials_id": "cred-1",
+            }
         )
 
-    block.execute = _execute
+    producer.execute = _execute
+    creds_manager_cls = MagicMock()
+    creds_manager_cls.return_value.acquire = AsyncMock(
+        return_value=(MagicMock(id="cred-1", provider="google"), AsyncMock())
+    )
+    creds_manager_cls.return_value.get = AsyncMock(return_value=None)
     credit_patch, _ = _patch_credit_db()
     with (
         _patch_workspace(),
         patch("backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})),
         credit_patch,
+        patch(
+            "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+            creds_manager_cls,
+        ),
     ):
-        result = await execute_block(
-            block=block,
+        produced = await execute_block(
+            block=producer,
             block_id="block-1",
             input_data={},
             user_id=_USER,
             session_id=_SESSION,
-            node_exec_id="exec-alias",
+            node_exec_id="exec-produce",
+            matched_credentials={},
+            dry_run=False,
+        )
+        assert isinstance(produced, BlockOutputResponse)
+        # The content judge locates the declared outside parts as placed.
+        assert produced.outside == (produced.outputs,)
+        seen = json.loads(produced.model_dump_json(exclude_none=True))
+
+        consumed = await execute_block(
+            block=_make_block_with_auto_creds(),
+            block_id="drive-consumer",
+            input_data={"spreadsheet": seen["outputs"]["file"][0], "range": "A1"},
+            user_id=_USER,
+            session_id=_SESSION,
+            node_exec_id="exec-consume",
             matched_credentials={},
             dry_run=False,
         )
 
-    assert isinstance(result, BlockOutputResponse)
-    file = result.outputs["file"][0]
-    assert file["_credentials_id"] == "cred-1"
-    assert "credentials_id" not in file
+    assert isinstance(consumed, BlockOutputResponse)
+    creds_manager_cls.return_value.acquire.assert_awaited_once_with(_USER, "cred-1")
 
 
 # ---------------------------------------------------------------------------

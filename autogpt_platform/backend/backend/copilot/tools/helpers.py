@@ -375,16 +375,17 @@ async def execute_block(
                     session_id=session_id,
                 ).from_outside(sim_error[0])
 
+            encoded = to_dict(dict(outputs))
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
                 block_name=block.name,
-                outputs=to_dict(dict(outputs)),
+                outputs=encoded,
                 provider=get_block_provider(block),
                 success=True,
                 is_dry_run=True,
                 session_id=session_id,
-            ).from_outside(outputs)
+            ).from_outside(encoded)
         except Exception as e:
             logger.error("Dry-run simulation failed: %s", e, exc_info=True)
             return ErrorResponse(
@@ -612,17 +613,19 @@ async def execute_block(
                         _collect_block_outputs(block, input_data, exec_kwargs, outputs),
                         timeout=MAX_TOOL_WAIT_SECONDS,
                     )
+                # Encoded by alias like stored graph outputs, so a Drive file keeps
+                # the `_credentials_id` the next block's picker field reads. The
+                # judge locates the outside parts as placed, so declare these.
+                encoded = to_dict(dict(outputs))
                 return BlockOutputResponse(
                     message=f"Block '{block.name}' executed successfully",
                     block_id=block_id,
                     block_name=block.name,
-                    # Encoded by alias like stored graph outputs, so a Drive file keeps
-                    # the `_credentials_id` the next block's picker field reads.
-                    outputs=to_dict(dict(outputs)),
+                    outputs=encoded,
                     provider=get_block_provider(block),
                     success=True,
                     session_id=session_id,
-                ).from_outside(outputs)
+                ).from_outside(encoded)
             except BlockError as e:
                 # A setup card (connect or reconnect), or a saved review that
                 # could not be read, before any output means the provider did
