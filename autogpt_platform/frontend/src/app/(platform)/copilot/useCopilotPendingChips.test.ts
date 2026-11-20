@@ -974,6 +974,35 @@ describe("useCopilotPendingChips", () => {
       expect(reasons).toEqual([]);
     });
 
+    it("keeps the chips already shown when a later peek fails", async () => {
+      mockGetPending.mockResolvedValueOnce({
+        status: 200,
+        data: { count: 1, messages: ["queued earlier"] },
+        headers: new Headers(),
+      } as Awaited<ReturnType<typeof getV2GetPendingMessages>>);
+      const view = renderHook(
+        ({ status }) =>
+          useCopilotPendingChips({
+            sessionId: "s1",
+            status,
+            messages: [],
+            setMessages: vi.fn(),
+          }),
+        { initialProps: { status: "ready" as ChatStatus } },
+      );
+      await waitFor(() =>
+        expect(view.result.current.queuedMessages).toEqual(["queued earlier"]),
+      );
+
+      mockGetPending.mockRejectedValue(new ApiError("Bad Gateway", 502, {}));
+      view.rerender({ status: "submitted" });
+      view.rerender({ status: "streaming" });
+      await act(async () => {});
+
+      expect(mockGetPending).toHaveBeenCalledTimes(2);
+      expect(view.result.current.queuedMessages).toEqual(["queued earlier"]);
+    });
+
     it("still surfaces a peek that fails for any other reason", async () => {
       const badRequest = new ApiError("Bad Request", 400, {});
       mockGetPending.mockRejectedValue(badRequest);

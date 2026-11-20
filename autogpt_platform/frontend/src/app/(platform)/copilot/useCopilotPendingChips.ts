@@ -247,15 +247,16 @@ function usePeekOnBoundary({
         return [...fromServer, ...queuedDuringWindow];
       });
     });
-    void peek.catch(ignoreMissingSession);
+    void peek.catch(ignoreExpectedPeekFailure);
   }, [sessionId, status, queueRef, setQueue]);
 }
 
 // A deleted chat, or another account's, answers 404: nothing is pending. A
-// backend outage or a dropped connection ends the peek too: the next boundary
-// peeks again, and the mutator already reports each 5xx to Sentry by route.
-// Any other failure is rethrown, so it still reaches Sentry as before.
-function ignoreMissingSession(error: unknown) {
+// backend outage or a dropped connection ends the peek too, and the next
+// boundary peeks again. The mutator reports each 5xx to Sentry by route; a
+// network drop or an abort is left unreported on purpose. Any other failure
+// is rethrown so it reaches Sentry.
+function ignoreExpectedPeekFailure(error: unknown) {
   if (error instanceof ApiError && error.status === 404) return;
   if (isTransientRequestError(error)) return;
   throw error;
