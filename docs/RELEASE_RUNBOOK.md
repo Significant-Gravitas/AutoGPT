@@ -231,7 +231,8 @@ formula to the tap until it has resource blocks.
 ### 4. Tap + bucket PRs
 
 ```bash
-# Homebrew (the formula must already have its resource blocks; see step 3)
+# Homebrew (the formula must already have its resource blocks, see step 3,
+# and have passed the check below)
 cd ~/code/Significant-Gravitas/homebrew-tap
 cp /path/to/autogpt-local-executor/packaging/homebrew/autogpt-local-executor.rb Formula/
 git checkout -b bump-autogpt-local-executor-v0.0.1
@@ -255,8 +256,17 @@ autogpt-shim --version
 scoop uninstall autogpt-local-executor
 ```
 
-The same goes for the Homebrew formula on a Mac
-(`brew install --build-from-source ./packaging/homebrew/autogpt-local-executor.rb`).
+The same goes for the Homebrew formula on a Mac, before its pull request to
+the tap is opened: install it from the file, then run its test.
+
+```bash
+brew install --build-from-source ./packaging/homebrew/autogpt-local-executor.rb
+brew test autogpt-local-executor
+```
+
+Installing doesn't run the formula's `test do` block; `brew test` does. That
+block checks the version the installed `autogpt-shim` reports and imports
+each runtime dependency, so both commands have to pass.
 
 Both can be self-reviewed and merged immediately for v0.0.1; once the
 release cadence picks up, an "auto-update" workflow in the tap/bucket
@@ -268,9 +278,11 @@ checker) becomes worth the time.
 Either side of merge to the tap/bucket:
 
 ```bash
-# macOS / Linux: the tag this release pushed, not the default branch's head
-pipx install "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git@v<version>"
-autogpt-shim --version  # confirms install
+# macOS / Linux: the tag this release pushed, not the default branch's head.
+# --force, so that a shim pipx already has is replaced: without it pipx
+# leaves that one in place, and everything below would test the old one.
+pipx install --force "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git@v<version>"
+autogpt-shim --version  # must print <version>, the release being tested
 autogpt-shim doctor      # confirms permissions / TCC consent
 autogpt-shim auth
 autogpt-shim start       # opens the persistent outbound machine connection
