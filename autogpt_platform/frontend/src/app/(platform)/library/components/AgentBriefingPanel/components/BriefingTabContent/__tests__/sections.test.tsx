@@ -75,6 +75,31 @@ describe("ExecutionListSection", () => {
     expect(screen.getByRole("button", { name: /collapse/i })).toBeDefined();
   });
 
+  it("counts a running item with no activity status up each second", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-21T12:00:10Z"));
+    try {
+      const agents = [makeAgent({ id: "lib-1", graph_id: "g-1" })];
+      server.use(
+        getGetV1ListAllExecutionsMockHandler200([
+          {
+            ...makeRunningExecution("g-1", "exec-1"),
+            started_at: "2026-07-21T12:00:00Z",
+            stats: null,
+          } as unknown as GraphExecutionMeta,
+        ]),
+      );
+
+      render(<ExecutionListSection activeTab="running" agents={agents} />);
+      expect(await screen.findByText("Running for 10s")).toBeDefined();
+
+      vi.setSystemTime(new Date("2026-07-21T12:00:16Z"));
+      expect(await screen.findByText("Running for 16s")).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("flags a recently completed run whose step failed instead of calling it a success", async () => {
     const agents = [
       makeAgent({ id: "lib-1", graph_id: "g-1", name: "Newsletter" }),

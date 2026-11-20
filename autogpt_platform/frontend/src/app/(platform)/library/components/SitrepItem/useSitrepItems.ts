@@ -11,7 +11,6 @@ import {
   isCompletedWithErrors,
 } from "@/lib/run-health";
 import { useMemo } from "react";
-import { useNowSecond } from "@/hooks/useNowSecond";
 import type { SitrepItemData, SitrepPriority } from "../../types";
 import {
   isActive,
@@ -32,18 +31,6 @@ export function useSitrepItems(
     query: { select: okData },
   });
 
-  const hasActiveExecution = useMemo(
-    () =>
-      (executions ?? []).some(
-        (e) =>
-          e.status === AgentExecutionStatus.RUNNING ||
-          e.status === AgentExecutionStatus.QUEUED,
-      ),
-    [executions],
-  );
-  // Keep "Running for …" messages advancing while executions are in flight.
-  const nowMs = useNowSecond(hasActiveExecution);
-
   return useMemo(() => {
     if (agents.length === 0) return [];
 
@@ -53,7 +40,7 @@ export function useSitrepItems(
     const coveredAgentIds = new Set<string>();
 
     for (const [agent, execs] of agentExecutions) {
-      const item = buildSitrepFromExecutions(agent, execs, nowMs);
+      const item = buildSitrepFromExecutions(agent, execs);
       if (item) {
         items.push(item);
         coveredAgentIds.add(agent.id);
@@ -79,7 +66,7 @@ export function useSitrepItems(
     items.sort((a, b) => order[a.priority] - order[b.priority]);
 
     return items.slice(0, maxItems);
-  }, [agents, executions, maxItems, scheduledWithinMs, nowMs]);
+  }, [agents, executions, maxItems, scheduledWithinMs]);
 }
 
 function groupByAgent(
@@ -105,10 +92,14 @@ function groupByAgent(
 function buildSitrepFromExecutions(
   agent: LibraryAgent,
   executions: GraphExecutionMeta[],
-  nowMs: number,
 ): SitrepItemData | null {
   const active = executions.find((e) => isActive(e.status));
   if (active) {
+    const activityStatus = active.stats?.activity_status ?? null;
+    const countsUp =
+      activityStatus === null &&
+      active.status === AgentExecutionStatus.RUNNING &&
+      Boolean(active.started_at);
     return {
       id: `${agent.id}-${active.id}`,
       agentID: agent.id,
@@ -116,8 +107,8 @@ function buildSitrepFromExecutions(
       executionID: active.id,
       priority: "running",
       message:
-        active.stats?.activity_status ??
-        runningMessage(active.status, active.started_at, nowMs),
+        activityStatus ?? runningMessage(active.status, active.started_at),
+      runningSince: countsUp ? (active.started_at ?? undefined) : undefined,
       status: "running",
     };
   }
