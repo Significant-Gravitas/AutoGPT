@@ -6,15 +6,34 @@ resolve fails the whole call with ``NotFoundError`` so nothing moves.
 """
 
 import uuid
+from contextlib import asynccontextmanager
 
 import pytest
-from prisma.models import AgentGraph, LibraryAgent, LibraryFolder
+from prisma.models import AgentGraph, LibraryAgent, LibraryFolder, User
 
+from backend.data.db import transaction
 from backend.data.user import get_or_create_user
 from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
 
 from .db import bulk_move_agents_to_folder
+
+_seeded_user_ids: list[str] = []
+
+
+@pytest.fixture(autouse=True)
+async def _clean_seeded_rows():
+    """Delete what each test made; every row belongs to a user from ``_user``."""
+    yield
+    user_ids = list(_seeded_user_ids)
+    _seeded_user_ids.clear()
+    if not user_ids:
+        return
+    # An entry blocks the delete of its folder and graph, so entries go first.
+    await LibraryAgent.prisma().delete_many(where={"userId": {"in": user_ids}})
+    await LibraryFolder.prisma().delete_many(where={"userId": {"in": user_ids}})
+    await AgentGraph.prisma().delete_many(where={"userId": {"in": user_ids}})
+    await User.prisma().delete_many(where={"id": {"in": user_ids}})
 
 
 async def _user() -> str:
@@ -25,6 +44,7 @@ async def _user() -> str:
             "name": "Folder Owner",
         }
     )
+    _seeded_user_ids.append(user.id)
     return user.id
 
 
@@ -147,6 +167,34 @@ async def test_organization_moves_only_its_own_and_untagged_entries(
             [other.id], folder, user, organization_id="org-a"
         )
     assert await _folder_of(other.id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_entry_re_tagged_after_the_lookup_is_not_moved(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    user = await _user()
+    folder = await _folder(user)
+    (entry,) = await _entries_of_one_graph(user, ["org-a"])
+
+    @asynccontextmanager
+    async def re_tag_then_transaction():
+        # Another request moves the entry to org-b after the move's lookup.
+        await LibraryAgent.prisma().update(
+            where={"id": entry.id}, data={"organizationId": "org-b"}
+        )
+        async with transaction() as tx:
+            yield tx
+
+    monkeypatch.setattr(
+        "backend.api.features.library.db.transaction", re_tag_then_transaction
+    )
+    moved = await bulk_move_agents_to_folder(
+        [entry.id], folder, user, organization_id="org-a"
+    )
+
+    assert moved == []
+    assert await _folder_of(entry.id) is None
 
 
 @pytest.mark.asyncio(loop_scope="session")

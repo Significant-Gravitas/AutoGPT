@@ -2121,6 +2121,18 @@ async def bulk_move_agents_to_folder(
     if not agent_ids:
         return []
 
+    # A graph ID can name the graph's entries in several organizations.
+    in_organization = (
+        [
+            cast(
+                prisma.types.LibraryAgentWhereInput,
+                organization_filter({organization_id, None}),
+            )
+        ]
+        if organization_id is not None
+        else None
+    )
+
     # Resolve every ID before writing, so an unknown one moves nothing.
     # Archived agents can be moved; deleted ones can't.
     where: prisma.types.LibraryAgentWhereInput = {
@@ -2131,11 +2143,8 @@ async def bulk_move_agents_to_folder(
             {"agentGraphId": {"in": agent_ids}},
         ],
     }
-    if organization_id is not None:
-        # A graph ID can name the graph's entries in several organizations.
-        where["AND"] = [
-            {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
-        ]
+    if in_organization:
+        where["AND"] = in_organization
     matches = await prisma.models.LibraryAgent.prisma().find_many(where=where)
     found = {a.id for a in matches} | {a.agentGraphId for a in matches}
     missing = [i for i in dict.fromkeys(agent_ids) if i not in found]
@@ -2149,12 +2158,15 @@ async def bulk_move_agents_to_folder(
         return []
 
     # Move and read back in one transaction with the same filter, so the
-    # returned list is exactly what this call moved.
+    # returned list is exactly what this call moved. The organization is
+    # checked again because an entry can be re-tagged after the lookup.
     scope: prisma.types.LibraryAgentWhereInput = {
         "id": {"in": [a.id for a in to_move]},
         "userId": user_id,
         "isDeleted": False,
     }
+    if in_organization:
+        scope["AND"] = in_organization
     async with transaction() as tx:
         await prisma.models.LibraryAgent.prisma(tx).update_many(
             where=scope,
