@@ -22,7 +22,20 @@ vi.mock("@/services/analytics/reset-identity", () => ({
 }));
 const toast = vi.hoisted(() => vi.fn());
 vi.mock("@/components/molecules/Toast/use-toast", () => ({ toast }));
+const sentry = vi.hoisted(() => ({
+  addBreadcrumb: vi.fn(),
+  captureMessage: vi.fn(),
+}));
+vi.mock("@sentry/nextjs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sentry/nextjs")>()),
+  ...sentry,
+}));
 
+import {
+  createRouterQueue,
+  disposeRouterQueue,
+} from "@/tests/integrations/next-router-queue";
+import { SESSION_CHECK_DEADLINE_MS } from "../session-check-deadline";
 import { useAuthStore } from "../useAuthStore";
 
 const ACT_AS = "X-Act-As-User-Id";
@@ -191,5 +204,264 @@ describe("a deploy skew the reload didn't fix", () => {
       }),
     );
     expect(useAuthStore.getState().user).toBe(admin);
+  });
+});
+
+describe("a session check that never gets an answer (#16988)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    disposeRouterQueue();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("lets the next refocus check the session once the deadline passes", async () => {
+    // Signed in, with the session listeners running as in the app.
+    useAuthStore.setState({ user: admin, hasLoadedUser: true });
+    await useAuthStore.getState().initialize({
+      api: { disconnectWebSocket: vi.fn() } as unknown as BackendAPI,
+      router: makeRouter(),
+      path: "/library",
+    });
+    // The first check's server action was dropped: it never answers.
+    actions.validateSession.mockReturnValueOnce(new Promise(() => {}));
+    actions.validateSession.mockResolvedValue({ user: admin, isValid: true });
+
+    void validate();
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_DEADLINE_MS);
+    // Unavailable, so a backoff retry now waits its first second.
+    expect(useAuthStore.getState().retryTimer).not.toBeNull();
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The refocus checked at once, in place of that retry, which never fires.
+    expect(actions.validateSession).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(actions.validateSession).toHaveBeenCalledTimes(2);
+    expect(useAuthStore.getState().user).toBe(admin);
+  });
+
+  it("ignores an answer that arrives after the deadline, and the next check finds the session ended", async () => {
+    const router = makeRouter();
+    // Retries run against the page the store last saw, as in the app.
+    useAuthStore.setState({
+      user: admin,
+      hasLoadedUser: true,
+      routerRef: router,
+      currentPath: "/library",
+    });
+    const signedOut = {
+      user: null,
+      isValid: false,
+      redirectPath: "/login?next=%2Flibrary",
+    };
+    let answerLate: (value: unknown) => void = () => {};
+    actions.validateSession.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answerLate = resolve;
+      }),
+    );
+    actions.validateSession.mockResolvedValue(signedOut);
+
+    void validate(router);
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_DEADLINE_MS);
+    // The session ended meanwhile, and the check's answer comes too late.
+    answerLate(signedOut);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(useAuthStore.getState().user).toBe(admin);
+    expect(router.push).not.toHaveBeenCalled();
+
+    // The backoff retry a second later is the next check, and it signs out.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(actions.validateSession).toHaveBeenCalledTimes(2);
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(router.push).toHaveBeenCalledWith(signedOut.redirectPath);
+  });
+
+  it("acts on an answer that arrives just before the deadline", async () => {
+    const router = makeRouter();
+    useAuthStore.setState({ user: admin, hasLoadedUser: true });
+    const signedOut = {
+      user: null,
+      isValid: false,
+      redirectPath: "/login?next=%2Flibrary",
+    };
+    let answer: (value: unknown) => void = () => {};
+    actions.validateSession.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+
+    void validate(router);
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_DEADLINE_MS - 1);
+    answer(signedOut);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(router.push).toHaveBeenCalledWith(signedOut.redirectPath);
+  });
+
+  it("finishes start-up when its first lookup never answers", async () => {
+    actions.getCurrentUser.mockReturnValueOnce(new Promise(() => {}));
+    actions.validateSession.mockResolvedValue({ user: admin, isValid: true });
+
+    void useAuthStore.getState().initialize({
+      api: { disconnectWebSocket: vi.fn() } as unknown as BackendAPI,
+      router: makeRouter(),
+      path: "/library",
+    });
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_DEADLINE_MS);
+
+    // Start-up gave up on the lookup, asked the backend instead and let go
+    // of the check, so the next refocus checks again.
+    expect(useAuthStore.getState()).toMatchObject({
+      user: admin,
+      isValidating: false,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(actions.validateSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets the next check go out when a refresh never answers", async () => {
+    useAuthStore.setState({ user: admin, hasLoadedUser: true });
+    actions.refreshSession.mockReturnValueOnce(new Promise(() => {}));
+    actions.validateSession.mockResolvedValue({ user: admin, isValid: true });
+    let refreshed: unknown;
+    void useAuthStore
+      .getState()
+      .refreshSession()
+      .then((result) => {
+        refreshed = result;
+      });
+
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_DEADLINE_MS);
+
+    // It counts as unavailable: the admin stays signed in, the check is let go.
+    expect(refreshed).toMatchObject({ isUnavailable: true });
+    expect(useAuthStore.getState()).toMatchObject({
+      user: admin,
+      isValidating: false,
+    });
+    await validate();
+    expect(actions.validateSession).toHaveBeenCalledTimes(1);
+  });
+
+  // What the deadline can't do: Next runs one server action at a time (#17028).
+  it("still queues the next check behind one the server took but never answered", async () => {
+    useAuthStore.setState({ user: admin, hasLoadedUser: true });
+    const queue = createRouterQueue();
+    const reached: string[] = [];
+    actions.validateSession
+      .mockImplementationOnce(() =>
+        queue.callServer(() => {
+          reached.push("first");
+          return new Promise(() => {});
+        }),
+      )
+      .mockImplementationOnce(() =>
+        queue.callServer(async () => {
+          reached.push("second");
+          return { user: admin, isValid: true };
+        }),
+      );
+
+    void validate();
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_DEADLINE_MS);
+    // The store sends its next check, but Next holds it back, past its own
+    // deadline too.
+    const second = validate();
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_DEADLINE_MS);
+    await second;
+    expect(actions.validateSession).toHaveBeenCalledTimes(2);
+    expect(reached).toEqual(["first"]);
+
+    // A navigation discards the unanswered action, and the queue moves on.
+    queue.navigate().arrive();
+    await vi.waitFor(() => expect(reached).toEqual(["first", "second"]));
+    expect(useAuthStore.getState().user).toBe(admin);
+  });
+
+  it("runs its deadline only while a check waits for its answer", async () => {
+    useAuthStore.setState({ user: admin, hasLoadedUser: true });
+    let answer: (value: unknown) => void = () => {};
+    actions.validateSession.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const baseline = vi.getTimerCount();
+
+    const check = validate();
+    // Nothing is armed in the turn that sends the check, so code stepping
+    // timers right after rendering the app meets no deadline...
+    expect(vi.getTimerCount()).toBe(baseline);
+    await vi.advanceTimersByTimeAsync(0);
+    // ...it runs while the check waits...
+    expect(vi.getTimerCount()).toBe(baseline + 1);
+    answer({ user: admin, isValid: true });
+    await check;
+
+    // ...and nothing is left once the answer is in.
+    expect(vi.getTimerCount()).toBe(baseline);
+  });
+});
+
+describe("telling Sentry about session checks that never get an answer", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("warns once per page load for each kind of check, and not on the console", async () => {
+    // A fresh page load: what was reported is remembered per load.
+    vi.resetModules();
+    const helpers = await import("../helpers");
+    const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
+    const never = () => new Promise<never>(() => {});
+    actions.validateSession
+      .mockImplementationOnce(never)
+      .mockImplementationOnce(never);
+    actions.getCurrentUser.mockImplementationOnce(never);
+    actions.refreshSession.mockImplementationOnce(never);
+
+    const checks = Promise.all([
+      helpers.validateSession({ path: "/library", currentUser: admin }),
+      helpers.validateSession({ path: "/library", currentUser: admin }),
+      helpers.fetchUser(),
+      helpers.refreshSession(),
+    ]);
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_DEADLINE_MS);
+    await checks;
+
+    expect(sentry.addBreadcrumb).toHaveBeenCalledTimes(4);
+    expect(sentry.captureMessage).toHaveBeenCalledTimes(3);
+    for (const check of [
+      "validateSession",
+      "getCurrentUser",
+      "refreshSession",
+    ]) {
+      expect(sentry.captureMessage).toHaveBeenCalledWith(
+        "Session check got no answer in time",
+        {
+          level: "warning",
+          tags: { context: "session-check", server_action: check },
+        },
+      );
+    }
+    // Sentry captures console warnings and errors as well.
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
   });
 });

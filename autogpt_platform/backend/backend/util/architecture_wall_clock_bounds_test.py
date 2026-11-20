@@ -220,6 +220,127 @@ def test_the_scan_reads_test_modules_and_only_those(tmp_path: pathlib.Path):
             "assert time.monotonic() - started < backend.fake.limits.BOUND",
             [1.0],
         ),
+        ("ev = asyncio.get_running_loop()\nassert ev.time() - started < 1", [1.0]),
+        ("ev = asyncio.get_event_loop()\nassert ev.time() - started < 1", [1.0]),
+        (
+            "from asyncio import get_running_loop as current\n"
+            "ev = current()\nstarted = ev.time()\nassert ev.time() - started < 1",
+            [1.0],
+        ),
+        ("ev = make_event()\nassert ev.time() - started < 1", []),
+        (
+            "ev = asyncio.get_running_loop()\nev = make_event()\n"
+            "assert ev.time() - started < 1",
+            [],
+        ),
+        ("def test(ev):\n    assert ev.time() - started < 1", []),
+        # A helper returns the elapsed time and the caller bounds it (the #15003
+        # join-grace pattern).
+        (
+            "_GRACE_MS = 300\n"
+            "def _refresh():\n    return None, None\n"
+            "class TestGrace:\n"
+            "    async def _refresh(self):\n"
+            "        loop = asyncio.get_running_loop()\n"
+            "        started = loop.time()\n"
+            "        return None, loop.time() - started\n"
+            "    async def test(self):\n"
+            "        out, waited = await self._refresh()\n"
+            "        assert waited < _GRACE_MS / 1000\n"
+            "        assert _GRACE_MS / 1000 - 0.05 <= waited <= 0.55\n"
+            "        assert waited >= 0.25\n"
+            "        assert waited < 5\n"
+            "        assert waited < 1  # wall-clock: why\n"
+            "        assert out < 1\n",
+            [0.3, 0.55],
+        ),
+        (
+            "def timed():\n    return time.monotonic() - started\nassert timed() < 1",
+            [1.0],
+        ),
+        (
+            "async def timed():\n    return time.monotonic() - started\n"
+            "async def test():\n    elapsed = await timed()\n    assert elapsed < 1",
+            [1.0],
+        ),
+        (
+            "def test():\n    assert timed() < 500\n"
+            "def timed():\n    elapsed = time.perf_counter() - started\n"
+            "    return elapsed * 1000\n",
+            [0.5],
+        ),
+        (
+            "def test():\n    def timed():\n"
+            "        return 0, time.monotonic() - started\n"
+            "    assert timed()[1] < 1\n    assert timed()[0] < 1",
+            [1.0],
+        ),
+        (
+            "def timed():\n    return time.monotonic() - started, 3\n"
+            "elapsed, count = timed()\nassert count < 4\n*_, last = timed()\n"
+            "assert last < 1",
+            [],
+        ),
+        (
+            "def timed(fast):\n    if fast:\n        return 0.0\n"
+            "    return time.monotonic() - started\nassert timed(True) < 1",
+            [],
+        ),
+        (
+            "def timed():\n    return time.thread_time() - started\nassert timed() < 1",
+            [],
+        ),
+        ("def timed():\n    return timed()\nassert timed() < 1", []),
+        (
+            "def timed():\n    return time.monotonic() - started\n"
+            "def test(timed):\n    assert timed() < 1",
+            [],
+        ),
+        (
+            "def timed():\n    return time.monotonic() - started\n"
+            "timed = other\nassert timed() < 1",
+            [],
+        ),
+        (
+            "def timed():\n    return time.monotonic() - started\n"
+            "timed = lambda: 0\nassert timed() < 1",
+            [],
+        ),
+        (
+            "def timed():\n    return time.monotonic() - started\n"
+            "from backend.fake.limits import timed\nassert timed() < 1",
+            [],
+        ),
+        (
+            "class T:\n    def timed(self):\n"
+            "        return time.monotonic() - started\n"
+            "    timed = wrap(timed)\n"
+            "    def test(self):\n        assert self.timed() < 1\n",
+            [],
+        ),
+        (
+            "def wrap(f):\n    return lambda: 0\n"
+            "@wrap\ndef timed():\n    return time.monotonic() - started\n"
+            "assert timed() < 1",
+            [],
+        ),
+        (
+            "class T:\n    @staticmethod\n    def timed():\n"
+            "        return time.monotonic() - started\n"
+            "    @classmethod\n    def timed_cls(cls):\n"
+            "        return time.monotonic() - started\n"
+            "    def test(self):\n"
+            "        assert self.timed() < 1\n        assert self.timed_cls() < 2\n",
+            [1.0, 2.0],
+        ),
+        (
+            "class Timer:\n    def timed(self):\n"
+            "        return time.monotonic() - started\n"
+            "class Other:\n    def timed(self):\n        return 0.0\n"
+            "    def test(self):\n        assert self.timed() < 1\n"
+            "assert timer.timed() < 1",
+            [],
+        ),
     ],
 )
 def test_the_scan_reads_each_form(

@@ -21,6 +21,7 @@ import {
   resolveDataType,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
+import { isUnsafeIntegerText } from "@/lib/integer-input";
 import { getSelectOptions } from "./helpers";
 import { useRunAgentInputs } from "./useRunAgentInputs";
 import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
@@ -81,9 +82,14 @@ export function RunAgentInputs({
           value={value ?? ""}
           placeholder={placeholder || "Enter number"}
           onChange={(e) => {
-            const v = (e.target as HTMLInputElement).value;
-            if (!v || v.trim() === "") {
+            const v = (e.target as HTMLInputElement).value.trim();
+            if (!v) {
               onChange(undefined);
+            } else if (
+              valueSchema.type === "integer" &&
+              isUnsafeIntegerText(v)
+            ) {
+              onChange(v);
             } else {
               const numValue = Number(v);
               onChange(isNaN(numValue) ? undefined : numValue);

@@ -10,6 +10,7 @@ out by hand from the price rules, not by the code under test.
 
 import asyncio
 from collections.abc import AsyncIterator, Callable
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -37,6 +38,7 @@ from backend.copilot.tools.models import (
     ToolResponseBase,
 )
 from backend.data.credit import UsageTransactionMetadata
+from backend.data.llm_registry import llm_models
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsMetaInput,
@@ -45,9 +47,11 @@ from backend.data.model import (
 from backend.integrations.credentials_store import (
     e2b_credentials,
     open_router_credentials,
+    openai_credentials,
 )
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockExecutionError, InsufficientBalanceError
+from backend.util.llm.providers import ProviderResponse
 
 from ._test_data import make_session
 
@@ -187,10 +191,14 @@ _RUNS: dict[type, tuple[dict[str, Any], APIKeyCredentials]] = {
 
 
 async def _run_block(
-    block: AnyBlockSchema, wallet: _Wallet, clock: _Clock | None = None
+    block: AnyBlockSchema,
+    wallet: _Wallet,
+    clock: _Clock | None = None,
+    run: tuple[dict[str, Any], APIKeyCredentials] | None = None,
 ) -> ToolResponseBase:
-    """Run ``block`` on its platform credential, as run_block does."""
-    input_data, credentials = _RUNS[type(block)]
+    """Run ``block`` on its platform credential, as run_block does, with
+    *run*'s input and credential in place of its usual ones."""
+    input_data, credentials = run or _RUNS[type(block)]
     creds_manager = MagicMock(get=AsyncMock(return_value=credentials))
     workspace = MagicMock(
         get_or_create_workspace=AsyncMock(return_value=MagicMock(id="ws"))
@@ -330,6 +338,43 @@ async def test_a_run_stopped_during_a_model_call_is_billed_the_requests_input(
 
     assert provider.calls == 1
     assert wallet.paid == billed
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_run_across_its_models_shutdown_midnight_is_billed_for_the_model_it_ran():
+    """The block starts on gpt-5-mini on 10 Dec, the eve of the model's
+    shutdown date, and midnight passes while the provider has the request.
+    The run is billed gpt-5-mini's price for the million input tokens it
+    reported, 38 credits, not the 150 of gpt-6.1-terra, its fallback."""
+    block = AITextGeneratorBlock()
+    wallet = _Wallet(balance=1_000)
+    clock = {"today": date(2026, 12, 10)}
+    asked: list[str] = []
+
+    async def provider(*, model: str, **_: object) -> ProviderResponse:
+        asked.append(model)
+        clock["today"] = date(2026, 12, 11)
+        return ProviderResponse(
+            content="Hello.", prompt_tokens=1_000_000, completion_tokens=0
+        )
+
+    platform_key = openai_credentials.model_copy(
+        update={"api_key": SecretStr("mock-key")}
+    )
+    with (
+        patch.object(llm_models, "_today", lambda: clock["today"]),
+        patch("backend.util.llm.providers.call_provider", provider),
+        patch.object(helpers, "charge_credits", AsyncMock()),
+    ):
+        response = await _run_block(
+            block,
+            wallet,
+            run=({"prompt": "Hi.", "model": LLMModel.GPT5_MINI.value}, platform_key),
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert asked == [LLMModel.GPT5_MINI.value]
+    assert wallet.paid == 38
 
 
 @pytest.mark.asyncio(loop_scope="session")

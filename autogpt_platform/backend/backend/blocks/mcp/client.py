@@ -71,8 +71,8 @@ _MAX_INPUT_REQUIRED_RETRIES = 3
 MAX_TOOLS_PER_SERVER = 1000
 # Far above any real tool result; a longer one is refused.
 MAX_CONTENT_ITEMS = 10_000
-# ``Requests`` retries throttled/5xx responses forever unless told otherwise.
-# MCP calls run inside graph executions and chat turns, so keep them bounded.
+# How many times ``Requests`` sends a throttled/5xx call. MCP calls run inside
+# graph executions and chat turns, so they get the same small bound everywhere.
 _HTTP_RETRY_ATTEMPTS = 3
 # Replies are parsed whole, and parsed JSON can take many times its size.
 MAX_REPLY_BYTES = 2 * 1024 * 1024

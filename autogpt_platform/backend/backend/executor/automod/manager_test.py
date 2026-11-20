@@ -110,11 +110,11 @@ async def test_a_moderation_timeout_follows_fail_open(
             nodes=[MagicMock(id="node-1", input_default={"prompt": "hello"})]
         )
     )
-    completed = MagicMock(output_data={"answer": ["hello back"]})
-    # Output moderation reads the completed nodes first. The last read is the
-    # one that marks nodes failed after a refusal; nothing is left to mark.
-    reads = [[completed], []] if stage == "output" else [[]]
-    db_client.get_node_executions = AsyncMock(side_effect=reads)
+    # Output moderation reads the completed nodes it checks. Failing and masking
+    # them after a refusal is up to the executor, not the check.
+    db_client.get_node_executions = AsyncMock(
+        return_value=[MagicMock(output_data={"answer": ["hello back"]})]
+    )
 
     with patch("backend.executor.automod.manager.Requests") as requests:
         requests.return_value.post = AsyncMock(side_effect=service_error())
@@ -131,6 +131,7 @@ async def test_a_moderation_timeout_follows_fail_open(
             )
 
     requests.return_value.post.assert_awaited_once()
+    db_client.mark_node_executions_moderated.assert_not_called()
     if fail_open:
         assert result is None
     else:

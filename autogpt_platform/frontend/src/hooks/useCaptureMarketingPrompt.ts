@@ -1,14 +1,14 @@
+import { stashCopilotPrompt } from "@/services/copilot/prompt-handoff";
 import { useMountEffect } from "./useMountEffect";
 
-const PROMPT_KEY = "importWorkflowPrompt";
-const AUTOSUBMIT_KEY = "importWorkflowAutosubmit";
 const PARAM = "triggerprompt";
 
 /**
  * Capture a `?triggerprompt=` value handed off from the marketing site and
  * stash it into sessionStorage so it survives the signup → onboarding →
  * /copilot redirect chain (which would otherwise strip the URL). The /copilot
- * page picks it up via `useWorkflowImportAutoSubmit` and auto-submits.
+ * page prefills it via `useWorkflowImportAutoSubmit`: the value comes from
+ * another origin, so the user sends it.
  */
 export function useCaptureMarketingPrompt() {
   useMountEffect(() => {
@@ -18,8 +18,7 @@ export function useCaptureMarketingPrompt() {
     const prompt = url.searchParams.get(PARAM);
     if (!prompt || !prompt.trim()) return;
 
-    sessionStorage.setItem(PROMPT_KEY, prompt.trim());
-    sessionStorage.setItem(AUTOSUBMIT_KEY, "true");
+    stashCopilotPrompt({ prompt: prompt.trim(), autosubmit: false });
 
     url.searchParams.delete(PARAM);
     window.history.replaceState(

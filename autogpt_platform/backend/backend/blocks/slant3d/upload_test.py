@@ -15,6 +15,7 @@ async def test_slicer_loads_workspace_attachment_with_user_context(
 
     async def put(url, **kwargs):
         uploaded.append(kwargs["data"].read())
+        return Mock(ok=True, status=200)
 
     context = ExecutionContext(
         user_id="user-1",
@@ -82,6 +83,7 @@ async def test_slicer_loads_workspace_attachment_with_user_context(
         "https://upload.example.com/model",
         data=ANY,
         headers={"Content-Type": "application/octet-stream"},
+        allow_redirects=False,
     )
     assert uploaded == [b"STL bytes"]
     assert api.await_args_list[0].kwargs["json"] == {

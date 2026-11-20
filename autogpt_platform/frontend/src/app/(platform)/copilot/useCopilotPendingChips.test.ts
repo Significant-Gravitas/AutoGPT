@@ -208,6 +208,26 @@ describe("useCopilotPendingChips", () => {
     expect(promoted?.role).toBe("user");
   });
 
+  it("takes a chip back with the bubble a drain promoted it to while its request was out", async () => {
+    const { view, getMessages, rerender } = setupHook([assistantMessage(0)]);
+
+    let chipId = "";
+    act(() => {
+      chipId = view.result.current.queueMessage("follow up");
+    });
+    await act(async () => {
+      rerender([assistantMessage(1)]);
+    });
+    await waitFor(() => expect(storedFallbacks(getMessages())).toHaveLength(1));
+
+    act(() => {
+      view.result.current.unqueueMessage(chipId);
+    });
+
+    expect(view.result.current.queuedMessages).toEqual([]);
+    expect(getMessages()).toEqual([assistantMessage(1)]);
+  });
+
   it("draws the follow-up once when the hint carries the text", async () => {
     // The transcript renders the bubble at the drain point itself
     // (splitMessagesAtDrainHints); the fallback bubble promoted here must
