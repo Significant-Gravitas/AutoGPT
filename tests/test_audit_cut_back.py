@@ -433,3 +433,29 @@ async def test_a_removal_is_recorded_once_when_the_write_after_it_fails(
         "EXECUTE_COMMAND",
     ]
     assert AuditWriter.verify(writer.path, KEY) == []
+
+
+async def test_verify_does_not_vouch_for_a_removal_record_in_a_log_that_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The note for an AUDIT_RECORDS_REMOVED record is read off the file as
+    it is. In a log that fails verification the record may be one nobody
+    signed (written in by hand, or changed), and `audit verify` printed
+    what it says as plainly as for a log that verified."""
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await _write(writer, *NAMES)
+    writer.path.unlink()
+    await _write(writer, "after")
+    # The record is changed after the shim wrote it: it now names another
+    # last record, and its HMAC is no longer its own.
+    changed = writer.path.read_bytes().replace(b'"last_seq": 10', b'"last_seq": 3', 1)
+    assert changed != writer.path.read_bytes()
+    writer.path.write_bytes(changed)
+
+    for verify in (cli._audit_verify, cli._audit_verify_all):
+        assert verify(writer.path) == 1
+        out = " ".join(capsys.readouterr().out.split())
+        assert "records that the log before it" not in out
+        assert "note: seq=1 reads as a record that the log before it, up to seq=3" in out
+        assert "failed verification" in out

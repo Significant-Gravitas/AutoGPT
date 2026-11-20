@@ -842,8 +842,9 @@ def _audit_verify(current: Path) -> int:
     if contents is None:
         print(f"Audit log not found: {current}")
         return 1
-    status = _print_violations(current, AuditWriter.verify_records(contents, key))
-    _print_removals(contents)
+    violations = AuditWriter.verify_records(contents, key)
+    status = _print_violations(current, violations)
+    _print_removals(contents, verified=not violations)
     return status
 
 
@@ -901,7 +902,7 @@ def _audit_verify_all(current: Path) -> int:
         if violations:
             failures += 1
         _print_violations(path, violations)
-        _print_removals(contents)
+        _print_removals(contents, verified=not violations)
     if failures:
         print(f"\n{failures} of {checked} files have violations.")
         return 1
@@ -1266,19 +1267,33 @@ def _print_record_line(raw: bytes) -> None:
     print(_printable(f"seq={seq:>5}  {op:<22}  {marker}"))
 
 
-def _print_removals(contents: bytes) -> None:
+def _print_removals(contents: bytes, *, verified: bool) -> None:
     """Say what a log's AUDIT_RECORDS_REMOVED records say. The chain can
     verify with one in it: the record is the sign that the log a shim was
     writing was emptied, removed or replaced under it, or rotated and then
-    pruned."""
+    pruned.
+
+    The records are read off the file as it is. In a log that failed
+    verification (not `verified`) one of them may be a record nobody
+    signed, so what it says is given as what the file reads, not as what
+    happened."""
     from .audit import removals_recorded
 
     for seq, last in removals_recorded(contents):
-        print(
-            f"  note: seq={'?' if seq is None else seq} records that the log before it, up "
-            f"to seq={'?' if last is None else last}, was no longer on disk while the shim "
-            "ran (emptied, removed or replaced, or rotated and pruned)"
-        )
+        at = f"seq={'?' if seq is None else seq}"
+        up_to = f"seq={'?' if last is None else last}"
+        if verified:
+            print(
+                f"  note: {at} records that the log before it, up to {up_to}, was no longer "
+                "on disk while the shim ran (emptied, removed or replaced, or rotated and "
+                "pruned)"
+            )
+        else:
+            print(
+                f"  note: {at} reads as a record that the log before it, up to {up_to}, was "
+                "no longer on disk while the shim ran. This file failed verification, so "
+                "the record may not be the shim's."
+            )
 
 
 def _print_violations(path: Path, violations: list) -> int:

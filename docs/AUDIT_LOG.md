@@ -169,7 +169,9 @@ it, at its next record:
   first thing the next write puts in the log. A rotated file that can't be
   read counts as not holding the shim's last record: the shim doesn't hold
   back its writes over an old file. The log still verifies; `audit verify`
-  and `verify-all` print a note for each such record they find.
+  and `verify-all` print a note for each such record they find. In a file
+  that fails verification the note says so: such a record may be one nobody
+  signed.
 
 With no shim running there is nothing to remember the head, and a log cut
 back at its end, or removed, leaves no sign. To start a new log under a
