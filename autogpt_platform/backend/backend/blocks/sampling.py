@@ -144,9 +144,10 @@ class DataSamplingBlock(Block):
         if input_data.sampling_method == SamplingMethod.RANDOM:
             indices = rng.sample(range(data_size), input_data.sample_size)
         elif input_data.sampling_method == SamplingMethod.SYSTEMATIC:
-            step = data_size // input_data.sample_size
-            start = rng.randint(0, step - 1)
-            indices = list(range(start, data_size, step))[: input_data.sample_size]
+            if input_data.sample_size > 0:
+                step = data_size // input_data.sample_size
+                start = rng.randint(0, step - 1)
+                indices = list(range(start, data_size, step))[: input_data.sample_size]
         elif input_data.sampling_method == SamplingMethod.TOP:
             indices = list(range(input_data.sample_size))
         elif input_data.sampling_method == SamplingMethod.BOTTOM:
