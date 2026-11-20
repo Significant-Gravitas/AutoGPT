@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+import sentry_sdk
 
 from backend.api.model import CreateGraph
 from backend.blocks.basic import StoreValueBlock
@@ -130,15 +131,20 @@ async def _run_two_node_workflow(
     )
     assert {node.status for node in run.node_executions} == {ExecutionStatus.QUEUED}
 
-    await asyncio.to_thread(
-        processor.on_graph_execution,
-        GraphExecutionEntry(
-            user_id=user.id,
-            graph_exec_id=run.id,
-            graph_id=workflow.id,
-            graph_version=workflow.version,
-        ),
-        threading.Event(),
-        MagicMock(),
-    )
+    # In a pod each node run gets a Sentry scope of its own, which takes an
+    # active client. Here the nodes tag the scope they inherit from this
+    # process, and two at once can leave one's tags on it for later tests'
+    # transactions, so the run gets its own.
+    with sentry_sdk.isolation_scope():
+        await asyncio.to_thread(
+            processor.on_graph_execution,
+            GraphExecutionEntry(
+                user_id=user.id,
+                graph_exec_id=run.id,
+                graph_id=workflow.id,
+                graph_version=workflow.version,
+            ),
+            threading.Event(),
+            MagicMock(),
+        )
     return run.id

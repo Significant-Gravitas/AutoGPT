@@ -227,23 +227,16 @@ def _automod_verdict(status: str, content_id: str) -> MagicMock:
     return reply
 
 
-@pytest.mark.parametrize("fail_open", [False, True], ids=["fail closed", "fail open"])
-def test_a_refusal_fails_the_run_however_long_masking_its_nodes_takes(
-    monkeypatch: pytest.MonkeyPatch,
-    evaluation_loop: asyncio.AbstractEventLoop,
-    db_client: MagicMock,
-    fail_open: bool,
-) -> None:
-    """AutoMod refuses the outputs well within the wait, but masking the
-    completed nodes takes longer than the wait. The refusal must still fail the
-    run, with its moderation ID: counted as AutoMod timing out, it would be let
-    through by automod_fail_open, and the masking would be cut short."""
+def _refused_outputs(
+    monkeypatch: pytest.MonkeyPatch, db_client: MagicMock, *, fail_open: bool
+) -> Coroutine[Any, Any, ModerationError | None]:
+    """The real output check of a run whose one completed node AutoMod refuses
+    at once, under moderation ID cid-1."""
     automod = _real_automod(
         monkeypatch,
         fail_open=fail_open,
         post=AsyncMock(return_value=_automod_verdict("rejected", "cid-1")),
     )
-    monkeypatch.setattr(manager, "MODERATION_WAIT_SECONDS", 1.0)
     monkeypatch.setattr(manager, "send_async_execution_update", AsyncMock())
     db_client.get_node_executions = AsyncMock(
         return_value=[
@@ -254,18 +247,82 @@ def test_a_refusal_fails_the_run_however_long_masking_its_nodes_takes(
             )
         ]
     )
-
-    async def mask_slowly(*args: object) -> list[object]:
-        await asyncio.sleep(2.5)
-        return []
-
-    db_client.mark_node_executions_moderated = AsyncMock(side_effect=mask_slowly)
-    moderation = automod.moderate_graph_execution_outputs(
+    return automod.moderate_graph_execution_outputs(
         db_client=db_client,
         graph_exec_id="exec-1",
         user_id="user-1",
         graph_id="graph-1",
     )
+
+
+@pytest.mark.parametrize("fail_open", [False, True], ids=["fail closed", "fail open"])
+def test_masking_a_refused_run_is_not_part_of_the_checks_wait(
+    monkeypatch: pytest.MonkeyPatch,
+    evaluation_loop: asyncio.AbstractEventLoop,
+    db_client: MagicMock,
+    fail_open: bool,
+) -> None:
+    """The masking here can only finish once the check has answered. Counted
+    in the check's wait, it never could, so the run would give up on the check,
+    which automod_fail_open lets through. The run must fail with the refusal's
+    moderation ID, after its nodes are masked."""
+    moderation = _refused_outputs(monkeypatch, db_client, fail_open=fail_open)
+    answered = asyncio.Event()
+    masked = threading.Event()
+
+    async def check() -> ModerationError | None:
+        refusal = await moderation
+        answered.set()
+        return refusal
+
+    async def mask_once_answered(*args: object) -> list[object]:
+        await answered.wait()
+        masked.set()
+        return []
+
+    db_client.mark_node_executions_moderated = AsyncMock(side_effect=mask_once_answered)
+
+    with pytest.raises(ModerationError) as refused:
+        _await(check(), evaluation_loop, "output")
+
+    assert (refused.value.moderation_type, refused.value.content_id) == (
+        "output",
+        "cid-1",
+    )
+    assert masked.is_set(), "the run failed before its nodes were masked"
+    _, patches, statuses = db_client.mark_node_executions_moderated.await_args.args
+    assert statuses == [ExecutionStatus.COMPLETED]
+    assert patches["node-exec-1"]["cleared_outputs"] == {
+        "answer": ["Failed due to content moderation (Moderation ID: cid-1)"]
+    }
+
+
+@pytest.mark.parametrize("fail_open", [False, True], ids=["fail closed", "fail open"])
+def test_a_refusal_fails_the_run_however_long_masking_its_nodes_takes(
+    monkeypatch: pytest.MonkeyPatch,
+    evaluation_loop: asyncio.AbstractEventLoop,
+    db_client: MagicMock,
+    fail_open: bool,
+) -> None:
+    """Masking that never finishes is given up on at its own bound, and the
+    refusal still fails the run with its moderation ID: masking that runs out
+    of time must not count as AutoMod failing, which automod_fail_open lets
+    through."""
+    moderation = _refused_outputs(monkeypatch, db_client, fail_open=fail_open)
+    monkeypatch.setattr(manager, "MODERATION_NODE_UPDATE_SECONDS", 0.2)
+    started = threading.Event()
+    cancelled = threading.Event()
+
+    async def mask_forever(*args: object) -> list[object]:
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+        return []
+
+    db_client.mark_node_executions_moderated = AsyncMock(side_effect=mask_forever)
 
     with pytest.raises(ModerationError) as refused:
         _await(moderation, evaluation_loop, "output")
@@ -274,12 +331,9 @@ def test_a_refusal_fails_the_run_however_long_masking_its_nodes_takes(
         "output",
         "cid-1",
     )
-    db_client.mark_node_executions_moderated.assert_awaited_once()
-    _, patches, statuses = db_client.mark_node_executions_moderated.await_args.args
-    assert statuses == [ExecutionStatus.COMPLETED]
-    assert patches["node-exec-1"]["cleared_outputs"] == {
-        "answer": ["Failed due to content moderation (Moderation ID: cid-1)"]
-    }
+    # The masking's cancel is queued on the loop ahead of this round trip
+    asyncio.run_coroutine_threadsafe(asyncio.sleep(0), evaluation_loop).result(10)
+    assert cancelled.is_set() or not started.is_set(), "the masking kept running"
 
 
 @pytest.mark.parametrize("fail_open", [False, True], ids=["fail closed", "fail open"])
