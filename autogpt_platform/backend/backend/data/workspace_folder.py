@@ -103,9 +103,13 @@ async def _file_counts(workspace_id: str, folder_ids: list[str]) -> dict[str, in
 async def _get_folder_record(
     folder_id: str,
     workspace_id: str,
+    *,
+    client: Prisma | None,
 ) -> "UserWorkspaceFolder":
-    """Fetch a workspace-scoped folder record or raise NotFoundError."""
-    folder = await UserWorkspaceFolder.prisma().find_first(
+    """Fetch a workspace-scoped folder record or raise NotFoundError.
+
+    Inside a transaction, pass the transaction as *client*."""
+    folder = await UserWorkspaceFolder.prisma(client).find_first(
         where={
             "id": folder_id,
             "workspaceId": workspace_id,
@@ -135,7 +139,7 @@ async def list_workspace_folders(workspace_id: str) -> list[WorkspaceFolder]:
 
 async def get_folder(folder_id: str, workspace_id: str) -> WorkspaceFolder:
     """Get a single folder by ID, scoped to the workspace."""
-    folder = await _get_folder_record(folder_id, workspace_id)
+    folder = await _get_folder_record(folder_id, workspace_id, client=None)
     count = await _file_count(workspace_id, folder_id)
     return WorkspaceFolder.from_db(folder, file_count=count)
 
@@ -168,8 +172,8 @@ async def create_folder(
     async with transaction() as tx:
         if parent_id is not None:
             await _lock_workspace_hierarchy(tx, workspace_id)
-            await _get_folder_record(parent_id, workspace_id)
-        if await _name_taken(workspace_id, name, parent_id):
+            await _get_folder_record(parent_id, workspace_id, client=tx)
+        if await _name_taken(tx, workspace_id, name, parent_id):
             raise FolderAlreadyExistsError("A folder with this name already exists")
 
         try:
@@ -182,6 +186,7 @@ async def create_folder(
 
 
 async def _name_taken(
+    tx: Prisma,
     workspace_id: str,
     name: str,
     parent_id: Optional[str],
@@ -202,7 +207,7 @@ async def _name_taken(
     }
     if exclude_folder_id is not None:
         where["id"] = {"not": exclude_folder_id}
-    return await UserWorkspaceFolder.prisma().find_first(where=where) is not None
+    return await UserWorkspaceFolder.prisma(tx).find_first(where=where) is not None
 
 
 async def update_folder(
@@ -251,18 +256,22 @@ async def apply_folder_update(
         if moving or name is not None:
             await _lock_workspace_hierarchy(tx, workspace_id)
 
-        folder = await _get_folder_record(folder_id, workspace_id)
+        folder = await _get_folder_record(folder_id, workspace_id, client=tx)
         destination = parent_id if moving else folder.parentId
 
         if moving and destination is not None:
-            await _get_folder_record(destination, workspace_id)
-            if folder_id in await _ancestor_ids(workspace_id, destination):
+            await _get_folder_record(destination, workspace_id, client=tx)
+            if folder_id in await _ancestor_ids(tx, workspace_id, destination):
                 raise FolderValidationError(
                     "A folder cannot be moved into itself or one of its subfolders"
                 )
 
         if (moving or name is not None) and await _name_taken(
-            workspace_id, folder.name if name is None else name, destination, folder_id
+            tx,
+            workspace_id,
+            folder.name if name is None else name,
+            destination,
+            folder_id,
         ):
             raise FolderAlreadyExistsError("A folder with this name already exists")
 
@@ -308,14 +317,14 @@ async def _lock_workspace_hierarchy(tx: Prisma, workspace_id: str) -> None:
     )
 
 
-async def _ancestor_ids(workspace_id: str, folder_id: str) -> list[str]:
+async def _ancestor_ids(tx: Prisma, workspace_id: str, folder_id: str) -> list[str]:
     """*folder_id* and every live folder above it, nearest first.
 
     Stops on a repeat so a cycle already in the data cannot hang the walk.
     """
     by_id = {
         f.id: f
-        for f in await UserWorkspaceFolder.prisma().find_many(
+        for f in await UserWorkspaceFolder.prisma(tx).find_many(
             where={"workspaceId": workspace_id, "isDeleted": False},
         )
     }
@@ -343,8 +352,8 @@ async def delete_folder(folder_id: str, workspace_id: str) -> None:
     """
     async with transaction() as tx:
         await _lock_workspace_hierarchy(tx, workspace_id)
-        await _get_folder_record(folder_id, workspace_id)
-        doomed = await _subtree_ids(workspace_id, folder_id)
+        await _get_folder_record(folder_id, workspace_id, client=tx)
+        doomed = await _subtree_ids(tx, workspace_id, folder_id)
 
         await UserWorkspaceFile.prisma(tx).update_many(
             where={"folderId": {"in": doomed}, "workspaceId": workspace_id},
@@ -364,7 +373,7 @@ async def delete_folder(folder_id: str, workspace_id: str) -> None:
     )
 
 
-async def _subtree_ids(workspace_id: str, folder_id: str) -> list[str]:
+async def _subtree_ids(tx: Prisma, workspace_id: str, folder_id: str) -> list[str]:
     """*folder_id* and every live folder beneath it.
 
     One query plus a walk in Python: a user's folder list is small, and a
@@ -373,7 +382,7 @@ async def _subtree_ids(workspace_id: str, folder_id: str) -> list[str]:
     to reach the whole subtree.
     """
     children: dict[Optional[str], list[str]] = {}
-    for f in await UserWorkspaceFolder.prisma().find_many(
+    for f in await UserWorkspaceFolder.prisma(tx).find_many(
         where={"workspaceId": workspace_id, "isDeleted": False},
     ):
         children.setdefault(f.parentId, []).append(f.id)
@@ -435,7 +444,7 @@ async def bulk_move_files_to_folder(
     """
     # folderId is set directly; the FK only checks existence, not ownership.
     if folder_id:
-        await _get_folder_record(folder_id, workspace_id)
+        await _get_folder_record(folder_id, workspace_id, client=None)
 
     if not file_ids:
         return []

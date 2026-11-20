@@ -110,14 +110,10 @@ export function StepStrip({ currentStep }: Props) {
                 <Text
                   variant="small-medium"
                   as="span"
-                  className={cn(
-                    "whitespace-nowrap !text-current transition-colors",
-                    isCurrent
-                      ? "text-foreground"
-                      : isComplete
-                        ? "text-foreground-body"
-                        : "font-normal text-foreground-subtle",
-                  )}
+                  tone="inherit"
+                  weight={!isCurrent && !isComplete ? "normal" : undefined}
+                  motion="colors"
+                  className="whitespace-nowrap"
                 >
                   {step.label}
                 </Text>

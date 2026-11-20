@@ -38,7 +38,7 @@ export function FollowupListItem({ followup }: Props) {
   const kindBadgeLabel = followup.session_id ? "Same chat" : "New chat";
   const kindBadge = (
     <span
-      className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-secondary"
+      className="rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
       data-testid="followup-kind-badge"
     >
       {kindBadgeLabel}
@@ -51,15 +51,11 @@ export function FollowupListItem({ followup }: Props) {
         <Icon
           icon={Comment01Icon}
           size={18}
-          // oxlint-disable-next-line design-system/no-raw-colors -- orange/yellow hue kept; warning-foreground would be a hue change (deferred visual change)
-          className="text-yellow-700"
+          className="text-yellow-foreground"
         />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
-        <Text
-          variant="body-medium"
-          className="block w-full truncate text-ellipsis"
-        >
+        <Text variant="body-medium" className="block w-full text-ellipsis">
           {messagePreview}
         </Text>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -142,7 +138,7 @@ export function FollowupListItem({ followup }: Props) {
               {kindBadge}
             </div>
             <pre
-              className="max-h-[60vh] overflow-auto rounded-medium bg-surface-muted p-3 text-sm whitespace-pre-wrap text-foreground-emphasis"
+              className="max-h-[60vh] overflow-auto rounded-medium bg-surface-muted p-3 text-body whitespace-pre-wrap text-foreground-emphasis"
               data-testid="followup-view-body"
             >
               {fullMessage}

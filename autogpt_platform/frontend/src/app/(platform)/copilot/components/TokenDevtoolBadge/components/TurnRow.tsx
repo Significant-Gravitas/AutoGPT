@@ -11,7 +11,7 @@ interface Props {
 
 export function TurnRow({ index, turn }: Props) {
   return (
-    <div className="flex items-baseline gap-2 font-mono text-xs">
+    <div className="flex items-baseline gap-2 font-mono text-caption">
       <span className="w-6 shrink-0 text-foreground-tertiary">
         #{index + 1}
       </span>

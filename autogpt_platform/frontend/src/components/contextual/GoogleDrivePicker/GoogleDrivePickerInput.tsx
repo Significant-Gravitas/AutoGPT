@@ -117,8 +117,8 @@ export function GoogleDrivePickerInput({
               className={cn(
                 "flex items-center gap-2",
                 showRemoveButton
-                  ? "justify-between rounded-md border border-border-strong bg-surface-muted px-3 py-2 text-sm"
-                  : "text-sm text-foreground-secondary",
+                  ? "justify-between rounded-md border border-border-strong bg-surface-muted px-3 py-2 text-body"
+                  : "text-body text-foreground-secondary",
               )}
             >
               <div className="flex items-center gap-2 overflow-hidden">

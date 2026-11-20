@@ -194,7 +194,7 @@ function FilterChip({
   children: React.ReactNode;
 }) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-full border border-border-base bg-surface px-2 py-1 text-xs text-foreground-secondary">
+    <div className="inline-flex items-center gap-1 rounded-full border border-border-base bg-surface px-2 py-1 text-caption text-foreground-secondary">
       <span>{label}</span>
       {children}
     </div>

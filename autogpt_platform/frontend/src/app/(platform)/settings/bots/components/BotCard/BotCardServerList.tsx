@@ -87,7 +87,7 @@ function BotCardServerRow({
           {botMissing ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="inline-flex items-center gap-1 text-xs text-warning-foreground">
+                <span className="inline-flex items-center gap-1 text-caption text-warning-foreground">
                   <Icon icon={AlertCircleIcon} size={14} /> Name unavailable
                 </span>
               </TooltipTrigger>

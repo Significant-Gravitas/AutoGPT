@@ -242,12 +242,15 @@ def capture_turn(
     engine: str,
     origin: str,
     tool_call_count: int,
+    load_test: str | None = None,
 ) -> None:
     """Send the end of a turn: the ``$ai_trace`` of a reply, or the
     ``$ai_span`` of a subtask in the trace of the reply it works for.
 
     *outcome* is ``completed``, ``cancelled`` or ``failed``; only ``failed``
     is an error, and *error_code* (a code, never a message) says which.
+    *load_test* names the engine of a load-test account's turn
+    (``backend/copilot/load_test.py``), so analytics can leave those out.
 
     A redelivered turn ends twice; the turn id is the event's dedup key, so
     PostHog keeps one root (or one subtask span) per turn."""
@@ -269,6 +272,8 @@ def capture_turn(
         }
         if failed and error_code:
             properties["$ai_error"] = error_code
+        if load_test is not None:
+            properties["load_test"] = load_test
         if trace_id == entry.turn_id:
             properties["$ai_span_name"] = TRACE_NAME
             event = PostHogEvent.AI_TRACE

@@ -18,9 +18,9 @@ export function OrbitLoader({ size = 24, className }: Props) {
         "before:block before:h-[40%] before:w-[40%] before:rounded-full before:content-['']",
         "after:block after:h-[40%] after:w-[40%] after:rounded-full after:content-['']",
         // oxlint-disable-next-line design-system/no-arbitrary-values -- the ball geometry comes from the size prop through CSS variables
-        "before:mb-[calc(var(--gap))] before:animate-[orbit-loader-ball1_1s_infinite] before:bg-foreground-subtle before:[box-shadow:calc(var(--spacing))_0_0_rgb(var(--color-primary))]",
+        "before:mb-[calc(var(--gap))] before:animate-[orbit-loader-ball1_1s_infinite] before:bg-foreground-subtle before:[box-shadow:calc(var(--spacing))_0_0_rgb(var(--color-action))]",
         // oxlint-disable-next-line design-system/no-arbitrary-values -- the ball geometry comes from the size prop through CSS variables
-        "after:animate-[orbit-loader-ball2_1s_infinite] after:bg-primary after:[box-shadow:calc(var(--spacing))_0_0_rgb(var(--color-foreground-subtle))]",
+        "after:animate-[orbit-loader-ball2_1s_infinite] after:bg-action after:[box-shadow:calc(var(--spacing))_0_0_rgb(var(--color-foreground-subtle))]",
         className,
       )}
       style={

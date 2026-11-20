@@ -128,12 +128,11 @@ export function MoveToFolderDialog({
                 {currentFolderId && (
                   <Button
                     variant="ghost"
-                    // oxlint-disable-next-line design-system/no-restyle -- folder rows are two-line list items; no Button size fits
-                    className="w-full justify-start gap-3 px-3 py-2.5"
+                    className="w-full justify-start"
                     disabled={isPending}
                     onClick={() => handleMoveToFolder(null)}
                   >
-                    <span className="text-lg">📂</span>
+                    <span className="text-lead">📂</span>
                     <div className="flex flex-col items-start">
                       <Text variant="small-medium">My Library (root)</Text>
                       <Text variant="small" tone="subtle">
@@ -146,13 +145,12 @@ export function MoveToFolderDialog({
                   <Button
                     key={folder.id}
                     variant="ghost"
-                    // oxlint-disable-next-line design-system/no-restyle -- folder rows are two-line list items; no Button size fits
-                    className="w-full justify-start gap-3 py-2.5 pl-3"
+                    className="w-full justify-start"
                     style={{ "--folder-depth": depth } as React.CSSProperties}
                     disabled={isPending}
                     onClick={() => handleMoveToFolder(folder.id)}
                   >
-                    <span className="ml-[calc(var(--folder-depth)*1.25rem)] text-lg">
+                    <span className="ml-[calc(var(--folder-depth)*1.25rem)] text-lead">
                       {folder.icon ?? "📁"}
                     </span>
                     <div className="flex flex-col items-start">

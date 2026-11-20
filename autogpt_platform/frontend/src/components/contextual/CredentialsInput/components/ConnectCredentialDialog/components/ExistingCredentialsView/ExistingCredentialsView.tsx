@@ -99,7 +99,7 @@ export function ExistingCredentialsView({
                     credential.type === "oauth2" ? SecurityCheckIcon : Key01Icon
                   }
                   size={22}
-                  className="text-foreground-body"
+                  tone="body"
                 />
               </span>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">

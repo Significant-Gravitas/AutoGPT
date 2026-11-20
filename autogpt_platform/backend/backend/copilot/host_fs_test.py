@@ -223,6 +223,45 @@ async def test_read_workdir_bytes(cwd, outside, monkeypatch):
     assert await read_workdir_bytes(str(cwd / "f"), "s1") is None
 
 
+async def test_read_workdir_bytes_refuses_a_file_over_the_limit(cwd, monkeypatch):
+    monkeypatch.setattr(
+        f"{_WORKDIR}.Config", lambda: SimpleNamespace(max_file_size_mb=1)
+    )
+    big = cwd / "big.bin"
+    big.touch()
+    os.truncate(big, 3 * 1024 * 1024)
+    (cwd / "small.bin").write_bytes(b"ok")
+
+    assert await read_workdir_bytes(str(big), "s1") is None
+    assert await read_workdir_bytes(str(cwd / "small.bin"), "s1") == b"ok"
+
+
+async def test_read_workdir_bytes_reads_one_byte_past_the_limit(cwd, monkeypatch):
+    monkeypatch.setattr(
+        f"{_WORKDIR}.Config", lambda: SimpleNamespace(max_file_size_mb=1)
+    )
+    asked: list[int] = []
+
+    class _File:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return None
+
+        def read(self, size: int = -1) -> bytes:
+            asked.append(size)
+            return b"ok"
+
+    monkeypatch.setattr(
+        f"{_WORKDIR}.open", lambda *args, **kwargs: _File(), raising=False
+    )
+    (cwd / "f.bin").write_bytes(b"ok")
+
+    assert await read_workdir_bytes(str(cwd / "f.bin"), "s1") == b"ok"
+    assert asked == [1024 * 1024 + 1]
+
+
 async def test_remove_from_workdir_walks_its_parents_without_following(cwd, outside):
     (cwd / "skills").symlink_to(outside.parent)
     path = str(cwd / "skills" / "outside.txt")

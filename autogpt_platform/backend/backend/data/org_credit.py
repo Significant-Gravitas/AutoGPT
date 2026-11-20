@@ -55,6 +55,19 @@ async def get_personal_org_owner(org_id: str) -> str | None:
     return await _personal_org_owner(org_id)
 
 
+def forget_personal_org_owner(org_id: str) -> None:
+    """Drop the cached lookup, for an org that has just stopped being personal.
+
+    Best effort: until the entry expires, new runs bill the owner's own wallet.
+    """
+    try:
+        _personal_org_owner.cache_delete(org_id)
+    except Exception:
+        logger.warning(
+            f"Could not drop the cached owner of org {org_id}", exc_info=True
+        )
+
+
 async def get_org_credits(org_id: str) -> int:
     """Get the current credit balance for an organization.
 
@@ -105,6 +118,14 @@ async def spend_org_credits(
     # reconciliation refunds for every personal-org (i.e. ordinary) user.
     owner_id = await _personal_org_owner(org_id)
     if owner_id is not None:
+        # The owner's wallet pays for the owner's own spend and nobody else's.
+        if user_id != owner_id:
+            raise InsufficientBalanceError(
+                "A personal organization pays only for its owner's usage",
+                user_id=user_id,
+                balance=0,
+                amount=amount,
+            )
         credit_model = await get_user_credit_model(owner_id)
         return await credit_model.spend_credits(
             user_id=owner_id,

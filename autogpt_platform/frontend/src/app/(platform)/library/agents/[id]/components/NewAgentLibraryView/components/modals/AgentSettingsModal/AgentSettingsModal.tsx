@@ -55,9 +55,9 @@ export function AgentSettingsModal({
         <Dialog.Trigger>
           <Button
             variant="ghost"
-            size="small"
+            size="inline"
             // oxlint-disable-next-line design-system/no-restyle -- a text-link-like trigger; no Button size has 4px side padding at 36px tall
-            className="m-0 min-w-0 p-0 px-1"
+            className="m-0 h-9 px-1"
             aria-label="Workflow Settings"
           >
             <span className="contents text-foreground-secondary">

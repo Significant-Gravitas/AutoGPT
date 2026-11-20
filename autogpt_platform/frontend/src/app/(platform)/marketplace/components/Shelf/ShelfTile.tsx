@@ -40,7 +40,7 @@ export function ShelfTile({
       <span className="min-w-0 flex-1">
         <span
           title={title}
-          className="block truncate text-sm font-medium text-foreground-strong"
+          className="block truncate text-body font-medium text-foreground-strong"
         >
           {title}
         </span>
