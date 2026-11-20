@@ -44,6 +44,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: true
+          persist-credentials: false
 
       - name: Start MinIO service
         uses: ./.github/actions/start-minio

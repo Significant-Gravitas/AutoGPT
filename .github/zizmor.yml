@@ -2,9 +2,10 @@
 # anything new in the zizmor check is a finding nobody has looked at yet.
 # Add an entry here only with a reason; fix the workflow when you can.
 #
-# Classic (the classic-*.yml workflows) is no longer maintained, so we leave
-# its workflows as they are and accept their findings below, marked
-# "Classic". Remove those entries if Classic is maintained again or removed.
+# Classic (the classic-*.yml workflows) is no longer maintained, so its
+# workflows get security fixes only and their other findings are accepted
+# below, marked "Classic". Remove those entries if Classic is maintained again
+# or removed.
 rules:
   dangerous-triggers:
     ignore:
@@ -37,27 +38,6 @@ rules:
       - platform-installer-ci.yml
 
   # Classic only below this line.
-
-  artipacked:
-    ignore:
-      # Classic
-      - classic-autogpt-ci.yml
-      - classic-autogpt-docker-cache-clean.yml
-      - classic-autogpt-docker-ci.yml
-      - classic-autogpt-docker-release.yml
-      - classic-autogpts-ci.yml
-      - classic-benchmark-ci.yml
-      - classic-benchmark_publish_package.yml
-      - classic-forge-ci.yml
-      - classic-python-checks.yml
-
-  excessive-permissions:
-    ignore:
-      # Classic
-      - classic-autogpt-docker-cache-clean.yml
-      - classic-autogpt-docker-ci.yml
-      - classic-autogpts-ci.yml
-      - classic-benchmark-ci.yml
 
   obfuscation:
     ignore:

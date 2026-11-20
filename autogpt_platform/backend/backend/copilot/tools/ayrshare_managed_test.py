@@ -465,8 +465,10 @@ def expert_grants(allowed: list[str]) -> Iterator[None]:
     credential is the managed profile the copilot just provisioned."""
     experts = MagicMock()
     experts.expert_allowed_credential_ids = AsyncMock(return_value=allowed)
+    experts.seeded_expert_credential_ids = AsyncMock(return_value=allowed)
     with (
         patch("backend.copilot.tools.expert_scope.experts_db", return_value=experts),
+        patch("backend.data.db_accessors.experts_db", return_value=experts),
         patch.object(
             IntegrationCredentialsStore,
             "get_all_creds",
