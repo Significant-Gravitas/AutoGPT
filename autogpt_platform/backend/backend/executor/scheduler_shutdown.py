@@ -30,9 +30,10 @@ class StopSafeBackgroundScheduler(BackgroundScheduler):
     runs after them.
 
     Overrides APScheduler's private ``_process_jobs``, and takes its
-    ``_jobstores_lock`` and reads its ``_executors``, as of APScheduler 3.11.
-    ``scheduler_shutdown_test`` fails if an upgrade renames any of them; one
-    that changes how they work needs this class rechecked.
+    ``_jobstores_lock`` and reads its ``_executors`` and their ``_instances``,
+    as of APScheduler 3.11. ``scheduler_shutdown_test`` fails if an upgrade
+    renames any of them; one that changes how they work needs this class
+    rechecked.
     """
 
     _stopping = False
@@ -47,7 +48,11 @@ class StopSafeBackgroundScheduler(BackgroundScheduler):
         with self._jobstores_lock:
             self._stopping = True
         if wait and self.running:
-            for executor in list(self._executors.values()):
+            # Nothing adds an executor during a stop, so the copy takes no lock.
+            executors = list(self._executors.values())
+            running = sum(sum(executor._instances.values()) for executor in executors)
+            self._logger.info(f"Waiting for {running} running job(s) to finish")
+            for executor in executors:
                 executor.shutdown(wait=True)
         super().shutdown(wait)
 

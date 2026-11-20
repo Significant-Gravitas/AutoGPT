@@ -315,7 +315,9 @@ class _WatchedLock:
     def give_up(self) -> None:
         """End every wait for the lock with an error. A stop that hung on a
         job waiting for it leaves that job's pool thread waiting for good,
-        and the test session can't exit past a pool thread."""
+        and the test session can't exit past a pool thread. It frees only
+        threads blocked on this lock: a stop that hangs anywhere else still
+        fails its test, but can leave a pool thread that holds up the exit."""
         self._given_up = True
 
     def release(self) -> None:
@@ -408,30 +410,35 @@ def _pool_wait_begun(service: Scheduler) -> threading.Event:
 
 def _stop(service: Scheduler, lock: _WatchedLock, stopper: threading.Thread) -> None:
     """Stop *service* if its test didn't, then close what its start opened:
-    the event loop, and the jobstores of a start that failed part-way."""
-    if stopper.ident is not None:
-        # Twice the longest wait inside the stop, once any held pass is let go.
-        stopper.join(2 * _HANG_SECONDS)
-        if stopper.is_alive():
-            frame = sys._current_frames().get(stopper.ident)
-            hung_at = "".join(traceback.format_stack(frame)[-6:]) if frame else ""
-            # Free the job the stop waits on, so both threads can end.
-            lock.give_up()
-            stopper.join(_HANG_SECONDS)
-            pytest.fail(f"the scheduler's stop never finished; it was at:\n{hung_at}")
-    # Run last to first, each tried even if one after it fails; a failure
-    # still raises.
-    with ExitStack() as closing:
-        closing.callback(_close_event_loop)
-        # Already closed by a stop; these are for a start that failed part-way.
-        for store in service._persistent_jobstores.values():
-            closing.callback(store.shutdown)
-        if (
-            stopper.ident is None
-            and service._scheduler is not None
-            and service._scheduler.running
-        ):
-            closing.callback(service.cleanup)
+    the event loop, and the jobstores of a start that failed part-way. A stop
+    that hung fails the test once all that is closed."""
+    hung_at: str | None = None
+    try:
+        if stopper.ident is not None:
+            # Twice the longest wait inside the stop, once any held pass is let go.
+            stopper.join(2 * _HANG_SECONDS)
+            if stopper.is_alive():
+                frame = sys._current_frames().get(stopper.ident)
+                hung_at = "".join(traceback.format_stack(frame)[-6:]) if frame else ""
+                # Free the job the stop waits on, so both threads can end.
+                lock.give_up()
+                stopper.join(_HANG_SECONDS)
+    finally:
+        # Run last to first, each tried even if one after it fails; a failure
+        # still raises.
+        with ExitStack() as closing:
+            closing.callback(_close_event_loop)
+            # Already closed by a stop; these are for a start that failed part-way.
+            for store in service._persistent_jobstores.values():
+                closing.callback(store.shutdown)
+            if (
+                stopper.ident is None
+                and service._scheduler is not None
+                and service._scheduler.running
+            ):
+                closing.callback(service.cleanup)
+    if hung_at is not None:
+        pytest.fail(f"the scheduler's stop never finished; it was at:\n{hung_at}")
 
 
 def _close_event_loop() -> None:
