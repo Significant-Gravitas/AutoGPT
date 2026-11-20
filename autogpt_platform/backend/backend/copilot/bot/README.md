@@ -176,7 +176,10 @@ inbound events arrive:
   Telegram, Teams, WhatsApp). Stateless; its `register_routes(app)` mounts onto
   the main backend API (via `webhook_routes.register_webhook_adapters`), so it
   rides the existing N-replica deployment — no dedicated pod. Built in
-  `webhook_routes._build_webhook_adapters`.
+  `webhook_routes._build_webhook_adapters`. One-off boot work (Telegram's
+  command menu) goes in `on_startup()`, which the API's lifespan runs off the
+  boot path: Starlette `on_startup` handlers never fire on an app that has a
+  lifespan.
 
 **Locality rule:** anything platform-specific lives under `adapters/<platform>/`.
 The only files that name specific platforms are the two factories above, which
