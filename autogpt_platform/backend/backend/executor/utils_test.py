@@ -4597,6 +4597,10 @@ def test_only_reviewed_blocks_override_the_input_check():
         ("AgentExecutorBlock", "get_mismatch_error"),
         ("MCPToolBlock", "get_mismatch_error"),
         ("PerplexityBlock", "validate_data"),
+        # Read a saved Claude Sonnet 4.5 as Sonnet 4.6, on a copy (#17103).
+        ("StagehandActBlock", "validate_data"),
+        ("StagehandExtractBlock", "validate_data"),
+        ("StagehandObserveBlock", "validate_data"),
     }
 
 

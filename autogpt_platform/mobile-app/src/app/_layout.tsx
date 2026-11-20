@@ -15,7 +15,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { applyAppearance, readAppearance } from "@/lib/appearance";
 import { useSession } from "@/lib/auth/nativeSession";
 import { CachePersistence } from "@/components/CachePersistence";
-import { useOnboardingGate } from "@/features/onboarding/useOnboardingGate";
+import { usePlanGate } from "@/features/plan/usePlanGate";
 import { queryClient, signOutIfSessionEnded } from "@/lib/session";
 import { createStyles, useColors, useScheme, type Colors, type Scheme } from "@/lib/theme";
 import { useMountEffect } from "@/lib/useMountEffect";
@@ -64,26 +64,25 @@ function RootStack() {
   // Read from the phone, so the first render already knows who is signed in.
   const session = useSession();
   const userID = session?.user.id;
-  const gate = useOnboardingGate(userID);
+  const gate = usePlanGate(userID);
   return (
     <>
       {/* Keyed by user: a new account starts from its own saved copy, or none. */}
       {userID ? <CachePersistence key={userID} userID={userID} /> : null}
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Protected guard={!!session && gate === "done"}>
+        <Stack.Protected guard={!!session && gate === "open"}>
           <Stack.Screen name="(app)" />
           {/* A sign-in in the system browser comes back here. */}
           <Stack.Screen name="integrations/oauth" />
         </Stack.Protected>
-        <Stack.Protected guard={!!session && gate === "needed"}>
-          <Stack.Screen name="onboarding" />
+        <Stack.Protected guard={!!session && gate === "blocked"}>
+          <Stack.Screen name="no-plan" />
         </Stack.Protected>
         <Stack.Protected guard={!!session && gate === "loading"}>
           <Stack.Screen name="launch" />
         </Stack.Protected>
         <Stack.Protected guard={!session}>
           <Stack.Screen name="login" />
-          <Stack.Screen name="signup" />
         </Stack.Protected>
       </Stack>
     </>

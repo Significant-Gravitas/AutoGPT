@@ -14,7 +14,6 @@ import { avatarSource } from "@/features/team/helpers";
 import { createStyles, radius, shadows, spacing, type, useScheme } from "@/lib/theme";
 
 import { DrawerRow } from "../DrawerRow";
-import { AppearancePicker } from "./AppearancePicker";
 
 const BUTTON_SIZE = 48;
 const AVATAR_SIZE = 38;
@@ -116,7 +115,6 @@ export function UserMenu({ name, email, image, onOpenSettings, onSignOut }: Prop
                 </Text>
               ) : null}
             </View>
-            <AppearancePicker />
             <View style={styles.divider} />
             <DrawerRow
               icon={Settings01Icon}

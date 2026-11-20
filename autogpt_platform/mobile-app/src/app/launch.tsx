@@ -2,7 +2,7 @@ import { ActivityIndicator, View } from "react-native";
 
 import { createStyles, useColors } from "@/lib/theme";
 
-/** Shown while the server is asked whether this account finished onboarding. */
+/** Shown while the server is asked whether this account has a plan. */
 export default function LaunchScreen() {
   const styles = useStyles();
   const colors = useColors();

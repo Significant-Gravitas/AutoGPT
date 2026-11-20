@@ -199,11 +199,13 @@ async def _start_run(
     return message
 
 
-async def _run_on_an_executor_pod(run_entry: str, model_url: str) -> None:
+async def _run_on_an_executor_pod(
+    run_entry: str, model_url: str, script: str = EXECUTOR_POD
+) -> None:
     pod = await asyncio.create_subprocess_exec(
         sys.executable,
         "-c",
-        EXECUTOR_POD,
+        script,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
