@@ -29,9 +29,9 @@ from backend.copilot.tools.local_pc_shim import (
     ShimHello,
 )
 
-# Each cap below is on work the test expects to finish, so it only stops a
-# hung test: a passing run is done long before it, and a CI runner can stall
-# a test for seconds (#16920).
+# Each wait below ends as soon as what it waits for happens, so the bound only
+# stops a hung test. A CI shard runs its tests one after another on one event
+# loop, and a stall there has held up an otherwise instant connect for over 1 s.
 _HANG_SECONDS = 10
 
 

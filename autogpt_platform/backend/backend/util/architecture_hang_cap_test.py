@@ -4,8 +4,8 @@ Motivation (#16920): a CI runner can stall a test's thread for a second or
 more, so a wait the test expects to finish, capped at a second, fails while
 the code under test is fine. On 2026-11-20 every wait in
 ``copilot/tools/local_pc_relay_test.py`` was capped at 1 or 2 s, and the file
-failed twice: #17156's ``test (3.11, copilot)`` with ``Shim for session
-session-1 did not connect within 1s``, and #17103's earlier that day. The
+failed four times with ``Shim for session session-1 did not connect within
+1s``: in #16625's merge group, and in runs of #14409, #17103 and #17156. The
 wall-clock rule (``architecture_wall_clock_bounds_test.py``) reads asserts on
 elapsed time, which a cap is not.
 
@@ -17,9 +17,10 @@ above. ``architecture_hang_cap_scan_test.py`` says which forms it reads.
 Files that had such caps when the rule was written are held at their counts
 in ``_HANG_CAP_COUNTS``, to be paid down.
 
-It does not read a timeout passed into the code under test, such as that
-failure's ``connect_timeout=1``. Whether the test expects such a call to
-finish is in what it asserts afterwards, not in the call:
+It does not read a timeout passed into the code under test, such as the
+``connect_timeout=1`` each of those failures ran out. Whether the test
+expects such a call to finish is in what it asserts afterwards, not in the
+call:
 ``copilot/tools/bash_exec_test.py`` runs ``_run(box, timeout=2)`` and asserts
 ``timed_out is False``, then ``timeout=1`` and asserts ``timed_out is True``;
 ``copilot/sdk/tool_adapter_test.py`` expects ``wait_for_stash(timeout=1.0)``
@@ -73,7 +74,6 @@ _HANG_CAP_COUNTS = {
     "backend/backend/copilot/sdk/tool_display_integration_test.py": 2,
     "backend/backend/copilot/stream_registry_terminal_failure_test.py": 3,
     "backend/backend/copilot/tools/local_pc_shim_llm_test.py": 2,
-    "backend/backend/copilot/tools/local_pc_shim_test.py": 3,
     "backend/backend/data/subscription_lookup_cache_test.py": 1,
     "backend/backend/data/workspace_scope_reads_test.py": 1,
     "backend/backend/integrations/codex/device_login_test.py": 1,
