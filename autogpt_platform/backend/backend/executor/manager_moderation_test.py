@@ -232,7 +232,7 @@ def test_when_automod_never_answers_the_run_follows_fail_open(
             )
         ]
     )
-    db_client.update_node_execution_status = AsyncMock()
+    db_client.mark_node_executions_moderated = AsyncMock(return_value=[])
     graph_exec = MagicMock(
         user_id="user-1",
         graph_id="graph-1",
@@ -246,13 +246,15 @@ def test_when_automod_never_answers_the_run_follows_fail_open(
 
     if fail_open:
         _await(moderation, evaluation_loop)
-        db_client.update_node_execution_status.assert_not_called()
+        db_client.mark_node_executions_moderated.assert_not_called()
     else:
         with pytest.raises(ModerationError):
             _await(moderation, evaluation_loop)
-        update = db_client.update_node_execution_status.await_args
-        assert update.args == ("node-exec-1",)
-        assert update.kwargs["status"] == ExecutionStatus.FAILED
+        graph_exec_id, patches, statuses = (
+            db_client.mark_node_executions_moderated.await_args.args
+        )
+        assert (graph_exec_id, list(patches)) == ("exec-1", ["node-exec-1"])
+        assert ExecutionStatus.QUEUED in statuses
 
     assert _stopped(
         moderation, request_started, request_cancelled
