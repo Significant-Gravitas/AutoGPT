@@ -177,6 +177,23 @@ async def test_timeout_on_a_shortened_retry_still_alerts(monkeypatch, spend_aler
     assert vars(spend_alerts[0])["json_fields"]["configured_timeout_seconds"] == 100
 
 
+@pytest.mark.asyncio
+async def test_a_cut_off_retry_shows_its_slice_rounded(monkeypatch, spend_alerts):
+    """What is left of the deadline on the real clock is never round. The
+    message rounds the retry's slice; the alert keeps the exact number."""
+    block, _, slices = _deadline_block(
+        monkeypatch, [(512.56780124, _MISSING_KEY), (1000, "never returned")]
+    )
+
+    with pytest.raises(RuntimeError) as err:
+        await _run(block)
+
+    assert slices[1] == pytest.approx(87.43219876)
+    assert "exceeded 87.4s and was cancelled" in str(err.value)
+    [alert] = spend_alerts
+    assert vars(alert)["json_fields"]["configured_timeout_seconds"] == slices[1]
+
+
 @pytest.mark.parametrize(
     "budget, first_attempt",
     [
@@ -249,9 +266,9 @@ async def test_the_slice_is_what_cuts_a_silent_request_off(monkeypatch):
 
     monkeypatch.setattr(llm, "_llm_call", never_answers)
 
-    # A 0.05 s slice inside a 5 s bound: a wait at the whole budget would hit
+    # A 0.1 s slice inside a 5 s bound: a wait at the whole budget would hit
     # the outer bound, whose TimeoutError carries no "exceeded" message.
-    with pytest.raises(TimeoutError, match="exceeded 0.05s"):
+    with pytest.raises(TimeoutError, match="exceeded 0.1s"):
         await asyncio.wait_for(
             llm.llm_call(
                 credentials=llm.TEST_CREDENTIALS,
@@ -259,7 +276,7 @@ async def test_the_slice_is_what_cuts_a_silent_request_off(monkeypatch):
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=None,
                 on_abandoned=None,
-                timeout_seconds=0.05,
+                timeout_seconds=0.1,
             ),
             timeout=5,
         )
