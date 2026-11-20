@@ -864,19 +864,36 @@
             "name": "limit",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 100, "title": "Limit" }
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
           },
           {
             "name": "offset",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
           },
           {
             "name": "hours",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 24, "title": "Hours" }
+            "schema": {
+              "type": "integer",
+              "maximum": 8760,
+              "minimum": 1,
+              "default": 24,
+              "title": "Hours"
+            }
           }
         ],
         "responses": {
@@ -11400,6 +11417,18 @@
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "ID of existing credential to upgrade scopes for"
             }
+          },
+          {
+            "name": "client",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "const": "native", "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Set to native when the mobile app starts the sign-in"
+            }
           }
         ],
         "responses": {
@@ -12251,7 +12280,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Folder not found" },
+          "404": { "description": "Agent or folder not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -21785,28 +21814,56 @@
       "AuthEmailRequest": {
         "properties": {
           "type": {
-            "type": "string",
-            "enum": [
-              "reset_password",
-              "verify_email",
-              "verify_new_email",
-              "change_email",
-              "set_password"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "reset_password",
+                  "verify_email",
+                  "verify_new_email",
+                  "change_email",
+                  "set_password"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": ["sign_in_code", "sign_in_method_added"]
+              }
             ],
             "title": "Type"
           },
           "to": { "type": "string", "format": "email", "title": "To" },
-          "url": { "type": "string", "title": "Url" },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          },
           "new_email": {
             "anyOf": [
               { "type": "string", "format": "email" },
               { "type": "null" }
             ],
             "title": "New Email"
+          },
+          "code": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[0-9]{6}$" },
+              { "type": "null" }
+            ],
+            "title": "Code"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["google", "microsoft", "apple", "github", "discord"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Provider"
           }
         },
         "type": "object",
-        "required": ["type", "to", "url"],
+        "required": ["type", "to"],
         "title": "AuthEmailRequest"
       },
       "AuthEmailSuppressionRequest": {
@@ -31534,6 +31591,14 @@
             ],
             "title": "Scopes",
             "description": "OAuth scopes to request. Omit or use null to use catalogue or discovered defaults; an empty list requests no scopes."
+          },
+          "client": {
+            "anyOf": [
+              { "type": "string", "const": "native" },
+              { "type": "null" }
+            ],
+            "title": "Client",
+            "description": "Set to native when the mobile app starts the sign-in"
           }
         },
         "type": "object",
@@ -32754,7 +32819,7 @@
       "NotificationPreference": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
-          "email": { "type": "string", "format": "email", "title": "Email" },
+          "email": { "type": "string", "title": "Email" },
           "briefing_frequency": {
             "$ref": "#/components/schemas/BriefingFrequency",
             "default": "WEEKLY"
@@ -32784,7 +32849,6 @@
         "properties": {
           "email": {
             "type": "string",
-            "format": "email",
             "title": "Email",
             "description": "The account's address, as shown in the form. Ignored on update: an account's address changes only through the verified change-email flow."
           },

@@ -330,18 +330,28 @@ class WorkspaceManager:
         # Both refusals come before virus scanning, so a cheap check isn't
         # blocked by a potentially slow or unavailable scanner. The quota one
         # is early only: the row's own transaction holds it against concurrent
-        # writes. An overwrite does not count the file it replaces.
+        # writes. An overwrite does not count the file it replaces. The file
+        # at the path is read beside the quota; a failed read is raised in the
+        # order the reads ran when the path was read after the quota.
         db = workspace_db()
-        storage_limit, current_usage = await asyncio.gather(
+        storage_limit, current_usage, existing = await asyncio.gather(
             get_workspace_storage_limit_bytes(self.user_id),
             db.get_workspace_total_size(self.workspace_id),
+            # A renamed write replaces nothing, even a file that took its free
+            # name since.
+            (
+                _no_file()
+                if rename_on_conflict
+                else db.get_workspace_file_by_path(self.workspace_id, path)
+            ),
+            return_exceptions=True,
         )
-        # A renamed write replaces nothing, even a file that took its free name since.
-        existing = (
-            None
-            if rename_on_conflict
-            else await db.get_workspace_file_by_path(self.workspace_id, path)
-        )
+        if isinstance(storage_limit, BaseException):
+            raise storage_limit
+        if isinstance(current_usage, BaseException):
+            raise current_usage
+        if isinstance(existing, BaseException):
+            raise existing
         if existing is not None and not overwrite:
             raise ValueError(f"File already exists at path: {path}")
         if existing is not None:
@@ -989,3 +999,7 @@ class WorkspaceManager:
             allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
             include_user_files=self._include_user_files(include_user_files),
         )
+
+
+async def _no_file() -> WorkspaceFile | None:
+    return None

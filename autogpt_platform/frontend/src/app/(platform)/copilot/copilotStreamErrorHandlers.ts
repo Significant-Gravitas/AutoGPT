@@ -77,6 +77,11 @@ const TOAST_BY_BACKEND_CODE: Record<
     fallbackDescription:
       "Wait for one of your tasks to finish, then try again.",
   },
+  local_pc_folder_changed: {
+    title: "This chat's folder has changed",
+    fallbackDescription:
+      "The folder this chat uses on your computer was moved or replaced, or can't be reached. Start a new chat and pick the folder again.",
+  },
   max_budget_exhausted: {
     title: "Turn budget reached",
     fallbackDescription:
