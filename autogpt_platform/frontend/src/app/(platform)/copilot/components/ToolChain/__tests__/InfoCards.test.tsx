@@ -5,6 +5,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CopilotChatActionsContext } from "../../CopilotChatActionsProvider/useCopilotChatActions";
 import {
@@ -212,6 +213,38 @@ describe("SuggestedGoalCard", () => {
     expect(onSend).toHaveBeenCalledWith(
       "Please create a workflow with this goal: Build a scraper",
     );
+  });
+
+  it("shows a send failure and lets the user retry the same goal", async () => {
+    const onSend = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockResolvedValue(undefined);
+    render(
+      <CopilotChatActionsContext.Provider
+        value={{ onSend, chatSurface: "copilot" }}
+      >
+        <SuggestedGoalCard
+          output={{ suggested_goal: "Summarize weekly sales" }}
+        />
+        <Toaster />
+      </CopilotChatActionsContext.Provider>,
+    );
+
+    const button = screen.getByRole("button", { name: "Use this goal" });
+    fireEvent.click(button);
+
+    expect(await screen.findByText("Couldn't send message")).toBeDefined();
+    expect(
+      screen.getByText(/check the chat before trying again/i),
+    ).toBeDefined();
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(button);
+
+    const message =
+      "Please create a workflow with this goal: Summarize weekly sales";
+    expect(onSend.mock.calls).toEqual([[message], [message]]);
   });
 
   it("renders nothing without a goal", () => {

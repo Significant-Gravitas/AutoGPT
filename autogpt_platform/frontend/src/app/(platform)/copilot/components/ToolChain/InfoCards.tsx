@@ -10,6 +10,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useContext } from "react";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { CardProviderIcon } from "./BlockCards";
 import { CARD, HALF, StatusCard } from "./ResultCards";
@@ -234,6 +235,20 @@ export function SuggestedGoalCard({ output }: OutputProps) {
   const goal = str(output, "suggested_goal");
   if (!goal) return null;
 
+  async function handleUseGoal() {
+    if (!actions) return;
+    try {
+      await actions.onSend(`Please create a workflow with this goal: ${goal}`);
+    } catch (error) {
+      toastSendFailure({
+        title: "Couldn't send message",
+        error,
+        recovery: "check the chat before trying again",
+        paywallRecovery: "the suggested goal is still on the card",
+      });
+    }
+  }
+
   return (
     <div className={`${CARD} ${HALF} flex flex-col gap-2 p-3`}>
       <Text variant="body-sm-medium-inherit" tone="emphasis">
@@ -248,9 +263,7 @@ export function SuggestedGoalCard({ output }: OutputProps) {
         <button
           type="button"
           className="w-fit rounded-lg bg-action-hover px-2.5 py-1.5 text-caption font-medium text-action-foreground transition-colors hover:bg-action"
-          onClick={() =>
-            actions.onSend(`Please create a workflow with this goal: ${goal}`)
-          }
+          onClick={handleUseGoal}
         >
           Use this goal
         </button>
