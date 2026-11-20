@@ -7,7 +7,8 @@ ones."""
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+import logging
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from typing import Any, cast
 
@@ -192,7 +193,7 @@ async def test_an_answer_without_errors_is_returned_as_before():
     ],
 )
 async def test_the_database_manager_client_retries_a_query_the_database_dropped(
-    monkeypatch, no_retry_wait, dropped
+    monkeypatch, no_retry_wait, service_logs, dropped
 ):
     async with _database_manager_answering(monkeypatch, *dropped, NO_ROW) as (
         client,
@@ -202,6 +203,11 @@ async def test_the_database_manager_client_retries_a_query_the_database_dropped(
 
     assert active is False
     assert statuses == [503] * len(dropped) + [200]
+    # An outage retries up to ~100 times: a warning per attempt, never an
+    # error with a traceback.
+    failures = [r for r in service_logs if "failed" in r.getMessage()]
+    assert [r.levelno for r in failures] == [logging.WARNING] * len(dropped)
+    assert all(r.exc_info is None for r in failures)
 
 
 @pytest.mark.parametrize(
@@ -228,6 +234,25 @@ async def test_the_database_manager_client_answers_other_query_errors_at_once(
             await client.is_auth_session_active("session-1", "user-1")
 
     assert statuses == [400]
+
+
+@pytest.fixture
+def service_logs() -> Iterator[list[logging.LogRecord]]:
+    """What the service module logs. The handler sits on the module's own
+    logger: caplog's root handler sees nothing under the app's logging config."""
+    records: list[logging.LogRecord] = []
+
+    class _Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    target = logging.getLogger(service_module.__name__)
+    handler = _Collect(level=logging.DEBUG)
+    target.addHandler(handler)
+    try:
+        yield records
+    finally:
+        target.removeHandler(handler)
 
 
 @pytest.fixture

@@ -347,7 +347,12 @@ class AppService(BaseAppService, ABC):
         return self
 
     @staticmethod
-    def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
+    def _handle_internal_http_error(
+        status_code: int = 500, log_error: bool = True, retried: bool = False
+    ):
+        """``retried`` marks a failure the clients retry: it is logged as a
+        warning without a traceback, so an outage logs no error per attempt."""
+
         def handler(request: Request, exc: Exception):
             if log_error:
                 logged = (
@@ -355,7 +360,11 @@ class AppService(BaseAppService, ABC):
                     if isinstance(exc, ValidationError)
                     else exc
                 )
-                if status_code >= 500:
+                if retried:
+                    logger.warning(
+                        f"{request.method} {request.url.path} failed: {logged}"
+                    )
+                elif status_code >= 500:
                     logger.error(
                         f"{request.method} {request.url.path} failed: {logged}",
                         exc_info=logged,
@@ -470,7 +479,8 @@ class AppService(BaseAppService, ABC):
         app.add_exception_handler(DataError, cls._handle_internal_http_error(400))
         # Not the query's fault: its connection was lost, refused or timed out.
         app.add_exception_handler(
-            DatabaseConnectionError, cls._handle_internal_http_error(503)
+            DatabaseConnectionError,
+            cls._handle_internal_http_error(503, retried=True),
         )
         app.add_exception_handler(
             UniqueViolationError, cls._handle_internal_http_error(400)
