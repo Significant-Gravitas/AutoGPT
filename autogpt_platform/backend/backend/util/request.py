@@ -1,27 +1,24 @@
 import asyncio
 import codecs
 import ipaddress
+import random
 import re
 import socket
 import ssl
+from asyncio import sleep
 from collections.abc import Iterable
-from io import BytesIO
 from typing import Any, Callable, Optional
 from urllib.parse import ParseResult as URL
 from urllib.parse import quote, urljoin, urlparse
 
 import aiohttp
 import idna
-from aiohttp import FormData, abc
-from tenacity import (
-    RetryCallState,
-    retry,
-    retry_if_result,
-    stop_after_attempt,
-    wait_exponential_jitter,
-)
+from aiohttp import abc
+from aiohttp.client import DEFAULT_TIMEOUT
+from pydantic import BaseModel, ConfigDict
 
 from backend.util.json import loads
+from backend.util.request_body import PreparedBody, Uploads, prepare_body
 from backend.util.settings import Config
 
 
@@ -64,6 +61,14 @@ RESPONSE_READ_CHUNK_SIZE = 64 * 1024
 
 # Retry status codes for which we will automatically retry the request
 THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
+
+# The attempts a ``raise_for_status=False`` client gets when it names no
+# ``retry_max_attempts``. Three attempts wait 3-5 s in all (1 s, then 2 s, each
+# plus up to 1 s of jitter): enough to ride out a short burst of 429s or a
+# deploy's 502s, short enough that a block against a host that is down fails
+# in seconds instead of holding its node, and the cap most callers that name
+# one already chose. Each retry re-sends the request, POSTs included.
+DEFAULT_RETRY_MAX_ATTEMPTS = 3
 
 # Statuses meaning the request was not authenticated or not authorised. Both
 # warrant asking the user to (re)connect, so they gate the setup-card paths.
@@ -580,18 +585,62 @@ def http_status_error(status: int, reason: str | None, body: bytes) -> Exception
     return Exception(message)
 
 
-def _return_last_result(retry_state: RetryCallState) -> "Response":
-    """
-    Ensure the final attempt's response is returned when retrying stops.
-    """
-    if retry_state.outcome is None:
-        raise RuntimeError("Retry state is missing an outcome.")
+def _is_throttled(response: Response) -> bool:
+    return response.status in THROTTLE_RETRY_STATUS_CODES
 
-    exception = retry_state.outcome.exception()
-    if exception is not None:
-        raise exception
 
-    return retry_state.outcome.result()
+class _RetryBudget:
+    """The throttled sends one request may make, across its redirect chain.
+
+    A send that meets a throttle status counts against it. Until the count
+    reaches ``attempts``, that send is made again after a jittered
+    exponential backoff (1 s, then 2 s, 4 s and so on, each plus up to 1 s,
+    and at most ``max_wait``); the last one is returned or raised. So a lone
+    URL gets ``attempts`` sends, and a redirect chain makes at most that many
+    throttled sends in all, however many hops it has.
+
+    It waits with this module's own ``sleep``, which a test patches to note
+    the waits instead of sleeping them.
+    """
+
+    def __init__(self, attempts: int, max_wait: float):
+        self._attempts = attempts
+        self._max_wait = max_wait
+        self._spent = 0
+
+    async def send_again(self) -> bool:
+        """Count a throttled send; if another is allowed, wait out its backoff."""
+        self._spent += 1
+        if self._spent >= self._attempts:
+            return False
+        # The doubling stops at 2 ** 30 s, past any cap: from the 1,025th
+        # retry on, 2 ** n is too large to add to a float.
+        backoff = 2 ** min(self._spent - 1, 30) + random.uniform(0, 1)
+        await sleep(max(0.0, min(backoff, self._max_wait)))
+        return True
+
+
+class _Redirect(BaseModel):
+    """Where a hop's redirect leads, and what the next hop sends with it.
+
+    Frozen, and built with ``model_construct`` from values this module made,
+    so a hop neither validates nor copies it; ``_request`` gives it copies of
+    the headers and kwargs of its own."""
+
+    model_config = ConfigDict(frozen=True)
+
+    url: str
+    headers: dict[str, Any]
+    drop_headers: frozenset[str]
+    kwargs: dict[str, Any]
+
+
+def _send_timeout(timeout: Any) -> float | None:
+    """The seconds aiohttp gives one send in all, read from a request's
+    ``timeout`` as aiohttp reads it: a ``ClientTimeout``'s total, or a number,
+    where ``None`` and 0 mean no limit."""
+    total = timeout.total if isinstance(timeout, aiohttp.ClientTimeout) else timeout
+    return total if total is not None and total > 0 else None
 
 
 class Requests:
@@ -599,6 +648,40 @@ class Requests:
     A wrapper around an aiohttp ClientSession that validates URLs before
     making requests, preventing SSRF by blocking private networks and
     other disallowed address spaces.
+
+    A response with a status in ``THROTTLE_RETRY_STATUS_CODES`` is retried,
+    with jittered exponential backoff of at most ``retry_max_wait`` seconds
+    between attempts. How many attempts a request gets, and what the caller
+    gets when the last one still has a throttle status:
+
+    ====================  ======================  ==============================
+    ``raise_for_status``  ``retry_max_attempts``  Attempts, then
+    ====================  ======================  ==============================
+    ``False``             ``None``                ``DEFAULT_RETRY_MAX_ATTEMPTS``,
+                                                  then the last response
+    ``False``             ``n``                   ``n``, then the last response
+    ``True`` (default)    ``None``                1, then ``HTTPClientError``
+                                                  or ``HTTPServerError``
+    ``True``              ``n``                   ``n``, then the last attempt's
+                                                  ``HTTPClientError`` or
+                                                  ``HTTPServerError``
+    ====================  ======================  ==============================
+
+    Any other status ends the request at once: it is raised with
+    ``raise_for_status`` and returned without it. A connection error or a
+    timeout is never retried. Only the hop that meets a throttle status is
+    sent again, never the hops that redirected to it, and a redirect chain
+    shares the attempts: it makes at most that many throttled sends in all.
+
+    A request that may send its body more than once, because it retries or
+    follows redirects, sends all of it every time; ``prepare_body`` in
+    ``backend.util.request_body`` sets out how. In short, a ``BytesIO`` or a
+    ``StringIO``, as the body, an upload or a form's value, is rewound for
+    each send, and any other file, which aiohttp closes once it has sent it,
+    is read into memory once, as is an async iterable body. A body that has
+    no way to be sent again is refused with a ``TypeError`` before the first
+    send. A request that sends once, with one attempt and
+    ``allow_redirects=False``, streams any body as it is.
     """
 
     def __init__(
@@ -631,13 +714,23 @@ class Requests:
             raise ValueError("retry_max_attempts must be None or >= 1")
         self.retry_max_attempts = retry_max_attempts
 
+    def _max_attempts(self) -> int:
+        """The attempts one request gets; the class docstring has the table."""
+        if self.retry_max_attempts is not None:
+            return self.retry_max_attempts
+        return 1 if self.raise_for_status else DEFAULT_RETRY_MAX_ATTEMPTS
+
+    def _retry_budget(self) -> _RetryBudget:
+        """The throttled sends one request may make, and their waits."""
+        return _RetryBudget(self._max_attempts(), self.retry_max_wait)
+
     async def request(
         self,
         method: str,
         url: str,
         *,
         headers: Optional[dict] = None,
-        files: list[tuple[str, tuple[str, BytesIO, str]]] | None = None,
+        files: Uploads | None = None,
         data: Any | None = None,
         json: Any | None = None,
         allow_redirects: bool = True,
@@ -651,90 +744,115 @@ class Requests:
         ``max_body_bytes`` caps how much of a response body is read, counted
         after decompression; a longer body comes back cut to that many bytes
         plus one, so the caller can tell it was cut.
+
+        A throttle status is retried as the class docstring sets out.
         """
-        retry_kwargs: dict[str, Any] = {
-            "wait": wait_exponential_jitter(max=self.retry_max_wait),
-            "retry": retry_if_result(lambda r: r.status in THROTTLE_RETRY_STATUS_CODES),
-            "reraise": True,
-        }
-
-        if self.retry_max_attempts is not None:
-            retry_kwargs["stop"] = stop_after_attempt(self.retry_max_attempts)
-            retry_kwargs["retry_error_callback"] = _return_last_result
-
-        @retry(**retry_kwargs)
-        async def _make_request() -> Response:
-            return await self._request(
-                method=method,
-                url=url,
-                headers=headers,
-                files=files,
-                data=data,
-                json=json,
-                allow_redirects=allow_redirects,
-                max_redirects=max_redirects,
-                drop_headers=drop_headers,
-                max_body_bytes=max_body_bytes,
-                **kwargs,
+        if files is not None and json is not None:
+            raise ValueError(
+                "Cannot mix file uploads with JSON body; "
+                "use 'data' for extra form fields instead."
             )
+        request_body = await prepare_body(
+            files,
+            data,
+            sends_again=self._max_attempts() > 1 or allow_redirects,
+            check_url=lambda: self._checked_url(url),
+            # The session's own timeout when the request names none.
+            timeout=_send_timeout(kwargs.get("timeout", DEFAULT_TIMEOUT)),
+        )
+        return await self._hop(
+            method,
+            url,
+            headers=headers,
+            request_body=request_body,
+            json=json,
+            allow_redirects=allow_redirects,
+            max_redirects=max_redirects,
+            drop_headers=drop_headers,
+            max_body_bytes=max_body_bytes,
+            budget=self._retry_budget(),
+            **kwargs,
+        )
 
-        return await _make_request()
+    async def _hop(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: Optional[dict],
+        request_body: PreparedBody,
+        json: Any | None,
+        allow_redirects: bool,
+        max_redirects: int,
+        drop_headers: frozenset[str],
+        max_body_bytes: int | None,
+        budget: _RetryBudget,
+        **kwargs,
+    ) -> Response:
+        """One hop: sent, and sent again on its own while it meets a throttle
+        status and the budget lasts, then the hop its redirect names. A hop
+        is never sent twice for a later hop's sake."""
+        while True:
+            try:
+                hop = await self._request(
+                    method,
+                    url,
+                    headers=headers,
+                    request_body=request_body,
+                    json=json,
+                    allow_redirects=allow_redirects,
+                    max_redirects=max_redirects,
+                    drop_headers=drop_headers,
+                    max_body_bytes=max_body_bytes,
+                    **kwargs,
+                )
+            except (HTTPClientError, HTTPServerError) as error:
+                if (
+                    error.status_code in THROTTLE_RETRY_STATUS_CODES
+                    and await budget.send_again()
+                ):
+                    continue
+                raise
+            if not isinstance(hop, _Redirect) and _is_throttled(hop):
+                if await budget.send_again():
+                    continue
+            break
+        if not isinstance(hop, _Redirect):
+            return hop
+        return await self._hop(
+            method,
+            hop.url,
+            headers=hop.headers,
+            request_body=request_body,
+            json=json,
+            allow_redirects=allow_redirects,
+            max_redirects=max_redirects - 1,
+            drop_headers=hop.drop_headers,
+            max_body_bytes=max_body_bytes,
+            budget=budget,
+            **hop.kwargs,
+        )
 
     async def _request(
         self,
         method: str,
         url: str,
         *,
-        headers: Optional[dict] = None,
-        files: list[tuple[str, tuple[str, BytesIO, str]]] | None = None,
-        data: Any | None = None,
-        json: Any | None = None,
-        allow_redirects: bool = True,
-        max_redirects: int = 10,
-        drop_headers: frozenset[str] = frozenset(),
-        max_body_bytes: int | None = None,
+        headers: Optional[dict],
+        request_body: PreparedBody,
+        json: Any | None,
+        allow_redirects: bool,
+        max_redirects: int,
+        drop_headers: frozenset[str],
+        max_body_bytes: int | None,
         **kwargs,
-    ) -> Response:
+    ) -> Response | _Redirect:
+        """One send of one hop: its response, or the redirect it names."""
         # Convert auth tuple to aiohttp.BasicAuth if necessary
         if "auth" in kwargs and isinstance(kwargs["auth"], tuple):
             kwargs["auth"] = aiohttp.BasicAuth(*kwargs["auth"])
 
-        if files is not None:
-            if json is not None:
-                raise ValueError(
-                    "Cannot mix file uploads with JSON body; "
-                    "use 'data' for extra form fields instead."
-                )
-
-            form = FormData(quote_fields=False)
-            # add normal form fields first
-            if isinstance(data, dict):
-                for k, v in data.items():
-                    form.add_field(k, str(v))
-            elif data is not None:
-                raise ValueError(
-                    "When uploading files, 'data' must be a dict of form fields."
-                )
-
-            # add the file parts
-            for field_name, (filename, fh, content_type) in files:
-                form.add_field(
-                    name=field_name,
-                    value=fh,
-                    filename=filename,
-                    content_type=content_type or "application/octet-stream",
-                )
-
-            data = form
-
-        # Validate URL and get trust status
-        parsed_url, is_trusted, ip_addresses = await validate_url_host(
-            url, self.trusted_origins
-        )
-
-        # Apply any extra user-defined validation/transformation
-        if self.extra_url_validator is not None:
-            parsed_url = self.extra_url_validator(parsed_url)
+        parsed_url, is_trusted, ip_addresses = await self._checked_url(url)
 
         # Pin the URL if untrusted
         hostname = parsed_url.hostname
@@ -770,7 +888,6 @@ class Requests:
         if connector:
             req_headers["Host"] = hostname
 
-        # Override data if files are provided
         # Set max_field_size to handle servers with large headers (e.g., long CSP headers)
         # Default is 8190 bytes, we increase to 16KB to accommodate legitimate large headers
         session_kwargs["max_field_size"] = 16384
@@ -782,7 +899,7 @@ class Requests:
                 parsed_url.geturl(),
                 headers=req_headers,
                 allow_redirects=False,
-                data=data,
+                data=request_body.for_send(),
                 json=json,
                 **kwargs,
             ) as response:
@@ -841,19 +958,12 @@ class Requests:
                         redirect_kwargs.pop("auth", None)
                         redirect_kwargs.pop("cookies", None)
 
-                    return await self.request(
-                        method,
-                        redirect_url.geturl(),
+                    return _Redirect.model_construct(
+                        url=redirect_url.geturl(),
                         headers=new_headers,
-                        allow_redirects=allow_redirects,
-                        max_redirects=max_redirects - 1,
-                        files=files,
-                        data=data,
-                        json=json,
                         drop_headers=drop_headers
                         | {k.lower() for k in req_headers.keys() - new_headers.keys()},
-                        max_body_bytes=max_body_bytes,
-                        **redirect_kwargs,
+                        kwargs=redirect_kwargs,
                     )
 
                 # Reset response URL to original host for clarity
@@ -870,6 +980,19 @@ class Requests:
                         response, self.max_response_bytes, max_body_bytes
                     ),
                 )
+
+    async def _checked_url(self, url: str) -> tuple[URL, bool, list[str]]:
+        """*url* through the checks each send makes of it: the SSRF checks,
+        which give its trust and its addresses, then the caller's own
+        validator, which may refuse or rewrite it. A request whose body has
+        to be read into memory makes them before reading it too, so a URL
+        that either refuses reads nothing."""
+        parsed_url, is_trusted, ip_addresses = await validate_url_host(
+            url, self.trusted_origins
+        )
+        if self.extra_url_validator is not None:
+            parsed_url = self.extra_url_validator(parsed_url)
+        return parsed_url, is_trusted, ip_addresses
 
     async def get(self, url: str, *args, **kwargs) -> Response:
         return await self.request("GET", url, *args, **kwargs)

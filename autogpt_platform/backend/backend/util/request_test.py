@@ -1,3 +1,4 @@
+import asyncio
 import codecs
 from unittest.mock import MagicMock
 from urllib.parse import urlparse
@@ -21,6 +22,7 @@ from backend.util.request import (
     resolve_and_check_blocked,
     validate_url_host,
 )
+from backend.util.request_test_helpers import ENDS_WITHIN_SECONDS, local_requests, serve
 from backend.util.settings import Config
 
 
@@ -1001,17 +1003,6 @@ async def test_untrusted_request_connects_only_to_the_pinned_address(
 # --- Response bodies are read under a size limit ---
 
 
-async def _serve(app: web.Application) -> tuple[web.AppRunner, str]:
-    runner = web.AppRunner(app)
-    await runner.setup()
-    await web.TCPSite(runner, "127.0.0.1", 0).start()
-    return runner, f"http://127.0.0.1:{runner.addresses[0][1]}"
-
-
-def _local_requests(**kwargs) -> Requests:
-    return Requests(trusted_origins=["127.0.0.1"], **kwargs)
-
-
 @pytest.mark.asyncio
 async def test_a_body_at_the_limit_is_read_in_full():
     async def exactly_at_limit(request: web.Request) -> web.Response:
@@ -1019,10 +1010,10 @@ async def test_a_body_at_the_limit_is_read_in_full():
 
     app = web.Application()
     app.router.add_get("/", exactly_at_limit)
-    runner, base = await _serve(app)
+    runner, base = await serve(app)
 
     try:
-        response = await _local_requests(max_response_bytes=4096).get(base)
+        response = await local_requests(max_response_bytes=4096).get(base)
     finally:
         await runner.cleanup()
 
@@ -1036,11 +1027,11 @@ async def test_a_body_over_the_limit_is_refused():
 
     app = web.Application()
     app.router.add_get("/", one_byte_over)
-    runner, base = await _serve(app)
+    runner, base = await serve(app)
 
     try:
         with pytest.raises(ResponseTooLargeError):
-            await _local_requests(max_response_bytes=4096).get(base)
+            await local_requests(max_response_bytes=4096).get(base)
     finally:
         await runner.cleanup()
 
@@ -1056,11 +1047,11 @@ async def test_a_stream_without_a_declared_length_stops_at_the_limit():
 
     app = web.Application()
     app.router.add_get("/", stream)
-    runner, base = await _serve(app)
+    runner, base = await serve(app)
 
     try:
         with pytest.raises(ResponseTooLargeError):
-            await _local_requests(max_response_bytes=16 * 1024).get(base)
+            await local_requests(max_response_bytes=16 * 1024).get(base)
     finally:
         await runner.cleanup()
 
@@ -1072,11 +1063,11 @@ async def test_an_error_body_over_the_limit_is_refused_too():
 
     app = web.Application()
     app.router.add_get("/", failing_with_a_long_body)
-    runner, base = await _serve(app)
+    runner, base = await serve(app)
 
     try:
         with pytest.raises(ResponseTooLargeError):
-            await _local_requests(max_response_bytes=4096, retry_max_attempts=1).get(
+            await local_requests(max_response_bytes=4096, retry_max_attempts=1).get(
                 base
             )
     finally:
@@ -1106,10 +1097,10 @@ async def test_a_head_response_is_not_refused_for_the_size_of_the_resource():
 
     app = web.Application()
     app.router.add_get("/", big)  # aiohttp answers HEAD for it too
-    runner, base = await _serve(app)
+    runner, base = await serve(app)
 
     try:
-        response = await _local_requests(max_response_bytes=4096).head(base)
+        response = await local_requests(max_response_bytes=4096).head(base)
     finally:
         await runner.cleanup()
 
@@ -1246,3 +1237,57 @@ def test_allowed_response_charsets_are_canonical_codec_names():
     assert {codecs.lookup(name).name for name in ALLOWED_RESPONSE_CHARSETS} == (
         ALLOWED_RESPONSE_CHARSETS
     )
+
+
+# --- Every hop is checked against the blocked ranges ---
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "first_hop",
+    [[(302, None)], [(503, None), (302, None)]],
+    ids=["redirects", "throttled-then-redirects"],
+)
+async def test_a_redirect_to_an_address_the_client_does_not_trust_is_never_sent(
+    first_hop: list[tuple[int, str | None]],
+):
+    """Each hop is checked against the blocked ranges, a hop reached after a
+    retry included: the second origin is loopback, which the client does not
+    trust, so the request to it is refused before anything is sent."""
+    reached: list[str] = []
+
+    async def other(request: web.Request) -> web.Response:
+        reached.append(request.path)
+        return web.Response(text="reached")
+
+    other_app = web.Application()
+    other_app.router.add_route("*", "/{path:.*}", other)
+    other_runner, other_base = await serve(other_app)
+
+    served: list[int] = []
+
+    async def first(request: web.Request) -> web.Response:
+        status, _ = first_hop[min(len(served), len(first_hop) - 1)]
+        served.append(status)
+        if status == 302:
+            raise web.HTTPFound(f"{other_base}/secret")
+        return web.Response(status=status)
+
+    app = web.Application()
+    app.router.add_route("*", "/{path:.*}", first)
+    runner, base = await serve(app)
+
+    try:
+        client = Requests(
+            trusted_origins=[base.removeprefix("http://")],
+            raise_for_status=False,
+            retry_max_attempts=3,
+            retry_max_wait=0,
+        )
+        with pytest.raises(ValueError, match="blocked or private IP"):
+            await asyncio.wait_for(client.get(f"{base}/a"), ENDS_WITHIN_SECONDS)
+    finally:
+        await runner.cleanup()
+        await other_runner.cleanup()
+
+    assert reached == []

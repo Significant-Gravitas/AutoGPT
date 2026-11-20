@@ -6,9 +6,11 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from aiohttp import BodyPartReader, web
+from aiohttp.test_utils import TestServer
 from pydantic import SecretStr
 
-from backend.blocks.rmfg import _http
+from backend.blocks.rmfg import _api, _http
 from backend.blocks.rmfg._api import MAX_PAGES, SERVER_WAIT_SECONDS, RMFGClient
 from backend.blocks.rmfg._http import POLL_INITIAL_SECONDS, RMFGError, parse_body
 from backend.blocks.rmfg._models import Design, Part, ResourceError, absolute_api_url
@@ -23,6 +25,7 @@ from backend.blocks.rmfg._types import (
     QuoteItemRequest,
 )
 from backend.data.model import APIKeyCredentials
+from backend.util.request import Requests
 
 
 def _credentials() -> APIKeyCredentials:
@@ -237,6 +240,49 @@ class TestAnalyze:
         _, _, kwargs = _sent(request)
         assert "Idempotency-Key" not in kwargs["headers"]
         assert "Prefer" not in kwargs["headers"]
+
+    async def test_a_throttled_upload_sends_the_whole_step_file_again(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A retry after a 429 uploads the whole STEP file again (#16954)."""
+        step = (
+            b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n"
+            + b"#1=CARTESIAN_POINT('',(0.,0.,0.));\n" * 400
+            + b"ENDSEC;\nEND-ISO-10303-21;\n"
+        )
+        received: list[tuple[str | None, bytes]] = []
+
+        async def analyze(request: web.Request) -> web.Response:
+            part = await (await request.multipart()).next()
+            assert isinstance(part, BodyPartReader)
+            received.append((part.filename, await part.read()))
+            if len(received) == 1:
+                return web.json_response(
+                    {"error": {"type": "rate_limit_error", "message": "slow down"}},
+                    status=429,
+                )
+            return web.json_response(TEST_DESIGN.model_dump(mode="json"))
+
+        class LocalRequests(Requests):
+            """The client's own transport, let through to the local server
+            and not made to wait between attempts."""
+
+            def __init__(self, **kwargs):
+                super().__init__(
+                    trusted_origins=["127.0.0.1"], retry_max_wait=0, **kwargs
+                )
+
+        app = web.Application()
+        app.router.add_post("/v1/analyze", analyze)
+        async with TestServer(app, host="127.0.0.1") as server:
+            monkeypatch.setattr(_api, "Requests", LocalRequests)
+            client = RMFGClient(_credentials())
+            client.base_url = str(server.make_url("/v1"))
+
+            design = await asyncio.wait_for(client.analyze("bracket.step", step), 10)
+
+        assert design.id == TEST_DESIGN.id
+        assert received == [("bracket.step", step), ("bracket.step", step)]
 
 
 class TestPolling:
