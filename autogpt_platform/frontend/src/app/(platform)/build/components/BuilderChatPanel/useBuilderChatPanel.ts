@@ -21,7 +21,6 @@ import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
-import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
 import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { isKey } from "@/lib/keyboard";
 import { retryUnlessClientError } from "../../helpers/graphLoadError";
@@ -179,20 +178,14 @@ export function useBuilderChatPanel({
     copilotModel: undefined,
   });
 
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
-    sessionId,
-    status,
-    messages,
-    setMessages,
-  });
-
-  const { onSend } = useBuilderChatSend({
+  const { onSend, queuedMessages } = useBuilderChatSend({
     sessionId,
     status,
     isReconnecting,
     isFinishProbing,
+    messages,
+    setMessages,
     sendMessage,
-    queueMessage,
   });
 
   // Track the currently-selected graph so the async bind effect can
