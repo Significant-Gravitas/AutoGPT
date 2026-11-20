@@ -92,7 +92,7 @@ async def prepare_body(
     blocked URL reads nothing, and a file is read off the event loop. The
     parts held in memory come to at most ``MAX_BUFFERED_BODY_BYTES``, and
     reading them may take at most ``timeout`` seconds, what one send may
-    take. Each send then gets its whole ``timeout`` again, as on dev, so a
+    take. aiohttp then gives each send the whole ``timeout`` again, so a
     request may spend up to two of them reading its body and sending it.
     """
     if files is not None and not (data is None or isinstance(data, dict)):
