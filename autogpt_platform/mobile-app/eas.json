@@ -1,0 +1,36 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "base": {
+      "node": "24.18.0",
+      "pnpm": "10.29.2"
+    },
+    "dev": {
+      "extends": "base",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_VARIANT": "dev",
+        "EXPO_PUBLIC_FRONTEND_URL": "https://dev-builder.agpt.co",
+        "EXPO_PUBLIC_API_URL": "https://dev-server.agpt.co"
+      }
+    },
+    "production": {
+      "extends": "base",
+      "autoIncrement": true,
+      "env": {
+        "APP_VARIANT": "production",
+        "EXPO_PUBLIC_FRONTEND_URL": "https://platform.agpt.co",
+        "EXPO_PUBLIC_API_URL": "https://backend.agpt.co"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
