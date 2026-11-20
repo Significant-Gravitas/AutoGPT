@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, call, patch
 import feedparser
 import pytest
 
-from backend.blocks.rss import ReadRSSFeedBlock, RSSEntry
+from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+from backend.blocks.rss import (
+    MAX_CONTINUOUS_RUNTIME_SECONDS,
+    ReadRSSFeedBlock,
+    RSSEntry,
+)
 
 RSS_WITH_MISSING_FIELDS = """<?xml version="1.0"?>
 <rss version="2.0"><channel><title>Feed</title>
@@ -32,6 +37,55 @@ ATOM_CATEGORY_WITHOUT_TERM = """<?xml version="1.0"?>
 <updated>2023-06-23T12:30:00Z</updated>
 <category label="label only"/><category term="news"/></entry>
 </feed>"""
+
+
+def make_feed_entry(now: datetime, title: str, link: str, minutes_ago: int) -> dict:
+    published = now - timedelta(minutes=minutes_ago)
+    return {
+        "title": title,
+        "link": link,
+        "published_parsed": published.utctimetuple(),
+    }
+
+
+def make_expected_entry(
+    now: datetime, title: str, link: str, minutes_ago: int
+) -> RSSEntry:
+    return RSSEntry(
+        title=title,
+        link=link,
+        description="",
+        pub_date=now - timedelta(minutes=minutes_ago),
+        author="",
+        categories=[],
+    )
+
+
+def patch_continuous_polling(monkeypatch, block, feed_pages: list) -> None:
+    parse_feed = AsyncMock(side_effect=feed_pages)
+    sleep = AsyncMock(side_effect=[None, asyncio.CancelledError])
+    monkeypatch.setattr(block, "parse_feed", parse_feed)
+    monkeypatch.setattr("backend.blocks.rss.async_sleep", sleep)
+    monkeypatch.setattr("backend.blocks.rss.monotonic", lambda: 0)
+
+
+def continuous_input(**overrides) -> ReadRSSFeedBlock.Input:
+    params = {
+        "rss_url": "https://example.com/rss",
+        "time_period": 60,
+        "polling_rate": 42,
+        "max_duration_seconds": 3600,
+        "run_continuously": True,
+    }
+    return ReadRSSFeedBlock.Input(**(params | overrides))
+
+
+async def collect_until_cancelled(block, input_data) -> list:
+    outputs = []
+    with pytest.raises(asyncio.CancelledError):
+        async for output in block.run(input_data):
+            outputs.append(output)
+    return outputs
 
 
 @pytest.mark.parametrize("has_entries", [False, True])
@@ -132,64 +186,23 @@ async def test_continuous_mode_emits_only_new_feed_entries(monkeypatch):
     block = ReadRSSFeedBlock()
     now = datetime.now(timezone.utc).replace(microsecond=0)
 
-    def feed_entry(title: str, link: str, minutes_ago: int) -> dict:
-        published = now - timedelta(minutes=minutes_ago)
-        return {
-            "title": title,
-            "link": link,
-            "published_parsed": published.utctimetuple(),
-        }
-
-    first_entry = feed_entry("First", "https://example.com/first", 10)
-    second_entry = feed_entry("Second", "https://example.com/second", 5)
-    third_entry = feed_entry("Third", "https://example.com/third", 4)
-    parse_feed = AsyncMock(
-        side_effect=[
+    first_entry = make_feed_entry(now, "First", "https://example.com/first", 10)
+    second_entry = make_feed_entry(now, "Second", "https://example.com/second", 5)
+    third_entry = make_feed_entry(now, "Third", "https://example.com/third", 4)
+    patch_continuous_polling(
+        monkeypatch,
+        block,
+        [
             {"entries": [first_entry, second_entry]},
             {"entries": [second_entry, first_entry, third_entry]},
-        ]
+        ],
     )
-    sleep = AsyncMock(side_effect=[None, asyncio.CancelledError])
-    monkeypatch.setattr(block, "parse_feed", parse_feed)
-    monkeypatch.setattr("backend.blocks.rss.async_sleep", sleep)
-    monkeypatch.setattr("backend.blocks.rss.monotonic", lambda: 0)
 
-    input_data = ReadRSSFeedBlock.Input(
-        rss_url="https://example.com/rss",
-        time_period=60,
-        polling_rate=42,
-        max_duration_seconds=3600,
-        run_continuously=True,
-    )
-    outputs = []
-    with pytest.raises(asyncio.CancelledError):
-        async for output in block.run(input_data):
-            outputs.append(output)
+    outputs = await collect_until_cancelled(block, continuous_input())
 
-    expected_first = RSSEntry(
-        title="First",
-        link=first_entry["link"],
-        description="",
-        pub_date=now - timedelta(minutes=10),
-        author="",
-        categories=[],
-    )
-    expected_second = RSSEntry(
-        title="Second",
-        link=second_entry["link"],
-        description="",
-        pub_date=now - timedelta(minutes=5),
-        author="",
-        categories=[],
-    )
-    expected_third = RSSEntry(
-        title="Third",
-        link=third_entry["link"],
-        description="",
-        pub_date=now - timedelta(minutes=4),
-        author="",
-        categories=[],
-    )
+    expected_first = make_expected_entry(now, "First", first_entry["link"], 10)
+    expected_second = make_expected_entry(now, "Second", second_entry["link"], 5)
+    expected_third = make_expected_entry(now, "Third", third_entry["link"], 4)
     assert outputs == [
         ("entry", expected_first),
         ("entry", expected_second),
@@ -226,55 +239,21 @@ async def test_continuous_mode_emits_late_entries_with_older_pub_dates(monkeypat
     block = ReadRSSFeedBlock()
     now = datetime.now(timezone.utc).replace(microsecond=0)
 
-    def feed_entry(title: str, link: str, minutes_ago: int) -> dict:
-        published = now - timedelta(minutes=minutes_ago)
-        return {
-            "title": title,
-            "link": link,
-            "published_parsed": published.utctimetuple(),
-        }
-
-    recent_entry = feed_entry("Recent", "https://example.com/recent", 10)
-    late_entry = feed_entry("Late", "https://example.com/late", 45)
-    parse_feed = AsyncMock(
-        side_effect=[
+    recent_entry = make_feed_entry(now, "Recent", "https://example.com/recent", 10)
+    late_entry = make_feed_entry(now, "Late", "https://example.com/late", 45)
+    patch_continuous_polling(
+        monkeypatch,
+        block,
+        [
             {"entries": [recent_entry]},
             {"entries": [recent_entry, late_entry]},
-        ]
+        ],
     )
-    sleep = AsyncMock(side_effect=[None, asyncio.CancelledError])
-    monkeypatch.setattr(block, "parse_feed", parse_feed)
-    monkeypatch.setattr("backend.blocks.rss.async_sleep", sleep)
-    monkeypatch.setattr("backend.blocks.rss.monotonic", lambda: 0)
 
-    input_data = ReadRSSFeedBlock.Input(
-        rss_url="https://example.com/rss",
-        time_period=60,
-        polling_rate=42,
-        max_duration_seconds=3600,
-        run_continuously=True,
-    )
-    outputs = []
-    with pytest.raises(asyncio.CancelledError):
-        async for output in block.run(input_data):
-            outputs.append(output)
+    outputs = await collect_until_cancelled(block, continuous_input())
 
-    expected_recent = RSSEntry(
-        title="Recent",
-        link=recent_entry["link"],
-        description="",
-        pub_date=now - timedelta(minutes=10),
-        author="",
-        categories=[],
-    )
-    expected_late = RSSEntry(
-        title="Late",
-        link=late_entry["link"],
-        description="",
-        pub_date=now - timedelta(minutes=45),
-        author="",
-        categories=[],
-    )
+    expected_recent = make_expected_entry(now, "Recent", recent_entry["link"], 10)
+    expected_late = make_expected_entry(now, "Late", late_entry["link"], 45)
     assert outputs == [
         ("entry", expected_recent),
         ("entries", [expected_recent]),
@@ -358,3 +337,87 @@ async def run_block(feed_xml: str) -> dict:
             else:
                 outputs[name] = value
     return outputs
+
+
+def test_rss_feed_block_has_finite_wall_clock_timeout():
+    assert ReadRSSFeedBlock().execution_timeout_seconds == (
+        MAX_CONTINUOUS_RUNTIME_SECONDS + DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+    )
+
+
+async def test_rss_feed_block_skips_final_sleep_for_one_shot(monkeypatch):
+    sleep_calls = []
+
+    async def parse_feed(url):
+        return {"entries": []}
+
+    async def sleep(delay):
+        sleep_calls.append(delay)
+
+    monkeypatch.setattr(ReadRSSFeedBlock, "parse_feed", staticmethod(parse_feed))
+    monkeypatch.setattr("backend.blocks.rss.async_sleep", sleep)
+
+    block = ReadRSSFeedBlock()
+    input_data = ReadRSSFeedBlock.Input(
+        rss_url="https://example.com/rss",
+        time_period=60,
+        polling_rate=300,
+        run_continuously=False,
+    )
+    outputs = [output async for output in block.run(input_data)]
+
+    assert outputs == [("entries", [])]
+    assert sleep_calls == []
+
+
+async def test_rss_feed_block_times_out_one_shot_fetch(monkeypatch):
+    async def parse_feed(url):
+        await asyncio.sleep(1)
+
+    monkeypatch.setattr(ReadRSSFeedBlock, "parse_feed", staticmethod(parse_feed))
+    monkeypatch.setattr("backend.blocks.rss.DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS", 0)
+
+    block = ReadRSSFeedBlock()
+    input_data = ReadRSSFeedBlock.Input(
+        rss_url="https://example.com/rss",
+        time_period=60,
+        polling_rate=300,
+        run_continuously=False,
+    )
+
+    with pytest.raises(TimeoutError):
+        async for _ in block.run(input_data):
+            pass
+
+
+async def test_rss_feed_block_keeps_polling_for_continuous_reads(monkeypatch):
+    sleep_calls = []
+    outputs = []
+
+    class StopPolling(Exception):
+        pass
+
+    async def parse_feed(url):
+        return {"entries": []}
+
+    async def sleep(delay):
+        sleep_calls.append(delay)
+        raise StopPolling
+
+    monkeypatch.setattr(ReadRSSFeedBlock, "parse_feed", staticmethod(parse_feed))
+    monkeypatch.setattr("backend.blocks.rss.async_sleep", sleep)
+
+    block = ReadRSSFeedBlock()
+    input_data = ReadRSSFeedBlock.Input(
+        rss_url="https://example.com/rss",
+        time_period=60,
+        polling_rate=300,
+        run_continuously=True,
+    )
+
+    with pytest.raises(StopPolling):
+        async for output in block.run(input_data):
+            outputs.append(output)
+
+    assert outputs == [("entries", [])]
+    assert sleep_calls == [300]
