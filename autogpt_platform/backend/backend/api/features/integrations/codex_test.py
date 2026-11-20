@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -798,6 +799,20 @@ async def test_revoke_deletes_expired_codex_credential_without_refreshing(
 
 
 @pytest.mark.asyncio
+async def test_revoke_deletes_a_row_stored_with_the_legacy_provider_name(mocker):
+    # The DELETE route accepts this Python 3.13 str() form of the provider.
+    credentials = _expired_credentials().model_copy(
+        update={"provider": "ProviderName.CODEX"}
+    )
+    manager, rows, _lock = _manager_with_stored_row(mocker, credentials)
+
+    revoked = await revoke_codex_credentials(manager, TEST_USER_ID, credentials.id)
+
+    assert revoked is False
+    assert credentials.id not in rows
+
+
+@pytest.mark.asyncio
 async def test_revoke_raises_instead_of_reporting_success_for_missing_row(mocker):
     credentials = _expired_credentials()
     manager, rows, _lock = _manager_with_stored_row(mocker, credentials)
@@ -876,7 +891,8 @@ def test_codex_delete_never_reports_deleted_when_row_remains(error, expected_sta
 
 
 @pytest.mark.parametrize("route", ["account", "rate-limits"])
-def test_codex_status_routes_report_expired_connection_as_conflict(route):
+@pytest.mark.parametrize("http_status", [None, 400, 401])
+def test_codex_status_routes_report_expired_connection_as_conflict(route, http_status):
     with (
         patch(
             "backend.api.features.integrations.codex.codex_credentials_manager"
@@ -885,7 +901,9 @@ def test_codex_status_routes_report_expired_connection_as_conflict(route):
             "backend.api.features.integrations.codex._get_codex_transport"
         ) as get_transport,
     ):
-        manager.acquire_lease = AsyncMock(side_effect=CodexAuthError("access-secret"))
+        manager.acquire_lease = AsyncMock(
+            side_effect=CodexAuthError("access-secret", status=http_status)
+        )
         manager.exists = AsyncMock(return_value=True)
 
         response = client.get(f"/codex/credentials/codex-credential/{route}")
@@ -939,6 +957,53 @@ def test_codex_status_routes_report_infra_failure_as_unavailable(route, infra_er
     ):
         manager.acquire_lease = AsyncMock(side_effect=infra_error)
         manager.exists = AsyncMock(return_value=True)
+
+        response = client.get(f"/codex/credentials/codex-credential/{route}")
+
+    _assert_unavailable(response)
+    get_transport.assert_not_called()
+
+
+@pytest.mark.parametrize("route", ["account", "rate-limits"])
+@pytest.mark.parametrize("http_status", [429, 500, 503])
+def test_codex_status_routes_report_busy_chatgpt_as_unavailable(route, http_status):
+    # A refresh ChatGPT turned away for now must not tell the user to reconnect.
+    with (
+        patch(
+            "backend.api.features.integrations.codex.codex_credentials_manager"
+        ) as manager,
+        patch(
+            "backend.api.features.integrations.codex._get_codex_transport"
+        ) as get_transport,
+    ):
+        manager.acquire_lease = AsyncMock(
+            side_effect=CodexAuthError(
+                f"ChatGPT refused to refresh the credential (HTTP {http_status})",
+                status=http_status,
+            )
+        )
+        manager.exists = AsyncMock(return_value=True)
+
+        response = client.get(f"/codex/credentials/codex-credential/{route}")
+
+    _assert_unavailable(response)
+    get_transport.assert_not_called()
+
+
+@pytest.mark.parametrize("route", ["account", "rate-limits"])
+def test_codex_status_routes_report_failed_row_lookup_as_unavailable(route):
+    with (
+        patch(
+            "backend.api.features.integrations.codex.codex_credentials_manager"
+        ) as manager,
+        patch(
+            "backend.api.features.integrations.codex._get_codex_transport"
+        ) as get_transport,
+    ):
+        manager.acquire_lease = AsyncMock(side_effect=RuntimeError("lease failed"))
+        manager.exists = AsyncMock(
+            side_effect=ConnectionError("could not reach db at 198.18.0.1:5432")
+        )
 
         response = client.get(f"/codex/credentials/codex-credential/{route}")
 
@@ -1006,17 +1071,23 @@ def test_codex_status_routes_hide_redis_cluster_outage(mocker, route):
     get_transport.assert_not_called()
 
 
-def test_codex_status_route_hides_unexpected_acquisition_error():
+def test_codex_status_route_hides_unexpected_acquisition_error(caplog):
     with patch(
         "backend.api.features.integrations.codex.codex_credentials_manager"
     ) as manager:
         manager.acquire_lease = AsyncMock(side_effect=RuntimeError("access-secret"))
         manager.exists = AsyncMock(return_value=True)
 
-        response = client.get("/codex/credentials/codex-credential/account")
+        with caplog.at_level(logging.WARNING):
+            response = client.get("/codex/credentials/codex-credential/account")
 
     assert response.status_code == 500
     assert response.json() == {"detail": "Could not load the ChatGPT connection"}
+    # Likely a bug, so it is logged as an error with its traceback (Sentry
+    # files ERROR records), while the reply names nothing.
+    assert any(
+        record.levelno == logging.ERROR and record.exc_info for record in caplog.records
+    )
 
 
 @pytest.mark.parametrize("route", ["account", "rate-limits"])

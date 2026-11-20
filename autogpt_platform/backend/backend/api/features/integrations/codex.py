@@ -23,8 +23,10 @@ from backend.integrations.codex.models import (
     CodexRateLimitsSnapshot,
 )
 from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth.refresh_failure import CredentialsNeedReconnectError
+from backend.integrations.providers import ProviderName
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -184,7 +186,9 @@ async def revoke_codex_credentials(
     """
     lease = await manager.acquire_lease(user_id, credential_id, refresh=False)
     try:
-        if lease.credentials.provider != "codex":
+        # The DELETE route matches the provider the same way, so a row stored
+        # as "ProviderName.CODEX" (the Python 3.13 str() form) is deleted too.
+        if not provider_matches(lease.credentials.provider, ProviderName.CODEX.value):
             raise ValueError(f"Credentials #{credential_id} are not Codex credentials")
         if _is_codex_lease(lease):
             try:
@@ -212,18 +216,24 @@ async def _acquire_codex_lease(
     except Exception as error:
         # Acquiring refreshes an expiring token first. Only report "not found"
         # when the row really is gone.
-        if not await codex_credentials_manager.exists(user_id, credential_id):
+        if not await _credential_still_stored(user_id, credential_id):
             raise _credential_not_found() from None
-        _log_acquisition_failure(error)
-        if isinstance(error, (CodexAuthError, CredentialsNeedReconnectError)):
+        if _needs_reconnect(error):
+            _log_acquisition_failure(error)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="ChatGPT connection expired; reconnect it",
             ) from None
-        if isinstance(error, ValueError):
-            # With the row present, this came from the refresh request, e.g. the
-            # URL guard blocking the token host. Its message names the host/IP.
+        if isinstance(error, (CodexAuthError, ValueError)):
+            # With the row present, a ValueError came from the refresh request,
+            # e.g. the URL guard blocking the token host; its message names the
+            # host/IP. A CodexAuthError left here is a 429 or 5xx after retries:
+            # ChatGPT is busy or down, and reconnecting won't help.
+            _log_acquisition_failure(error)
             raise _codex_unavailable() from None
+        # Neither an outage nor a refused grant, so most likely a bug: keep the
+        # traceback for Sentry, while the reply stays generic.
+        logger.exception("Codex credential acquisition failed unexpectedly")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not load the ChatGPT connection",
@@ -232,6 +242,24 @@ async def _acquire_codex_lease(
         await lease.release()
         raise _credential_not_found()
     return lease
+
+
+async def _credential_still_stored(user_id: str, credential_id: str) -> bool:
+    try:
+        return await codex_credentials_manager.exists(user_id, credential_id)
+    except Exception as error:
+        # The same outage that failed the lease can fail this lookup.
+        _log_acquisition_failure(error)
+        raise _codex_unavailable() from None
+
+
+def _needs_reconnect(error: Exception) -> bool:
+    """Whether ChatGPT refused the refresh for good, rather than for now."""
+    if isinstance(error, CredentialsNeedReconnectError):
+        return True
+    if not isinstance(error, CodexAuthError):
+        return False
+    return error.status is None or (error.status != 429 and error.status < 500)
 
 
 def _codex_unavailable() -> HTTPException:

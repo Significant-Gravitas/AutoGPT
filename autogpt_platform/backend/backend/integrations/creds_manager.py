@@ -216,6 +216,7 @@ class IntegrationCredentialsManager:
         if refresh:
             found = await self.get(user_id, credentials_id)
         else:
+            _refuse_sdk_default(credentials_id)
             found = await self.store.get_creds_by_id(user_id, credentials_id)
         if not found:
             raise ValueError(
