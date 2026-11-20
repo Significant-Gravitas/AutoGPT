@@ -63,7 +63,7 @@ from backend.util.exceptions import (
     NotFoundError,
     get_execution_failure_reason,
 )
-from backend.util.json import SafeJson
+from backend.util.json import SafeJson, sanitize_json
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Config
@@ -1444,6 +1444,11 @@ async def update_node_execution_status(
     raise ValueError(f"Execution {node_exec_id} not found.")
 
 
+# How many moderation writes run at once: enough to mask a big run quickly,
+# few enough to leave the database manager's connection pool to other callers.
+MODERATION_WRITES_IN_FLIGHT = 10
+
+
 async def mark_node_executions_moderated(
     graph_exec_id: str,
     stats_patches: dict[str, dict[str, Any]],
@@ -1460,8 +1465,10 @@ async def mark_node_executions_moderated(
     only writes rows of this run still in `from_statuses`. Don't use it for
     anything else.
 
-    Returns the updated rows, re-read so they carry the masked data. Rows that
-    weren't updated are logged at error level: their content stays visible.
+    Returns this run's FAILED rows that carry their patch, re-read so they show
+    the masked data. That includes rows an earlier delivery of the same call
+    wrote, since the RPC client retries. Rows that don't carry their patch are
+    logged at error level: their content stays visible.
     """
     statuses = [s.value for s in from_statuses]
     rows = await AgentNodeExecution.prisma().find_many(
@@ -1472,45 +1479,65 @@ async def mark_node_executions_moderated(
         }
     )
     now = datetime.now(tz=timezone.utc)
-    updated_ids: list[str] = []
-    for row in rows:
-        if await AgentNodeExecution.prisma().update_many(
-            where={"id": row.id, "executionStatus": {"in": statuses}},
-            data={
-                "executionStatus": ExecutionStatus.FAILED,
-                "endedTime": now,
-                "stats": SafeJson(_moderated_stats(row.stats, stats_patches[row.id])),
-            },
-        ):
-            updated_ids.append(row.id)
+    for start in range(0, len(rows), MODERATION_WRITES_IN_FLIGHT):
+        await asyncio.gather(
+            *(
+                AgentNodeExecution.prisma().update_many(
+                    where={"id": row.id, "executionStatus": {"in": statuses}},
+                    data={
+                        "executionStatus": ExecutionStatus.FAILED,
+                        "endedTime": now,
+                        "stats": SafeJson(
+                            _moderated_stats(row.id, row.stats, stats_patches[row.id])
+                        ),
+                    },
+                )
+                for row in rows[start : start + MODERATION_WRITES_IN_FLIGHT]
+            )
+        )
 
-    if missed := set(stats_patches) - set(updated_ids):
+    failed = await AgentNodeExecution.prisma().find_many(
+        where={
+            "id": {"in": list(stats_patches)},
+            "agentGraphExecutionId": graph_exec_id,
+            "executionStatus": ExecutionStatus.FAILED,
+        },
+        include=EXECUTION_RESULT_INCLUDE,
+        order=EXECUTION_RESULT_ORDER,
+    )
+    masked = [row for row in failed if _has_patch(row.stats, stats_patches[row.id])]
+    if missed := set(stats_patches) - {row.id for row in masked}:
         logger.error(
             f"Graph execution #{graph_exec_id}: moderation could not clear "
             f"{len(missed)} of {len(stats_patches)} node executions "
             f"(not in {statuses}, or not in this run): {sorted(missed)}"
         )
-    if not updated_ids:
-        return []
-
-    updated = await AgentNodeExecution.prisma().find_many(
-        where={"id": {"in": updated_ids}},
-        include=EXECUTION_RESULT_INCLUDE,
-        order=EXECUTION_RESULT_ORDER,
-    )
-    return [NodeExecutionResult.from_db(row) for row in updated]
+    return [NodeExecutionResult.from_db(row) for row in masked]
 
 
-def _moderated_stats(existing: Any, patch: dict[str, Any]) -> dict[str, Any]:
+def _moderated_stats(
+    node_exec_id: str, existing: Any, patch: dict[str, Any]
+) -> dict[str, Any]:
     """`patch` merged into a row's existing stats, or `patch` alone when the
     merge doesn't validate: `NodeExecutionResult.from_db` drops stats it can't
     validate, the moderation fields with them, which would unmask the row."""
     merged = {**(existing if isinstance(existing, dict) else {}), **patch}
     try:
         NodeExecutionStats.model_validate(merged)
-    except (ValueError, ValidationError):
+    except (ValueError, ValidationError) as e:
+        logger.warning(
+            f"Node execution #{node_exec_id}: its stats don't validate, so "
+            f"moderation replaces them with its own fields and the rest is lost: {e}"
+        )
         return patch
     return merged
+
+
+def _has_patch(stats: Any, patch: dict[str, Any]) -> bool:
+    """Whether stored `stats` hold every field of `patch`, as stored: `SafeJson`
+    strips control characters."""
+    stored = stats if isinstance(stats, dict) else {}
+    return all(stored.get(key) == value for key, value in sanitize_json(patch).items())
 
 
 def _get_update_status_data(

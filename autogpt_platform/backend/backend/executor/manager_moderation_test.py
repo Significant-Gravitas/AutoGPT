@@ -1,11 +1,12 @@
 """A run waits a bounded time on each AutoMod check. A check that runs out of
-time is cancelled, and the run goes on without it only with automod_fail_open."""
+time is cancelled, and the run goes on without it only with automod_fail_open.
+A refusal fails the run however long masking its nodes takes."""
 
 import asyncio
 import inspect
 import threading
 import time
-from collections.abc import Coroutine, Iterator
+from collections.abc import Awaitable, Callable, Coroutine, Iterator
 from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock
 
@@ -51,12 +52,12 @@ def _fail_open(
 
 
 def _check_that_never_answers() -> (
-    tuple[Coroutine[Any, Any, Exception | None], threading.Event, threading.Event]
+    tuple[Coroutine[Any, Any, ModerationError | None], threading.Event, threading.Event]
 ):
     started = threading.Event()
     cancelled = threading.Event()
 
-    async def check() -> Exception | None:
+    async def check() -> ModerationError | None:
         started.set()
         try:
             await asyncio.Event().wait()
@@ -87,7 +88,7 @@ def _stopped(
 
 
 def _await(
-    check: Coroutine[Any, Any, Exception | None],
+    check: Coroutine[Any, Any, ModerationError | None],
     loop: asyncio.AbstractEventLoop,
     stage: Stage = "input",
 ) -> None:
@@ -119,7 +120,7 @@ def test_a_check_that_runs_out_of_time_fails_the_execution(
     assert _stopped(check, started, cancelled), "the timed-out check kept running"
     # Its nodes are failed as a refused check of the same kind fails them
     automod.update_failed_nodes_for_moderation.assert_awaited_once_with(
-        db_client, "exec-1", stage
+        db_client, "exec-1", stage, None
     )
 
 
@@ -188,6 +189,18 @@ def _automod_that_never_answers(
             raise
         return None
 
+    automod = _real_automod(monkeypatch, fail_open=fail_open, post=never_answers)
+    return automod, request_started, request_cancelled
+
+
+def _real_automod(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fail_open: bool,
+    post: Callable[..., Awaitable[object]],
+) -> AutoModManager:
+    """The real AutoMod manager, switched on for the executor, whose requests
+    go to *post*."""
     config = ModerationConfig(
         api_url="https://automod.example/api", api_key="key", fail_open=fail_open
     )
@@ -196,11 +209,77 @@ def _automod_that_never_answers(
         automod_module, "is_feature_enabled", AsyncMock(return_value=True)
     )
     requests = MagicMock()
-    requests.return_value.post = never_answers
+    requests.return_value.post = post
     monkeypatch.setattr(automod_module, "Requests", requests)
     automod = AutoModManager()
     monkeypatch.setattr(manager, "automod_manager", automod)
-    return automod, request_started, request_cancelled
+    return automod
+
+
+def _automod_verdict(status: str, content_id: str) -> MagicMock:
+    """An AutoMod reply with this status, as `Requests.post` returns it."""
+    reply = MagicMock()
+    reply.json.return_value = {
+        "success": True,
+        "content_id": content_id,
+        "status": status,
+    }
+    return reply
+
+
+@pytest.mark.parametrize("fail_open", [False, True], ids=["fail closed", "fail open"])
+def test_a_refusal_fails_the_run_however_long_masking_its_nodes_takes(
+    monkeypatch: pytest.MonkeyPatch,
+    evaluation_loop: asyncio.AbstractEventLoop,
+    db_client: MagicMock,
+    fail_open: bool,
+) -> None:
+    """AutoMod refuses the outputs well within the wait, but masking the
+    completed nodes takes longer than the wait. The refusal must still fail the
+    run, with its moderation ID: counted as AutoMod timing out, it would be let
+    through by automod_fail_open, and the masking would be cut short."""
+    automod = _real_automod(
+        monkeypatch,
+        fail_open=fail_open,
+        post=AsyncMock(return_value=_automod_verdict("rejected", "cid-1")),
+    )
+    monkeypatch.setattr(manager, "MODERATION_WAIT_SECONDS", 1.0)
+    monkeypatch.setattr(manager, "send_async_execution_update", AsyncMock())
+    db_client.get_node_executions = AsyncMock(
+        return_value=[
+            MagicMock(
+                node_exec_id="node-exec-1",
+                input_data={},
+                output_data={"answer": ["flagged"]},
+            )
+        ]
+    )
+
+    async def mask_slowly(*args: object) -> list[object]:
+        await asyncio.sleep(2.5)
+        return []
+
+    db_client.mark_node_executions_moderated = AsyncMock(side_effect=mask_slowly)
+    moderation = automod.moderate_graph_execution_outputs(
+        db_client=db_client,
+        graph_exec_id="exec-1",
+        user_id="user-1",
+        graph_id="graph-1",
+    )
+
+    with pytest.raises(ModerationError) as refused:
+        _await(moderation, evaluation_loop, "output")
+
+    assert (refused.value.moderation_type, refused.value.content_id) == (
+        "output",
+        "cid-1",
+    )
+    db_client.mark_node_executions_moderated.assert_awaited_once()
+    _, patches, statuses = db_client.mark_node_executions_moderated.await_args.args
+    assert statuses == [ExecutionStatus.COMPLETED]
+    assert patches["node-exec-1"]["cleared_outputs"] == {
+        "answer": ["Failed due to content moderation (Moderation ID: cid-1)"]
+    }
 
 
 @pytest.mark.parametrize("fail_open", [False, True], ids=["fail closed", "fail open"])
@@ -265,23 +344,30 @@ def test_when_automod_never_answers_the_run_follows_fail_open(
 def test_a_check_that_answers_in_time_decides(
     monkeypatch: pytest.MonkeyPatch,
     evaluation_loop: asyncio.AbstractEventLoop,
+    db_client: MagicMock,
     fail_open: bool,
 ) -> None:
-    _fail_open(monkeypatch, fail_open)
+    automod = _fail_open(monkeypatch, fail_open)
     refusal = ModerationError(
         message="Execution failed due to input content moderation",
         user_id="user-1",
         graph_exec_id="exec-1",
         moderation_type="input",
+        content_id="cid-1",
     )
 
-    async def refuse() -> Exception | None:
+    async def refuse() -> ModerationError | None:
         return refusal
 
-    async def approve() -> Exception | None:
+    async def approve() -> ModerationError | None:
         return None
 
+    _await(approve(), evaluation_loop)
+    automod.update_failed_nodes_for_moderation.assert_not_called()
     with pytest.raises(ModerationError) as refused:
         _await(refuse(), evaluation_loop)
     assert refused.value is refusal
-    _await(approve(), evaluation_loop)
+    # The refused run's nodes are failed and masked under the refusal's ID
+    automod.update_failed_nodes_for_moderation.assert_awaited_once_with(
+        db_client, "exec-1", "input", "cid-1"
+    )
