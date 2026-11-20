@@ -51,7 +51,10 @@ import {
   verifyAddressTheResetLinkWasMailedTo,
 } from "./reset-link-address";
 import { revokeResetLinksMailedElsewhere } from "./reset-links";
-import { RESET_LINK_EXPIRES_IN_SECONDS } from "./set-password-link";
+import {
+  RESET_LINK_EXPIRES_IN_SECONDS,
+  withResetCallback,
+} from "./set-password-link";
 import { requireSignInCode } from "./require-sign-in-code";
 import {
   alertNewSignInMethod,
@@ -112,8 +115,6 @@ const requireEmailVerification =
 const emailVerificationExpiresIn = 60 * 60 * 24;
 
 const authSecret = process.env.BETTER_AUTH_SECRET;
-
-const resetRedirectTo = new URL("/reset-password", baseURL).toString();
 
 function hasPlatformUser(userId: string) {
   return platformUserExists(authDbPool, userId);
@@ -410,7 +411,6 @@ export const auth = betterAuth({
         user,
         getAuthContext,
         hasPlatformUser,
-        resetRedirectTo,
       });
     },
     password: {
@@ -439,7 +439,7 @@ export const auth = betterAuth({
       await sendAuthEmail({
         to: user.email,
         type: "reset_password",
-        url,
+        url: withResetCallback(url),
       });
     },
   },
@@ -462,7 +462,6 @@ export const auth = betterAuth({
         getAuthContext,
         hasPlatformUser,
         requireEmailVerification,
-        resetRedirectTo,
       });
     },
   },
