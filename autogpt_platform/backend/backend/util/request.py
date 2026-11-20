@@ -1,6 +1,7 @@
 import asyncio
 import codecs
 import ipaddress
+import logging
 import random
 import re
 import socket
@@ -21,6 +22,8 @@ from backend.util.json import loads
 from backend.util.request_body import PreparedBody, Uploads, prepare_body
 from backend.util.settings import Config
 from backend.util.url_redaction import is_credential_header
+
+logger = logging.getLogger(__name__)
 
 
 class HTTPClientError(Exception):
@@ -267,7 +270,7 @@ SENSITIVE_HEADERS = frozenset(
         "x-auth-token",
         "x-access-token",
         "x-amz-security-token",
-        # and under the names blocks here send them by
+        # and under names some providers' APIs give them
         "key",
         "api_key",
         "profile-key",
@@ -675,6 +678,19 @@ class _Redirect(BaseModel):
     kwargs: dict[str, Any]
 
 
+# The headers that describe a request's body besides the ``Content-*`` ones
+# (``Content-Type``, ``Content-Length``, ``Content-Encoding`` and the rest):
+# they go with the body when a redirect leaves it behind.
+_BODY_HEADERS = frozenset(
+    {"transfer-encoding", "expect", "trailer", "digest", "repr-digest"}
+)
+# aiohttp options that frame a body, which a GET without one must not get:
+# ``chunked`` would send a body-less GET a chunked body's terminator, which
+# servers read as the start of the next request, and ``expect100`` asks for a
+# ``100 Continue`` that RFC 9110 §10.1.1 forbids without content.
+_BODY_KWARGS = ("chunked", "expect100")
+
+
 def _next_hop(
     method: str,
     status: int,
@@ -685,12 +701,15 @@ def _next_hop(
     drop_headers: frozenset[str],
     sensitive_headers: Iterable[str],
     kwargs: dict[str, Any],
+    keep_post_on_same_origin: bool,
 ) -> _Redirect:
     """The hop a redirect from *url* to *location* leads to, and what it sends.
 
     A 303, and a 301 or 302 answering a POST, makes it a GET without the
     body, the headers that describe the body or the aiohttp options that
-    frame it. A hop to another origin also leaves the credentials behind.
+    frame it; with *keep_post_on_same_origin*, a 301 or 302 that stays on
+    the origin keeps the POST. A hop to another origin also leaves the
+    credentials and the ``Host`` behind.
     """
     # Joined onto the URL just requested, so a relative redirect resolves;
     # parsed with ``parse_url`` because the next hop parses it that way, and
@@ -699,28 +718,18 @@ def _next_hop(
     redirect_url = parse_url(urljoin(url.geturl(), location))
     # Decided once, for every carrier of the credential below.
     cross_origin = _is_cross_origin(url, redirect_url)
-    drops_body = _drops_body(method, status)
-    new_headers = _remove_insecure_headers(
-        dict(headers), cross_origin, sensitive_headers
+    drops_body = _drops_body(method, status) and not (
+        keep_post_on_same_origin and not cross_origin and status != 303
     )
-    if drops_body:
-        _drop_headers(new_headers, [k for k in new_headers if _describes_body(k)])
-
-    # ``auth=`` and ``cookies=`` are not headers at this point — aiohttp
-    # builds ``Authorization`` and ``Cookie`` from them per request,
-    # downstream of the strip above — so the header dance cannot see either,
-    # and both would be regenerated for the new origin. Drop them with the
-    # headers they stand in for. Same-origin hops keep them:
-    # ``_remove_insecure_headers`` keeps the header spellings there too, and
-    # an authenticated same-origin redirect is a normal flow.
-    next_kwargs = dict(kwargs)
-    if cross_origin:
-        next_kwargs.pop("auth", None)
-        next_kwargs.pop("cookies", None)
-    if drops_body:
-        for name in _BODY_KWARGS:
-            next_kwargs.pop(name, None)
-
+    if drops_body and method.upper() != "GET":
+        # The origins only: a URL's path or query may hold a credential.
+        logger.info(
+            f"A {status} redirect sent a {method.upper()} on as a GET without "
+            f"its body, from {_origin(url)} to {_origin(redirect_url)}"
+        )
+    new_headers = _next_hop_headers(
+        headers, sensitive_headers, cross_origin=cross_origin, drops_body=drops_body
+    )
     return _Redirect.model_construct(
         url=redirect_url.geturl(),
         method="GET" if drops_body else method,
@@ -730,8 +739,57 @@ def _next_hop(
         # ``extra_headers`` would put it back on every hop.
         drop_headers=drop_headers
         | {k.lower() for k in headers.keys() - new_headers.keys()},
-        kwargs=next_kwargs,
+        kwargs=_next_hop_kwargs(
+            kwargs, cross_origin=cross_origin, drops_body=drops_body
+        ),
     )
+
+
+def _next_hop_headers(
+    headers: dict,
+    sensitive_headers: Iterable[str],
+    *,
+    cross_origin: bool,
+    drops_body: bool,
+) -> dict:
+    """The headers of the hop a redirect leads to: without the credentials
+    and the ``Host`` when it leaves the origin, and without the body's
+    headers when it leaves the body behind."""
+    new_headers = _remove_insecure_headers(
+        dict(headers), cross_origin, sensitive_headers
+    )
+    if cross_origin:
+        # The last hop's names another host. A pinned hop sets its own, and
+        # aiohttp builds one from the URL for any other.
+        _drop_headers(new_headers, ["host"])
+    if drops_body:
+        _drop_headers(new_headers, [k for k in new_headers if _describes_body(k)])
+    return new_headers
+
+
+def _next_hop_kwargs(
+    kwargs: dict[str, Any], *, cross_origin: bool, drops_body: bool
+) -> dict[str, Any]:
+    """The aiohttp kwargs of the hop a redirect leads to.
+
+    The hop goes to the URL its ``Location`` names, as other clients send it:
+    aiohttp would add ``params=`` to that URL again, repeating a query the
+    server kept and taking whatever it holds to another origin.
+
+    ``auth=`` and ``cookies=`` are not headers at this point — aiohttp builds
+    ``Authorization`` and ``Cookie`` from them per request, downstream of the
+    header strip — so they go with the headers they stand in for on a hop to
+    another origin. Same-origin hops keep them, as they keep those headers:
+    an authenticated same-origin redirect is a normal flow.
+    """
+    next_kwargs = {name: value for name, value in kwargs.items() if name != "params"}
+    if cross_origin:
+        next_kwargs.pop("auth", None)
+        next_kwargs.pop("cookies", None)
+    if drops_body:
+        for name in _BODY_KWARGS:
+            next_kwargs.pop(name, None)
+    return next_kwargs
 
 
 def _drops_body(method: str, status: int) -> bool:
@@ -745,17 +803,9 @@ def _drops_body(method: str, status: int) -> bool:
     return status in (301, 302) and method.upper() == "POST"
 
 
-# The headers that describe a request's body besides the ``Content-*`` ones
-# (``Content-Type``, ``Content-Length``, ``Content-Encoding`` and the rest):
-# they go with the body when a redirect leaves it behind.
-_BODY_HEADERS = frozenset(
-    {"transfer-encoding", "expect", "trailer", "digest", "repr-digest"}
-)
-# aiohttp options that frame a body, which a GET without one must not get:
-# ``chunked`` would send a body-less GET a chunked body's terminator, which
-# servers read as the start of the next request, and ``expect100`` asks for a
-# ``100 Continue`` that RFC 9110 §10.1.1 forbids without content.
-_BODY_KWARGS = ("chunked", "expect100")
+def _origin(url: URL) -> str:
+    """*url*'s scheme, host and port, without any user or password."""
+    return f"{url.scheme}://{url.netloc.rpartition('@')[2]}"
 
 
 def _describes_body(header: str) -> bool:
@@ -805,14 +855,21 @@ class Requests:
     aiohttp's own redirects do. After a 303, and after a 301 or 302 that
     answers a POST, the next hop is a GET without the body, the headers that
     describe it (``Content-Type``, ``Content-Length`` and the rest) or
-    aiohttp's ``chunked`` and ``expect100``; a HEAD stays a HEAD. A 307 or
-    308, and a 301 or 302 answering any other method, sends the same method
-    and body again. Every hop goes through the same URL checks as the first.
-    A hop to another origin goes without the ``auth=`` and ``cookies=`` it
-    was given and without any header that may carry a credential: those in
+    aiohttp's ``chunked`` and ``expect100``, and an ``info`` log names the
+    two origins; a HEAD stays a HEAD. A 307 or 308, and a 301 or 302
+    answering any other method, sends the same method and body again.
+    ``keep_post_on_same_origin_redirect`` makes a 301 or 302 that stays on
+    the origin keep a POST too, never a 303 or a hop to another origin: it is
+    for a JSON-RPC endpoint, such as an MCP server's, that its server moves
+    within its own origin, as nginx does to add a trailing slash.
+
+    Every hop goes to the URL its ``Location`` names, without ``params=``
+    again, through the same URL checks as the first. A hop to another origin
+    goes without the ``auth=`` and ``cookies=`` it was given, its ``Host``,
+    and any header that may carry a credential: those in
     ``SENSITIVE_HEADERS`` or ``sensitive_headers``, and any whose name
     ``is_credential_header`` reads as a credential's. A hop that stays on the
-    origin keeps every header.
+    origin keeps them all.
 
     A request that may send its body more than once, because it retries or
     follows redirects, sends all of it every time; ``prepare_body`` in
@@ -835,8 +892,10 @@ class Requests:
         retry_max_attempts: int | None = None,
         max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
         sensitive_headers: Iterable[str] = (),
+        keep_post_on_same_origin_redirect: bool = False,
     ):
         self.max_response_bytes = max_response_bytes
+        self.keep_post_on_same_origin_redirect = keep_post_on_same_origin_redirect
         # Headers bound to the request's origin under names neither
         # ``SENSITIVE_HEADERS`` nor ``is_credential_header`` knows: a
         # cross-origin redirect drops them too.
@@ -1084,6 +1143,7 @@ class Requests:
                         drop_headers=drop_headers,
                         sensitive_headers=self.sensitive_headers,
                         kwargs=kwargs,
+                        keep_post_on_same_origin=self.keep_post_on_same_origin_redirect,
                     )
 
                 # Reset response URL to original host for clarity

@@ -1,138 +1,33 @@
 """How ``Requests`` follows a redirect: the method and body each hop is sent
-with, as RFC 9110 §15.4 has it (#17145), and the credential headers a hop to
-another origin leaves behind.
+with, as RFC 9110 §15.4 has it (#17145), and the URL and ``Host`` it goes to.
+The credentials a hop to another origin leaves behind are in
+``request_redirect_credentials_test.py``.
 
 Every test drives real local servers and asserts what each hop received."""
 
-import asyncio
 import io
-import re
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+import logging
+from collections.abc import Callable
 from typing import Any
-from urllib.parse import ParseResult
+from urllib.parse import ParseResult, urlparse
 
 import pytest
-from aiohttp import web
-from pydantic import BaseModel
 
 from backend.util import request as request_module
 from backend.util.request import HTTPClientError, Requests
-from backend.util.request_test_helpers import ENDS_WITHIN_SECONDS, local_requests, serve
-from backend.util.url_redaction import is_credential_header
-
-
-class Received(BaseModel):
-    """One request as a test server received it, with its header names
-    lower-cased. A multipart body's boundary, new on every send, reads
-    ``BOUNDARY`` in the body and the Content-Type alike."""
-
-    server: str
-    method: str
-    path: str
-    content_type: str | None
-    body: bytes
-    headers: dict[str, str]
-
-
-Answer = Callable[[web.Request], web.StreamResponse]
-
-
-class Origin:
-    """A local server answering ``routes`` by path, which notes each request
-    it receives in a list it shares with the other origins of a test."""
-
-    def __init__(self, name: str, received: list[Received]):
-        self.name = name
-        self.routes: dict[str, Answer] = {}
-        self.base = ""
-        self._received = received
-
-    def app(self) -> web.Application:
-        async def handle(request: web.Request) -> web.StreamResponse:
-            self._received.append(_received(self.name, request, await request.read()))
-            answer = self.routes.get(request.path)
-            return answer(request) if answer else web.Response(status=404)
-
-        app = web.Application()
-        app.router.add_route("*", "/{path:.*}", handle)
-        return app
-
-
-@asynccontextmanager
-async def origins() -> AsyncIterator[tuple[Origin, Origin, list[Received]]]:
-    """Two local servers on two ports, so two origins, and what they receive."""
-    received: list[Received] = []
-    first, second = Origin("first", received), Origin("second", received)
-    first_runner, first.base = await serve(first.app())
-    second_runner, second.base = await serve(second.app())
-    try:
-        yield first, second, received
-    finally:
-        await first_runner.cleanup()
-        await second_runner.cleanup()
-
-
-def _received(server: str, request: web.Request, body: bytes) -> Received:
-    content_type = request.headers.get("Content-Type")
-    boundary = re.search(r"boundary=([^;\s]+)", content_type or "")
-    if content_type is not None and boundary:
-        content_type = content_type.replace(boundary.group(1), "BOUNDARY")
-        body = body.replace(boundary.group(1).encode(), b"BOUNDARY")
-    return Received(
-        server=server,
-        method=request.method,
-        path=request.path,
-        content_type=content_type,
-        body=body,
-        headers={name.lower(): value for name, value in request.headers.items()},
-    )
-
-
-def redirect(status: int, location: str) -> Answer:
-    return lambda request: web.Response(status=status, headers={"Location": location})
-
-
-def done(request: web.Request) -> web.Response:
-    return web.Response(text="done")
-
-
-def answers(*steps: Answer) -> Answer:
-    """Each step in turn, then the last one for good."""
-    sent: list[None] = []
-
-    def answer(request: web.Request) -> web.StreamResponse:
-        sent.append(None)
-        return steps[min(len(sent), len(steps)) - 1](request)
-
-    return answer
-
-
-def status(code: int) -> Answer:
-    return lambda request: web.Response(status=code, text=f"status {code}")
-
-
-def location(target: Origin, origin: str) -> str:
-    """Where a redirect from the first origin sends the next hop."""
-    return "/next" if origin == "same-origin" else f"{target.base}/next"
-
-
-async def bounded(sent):
-    return await asyncio.wait_for(sent, ENDS_WITHIN_SECONDS)
-
-
-def hops(received: list[Received]) -> list[tuple[str, str, str]]:
-    return [(hop.server, hop.method, hop.path) for hop in received]
-
-
-def without_body(hop: Received) -> bool:
-    return (
-        hop.body == b""
-        and hop.content_type is None
-        and "content-length" not in hop.headers
-        and "transfer-encoding" not in hop.headers
-    )
-
+from backend.util.request_test_helpers import (
+    Answer,
+    answers,
+    bounded,
+    done,
+    hops,
+    local_requests,
+    location,
+    origins,
+    redirect,
+    status,
+    without_body,
+)
 
 # --- A POST, with each kind of body, through each redirect ---
 
@@ -242,12 +137,15 @@ async def test_each_method_goes_on_as_rfc_9110_has_it(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["HEAD", "head", "Head"])
 @pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
-async def test_a_head_stays_a_head(status: int):
+async def test_a_head_stays_a_head(status: int, method: str):
     async with origins() as (first, _, received):
         first.routes["/start"] = redirect(status, "/next")
         first.routes["/next"] = done
-        response = await bounded(local_requests().head(f"{first.base}/start"))
+        response = await bounded(
+            local_requests().request(method, f"{first.base}/start")
+        )
 
     assert response.status == 200
     assert hops(received) == [("first", "HEAD", "/start"), ("first", "HEAD", "/next")]
@@ -301,6 +199,31 @@ async def test_the_headers_that_describe_a_body_go_with_it(
     else:
         assert not described.keys() & following.headers.keys()
         assert without_body(following)
+
+
+@pytest.mark.parametrize("header", ["Transfer-Encoding", "transfer-encoding"])
+@pytest.mark.parametrize("status, keeps_the_body", [(303, False), (307, True)])
+def test_a_transfer_encoding_header_goes_with_the_body(
+    header: str, status: int, keeps_the_body: bool
+):
+    """aiohttp frames a chunked body from ``chunked=True``; a caller may name
+    the header itself, which no request can usefully do on a first hop, so
+    this reads the hop built for it."""
+    hop = request_module._next_hop(
+        "POST",
+        status,
+        urlparse("https://example.com/a"),
+        "/b",
+        headers={header: "chunked", "X-Request-Id": "order-1"},
+        drop_headers=frozenset(),
+        sensitive_headers=(),
+        kwargs={},
+        keep_post_on_same_origin=False,
+    )
+
+    assert (header in hop.headers) is keeps_the_body
+    assert hop.headers["X-Request-Id"] == "order-1"
+    assert (header.lower() in hop.drop_headers) is not keeps_the_body
 
 
 @pytest.mark.asyncio
@@ -369,11 +292,11 @@ async def test_a_body_left_behind_is_not_read_again(kind: str):
     into a form for the next hop: the stream is touched exactly as often as
     by one send that is never redirected, while a 307 does touch it again."""
     touches: dict[int, int] = {}
-    for status in (200, 303, 307):
+    for first_status in (200, 303, 307):
         stream = CountingBytesIO(b"id,qty\n1,2\n")
         async with origins() as (first, _, received):
             first.routes["/start"] = (
-                done if status == 200 else redirect(status, "/next")
+                done if first_status == 200 else redirect(first_status, "/next")
             )
             first.routes["/next"] = done
             response = await bounded(
@@ -382,8 +305,8 @@ async def test_a_body_left_behind_is_not_read_again(kind: str):
                 )
             )
         assert response.status == 200
-        assert len(received) == (1 if status == 200 else 2)
-        touches[status] = stream.touches
+        assert len(received) == (1 if first_status == 200 else 2)
+        touches[first_status] = stream.touches
 
     assert touches[200] > 0
     assert touches[303] == touches[200]
@@ -543,125 +466,196 @@ async def test_a_hop_turned_into_a_get_counts_towards_max_redirects():
     assert [hop.method for hop in received] == ["POST", "GET", "GET"]
 
 
-# --- Credentials stay on their origin ---
-
-# Dropped on a hop to another origin by name, whatever ``is_credential_header``
-# comes to match: the common API key and token headers, and the names blocks
-# here send credentials under.
-NAMED_CREDENTIAL_HEADERS = [
-    "X-Api-Key",
-    "Api-Key",
-    "X-Goog-Api-Key",
-    "X-Auth-Token",
-    "X-Access-Token",
-    "X-Amz-Security-Token",
-    "Key",
-    "Api_Key",
-    "Profile-Key",
-    "X-Access-Key",
-]
-# Dropped by the shape of their names alone, as a glued name or a name of a
-# provider's own is.
-CREDENTIAL_SHAPED_HEADERS = [
-    "apikey",
-    "Private-Token",
-    "X-Store-Token",
-    "X-Client-Secret",
-    "X-Session-Id",
-    "X-Subscription-Key",
-    "X-Request-Signature",
-    "X-Auth-Email",
-]
-# Headers that carry no credential, which every hop keeps.
-ORDINARY_HEADERS = {
-    "X-Request-Id": "order-1",
-    "Accept": "application/json",
-    "X-Title": "Orders",
-}
-
-
-async def _through_a_307(
-    client: Requests, origin: str, headers: dict[str, str]
-) -> tuple[Received, Received]:
-    """A POST that a 307 sends on, body and all, to *origin*'s next hop."""
-    async with origins() as (first, second, received):
-        first.routes["/start"] = redirect(307, location(second, origin))
-        first.routes["/next"] = second.routes["/next"] = done
-        response = await bounded(
-            client.post(f"{first.base}/start", json={"order": 1}, headers=headers)
-        )
-    assert response.status == 200
-    initial, following = received
-    assert following.server == ("first" if origin == "same-origin" else "second")
-    assert following.body == b'{"order": 1}'
-    return initial, following
+# --- A client that keeps a POST through its server's own move ---
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "where", ["headers", "extra_headers"], ids=["call-headers", "client-headers"]
+    "status, origin, next_method",
+    [
+        (301, "same-origin", "POST"),
+        (302, "same-origin", "POST"),
+        # Never through a 303, which names another resource, nor to another
+        # origin.
+        (303, "same-origin", "GET"),
+        (301, "cross-origin", "GET"),
+        (302, "cross-origin", "GET"),
+        (307, "cross-origin", "POST"),
+    ],
 )
-@pytest.mark.parametrize("header", NAMED_CREDENTIAL_HEADERS + CREDENTIAL_SHAPED_HEADERS)
-async def test_a_hop_to_another_origin_drops_each_credential_header(
-    header: str, where: str
+async def test_a_client_can_keep_a_post_through_a_same_origin_301_or_302(
+    status: int, origin: str, next_method: str
 ):
-    credential = {header: "credential-value"}
-    client = local_requests(
-        extra_headers=credential if where == "extra_headers" else None
-    )
-    call_headers = {**ORDINARY_HEADERS, **(credential if where == "headers" else {})}
+    async with origins() as (first, second, received):
+        first.routes["/start"] = redirect(status, location(second, origin))
+        first.routes["/next"] = second.routes["/next"] = done
+        response = await bounded(
+            local_requests(keep_post_on_same_origin_redirect=True).post(
+                f"{first.base}/start", json={"order": 1}
+            )
+        )
 
-    initial, following = await _through_a_307(client, "cross-origin", call_headers)
+    assert response.status == 200
+    initial, following = received
+    assert following.method == next_method
+    if next_method == "POST":
+        assert (following.body, following.content_type) == (
+            initial.body,
+            "application/json",
+        )
+    else:
+        assert without_body(following)
 
-    # It did go out, so the next hop can show it was dropped.
-    assert initial.headers[header.lower()] == "credential-value"
-    assert header.lower() not in following.headers
-    assert {k.lower(): v for k, v in ORDINARY_HEADERS.items()}.items() <= (
-        following.headers.items()
+
+# --- The URL and the Host a hop goes to ---
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("origin", ["same-origin", "cross-origin"])
+@pytest.mark.parametrize(
+    "target", ["/next", "/next?cursor=abc"], ids=["no-query", "own-query"]
+)
+async def test_a_hop_goes_to_exactly_the_url_its_location_names(
+    target: str, origin: str
+):
+    """``params=`` belongs to the first URL. Other clients send the next hop
+    to the ``Location`` as given; aiohttp would add the params to it again,
+    and a credential among them with them."""
+    async with origins() as (first, second, received):
+        prefix = "" if origin == "same-origin" else second.base
+        first.routes["/start"] = redirect(302, f"{prefix}{target}")
+        first.routes["/next"] = second.routes["/next"] = done
+        response = await bounded(
+            local_requests().get(
+                f"{first.base}/start",
+                params={"page": "1", "api_key": "credential-value"},
+            )
+        )
+
+    assert response.status == 200
+    initial, following = received
+    assert initial.query == "page=1&api_key=credential-value"
+    path, _, query = target.partition("?")
+    assert (following.path, following.query) == (path, query)
+
+
+@pytest.fixture
+def pinned_names_vetted(monkeypatch: pytest.MonkeyPatch):
+    """``.invalid`` names never resolve; this vets them as 127.0.0.1, so a
+    request to one is pinned (an untrusted hop) and goes out with the
+    ``Host`` that ``_request`` sets for it."""
+
+    async def resolve_and_check_blocked(hostname: str) -> list[str]:
+        return ["127.0.0.1"]
+
+    monkeypatch.setattr(
+        request_module, "resolve_and_check_blocked", resolve_and_check_blocked
     )
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("header", NAMED_CREDENTIAL_HEADERS)
-async def test_the_named_credential_headers_are_dropped_without_the_name_rule(
-    header: str, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("status", [302, 303, 307])
+async def test_a_hop_to_a_trusted_origin_does_not_carry_the_pinned_hops_host(
+    status: int, pinned_names_vetted: None
 ):
-    """``is_credential_header`` is tuned for masking logs; a change there must
-    not let a header known to carry a credential through."""
-    monkeypatch.setattr(request_module, "is_credential_header", lambda name: False)
+    """The first hop's ``Host`` names the host it was pinned to; the trusted
+    origin the redirect leads to gets the one aiohttp builds from its URL."""
+    async with origins() as (first, second, received):
+        first.routes["/start"] = redirect(status, f"{second.base}/next")
+        second.routes["/next"] = done
+        port = first.base.rsplit(":", 1)[1]
+        client = Requests(trusted_origins=[second.base.removeprefix("http://")])
+        response = await bounded(client.get(f"http://pinned.invalid:{port}/start"))
 
-    initial, following = await _through_a_307(
-        local_requests(), "cross-origin", {header: "credential-value"}
-    )
-
-    assert initial.headers[header.lower()] == "credential-value"
-    assert header.lower() not in following.headers
+    assert response.status == 200
+    assert [(hop.server, hop.headers["host"]) for hop in received] == [
+        ("first", "pinned.invalid"),
+        ("second", second.base.removeprefix("http://")),
+    ]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("header", NAMED_CREDENTIAL_HEADERS + CREDENTIAL_SHAPED_HEADERS)
-async def test_a_hop_on_the_same_origin_keeps_every_header(header: str):
-    headers = {**ORDINARY_HEADERS, header: "credential-value"}
+async def test_a_hop_to_another_origin_does_not_carry_the_callers_host():
+    async with origins() as (first, second, received):
+        first.routes["/start"] = redirect(302, f"{second.base}/next")
+        second.routes["/next"] = done
+        response = await bounded(
+            local_requests().get(
+                f"{first.base}/start", headers={"Host": "caller.example"}
+            )
+        )
 
-    _, following = await _through_a_307(local_requests(), "same-origin", headers)
-
-    assert {k.lower(): v for k, v in headers.items()}.items() <= (
-        following.headers.items()
-    )
+    assert response.status == 200
+    assert [(hop.server, hop.headers["host"]) for hop in received] == [
+        ("first", "caller.example"),
+        ("second", second.base.removeprefix("http://")),
+    ]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("named", [True, False], ids=["named", "not-named"])
-async def test_a_caller_still_names_the_credential_headers_the_rule_does_not_know(
-    named: bool,
+async def test_a_hop_on_the_same_origin_keeps_the_callers_host():
+    async with origins() as (first, _, received):
+        first.routes["/start"] = redirect(302, "/next")
+        first.routes["/next"] = done
+        response = await bounded(
+            local_requests().get(
+                f"{first.base}/start", headers={"Host": "caller.example"}
+            )
+        )
+
+    assert response.status == 200
+    assert [hop.headers["host"] for hop in received] == ["caller.example"] * 2
+
+
+# --- A request a redirect sends on as a GET is logged ---
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method, status, logged",
+    [
+        ("POST", 301, True),
+        ("POST", 303, True),
+        ("PUT", 303, True),
+        ("POST", 307, False),
+        ("GET", 303, False),
+    ],
+)
+async def test_a_request_sent_on_as_a_get_is_logged_by_its_origins(
+    method: str, status: int, logged: bool, caplog: pytest.LogCaptureFixture
 ):
-    header = "X-Passphrase"
-    assert not is_credential_header(header)
-    client = local_requests(sensitive_headers=[header] if named else [])
+    """Once, at ``info``, naming the two origins only: the path or the query
+    of either URL may hold a credential."""
+    caplog.set_level(logging.INFO, logger=request_module.__name__)
+    async with origins() as (first, second, received):
+        first.routes["/start"] = redirect(
+            status, f"{second.base}/next/secret-path?token=credential-value"
+        )
+        second.routes["/next/secret-path"] = done
+        await bounded(
+            local_requests().request(
+                method, f"{first.base}/start?key=credential-value", json={"order": 1}
+            )
+        )
 
-    initial, following = await _through_a_307(
-        client, "cross-origin", {header: "credential-value"}
+    assert [hop.server for hop in received] == ["first", "second"]
+    lines = [
+        r.getMessage() for r in caplog.records if r.name == request_module.__name__
+    ]
+    expected = (
+        f"A {status} redirect sent a {method} on as a GET without its body, "
+        f"from {first.base} to {second.base}"
     )
+    assert lines == ([expected] if logged else [])
 
-    assert initial.headers["x-passphrase"] == "credential-value"
-    assert ("x-passphrase" in following.headers) is not named
+
+@pytest.mark.parametrize(
+    "url, origin",
+    [
+        ("http://user:pw@example.com:8080/a/b?token=x", "http://example.com:8080"),
+        ("https://example.com/path?q=1", "https://example.com"),
+        ("http://[::1]:9000/", "http://[::1]:9000"),
+    ],
+)
+def test_the_log_names_an_origin_without_its_user_or_password(url: str, origin: str):
+    assert request_module._origin(urlparse(url)) == origin
