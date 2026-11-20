@@ -4,9 +4,13 @@ search index never carries schemas."""
 import logging
 from typing import Any
 
+from backend.copilot.capabilities.mcp_connections import custom_mcp_entry
 from backend.copilot.capabilities.models import SKILL_TOOL, CapabilityEntry
 from backend.copilot.capabilities.registry import configured_tool
-from backend.copilot.capabilities.schema_trim import collapse_large_enums
+from backend.copilot.capabilities.schema_trim import (
+    collapse_large_enums,
+    collapse_nested_objects,
+)
 from backend.copilot.capabilities.sources import expert_dispatch
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
 from backend.copilot.model import ChatSession
@@ -60,12 +64,11 @@ class DescribeCapabilityTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Inputs and outputs of one capability by id, before its first use. "
-            "Skip ids listed in the <seen_capabilities> block of the current "
-            "user message: those were already described this session. "
-            "Blocks return their schema; MCP servers list their tools; platform "
-            "tools return their parameters. Large enums are sampled unless "
-            "expand=true."
+            "Inputs and outputs of one capability, before its first use. "
+            "Skip ids in the latest <seen_capabilities> block unless you need "
+            "expand=true. Blocks return their schema, MCP servers their tools, "
+            "platform tools their parameters. Large enums are sampled and "
+            "nested block outputs list field names only, unless expand=true."
         )
 
     @property
@@ -79,7 +82,7 @@ class DescribeCapabilityTool(BaseTool):
                 },
                 "expand": {
                     "type": "boolean",
-                    "description": "Return every enum value instead of a sample.",
+                    "description": "Every enum value and nested output field.",
                     "default": False,
                 },
             },
@@ -98,12 +101,15 @@ class DescribeCapabilityTool(BaseTool):
         expand: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
+        """Describe a capability through its existing permission and discovery gates."""
         session_id = session.session_id
         if not user_id:
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
             )
         entry = await resolve_session_entry(user_id, session, id)
+        if entry is None and id.strip().lower().startswith("https://"):
+            entry = custom_mcp_entry(id.strip())
         if entry is None:
             return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
         # Describing answers to the gate that running does. An MCP
@@ -112,22 +118,22 @@ class DescribeCapabilityTool(BaseTool):
         # was withheld from revealing.
         if entry.kind == "block":
             if gate_denied(BLOCK_GATE):
-                return gate_denied_error("blocks", session_id)
+                return gate_denied_error("blocks", session_id, describing=True)
             return await _describe_block(entry, user_id, session, expand)
         if entry.kind == "skill":
             if gate_denied(SKILL_TOOL):
-                return gate_denied_error(SKILL_TOOL, session_id)
+                return gate_denied_error(SKILL_TOOL, session_id, describing=True)
             return describe_skill(entry, session_id)
         if entry.kind == "expert":
             return describe_expert(entry, session_id)
         if entry.kind == "tool":
             name = entry.implementations[0].ref
             if gate_denied(name):
-                return gate_denied_error(name, session_id)
+                return gate_denied_error(name, session_id, describing=True)
             return _describe_tool(entry, session_id, expand)
         if entry.kind == "mcp_server":
             if gate_denied(MCP_GATE):
-                return gate_denied_error("MCP servers", session_id)
+                return gate_denied_error("MCP servers", session_id, describing=True)
             return await _describe_mcp(entry, user_id, session)
         return ErrorResponse(
             message=f"Capabilities of kind '{entry.kind}' cannot be described yet.",
@@ -149,7 +155,16 @@ async def _describe_block(
         )
         if not expand:
             result.block.inputs = collapse_large_enums(result.block.inputs)
-            result.block.outputs = collapse_large_enums(result.block.outputs)
+            # Inputs stay whole: the model has to build them. Outputs it only
+            # reads or links, and a nested output model is most of a large
+            # block's schema (SECRT-2682).
+            outputs = collapse_large_enums(result.block.outputs)
+            result.block.outputs = collapse_nested_objects(outputs)
+            if result.block.outputs != outputs:
+                result.message += (
+                    " Nested output objects list their field names only; "
+                    "describe again with expand=true for their types."
+                )
     return result
 
 
@@ -180,7 +195,7 @@ def describe_expert(entry: CapabilityEntry, session_id: str) -> ToolResponseBase
         ).from_outside()
     name, bound = dispatch
     if gate_denied(name):
-        return gate_denied_error(name, session_id)
+        return gate_denied_error(name, session_id, describing=True)
     action = "On the user's team" if entry.hired else "On the roster, not yet hired"
     return CapabilityDetailsResponse(
         message=(

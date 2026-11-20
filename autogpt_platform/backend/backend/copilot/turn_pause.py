@@ -11,9 +11,10 @@ clients that don't know the card still render the row as a system note.
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
+from backend.copilot.limit_tracking import LimitReading
 from backend.copilot.markers import has_trailing_marker
 from backend.copilot.model import ChatMessage, ChatSession
 
@@ -54,6 +55,9 @@ class TurnPause(BaseModel):
     # False when the turn was refused before it ran at all (out of budget at
     # the moment it was picked up), so there is nothing to pick back up from.
     started: bool = True
+    # Where the account stood against the limit, for analytics; never sent to
+    # the client or stored with the marker.
+    reading: LimitReading | None = Field(default=None, exclude=True)
 
     def as_part(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
@@ -86,7 +90,13 @@ def pause_of(message: ChatMessage) -> TurnPause | None:
     raw = message.metadata.get(PAUSE_KEY)
     if not isinstance(raw, dict):
         return None
+    return pause_from_part(raw)
+
+
+def pause_from_part(part: dict[str, Any]) -> TurnPause | None:
+    """The pause a ``TurnPause.as_part()`` payload describes; None if it
+    doesn't parse."""
     try:
-        return TurnPause.model_validate(raw)
+        return TurnPause.model_validate(part)
     except ValidationError:
         return None

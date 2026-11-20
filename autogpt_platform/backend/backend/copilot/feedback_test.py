@@ -105,6 +105,32 @@ async def test_copy_carries_no_feedback_text(
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("reply")
+async def test_reason_is_a_property_on_the_metric(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    capture = mocker.patch.object(feedback, "capture")
+
+    await _rate(score_name="otto_mistake", comment=None, reason="made_up")
+
+    properties = capture.call_args.args[2]
+    assert properties["$ai_metric_name"] == "otto_mistake"
+    assert properties["reason"] == "made_up"
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("reply")
+async def test_no_reason_sends_no_reason_property(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    capture = mocker.patch.object(feedback, "capture")
+
+    await _rate()
+
+    assert "reason" not in capture.call_args.args[2]
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("reply")
 async def test_impersonated_rating_is_marked(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

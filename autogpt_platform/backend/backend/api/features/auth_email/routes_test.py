@@ -12,6 +12,7 @@ from pytest_mock import MockerFixture
 
 from backend.api.features.auth_email import routes as auth_email_routes
 from backend.api.rest_api import app as rest_app
+from backend.notifications.renderer import build_urls
 from backend.util.exceptions import EmailUndeliverableError
 
 app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
@@ -300,6 +301,103 @@ def test_rejects_unknown_type(send_mock):
     send_mock.assert_not_called()
 
 
+def test_rejects_account_deleted_type(send_mock):
+    """A frontend service token may only trigger link emails; the account
+    deleted confirmation is sent by the deletion service itself."""
+    res = _post({**VALID_BODY, "type": "account_deleted"})
+    assert res.status_code == 422
+    send_mock.assert_not_called()
+
+
+def test_sign_in_code_email_sends_without_a_link(send_mock):
+    res = _post(
+        {
+            "type": "sign_in_code",
+            "to": "user@example.com",
+            "code": "042917",
+            "provider": "microsoft",
+        }
+    )
+
+    assert res.status_code == 204
+    to, subject, body, text = send_mock.call_args.args
+    assert to == "user@example.com"
+    assert subject == "Your AutoGPT sign-in code"
+    assert "042917" in body and "042917" in text
+    assert "Microsoft" in text
+    assert send_mock.call_args.kwargs == {
+        "reply_to": auth_email_routes.settings.config.billing_reply_to_email
+    }
+
+
+def test_sign_in_method_added_email_sends_without_a_link(send_mock):
+    res = _post(
+        {
+            "type": "sign_in_method_added",
+            "to": "user@example.com",
+            "provider": "google",
+        }
+    )
+
+    assert res.status_code == 204
+    _, subject, _, _ = send_mock.call_args.args
+    assert subject == "Google sign-in was added to your AutoGPT account"
+    # Its reader is asked to reply if it wasn't them.
+    assert send_mock.call_args.kwargs == {
+        "reply_to": auth_email_routes.settings.config.billing_reply_to_email
+    }
+
+
+def test_link_emails_keep_the_default_reply_address(send_mock):
+    _post()
+
+    assert send_mock.call_args.kwargs == {}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # A sign-in email carries no link, so none can be smuggled into it.
+        {
+            "type": "sign_in_code",
+            "to": "user@example.com",
+            "code": "042917",
+            "provider": "google",
+            "url": "https://platform.agpt.co/login",
+        },
+        {"type": "sign_in_code", "to": "user@example.com", "provider": "google"},
+        {
+            "type": "sign_in_code",
+            "to": "user@example.com",
+            "code": "<b>hi</b>",
+            "provider": "google",
+        },
+        {
+            "type": "sign_in_code",
+            "to": "user@example.com",
+            "code": "042917",
+            "provider": "lenovo",
+        },
+        {"type": "sign_in_code", "to": "user@example.com", "code": "042917"},
+        {
+            "type": "sign_in_method_added",
+            "to": "user@example.com",
+            "provider": "google",
+            "code": "042917",
+        },
+        # A link email still needs its link, and takes nothing else.
+        {"type": "reset_password", "to": "user@example.com"},
+        {**VALID_BODY, "code": "042917"},
+        {**VALID_BODY, "provider": "google"},
+    ],
+)
+def test_rejects_fields_that_dont_match_the_type(send_mock, body):
+    res = _post(body)
+
+    assert res.status_code == 422
+    send_mock.assert_not_called()
+
+
 def test_unauthenticated_request_is_401(mocker: MockerFixture, monkeypatch):
     """Without a frontend service token the route must refuse — proves the
     Security dependency is actually wired to the endpoint."""
@@ -444,3 +542,117 @@ def test_auth_email_design_and_plain_text(send_mock, email_type, subject, button
     assert "Email preferences" not in body
     assert "didn't request this" in text
     assert len(body.encode()) < 60_000
+
+
+LINK = "https://platform.agpt.co/reset-password?token=abc"
+FOOTER = (
+    "This is a service message about an AutoGPT account. "
+    "It's sent even if you've opted out of product news.\n"
+    "AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK\n"
+    "https://agpt.co\n"
+    "Discord: {discord}"
+)
+
+
+def test_link_email_plain_text_is_unchanged(send_mock):
+    _post({**VALID_BODY, "type": "reset_password", "url": LINK})
+
+    discord = build_urls("").discord
+    _, _, _, text = send_mock.call_args.args
+    assert text == (
+        "Reset your password\n"
+        "\n"
+        "A password reset was requested for your AutoGPT account. "
+        "Use the button below to choose a new password. "
+        "If you didn't request this, you can safely ignore this email.\n"
+        "\n"
+        "Reset password:\n"
+        f"{LINK}\n"
+        "The link expires in 1 hour.\n"
+        "This link was requested from the AutoGPT password-reset form.\n"
+        f"Something wrong? Ask in Discord: {discord}\n"
+        "\n" + FOOTER.format(discord=discord)
+    )
+
+
+def test_link_email_with_expiry_and_note_plain_text_is_unchanged(send_mock):
+    _post({**VALID_BODY, "type": "set_password", "url": LINK})
+
+    discord = build_urls("").discord
+    _, _, _, text = send_mock.call_args.args
+    assert text == (
+        "Set your password\n"
+        "\n"
+        "Someone asked to sign up for, or verify, an AutoGPT Platform account "
+        "with this email address. Use the button below to set a password and "
+        "finish signing up. If you didn't request this, you can safely ignore "
+        "this email.\n"
+        "\n"
+        "Set password:\n"
+        f"{LINK}\n"
+        "The link expires in 1 hour.\n"
+        "If you already finished signing up with an earlier link, the password "
+        "you chose then no longer works: set a new one with this link, or use "
+        '"Forgot password" on the login page.\n'
+        "This link was requested from the AutoGPT sign-up form.\n"
+        f"Something wrong? Ask in Discord: {discord}\n"
+        "\n" + FOOTER.format(discord=discord)
+    )
+
+
+# verify_email, verify_new_email and change_email have their own layouts,
+# with their own tests.
+@pytest.mark.parametrize("email_type", ["reset_password", "set_password"])
+def test_link_email_html_keeps_ignore_line_button_and_link(send_mock, email_type):
+    _post({**VALID_BODY, "type": email_type, "url": LINK})
+
+    _, _, body, _ = send_mock.call_args.args
+    assert (
+        " If you didn't request this, you can safely ignore this email.</div>" in body
+    )
+    assert (
+        '<div style="padding-top:10px; font-size:12px; line-height:18px; '
+        'color:#575072;">Button not working? Copy this link into your browser:'
+        "</div>" in body
+    )
+    assert body.count(f'<a href="{LINK}"') == 2
+    assert f">{LINK}</a>" in body
+
+
+def test_ban_record_lookup_answers_from_the_records(monkeypatch):
+    app.dependency_overrides[auth_email_routes.requires_sign_up_check_service] = (
+        lambda: None
+    )
+
+    async def is_banned(email):
+        return email == "banned@example.com"
+
+    monkeypatch.setattr(auth_email_routes, "is_banned_address", is_banned)
+    try:
+        answers = [
+            client.post("/api/auth/email/ban-record", json={"email": e}).json()
+            for e in ("banned@example.com", "user@example.com")
+        ]
+    finally:
+        app.dependency_overrides.clear()
+
+    assert answers == [{"banned": True}, {"banned": False}]
+
+
+def test_ban_record_lookup_needs_the_frontend_service_token(
+    mocker: MockerFixture, monkeypatch
+):
+    """Without it the route would tell anyone which addresses were banned."""
+    mocker.patch.dict(
+        os.environ,
+        {"JWT_JWKS_URL": "http://localhost:3000/api/auth/jwks"},
+        clear=False,
+    )
+    mocker.patch.object(auth_config, "_settings", AuthSettings())
+    lookup = mocker.AsyncMock(return_value=True)
+    monkeypatch.setattr(auth_email_routes, "is_banned_address", lookup)
+
+    res = client.post("/api/auth/email/ban-record", json={"email": "a@example.com"})
+
+    assert res.status_code == 401
+    lookup.assert_not_called()

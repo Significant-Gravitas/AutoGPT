@@ -16,6 +16,9 @@ on:
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ format('classic-autogpt-docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -38,6 +41,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
@@ -92,19 +97,24 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # On pushes to master this job publishes the latest-dev image to Docker Hub,
+    # so it builds without the Actions cache: a poisoned entry saved by another
+    # workflow must not reach a published image.
+    cache-mode: none
 
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           submodules: true
+          persist-credentials: false
 
       - name: Start MinIO service
         uses: ./.github/actions/start-minio
 
       - if: github.event_name == 'push'
         name: Log in to Docker hub
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
@@ -124,9 +134,6 @@ jobs:
             ${{ env.DEPLOY_IMAGE_NAME }}:${{ env.DEV_IMAGE_TAG }}
           labels: GIT_REVISION=${{ github.sha }}
           load: true # save to docker images
-          # cache layers in GitHub Actions cache to speed up builds
-          cache-from: type=gha,scope=autogpt-docker-dev
-          cache-to: type=gha,scope=autogpt-docker-dev,mode=max
 
       - id: test
         name: Run tests

@@ -71,6 +71,42 @@ def test_an_overlong_creator_search_is_refused(
     creators.assert_not_awaited()
 
 
+def test_the_owner_reads_their_profile_before_any_workflow_is_listed(
+    client: fastapi.testclient.TestClient, mocker: pytest_mock.MockFixture
+) -> None:
+    mocker.patch(
+        "backend.api.external.v2.marketplace.store_db.get_user_profile",
+        new_callable=AsyncMock,
+        return_value=Mock(username="owner"),
+    )
+    creator_view = mocker.patch("prisma.models.Creator.prisma").return_value
+    creator_view.find_unique = AsyncMock(
+        return_value=prisma.models.Creator(
+            username="owner",
+            name="Owner",
+            avatar_url=None,
+            description="",
+            top_categories=[],
+            links=[],
+            num_agents=0,
+            agent_rating=0.0,
+            agent_runs=0,
+            is_featured=False,
+        )
+    )
+    mocker.patch(
+        "backend.api.features.store.db._is_creator_account_closed",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+
+    response = client.get("/marketplace/profile")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["username"] == "owner"
+    assert response.json()["num_agents"] == 0
+
+
 async def test_adding_a_listing_lands_in_the_credentials_organization(
     mocker: pytest_mock.MockFixture,
 ) -> None:

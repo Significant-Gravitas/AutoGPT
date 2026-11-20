@@ -48,7 +48,7 @@ In the platform, you can create highly customized workflows to build agents. An 
 
 Blocks represent actions and are the building blocks of your workflows, including:
 
-* Connections to external services
+* [Connections to external services](https://agpt.co/integrations/)
 * Data processing tools
 * AI models for various tasks
 * Custom scripts or functions
@@ -79,6 +79,6 @@ This strategy allows us to share previously closed-source components, fostering 
 
 ## Ready to Get Started?
 
-* **Cloud:** Read the [Getting Started (Cloud)](getting-started-cloud.md) guide to start using the hosted platform immediately.
+* **Cloud:** Read the [Getting Started (Cloud)](getting-started-cloud.md) guide to start using the hosted platform immediately, or see [what each hosted plan costs](https://agpt.co/pricing/).
 * **Self-Host:** Run the whole platform from one Docker image, `significantgravitas/autogpt` on Docker Hub, with the [single-container guide](single-container.md), or read the [Self-Hosting Guide](getting-started.md) to run each service with Docker Compose on your own infrastructure.
 * **Build on it:** Run and build agents from your own code with the [AutoGPT Platform API](integrating/api-guide.md), or give Claude, Cursor or another AI tool access through its [MCP server](integrating/mcp-server.md).

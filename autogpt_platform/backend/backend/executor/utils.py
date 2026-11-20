@@ -59,19 +59,22 @@ from backend.data.execution import (
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import (
+    PLATFORM_FUNDED_COST_KEY,
     USER_TIMEZONE_NOT_SET,
     CredentialsMetaInput,
     GraphInput,
     NodeExecutionStats,
+    is_platform_funded_managed,
     is_refused_sdk_default,
     sdk_default_refused_message,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import is_user_banned
+from backend.data.user import is_user_refused
 from backend.executor.input_depth import (
     validate_graph_input_depth,
     validate_starting_node_input_depth,
 )
+from backend.executor.nesting import nested_context, resumed_chain
 from backend.integrations.credentials_store import (
     CredentialsSnapshot,
     is_system_credential,
@@ -98,6 +101,7 @@ from backend.util.json import dumps as json_dumps
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import ConversionError, coerce_inputs_to_schema
+from backend.util.url_redaction import mask_credential
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
@@ -333,13 +337,23 @@ def _coerce_usd(stats: NodeExecutionStats | None) -> float:
 
 def _with_schema_defaults(block: Block, input_data: BlockInput) -> BlockInput:
     """The input `Block._execute` runs on: `None` values dropped, schema defaults
-    filled in. Cost filters are matched against this."""
+    filled in. Cost filters are matched against this, with each credentials
+    input marked by whether the platform pays for its key."""
     defaults = {
         name: field.get_default(call_default_factory=True)
         for name, field in block.input_schema.model_fields.items()
         if not field.is_required()
     }
-    return {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
+    merged = {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
+    for field_name in block.input_schema.get_credentials_fields():
+        if isinstance(credentials := merged.get(field_name), dict):
+            merged[field_name] = {
+                **credentials,
+                PLATFORM_FUNDED_COST_KEY: is_platform_funded_managed(
+                    str(credentials.get("id") or "")
+                ),
+            }
+    return merged
 
 
 def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bool:
@@ -362,6 +376,21 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 # ============ Execution Input Helpers ============ #
 
 # Dynamic field utilities are now imported from backend.data.dynamic_fields
+
+
+def _clear_unset_optional_credentials(
+    schema: type[BlockSchema], data: BlockInput
+) -> BlockInput:
+    """Set optional credentials fields that carry no credential id to None."""
+    required_fields = schema.get_required_fields()
+    cleared = {
+        field_name: None
+        for field_name in schema.get_credentials_fields()
+        if field_name not in required_fields
+        and isinstance(value := data.get(field_name), dict)
+        and not value.get("id")
+    }
+    return {**data, **cleared} if cleared else data
 
 
 class InputMismatchError(ValueError):
@@ -433,6 +462,14 @@ def validate_exec(
     data = {**input_default, **data}
     if resolve_input:
         data = merge_execution_input(data)
+
+    # An optional credentials field holding an id-less object (e.g. `{}`) means
+    # "not configured". Treat it like an unset field so it doesn't fail the
+    # nested credentials schema below; required fields stay strict. An MCP
+    # tool's arguments stand in for the block's inputs here, and a tool may
+    # declare its own `credentials`, so those are left as they are.
+    if node_block.block_type != BlockType.MCP_TOOL:
+        data = _clear_unset_optional_credentials(schema, data)
 
     # Coerce first: some blocks' missing-input checks read the converted values.
     # A value that can't be converted is reported after that check, so a node
@@ -1048,7 +1085,7 @@ async def validate_and_construct_node_execution_input(
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
-    is_sub_graph: bool = False,
+    parent_graph_exec_id: str | None = None,
     dry_run: bool = False,
     trigger_setup: bool = False,
 ) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks, set[str]]:
@@ -1063,6 +1100,7 @@ async def validate_and_construct_node_execution_input(
         graph_version: The version of the graph to use.
         graph_credentials_inputs: Credentials inputs to use.
         nodes_input_masks: Node inputs to use.
+        parent_graph_exec_id: For a sub-graph, the run whose node starts it.
 
     Returns:
         GraphModel: Full graph object for the given `graph_id`.
@@ -1100,7 +1138,10 @@ async def validate_and_construct_node_execution_input(
         user_id=user_id,
         graph_id=graph.id,
         graph_version=graph.version,
-        is_sub_graph=is_sub_graph,
+        parent_graph_exec_id=parent_graph_exec_id,
+        # For a database manager that predates `parent_graph_exec_id`, which
+        # drops it: it still checks a sub-graph as one.
+        is_sub_graph=parent_graph_exec_id is not None,
     )
 
     nodes_input_masks = _merge_nodes_input_masks(
@@ -1506,8 +1547,9 @@ async def _enforce_expert_credential_scope(
     copilot tool runs alike. Enforcing at creation also means a revoke takes effect
     on the next run instead of only on newly created schedules.
 
-    System credentials (platform LLM keys) carry no grant and are always allowed;
-    filtering them would stop every expert from running an LLM block.
+    The platform's own keys (system LLM keys, and the shared key of a provider
+    such as Firecrawl) carry no grant and are always allowed; filtering them
+    would stop every expert from running an LLM block or a platform-keyed one.
     """
     if not graph_credentials_inputs:
         return
@@ -1527,6 +1569,11 @@ async def _enforce_expert_credential_scope(
             f"{', '.join(denied)}. Grant them on the expert's page to let it "
             f"run this workflow."
         )
+
+
+class ExecutionNotRequeuedError(Exception):
+    """An admin requeue did not publish the execution to the queue, because
+    it left QUEUED (picked up, finished, stopped) in the meantime."""
 
 
 async def add_graph_execution(
@@ -1550,13 +1597,15 @@ async def add_graph_execution(
     trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
     trigger_ref: Optional[str] = None,
     pause_irreversible_actions: bool = False,
+    admin_requeue: bool = False,
 ) -> GraphExecutionWithNodes:
     """Add a graph execution to the queue, recording the outcome.
 
     Thin wrapper over :func:`_add_graph_execution` so that every caller of
     this shared path, not only the legacy v1 route, feeds
     ``autogpt_graph_executions_total``. A paywall rejection is a policy gate,
-    not an execute outcome, and is not counted.
+    not an execute outcome, and is not counted; nor is an admin requeue of a
+    run that has already left QUEUED.
     """
     try:
         result = await _add_graph_execution(
@@ -1579,13 +1628,14 @@ async def add_graph_execution(
             trigger=trigger,
             trigger_ref=trigger_ref,
             pause_irreversible_actions=pause_irreversible_actions,
+            admin_requeue=admin_requeue,
         )
     except GraphValidationError:
         record_graph_execution(
             graph_id=graph_id, status="validation_error", user_id=user_id
         )
         raise
-    except (UserPaywalledError, UserBannedError):
+    except (UserPaywalledError, UserBannedError, ExecutionNotRequeuedError):
         raise
     except Exception:
         record_graph_execution(graph_id=graph_id, status="error", user_id=user_id)
@@ -1615,6 +1665,7 @@ async def _add_graph_execution(
     trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
     trigger_ref: Optional[str] = None,
     pause_irreversible_actions: bool = False,
+    admin_requeue: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -1649,6 +1700,11 @@ async def _add_graph_execution(
         pause_irreversible_actions: Pause before every irreversible block
             whatever the graph's ``sensitive_action_safe_mode`` setting. On
             resume it is re-derived from the chat that started the run.
+        admin_requeue: Admin recovery of a run stuck in QUEUED. A row that is
+            still QUEUED is published again as it is (QUEUED -> QUEUED is not
+            a valid status transition, so the usual compare-and-set would
+            always skip the publish). A row that has left QUEUED is left
+            alone: raises ``ExecutionNotRequeuedError`` instead of resuming it.
     Returns:
         GraphExecutionWithNodes: The execution entry.
     Raises:
@@ -1671,13 +1727,18 @@ async def _add_graph_execution(
     if schedule_id and webhook_id:
         raise ValueError(
             "A run is started by a schedule or a webhook, not both: "
-            f"schedule #{schedule_id}, webhook #{webhook_id}"
+            f"schedule #{schedule_id}, webhook #{mask_credential(webhook_id)}"
         )
+
+    if admin_requeue and not graph_exec_id:
+        raise ValueError("admin_requeue needs the graph_exec_id to republish")
 
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run workflows.")
-    if await is_user_banned(user_id):
-        raise UserBannedError("This account is banned, so its workflows can't run.")
+    if await is_user_refused(user_id):
+        raise UserBannedError(
+            "This account is banned or closed, so its workflows can't run."
+        )
 
     is_new_execution = graph_exec_id is None
     tenancy_replaced = False
@@ -1711,6 +1772,20 @@ async def _add_graph_execution(
 
         if not graph_exec:
             raise NotFoundError(f"Workflow run #{graph_exec_id} not found.")
+
+        # Admin recovery only republishes a row that is still QUEUED. The
+        # admin selected it as QUEUED, but by now it may have been picked up,
+        # stopped, or parked for review; the generic resume below would move a
+        # TERMINATED or REVIEW row back to QUEUED and run it again.
+        if admin_requeue and graph_exec.status != ExecutionStatus.QUEUED:
+            raise ExecutionNotRequeuedError(
+                f"Execution #{graph_exec.id} was not requeued: it is "
+                f"{graph_exec.status}, not QUEUED"
+            )
+        if admin_requeue:
+            # Nothing passes the dry-run flag back in on a requeue; it lives
+            # on the row. Without it a stuck dry run would run for real.
+            dry_run = graph_exec.is_dry_run
 
         nesting = await nesting_runs(graph_exec, user_id, edb)
         approval_chat_id = starting_chat(graph_exec, nesting)
@@ -1805,6 +1880,14 @@ async def _add_graph_execution(
 
         logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
     else:
+        parent_exec_id = (
+            execution_context.parent_execution_id if execution_context else None
+        )
+        if execution_context and parent_exec_id is not None:
+            # Refused before anything is written: a workflow already running
+            # in this chain would start itself again without end.
+            execution_context = nested_context(execution_context, graph_id)
+
         if expert_id:
             organization_id, team_id = await _resolve_expert_execution_tenancy(
                 user_id, expert_id
@@ -1814,9 +1897,6 @@ async def _add_graph_execution(
                 user_id, expert_id, graph_credentials_inputs
             )
 
-        parent_exec_id = (
-            execution_context.parent_execution_id if execution_context else None
-        )
         # A sub-graph asks in the chat that started its parent run.
         if trigger == ExecutionTrigger.COPILOT:
             approval_chat_id = trigger_ref
@@ -1843,7 +1923,7 @@ async def _add_graph_execution(
             graph_version=graph_version,
             graph_credentials_inputs=graph_credentials_inputs,
             nodes_input_masks=nodes_input_masks,
-            is_sub_graph=parent_exec_id is not None,
+            parent_graph_exec_id=parent_exec_id,
             dry_run=dry_run,
         )
 
@@ -2037,6 +2117,15 @@ async def _add_graph_execution(
         execution_context = await _keep_nesting_safe_modes(
             execution_context, nesting, user_id, gdb
         )
+        # A resumed sub-graph run keeps its place in its chain, by which the
+        # executor admits it and refuses a run of a workflow already in it.
+        execution_context = execution_context.model_copy(
+            update={
+                "ancestor_graph_ids": resumed_chain(
+                    [run.graph_id if run else None for run in nesting]
+                )
+            }
+        )
 
     stamp: dict[str, Any] = {
         "approval_chat_id": (
@@ -2066,29 +2155,54 @@ async def _add_graph_execution(
         )
         logger.info(f"Queueing execution {graph_exec.id}")
 
-        # Update execution status to QUEUED BEFORE publishing to prevent race condition
-        # where two concurrent requests could both publish the same execution
         # A stuck run persisted without tenancy (nullable organizationId)
         # must still be recoverable: update_graph_execution_stats raises
         # when update_tenancy=True with no organization_id, which would
         # fail the whole requeue — the exact case the admin fallback serves.
         persist_tenancy = expert_id is not None and organization_id is not None
-        updated_exec = await edb.update_graph_execution_stats(
-            graph_exec_id=graph_exec.id,
-            status=ExecutionStatus.QUEUED,
-            update_tenancy=persist_tenancy,
-            organization_id=organization_id if persist_tenancy else None,
-            team_id=team_id if persist_tenancy else None,
-        )
-
-        # Verify the status update succeeded (prevents duplicate queueing in race conditions)
-        # If another request already updated the status, this execution will not be QUEUED
-        if not updated_exec or updated_exec.status != ExecutionStatus.QUEUED:
-            logger.warning(
-                f"Skipping queue publish for execution {graph_exec.id} - "
-                f"status update failed or execution already queued by another request"
+        if admin_requeue:
+            # QUEUED is not a valid source for the QUEUED compare-and-set the
+            # other branch makes, so admin recovery publishes directly
+            # (#15282). If the original message was not lost after all, the
+            # executor takes the run's cluster lock and re-reads its status
+            # under it, so only one delivery runs it.
+            # Read again right before writing and publishing: the run may have
+            # been picked up since the first read, and a requeue counted then
+            # would only publish a duplicate.
+            current = await edb.get_graph_execution_meta(
+                user_id=user_id, execution_id=graph_exec.id
             )
-            return graph_exec
+            if not current or current.status != ExecutionStatus.QUEUED:
+                raise ExecutionNotRequeuedError(
+                    f"Execution #{graph_exec.id} was not requeued: it is "
+                    f"{current.status if current else 'gone'}, not QUEUED"
+                )
+            if persist_tenancy:
+                await edb.update_graph_execution_stats(
+                    graph_exec_id=graph_exec.id,
+                    update_tenancy=True,
+                    organization_id=organization_id,
+                    team_id=team_id,
+                )
+        else:
+            # Update execution status to QUEUED BEFORE publishing to prevent race condition
+            # where two concurrent requests could both publish the same execution
+            updated_exec = await edb.update_graph_execution_stats(
+                graph_exec_id=graph_exec.id,
+                status=ExecutionStatus.QUEUED,
+                update_tenancy=persist_tenancy,
+                organization_id=organization_id if persist_tenancy else None,
+                team_id=team_id if persist_tenancy else None,
+            )
+
+            # Verify the status update succeeded (prevents duplicate queueing in race conditions)
+            # If another request already updated the status, this execution will not be QUEUED
+            if not updated_exec or updated_exec.status != ExecutionStatus.QUEUED:
+                logger.warning(
+                    f"Skipping queue publish for execution {graph_exec.id} - "
+                    f"status update failed or execution already queued by another request"
+                )
+                return graph_exec
 
         graph_exec.status = ExecutionStatus.QUEUED
 
@@ -2101,6 +2215,8 @@ async def _add_graph_execution(
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
         logger.info(f"Published execution {graph_exec.id} to RabbitMQ queue")
+    except ExecutionNotRequeuedError:
+        raise
     except BaseException as e:
         err = str(e) or type(e).__name__
         if not graph_exec:
@@ -2110,6 +2226,10 @@ async def _add_graph_execution(
         logger.error(
             f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {err}"
         )
+        if admin_requeue:
+            # Leave the stuck run QUEUED so the admin can retry; failing it
+            # would put it out of reach of the requeue tools.
+            raise
         await edb.update_node_execution_status_batch(
             [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
             ExecutionStatus.FAILED,
@@ -2129,13 +2249,19 @@ async def _add_graph_execution(
             f"Failed to publish execution event for graph exec #{graph_exec.id}: {e}"
         )
 
-    try:
-        await odb.increment_onboarding_runs(user_id)
-        logger.info(
-            f"Incremented user #{user_id} onboarding runs for exec #{graph_exec.id}"
-        )
-    except Exception as e:
-        logger.error(f"Failed to increment onboarding runs for user #{user_id}: {e}")
+    # An admin requeue publishes a run that was already counted when it was
+    # first queued. (A run parked for spend approval at creation is counted
+    # when it resumes, so this is not gated on is_new_execution.)
+    if not admin_requeue:
+        try:
+            await odb.increment_onboarding_runs(user_id)
+            logger.info(
+                f"Incremented user #{user_id} onboarding runs for exec #{graph_exec.id}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to increment onboarding runs for user #{user_id}: {e}"
+            )
 
     if is_new_execution:
         product_analytics.track_agent_run_started(
@@ -2342,6 +2468,13 @@ class NodeExecutionProgress:
                 return next_output.pop(0)
 
         return None
+
+    def has_ended(self) -> bool:
+        """Whether every task of this node's executions has ended, its block
+        and its bookkeeping alike. Unlike is_done, a stop doesn't make it so:
+        a block that ignores the cancel runs on until it returns."""
+        with self._lock:
+            return not self._unwinding and not self._settling
 
     def is_done(self, wait_time: float = 0.0) -> bool:
         exec_id = self._next_exec()

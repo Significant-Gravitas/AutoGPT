@@ -47,7 +47,7 @@ class RunBlockTool(BaseTool):
             "Call with empty input_data to see schema, then with data to execute. "
             "Pass `validate_only: true` to inspect a block without running it "
             "(safe pre-flight — returns schema + detected missing inputs). "
-            "If review_required, use resume_capability."
+            "If review_required, say where its card is, then use resume_capability."
         )
 
     @property
@@ -289,6 +289,7 @@ class RunBlockTool(BaseTool):
                 session_id,
                 organization_id=session.organization_id,
                 team_id=session.team_id,
+                metadata=session.metadata,
             )
             if isinstance(hitl_or_err, ToolResponseBase):
                 return hitl_or_err
