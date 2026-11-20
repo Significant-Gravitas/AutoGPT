@@ -575,6 +575,44 @@ describe("PostHog in a browser where an older account was identified", () => {
     expect(identifyEvent()?.properties.$anon_distinct_id).toBe("merged-id");
     expect(window.localStorage.getItem("agpt_anonymous_id")).toBe("merged-id");
   });
+
+  describe("when another account's session is known before the consent answer", () => {
+    afterEach(() => {
+      setPageURL("http://localhost:3000/");
+    });
+
+    it("attributes the new account to this page's landing, not the earlier visitor's", async () => {
+      seedIdentifiedVisit();
+      window.localStorage.setItem(
+        "agpt_first_landing",
+        JSON.stringify({
+          path: "/pricing?utm_source=earlier",
+          referrer: null,
+          utm_source: "earlier",
+          utm_medium: "email",
+          utm_campaign: "earlier-launch",
+          at: "2026-01-01T00:00:00.000Z",
+        }),
+      );
+      setPageURL(
+        "http://localhost:3000/signup?utm_source=new&utm_medium=cpc&utm_campaign=launch",
+      );
+
+      const { buildAttributionPayload } = await loadAcceptedPage({
+        user: OTHER_USER,
+      });
+
+      const payload = buildAttributionPayload();
+      expect(payload.anonymous_id).not.toBe("merged-id");
+      expect(payload).toMatchObject({
+        landing_path:
+          "/signup?utm_source=new&utm_medium=cpc&utm_campaign=launch",
+        utm_source: "new",
+        utm_medium: "cpc",
+        utm_campaign: "launch",
+      });
+    });
+  });
 });
 
 describe("PostHog storage on a parent domain", () => {

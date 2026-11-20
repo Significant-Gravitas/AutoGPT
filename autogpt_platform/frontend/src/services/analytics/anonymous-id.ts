@@ -27,9 +27,11 @@
  *
  * When PostHog's saved state shows an account identified in this browser, an
  * earlier page merged all of those ids into it. Another visitor gets a new id
- * instead, or PostHog refuses the merge at their signup and their history
- * stays with the older account. If the session is not known yet, the stored
- * id settles as usual and the auth store rotates it (isAnonymousIDSpentFor).
+ * instead, and this page's landing as their first, or PostHog refuses the
+ * merge at their signup and their history stays with the older account. If the
+ * session is not known yet, the stored id settles as usual and the auth store
+ * rotates it (isAnonymousIDSpentFor); events captured before that still go to
+ * the older account.
  */
 
 import { readAccountCreatedFlag } from "@/services/analytics/account-created-cookie";
@@ -140,6 +142,10 @@ export function getAnonymousID(): string | null {
 function resolveConsentedID(): string | null {
   if (savedAccount === undefined) savedAccount = readSavedPostHogAccount();
   if (savedAccount && session !== "unknown" && savedAccount !== sessionUserID) {
+    // The stored landing is the earlier visitor's, and persistFirstLanding
+    // never overwrites one.
+    removeStorage(FIRST_LANDING_KEY);
+    persistFirstLanding();
     return saveID(memoryID ?? newID());
   }
   const stored = readStorage(ANONYMOUS_ID_KEY);
@@ -219,12 +225,8 @@ function persistFirstLanding(): void {
 }
 
 function forgetStoredIdentity(): void {
-  try {
-    window.localStorage.removeItem(ANONYMOUS_ID_KEY);
-    window.localStorage.removeItem(FIRST_LANDING_KEY);
-  } catch {
-    // Storage blocked: nothing persisted to clear.
-  }
+  removeStorage(ANONYMOUS_ID_KEY);
+  removeStorage(FIRST_LANDING_KEY);
 }
 
 /**
@@ -381,6 +383,14 @@ function writeStorage(key: string, value: string): void {
   } catch {
     // Private mode or blocked storage: the in-memory id still holds for
     // this page load.
+  }
+}
+
+function removeStorage(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Storage blocked: nothing persisted to clear.
   }
 }
 
