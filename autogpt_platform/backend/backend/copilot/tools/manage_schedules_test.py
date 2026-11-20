@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from prisma.errors import ClientNotConnectedError
 
 from backend.copilot.tools.manage_schedules import (
     DeleteScheduleTool,
@@ -63,6 +64,17 @@ def _make_copilot_info(
 @pytest.fixture
 def list_tool():
     return ListSchedulesTool()
+
+
+@pytest.fixture(autouse=True)
+def forget_streak(mocker):
+    """The failure-streak cleanup a delete does, which reaches the database."""
+    forget = AsyncMock()
+    mocker.patch(
+        f"{_SCHEDULES_PATH}.scheduled_chats_db",
+        return_value=MagicMock(forget_scheduled_chat=forget),
+    )
+    return forget
 
 
 @pytest.fixture
@@ -173,9 +185,10 @@ async def test_list_schedules_by_library_agent(list_tool, session):
 
     with (
         patch(
-            f"{_SCHEDULES_PATH}.get_library_agent",
-            new_callable=AsyncMock,
-            return_value=mock_agent,
+            f"{_SCHEDULES_PATH}.library_db",
+            return_value=MagicMock(
+                get_library_agent=AsyncMock(return_value=mock_agent)
+            ),
         ),
         patch(
             f"{_SCHEDULES_PATH}.get_scheduler_client",
@@ -199,9 +212,10 @@ async def test_list_schedules_library_agent_not_found(list_tool, session):
     from backend.util.exceptions import NotFoundError
 
     with patch(
-        f"{_SCHEDULES_PATH}.get_library_agent",
-        new_callable=AsyncMock,
-        side_effect=NotFoundError("not found"),
+        f"{_SCHEDULES_PATH}.library_db",
+        return_value=MagicMock(
+            get_library_agent=AsyncMock(side_effect=NotFoundError("not found"))
+        ),
     ):
         result = await list_tool._execute(
             user_id=_USER,
@@ -265,7 +279,7 @@ async def test_delete_schedule_missing_id(delete_tool, session):
 
 
 @pytest.mark.asyncio
-async def test_delete_schedule_success(delete_tool, session):
+async def test_delete_schedule_success(delete_tool, session, forget_streak):
     mock_client = AsyncMock()
     mock_client.get_execution_schedules = AsyncMock(return_value=[_make_graph_info()])
     mock_client.delete_schedule = AsyncMock()
@@ -285,6 +299,25 @@ async def test_delete_schedule_success(delete_tool, session):
     mock_client.delete_schedule.assert_called_once_with(
         schedule_id="sched-1", user_id=_USER
     )
+    # As the delete route does: a paused follow-up leaves no paused ghost.
+    forget_streak.assert_awaited_once_with(_USER, "sched-1")
+
+
+@pytest.mark.asyncio
+async def test_a_delete_whose_streak_cleanup_fails_still_says_deleted(
+    delete_tool, session, forget_streak
+):
+    forget_streak.side_effect = RuntimeError("db blip")
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[_make_graph_info()])
+    mock_client.delete_schedule = AsyncMock()
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await delete_tool._execute(
+            user_id=_USER, session=session, schedule_id="sched-1"
+        )
+
+    assert isinstance(result, ScheduleDeletedResponse)
 
 
 @pytest.mark.asyncio
@@ -449,6 +482,53 @@ async def test_expert_cannot_pause_another_experts_schedule():
     mock_client.pause_schedule.assert_not_awaited()
 
 
+def _at_reset_info(kind: str) -> CopilotTurnJobInfo:
+    """A resume or send the user set on a chat for the budget reset."""
+    info = _make_copilot_info(schedule_id=f"at-reset-{kind}-session-xyz")
+    return info.model_copy(update={"purpose": kind})
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_leaves_out_turns_at_the_budget_reset(list_tool, session):
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(
+        return_value=[
+            _make_copilot_info(),
+            _at_reset_info("resume"),
+            _at_reset_info("send"),
+        ]
+    )
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert [schedule.schedule_id for schedule in result.schedules] == ["cop-1"]
+
+
+@pytest.mark.parametrize(
+    ("tool", "method"),
+    [
+        (DeleteScheduleTool(), "delete_schedule"),
+        (PauseScheduleTool(), "pause_schedule"),
+        (ResumeScheduleTool(), "resume_schedule"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_the_agent_cannot_touch_a_turn_at_the_budget_reset(tool, method, session):
+    """Not even personal AutoPilot, which manages every other schedule."""
+    job = _at_reset_info("resume")
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[job])
+    setattr(mock_client, method, AsyncMock())
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=mock_client):
+        result = await tool._execute(user_id=_USER, session=session, schedule_id=job.id)
+
+    assert isinstance(result, ErrorResponse) and result.error == "schedule_not_found"
+    getattr(mock_client, method).assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_list_schedules_marks_paused_entries(list_tool, session):
     paused = _make_graph_info(schedule_id="paused-job")
@@ -604,3 +684,67 @@ async def test_a_no_op_toggle_leaves_no_activity_event(
     assert isinstance(result, ScheduleToggledResponse)
     assert result.changed is changed
     assert (tool.activity_event(session, result) is not None) is expect_event
+
+
+# ── Prisma disconnected (the copilot executor) ─────────────────────
+
+
+@pytest.fixture
+def copilot_executor_db(mocker):
+    """Prisma disconnected in-process, the DatabaseManager client answering."""
+    mocker.patch("backend.data.db.is_connected", return_value=False)
+    for model in ("LibraryAgent", "Expert"):
+        disconnected = MagicMock()
+        disconnected.find_first = AsyncMock(side_effect=ClientNotConnectedError())
+        disconnected.find_many = AsyncMock(side_effect=ClientNotConnectedError())
+        mocker.patch(f"prisma.models.{model}.prisma", return_value=disconnected)
+
+    db_manager = MagicMock()
+    db_manager.get_library_agent = AsyncMock(return_value=MagicMock(graph_id="graph-1"))
+    db_manager.active_expert_ids = AsyncMock(return_value={"expert-live"})
+    mocker.patch(
+        "backend.util.clients.get_database_manager_async_client",
+        return_value=db_manager,
+    )
+    return db_manager
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_resolves_the_library_agent_without_prisma(
+    list_tool, session, copilot_executor_db
+):
+    scheduler = AsyncMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=scheduler):
+        result = await list_tool._execute(
+            user_id=_USER, session=session, library_agent_id="lib-agent-1"
+        )
+
+    assert isinstance(result, ScheduleListResponse)
+    copilot_executor_db.get_library_agent.assert_awaited_once_with(
+        id="lib-agent-1", user_id=_USER
+    )
+    scheduler.get_execution_schedules.assert_awaited_once_with(
+        graph_id="graph-1", user_id=_USER, include_paused=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_schedules_checks_paused_experts_without_prisma(
+    list_tool, session, copilot_executor_db
+):
+    live = _make_graph_info(schedule_id="sched-live", expert_id="expert-live")
+    gone = _make_graph_info(schedule_id="sched-gone", expert_id="expert-gone")
+    live.next_run_time = gone.next_run_time = ""
+    scheduler = AsyncMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[live, gone])
+
+    with patch(f"{_SCHEDULES_PATH}.get_scheduler_client", return_value=scheduler):
+        result = await list_tool._execute(user_id=_USER, session=session)
+
+    assert isinstance(result, ScheduleListResponse)
+    assert [s.schedule_id for s in result.schedules] == ["sched-live"]
+    copilot_executor_db.active_expert_ids.assert_awaited_once_with(
+        _USER, {"expert-live", "expert-gone"}
+    )

@@ -28,6 +28,7 @@ from ..constants import (
 from ..model import ChatMessage, ChatSession, get_chat_session, upsert_chat_session
 from ..response_model import (
     StreamBaseResponse,
+    StreamCheckpoint,
     StreamError,
     StreamFinish,
     StreamFinishStep,
@@ -37,6 +38,7 @@ from ..response_model import (
     StreamTextEnd,
     StreamTextStart,
 )
+from ..stream_checkpoint import turn_checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -151,9 +153,14 @@ async def stream_chat_completion_dummy(
     yield StreamTextEnd(id=text_block_id)
 
     # Persist the assistant reply so it survives page refresh
+    checkpoint: StreamCheckpoint | None = None
     if session:
+        turn_start = len(session.messages)
         session.messages.append(ChatMessage(role="assistant", content=dummy_response))
         await _safe_upsert(session)
+        checkpoint = turn_checkpoint(session.messages, turn_start)
 
     yield StreamFinishStep()
+    if checkpoint is not None:
+        yield checkpoint
     yield StreamFinish()

@@ -4,6 +4,7 @@ import {
   fireEvent,
   cleanup,
 } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useOnboardingWizardStore } from "../../store";
 import { RoleStep } from "../RoleStep";
@@ -96,6 +97,18 @@ describe("RoleStep", () => {
 
     fireEvent.click(next);
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
+  });
+
+  test("the Other role stops at the 100 characters the profile accepts", async () => {
+    vi.useRealTimers();
+    const user = userEvent.setup();
+    render(<RoleStep />);
+
+    fireEvent.click(screen.getByRole("button", { name: /\bother\b/i }));
+    await user.click(screen.getByPlaceholderText(/describe your role/i));
+    await user.paste("a".repeat(150));
+
+    expect(useOnboardingWizardStore.getState().otherRole).toHaveLength(100);
   });
 
   test("switching from Other to a regular role hides the input and keeps the step", () => {

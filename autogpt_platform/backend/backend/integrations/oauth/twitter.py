@@ -9,6 +9,7 @@ from backend.util.request import Requests
 
 class TwitterOAuthHandler(BaseOAuthHandler):
     PROVIDER_NAME = ProviderName.TWITTER
+    ROTATES_REFRESH_TOKEN: ClassVar[bool] = True
     DEFAULT_SCOPES: ClassVar[list[str]] = [
         "tweet.read",
         "tweet.write",

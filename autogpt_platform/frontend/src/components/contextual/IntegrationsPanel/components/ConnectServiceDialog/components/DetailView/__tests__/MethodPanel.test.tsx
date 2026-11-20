@@ -14,6 +14,7 @@ vi.mock("../useOAuthConnect", () => ({
 
 const openaiProvider: ConnectableProvider = {
   id: "openai",
+  serviceId: "openai",
   name: "OpenAI",
   description: "OpenAI models via API key or your ChatGPT subscription",
   supportedAuthTypes: [AuthType.oauth2, AuthType.api_key],
@@ -131,6 +132,7 @@ describe("MethodPanel", () => {
         method={AuthType.oauth2}
         provider={{
           id: "notion",
+          serviceId: "notion",
           name: "Notion",
           description: "Notion",
           supportedAuthTypes: [AuthType.oauth2],

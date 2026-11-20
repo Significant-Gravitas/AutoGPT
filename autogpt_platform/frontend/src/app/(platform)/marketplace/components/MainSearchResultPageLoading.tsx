@@ -10,7 +10,7 @@ export function MainSearchResultPageLoading() {
     >
       <div className="mx-auto min-h-screen w-full max-w-[1440px] px-6 md:px-10">
         {/* Go back button */}
-        <div className="mb-4 mt-5">
+        <div className="mt-5 mb-4">
           <Skeleton className="h-9 w-24 rounded-full" />
         </div>
 

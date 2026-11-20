@@ -5,7 +5,8 @@ wraps every row as ``{id, sessionIndex, type, content, receivedAt}`` where
 ``type`` is ``userMessage`` or ``agent`` and agent rows carry the harness's
 raw event in ``content.rawPayload`` plus ``turnId``/``userMessageId``. The
 receipt returned by *send message* is the user row's ``content.id``, not its
-row ``id``, so it is not a valid ``after`` cursor.
+row ``id``, so the API rejects it as an ``after`` cursor; the blocks resolve
+it to the row themselves.
 
 Named ``test_*`` so the block loader skips it; it defines no tests itself.
 """
@@ -19,7 +20,7 @@ from unittest import mock
 from pydantic import SecretStr
 
 from backend.blocks.conductor import _transcript
-from backend.blocks.conductor._api import PAGE_SIZE, ConductorClient
+from backend.blocks.conductor._api import PAGE_SIZE, ConductorAPIError, ConductorClient
 from backend.data.execution import ExecutionContext
 from backend.sdk import APIKeyCredentials
 
@@ -211,9 +212,10 @@ class FakeTranscript:
         if after:
             index = next((i for i, r in enumerate(self.rows) if r["id"] == after), None)
             if index is None:
-                raise ValueError(
+                raise ConductorAPIError(
                     "Conductor API error (HTTP 404): Cursor message not found "
-                    "in this session"
+                    "in this session",
+                    404,
                 )
             start = index + 1
         else:

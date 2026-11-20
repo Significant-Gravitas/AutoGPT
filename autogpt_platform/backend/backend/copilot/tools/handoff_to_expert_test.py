@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.tools import (
     TOOL_GROUPS,
@@ -34,6 +35,7 @@ def _session(
     session_id: str = "s1",
     expert_id: str | None = "expert-a",
     origin: str | None = "interactive",
+    source_platform: str | None = None,
 ) -> MagicMock:
     sess = MagicMock()
     sess.session_id = session_id
@@ -46,6 +48,8 @@ def _session(
     # delegator id would send the chain walk off reading ancestors.
     sess.metadata.origin = origin
     sess.metadata.delegated_by_session_id = None
+    sess.metadata.autopilot_mode = None
+    sess.metadata.source_platform = source_platform
     sess.expert_id = expert_id
     return sess
 
@@ -65,6 +69,7 @@ def _expert(
     expert.color = "violet"
     expert.is_archived = is_archived
     expert.schedules_paused_at = schedules_paused_at
+    expert.autopilot_mode = None
     return expert
 
 
@@ -129,6 +134,7 @@ def mock_sessions(monkeypatch, deleted_sessions):
         sess.metadata.handed_off_from_expert_id = kwargs.get(
             "handed_off_from_expert_id"
         )
+        sess.metadata.autopilot_mode = kwargs.get("inherited_autopilot_mode")
         created.append(sess)
         return sess
 
@@ -523,6 +529,76 @@ class TestTransfer:
         assert "[" not in name_span and "]" not in name_span
 
 
+class TestHandedOffSessionMode:
+    """A receiving thread is never looser than the chat that handed it the
+    work, and follows that chat when the target has no default of its own."""
+
+    @pytest.mark.asyncio
+    async def test_an_expert_without_a_default_follows_the_parent(
+        self, roster, mock_turn, mock_sessions
+    ):
+        parent = _session(expert_id="expert-a")
+        parent.metadata.autopilot_mode = "ask_first"
+        await HandoffToExpertTool()._execute(
+            user_id="alice", session=parent, expert_id="expert-b", prompt="own it"
+        )
+        assert mock_sessions[0].metadata.autopilot_mode == "ask_first"
+
+    @pytest.mark.asyncio
+    async def test_an_unsupervised_expert_cannot_loosen_an_ask_first_parent(
+        self, roster, mock_turn, mock_sessions
+    ):
+        roster["expert-b"].autopilot_mode = "unsupervised"
+        parent = _session(expert_id="expert-a")
+        parent.metadata.autopilot_mode = "ask_first"
+        await HandoffToExpertTool()._execute(
+            user_id="alice", session=parent, expert_id="expert-b", prompt="own it"
+        )
+        assert mock_sessions[0].metadata.autopilot_mode == "ask_first"
+
+    @pytest.mark.asyncio
+    async def test_a_stricter_expert_default_applies_to_its_thread(
+        self, roster, mock_turn, mock_sessions
+    ):
+        roster["expert-b"].autopilot_mode = "ask_first"
+        await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="own it",
+        )
+        assert mock_sessions[0].metadata.autopilot_mode == "ask_first"
+
+    @pytest.mark.asyncio
+    async def test_a_thread_with_nothing_to_inherit_is_pinned_to_the_platform_default(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="own it",
+        )
+        assert mock_sessions[0].metadata.autopilot_mode == "auto"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "expert_default, expected",
+        [(None, "auto"), ("unsupervised", "auto"), ("ask_first", "ask_first")],
+    )
+    async def test_a_linked_chat_hands_out_the_mode_its_gate_enforces(
+        self, roster, mock_turn, mock_sessions, expert_default, expected
+    ):
+        """A Slack chat runs on Auto whatever it has stored, so its thread does too."""
+        roster["expert-b"].autopilot_mode = expert_default
+        parent = _session(expert_id="expert-a", source_platform="slack")
+        parent.metadata.autopilot_mode = "unsupervised"
+        await HandoffToExpertTool()._execute(
+            user_id="alice", session=parent, expert_id="expert-b", prompt="own it"
+        )
+        assert mock_sessions[0].metadata.autopilot_mode == expected
+
+
 class TestTerminalResponse:
     """A handoff is terminal for the caller: it names the new owner, links the
     receiving thread, and points at no poll (``_in_caller_scope`` denies the
@@ -626,7 +702,19 @@ class TestFailedTransfer:
         self, roster, mock_turn, mock_sessions
     ):
         r = await self._handoff(mock_turn, "rejected_concurrent_turn_cap")
-        assert "already running" in r.message
+        assert spawn_limit_message() in r.message
+
+    @pytest.mark.asyncio
+    async def test_a_handoff_waiting_for_a_slot_has_still_moved(
+        self, roster, mock_turn, mock_sessions, deleted_sessions
+    ):
+        """Its turn is queued in the target's own session, so the target owns
+        it now and the thread stays."""
+        r = await self._handoff(mock_turn, "queued_for_slot")
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "transferred"
+        assert "starting when one of their task slots frees" in r.message
+        assert deleted_sessions == []
 
     @pytest.mark.parametrize("outcome", ["rejected_concurrent_turn_cap", "failed"])
     @pytest.mark.asyncio

@@ -2,7 +2,7 @@
 
 This guide explains how to integrate your application with AutoGPT Platform using OAuth 2.0. OAuth can be used for API access, Single Sign-On (SSO), or both.
 
-For general API information and endpoint documentation, see the [API Guide](api-guide.md) and the [Swagger documentation](https://backend.agpt.co/external-api/docs).
+For general API information and endpoint documentation, see the [AutoGPT Platform API](api-guide.md) guide and the [API reference](api-reference.md).
 
 ## Overview
 
@@ -36,7 +36,7 @@ A separate flow that guides users through connecting third-party services (GitHu
 
 ## Prerequisites
 
-Before integrating, you need an OAuth application registered with AutoGPT Platform. Contact the platform administrator to obtain:
+Before integrating, you need an OAuth application registered with AutoGPT Platform. For AutoGPT Cloud, contact the AutoGPT team. On a self-hosted instance, register one yourself with `poetry run oauth-tool generate-app` in `autogpt_platform/backend`, which prompts for the details and prints the SQL to add the app. Either way you get:
 
 - **Client ID** - Public identifier for your application
 - **Client Secret** - Secret key for authenticating your application (keep this secure!)
@@ -54,7 +54,7 @@ Redirect the user to the AutoGPT authorization page with the required parameters
 https://platform.agpt.co/auth/authorize?
   client_id={YOUR_CLIENT_ID}&
   redirect_uri=https://yourapp.com/callback&
-  scope=EXECUTE_GRAPH READ_GRAPH&
+  scope=IDENTITY READ_LIBRARY RUN_AGENT READ_RUN&
   state={RANDOM_STATE_TOKEN}&
   code_challenge={PKCE_CHALLENGE}&
   code_challenge_method=S256&
@@ -67,7 +67,7 @@ https://platform.agpt.co/auth/authorize?
 |-----------|----------|-------------|
 | `client_id` | Yes | Your OAuth application's client ID |
 | `redirect_uri` | Yes | URL to redirect after authorization (must match registered URI) |
-| `scope` | Yes | Space-separated list of permissions (see [Available Scopes](api-guide.md#available-scopes)) |
+| `scope` | Yes | Space-separated list of permissions (see [Permissions](authentication.md#permissions)) |
 | `state` | Yes | Random string to prevent CSRF attacks (store and verify on callback) |
 | `code_challenge` | Yes | PKCE code challenge (see [PKCE](#pkce-implementation)) |
 | `code_challenge_method` | Yes | Must be `S256` |
@@ -90,6 +90,8 @@ https://yourapp.com/callback?error=access_denied&error_description=User%20denied
 ```
 
 Always verify the `state` parameter matches what you sent in Step 1.
+
+If the `client_id` is unknown or the `redirect_uri` is not one of your app's registered redirect URIs, the platform shows the user an error instead and sends them nowhere, so your app gets no callback.
 
 ### Step 3: Exchange Code for Tokens
 
@@ -118,7 +120,7 @@ Content-Type: application/json
   "access_token_expires_at": "2025-01-15T12:00:00Z",
   "refresh_token": "agpt_rt_...",
   "refresh_token_expires_at": "2025-02-14T12:00:00Z",
-  "scopes": ["EXECUTE_GRAPH", "READ_GRAPH"]
+  "scopes": ["IDENTITY", "READ_LIBRARY", "RUN_AGENT", "READ_RUN"]
 }
 ```
 
@@ -127,14 +129,14 @@ Content-Type: application/json
 Include the access token in API requests:
 
 ```http
-GET /external-api/v1/blocks
+GET /api/v2/library/agents
 Authorization: Bearer agpt_xt_...
 ```
 
 **For SSO:** If you requested the `IDENTITY` scope, fetch user info to identify the user:
 
 ```http
-GET /external-api/v1/me
+GET /api/v2/me
 Authorization: Bearer agpt_xt_...
 ```
 
@@ -142,14 +144,20 @@ Authorization: Bearer agpt_xt_...
 
 ```json
 {
-  "id": "user-uuid",
-  "name": "John Doe",
+  "user_id": "user-uuid",
   "email": "john@example.com",
-  "timezone": "Europe/Amsterdam"
+  "name": "John Doe",
+  "timezone": "Europe/Amsterdam",
+  "organization": { "id": "org-uuid", "name": "John's workspace", "is_personal": true },
+  "team": null,
+  "scopes": ["IDENTITY", "READ_LIBRARY", "RUN_AGENT", "READ_RUN"],
+  "credential_type": "oauth"
 }
 ```
 
-See the [Swagger documentation](https://backend.agpt.co/external-api/docs) for all available endpoints.
+`user_id` is stable, so use it to identify the user in your app.
+
+See the [API reference](api-reference.md) for all available endpoints.
 
 ### Step 5: Refresh Tokens
 
@@ -176,7 +184,7 @@ Content-Type: application/json
   "access_token_expires_at": "2025-01-15T13:00:00Z",
   "refresh_token": "agpt_rt_...",
   "refresh_token_expires_at": "2025-02-14T12:00:00Z",
-  "scopes": ["EXECUTE_GRAPH", "READ_GRAPH"]
+  "scopes": ["IDENTITY", "READ_LIBRARY", "RUN_AGENT", "READ_RUN"]
 }
 ```
 
@@ -200,7 +208,7 @@ https://platform.agpt.co/auth/integrations/setup-wizard?
 |-----------|----------|-------------|
 | `client_id` | Yes | Your OAuth application's client ID |
 | `providers` | Yes | Base64-encoded JSON array of provider configurations |
-| `redirect_uri` | Yes | URL to redirect after setup completes |
+| `redirect_uri` | Yes | URL to redirect after setup completes; must be one of your app's registered redirect URIs |
 | `state` | Yes | Random string to prevent CSRF attacks |
 
 #### Provider Configuration
@@ -227,11 +235,13 @@ After setup completes:
 https://yourapp.com/callback?success=true&state=RANDOM_STATE_TOKEN
 ```
 
-**Failure/Cancelled:**
+**Cancelled:**
 
 ```url
-https://yourapp.com/callback?success=false&state=RANDOM_STATE_TOKEN
+https://yourapp.com/callback?error=user_cancelled&error_description=User+cancelled+the+integration+setup&state=RANDOM_STATE_TOKEN
 ```
+
+As with authorization, an unknown `client_id` or unregistered `redirect_uri` gets the user an error page and your app no callback.
 
 ## Provider Scopes Reference
 
@@ -375,7 +385,7 @@ Content-Type: application/json
 ```json
 {
   "active": true,
-  "scopes": ["EXECUTE_GRAPH", "READ_GRAPH"],
+  "scopes": ["IDENTITY", "READ_LIBRARY", "RUN_AGENT", "READ_RUN"],
   "client_id": "agpt_client_...",
   "user_id": "user-uuid",
   "exp": 1705320000,
@@ -416,7 +426,7 @@ Content-Type: application/json
 | Error | Description | Solution |
 |-------|-------------|----------|
 | `invalid_client` | Client ID not found or inactive | Verify client ID is correct |
-| `invalid_redirect_uri` | Redirect URI not registered | Register URI with platform admin |
+| `invalid_redirect_uri` | Redirect URI not registered | Register URI with platform admin. The user sees an error and is not redirected, so no callback arrives |
 | `invalid_scope` | Requested scope not allowed | Check allowed scopes for your app |
 | `invalid_grant` | Code expired or already used | Authorization codes are single-use |
 | `access_denied` | User denied authorization | Handle gracefully in your UI |
@@ -436,5 +446,5 @@ Content-Type: application/json
 For issues or questions about OAuth integration:
 
 - Open an issue on [GitHub](https://github.com/Significant-Gravitas/AutoGPT)
-- See the [API Guide](api-guide.md) for general API information
-- Check the [Swagger documentation](https://backend.agpt.co/external-api/docs) for endpoint details
+- See the [AutoGPT Platform API](api-guide.md) guide for general API information
+- Check the [API reference](api-reference.md) for endpoint details

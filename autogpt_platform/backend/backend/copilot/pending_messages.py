@@ -13,34 +13,45 @@ This module provides the cross-process buffer that makes that possible:
 - **Consumer** (executor running the turn): on each tool-call round,
   drains the buffer and appends the pending messages to the conversation.
 
-The Redis list is the durable store; the pub/sub channel is a fast
+The Redis list is an expiring buffer; the pub/sub channel is a fast
 wake-up hint for long-idle consumers (not used by default, but available
 for future blocking-wait semantics).
 
-A hard cap of ``MAX_PENDING_MESSAGES`` per session prevents abuse.  The
-buffer is trimmed to the latest ``MAX_PENDING_MESSAGES`` on every push.
+An admission cap of ``MAX_PENDING_MESSAGES`` per session prevents abuse. The
+full buffer rejects new messages without evicting accepted messages. Recovery
+may restore a drained batch above that cap; new admission stays blocked.
 """
 
+import asyncio
 import json
 import logging
 import time
 import uuid
-from typing import Any, cast
+from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
-from backend.copilot.response_model import (
-    StreamPendingDrained,
-    StreamPendingDrainedMessage,
-)
-from backend.copilot.stream_registry import get_session, publish_chunk
+from backend.copilot.pending_message_receipts import pending_message_receipt_key
+from backend.copilot.tool_image import ToolImage
 from backend.data.redis_client import get_redis_async
-from backend.data.redis_helpers import capped_rpush, capped_rpush_if_hash_field
+from backend.data.redis_helpers import (
+    bounded_rpush,
+    capped_rpush_if_hash_field,
+    pop_matching_list_prefix,
+    string_compare_and_set,
+)
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
+
 # Per-session cap; typing faster than the copilot drains is already unusual.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 MAX_PENDING_MESSAGES = 10
+PENDING_BUFFER_FULL_REFUSAL = (
+    "That conversation has too many messages waiting. This message was not sent. "
+    "Wait for the queued messages to be processed, then try again."
+)
 
 # Ephemeral buffer: undrained messages are safe to drop at TTL expiry.
 _PENDING_KEY_PREFIX = "copilot:pending:"
@@ -55,6 +66,22 @@ _PERSIST_QUEUE_KEY_PREFIX = "copilot:pending-persist:"
 # Payload sent on the pub/sub notify channel.  Subscribers treat any
 # message as a wake-up hint; the value itself is not meaningful.
 _NOTIFY_PAYLOAD = "1"
+
+# Client idempotency keys (``StreamChatRequest.message_id``, already scoped to
+# user + session) of sends the chat API has accepted.  A buffered message has
+# no ``ChatMessage`` row until a turn drains it, so the PK cannot catch a
+# retransmit while the send is being scheduled or pushed to the buffer.
+_CLIENT_MESSAGE_KEY_PREFIX = "copilot:pending:client-msg:"
+# A reservation names the request holding it, so one that outlived its TTL
+# cannot accept or release the claim of the request that took over.
+_CLIENT_MESSAGE_RESERVED = "reserved:"
+_CLIENT_MESSAGE_ACCEPTED = "accepted"
+# A reservation covers scheduling a turn or pushing to the buffer, which takes
+# well under a second; the TTL only matters when the request dies midway.
+_CLIENT_MESSAGE_RESERVE_TTL_SECONDS = 30
+# How long a copy waits for the first copy's outcome before it gives up.
+_CLIENT_MESSAGE_WAIT_SECONDS = 10.0
+_CLIENT_MESSAGE_POLL_SECONDS = 0.1
 
 
 class PendingMessageContext(BaseModel):
@@ -86,6 +113,7 @@ class PendingMessage(BaseModel):
     # session sent).  Set only by internal callers; the HTTP pending route
     # never forwards it, so a human message stays metadata-free.
     metadata: dict[str, Any] | None = None
+    model_image: ToolImage | None = None
 
 
 def _buffer_key(session_id: str) -> str:
@@ -99,6 +127,184 @@ def _notify_channel(session_id: str) -> str:
     return f"{_PENDING_CHANNEL_PREFIX}{session_id}"
 
 
+def _client_message_key(session_id: str, message_id: str) -> str:
+    return f"{_CLIENT_MESSAGE_KEY_PREFIX}{session_id}:{message_id}"
+
+
+ClientMessageClaim = Literal["claimed", "accepted", "reserved"]
+
+
+async def _settled_client_message(redis: Any, key: str, deadline: float) -> str | None:
+    """The key's state once no other request is still scheduling its send,
+    or ``"reserved"`` if that has not happened by *deadline*."""
+    while True:
+        state = await redis.get(key)
+        if not _is_reservation(state) or time.monotonic() >= deadline:
+            return state
+        await asyncio.sleep(_CLIENT_MESSAGE_POLL_SECONDS)
+
+
+def _is_reservation(state: str | None) -> bool:
+    return state is not None and state.startswith(_CLIENT_MESSAGE_RESERVED)
+
+
+async def claim_client_message(
+    session_id: str, message_id: str, owner: str
+) -> ClientMessageClaim:
+    """Reserve *message_id* for the request carrying it, identified by the
+    unique *owner* token it passes to accept or release the claim.
+
+    ``"claimed"``: the caller owns the send.  It must call
+    :func:`accept_client_message` once the send is scheduled or queued, or
+    :func:`release_client_message` when it is refused.  The reservation
+    expires on its own within seconds, so a request that dies midway
+    cannot block the id.
+
+    ``"accepted"``: the caller holds a retransmit of a message that is
+    queued, drained or persisted, and must not act on it again.
+
+    ``"reserved"``: another copy was still being scheduled when the wait ran
+    out, so the caller should tell the client to retry.  A copy waits for
+    that outcome rather than being told it was accepted: the first copy can
+    still be refused, and then the send was never taken.
+
+    Fails open to ``"claimed"`` on a Redis error so dedup can never block a
+    send.
+    """
+    key = _client_message_key(session_id, message_id)
+    deadline = time.monotonic() + _CLIENT_MESSAGE_WAIT_SECONDS
+    try:
+        redis = await get_redis_async()
+        while True:
+            if await redis.set(
+                key,
+                _CLIENT_MESSAGE_RESERVED + owner,
+                nx=True,
+                ex=_CLIENT_MESSAGE_RESERVE_TTL_SECONDS,
+            ):
+                return "claimed"
+            state = await _settled_client_message(redis, key, deadline)
+            if _is_reservation(state):
+                return "reserved"
+            if state is not None:
+                return "accepted"
+            # The first copy was refused and gave the id back: take it.
+    except Exception as e:
+        logger.warning(
+            "pending_messages: client message claim failed for session=%s: %s",
+            session_id,
+            e,
+        )
+        return "claimed"
+
+
+async def finish_despite_cancellation(work: "asyncio.Future[T]") -> T:
+    """Wait for shielded cleanup *work* however many times the caller is
+    cancelled meanwhile; the caller re-raises its own cancellation after."""
+    while True:
+        try:
+            return await asyncio.shield(work)
+        except asyncio.CancelledError:
+            if work.done():
+                return work.result()
+
+
+async def accept_client_message(
+    session_id: str, message_id: str, owner: str, *, pending: bool = False
+) -> None:
+    """Mark a claimed send as taken, so its retransmits are skipped.  Also
+    when the reservation has lapsed, unless another request holds it now.
+
+    Finishes even if the caller is cancelled midway: the send has already
+    landed, and a reservation left to lapse would let a retry send it again.
+    Pending sends inherit their receipt's deadline instead of starting a new TTL.
+    """
+    accept = asyncio.ensure_future(
+        _accept_client_message(session_id, message_id, owner, pending=pending)
+    )
+    try:
+        await asyncio.shield(accept)
+    except asyncio.CancelledError:
+        await finish_despite_cancellation(accept)
+        raise
+
+
+async def _accept_client_message(
+    session_id: str, message_id: str, owner: str, *, pending: bool
+) -> None:
+    try:
+        redis = await get_redis_async()
+        expires_at_ms = None
+        if pending:
+            expires_at_ms = int(
+                await cast(
+                    "Any",
+                    redis.pexpiretime(
+                        pending_message_receipt_key(session_id, message_id)
+                    ),
+                )
+            )
+            if expires_at_ms < 0:
+                await release_client_message(session_id, message_id, owner)
+                return
+        await string_compare_and_set(
+            redis,
+            _client_message_key(session_id, message_id),
+            expected=_CLIENT_MESSAGE_RESERVED + owner,
+            new=_CLIENT_MESSAGE_ACCEPTED,
+            ttl_seconds=_PENDING_TTL_SECONDS,
+            or_missing=True,
+            expires_at_ms=expires_at_ms,
+        )
+    except Exception as e:
+        logger.warning(
+            "pending_messages: client message accept failed for session=%s: %s",
+            session_id,
+            e,
+        )
+
+
+async def client_message_state(
+    session_id: str, message_id: str
+) -> Literal["accepted", "reserved"] | None:
+    """Whether a send carrying *message_id* was taken, waiting as
+    :func:`claim_client_message` does while another copy is scheduling it."""
+    deadline = time.monotonic() + _CLIENT_MESSAGE_WAIT_SECONDS
+    try:
+        redis = await get_redis_async()
+        state = await _settled_client_message(
+            redis, _client_message_key(session_id, message_id), deadline
+        )
+    except Exception as e:
+        logger.warning(
+            "pending_messages: client message lookup failed for session=%s: %s",
+            session_id,
+            e,
+        )
+        return None
+    if state is None:
+        return None
+    return "reserved" if _is_reservation(state) else "accepted"
+
+
+async def release_client_message(session_id: str, message_id: str, owner: str) -> None:
+    """Drop a claim whose send was refused, so a genuine retry can land."""
+    try:
+        redis = await get_redis_async()
+        await string_compare_and_set(
+            redis,
+            _client_message_key(session_id, message_id),
+            expected=_CLIENT_MESSAGE_RESERVED + owner,
+            new=None,
+        )
+    except Exception as e:
+        logger.warning(
+            "pending_messages: client message release failed for session=%s: %s",
+            session_id,
+            e,
+        )
+
+
 def _decode_redis_item(item: Any) -> str:
     """Decode a redis-py list item to str (handles ``bytes`` and ``str``)."""
     return item.decode("utf-8") if isinstance(item, bytes) else str(item)
@@ -109,7 +315,7 @@ async def push_pending_message(
     message: PendingMessage,
 ) -> int:
     """Append a pending message to the session's buffer, capped at
-    ``MAX_PENDING_MESSAGES`` (oldest trimmed). Returns the new buffer length.
+    ``MAX_PENDING_MESSAGES`` (rejecting overflow). Returns the new buffer length.
 
     The buffer survives consumer crashes until ``_PENDING_TTL_SECONDS``
     expires; messages not drained within that window are dropped.
@@ -118,7 +324,7 @@ async def push_pending_message(
     key = _buffer_key(session_id)
     payload = message.model_dump_json()
 
-    new_length = await capped_rpush(
+    new_length = await bounded_rpush(
         redis,
         key,
         payload,
@@ -150,6 +356,7 @@ async def push_pending_message_if_session_running(
     message: PendingMessage,
     *,
     session_meta_key: str,
+    deduplicate: bool = False,
 ) -> int | None:
     """Append a pending message only while the stream meta is still running."""
     redis = await get_redis_async()
@@ -165,6 +372,10 @@ async def push_pending_message_if_session_running(
         value=payload,
         max_len=MAX_PENDING_MESSAGES,
         ttl_seconds=_PENDING_TTL_SECONDS,
+        receipt_key=(
+            pending_message_receipt_key(session_id, message.id) if deduplicate else None
+        ),
+        message_id=message.id,
     )
     if new_length is None:
         logger.info(
@@ -190,19 +401,37 @@ async def push_pending_message_if_session_running(
     return new_length
 
 
-async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
-    """Atomically pop all pending messages for *session_id*.
+async def drain_pending_messages(
+    session_id: str, *, limit: int = MAX_PENDING_MESSAGES, text_only: bool = False
+) -> list[PendingMessage]:
+    """Atomically pop one batch of pending messages for *session_id*.
 
-    Returns them in enqueue order (oldest first).  Uses ``LPOP`` with a
-    count so the read+delete is a single Redis round trip.  If the list
-    is empty or missing, returns ``[]``.
+    Returns them in enqueue order (oldest first). Text-only consumers
+    stop before the first image, atomically removing just the inspected
+    prefix if it has not changed. Other consumers drain with ``LPOP``.
     """
     redis = await get_redis_async()
     key = _buffer_key(session_id)
 
-    # LPOP with count drains everything in one round-trip; the push side
-    # caps the list at MAX_PENDING_MESSAGES so nothing is left behind.
-    lpop_result = await redis.lpop(key, MAX_PENDING_MESSAGES)  # type: ignore[assignment]
+    batch_limit = max(0, min(limit, MAX_PENDING_MESSAGES))
+    if not batch_limit:
+        return []
+    if text_only:
+        items = await cast("Any", redis.lrange(key, 0, batch_limit - 1))
+        prefix: list[str] = []
+        for item in items:
+            payload = _decode_redis_item(item)
+            try:
+                message = _from_buffer(json.loads(payload))
+            except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
+                prefix.append(payload)
+                continue
+            if message.model_image is not None:
+                break
+            prefix.append(payload)
+        lpop_result = await pop_matching_list_prefix(redis, key, prefix)
+    else:
+        lpop_result = await cast("Any", redis.lpop(key, batch_limit))
     if not lpop_result:
         return []
     raw_popped: list[Any] = list(lpop_result)
@@ -213,7 +442,7 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
     messages: list[PendingMessage] = []
     for payload in decoded:
         try:
-            messages.append(PendingMessage.model_validate(json.loads(payload)))
+            messages.append(_from_buffer(json.loads(payload)))
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
                 "pending_messages: dropping malformed entry for %s: %s",
@@ -227,48 +456,18 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
             len(messages),
             session_id,
         )
-        await _notify_pending_drained(session_id, messages)
     return messages
 
 
-async def _notify_pending_drained(
-    session_id: str, drained: list[PendingMessage]
-) -> None:
-    """Emit a ``data-pending-drained`` hint onto the session's live SSE
-    stream so the frontend promotes its queued chips to bubbles right away
-    instead of waiting for its backstop poll.
+def _from_buffer(data: Any) -> PendingMessage:
+    # Deferred: the gate's held result is built on this module's message.
+    from backend.copilot.gate.held import HeldResult
 
-    Best-effort by design: the frontend re-reads the authoritative buffer
-    count on the hint (and keeps a slow poll as a safety net), so a failed
-    or dropped emit only delays the chip→bubble swap — it never loses data.
-    The active turn is looked up from the session so the chunk lands on the
-    correct per-turn Redis stream.
-
-    The hint also carries the drained text so the client can render the
-    follow-up bubble exactly where the backend injected it, between the
-    tool chain that ran before the drain and the work that follows it.
-    """
-    try:
-        active = await get_session(session_id)
-        if active is None or not active.turn_id:
-            return
-        await publish_chunk(
-            active.turn_id,
-            StreamPendingDrained(
-                drainedCount=len(drained),
-                messages=[
-                    StreamPendingDrainedMessage(id=m.id, content=m.content)
-                    for m in drained
-                ],
-            ),
-            session_id=session_id,
-        )
-    except Exception:
-        logger.debug(
-            "pending_messages: drain hint emit failed for session=%s",
-            session_id,
-            exc_info=True,
-        )
+    # A held call's result, re-queued by a save that rolled back, keeps the
+    # larger cap it was built with; the action behind it has already run.
+    if isinstance(data, dict) and HeldResult.carried_by(data):
+        return HeldResult.model_validate(data)
+    return PendingMessage.model_validate(data)
 
 
 async def peek_pending_count(session_id: str) -> int:
@@ -293,9 +492,7 @@ async def peek_pending_messages(session_id: str) -> list[PendingMessage]:
     messages: list[PendingMessage] = []
     for item in items:
         try:
-            messages.append(
-                PendingMessage.model_validate(json.loads(_decode_redis_item(item)))
-            )
+            messages.append(_from_buffer(json.loads(_decode_redis_item(item))))
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
                 "pending_messages: dropping malformed peek entry for %s: %s",
@@ -310,6 +507,8 @@ async def clear_pending_messages_unsafe(session_id: str) -> None:
 
     The ``_unsafe`` suffix warns: normal turn cleanup uses the atomic LPOP
     drain; this bypass drops queued follow-ups on the floor.
+    Admission receipts and client-message claims remain so retries cannot
+    replay discarded follow-ups. A new send requires a new message ID.
     """
     redis = await get_redis_async()
     await redis.delete(_buffer_key(session_id))
@@ -319,6 +518,19 @@ async def clear_pending_messages_unsafe(session_id: str) -> None:
 # 100 KB MCP tool-output truncation boundary.
 _FOLLOWUP_CONTENT_MAX_CHARS = 2_000
 _FOLLOWUP_TOTAL_MAX_CHARS = 6_000
+
+# The follow-up block's tags. The Codex gateway finds the block by them, to
+# pass on the user's words without the CLI's own notes around them.
+FOLLOW_UP_OPEN_TAG = "<user_follow_up>"
+FOLLOW_UP_CLOSE_TAG = "</user_follow_up>"
+
+
+def _escape_follow_up_tags(text: str) -> str:
+    """A message quoting the tags can't open or close the block early: the
+    block's own tags stay the only raw ones in it."""
+    return text.replace(FOLLOW_UP_OPEN_TAG, "&lt;user_follow_up&gt;").replace(
+        FOLLOW_UP_CLOSE_TAG, "&lt;/user_follow_up&gt;"
+    )
 
 
 def _persist_queue_key(session_id: str) -> str:
@@ -381,9 +593,7 @@ async def drain_pending_for_persist(session_id: str) -> list[PendingMessage]:
     messages: list[PendingMessage] = []
     for item in raw_popped:
         try:
-            messages.append(
-                PendingMessage.model_validate(json.loads(_decode_redis_item(item)))
-            )
+            messages.append(_from_buffer(json.loads(_decode_redis_item(item))))
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
                 "pending_messages: dropping malformed persist-queue entry for %s: %s",
@@ -410,7 +620,7 @@ def format_pending_as_followup(pending: list[PendingMessage]) -> str:
     total_chars = 0
     dropped = 0
     for idx, pm in enumerate(pending, start=1):
-        text = pm.content
+        text = _escape_follow_up_tags(pm.content)
         if len(text) > _FOLLOWUP_CONTENT_MAX_CHARS:
             text = text[:_FOLLOWUP_CONTENT_MAX_CHARS] + "… [truncated]"
         entry = f"Message {idx}:\n{text}"
@@ -427,12 +637,12 @@ def format_pending_as_followup(pending: list[PendingMessage]) -> str:
         rendered.append(f"… [{dropped} more message(s) truncated]")
     body = "\n\n".join(rendered)
     return (
-        "<user_follow_up>\n"
+        f"{FOLLOW_UP_OPEN_TAG}\n"
         "The user sent the following message(s) while this tool was running. "
         "Treat them as a continuation of their current request — acknowledge "
         "and act on them in your next response. Do not echo these tags back.\n\n"
         f"{body}\n"
-        "</user_follow_up>"
+        f"{FOLLOW_UP_CLOSE_TAG}"
     )
 
 
@@ -455,7 +665,7 @@ async def drain_and_format_for_injection(
     if not session_id:
         return ""
     try:
-        pending = await drain_pending_messages(session_id)
+        pending = await drain_pending_messages(session_id, text_only=True)
     except Exception:
         logger.warning(
             "%s drain_pending_messages failed (session=%s); skipping injection",
@@ -483,6 +693,16 @@ def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:
     message into the conversation.  Context/file metadata (if any) is
     embedded into the content so the model sees everything in one block.
     """
+    text = pending_message_text(message)
+    content = (
+        [{"type": "text", "text": text}, message.model_image.openai()]
+        if message.model_image
+        else text
+    )
+    return {"role": "user", "content": content}
+
+
+def pending_message_text(message: PendingMessage) -> str:
     parts: list[str] = [message.content]
     if message.context:
         if message.context.url:
@@ -495,4 +715,4 @@ def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:
             + "\n".join(f"- file_id={fid}" for fid in message.file_ids)
             + "\nUse read_workspace_file with the file_id to access file contents."
         )
-    return {"role": "user", "content": "".join(parts)}
+    return "".join(parts)

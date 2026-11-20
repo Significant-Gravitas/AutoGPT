@@ -288,3 +288,105 @@ async def test_missing_request_id_preserves_response(monkeypatch: pytest.MonkeyP
     assert result.response == RESPONSE
     assert result.request_id == ""
     assert result.error == "Jev response did not include a request ID."
+
+
+async def test_retired_pin_runs_on_jev_latest_and_reports_it(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    sent: list[str] = []
+    mock_transport(
+        monkeypatch, refusing(sent, "jev-1.13.0", "Unknown model: jev-1.13.0")
+    )
+    monkeypatch.setattr(_client, "_retired_models", set())
+    questions = {"q": Noul(instructions="Yes?")}
+    with caplog.at_level(logging.ERROR, logger=_client.__name__):
+        first = await _client.call_jev("test", "s", questions, model="jev-1.13.0")
+        second = await _client.call_jev("test", "s", questions, model="jev-1.13.0")
+    assert sent == ["jev-1.13.0", "jev-latest", "jev-latest"]
+    for result in (first, second):
+        assert result.error == ""
+        assert result.answers == json.loads(RESPONSE)["answers"]
+        assert json.loads(result.request)["model"] == "jev-latest"
+    errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1 and "jev-1.13.0" in errors[0]
+
+
+async def test_concurrent_calls_on_a_retired_pin_report_it_once(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    sent: list[str] = []
+    refuse = refusing(sent, "jev-1.13.0", "Unknown model: jev-1.13.0")
+    both_sent = asyncio.Event()
+
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        response = await refuse(request)
+        if sent.count("jev-1.13.0") == 2:
+            both_sent.set()
+        await asyncio.wait_for(both_sent.wait(), timeout=2)
+        return response
+
+    mock_transport(monkeypatch, handler)
+    monkeypatch.setattr(_client, "_retired_models", set())
+    questions = {"q": Noul(instructions="Yes?")}
+    with caplog.at_level(logging.ERROR, logger=_client.__name__):
+        results = await asyncio.gather(
+            _client.call_jev("test", "a", questions, model="jev-1.13.0"),
+            _client.call_jev("test", "b", questions, model="jev-1.13.0"),
+        )
+    assert sorted(sent) == ["jev-1.13.0", "jev-1.13.0", "jev-latest", "jev-latest"]
+    assert [result.error for result in results] == ["", ""]
+    assert len([r for r in caplog.records if r.levelno == logging.ERROR]) == 1
+
+
+@pytest.mark.parametrize(
+    "model, refused, message",
+    [
+        ("jev-1.13.0", "jev-1.13.0", "Too many questions"),
+        ("jev-1.13.0", "jev-1.13.0", "Unknown model: jev-other"),
+        ("jev-preview", "jev-preview", "Unknown model: jev-preview"),
+        ("jev-latest", "jev-latest", "Unknown model: jev-latest"),
+        (None, "jev-latest", "Unknown model: jev-latest"),
+    ],
+    ids=[
+        "other-400-on-a-pin",
+        "names-another-model",
+        "unknown-preview-alias",
+        "unknown-latest-alias",
+        "unknown-sdk-default",
+    ],
+)
+async def test_other_refusals_are_not_retried(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    model: str | None,
+    refused: str,
+    message: str,
+):
+    sent: list[str] = []
+    mock_transport(monkeypatch, refusing(sent, refused, message))
+    monkeypatch.setattr(_client, "_retired_models", set())
+    with caplog.at_level(logging.ERROR, logger=_client.__name__):
+        result = await _client.call_jev(
+            "test", "s", {"q": Noul(instructions="Yes?")}, model=model
+        )
+    assert result.error == "Jev API request failed (HTTP 400)."
+    assert sent == [refused]
+    assert not [r for r in caplog.records if r.levelno == logging.ERROR]
+
+
+def refusing(
+    sent: list[str], model: str, message: str
+) -> Callable[[httpx2.Request], Awaitable[httpx2.Response]]:
+    """A TypeSafe that answers 400 ``message`` for ``model`` and RESPONSE otherwise."""
+
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        asked = json.loads(request.content)["model"]
+        sent.append(asked)
+        if asked == model:
+            body = {"detail": {"error_type": "api_usage_error", "message": message}}
+            return httpx2.Response(400, json=body)
+        return httpx2.Response(
+            200, content=RESPONSE, headers={"x-typesafe-request-id": "req"}
+        )
+
+    return handler

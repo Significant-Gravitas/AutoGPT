@@ -196,26 +196,20 @@ class TestBlockError:
 class TestBlockExecutionErrorNoneHandling:
     """Tests for BlockExecutionError handling of None messages."""
 
-    def test_execution_error_with_none_message(self):
-        """Test that None message is replaced with descriptive text."""
+    @pytest.mark.parametrize(
+        "message, expected",
+        [
+            pytest.param(None, "Output error was None", id="none_message"),
+            pytest.param("Actual error", "Actual error", id="valid_message"),
+            # Only None is replaced; an empty string is kept as it is.
+            pytest.param("", "", id="empty_string"),
+        ],
+    )
+    def test_execution_error_message(self, message, expected):
         error = BlockExecutionError(
-            message=None, block_name="TestBlock", block_id="test-123"
+            message=message, block_name="TestBlock", block_id="test-123"
         )
-        assert str(error) == "Output error was None"
-
-    def test_execution_error_with_valid_message(self):
-        """Test that valid messages are preserved."""
-        error = BlockExecutionError(
-            message="Actual error", block_name="TestBlock", block_id="test-123"
-        )
-        assert str(error) == "Actual error"
-
-    def test_execution_error_with_empty_string(self):
-        """Test that empty string message is NOT replaced (only None is)."""
-        error = BlockExecutionError(
-            message="", block_name="TestBlock", block_id="test-123"
-        )
-        assert str(error) == ""
+        assert str(error) == expected
 
 
 class TestBlockUnknownErrorNoneHandling:

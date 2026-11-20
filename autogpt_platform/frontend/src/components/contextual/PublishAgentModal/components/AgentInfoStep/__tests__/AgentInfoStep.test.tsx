@@ -6,6 +6,8 @@ import { http, HttpResponse } from "msw";
 
 vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
+  withServerActionInstrumentation: (...args: unknown[]) =>
+    (args.at(-1) as () => unknown)(),
 }));
 
 vi.mock("@/components/contextual/CronScheduler/cron-scheduler-dialog", () => ({

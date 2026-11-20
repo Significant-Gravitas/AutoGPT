@@ -8,17 +8,11 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackFunnel } from "@/services/experts/experts-analytics";
-import { markHireStarted } from "@/services/experts/hire-timing";
 import { useHireFlow } from "@/services/experts/useHireFlow";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AddTeamIcon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 
-// The atom sizes a lone action; on a card it is a label with a glyph. Ghost's
-// hover fill is the resting state here, so the button reads as a button
-// against the card's pastel band; hover takes it one step darker.
-const TEXT_BUTTON =
-  "min-w-0 gap-1.5 px-2 text-base bg-zinc-50 border-zinc-50 hover:bg-zinc-100 hover:border-zinc-100";
-const HIRE_ICON = <Icon icon={AddTeamIcon} size={20} aria-hidden />;
+// A small secondary pill, like the team cards' corner buttons.
+const HIRE_ICON = <Icon icon={AddTeamIcon} size={16} aria-hidden />;
 
 interface Props {
   expert: ExpertTemplate;
@@ -33,14 +27,6 @@ interface Props {
  *  hand-off to the expert's first thread — would unmount with it. Here the
  *  flow runs the expert page's own hook and outlives the swap. */
 export function ExpertHireControl({ expert, isHired }: Props) {
-  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-
-  if (!isHireExpertsEnabled) return null;
-
-  return <EnabledExpertHireControl expert={expert} isHired={isHired} />;
-}
-
-function EnabledExpertHireControl({ expert, isHired }: Props) {
   const { isLoggedIn } = useAuth();
   const {
     hire,
@@ -54,11 +40,13 @@ function EnabledExpertHireControl({ expert, isHired }: Props) {
   } = useHireFlow(expert);
   const isInFlight = isHiring || isVoicePickOpen || hireResult !== null;
 
-  // The clock starts on the click, not on the request: the flow finishes in
-  // a dialog, and sometimes on another page entirely.
+  // The card runs the expert page's hire flow, which reports the hire as
+  // `expert_page`, so its hire_started does too.
   function handleHire() {
-    markHireStarted(expert.id);
-    trackFunnel("hire_started", { template_id: expert.id });
+    trackFunnel("hire_started", {
+      template_id: expert.id,
+      surface: "expert_page",
+    });
     hire();
   }
 
@@ -67,7 +55,8 @@ function EnabledExpertHireControl({ expert, isHired }: Props) {
     control = (
       <Badge
         variant="success"
-        className="rounded-full px-2.5 py-1 shadow-[0_1px_2px_rgba(16,24,40,0.05)]"
+        // oxlint-disable-next-line design-system/no-restyle -- the hired pill matches the hire button's shape; Badge has no pill size
+        className="rounded-full px-2.5 py-1 shadow-subtle"
       >
         <Icon icon={CheckmarkCircle02Icon} size={14} aria-hidden />
         On your team
@@ -79,10 +68,9 @@ function EnabledExpertHireControl({ expert, isHired }: Props) {
       <Button
         as="NextLink"
         href={`/signup?next=${next}`}
-        variant="ghost"
+        variant="secondary"
         size="small"
         leftIcon={HIRE_ICON}
-        className={TEXT_BUTTON}
       >
         Hire
       </Button>
@@ -90,12 +78,11 @@ function EnabledExpertHireControl({ expert, isHired }: Props) {
   } else {
     control = (
       <Button
-        variant="ghost"
+        variant="secondary"
         size="small"
         loading={isHiring}
         leftIcon={HIRE_ICON}
         onClick={handleHire}
-        className={TEXT_BUTTON}
       >
         Hire
       </Button>

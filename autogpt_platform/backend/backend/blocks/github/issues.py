@@ -26,10 +26,6 @@ from ._auth import (
 logger = logging.getLogger(__name__)
 
 
-def is_github_url(url: str) -> bool:
-    return urlparse(url).netloc == "github.com"
-
-
 # --8<-- [start:GithubCommentBlockExample]
 class GithubCommentBlock(Block):
     class Input(BlockSchemaInput):
@@ -86,7 +82,7 @@ class GithubCommentBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -178,6 +174,7 @@ class GithubUpdateCommentBlock(Block):
                     "https://github.com/owner/repo/issues/1#issuecomment-123456789",
                 )
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -409,7 +406,7 @@ class GithubMakeIssueBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -721,6 +718,7 @@ class GithubAddLabelBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("status", "Label added successfully")],
             test_mock={"add_label": lambda *args, **kwargs: "Label added successfully"},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -783,6 +781,7 @@ class GithubRemoveLabelBlock(Block):
             test_mock={
                 "remove_label": lambda *args, **kwargs: "Label removed successfully"
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -846,6 +845,7 @@ class GithubAssignIssueBlock(Block):
             test_mock={
                 "assign_issue": lambda *args, **kwargs: "Issue assigned successfully"
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -912,6 +912,7 @@ class GithubUnassignIssueBlock(Block):
             test_mock={
                 "unassign_issue": lambda *args, **kwargs: "Issue unassigned successfully"
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

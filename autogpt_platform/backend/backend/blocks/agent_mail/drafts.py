@@ -111,6 +111,7 @@ class AgentMailCreateDraftBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -412,6 +413,7 @@ class AgentMailUpdateDraftBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

@@ -2,6 +2,13 @@ import type { ToolUIPart } from "ai";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
+import { RENDER_UI_PART_TYPE } from "../../tools/RenderUI/helpers";
+import { isFeedbackCardPart } from "../../tools/FeedbackPrompts/helpers";
+import { isQuestionTool } from "../QuestionDock/helpers";
+import {
+  type ClarifyingQuestion,
+  extractClarifyingQuestions,
+} from "../../tools/clarifying-questions";
 import {
   extractToolName,
   getAnimationText,
@@ -37,6 +44,8 @@ export interface ChainRow {
   supersededSubSession?: boolean;
   /** A call the action gate held: whether it waits, ran or was turned down. */
   held?: HeldRowInfo;
+  /** A lookup that found nothing, which the label already says. */
+  emptyResult?: boolean;
 }
 
 const SUB_SESSION_CARD_TOOLS = new Set([
@@ -149,6 +158,15 @@ export function isLiftedSetupRow(row: ChainRow): boolean {
   return data.type === "setup_requirements" && !!asObject(data.setup_info);
 }
 
+/** The questions a settled row asked once the user has moved past them. They
+ *  render under the chain, where their card was, so collapsing the chain
+ *  cannot hide what the user was asked. */
+export function getAskedQuestions(row: ChainRow): ClarifyingQuestion[] {
+  if (row.state !== "done" || row.lifted) return [];
+  if (!isQuestionTool(row.tool, row.output)) return [];
+  return extractClarifyingQuestions(row);
+}
+
 function getProviderIconSrc(tool: ToolUIPart): string | undefined {
   for (const source of [tool.input, tool.output]) {
     if (source && typeof source === "object" && "provider" in source) {
@@ -165,14 +183,21 @@ function getProviderIconSrc(tool: ToolUIPart): string | undefined {
 // it into a chain would bury both behind a collapsed "summarized context".
 export const COMPACTION_PART_TYPE = "tool-context_compaction";
 
-// Hiring, raising or updating an expert is the user's call, not a step the
-// model worked through — the card renders as its own message part so the
-// approval never sits inside a chain that collapses on top of it.
+export const SOUL_CHANGE_TOOLS = new Set([
+  "update_expert_soul",
+  "confirm_expert_soul_update",
+]);
+
+// Hiring, raising or updating an expert, or editing its Soul, is the user's
+// call, not a step the model worked through — the card renders as its own
+// message part so the approval never sits inside a chain that collapses on
+// top of it.
 export const EXPERT_CHANGE_TOOLS = new Set([
   "hire_expert",
   "raise_expert",
   "update_expert",
   "confirm_expert_change",
+  ...SOUL_CHANGE_TOOLS,
 ]);
 
 export function isExpertChangePart(part: MessagePart): boolean {
@@ -189,6 +214,8 @@ export function isChainPart(part: MessagePart): boolean {
   if (
     part.type === COMPACTION_PART_TYPE ||
     part.type === EXPERT_ONBOARDING_PART_TYPE ||
+    part.type === RENDER_UI_PART_TYPE ||
+    isFeedbackCardPart(part) ||
     isExpertChangePart(part)
   ) {
     return false;
@@ -207,6 +234,24 @@ function narrationText(part: MessagePart): string | null {
   const text = typeof part.text === "string" ? part.text.trim() : "";
   if (!text || text.length > NARRATION_MAX_CHARS) return null;
   return text;
+}
+
+/** Chats saved before the engines named a dispatched tool after itself store
+ *  `run_capability(id: "tool:<name>")`; those rows are labelled as the tool
+ *  that ran. A `connect` call only checks sign-in, so it keeps its own. */
+function getRowCatalogLabel(
+  row: ChainRow,
+  context: { displayName: unknown; output: unknown },
+) {
+  const target = capabilityTargetRow(row);
+  const viaDispatch =
+    target.tool && target !== row && asObject(target.input)?.connect !== true
+      ? getCatalogLabel(target.tool, target.input, row.state, context)
+      : null;
+  return (
+    viaDispatch ??
+    getCatalogLabel(row.tool ?? "", row.input, row.state, context)
+  );
 }
 
 export function toChainRow(part: MessagePart, index: number): ChainRow | null {
@@ -265,10 +310,10 @@ export function toChainRow(part: MessagePart, index: number): ChainRow | null {
       output: tool.output,
     };
 
-    const catalogLabel = getCatalogLabel(toolName, stableTool.input, state, {
-      displayName: tool.title,
-      output: tool.output,
-    });
+    const catalogLabel = getRowCatalogLabel(
+      { key: tool.toolCallId, category: "other", text: "", state, ...data },
+      { displayName: tool.title, output: tool.output },
+    );
     if (catalogLabel) {
       return {
         key: tool.toolCallId,
@@ -310,8 +355,8 @@ const CATEGORY_SUMMARY: Record<ChainRow["category"], string> = {
   edit: "edited files",
   todo: "updated tasks",
   compaction: "summarized context",
-  agent: "ran agents",
-  "agent-build": "built agents",
+  agent: "delegated work",
+  "agent-build": "built workflows",
   plan: "planned the approach",
   block: "ran blocks",
   memory: "managed memory",

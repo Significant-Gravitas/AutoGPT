@@ -9,6 +9,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
@@ -167,6 +168,43 @@ function MemoryVisualizerWithRefetch() {
         Refetch experts
       </button>
     </>
+  );
+}
+
+function completedDreamStatus(jobID: string) {
+  return {
+    ...getGetV2GetDreamPassStatusResponseMock200(),
+    job_id: jobID,
+    kind: "dream_pass",
+    state: "complete",
+    current_phase: null,
+    error: null,
+    result: {
+      pass_id: "pass-5792380f",
+      operations: {
+        writes: [],
+        proposals: [],
+        demotions: [],
+        entity_invalidations: [],
+      },
+      usage: {
+        phases: [],
+        total_input_tokens: 9264,
+        total_output_tokens: 3344,
+        total_cache_read_tokens: 0,
+        total_cache_creation_tokens: 0,
+        total_cost_usd: 0.064624,
+        discount_applied: 0,
+      },
+    },
+  };
+}
+
+async function waitForIdleDreamButton() {
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /dream pass/i }).textContent?.trim(),
+    ).toBe("Dream pass"),
   );
 }
 
@@ -809,6 +847,81 @@ describe("MemoryVisualizer — 202 + polling contract", () => {
     await screen.findByRole("button", {
       name: /batch submitted \(consolidate\)/i,
     });
+  });
+
+  test("a finished dream pass keeps its result panel until the admin dismisses it", async () => {
+    setupBaseHandlers();
+    server.use(
+      getPostV2TriggerDreamPassMockHandler202({
+        ...getPostV2TriggerDreamPassResponseMock202(),
+        job_id: "job-dream-done",
+        state: "queued",
+      }),
+      http.get("*/api/admin/memory/:userId/dream/:jobId", () =>
+        HttpResponse.json(completedDreamStatus("job-dream-done")),
+      ),
+    );
+    render(<MemoryVisualizer />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /dream pass/i }),
+    );
+    await screen.findByTestId("dream-result-panel");
+
+    // The job has ended and stopped polling; its record stays on screen.
+    await waitForIdleDreamButton();
+    const panel = screen.getByTestId("dream-result-panel");
+    expect(within(panel).getByText("Operations")).toBeDefined();
+    expect(within(panel).getByText("Token usage")).toBeDefined();
+    expect(within(panel).getByText(/pass-5792380f/)).toBeDefined();
+
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Dismiss" }),
+    );
+    expect(screen.queryByTestId("dream-result-panel")).toBeNull();
+  });
+
+  test("starting another dream pass clears the previous result", async () => {
+    setupBaseHandlers();
+    let triggers = 0;
+    server.use(
+      http.post("*/api/admin/memory/:userId/dream", () => {
+        triggers += 1;
+        return HttpResponse.json(
+          {
+            ...getPostV2TriggerDreamPassResponseMock202(),
+            job_id: `job-dream-${triggers}`,
+            state: "queued",
+          },
+          { status: 202 },
+        );
+      }),
+      http.get("*/api/admin/memory/:userId/dream/:jobId", ({ params }) =>
+        HttpResponse.json(
+          params.jobId === "job-dream-1"
+            ? completedDreamStatus("job-dream-1")
+            : {
+                ...getGetV2GetDreamPassStatusResponseMock200(),
+                job_id: String(params.jobId),
+                kind: "dream_pass",
+                state: "running",
+                current_phase: "consolidate",
+              },
+        ),
+      ),
+    );
+    render(<MemoryVisualizer />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /dream pass/i }),
+    );
+    await screen.findByTestId("dream-result-panel");
+    await waitForIdleDreamButton();
+    expect(screen.getByTestId("dream-result-panel")).toBeDefined();
+
+    await userEvent.click(screen.getByRole("button", { name: /dream pass/i }));
+    await screen.findByRole("button", { name: /consolidate…/i });
+    expect(screen.queryByTestId("dream-result-panel")).toBeNull();
   });
 
   test("job completion refreshes every Otto cache without invalidating expert memory", async () => {

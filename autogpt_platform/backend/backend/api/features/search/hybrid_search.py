@@ -16,7 +16,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from prisma.enums import ContentType
 from rank_bm25 import BM25Okapi
@@ -29,10 +29,26 @@ from typing_extensions import NotRequired, TypedDict
 
 from backend.api.features.search.embeddings import (
     EMBEDDING_DIM,
+    PublicSearchBudgetSpent,
     embed_query,
     embedding_to_vector_string,
 )
 from backend.data.db import query_raw_with_schema
+
+ContentTypeValue = Literal[
+    "STORE_AGENT",
+    "BLOCK",
+    "INTEGRATION",
+    "DOCUMENTATION",
+    "LIBRARY_AGENT",
+    "WORKSPACE_FILE",
+    "CHAT_SESSION",
+]
+"""The string *values* of :class:`ContentType`, as returned by raw SQL.
+
+Raw query rows carry the bare enum value (e.g. ``"STORE_AGENT"``), not a
+``ContentType`` member — so this, not the enum, is the honest row type.
+"""
 
 
 class HybridSearchRow(TypedDict):
@@ -45,7 +61,7 @@ class HybridSearchRow(TypedDict):
     the row leaves this module (``total_count``).
     """
 
-    content_type: ContentType | str
+    content_type: ContentTypeValue
     content_id: str
     searchable_text: str
     metadata: dict[str, Any]
@@ -185,6 +201,7 @@ async def unified_hybrid_search(
     user_id: str | None = None,
     lexical_query: str | None = None,
     prefix_match: bool = False,
+    public_search: bool = False,
 ) -> tuple[list[HybridSearchRow], int]:
     """
     Unified hybrid search across all content types.
@@ -208,6 +225,8 @@ async def unified_hybrid_search(
             of ``query`` (e.g. ``"youtube summarize video"`` for a goal
             like ``"summarize a YouTube video..."``). Defaults to
             ``query`` when None.
+        public_search: Count a new query embedding against store search's
+            per-minute budget, and rank by text alone once it is spent.
 
     Returns:
         Tuple of (results list, total count)
@@ -259,13 +278,18 @@ async def unified_hybrid_search(
     offset = (page - 1) * page_size
 
     # Generate query embedding with graceful degradation
+    query_embedding: list[float] | None
     try:
-        query_embedding = await embed_query(query)
+        query_embedding = await embed_query(query, public_search=public_search)
+    except PublicSearchBudgetSpent:
+        query_embedding = None
     except Exception as e:
         logger.warning(
             f"Failed to generate query embedding - falling back to lexical-only search: {e}. "
             "Check that openai_internal_api_key is configured and OpenAI API is accessible."
         )
+        query_embedding = None
+    if query_embedding is None:
         query_embedding = [0.0] * EMBEDDING_DIM
         # Redistribute semantic weight to lexical
         total_non_semantic = weights.lexical + weights.category + weights.recency

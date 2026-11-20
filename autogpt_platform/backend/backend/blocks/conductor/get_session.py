@@ -16,8 +16,8 @@ from backend.util.exceptions import BlockExecutionError
 from ._api import ConductorClient
 from ._config import conductor
 from ._mocks import MOCK_PROMPT_MESSAGE, MOCK_REPLY_MESSAGE
-from ._paging import fetch_after, fetch_tail
-from ._transcript import latest_reply
+from ._paging import fetch_tail
+from ._transcript import latest_reply, read_after
 
 CREDENTIALS_DESCRIPTION = "Conductor API key from app.conductor.build/users/api-keys"
 
@@ -38,13 +38,23 @@ class ConductorGetSessionBlock(Block):
             advanced=False,
         )
         after: str = SchemaField(
-            description="Read forward from this transcript message ID (exclusive) "
-            "instead of returning the most recent messages; use next_after from "
-            "a previous call to poll incrementally",
+            description="Read forward from this message (exclusive) instead of "
+            "returning the most recent messages. Accepts a transcript row ID "
+            "(next_after from a previous call or from Send Message / Create "
+            "Session) or the prompt ID those blocks return as message_id / "
+            "initial_message_id, which is resolved to the prompt's row",
             default="",
         )
         message_id: str = SchemaField(
-            description="Also fetch this single message by ID", default=""
+            description="Also fetch this single message by its transcript row ID "
+            "(not a prompt ID returned by Send Message)",
+            default="",
+        )
+        include_messages: bool = SchemaField(
+            description="Also return the raw transcript rows in messages. Off by "
+            "default: status, latest_reply and next_after cover a poll loop "
+            "without the rows, which can be hundreds of kilobytes",
+            default=False,
         )
 
     class Output(BlockSchemaOutput):
@@ -54,21 +64,25 @@ class ConductorGetSessionBlock(Block):
         )
         status: str = SchemaField(description="idle, working or error")
         error_message: str = SchemaField(description="Last session error, if any")
+        message_count: int = SchemaField(
+            description="Number of transcript messages in the read slice"
+        )
         messages: list[dict] = SchemaField(
             description="Transcript messages, oldest first: id, sessionIndex, "
-            "type, content, receivedAt"
+            "type, content, receivedAt; only emitted when include_messages is on"
         )
         latest_reply: str = SchemaField(
             description="Text of the newest agent message with visible text in "
-            "the returned transcript slice"
+            "the read transcript slice"
         )
         has_more: bool = SchemaField(
-            description="True when the transcript has messages beyond the returned "
+            description="True when the transcript has messages beyond the read "
             "slice: older ones by default, newer ones when after is set"
         )
         next_after: str = SchemaField(
-            description="ID of the last returned message; pass it as after to read "
-            "what follows"
+            description="Transcript row ID of the last returned message (or the "
+            "row `after` resolved to when nothing followed it); pass it as "
+            "after to read what follows"
         )
         message: dict = SchemaField(
             description="The single message requested by message_id"
@@ -84,15 +98,31 @@ class ConductorGetSessionBlock(Block):
             effect=BlockEffect.READ,
             input_schema=self.Input,
             output_schema=self.Output,
-            test_input={
-                "credentials": conductor.get_test_credentials().model_dump(),
-                "session_id": "sess_1",
-            },
+            test_input=[
+                {
+                    "credentials": conductor.get_test_credentials().model_dump(),
+                    "session_id": "sess_1",
+                },
+                {
+                    "credentials": conductor.get_test_credentials().model_dump(),
+                    "session_id": "sess_1",
+                    "include_messages": True,
+                },
+            ],
             test_credentials=conductor.get_test_credentials(),
             test_output=[
                 ("session", lambda s: s["id"] == "sess_1"),
                 ("status", "idle"),
                 ("error_message", ""),
+                ("message_count", 2),
+                ("latest_reply", "All tests pass now."),
+                ("has_more", False),
+                ("next_after", "row_2"),
+                ("deep_link", "conductor://s/1"),
+                ("session", lambda s: s["id"] == "sess_1"),
+                ("status", "idle"),
+                ("error_message", ""),
+                ("message_count", 2),
                 ("messages", lambda m: len(m) == 2),
                 ("latest_reply", "All tests pass now."),
                 ("has_more", False),
@@ -126,12 +156,13 @@ class ConductorGetSessionBlock(Block):
         }
         if input_data.message_limit > 0:
             if input_data.after:
-                rows, has_more = await fetch_after(
+                rows, has_more, cursor = await read_after(
                     client,
                     input_data.session_id,
                     input_data.after,
                     input_data.message_limit,
                 )
+                result["cursor"] = cursor
             else:
                 rows, has_more = await fetch_tail(
                     client, input_data.session_id, input_data.message_limit
@@ -162,13 +193,14 @@ class ConductorGetSessionBlock(Block):
         yield "error_message", str(
             status.get("errorMessage") or status.get("lastError") or ""
         )
-        yield "messages", messages
+        yield "message_count", len(messages)
+        if input_data.include_messages:
+            yield "messages", messages
         yield "latest_reply", latest_reply(messages)
         yield "has_more", bool(listing.get("hasMore", False))
+        cursor = str(data.get("cursor") or input_data.after)
         yield "next_after", (
-            str(messages[-1].get("id") or input_data.after)
-            if messages
-            else input_data.after
+            str(messages[-1].get("id") or cursor) if messages else cursor
         )
         if data.get("message"):
             yield "message", data["message"]

@@ -142,7 +142,7 @@ describe("getCatalogLabel", () => {
       "find_agent",
       { query: "scraper" },
       "running",
-      'Finding agents for "scraper"…',
+      'Finding workflows for "scraper"…',
     ],
     [
       "find_library_agent",
@@ -164,12 +164,17 @@ describe("getCatalogLabel", () => {
     ],
     ["create_folder", { name: "Reports" }, "done", 'Created folder "Reports"'],
     ["update_folder", { name: "Reports" }, "done", 'Updated folder "Reports"'],
-    ["run_agent", { username_agent_slug: "abhi/scraper" }, "done", "Ran agent"],
+    [
+      "run_agent",
+      { username_agent_slug: "abhi/scraper" },
+      "done",
+      "Ran workflow",
+    ],
     [
       "run_agent",
       { library_agent_id: "0123456789012345678901234" },
       "done",
-      "Ran agent",
+      "Ran workflow",
     ],
     ["add_understanding", {}, "done", "Noted context"],
     ["enter_agent_building_mode", {}, "running", "Entering building mode…"],

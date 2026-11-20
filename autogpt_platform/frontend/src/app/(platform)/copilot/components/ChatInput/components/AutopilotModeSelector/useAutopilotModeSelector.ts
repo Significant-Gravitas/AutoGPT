@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
 import {
   type AutopilotMode,
   DEFAULT_AUTOPILOT_MODE,
   useAutopilotModeChoice,
   useAutopilotModeStore,
 } from "../../../../autopilotModeStore";
+import { CopilotChatActionsContext } from "../../../CopilotChatActionsProvider/useCopilotChatActions";
 import { isAutopilotMode } from "./helpers";
 
 interface Args {
@@ -15,6 +16,7 @@ interface Args {
 export function useAutopilotModeSelector({ sessionId, persistedMode }: Args) {
   const choice = useAutopilotModeChoice(sessionId);
   const choose = useAutopilotModeStore((state) => state.choose);
+  const actions = useContext(CopilotChatActionsContext);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const mode = choice ?? persistedMode ?? DEFAULT_AUTOPILOT_MODE;
 
@@ -43,5 +45,6 @@ export function useAutopilotModeSelector({ sessionId, persistedMode }: Args) {
     isConfirmOpen,
     confirmUnsupervised,
     cancelUnsupervised,
+    assistantName: actions?.assistantName ?? "Otto",
   };
 }

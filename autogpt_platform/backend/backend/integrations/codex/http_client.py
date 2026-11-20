@@ -198,6 +198,37 @@ def parse_rate_limits(headers: Mapping[str, str]) -> CodexRateLimitsSnapshot:
     )
 
 
+def usage_limit_resets_at(headers: Mapping[str, str], body: object) -> int | None:
+    """When a spent ChatGPT quota lifts, as the 429 that reports it says.
+
+    The error body names it outright (``resets_at``, epoch seconds). Failing
+    that, the quota headers carry each window's reset, and a full window is
+    what blocks the turn -- with both full, the later reset is the real wait.
+    ``None`` when neither says: a guessed time is worse than none.
+    """
+    reported = _int(str(_error_object(body).get("resets_at", "")))
+    if reported is not None and reported > 0:
+        return reported
+    limits = parse_rate_limits(headers)
+    full = [
+        window.resets_at
+        for window in (limits.primary, limits.secondary)
+        if window is not None
+        and window.used_percent >= 100
+        and window.resets_at is not None
+        and window.resets_at > 0
+    ]
+    return max(full, default=None)
+
+
+def _error_object(body: object) -> dict[str, object]:
+    """The error object, whether or not the OpenAI SDK already unwrapped it."""
+    if not isinstance(body, dict):
+        return {}
+    inner = body.get("error")
+    return inner if isinstance(inner, dict) else body
+
+
 def _window(lookup: Mapping[str, str], scope: str) -> CodexRateLimitWindow | None:
     used = _int(lookup.get(f"x-codex-{scope}-used-percent"))
     window = _int(lookup.get(f"x-codex-{scope}-window-minutes"))
@@ -216,7 +247,7 @@ def _int(value: str | None) -> int | None:
         return None
     try:
         return int(float(value))
-    except ValueError:
+    except (ValueError, OverflowError):
         return None
 
 

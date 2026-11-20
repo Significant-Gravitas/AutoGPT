@@ -26,14 +26,7 @@ STACK_WAIT_SECONDS = 30 * 60
 
 
 def wait_for_postgres(max_retries=36, delay=5):
-    """Block until the `postgres` role can run a query.
-
-    pg_isready isn't enough: on a fresh data directory the Supabase image runs
-    its init scripts against a temporary server that already accepts
-    connections, before the `postgres` role exists. Starting on that, or having
-    the container recreated mid-init, leaves a half-built database that fails
-    every later run with `role "postgres" does not exist`.
-    """
+    """Block until the test database accepts queries."""
     for _ in range(max_retries):
         try:
             result = subprocess.run(
@@ -69,11 +62,9 @@ def wait_for_postgres(max_retries=36, delay=5):
         time.sleep(delay)
     print(
         "Failed to connect to PostgreSQL. If `docker compose -f "
-        "docker-compose.test.yaml logs db` says the `postgres` role does not "
-        "exist, the database's first start was interrupted. Its data "
-        "directory, ../db/docker/volumes/db/data, is also your local dev "
-        "Supabase database: back up anything you need from it, then delete it "
-        "and run the tests again."
+        "docker-compose.test.yaml logs db` reports an initialization failure, "
+        "inspect the test-db-data volume. The test database is separate "
+        "from your development database."
     )
     return False
 
@@ -99,11 +90,15 @@ def wait_for_redis_cluster(max_retries=30, delay=2):
                     "../.env",
                     "exec",
                     "redis-0",
-                    "redis-cli",
-                    "-p",
-                    "17000",
-                    "cluster",
-                    "info",
+                    # The shards require REDIS_PASSWORD from backend/.env once
+                    # it is set; the shard has it in its own environment.
+                    "sh",
+                    "-c",
+                    (
+                        'if [ -n "$REDIS_PASSWORD" ]; then '
+                        'export REDISCLI_AUTH="$REDIS_PASSWORD"; fi; '
+                        "redis-cli -p 17000 cluster info"
+                    ),
                 ],
                 check=False,  # readiness is read from stdout, not from the exit code
                 capture_output=True,
@@ -154,7 +149,17 @@ def tear_down_stack():
     if owners := other_stack_owners():
         print(f"Leaving the test stack up for {', '.join(sorted(owners))}.")
         return
-    run_command(["docker", "compose", "-f", "docker-compose.test.yaml", "down"])
+    run_command(
+        [
+            "docker",
+            "compose",
+            "-f",
+            "docker-compose.test.yaml",
+            "--env-file",
+            "../.env",
+            "down",
+        ]
+    )
 
 
 def other_stack_owners():
@@ -254,15 +259,8 @@ def test():
     db_name = os.getenv("POSTGRES_DB", "postgres")
     db_port = os.getenv("POSTGRES_PORT", "5432")
 
-    # Run tests against a DEDICATED DATABASE on the test server. This is
-    # load-bearing: the "test" db container shares its data directory with
-    # the dev Supabase database, whose default search_path is
-    # `"$user", platform, public` — so a schema-less URL points unqualified
-    # DDL (and `prisma migrate reset --force`!) at the LIVE `platform`
-    # schema, and a `?schema=` URL breaks migrations that rely on
-    # extensions installed in Supabase's `extensions` schema (pg_trgm's
-    # gin_trgm_ops). A separate database gets its own fresh `public`
-    # schema: extensions install locally, resets stay contained.
+    # The compose entrypoint initializes this database with the same legacy
+    # auth schema shim used by CI before Prisma applies its migration history.
     test_db_name = "agpt_test"
     subprocess.run(
         [

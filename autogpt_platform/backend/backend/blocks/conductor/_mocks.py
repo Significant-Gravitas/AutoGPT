@@ -49,4 +49,5 @@ WAIT_MOCK_REPLY = {
     "reply": "All tests pass now.",
     "timed_out": False,
     "truncated": False,
+    "prompt_row_id": MOCK_PROMPT_MESSAGE["id"],
 }

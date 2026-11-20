@@ -61,6 +61,7 @@ async def test_get_session_returns_the_recent_tail_by_default():
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "session_id": "s1",
                 "message_limit": 20,
+                "include_messages": True,
             },
         )
     ids = [m["id"] for m in outputs["messages"]]
@@ -83,7 +84,12 @@ async def test_get_session_short_transcript_needs_a_single_request():
         return_value=_session_client(transcript),
     ):
         outputs = await collect(
-            block, {"credentials": TEST_CREDENTIALS_INPUT, "session_id": "s1"}
+            block,
+            {
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "session_id": "s1",
+                "include_messages": True,
+            },
         )
     assert [m["id"] for m in outputs["messages"]] == [r["id"] for r in rows]
     assert outputs["latest_reply"] == "Done"
@@ -107,6 +113,7 @@ async def test_get_session_after_reads_forward_from_the_cursor():
                 "session_id": "s1",
                 "after": "r-tool",
                 "message_limit": 2,
+                "include_messages": True,
             },
         )
     assert [m["id"] for m in outputs["messages"]] == ["r-progress", "r-result"]
@@ -162,6 +169,35 @@ async def test_get_workspace_pages_sessions_up_to_the_limit():
     assert outputs["next_session_offset"] == 6
     assert all(c["include_archived"] is True for c in calls)
     assert [c["offset"] for c in calls] == [1, 4]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "workspace, expected",
+    [
+        ({"id": "ws_1", "state": "ready"}, ""),
+        ({"id": "ws_1", "state": "ready", "branch": "dev"}, "dev"),
+        ({"id": "ws_1", "state": "ready", "baseBranch": "dev"}, "dev"),
+    ],
+)
+async def test_get_workspace_reports_base_branch_only_when_the_api_does(
+    workspace: dict, expected: str
+):
+    client = mock.Mock()
+    client.get_workspace = mock.AsyncMock(return_value=workspace)
+    client.workspace_status = mock.AsyncMock(return_value={"status": "ready"})
+    client.get_preview = mock.AsyncMock(return_value={})
+    client.workspace_sessions = mock.AsyncMock(
+        return_value={"data": [], "offset": 0, "hasMore": False}
+    )
+    block = ConductorGetWorkspaceBlock()
+    with mock.patch(
+        "backend.blocks.conductor.get_workspace.ConductorClient", return_value=client
+    ):
+        outputs = await collect(
+            block, {"credentials": TEST_CREDENTIALS_INPUT, "workspace_id": "ws_1"}
+        )
+    assert outputs["base_branch"] == expected
 
 
 # --- list workspaces (R1-07) --------------------------------------------------

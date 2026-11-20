@@ -3,8 +3,10 @@
 Order of preference, from the plan: connected service > unconnected service
 > primitive with credentials for the host > bare primitive.  It decides
 between entries that match the query equally well; it never lifts a weak
-lexical match over a strong one (see ``index._ranked``).
+lexical match over a strong one (see ``ordering.rank_hits``).
 """
+
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,13 +19,20 @@ WEIGHT_PRIMITIVE = 0.75
 
 
 class ConnectionState(BaseModel):
-    """The user's credentials, keyed the three ways capabilities need them."""
+    """The credentials this session can run on, keyed the three ways
+    capabilities need them.
+
+    For an expert session the top-level sets hold only what the expert was
+    granted; ``ungranted`` holds what the account owns but the expert may not
+    use, so search can say "ask for a grant" instead of "sign in".
+    """
 
     model_config = ConfigDict(frozen=True)
 
     providers: frozenset[str] = Field(default_factory=frozenset)
     server_urls: frozenset[str] = Field(default_factory=frozenset)
     hosts: frozenset[str] = Field(default_factory=frozenset)
+    ungranted: "ConnectionState | None" = None
 
 
 def resolve_connected(
@@ -45,6 +54,18 @@ def resolve_connected(
             normalize_server_url(url) for url in state.server_urls
         }
     return None
+
+
+def resolve_needs_expert_grant(
+    entry: CapabilityEntry, state: ConnectionState | None
+) -> bool:
+    """Whether *entry* would run on an account credential this expert session
+    has not been granted — owned, but not usable until the user grants it."""
+    if state is None or state.ungranted is None:
+        return False
+    if resolve_connected(entry, state) is not False:
+        return False
+    return resolve_connected(entry, state.ungranted) is True
 
 
 def tier(entry: CapabilityEntry, connected: bool | None) -> int:
@@ -73,10 +94,19 @@ def class_weight(entry: CapabilityEntry, connected: bool | None) -> float:
 
 
 def normalize_server_url(url: str) -> str:
-    """Compare MCP server URLs the way the catalog and the user write them.
+    """Ignore scheme/host case and trailing path slashes when matching servers.
 
-    Catalog keys are stored both ways (``https://mcp.miro.com/`` alongside
-    ``https://mcp.linear.app/mcp``), so a raw ``==`` against whatever the
-    model passes decides "is this a catalog server" on a trailing slash.
+    Paths, query strings and fragments remain case-sensitive. Malformed
+    stored URLs are left for the caller's validation instead of raising.
     """
-    return url.strip().lower().rstrip("/")
+    stripped = url.strip()
+    try:
+        parsed = urlsplit(stripped)
+    except ValueError:
+        return stripped.rstrip("/")
+    user_info, separator, host = parsed.netloc.rpartition("@")
+    return parsed._replace(
+        scheme=parsed.scheme.lower(),
+        netloc=f"{user_info}{separator}{host.lower()}",
+        path=parsed.path.rstrip("/"),
+    ).geturl()

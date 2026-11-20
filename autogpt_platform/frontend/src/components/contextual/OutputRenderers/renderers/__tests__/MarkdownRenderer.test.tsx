@@ -81,3 +81,53 @@ describe("MarkdownRenderer math", () => {
     );
   });
 });
+
+describe("MarkdownRenderer images", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("embeds an image whose URL is a video file as a video player", () => {
+    const container = renderMarkdown("![Clip](https://example.com/clip.mp4)");
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("video source")?.getAttribute("src")).toBe(
+      "https://example.com/clip.mp4",
+    );
+  });
+
+  it("loads nothing from YouTube for an image whose URL is a YouTube video until consent", () => {
+    const container = renderMarkdown(
+      "![Talk](https://www.youtube.com/watch?v=dQw4w9WgXcQ)",
+    );
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("iframe")).toBeNull();
+  });
+
+  it("renders any other image as an image", () => {
+    const container = renderMarkdown("![Cat](https://example.com/cat.png)");
+
+    const image = container.querySelector("img");
+    expect(image?.getAttribute("src")).toBe("https://example.com/cat.png");
+    expect(image?.getAttribute("alt")).toBe("Cat");
+    expect(container.querySelector("video, iframe")).toBeNull();
+  });
+});
+
+describe("MarkdownRenderer elements", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders small headings, rules and strikethrough", () => {
+    const container = renderMarkdown(
+      "#### Fourth\n\n##### Fifth\n\n---\n\nThis is ~~gone~~ now.",
+    );
+
+    expect(container.querySelector("h4")?.textContent).toBe("Fourth");
+    expect(container.querySelector("h5")?.textContent).toBe("Fifth");
+    expect(container.querySelector("hr")).toBeTruthy();
+    expect(container.querySelector("del")?.textContent).toBe("gone");
+  });
+});

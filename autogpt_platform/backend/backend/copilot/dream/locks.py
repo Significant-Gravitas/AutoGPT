@@ -17,58 +17,61 @@ in cluster mode, so everything here stays single-key: SET NX plus
 single-key Lua scripts, no multi-key scripts and no cross-key
 transactions.
 
-TTL is transport-aware per ``dream/p0-spec.md`` §13:
-  * Cloud (OpenRouter / Anthropic direct): 1800 s (30 min)
-  * Local (Ollama / vLLM / LM Studio): 7200 s (2 hr)
-The longer local TTL accommodates CPU-only inference timelines for
-the three-phase pipeline.
+The sync-path TTL is 1800 s (30 min), sized to the scheduler's job
+timeout; the batch path extends it (see ``BATCH_LOCK_TTL_SECONDS``). A pass
+renews its lock at each step, and its DreamPass row records the new expiry
+as the pass's lease (``lease.py``).
+
+Right before it applies, a pass proves the key is still its own by renewing
+it (``extend``), and the sync pass reads it first (``held``): a lock that
+lapsed may already be a newer pass's, and only the holder may write the
+scope's graph.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, cast
 
-from backend.copilot.graphiti.client import derive_memory_scope_key
+from backend.copilot.graphiti.scope import MemoryScope
 
 logger = logging.getLogger(__name__)
 
-DREAM_LOCK_KEY_PREFIX = "dream:inflight:"
-
-# Default TTLs. Callers can override per-transport when local.
+# Sync-path lock TTL (30 min).
 DEFAULT_LOCK_TTL_SECONDS = 1800
-LOCAL_LOCK_TTL_SECONDS = 7200
 
-# Batch path: the dream pass is async and stays in flight up to the
-# BatchExecutor's MAX_BATCH_LIFETIME_SECONDS (24h). The lock must outlive the
-# whole batch so apply — which runs hours later in the callback — is still
-# covered by "one dream per user". The batch callback releases it on
-# terminal/failure; this TTL is only the crash backstop, kept > 24h so the
-# lock can't expire before the executor times the batch out.
+# Batch path: one phase's batch stays in flight up to the BatchExecutor's
+# MAX_BATCH_LIFETIME_SECONDS (24h). The lock is extended to this TTL at submit
+# and again at each callback whose phase landed, and once more before apply,
+# so it covers the phase batch in flight (not the whole chain of three) with
+# 10 minutes to spare, and apply, which runs in the last callback, is still
+# covered by "one dream per user". The callbacks release it when the pass
+# ends; the TTL is the backstop for a pass that died.
 BATCH_LOCK_TTL_SECONDS = 24 * 60 * 60 + 600
 
+# How long the ownership read right before apply may take.
+LOCK_CHECK_TIMEOUT_SECONDS = 2.0
+
 # Compare-and-delete: only the holder whose token still matches the stored
-# value may delete the key. Single-key Lua routes on Redis Cluster.
-_UNLOCK_SCRIPT = (
+# value may delete the key. Single-key Lua routes on Redis Cluster. Graphiti's
+# per-graph write lock releases and renews with these two scripts as well
+# (``graphiti/scope_lock.py``).
+UNLOCK_SCRIPT = (
     'if redis.call("get", KEYS[1]) == ARGV[1] then '
     'return redis.call("del", KEYS[1]) else return 0 end'
 )
 
 # Compare-and-extend: only the holder whose token still matches the stored
 # value may stretch the TTL. Same single-key Lua pattern as
-# ``_UNLOCK_SCRIPT`` — a blind ``SET XX`` would overwrite a *newer* pass's
+# ``UNLOCK_SCRIPT`` — a blind ``SET XX`` would overwrite a *newer* pass's
 # token (and TTL) when our lock expired and was re-acquired mid-pass.
-_EXTEND_SCRIPT = (
+EXTEND_SCRIPT = (
     'if redis.call("get", KEYS[1]) == ARGV[1] then '
     'return redis.call("expire", KEYS[1], ARGV[2]) else return 0 end'
 )
-
-
-def _lock_key(user_id: str, expert_id: str | None = None) -> str:
-    scope_id = derive_memory_scope_key(user_id, expert_id)
-    return f"{DREAM_LOCK_KEY_PREFIX}{scope_id}"
 
 
 class DreamLockHeld(Exception):
@@ -104,7 +107,7 @@ class DreamLockHandle:
     its per-pass state (the input bundle) for the callback to read back hours
     later."""
 
-    def __init__(self, redis, key: str, user_id: str, token: str) -> None:
+    def __init__(self, redis: Any, key: str, user_id: str, token: str) -> None:
         self._redis = redis
         self._key = key
         self.user_id = user_id
@@ -117,7 +120,7 @@ class DreamLockHandle:
     async def extend(self, ttl_seconds: int) -> bool:
         """Stretch the lock TTL only while the key still holds our token.
 
-        Single-key Lua compare-and-extend (mirrors ``_UNLOCK_SCRIPT``): a
+        Single-key Lua compare-and-extend (mirrors ``UNLOCK_SCRIPT``): a
         blind ``SET XX`` succeeds against ANY existing value, so if our
         lock expired and a newer pass re-acquired the key, it would
         hijack that pass's token and stretch its TTL. The compare also
@@ -133,9 +136,7 @@ class DreamLockHandle:
         # ``str`` — same workaround as the release paths below.
         extended = await cast(
             "Any",
-            self._redis.eval(
-                _EXTEND_SCRIPT, 1, self._key, self.token, str(ttl_seconds)
-            ),
+            self._redis.eval(EXTEND_SCRIPT, 1, self._key, self.token, str(ttl_seconds)),
         )
         if not extended:
             logger.warning(
@@ -145,13 +146,19 @@ class DreamLockHandle:
             )
         return bool(extended)
 
+    async def held(self) -> bool:
+        """Whether the key still holds this handle's token: one GET, raising
+        when Redis does not answer within ``LOCK_CHECK_TIMEOUT_SECONDS``."""
+        async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+            current = await self._redis.get(self._key)
+        return _as_text(current) == self.token
+
 
 @asynccontextmanager
 async def dream_lock(
-    user_id: str,
+    scope: MemoryScope,
     ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS,
-    *,
-    expert_id: str | None = None,
+    token: str | None = None,
 ):
     """Acquire a per-user advisory lock for the dream pass.
 
@@ -159,14 +166,16 @@ async def dream_lock(
     The lock is released on context exit via compare-and-delete on this
     acquire's ownership token — a late exit can't delete a newer pass's
     lock. On crash the TTL provides a fallback release after
-    ``ttl_seconds``.
+    ``ttl_seconds``. *token*, minted by the pass so its record carries the
+    lease before the lock is taken, is the ownership value (uuid4 if not).
     """
     # Lazy import so this module is cheap to import in tests that mock redis.
     from backend.data.redis_client import get_redis_async
 
+    user_id = scope.owner_user_id
     redis = await get_redis_async()
-    key = _lock_key(user_id, expert_id)
-    token = str(uuid.uuid4())
+    key = scope.redis_key("dream_lock")
+    token = token or str(uuid.uuid4())
 
     acquired = await redis.set(key, token, nx=True, ex=ttl_seconds)
     if not acquired:
@@ -185,7 +194,7 @@ async def dream_lock(
             try:
                 # ``cast`` because redis-py's stubs type ``eval`` as a bare
                 # ``str`` — same workaround as ``data/redis_helpers.py``.
-                deleted = await cast("Any", redis.eval(_UNLOCK_SCRIPT, 1, key, token))
+                deleted = await cast("Any", redis.eval(UNLOCK_SCRIPT, 1, key, token))
                 if deleted:
                     logger.debug("Released dream lock for user %s", user_id[:12])
                 else:
@@ -205,9 +214,7 @@ async def dream_lock(
                 )
 
 
-async def read_dream_lock_token(
-    user_id: str, expert_id: str | None = None
-) -> str | None:
+async def read_dream_lock_token(scope: MemoryScope) -> str | None:
     """Current holder's ownership token, or None when no lock is held.
 
     The batch path calls this while still holding the lock (at input-bundle
@@ -218,35 +225,49 @@ async def read_dream_lock_token(
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
-    raw = await redis.get(_lock_key(user_id, expert_id))
+    return _as_text(await redis.get(scope.redis_key("dream_lock")))
+
+
+async def extend_dream_lock(scope: MemoryScope, token: str, ttl_seconds: int) -> bool:
+    """``DreamLockHandle.extend`` for a caller holding only the token (a batch
+    callback renewing a disowned lock); the caller bounds it."""
+    from backend.data.redis_client import get_redis_async
+
+    redis = await get_redis_async()
+    key = scope.redis_key("dream_lock")
+    return await DreamLockHandle(redis, key, scope.owner_user_id, token).extend(
+        ttl_seconds
+    )
+
+
+def _as_text(raw: Any) -> str | None:
     if raw is None:
         return None
-    if isinstance(raw, bytes):
-        return raw.decode("utf-8")
-    return str(raw)
+    return raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
 
 
-async def release_dream_lock(
-    user_id: str, token: str | None, expert_id: str | None = None
-) -> None:
-    """Release a disowned dream lock (batch path) once the pass terminates.
+async def release_dream_lock(scope: MemoryScope, token: str | None) -> bool:
+    """Release a disowned dream lock (batch path) once the pass terminates,
+    and say whether the lock is no longer held under *token*: released now,
+    or already another's or nobody's.
 
     Compare-and-delete on ``token``: a blind delete is NOT safe here — the
     callback can land close to (or after) the lock's TTL, by which point the
     key may already belong to a newer pass, and deleting it would let a
-    third concurrent pass start. When the token is unknown (per-pass state
-    expired or corrupted) the key is left for its TTL to clear: the batch
-    lock outlives the input bundle's 24h TTL by only ~10 min, so a short
-    extra lockout beats releasing someone else's lock. A failed delete
-    likewise falls back to the TTL.
+    third concurrent pass start. When the token is unknown (the input bundle
+    that carries it expired, or is corrupted) the key is left alone: a
+    lockout until its TTL, or until the reaper releases it with the token
+    the pass's row keeps, beats releasing someone else's lock. ``False``
+    then, and when the delete fails; never raises.
     """
+    user_id = scope.owner_user_id
     if token is None:
         logger.warning(
             "No ownership token for disowned dream lock of user %s — "
             "leaving it for the TTL to clear",
             user_id[:12],
         )
-        return
+        return False
     from backend.data.redis_client import get_redis_async
 
     try:
@@ -254,9 +275,9 @@ async def release_dream_lock(
         deleted = await cast(
             "Any",
             redis.eval(
-                _UNLOCK_SCRIPT,
+                UNLOCK_SCRIPT,
                 1,
-                _lock_key(user_id, expert_id),
+                scope.redis_key("dream_lock"),
                 token,
             ),
         )
@@ -274,3 +295,5 @@ async def release_dream_lock(
             user_id[:12],
             exc_info=True,
         )
+        return False
+    return True

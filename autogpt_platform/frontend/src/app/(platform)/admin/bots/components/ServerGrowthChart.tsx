@@ -1,3 +1,8 @@
+// Chart series colours stay hex: recharts writes them as SVG attributes,
+// where CSS variables do not resolve (ds-colour-exempt.json).
+// The axis fontSize={12} props are Recharts' own API (a number, not a
+// class); 12px is the text-caption size, so they move with the chart tokens.
+
 import {
   Area,
   AreaChart,
@@ -69,7 +74,7 @@ export function ServerGrowthChart({ data }: Props) {
           />
         </AreaChart>
       </ResponsiveContainer>
-      <p className="mt-2 text-xs text-muted-foreground">
+      <p className="mt-2 text-caption text-foreground-tertiary">
         Sharding threshold: {formatNumber(SHARDING_THRESHOLD)} servers · current
         peak in range: {formatNumber(peak)}
       </p>

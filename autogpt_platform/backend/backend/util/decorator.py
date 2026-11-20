@@ -1,3 +1,4 @@
+import asyncio
 import functools
 import logging
 import os
@@ -195,6 +196,12 @@ def async_error_logged(*, swallow: bool = True) -> (
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
             try:
                 return await f(*args, **kwargs)
+            except asyncio.CancelledError:
+                # A stop or shutdown, not a fault: no traceback, no Sentry error.
+                logger.warning(f"Async function {f.__name__} was cancelled")
+                if not swallow:
+                    raise
+                return None
             except BaseException as e:
                 logger.exception(
                     f"Error when calling async function {f.__name__} with arguments {args} {kwargs}: {e}"

@@ -123,8 +123,8 @@ describe("expert integrations in the chat controls", () => {
     renderControls();
     fireEvent.click(await screen.findByTestId("expert-integrations"));
 
-    expect(await screen.findByText("Maria's Integrations")).toBeDefined();
-    expect(await screen.findByText("github account")).toBeDefined();
+    expect(await screen.findByText(/^Maria's integrations/)).toBeDefined();
+    expect(await screen.findByText(/github account/)).toBeDefined();
     expect(screen.getByLabelText("Hide integrations")).toBeDefined();
     expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe(
       "integrations",
@@ -155,7 +155,7 @@ describe("expert integrations in the chat controls", () => {
     expect(screen.queryByTestId("expert-integrations")).toBeNull();
     fireEvent.click(placeholder);
 
-    expect(await screen.findByText("Maria's Integrations")).toBeDefined();
+    expect(await screen.findByText("No integrations yet")).toBeDefined();
     expect(screen.getByLabelText("Hide integrations")).toBeDefined();
   });
 

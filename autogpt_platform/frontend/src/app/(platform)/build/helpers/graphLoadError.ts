@@ -22,10 +22,10 @@ export function getGraphLoadErrorToast(error: unknown): {
       : "An unexpected error occurred.";
 
   if (status === 404) {
-    return { title: "Agent not found", description };
+    return { title: "Workflow not found", description };
   }
   if (status === 401 || status === 403) {
-    return { title: "Not authorized to view this agent", description };
+    return { title: "Not authorized to view this workflow", description };
   }
-  return { title: "Failed to load agent", description };
+  return { title: "Failed to load workflow", description };
 }

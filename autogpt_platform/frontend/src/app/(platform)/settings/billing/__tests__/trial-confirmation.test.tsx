@@ -6,6 +6,15 @@ import { TrialCard } from "@/components/organisms/TrialCard/TrialCard";
 import { TrialCheckoutConfirmation } from "@/components/organisms/TrialCard/TrialCheckoutConfirmation";
 import { server } from "@/mocks/mock-server";
 import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
+import {
+  installGtagShim,
+  removeGtagShim,
+} from "@/tests/integrations/gtag-shim";
+import {
   fireEvent,
   render,
   screen,
@@ -152,5 +161,116 @@ describe("trial Checkout return", () => {
         }),
       );
     }
+  });
+});
+
+describe("trial start Google Ads conversion", () => {
+  let gtagCalls: unknown[][] = [];
+
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "trial_started=TS");
+    configureCookiebot();
+    installCookiebot({ statistics: true, marketing: true });
+    gtagCalls = installGtagShim();
+    window.history.replaceState(null, "", "/settings/billing?trial=success");
+    searchParams = new URLSearchParams(window.location.search);
+  });
+
+  afterEach(() => {
+    removeGtagShim();
+    removeCookiebot();
+    vi.unstubAllEnvs();
+    window.history.replaceState(null, "", "/");
+  });
+
+  function conversions() {
+    return gtagCalls.filter((call) => call[1] === "conversion");
+  }
+
+  it("reports one trial start per user, across re-renders and a reload", async () => {
+    const confirm = vi.fn(() => trialResponse());
+    server.use(getPostTrialsConfirmTrialMockHandler200(confirm));
+    const { rerender, unmount } = renderTrialReturn();
+    await screen.findByRole("button", { name: "Cancel trial" });
+    rerender(
+      <>
+        <TrialCheckoutConfirmation />
+        <TrialCard />
+      </>,
+    );
+    expect(conversions()).toEqual([
+      [
+        "event",
+        "conversion",
+        {
+          send_to: "AW-123/TS",
+          transaction_id: "trial-user",
+          user_data: { email: "trial-user@example.com" },
+        },
+      ],
+    ]);
+    expect(window.location.search).toBe("");
+
+    unmount();
+    server.use(getGetTrialsGetTrialStatusMockHandler200(trialResponse()));
+    searchParams = new URLSearchParams(window.location.search);
+    renderTrialReturn();
+    await screen.findByRole("button", { name: "Cancel trial" });
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(conversions()).toHaveLength(1);
+  });
+
+  it("does not report a confirmation that leaves the trial inactive", async () => {
+    server.use(
+      getPostTrialsConfirmTrialMockHandler200(
+        trialResponse({ active: false, status: "trialing" }),
+      ),
+    );
+    renderTrialReturn();
+    await screen.findByText(/Your trial is not active/);
+    expect(conversions()).toEqual([]);
+    expect(window.location.search).toBe("?trial=success");
+  });
+
+  it("does not report a failed confirmation", async () => {
+    server.use(
+      http.post("*/api/credits/trial/confirm", () =>
+        HttpResponse.json(
+          { detail: "Card setup is not complete yet" },
+          { status: 409 },
+        ),
+      ),
+    );
+    renderTrialReturn();
+    await screen.findByRole("button", { name: /try again/i });
+    expect(conversions()).toEqual([]);
+  });
+
+  it("does not report a trial that already converted to paid", async () => {
+    const confirm = vi.fn(() =>
+      trialResponse({ active: false, converted: true, status: "active" }),
+    );
+    server.use(getPostTrialsConfirmTrialMockHandler200(confirm));
+    renderTrialReturn();
+    await waitFor(() => expect(confirm).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(conversions()).toEqual([]);
+  });
+
+  it("does not confirm again on reload when the tag could not take the conversion", async () => {
+    removeGtagShim();
+    const confirm = vi.fn(() => trialResponse());
+    server.use(getPostTrialsConfirmTrialMockHandler200(confirm));
+    const { unmount } = renderTrialReturn();
+    await screen.findByRole("button", { name: "Cancel trial" });
+    expect(window.location.search).toBe("");
+
+    unmount();
+    server.use(getGetTrialsGetTrialStatusMockHandler200(trialResponse()));
+    searchParams = new URLSearchParams(window.location.search);
+    renderTrialReturn();
+    await screen.findByRole("button", { name: "Cancel trial" });
+    expect(confirm).toHaveBeenCalledOnce();
   });
 });
