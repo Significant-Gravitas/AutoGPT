@@ -2189,7 +2189,8 @@ async def test_get_graph_version_none_ignores_unsubmitted_newer_version() -> Non
 @pytest.mark.asyncio
 async def test_get_graph_version_none_picks_latest_submitted_version() -> None:
     """With several submitted versions in the library and no version pinned,
-    the newest wins — same as the owner path's `order={"version": "desc"}`."""
+    the newest wins. Unlike the owner path, this one ignores `isActive`: the
+    owner's active version says nothing about what this reader may open."""
     requester_id = "library-user-id"
     graph_id = "graph-id"
     submitted_v2 = _make_mock_db_graph("original-creator-id", version=2)
