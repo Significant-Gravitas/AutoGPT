@@ -242,6 +242,139 @@ describe("analytics identity on account transitions", () => {
     });
   });
 
+  describe("with an id an earlier page merged into user A", () => {
+    beforeEach(() => {
+      configureCookiebot();
+      installCookiebot({ statistics: true });
+      window.localStorage.setItem("agpt_anonymous_id", "merged-id");
+      window.localStorage.setItem(
+        "ph_phc_test_posthog",
+        JSON.stringify({
+          distinct_id: "user-A",
+          $device_id: "merged-id",
+          $user_state: "identified",
+        }),
+      );
+      expect(getAnonymousID()).toBe("merged-id");
+    });
+
+    it("rotates it when the page turns out to be signed out", async () => {
+      vi.mocked(fetchUser).mockResolvedValue({
+        user: null,
+        hasLoadedUser: false,
+        isUserLoading: false,
+      });
+      vi.mocked(validateSession).mockResolvedValue({
+        isValid: true,
+        shouldUpdateUser: false,
+      });
+
+      await useAuthStore.getState().initialize({
+        api: {} as never,
+        router: {} as never,
+        path: "/signup",
+      });
+
+      expect(getAnonymousID()).not.toBe("merged-id");
+      expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(
+        getAnonymousID(),
+      );
+    });
+
+    it("rotates it, and PostHog's identity, before another account signs in", () => {
+      posthog.get_distinct_id.mockReturnValue("user-A");
+      posthog.reset.mockImplementation(() => {
+        posthog.get_distinct_id.mockReturnValue("fresh-device");
+      });
+
+      useAuthStore.setState({ user: userB });
+
+      expect(posthog.reset).toHaveBeenCalledOnce();
+      expect(getAnonymousID()).toBe("fresh-device");
+    });
+
+    it("resets once when user A switches to user B", () => {
+      posthog.get_distinct_id.mockReturnValue("user-A");
+      posthog.reset.mockImplementation(() => {
+        posthog.get_distinct_id.mockReturnValue("fresh-device");
+      });
+      useAuthStore.setState({ user: userA });
+
+      useAuthStore.setState({ user: userB });
+
+      expect(posthog.reset).toHaveBeenCalledOnce();
+    });
+
+    it("keeps it for user A", () => {
+      useAuthStore.setState({ user: userA });
+      useAuthStore.setState({ user: { ...userA } });
+
+      expect(getAnonymousID()).toBe("merged-id");
+    });
+
+    describe("and an earlier visitor's landing stored", () => {
+      const THIS_PAGE = "/signup?utm_source=new&utm_campaign=launch";
+
+      beforeEach(() => {
+        window.localStorage.setItem(
+          "agpt_first_landing",
+          JSON.stringify({
+            path: "/pricing?utm_source=earlier",
+            referrer: null,
+            utm_source: "earlier",
+            utm_medium: null,
+            utm_campaign: null,
+            at: "2026-01-01T00:00:00.000Z",
+          }),
+        );
+        window.history.replaceState(null, "", THIS_PAGE);
+        captureFirstLanding();
+      });
+
+      afterEach(() => {
+        window.history.replaceState(null, "", "/");
+      });
+
+      function expectThisPageLanding() {
+        expect(getAnonymousID()).not.toBe("merged-id");
+        expect(readFirstLanding()).toMatchObject({
+          path: THIS_PAGE,
+          utm_source: "new",
+          utm_campaign: "launch",
+        });
+        expect(
+          JSON.parse(window.localStorage.getItem("agpt_first_landing") ?? "{}"),
+        ).toMatchObject({ path: THIS_PAGE });
+      }
+
+      it("gives the new id this page's landing when the page turns out to be signed out", async () => {
+        vi.mocked(fetchUser).mockResolvedValue({
+          user: null,
+          hasLoadedUser: false,
+          isUserLoading: false,
+        });
+        vi.mocked(validateSession).mockResolvedValue({
+          isValid: true,
+          shouldUpdateUser: false,
+        });
+
+        await useAuthStore.getState().initialize({
+          api: {} as never,
+          router: {} as never,
+          path: "/signup",
+        });
+
+        expectThisPageLanding();
+      });
+
+      it("gives the new id this page's landing when another account signs in", () => {
+        useAuthStore.setState({ user: userB });
+
+        expectThisPageLanding();
+      });
+    });
+  });
+
   it("preserves the anonymous identity through login and same-user refreshes", () => {
     const previous = getAnonymousID();
     useAuthStore.setState({ user: userA });
