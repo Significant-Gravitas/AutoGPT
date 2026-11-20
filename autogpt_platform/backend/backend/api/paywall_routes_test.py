@@ -323,6 +323,12 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/internal/auth/email/ban-record",
     "POST /api/internal/auth/email/send",
     "POST /api/internal/auth/email/suppression",
+    # The OAuth clients a sign-in must use to connect, which the frontend's
+    # server asks for before anyone has signed in.
+    "GET /api/internal/auth/sign-in-connection",
+    # The frontend's server keeps the connection a sign-in granted. A new
+    # account has no plan yet, and using the connection checks for one.
+    "POST /api/internal/auth/sign-in-connection",
     "POST /api/internal/auth/user/preferences/from-email",
     "GET /api/internal/chat/config/ttl",
     "GET /api/internal/chat/schema/tool-responses",

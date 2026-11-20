@@ -3704,6 +3704,66 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/internal/auth/sign-in-connection": {
+      "get": {
+        "tags": ["integrations"],
+        "summary": "The OAuth clients a sign-in must use to bring its connection",
+        "description": "Public, like the client IDs themselves: every sign-in link carries one.",
+        "operationId": "getSignInConnectionClients",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInConnectionClients"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["integrations"],
+        "summary": "Keep the connection a Google or Microsoft sign-in granted",
+        "operationId": "connectFromSignIn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInConnectionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not the frontend's sign-in connection token"
+          },
+          "409": {
+            "description": "Login and connections use different OAuth clients"
+          },
+          "422": {
+            "description": "The provider didn't accept the sign-in's tokens"
+          },
+          "501": {
+            "description": "The provider's connections aren't configured"
+          }
+        },
+        "security": [{ "HTTPBearer": [] }]
+      }
+    },
     "/api/internal/auth/user": {
       "post": {
         "tags": ["v1", "auth"],
@@ -37101,6 +37161,86 @@
         ],
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
+      },
+      "SignInConnectionClients": {
+        "properties": {
+          "google": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Google"
+          },
+          "microsoft": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Microsoft"
+          }
+        },
+        "type": "object",
+        "title": "SignInConnectionClients",
+        "description": "The OAuth client each provider's connections use, or null when this\ndeployment has no such connections."
+      },
+      "SignInConnectionRequest": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": ["google", "microsoft"],
+            "title": "Provider"
+          },
+          "access_token": {
+            "type": "string",
+            "maxLength": 16384,
+            "format": "password",
+            "title": "Access Token",
+            "writeOnly": true
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16384,
+                "format": "password",
+                "writeOnly": true
+              },
+              { "type": "null" }
+            ],
+            "title": "Refresh Token"
+          },
+          "expires_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Expires At"
+          },
+          "scope": {
+            "type": "string",
+            "maxLength": 4096,
+            "title": "Scope",
+            "default": ""
+          },
+          "id_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16384,
+                "format": "password",
+                "writeOnly": true
+              },
+              { "type": "null" }
+            ],
+            "title": "Id Token"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "access_token"],
+        "title": "SignInConnectionRequest"
+      },
+      "SignInConnectionResponse": {
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": ["created", "updated", "kept", "skipped", "held"],
+            "title": "Result"
+          }
+        },
+        "type": "object",
+        "required": ["result"],
+        "title": "SignInConnectionResponse"
       },
       "SkillLearningDetail": {
         "properties": {

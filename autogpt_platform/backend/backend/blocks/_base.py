@@ -24,6 +24,11 @@ from jsonschema.validators import validator_for as _jsonschema_validator_for
 from pydantic import BaseModel, Field
 
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
+from backend.data.llm_registry.llm_models import (
+    is_llm_model_field,
+    resolved_model_value,
+    retired_model_fallback,
+)
 from backend.data.model import (
     Credentials,
     CredentialsFieldInfo,
@@ -1022,6 +1027,20 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             ) from e
         return approved
 
+    def with_retired_models_replaced(self, input_data: BlockInput) -> BlockInput:
+        """*input_data* with each LLM model the catalog has switched off, and
+        names a fallback for, replaced by that fallback once the model's
+        shutdown date, if it has one, has come: the model this block runs and
+        is billed for instead. Returns *input_data* itself when no value
+        changes."""
+        replaced = {
+            name: fallback.value
+            for name, field in self.input_schema.model_fields.items()
+            if is_llm_model_field(field)
+            and (fallback := retired_model_fallback(input_data.get(name))) is not None
+        }
+        return {**input_data, **replaced} if replaced else input_data
+
     async def _execute(
         self,
         input_data: BlockInput,
@@ -1038,6 +1057,21 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             )
             if should_pause:
                 return
+
+        serving = self.with_retired_models_replaced(input_data)
+        if serving is not input_data:
+            # One line per run: it carries the node execution id, and the
+            # run's recorded inputs keep the stored model.
+            moved = ", ".join(
+                f"{name} {resolved_model_value(input_data[name])} -> {value}"
+                for name, value in serving.items()
+                if value != input_data.get(name)
+            )
+            logger.info(
+                f"Block {self.name} runs switched-off models' catalog fallbacks "
+                f"(node exec {execution_context.node_exec_id}): {moved}"
+            )
+            input_data = serving
 
         # Validate the input data (original or reviewer-modified) once.
         # In dry-run mode, credential fields may contain sentinel None values

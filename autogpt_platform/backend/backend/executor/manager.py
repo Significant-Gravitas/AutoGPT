@@ -365,19 +365,20 @@ MODERATION_NODE_UPDATE_SECONDS = 30.0
 
 
 def _await_moderation(
-    moderation: Coroutine[Any, Any, Exception | None],
+    moderation: Coroutine[Any, Any, ModerationError | None],
     loop: asyncio.AbstractEventLoop,
     *,
     moderation_type: Literal["input", "output"],
     graph_exec: GraphExecutionEntry,
     log_metadata: LogMetadata,
 ) -> None:
-    """Run an AutoMod check on *loop* and raise the error it returns, if any.
+    """Run an AutoMod check on *loop* and fail the run if it refuses it.
 
-    A check that outlasts its wait is cancelled and counts as AutoMod failing,
-    so the run only goes on without it when ``automod_fail_open`` is set. A run
-    failed this way has its nodes failed as a refused check of the same kind
-    fails them.
+    The wait bounds the check alone. A check that outlasts it is cancelled and
+    counts as AutoMod failing, so the run only goes on without it when
+    ``automod_fail_open`` is set. A refused run has its nodes failed and
+    masked, with a bound of their own, before the refusal is raised, so the
+    time those writes take can't turn a refusal into a timeout.
     With AutoMod off there is nothing to wait for, so the check is not run.
     """
     if not automod_manager.config.enabled:
@@ -385,7 +386,7 @@ def _await_moderation(
         return
     future = asyncio.run_coroutine_threadsafe(moderation, loop)
     try:
-        moderation_error = future.result(timeout=MODERATION_WAIT_SECONDS)
+        refusal = future.result(timeout=MODERATION_WAIT_SECONDS)
     except TimeoutError:
         future.cancel()
         fail_open = automod_manager.config.fail_open
@@ -396,8 +397,7 @@ def _await_moderation(
         )
         if fail_open:
             return
-        _fail_nodes_for_moderation(loop, graph_exec, moderation_type, log_metadata)
-        raise ModerationError(
+        refusal = ModerationError(
             message=(
                 f"Execution failed due to {moderation_type} content moderation error"
             ),
@@ -405,23 +405,29 @@ def _await_moderation(
             graph_exec_id=graph_exec.graph_exec_id,
             moderation_type=moderation_type,
         )
-    if moderation_error:
-        raise moderation_error
+    if refusal is None:
+        return
+    _fail_nodes_for_moderation(
+        loop, graph_exec, moderation_type, refusal.content_id, log_metadata
+    )
+    raise refusal
 
 
 def _fail_nodes_for_moderation(
     loop: asyncio.AbstractEventLoop,
     graph_exec: GraphExecutionEntry,
     moderation_type: Literal["input", "output"],
+    content_id: str | None,
     log_metadata: LogMetadata,
 ) -> None:
-    """Fail the run's nodes as a refused check of this kind fails them. At the
-    input check the run fails before its queue is filled, so nothing would ever
-    run its nodes, and they would otherwise stay queued in a failed run; at the
-    output check, the nodes whose outputs went unchecked."""
+    """Fail and mask the run's nodes as a refused check of this kind does. At
+    the input check the run fails before its queue is filled, so nothing would
+    ever run its nodes, and they would otherwise stay queued in a failed run; at
+    the output check, the completed nodes whose outputs were refused or went
+    unchecked. The run fails whether or not this finishes in time."""
     update = asyncio.run_coroutine_threadsafe(
         automod_manager.update_failed_nodes_for_moderation(
-            get_db_async_client(), graph_exec.graph_exec_id, moderation_type
+            get_db_async_client(), graph_exec.graph_exec_id, moderation_type, content_id
         ),
         loop,
     )
@@ -431,7 +437,7 @@ def _fail_nodes_for_moderation(
         update.cancel()
         log_metadata.error(
             f"Could not fail the nodes of graph execution {graph_exec.graph_exec_id} "
-            f"after its {moderation_type} moderation timed out: {e!r}"
+            f"after its {moderation_type} moderation refused it: {e!r}"
         )
 
 
@@ -843,7 +849,7 @@ async def execute_node(
             await track_dry_run_block_cost(
                 node_block.execution_stats,
                 user_id=user_id,
-                model=input_data.get("model"),
+                model=node_block.with_retired_models_replaced(input_data).get("model"),
             )
 
 
