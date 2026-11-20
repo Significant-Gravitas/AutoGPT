@@ -47,6 +47,9 @@ def processor() -> Iterator[ExecutionProcessor]:
     processor.node_execution_loop, processor.node_evaluation_loop = loops
     yield processor
     for loop, thread in zip(loops, threads):
+        # Closes the async Redis clients the loop's code opened, as asyncio.run
+        # does; loop.close() alone leaves them open (#17087).
+        asyncio.run_coroutine_threadsafe(loop.shutdown_asyncgens(), loop).result(10)
         loop.call_soon_threadsafe(loop.stop)
         thread.join(timeout=10)
         loop.close()
