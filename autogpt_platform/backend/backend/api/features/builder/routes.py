@@ -28,14 +28,18 @@ router = fastapi.APIRouter(
 
 
 def sanitize_query(query: str | None) -> str | None:
-    """Trim and cap the search text; no LIKE escaping here.
+    """Trim and cap the search text, and refuse a NUL; no LIKE escaping here.
 
     The same text feeds block scoring, marketplace hybrid search and the saved
     search history, which all want it verbatim. The library DB search escapes
-    it itself (``escape_like``), so escaping here would do it twice.
+    it itself (``escape_like``), so escaping here would do it twice. A NUL is
+    refused here because the search history saves the text whatever the
+    filters, and Postgres can't store one (the ValueError is a 400).
     """
     if query is None:
         return query
+    if "\x00" in query:
+        raise ValueError("Search text must not contain NUL characters")
     return query.strip()[:100]
 
 

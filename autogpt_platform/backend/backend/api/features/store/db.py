@@ -52,9 +52,6 @@ DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 
 # Creator search reads only this much of a query, which bounds its ILIKE pattern.
 MAX_CREATOR_SEARCH_QUERY_LENGTH = 100
-# Cap on users matched by email in the admin listings search, so a broad term
-# doesn't load the whole User table.
-ADMIN_LISTINGS_USER_MATCH_LIMIT = 500
 
 
 class StoreAgentsSortOptions(Enum):
@@ -552,23 +549,10 @@ async def get_store_creators(
         where["is_featured"] = featured
 
     # Add search filter if provided, using parameterized queries
-    sanitized_query = (search_query or "").strip()[:MAX_CREATOR_SEARCH_QUERY_LENGTH]
+    sanitized_query = escape_like(
+        (search_query or "").strip()[:MAX_CREATOR_SEARCH_QUERY_LENGTH]
+    )
     if sanitized_query:
-        # Escape special SQL characters
-        sanitized_query = (
-            sanitized_query.replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-            .replace("[", "\\[")
-            .replace("]", "\\]")
-            .replace("'", "\\'")
-            .replace('"', '\\"')
-            .replace(";", "\\;")
-            .replace("--", "\\--")
-            .replace("/*", "\\/*")
-            .replace("*/", "\\*/")
-        )
-
         where["OR"] = [
             {"username": {"contains": sanitized_query, "mode": "insensitive"}},
             {"name": {"contains": sanitized_query, "mode": "insensitive"}},
@@ -2135,15 +2119,6 @@ async def get_admin_listings_with_versions(
 
     if search_query:
         search_query = escape_like(search_query)
-        # Find users with matching email
-        matching_users = await prisma.models.User.prisma().find_many(
-            where={"email": {"contains": search_query, "mode": "insensitive"}},
-            take=ADMIN_LISTINGS_USER_MATCH_LIMIT,
-        )
-
-        user_ids = [user.id for user in matching_users]
-
-        # Set up OR conditions
         store_listing_filter["OR"] = [
             {"slug": {"contains": search_query, "mode": "insensitive"}},
             {
@@ -2171,11 +2146,14 @@ async def get_admin_listings_with_versions(
                     }
                 }
             },
+            # A join, not a prefetch of matching user IDs: every owner whose
+            # email matches counts, however many there are.
+            {
+                "OwningUser": {
+                    "is": {"email": {"contains": search_query, "mode": "insensitive"}}
+                }
+            },
         ]
-
-        # Add user_id condition if any users matched
-        if user_ids:
-            store_listing_filter["OR"].append({"owningUserId": {"in": user_ids}})
 
     # Calculate pagination
     skip = (page - 1) * page_size

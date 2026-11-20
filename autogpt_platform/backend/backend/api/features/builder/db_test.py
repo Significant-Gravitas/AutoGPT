@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 import backend.api.features.builder.db as db
+from backend.api.features.builder.routes import sanitize_query
 from backend.blocks._base import BlockInfo, BlockType
 from backend.util.text import split_camelcase
 
@@ -379,8 +380,6 @@ def test_block_searchable_text_includes_field_descriptions():
 async def test_builder_library_search_escapes_underscore_exactly_once(mocker):
     """The route no longer pre-escapes, and the library DB layer escapes once,
     so `send_email` is a literal `send\\_email` LIKE pattern (#15660)."""
-    from backend.api.features.builder.routes import sanitize_query
-
     mocker.patch("prisma.models.AgentGraph.prisma").return_value.find_many = AsyncMock(
         return_value=[]
     )
@@ -411,6 +410,9 @@ async def test_builder_library_search_escapes_underscore_exactly_once(mocker):
     ],
 )
 def test_builder_sanitize_query_only_trims_and_caps(raw, expected):
-    from backend.api.features.builder.routes import sanitize_query
-
     assert sanitize_query(raw) == expected
+
+
+def test_builder_sanitize_query_rejects_nul():
+    with pytest.raises(ValueError):
+        sanitize_query("a\x00b")

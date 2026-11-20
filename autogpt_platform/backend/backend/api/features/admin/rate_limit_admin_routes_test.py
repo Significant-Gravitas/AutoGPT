@@ -9,6 +9,7 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.copilot.rate_limit import CoPilotUsageStatus, SubscriptionTier, UsageWindow
 
 from .rate_limit_admin_routes import router as rate_limit_admin_router
@@ -664,13 +665,11 @@ def test_search_users_nul_query_is_400_without_db_error(
 ) -> None:
     """A NUL in the query is rejected before the DB, with the production
     ValueError mapping (400), and no Postgres/engine text in the body."""
-    from backend.api.rest_api import app as rest_app
-
     find_many = AsyncMock(return_value=[])
     mocker.patch("backend.data.user.prisma").user.find_many = find_many
     prod_app = fastapi.FastAPI()
     prod_app.include_router(rate_limit_admin_router)
-    prod_app.add_exception_handler(ValueError, rest_app.exception_handlers[ValueError])
+    add_exception_handlers(prod_app)
     prod_app.dependency_overrides = app.dependency_overrides
     prod_client = fastapi.testclient.TestClient(prod_app, raise_server_exceptions=False)
 

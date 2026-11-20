@@ -3067,7 +3067,13 @@ async def test_list_library_agents_search_escapes_like_wildcards(mocker):
     await db.list_library_agents("test-user", search_term="send_email")
 
     where = mock_find_many.call_args.kwargs["where"]
-    assert {"name": {"contains": r"send\_email", "mode": "insensitive"}} in where["OR"]
+    pattern = {"contains": r"send\_email", "mode": "insensitive"}
+    assert where["OR"] == [
+        {"name": pattern},
+        {"description": pattern},
+        {"AgentGraph": {"is": {"name": pattern}}},
+        {"AgentGraph": {"is": {"description": pattern}}},
+    ]
 
 
 @pytest.mark.asyncio

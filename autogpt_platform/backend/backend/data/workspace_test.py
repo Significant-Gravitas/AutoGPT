@@ -176,11 +176,11 @@ async def test_a_listing_can_be_bounded_by_when_files_were_written(
 
 @pytest.mark.asyncio
 async def test_list_workspace_files_name_and_path_filters_are_literal(mocker):
-    """`_`/`%` in the name filter and path prefixes match literally (#15660)."""
-    find_many = mocker.AsyncMock(return_value=[])
-    mocker.patch("prisma.models.UserWorkspaceFile.prisma").return_value.find_many = (
-        find_many
-    )
+    """`_`/`%` in the name filter and path prefixes match literally (#15660),
+    in the count as in the listing."""
+    files = mocker.patch("prisma.models.UserWorkspaceFile.prisma").return_value
+    files.find_many = mocker.AsyncMock(return_value=[])
+    files.count = mocker.AsyncMock(return_value=0)
 
     await workspace_db.list_workspace_files(
         "ws-1",
@@ -189,9 +189,15 @@ async def test_list_workspace_files_name_and_path_filters_are_literal(mocker):
         name_contains="a_b",
         allowed_path_prefixes=["/sessions/s_1/"],
     )
+    await workspace_db.count_workspace_files(
+        "ws-1", path_prefix="/my_dir/", allowed_path_prefixes=["/sessions/s_1/"]
+    )
 
-    where = find_many.call_args.kwargs["where"]
+    where = files.find_many.call_args.kwargs["where"]
     assert where["name"] == {"contains": r"a\_b", "mode": "insensitive"}
     assert where["path"] == {"startswith": r"/my\_dir/"}
     assert where["NOT"] == [{"path": {"startswith": r"/50\%/"}}]
     assert where["AND"] == [{"OR": [{"path": {"startswith": r"/sessions/s\_1/"}}]}]
+    counted = files.count.call_args.kwargs["where"]
+    assert counted["path"] == where["path"]
+    assert counted["AND"] == where["AND"]
