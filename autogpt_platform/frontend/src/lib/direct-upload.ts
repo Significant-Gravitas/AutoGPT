@@ -110,7 +110,12 @@ interface UploadErrorBody {
 }
 
 async function readUploadError(res: Response): Promise<string> {
-  const text = await res.text();
+  let text = "";
+  try {
+    text = await res.text();
+  } catch {
+    // A body cut off mid-read still gets the status-based message below.
+  }
   let body: UploadErrorBody | null | undefined;
   try {
     body = JSON.parse(text) as UploadErrorBody | null;
@@ -129,9 +134,15 @@ async function readUploadError(res: Response): Promise<string> {
   if (res.status === 413) {
     return "File is too large. Please choose a smaller file.";
   }
-  // Response body wasn't JSON — surface the raw text so it reaches the toast.
-  if (text && body === undefined) return text;
+  // Response body wasn't JSON — surface plain text so it reaches the toast. A
+  // proxy's HTML error page would only show markup there, so it gets the
+  // status instead.
+  if (text && body === undefined && !isMarkup(text)) return text;
   return res.statusText || `Upload failed (HTTP ${res.status})`;
+}
+
+function isMarkup(text: string): boolean {
+  return text.trimStart().startsWith("<");
 }
 
 export async function uploadFileDirect(

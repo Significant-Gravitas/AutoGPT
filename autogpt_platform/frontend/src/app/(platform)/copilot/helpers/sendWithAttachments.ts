@@ -1,5 +1,6 @@
 import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import type { FileUIPart, UIMessage } from "ai";
 import {
@@ -181,8 +182,10 @@ async function uploadFiles(
         console.error("File upload failed:", err);
         toast({
           title: "File upload failed",
+          // Only a server's answer says why; a dropped connection or our own
+          // error message would mean nothing to the user.
           description:
-            err instanceof Error && err.message
+            err instanceof ApiError && err.message
               ? `${file.name}: ${err.message}`
               : file.name,
           variant: "destructive",

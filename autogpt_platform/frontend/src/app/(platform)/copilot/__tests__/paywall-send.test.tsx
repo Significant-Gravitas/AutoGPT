@@ -245,5 +245,26 @@ describe("a refused attachment", () => {
         }),
       ),
     );
+    await waitFor(() => expect(textarea.value).toBe("summarise this"));
+  });
+
+  it("names only the file when the upload fails without a server's reason", async () => {
+    uploadFileDirect.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<ComposerWithFile />);
+    const textarea = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Message",
+    });
+    fireEvent.change(textarea, { target: { value: "summarise this" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "File upload failed",
+          description: "notes.pdf",
+        }),
+      ),
+    );
+    await waitFor(() => expect(textarea.value).toBe("summarise this"));
   });
 });

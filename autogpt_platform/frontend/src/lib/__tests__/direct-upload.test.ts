@@ -262,6 +262,32 @@ describe("readUploadError fallbacks", () => {
     );
   });
 
+  it("falls back to statusText when a proxy answers with an HTML page", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 502,
+      statusText: "Bad Gateway",
+      text: () => "<html><body><h1>502 Bad Gateway</h1></body></html>",
+    });
+
+    await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
+      /^Bad Gateway$/,
+    );
+  });
+
+  it("keeps the size message when a 413 body cannot be read", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 413,
+      statusText: "Payload Too Large",
+      text: () => Promise.reject(new TypeError("network error")),
+    });
+
+    await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
+      "File is too large. Please choose a smaller file.",
+    );
+  });
+
   it("falls back to statusText when the body is empty", async () => {
     mockFetchOnce({
       ok: false,
