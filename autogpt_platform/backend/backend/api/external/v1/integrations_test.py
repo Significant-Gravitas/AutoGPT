@@ -12,11 +12,7 @@ import backend.api.external.v1.integrations as integrations_mod
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.integrations import integrations_router
 from backend.data.auth.base import APIAuthorizationInfo
-from backend.data.model import (
-    APIKeyCredentials,
-    HostScopedCredentials,
-    UserPasswordCredentials,
-)
+from backend.data.model import HostScopedCredentials
 
 app = fastapi.FastAPI()
 app.include_router(integrations_router)
@@ -45,81 +41,26 @@ def create(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     return mock
 
 
-@pytest.mark.parametrize("api_key", ["", "   ", "\t\n"])
-def test_blank_api_key_rejected(create: AsyncMock, api_key: str):
-    resp = client.post(
-        "/integrations/openai/credentials",
-        json={"type": "api_key", "title": "K", "api_key": api_key},
-    )
-
-    assert resp.status_code == 422
-    assert resp.json()["detail"] == "API key must not be empty"
-    create.assert_not_called()
-
-
-def test_padded_api_key_stored_stripped(create: AsyncMock):
-    resp = client.post(
-        "/integrations/openai/credentials",
-        json={"type": "api_key", "title": "K", "api_key": " sk-abc \n"},
-    )
-
-    assert resp.status_code == 201
-    stored = create.await_args.args[1]
-    assert isinstance(stored, APIKeyCredentials)
-    assert stored.api_key.get_secret_value() == "sk-abc"
-
-
-def test_blank_username_rejected_without_echoing_password(create: AsyncMock):
-    resp = client.post(
-        "/integrations/openai/credentials",
-        json={
-            "type": "user_password",
-            "title": "U",
-            "username": " ",
-            "password": "hunter2-secret",
-        },
-    )
-
-    assert resp.status_code == 422
-    assert resp.json()["detail"] == "Username must not be empty"
-    assert "hunter2-secret" not in resp.text
-    create.assert_not_called()
-
-
-def test_username_stripped_password_untouched(create: AsyncMock):
-    resp = client.post(
-        "/integrations/openai/credentials",
-        json={
-            "type": "user_password",
-            "title": "U",
-            "username": " alice ",
-            "password": " pw ",
-        },
-    )
-
-    assert resp.status_code == 201
-    stored = create.await_args.args[1]
-    assert isinstance(stored, UserPasswordCredentials)
-    assert stored.username.get_secret_value() == "alice"
-    assert stored.password.get_secret_value() == " pw "
-
-
 @pytest.mark.parametrize(
-    "host, headers",
+    "secret, detail",
     [
-        (" ", {"Authorization": "Bearer x"}),
-        ("api.example.com", {}),
-        ("api.example.com", {"Authorization": " "}),
-        ("api.example.com", {" ": "x"}),
+        ({"type": "api_key", "api_key": "   "}, "API key must not be empty"),
+        (
+            {"type": "user_password", "username": " ", "password": "hunter2-pw"},
+            "Username must not be empty",
+        ),
     ],
 )
-def test_blank_host_scoped_rejected(create: AsyncMock, host: str, headers: dict):
+def test_blank_secret_rejected(create: AsyncMock, secret: dict, detail: str):
+    # credential_input_test.py covers each rule; this checks the route
+    # applies them before storing, and quotes no secret back.
     resp = client.post(
-        "/integrations/http/credentials",
-        json={"type": "host_scoped", "title": "H", "host": host, "headers": headers},
+        "/integrations/openai/credentials", json={"title": "K", **secret}
     )
 
     assert resp.status_code == 422
+    assert resp.json()["detail"] == detail
+    assert "hunter2-pw" not in resp.text
     create.assert_not_called()
 
 

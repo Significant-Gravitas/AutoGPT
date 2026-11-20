@@ -37,6 +37,14 @@ async def _not_found_handler(
     return fastapi.responses.JSONResponse(status_code=404, content={"detail": str(exc)})
 
 
+@app.exception_handler(ValueError)
+async def _value_error_handler(
+    request: fastapi.Request, exc: ValueError
+) -> fastapi.responses.JSONResponse:
+    """Mirror the production ValueError → 400 mapping from the REST app."""
+    return fastapi.responses.JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
 client = fastapi.testclient.TestClient(app)
 
 TEST_USER_ID = "test-user-id"
@@ -460,14 +468,24 @@ class TestCreateCredentialRejectsBlankSecrets:
             resp = client.post("/openai/credentials", json=body)
         return resp, mock_mgr.create
 
-    @pytest.mark.parametrize("api_key", ["", "   ", "\t\n"])
-    def test_blank_api_key_rejected(self, api_key: str):
-        resp, create = self._post(
-            {"provider": "openai", "type": "api_key", "title": "K", "api_key": api_key}
-        )
+    @pytest.mark.parametrize(
+        "secret, detail",
+        [
+            ({"type": "api_key", "api_key": "   "}, "API key must not be empty"),
+            (
+                {"type": "user_password", "username": " ", "password": "hunter2-pw"},
+                "Username must not be empty",
+            ),
+        ],
+    )
+    def test_blank_secret_rejected(self, secret: dict, detail: str):
+        # credential_input_test.py covers each rule; this checks the route
+        # applies them before storing, and quotes no secret back.
+        resp, create = self._post({"provider": "openai", "title": "K", **secret})
 
-        assert resp.status_code == 422
-        assert resp.json()["detail"] == "API key must not be empty"
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == detail
+        assert "hunter2-pw" not in resp.text
         create.assert_not_called()
 
     def test_padded_api_key_stored_stripped(self):
@@ -487,97 +505,6 @@ class TestCreateCredentialRejectsBlankSecrets:
         assert stored.api_key.get_secret_value() == "sk-padded"
         assert stored.title == "My key"
         assert "sk-padded" not in resp.text
-
-    def test_rejection_does_not_echo_secret(self):
-        resp, _ = self._post(
-            {
-                "provider": "openai",
-                "type": "user_password",
-                "title": "U",
-                "username": "   ",
-                "password": "hunter2-secret",
-            }
-        )
-
-        assert resp.status_code == 422
-        assert "hunter2-secret" not in resp.text
-
-    def test_blank_username_rejected(self):
-        resp, create = self._post(
-            {
-                "provider": "openai",
-                "type": "user_password",
-                "title": "U",
-                "username": "  ",
-                "password": "pw",
-            }
-        )
-
-        assert resp.status_code == 422
-        assert resp.json()["detail"] == "Username must not be empty"
-        create.assert_not_called()
-
-    def test_username_stripped_and_password_untouched(self):
-        resp, create = self._post(
-            {
-                "provider": "openai",
-                "type": "user_password",
-                "title": "U",
-                "username": " alice ",
-                "password": " pass word ",
-            }
-        )
-
-        assert resp.status_code == 201
-        stored = create.await_args.args[1]
-        assert isinstance(stored, UserPasswordCredentials)
-        assert stored.username.get_secret_value() == "alice"
-        assert stored.password.get_secret_value() == " pass word "
-
-    @pytest.mark.parametrize(
-        "host, headers, detail",
-        [
-            ("   ", {"Authorization": "Bearer x"}, "Host must not be empty"),
-            ("api.example.com", {}, "At least one header is required"),
-            ("api.example.com", {"  ": "x"}, "Header names must not be empty"),
-            (
-                "api.example.com",
-                {"Authorization": "   "},
-                "Header 'Authorization' must have a value",
-            ),
-        ],
-    )
-    def test_blank_host_scoped_rejected(self, host: str, headers: dict, detail: str):
-        resp, create = self._post(
-            {
-                "provider": "http",
-                "type": "host_scoped",
-                "title": "H",
-                "host": host,
-                "headers": headers,
-            }
-        )
-
-        assert resp.status_code == 422
-        assert resp.json()["detail"] == detail
-        create.assert_not_called()
-
-    def test_host_scoped_stripped(self):
-        resp, create = self._post(
-            {
-                "provider": "http",
-                "type": "host_scoped",
-                "title": "H",
-                "host": " api.example.com ",
-                "headers": {" X-Api-Key ": " secret \n"},
-            }
-        )
-
-        assert resp.status_code == 201
-        stored = create.await_args.args[1]
-        assert isinstance(stored, HostScopedCredentials)
-        assert stored.host == "api.example.com"
-        assert stored.get_headers_dict() == {"X-Api-Key": "secret"}
 
 
 class TestManagedCredentials:

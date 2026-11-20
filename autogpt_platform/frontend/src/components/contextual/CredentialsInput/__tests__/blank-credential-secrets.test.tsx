@@ -9,9 +9,15 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import useCredentials from "@/hooks/useCredentials";
-import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api/types";
+import type {
+  BlockIOCredentialsSubSchema,
+  CredentialsMetaResponse,
+} from "@/lib/autogpt-server-api/types";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import {
+  CredentialsProvidersContext,
+  type CredentialsProvidersContextType,
+} from "@/providers/agent-credentials/credentials-provider";
 
 import { APIKeyCredentialsModal } from "../components/APIKeyCredentialsModal/APIKeyCredentialsModal";
 import { HostScopedCredentialsModal } from "../components/HotScopedCredentialsModal/HotScopedCredentialsModal";
@@ -162,6 +168,20 @@ describe("PasswordCredentialsModal", () => {
     expect(createUserPasswordCredentials).not.toHaveBeenCalled();
   });
 
+  it("rejects a spaces-only name without saving", async () => {
+    renderModal();
+    type("Enter username...", "alice");
+    type("Enter password...", "pw");
+    type("Enter a name for this user login...", "   ");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save & use this user login" }),
+    );
+
+    await settle();
+    expect(createUserPasswordCredentials).not.toHaveBeenCalled();
+  });
+
   it("trims the username but sends the password as typed", async () => {
     renderModal();
     type("Enter username...", " alice ");
@@ -183,7 +203,7 @@ describe("PasswordCredentialsModal", () => {
 });
 
 describe("HostScopedCredentialsModal", () => {
-  const existing = {
+  const existing: CredentialsMetaResponse = {
     id: "existing-cred",
     provider: "openai",
     type: "host_scoped",
@@ -191,15 +211,25 @@ describe("HostScopedCredentialsModal", () => {
     host: "api.example.com",
   };
 
+  const providers: CredentialsProvidersContextType = {
+    openai: {
+      provider: "openai",
+      providerName: "OpenAI",
+      savedCredentials: [existing],
+      isSystemProvider: false,
+      oAuthCallback: vi.fn(),
+      mcpOAuthCallback: vi.fn(),
+      mcpStoreToken: vi.fn(),
+      createAPIKeyCredentials,
+      createUserPasswordCredentials,
+      createHostScopedCredentials,
+      deleteCredentials,
+    },
+  };
+
   function renderModal() {
     render(
-      <CredentialsProvidersContext.Provider
-        value={
-          {
-            openai: { savedCredentials: [existing] },
-          } as any
-        }
-      >
+      <CredentialsProvidersContext.Provider value={providers}>
         <HostScopedCredentialsModal
           schema={schema}
           open

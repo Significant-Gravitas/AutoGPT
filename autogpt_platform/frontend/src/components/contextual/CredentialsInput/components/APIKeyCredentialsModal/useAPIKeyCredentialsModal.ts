@@ -60,8 +60,8 @@ export function useAPIKeyCredentialsModal({
         ? new Date(values.expiresAt).getTime() / 1000
         : undefined;
       const newCredentials = await credentials.createAPIKeyCredentials({
-        api_key: values.apiKey.trim(),
-        title: values.title.trim(),
+        api_key: values.apiKey,
+        title: values.title,
         expires_at: expiresAt,
       });
       onCredentialsCreate({

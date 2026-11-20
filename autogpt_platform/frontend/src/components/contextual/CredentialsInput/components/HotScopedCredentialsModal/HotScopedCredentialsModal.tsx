@@ -156,7 +156,7 @@ export function HostScopedCredentialsModal({
 
     // Delete existing host-scoped credentials for the same host to avoid duplicates.
     // Uses unfiltered provider credentials (not the hook's pre-filtered list).
-    const host = values.host.trim();
+    const host = values.host;
     const existingForHost = findExistingHostCredentials(
       allProviderCredentials,
       host,
