@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import plistlib
 import re
+import shlex
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -141,11 +142,31 @@ def test_install_and_status_print_the_file_under_the_label(
     out = capsys.readouterr().out
     plist = _agents(home) / "co.agpt.shim.plist"
     assert f"Wrote autostart entry: {plist}" in out
-    assert f"  launchctl load {plist}" in out
+    assert f"  launchctl load {shlex.quote(str(plist))}" in out
 
     cli._print_autostart_status()
 
-    assert f"  enable: launchctl load {plist}" in capsys.readouterr().out
+    assert f"  enable: launchctl load {shlex.quote(str(plist))}" in capsys.readouterr().out
+
+
+def test_the_command_that_loads_the_service_keeps_a_path_with_a_space_whole(
+    tmp_path: Path,
+) -> None:
+    """A home folder like `/Volumes/User Homes/alex`: printed bare, its path
+    was two arguments to launchctl, and the command `install` and `status`
+    give to copy loaded nothing."""
+    home = tmp_path / "User Homes" / "alex"
+    plist = _agents(home) / "co.agpt.shim.plist"
+
+    command = install_mod.status_for("darwin", home).enable_command
+
+    assert command is not None
+    assert shlex.split(command) == ["launchctl", "load", str(plist)]
+    if sys.platform != "win32":
+        # A path with nothing a shell reads is printed as it is. (On a
+        # Windows host these tests' paths have backslashes, which one does.)
+        plain = install_mod.status_for("darwin", Path("/Users/alex")).enable_command
+        assert plain == "launchctl load /Users/alex/Library/LaunchAgents/co.agpt.shim.plist"
 
 
 def test_a_stopped_launchagent_is_restarted_by_its_label(

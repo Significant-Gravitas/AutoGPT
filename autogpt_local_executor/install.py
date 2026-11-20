@@ -29,6 +29,7 @@ import csv
 import os
 import platform as _platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -372,7 +373,9 @@ def status_for(platform_name: str, home: Path | None = None) -> AutostartStatus:
             platform=platform_name,
             target_path=target,
             installed=installed,
-            enable_command=f"launchctl load {target}",
+            # Quoted where it needs it: a home folder with a space in its
+            # name (`/Volumes/User Homes/alex`) is otherwise two arguments.
+            enable_command=f"launchctl load {shlex.quote(str(target))}",
             disable_command=UNINSTALL_COMMAND,
             notes=(
                 "RunAtLoad + KeepAlive are set; launchd starts the shim at "
