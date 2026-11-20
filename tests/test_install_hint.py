@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -159,6 +160,15 @@ def _wheel(folder: Path, name: str, *, requires: str = "", extra: str = "") -> P
 
 
 def _run(*command: str) -> subprocess.CompletedProcess[str]:
+    """Run `command` without the pip settings of whoever runs the tests:
+    their PIP_* variables and their pip configuration files. `--no-index`
+    turns none of those off, and with a PIP_TARGET of theirs the package
+    went to that folder: outside the test's environment, where the test
+    then looked for it in vain."""
+    environment = {
+        name: value for name, value in os.environ.items() if not name.upper().startswith("PIP_")
+    }
+    environment["PIP_CONFIG_FILE"] = os.devnull
     return subprocess.run(
         command,
         stdin=subprocess.DEVNULL,
@@ -168,6 +178,7 @@ def _run(*command: str) -> subprocess.CompletedProcess[str]:
         errors="replace",
         timeout=600,
         check=False,
+        env=environment,
     )
 
 
