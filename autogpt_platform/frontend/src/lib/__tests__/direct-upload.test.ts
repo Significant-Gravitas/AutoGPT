@@ -275,6 +275,19 @@ describe("readUploadError fallbacks", () => {
     );
   });
 
+  it("keeps the size message for a plain-text 413", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 413,
+      statusText: "Payload Too Large",
+      text: () => "Request Entity Too Large",
+    });
+
+    await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
+      "File is too large. Please choose a smaller file.",
+    );
+  });
+
   it("keeps the size message when a 413 body cannot be read", async () => {
     mockFetchOnce({
       ok: false,

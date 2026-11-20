@@ -162,6 +162,22 @@ export function describePendingUpload(
   return { text: message.text, attachments: [...stored, ...local] };
 }
 
+const MAX_UPLOAD_FAILURE_REASON = 300;
+
+// A 4xx says what the user can change: the file is too large, the storage is
+// full, the type is refused. A 5xx or a dropped connection is ours to fix, and
+// its text can name internals, so the toast names only the file then.
+function describeUploadFailure(fileName: string, err: unknown): string {
+  if (!(err instanceof ApiError) || err.status >= 500 || !err.message) {
+    return fileName;
+  }
+  const reason =
+    err.message.length > MAX_UPLOAD_FAILURE_REASON
+      ? `${err.message.slice(0, MAX_UPLOAD_FAILURE_REASON)}…`
+      : err.message;
+  return `${fileName}: ${reason}`;
+}
+
 async function uploadFiles(
   files: File[],
   sessionId: string,
@@ -182,12 +198,7 @@ async function uploadFiles(
         console.error("File upload failed:", err);
         toast({
           title: "File upload failed",
-          // Only a server's answer says why; a dropped connection or our own
-          // error message would mean nothing to the user.
-          description:
-            err instanceof ApiError && err.message
-              ? `${file.name}: ${err.message}`
-              : file.name,
+          description: describeUploadFailure(file.name, err),
           variant: "destructive",
         });
         throw err;

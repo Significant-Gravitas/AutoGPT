@@ -248,8 +248,18 @@ describe("a refused attachment", () => {
     await waitFor(() => expect(textarea.value).toBe("summarise this"));
   });
 
-  it("names only the file when the upload fails without a server's reason", async () => {
-    uploadFileDirect.mockRejectedValue(new TypeError("Failed to fetch"));
+  it.each([
+    ["the connection drops", new TypeError("Failed to fetch")],
+    [
+      "the server fails",
+      new ApiError(
+        "Virus scanning failed: connection to clamav:3310 refused",
+        500,
+        null,
+      ),
+    ],
+  ])("names only the file when %s", async (_case, error) => {
+    uploadFileDirect.mockRejectedValue(error);
     render(<ComposerWithFile />);
     const textarea = screen.getByRole<HTMLTextAreaElement>("textbox", {
       name: "Message",
@@ -262,6 +272,27 @@ describe("a refused attachment", () => {
         expect.objectContaining({
           title: "File upload failed",
           description: "notes.pdf",
+        }),
+      ),
+    );
+    await waitFor(() => expect(textarea.value).toBe("summarise this"));
+  });
+
+  it("shortens a long reason", async () => {
+    uploadFileDirect.mockRejectedValue(
+      new ApiError("x".repeat(500), 400, null),
+    );
+    render(<ComposerWithFile />);
+    const textarea = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Message",
+    });
+    fireEvent.change(textarea, { target: { value: "summarise this" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: `notes.pdf: ${"x".repeat(300)}…`,
         }),
       ),
     );
