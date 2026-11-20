@@ -391,6 +391,10 @@ async def test_builder_library_search_escapes_underscore_exactly_once(mocker):
         "backend.api.features.library.db._fetch_execution_counts",
         new=AsyncMock(return_value={}),
     )
+    mocker.patch(
+        "backend.api.features.library.db._fetch_schedule_info",
+        new=AsyncMock(return_value={}),
+    )
 
     query = sanitize_query("  send_email  ")
     assert query == "send_email"

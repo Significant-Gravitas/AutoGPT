@@ -95,6 +95,10 @@ async def get_store_agents(
     total = 0
     total_pages = 0
 
+    # Before the try below, which would turn this 400 into a DatabaseError.
+    if search_query and "\x00" in search_query:
+        raise ValueError("Search text must not contain NUL characters")
+
     try:
         # If search_query is provided, use hybrid search (embeddings + tsvector)
         if search_query:

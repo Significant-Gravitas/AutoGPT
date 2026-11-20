@@ -725,6 +725,24 @@ async def test_get_user_profile(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_rejects_nul_before_querying():
+    """A NUL must raise ValueError (a 400), not reach the lexical fallback,
+    whose database error would surface as a DatabaseError (a 500)."""
+    with patch(
+        "backend.api.features.store.hybrid_search.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as hybrid_query_raw, patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    ) as fallback_query_raw:
+        with pytest.raises(ValueError):
+            await db.get_store_agents(search_query="a\x00b")
+
+        hybrid_query_raw.assert_not_awaited()
+        fallback_query_raw.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents_with_search_parameterized():
     """Malicious search input is passed as a parameter, not concatenated into SQL."""
     with patch(
