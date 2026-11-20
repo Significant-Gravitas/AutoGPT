@@ -735,15 +735,19 @@ def test_the_command_to_stop_a_task_by_hand_deletes_it_only_once_it_is_ended(
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="cmd.exe is Windows'")
-def test_cmd_runs_the_second_step_only_after_a_first_that_succeeded() -> None:
+def test_cmd_runs_the_second_step_only_after_a_first_that_succeeded(tmp_path: Path) -> None:
     """What the command above rests on, with the real cmd.exe: a first step
     that fails (a file that isn't there) and one that succeeds, each written
-    both ways."""
+    both ways. Run in a folder of the test's own, which is empty: in the
+    folder the tests were started from, a file of that name would have made
+    the first step succeed."""
     fails = "type autogpt-shim-no-such-file.txt 2>nul"
     succeeds = "ver >nul"
+    assert list(tmp_path.iterdir()) == []
 
     def ran_the_second(first: str, joined_with: str) -> bool:
-        return "deleted" in _real(["cmd", "/c", f"{first} {joined_with} echo deleted"]).stdout
+        ran = _real(["cmd", "/c", f"{first} {joined_with} echo deleted"], cwd=tmp_path)
+        return "deleted" in ran.stdout
 
     assert not ran_the_second(fails, "&&")
     assert ran_the_second(succeeds, "&&")
@@ -1052,9 +1056,10 @@ def _is_beating(folder: Path) -> bool:
     return False
 
 
-def _real(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+def _real(argv: Sequence[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         list(argv),
+        cwd=cwd,
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
