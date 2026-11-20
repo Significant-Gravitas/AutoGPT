@@ -15,7 +15,7 @@ from aiohttp import web
 from pydantic import SecretStr
 
 from backend.blocks.mcp.block import MCPToolBlock
-from backend.blocks.mcp.client import MCPClient, MCPClientError
+from backend.blocks.mcp.client import MAX_REPLY_BYTES, MCPClient, MCPClientError
 from backend.blocks.mcp.protocol import (
     MODERN_PROTOCOL_VERSION,
     MCPProtocolEra,
@@ -51,7 +51,7 @@ class _MCPTestServer:
         self._loop.run_forever()
 
     async def _start(self):
-        app = create_test_mcp_app(auth_token=self.auth_token, **self.app_options)
+        app = self._make_app()
         self.app = app
         self._runner = web.AppRunner(app)
         await self._runner.setup()
@@ -59,6 +59,9 @@ class _MCPTestServer:
         await site.start()
         port = site._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
         self.url = f"http://127.0.0.1:{port}/mcp"
+
+    def _make_app(self) -> web.Application:
+        return create_test_mcp_app(auth_token=self.auth_token, **self.app_options)
 
     def start(self):
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -648,3 +651,36 @@ class TestProtocolEras:
 
         assert outputs[0][0] == "result"
         assert outputs[0][1]["city"] == "Paris"
+
+
+class TestThrottledReplies:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_oversized_throttled_reply_ends_the_call_unsent_again(self):
+        server = _ThrottlingServer(body_size=MAX_REPLY_BYTES + 1).start()
+        try:
+            client = _make_client(server.url)
+            with pytest.raises(MCPClientError, match="too large"):
+                await client._post(
+                    {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, {}
+                )
+        finally:
+            server.stop()
+        assert len(server.requests) == 1
+
+
+class _ThrottlingServer(_MCPTestServer):
+    """Answers every POST with ``429`` and a body of ``body_size`` bytes."""
+
+    def __init__(self, body_size: int):
+        super().__init__()
+        self.body_size = body_size
+
+    def _make_app(self) -> web.Application:
+        async def throttled(request: web.Request) -> web.Response:
+            request.app["requests"].append({})
+            return web.Response(status=429, body=b"x" * self.body_size)
+
+        app = web.Application()
+        app["requests"] = []
+        app.router.add_post("/mcp", throttled)
+        return app
