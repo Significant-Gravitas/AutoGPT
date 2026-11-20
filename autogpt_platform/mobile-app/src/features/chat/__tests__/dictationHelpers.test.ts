@@ -1,6 +1,7 @@
 import {
   appendDictation,
   DICTATION_UNAVAILABLE_MESSAGE,
+  dictationLead,
   elapsedLabel,
   meterLevel,
   NOT_CAUGHT_MESSAGE,
@@ -24,6 +25,19 @@ describe("appendDictation", () => {
 
   it("keeps the field as it was when nothing was heard", () => {
     expect(appendDictation("Draft", "  ")).toBe("Draft");
+  });
+});
+
+describe("dictationLead", () => {
+  it("is empty for an empty or blank field", () => {
+    expect(dictationLead("")).toBe("");
+    expect(dictationLead("  \n")).toBe("");
+  });
+
+  it("ends typed text with one space, or the break it already has", () => {
+    expect(dictationLead("Thanks.")).toBe("Thanks. ");
+    expect(dictationLead("Thanks. ")).toBe("Thanks. ");
+    expect(dictationLead("Line one\n")).toBe("Line one\n");
   });
 });
 

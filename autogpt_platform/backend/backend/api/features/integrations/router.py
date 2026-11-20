@@ -203,6 +203,10 @@ async def login(
         str | None,
         Query(title="ID of existing credential to upgrade scopes for"),
     ] = None,
+    client: Annotated[
+        Literal["native"] | None,
+        Query(title="Set to native when the mobile app starts the sign-in"),
+    ] = None,
 ) -> LoginResponse:
     if provider == ProviderName.CODEX:
         await enforce_codex_access_http(user_id)
@@ -219,7 +223,11 @@ async def login(
 
     # Generate and store a secure random state token along with the scopes
     state_token, code_challenge = await creds_manager.store.store_state_token(
-        user_id, provider, requested_scopes, credential_id=credential_id
+        user_id,
+        provider,
+        requested_scopes,
+        credential_id=credential_id,
+        native=client == "native",
     )
     login_url = handler.get_login_url(
         requested_scopes, state_token, code_challenge=code_challenge
@@ -1287,6 +1295,8 @@ async def delete_credentials(
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
+    # CredentialsDeletionResponse always reports deleted=true, so only return it
+    # once the stored row is actually gone.
     return CredentialsDeletionResponse(revoked=tokens_revoked)
 
 
@@ -1320,7 +1330,20 @@ async def delete_and_revoke_credentials(
     )
 
     if provider == ProviderName.CODEX:
-        return await revoke_codex_credentials(creds_manager, user_id, creds.id)
+        try:
+            return await revoke_codex_credentials(creds_manager, user_id, creds.id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+            ) from None
+        except Exception as error:
+            logger.warning(
+                "Codex credential deletion failed with %s", type(error).__name__
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete credentials",
+            ) from None
 
     await creds_manager.delete(user_id, creds.id)
 

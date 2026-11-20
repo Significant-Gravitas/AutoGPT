@@ -12,7 +12,7 @@ import { appendDictation } from "../dictationHelpers";
 import { useDictation } from "../useDictation";
 import { AttachmentChips } from "./AttachmentChips";
 import { ComposerField } from "./ComposerField";
-import { RecordingBar } from "./RecordingBar";
+import { DictationField } from "./DictationField";
 
 interface Props {
   onSend: (text: string) => boolean | Promise<boolean>;
@@ -89,7 +89,8 @@ export function Composer({
   }
 
   const body = dictation.isActive ? (
-    <RecordingBar
+    <DictationField
+      text={text}
       recorder={dictation.recorder}
       isTranscribing={dictation.isTranscribing}
       onCancel={handleCancelDictation}
@@ -140,9 +141,7 @@ export function Composer({
           onRetry={onRetryAttachment}
         />
       ) : null}
-      <View style={[styles.card, scheme === "light" && styles.shadow]}>
-        {dictation.isActive ? <View style={styles.recording}>{body}</View> : body}
-      </View>
+      <View style={[styles.card, scheme === "light" && styles.shadow]}>{body}</View>
     </View>
   );
 }
@@ -166,8 +165,6 @@ const useStyles = createStyles((colors) => ({
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
-  // The card keeps its height while the recording bar stands in for the text.
-  recording: { minHeight: 104, justifyContent: "flex-end", padding: spacing.sm },
   error: {
     ...type.small,
     color: colors.error,
