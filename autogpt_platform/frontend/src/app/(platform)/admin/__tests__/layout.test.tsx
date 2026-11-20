@@ -4,17 +4,16 @@ import * as testDataHelpers from "../test-data/helpers";
 import AdminLayout from "../layout";
 
 const ADMIN_LINKS = [
+  { text: "Users", href: "/admin/users" },
   { text: "Marketplace Management", href: "/admin/marketplace" },
   { text: "User Spending", href: "/admin/spending" },
   { text: "System Diagnostics", href: "/admin/diagnostics" },
-  { text: "User Impersonation", href: "/admin/impersonation" },
-  { text: "Rate Limits", href: "/admin/rate-limits" },
   { text: "Platform Costs", href: "/admin/platform-costs" },
   { text: "Execution Analytics", href: "/admin/execution-analytics" },
   { text: "Bot Analytics", href: "/admin/bots" },
   { text: "Block Cost Estimates", href: "/admin/block-cost-estimates" },
   { text: "Memory Inspector", href: "/admin/memory" },
-  { text: "Admin User Management", href: "/admin/settings" },
+  { text: "Admin settings", href: "/admin/settings" },
 ];
 
 describe("AdminLayout", () => {

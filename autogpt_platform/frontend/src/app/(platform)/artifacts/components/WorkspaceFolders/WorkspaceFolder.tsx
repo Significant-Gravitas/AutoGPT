@@ -74,25 +74,26 @@ export function WorkspaceFolder({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`group flex cursor-pointer items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-3 transition-all hover:border-zinc-300 ${
+      className={`group flex cursor-pointer items-center gap-3 rounded-2xl border border-border-base bg-surface p-3 transition-all hover:border-border-strong ${
         isDragOver ? `${style.surface} ring-2 ${style.ring}` : ""
       }`}
     >
       <div
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${style.surface}`}
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${style.surface} ${style.icon}`}
       >
-        <Icon icon={Folder01Icon} size={22} className={style.icon} />
+        <Icon icon={Folder01Icon} size={22} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
         <Text
           variant="body-medium"
-          className="truncate text-zinc-900"
+          tone="primary"
+          className="truncate"
           data-testid="workspace-folder-name"
           title={name}
         >
           {name}
         </Text>
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" tone="muted">
           {folderSummary(fileCount, subfolderCount)}
         </Text>
       </div>

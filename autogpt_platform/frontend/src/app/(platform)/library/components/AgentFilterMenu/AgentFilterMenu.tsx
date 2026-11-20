@@ -13,13 +13,16 @@ interface Props {
 }
 
 function buildOptions(summary: FleetSummary): SelectOption[] {
+  // Unknown while the scheduler is out: a scheduled workflow reads as idle.
+  const scheduled = summary.schedulesUnknown ? "unknown" : summary.scheduled;
+  const idle = summary.schedulesUnknown ? "unknown" : summary.idle;
   return [
-    { value: "all", label: "All Agents" },
+    { value: "all", label: "All Workflows" },
     { value: "running", label: `Running (${summary.running})` },
     { value: "attention", label: `Needs Attention (${summary.error})` },
     { value: "listening", label: `Listening (${summary.listening})` },
-    { value: "scheduled", label: `Scheduled (${summary.scheduled})` },
-    { value: "idle", label: `Idle / Stale (${summary.idle})` },
+    { value: "scheduled", label: `Scheduled (${scheduled})` },
+    { value: "idle", label: `Idle / Stale (${idle})` },
     { value: "healthy", label: "Healthy" },
   ];
 }
@@ -33,19 +36,20 @@ export function AgentFilterMenu({ value, onChange, summary }: Props) {
 
   return (
     <div className="flex items-center" data-testid="agent-filter-dropdown">
-      <span className="hidden whitespace-nowrap text-sm text-zinc-500 sm:inline">
+      <span className="hidden text-body whitespace-nowrap text-foreground-tertiary sm:inline">
         filter
       </span>
       <Icon icon={FunnelIcon} className="ml-1 h-4 w-4 sm:hidden" />
       <Select
         id="agent-status-filter"
-        label="Filter agents"
+        label="Filter workflows"
         hideLabel
         value={value}
         onValueChange={handleChange}
         options={options}
         size="small"
-        className="ml-1 w-fit border-none !bg-transparent text-sm underline underline-offset-4 shadow-none"
+        // oxlint-disable-next-line design-system/no-restyle -- Select has no inline link-style trigger variant
+        className="ml-1 w-fit border-none !bg-transparent text-body underline underline-offset-4 shadow-none"
         wrapperClassName="mb-0"
       />
     </div>

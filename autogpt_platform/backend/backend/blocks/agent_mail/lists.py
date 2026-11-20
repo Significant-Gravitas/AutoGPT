@@ -203,7 +203,7 @@ class AgentMailCreateListEntryBlock(Block):
                     },
                 )(),
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -362,7 +362,7 @@ class AgentMailDeleteListEntryBlock(Block):
             test_mock={
                 "delete_entry": lambda *a, **kw: None,
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

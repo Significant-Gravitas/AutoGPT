@@ -42,10 +42,6 @@ export function isOptionalType(schema: RJSFSchema | undefined): {
     type: nonNullType,
   };
 }
-export function isAnyOfSelector(name: string) {
-  return name.includes("anyof_select");
-}
-
 export function isMultiSelectSchema(schema: RJSFSchema | undefined): boolean {
   if (typeof schema !== "object" || schema === null) {
     return false;
@@ -58,6 +54,7 @@ export function isMultiSelectSchema(schema: RJSFSchema | undefined): boolean {
   return !!(
     schema.type === "object" &&
     schema.properties &&
+    Object.keys(schema.properties).length > 0 &&
     Object.values(schema.properties).every(
       (prop: any) => prop.type === "boolean",
     )

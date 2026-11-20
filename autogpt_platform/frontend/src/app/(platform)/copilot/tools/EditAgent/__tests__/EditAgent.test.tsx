@@ -26,7 +26,7 @@ describe("EditAgentTool", () => {
     const { container } = render(<EditAgentTool part={makePart()} />);
 
     expect(normalizeWhitespace(container)).toContain(
-      "Editing agent, this might take a minute",
+      "Editing workflow, this might take a minute",
     );
     expect(normalizeWhitespace(container)).not.toContain("Play while you wait");
     expect(normalizeWhitespace(container)).not.toContain("WASD");

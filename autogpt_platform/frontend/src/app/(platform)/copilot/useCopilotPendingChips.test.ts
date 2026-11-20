@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/chat";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { splitMessagesAtDrainHints } from "./components/ChatMessagesContainer/midTurnSplit";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
 
@@ -922,4 +923,61 @@ describe("useCopilotPendingChips", () => {
       );
     });
   });
+
+  describe("a peek the backend refuses", () => {
+    it("treats a missing session as an empty buffer, not an unhandled rejection", async () => {
+      mockGetPending.mockRejectedValue(
+        new ApiError("Session s1 not found.", 404, {
+          detail: "Session s1 not found.",
+        }),
+      );
+
+      const { rendered, reasons } = await unhandledRejectionsDuring(() =>
+        renderHook(() =>
+          useCopilotPendingChips({
+            sessionId: "s1",
+            status: "ready",
+            messages: [],
+            setMessages: vi.fn(),
+          }),
+        ),
+      );
+
+      expect(mockGetPending).toHaveBeenCalledWith("s1");
+      expect(rendered.result.current.queuedMessages).toEqual([]);
+      expect(reasons).toEqual([]);
+    });
+
+    it("still surfaces a peek that fails for any other reason", async () => {
+      const serverError = new ApiError("Internal Server Error", 500, {});
+      mockGetPending.mockRejectedValue(serverError);
+
+      const { reasons } = await unhandledRejectionsDuring(() =>
+        renderHook(() =>
+          useCopilotPendingChips({
+            sessionId: "s1",
+            status: "ready",
+            messages: [],
+            setMessages: vi.fn(),
+          }),
+        ),
+      );
+
+      expect(reasons).toEqual([serverError]);
+    });
+  });
 });
+
+/** Run `render`, then let Node report every rejection nothing handled. */
+async function unhandledRejectionsDuring<T>(render: () => T) {
+  const reasons: unknown[] = [];
+  const record = (reason: unknown) => reasons.push(reason);
+  process.on("unhandledRejection", record);
+  try {
+    const rendered = render();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return { rendered, reasons };
+  } finally {
+    process.off("unhandledRejection", record);
+  }
+}

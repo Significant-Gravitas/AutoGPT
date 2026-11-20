@@ -24,6 +24,7 @@ import tempfile
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
+from backend.api.features.onboarding_dump.models import MAX_DURATION_SECS
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -208,6 +209,12 @@ async def split_audio(
         if duration is None or duration <= 0:
             raise TranscriptionFailedError(
                 f"Could not determine the duration of {os.path.basename(filename)}"
+            )
+        # The request caps the claimed duration; this caps the one the loop runs on.
+        if duration > MAX_DURATION_SECS:
+            raise TranscriptionFailedError(
+                f"{os.path.basename(filename)} is longer than the "
+                f"{MAX_DURATION_SECS // 3600} hours a recording may be"
             )
         segments: list[bytes] = []
         start = 0.0

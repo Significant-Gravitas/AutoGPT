@@ -3,7 +3,7 @@ Meeting BaaS API client module.
 All API calls centralized for consistency and maintainability.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from backend.sdk import Requests
 
@@ -144,22 +144,6 @@ class MeetingBaasAPI:
         )
         return response.json()
 
-    async def get_screenshots(self, bot_id: str) -> List[Dict[str, Any]]:
-        """
-        Retrieve screenshots captured during a meeting.
-
-        GET /bots/{uuid}/screenshots
-        """
-        response = await self.requests.get(
-            f"{self.BASE_URL}/bots/{bot_id}/screenshots",
-            headers=self.headers,
-        )
-        result = response.json()
-        # Ensure we return a list
-        if isinstance(result, list):
-            return result
-        return []
-
     async def delete_data(self, bot_id: str) -> bool:
         """
         Delete a bot's recorded data.
@@ -171,35 +155,3 @@ class MeetingBaasAPI:
             headers=self.headers,
         )
         return response.status == 200
-
-    async def list_bots_with_metadata(
-        self,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-        sort_by: Optional[str] = None,
-        sort_order: Optional[str] = None,
-        filter_by: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """
-        List bots with metadata including IDs, names, and meeting details.
-
-        GET /bots/bots_with_metadata
-        """
-        params = {}
-        if limit is not None:
-            params["limit"] = limit
-        if offset is not None:
-            params["offset"] = offset
-        if sort_by is not None:
-            params["sort_by"] = sort_by
-        if sort_order is not None:
-            params["sort_order"] = sort_order
-        if filter_by is not None:
-            params.update(filter_by)
-
-        response = await self.requests.get(
-            f"{self.BASE_URL}/bots/bots_with_metadata",
-            headers=self.headers,
-            params=params,
-        )
-        return response.json()

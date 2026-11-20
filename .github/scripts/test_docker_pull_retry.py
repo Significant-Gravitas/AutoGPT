@@ -75,20 +75,20 @@ class DockerPullRetryTests(unittest.TestCase):
             )
             return result, count, delays, argument
 
-    def test_success_after_zero_one_or_two_failures(self):
-        for failures in (0, 1, 2):
+    def test_success_after_zero_one_or_four_failures(self):
+        for failures in (0, 1, 4):
             with self.subTest(failures=failures):
                 result, count, delays, argument = self.run_pull(failures, ["image:tag"])
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(count, failures + 1)
-                self.assertEqual(delays, ["2", "4"][:failures])
+                self.assertEqual(delays, ["15", "30", "45", "60"][:failures])
                 self.assertEqual(argument, "image:tag")
 
     def test_terminal_failure_is_not_reported_as_success(self):
-        result, count, delays, _ = self.run_pull(3, ["image:tag"])
+        result, count, delays, _ = self.run_pull(5, ["image:tag"])
         self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertEqual(count, 3)
-        self.assertEqual(delays, ["2", "4"])
+        self.assertEqual(count, 5)
+        self.assertEqual(delays, ["15", "30", "45", "60"])
 
     def test_invalid_arguments_never_call_docker(self):
         for args in ([], [""], ["one", "two"]):

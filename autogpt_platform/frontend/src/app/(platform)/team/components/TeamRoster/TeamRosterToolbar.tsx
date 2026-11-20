@@ -1,6 +1,6 @@
-import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
-import { FilterIconMenu } from "../../[expertId]/components/FilterIconMenu";
 import { TeamFilter } from "../../helpers";
+import { ToolbarSearch } from "../ToolbarSearch";
+import { TeamFilterMenu } from "./TeamFilterMenu";
 
 interface Props {
   query: string;
@@ -9,14 +9,8 @@ interface Props {
   onFilterChange: (next: TeamFilter) => void;
 }
 
-const FILTER_OPTIONS: readonly { value: TeamFilter; label: string }[] = [
-  { value: "all", label: "All experts" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "needs-setup", label: "Needs setup" },
-  { value: "paused", label: "Paused" },
-];
-
-/** Search plus the same filter icon menu the expert page tabs use. */
+/** Search and filter for the roster: the Files page's rounded Input and a
+ *  pill filter menu. */
 export function TeamRosterToolbar({
   query,
   onQueryChange,
@@ -24,22 +18,15 @@ export function TeamRosterToolbar({
   onFilterChange,
 }: Props) {
   return (
-    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-      <SearchInput
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+      <ToolbarSearch
+        id="team-roster-search"
+        label="Search experts"
         value={query}
         onChange={onQueryChange}
-        size="small"
-        placeholder="Search experts"
-        aria-label="Search experts"
-        className="w-full sm:w-48"
+        className="sm:w-72"
       />
-      <FilterIconMenu
-        label="Filter experts"
-        value={filter}
-        options={FILTER_OPTIONS}
-        defaultValue="all"
-        onChange={onFilterChange}
-      />
+      <TeamFilterMenu value={filter} onChange={onFilterChange} />
     </div>
   );
 }

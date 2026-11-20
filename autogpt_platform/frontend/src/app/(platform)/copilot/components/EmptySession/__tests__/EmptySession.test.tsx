@@ -2,6 +2,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { makeDashboard } from "@/app/(platform)/home/__tests__/heldItems";
+import { getGetBrainDumpIntroMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
@@ -16,8 +17,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EmptySession } from "../EmptySession";
 
-const flags = vi.hoisted(() => ({ experts: true }));
-
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ user: null, isUserLoading: false, isLoggedIn: true }),
 }));
@@ -29,9 +28,9 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flag === "hire-experts" && flags.experts,
-    useFlagStatus: (flag: string) => ({
-      enabled: flag === "hire-experts" && flags.experts,
+    useGetFlag: () => false,
+    useFlagStatus: () => ({
+      enabled: false,
       ready: true,
     }),
   };
@@ -129,7 +128,6 @@ describe("EmptySession — recipient-aware intro", () => {
 });
 
 beforeEach(() => {
-  flags.experts = true;
   server.use(
     http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
       HttpResponse.json(makeDashboard([])),
@@ -139,7 +137,7 @@ beforeEach(() => {
 
 it("shows the task prompt above the home recap", async () => {
   renderEmptySession("");
-  const prompt = screen.getByPlaceholderText(/What's your role/);
+  const prompt = await screen.findByPlaceholderText(/What's your role/);
   const recap = await screen.findByRole("heading", { name: "Your recap" });
   expect(
     prompt.compareDocumentPosition(recap) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -167,8 +165,7 @@ it("keeps the prompt usable when the recap fails to load", async () => {
   expect(onSend.mock.calls[0][0]).toBe("Plan my day");
 });
 
-it("keeps new tasks available without requesting the recap when experts is off", async () => {
-  flags.experts = false;
+it("keeps new tasks and the recap available without a rollout flag", async () => {
   const requestedPaths: string[] = [];
   function record({ request }: { request: Request }) {
     requestedPaths.push(new URL(request.url).pathname);
@@ -179,8 +176,9 @@ it("keeps new tasks available without requesting the recap when experts is off",
     expect(
       await screen.findByPlaceholderText(/What's your role/),
     ).toBeDefined();
-    expect(screen.queryByRole("heading", { name: "Your recap" })).toBeNull();
-    expect(requestedPaths).not.toContain("/api/proxy/api/home");
+    await waitFor(() =>
+      expect(requestedPaths).toContain("/api/proxy/api/home"),
+    );
   } finally {
     server.events.removeListener("request:start", record);
   }
@@ -312,6 +310,29 @@ it.each([
         name: "Sending to Otto — change recipient",
       }),
     ).toBeDefined();
+  },
+);
+
+it.each([
+  ["answers the brain dump", "A", /^What should Otto take on first\?$/],
+  ["asks for one", "B", /^What's your role/],
+])(
+  "asks a fitting question under the onboarding greeting that %s",
+  async (_label, path, placeholder) => {
+    server.use(
+      getGetBrainDumpIntroMockHandler200({
+        path,
+        greeting: "You have an invoicing problem and a sales problem.",
+        prompts: [],
+        greeting_done: false,
+        greeting_pending: false,
+        team: null,
+        team_pending: false,
+      }),
+    );
+    renderEmptySession("");
+    await screen.findByTestId("onboarding-intro-card");
+    expect(screen.getByPlaceholderText(placeholder)).toBeDefined();
   },
 );
 

@@ -22,14 +22,13 @@ const queueFollowUpMessage = vi.hoisted(() => vi.fn());
 const queueMessage = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => vi.fn());
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    CHAT_MODE_OPTION: "chat-mode-option",
-    HIRE_EXPERTS: "hire-experts",
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
-  },
-  useGetFlag: () => false,
-}));
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return { ...actual, useGetFlag: () => false };
+});
 
 vi.mock("nuqs", () => ({
   parseAsString: {},
@@ -151,6 +150,14 @@ vi.mock("../helpers/queueFollowUpMessage", () => ({ queueFollowUpMessage }));
 
 import { useCopilotUIStore } from "../store";
 import { useCopilotPage } from "../useCopilotPage";
+import * as copilotHelpers from "../helpers";
+
+// A send that starts a turn carries the moment it was sent, for the reply
+// timing; a queued follow-up never reaches sendNewMessage.
+const TIMED_SEND = expect.objectContaining({
+  startedAt: expect.any(Number),
+  isNewChat: false,
+});
 
 function noActiveTurn() {
   const error = new Error("Session has no active turn to queue against.");
@@ -177,10 +184,76 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.restoreAllMocks();
   window.sessionStorage.clear();
 });
 
 describe("useCopilotPage — follow-up refused by the backend mid-stream", () => {
+  it.each(["ready", "error"] as const)(
+    "starts a new turn directly after the stream settles with status %s",
+    async (status) => {
+      const { result, rerender } = renderHook(() => useCopilotPage());
+
+      streamState.status = status;
+      rerender();
+      await result.current.onSend("Retry the failed request");
+
+      expect(queueFollowUpMessage).not.toHaveBeenCalled();
+      expect(sendNewMessage).toHaveBeenCalledWith(
+        "Retry the failed request",
+        undefined,
+        undefined,
+        undefined,
+        TIMED_SEND,
+      );
+    },
+  );
+
+  it.each(["ready", "error"] as const)(
+    "starts a new turn after a real pending-message 409 and local status %s",
+    async (status) => {
+      const actualQueue = await vi.importActual<
+        typeof import("../helpers/queueFollowUpMessage")
+      >("../helpers/queueFollowUpMessage");
+      queueFollowUpMessage.mockImplementation(actualQueue.queueFollowUpMessage);
+      vi.spyOn(copilotHelpers, "getCopilotAuthHeaders").mockResolvedValue({});
+      const fetchMock = vi.spyOn(global, "fetch").mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            detail:
+              "Session has no active turn. Start a new turn with POST /stream.",
+          }),
+          { status: 409 },
+        ),
+      );
+      const { result, rerender } = renderHook(() => useCopilotPage());
+
+      const send = result.current.onSend("Retry the failed request");
+      await flush();
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "/api/chat/sessions/session-1/messages/pending",
+        ),
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(sendNewMessage).not.toHaveBeenCalled();
+
+      streamState.status = status;
+      rerender();
+      await send;
+
+      expect(sendNewMessage).toHaveBeenCalledWith(
+        "Retry the failed request",
+        undefined,
+        undefined,
+        undefined,
+        TIMED_SEND,
+      );
+      expect(queueMessage).not.toHaveBeenCalled();
+      expect(toast).not.toHaveBeenCalled();
+    },
+  );
+
   it("holds the follow-up until this tab's stream has settled", async () => {
     const { result, rerender } = renderHook(() => useCopilotPage());
 
@@ -206,6 +279,7 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
       undefined,
       undefined,
       undefined,
+      TIMED_SEND,
     );
     expect(queueMessage).not.toHaveBeenCalled();
   });
@@ -231,6 +305,43 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
     rerender();
     await send;
     expect(sendNewMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the send time across the queue request and local settlement", async () => {
+    let now = 100;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    let rejectQueue = (_reason: Error) => {};
+    queueFollowUpMessage.mockImplementation(
+      () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectQueue = reject;
+        }),
+    );
+    const { result, rerender } = renderHook(() => useCopilotPage());
+
+    const send = result.current.onSend("After the answer, continue");
+    await flush();
+    expect(queueFollowUpMessage).toHaveBeenCalledTimes(1);
+    expect(sendNewMessage).not.toHaveBeenCalled();
+
+    now = 200;
+    rejectQueue(noActiveTurn());
+    await flush();
+    expect(sendNewMessage).not.toHaveBeenCalled();
+
+    now = 2100;
+    streamState.status = "ready";
+    rerender();
+    await send;
+
+    expect(sendNewMessage).toHaveBeenCalledExactlyOnceWith(
+      "After the answer, continue",
+      undefined,
+      undefined,
+      undefined,
+      expect.objectContaining({ startedAt: 100, isNewChat: false }),
+    );
+    expect(queueMessage).not.toHaveBeenCalled();
   });
 
   it("resolves once the follow-up is dispatched, not when its answer ends", async () => {
@@ -268,6 +379,7 @@ describe("useCopilotPage — follow-up refused by the backend mid-stream", () =>
       undefined,
       undefined,
       undefined,
+      TIMED_SEND,
     );
     expect(queueMessage).toHaveBeenCalledWith("second");
     // Both held copies are released: one went out, one is now the

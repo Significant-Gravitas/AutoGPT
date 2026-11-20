@@ -1,5 +1,6 @@
 "use client";
 
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { useContext, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -60,6 +61,10 @@ export function useApiKeyConnectForm({ provider, onSuccess }: Args) {
       // this; only the success payload carries an id.
       onSuccess("id" in created.data ? created.data : undefined);
     } catch (error) {
+      if (
+        toastIfPlanRequired(error, "Connecting a service needs an active plan")
+      )
+        return;
       toast({
         title: "Couldn't save API key",
         description:
