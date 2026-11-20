@@ -29,6 +29,7 @@ import csv
 import os
 import platform as _platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -372,7 +373,9 @@ def status_for(platform_name: str, home: Path | None = None) -> AutostartStatus:
             platform=platform_name,
             target_path=target,
             installed=installed,
-            enable_command=f"launchctl load {target}",
+            # Quoted where it needs it: a home folder with a space in its
+            # name (`/Volumes/User Homes/alex`) is otherwise two arguments.
+            enable_command=f"launchctl load {shlex.quote(str(target))}",
             disable_command=UNINSTALL_COMMAND,
             notes=(
                 "RunAtLoad + KeepAlive are set; launchd starts the shim at "
@@ -470,18 +473,28 @@ def install_autostart(
     user_id = _windows_account_sid(run or run_command) if plat == "windows" else None
     ctx = build_context(config_path, global_args=global_args, user_id=user_id)
     target = target_path_for(plat, home)
-    former_notes: tuple[str, ...] = ()
-    if plat == "darwin":
-        former_notes, stuck = _forget_former_launchagent(home, run or run_command)
-        if stuck is not None:
-            former_notes += (
-                f"A service under this one's earlier label may still be running: {stuck.problem}. "
-                "Stop it before you load this one, or two shims start for this computer: "
-                f"{stuck.stop_command}",
-            )
     # Ensure parent log dirs exist; templates reference them.
     Path(ctx.stdout_log).parent.mkdir(parents=True, exist_ok=True)
     writer(ctx, target)
+    former_notes: tuple[str, ...] = ()
+    if plat == "darwin":
+        # Once the new entry is written: with the earlier service unloaded
+        # first, a write that then failed (a full disk) left the Mac with
+        # no service for the next login.
+        former = _forget_former_launchagent(home, run or run_command)
+        former_notes = former.notes
+        if former.stuck is not None:
+            former_notes += (
+                "A service under this one's earlier label may still be running: "
+                f"{former.stuck.problem}. Stop it before you load this one, or two shims "
+                f"start for this computer: {former.stuck.stop_command}",
+            )
+        if former.entry_problem is not None:
+            former_notes += (
+                f"Could not remove the earlier autostart entry {former.entry_problem}. Remove "
+                "it, or it loads the earlier service again at the next login and two shims "
+                "start for this computer.",
+            )
     status = status_for(plat, home)
     return replace(status, notes=status.notes + former_notes)
 
@@ -744,6 +757,12 @@ def _stop_scheduled_task(run: CommandRunner, *, task: str, elevated: bool) -> Se
     with the task gone nothing can end it by name. So a task that can't be
     ended is kept, for a prompt that may end it.
 
+    `schtasks /End` succeeds for a task with no instance running (one whose
+    shim exited to stop, or that was registered and never run), so such a
+    task goes on to be deleted. A failure of it is a task that couldn't be
+    ended, not one with nothing to end: the real Task Scheduler ends and
+    deletes a task that never ran in tests/test_task_owner.py.
+
     The task is the account's own (`_windows_account_sid`), registered
     from its own prompt, so a prompt that isn't elevated sees it, ends it
     and deletes it.
@@ -850,36 +869,45 @@ def _forget_systemd_unit(
 FORMER_LAUNCHD_LABEL = "net.autogpt.shim"
 
 
-def _forget_former_launchagent(
-    home: Path | None, run: CommandRunner
-) -> tuple[tuple[str, ...], ServiceStop | None]:
+@dataclass(frozen=True)
+class _FormerLaunchAgent:
+    """What was found and done of a LaunchAgent under the earlier label."""
+
+    # What to tell the person: nothing when there was no such service.
+    notes: tuple[str, ...] = ()
+    # The stop that failed, when the service may still be running: a loaded
+    # one that didn't unload, or an entry whose service launchd couldn't be
+    # asked about.
+    stuck: ServiceStop | None = None
+    # Its file and why it is still there, when it couldn't be removed: it
+    # loads the earlier service again at the next login.
+    entry_problem: str | None = None
+
+
+def _forget_former_launchagent(home: Path | None, run: CommandRunner) -> _FormerLaunchAgent:
     """Stop, unload and remove a LaunchAgent left under the earlier label.
 
     Left alone it would start a second shim for the same computer at every
     login, beside the one under LAUNCHD_LABEL, and the platform lets one
-    connection per computer stand.
-
-    Returns what to tell the person, which is nothing when there was no
-    such service, and the stop that failed when one may still be running:
-    a loaded one that didn't unload, or an entry whose service launchd
-    couldn't be asked about."""
+    connection per computer stand."""
     plist = (home or Path.home()) / "Library" / "LaunchAgents" / f"{FORMER_LAUNCHD_LABEL}.plist"
     entry_installed = plist.is_file()
     service = _stop_launchd(run, label=FORMER_LAUNCHD_LABEL, uid=_user_id())
     notes: list[str] = []
+    entry_problem = None
     if service.found and service.problem is None:
         notes.append(f"A service under this one's earlier label was loaded. {service.said}")
     if entry_installed:
         try:
             plist.unlink()
         except OSError as exc:
-            notes.append(f"The earlier autostart entry {plist} could not be removed: {exc}")
+            entry_problem = f"{plist}: {exc}"
         else:
             notes.append(f"Removed the earlier autostart entry: {plist}")
     may_still_run = service.problem is not None and (
         service.found or (service.found is None and entry_installed)
     )
-    return tuple(notes), service if may_still_run else None
+    return _FormerLaunchAgent(tuple(notes), service if may_still_run else None, entry_problem)
 
 
 @dataclass(frozen=True)
@@ -894,6 +922,13 @@ class Uninstalled:
     # Why the entry's file couldn't be removed, when it couldn't.
     entry_problem: str | None = None
     notes: tuple[str, ...] = ()
+    # macOS, for a LaunchAgent under the earlier label
+    # (_forget_former_launchagent): `service` is its stop, which failed with
+    # the service perhaps still running, whatever the entry under the new
+    # label was; and why its file is still there, when it couldn't be
+    # removed.
+    former_may_still_run: bool = False
+    former_entry_problem: str | None = None
 
     @property
     def may_still_run(self) -> bool:
@@ -902,6 +937,8 @@ class Uninstalled:
         be asked about an entry that was installed. With no entry installed
         and a service manager that couldn't be asked, there is no sign of a
         service."""
+        if self.former_may_still_run:
+            return True
         if self.service.problem is None:
             return False
         if self.service.found is None:
@@ -939,24 +976,37 @@ def uninstall_autostart(
     notes: tuple[str, ...] = ()
     if plat in ("linux", "wsl2"):
         notes = _forget_systemd_unit(target, service, installed and entry_problem is None, run)
+    former_may_still_run = False
+    former_entry_problem = None
     if plat == "darwin":
-        notes, stuck = _forget_former_launchagent(home, run)
-        if stuck is not None and service.problem is None:
-            # The exit status and the command to stop it by hand are the
-            # earlier service's, and what went through is still said.
-            notes += (service.said,)
-            service = stuck
-        elif stuck is not None:
-            notes += (
-                f"A service under this one's earlier label may still be running too: "
-                f"{stuck.problem}. Stop it with: {stuck.stop_command}",
+        former = _forget_former_launchagent(home, run)
+        notes = former.notes
+        former_entry_problem = former.entry_problem
+        if former.stuck is not None:
+            former_may_still_run = True
+            this_one_may_still_run = service.problem is not None and (
+                service.found or (service.found is None and installed)
             )
+            if this_one_may_still_run:
+                notes += (
+                    f"A service under this one's earlier label may still be running too: "
+                    f"{former.stuck.problem}. Stop it with: {former.stuck.stop_command}",
+                )
+            else:
+                # The exit status and the command to stop it by hand are
+                # the earlier service's, and what went through for this
+                # one is still said.
+                if service.problem is None:
+                    notes += (service.said,)
+                service = former.stuck
     return Uninstalled(
         status=status_for(plat, home),
         entry_installed=installed,
         service=service,
         entry_problem=entry_problem,
         notes=notes,
+        former_may_still_run=former_may_still_run,
+        former_entry_problem=former_entry_problem,
     )
 
 

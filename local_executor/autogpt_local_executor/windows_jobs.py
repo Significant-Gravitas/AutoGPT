@@ -22,8 +22,11 @@ may leave its process group.
 from __future__ import annotations
 
 import ctypes
+import logging
 import sys
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # The CreateProcess flag that leaves a new process's first thread waiting to
 # be resumed (ResumeThread). subprocess doesn't name it.
@@ -215,6 +218,15 @@ def run_in_job(pid: int) -> CommandJob:
     except OSError as exc:
         try:
             job.terminate()
+        except OSError as not_ended:
+            # Said here and not raised: it would take the place of the
+            # failure that kept the command from running, which is what the
+            # request is refused for. The process is still suspended, and
+            # the caller ends it.
+            logger.warning(
+                "The job of a command that could not be let run could not be ended: %s",
+                not_ended,
+            )
         finally:
             job.close()
         raise JobError(

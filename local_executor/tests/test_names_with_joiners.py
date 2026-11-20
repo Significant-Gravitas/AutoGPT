@@ -160,6 +160,35 @@ def _made(parent: Path, names: dict[str, str]) -> dict[str, str]:
     return made
 
 
+def _picker(home: Path) -> DirectoryBrowser:
+    """A folder dialog whose one root is `home`. On Linux the roots also
+    take in the removable disks of whoever runs the tests (`/media/<login
+    name>`), each of which is looked at before the roots are given: a disk
+    of theirs that had stopped answering held these tests, which are about
+    names. None are looked for here."""
+    browser = DirectoryBrowser(platform_name="linux", home=home)
+    browser._linux_user_mounts = lambda: []  # type: ignore[method-assign]
+    return browser
+
+
+def test_the_dialogs_roots_here_are_the_home_folder_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    looked: list[Path] = []
+    children_of = DirectoryBrowser._children_of
+
+    def seen(parent: Path) -> list[Path]:
+        looked.append(parent)
+        return children_of(parent)
+
+    monkeypatch.setattr(DirectoryBrowser, "_children_of", staticmethod(seen))
+
+    roots = _picker(tmp_path).list_directories(None, None)
+
+    assert len(roots.entries) == 1
+    assert [parent for parent in looked if parent.parts[1:2] in (("media",), ("run",))] == []
+
+
 def test_the_folder_dialog_lists_them_and_they_can_be_chosen(tmp_path: Path) -> None:
     shown = {key: AS_ITS_SCRIPT_WRITES_IT[key] for key in ("persian-non-joiner", "family")}
     shown |= {"rainbow-flag": RAINBOW_FLAG, "plain": "Documents"}
@@ -176,7 +205,7 @@ def test_the_folder_dialog_lists_them_and_they_can_be_chosen(tmp_path: Path) -> 
     made_left_out = _made(tmp_path, left_out)
     assert {"persian-non-joiner", "family", "plain"} <= set(made_shown)
     assert made_left_out, "this filesystem took none of the names that hide something"
-    browser = DirectoryBrowser(platform_name="linux", home=tmp_path)
+    browser = _picker(tmp_path)
 
     roots = browser.list_directories(None, None)
     listing = browser.list_directories(roots.browse_id, roots.entries[0].directory_ref)
@@ -196,7 +225,7 @@ def test_the_folder_dialog_lists_them_and_they_can_be_chosen(tmp_path: Path) -> 
 
 def test_a_folder_inside_one_with_a_joiner_is_reached(tmp_path: Path) -> None:
     (tmp_path / MIKHAHAM / "inner").mkdir(parents=True)
-    browser = DirectoryBrowser(platform_name="linux", home=tmp_path)
+    browser = _picker(tmp_path)
 
     roots = browser.list_directories(None, None)
     top = browser.list_directories(roots.browse_id, roots.entries[0].directory_ref)

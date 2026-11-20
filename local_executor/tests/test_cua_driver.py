@@ -1285,8 +1285,13 @@ async def test_close_returns_while_a_restarts_look_for_the_driver_is_stalled(
     look.stall.set()
     stuck = asyncio.ensure_future(bridge.snapshot())
     try:
-        while not look.threads:
-            await asyncio.sleep(0.01)
+        # Until the start is in its look, or has ended without one. Waiting
+        # for the look alone, a start that failed before it left this loop
+        # turning for good, and the run with it.
+        async with asyncio.timeout(60):
+            while not look.threads and not stuck.done():
+                await asyncio.sleep(0.01)
+        assert look.threads, f"the start ended before it looked for the driver: {stuck!r}"
 
         await asyncio.wait_for(bridge.close(), timeout=60)
 
@@ -1295,6 +1300,8 @@ async def test_close_returns_while_a_restarts_look_for_the_driver_is_stalled(
     finally:
         look.released.set()
         stuck.cancel()
+        await asyncio.wait([stuck], timeout=60)
+        await asyncio.wait_for(bridge.close(), timeout=60)
 
 
 async def test_the_look_for_the_driver_runs_in_a_thread_the_exit_does_not_wait_for(

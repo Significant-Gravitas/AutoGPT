@@ -375,6 +375,58 @@ def test_a_linux_identifier_file_that_may_not_be_read_is_still_none(
     assert platform_info.os_machine_identifier() is None
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [OSError(errno.EIO, "Input/output error"), OSError(errno.ESTALE, "Stale file handle")],
+    ids=["io-error", "stale-handle"],
+)
+def test_a_linux_identifier_whose_read_fails_this_once_is_not_taken_for_none(
+    monkeypatch, tmp_path: Path, failure: OSError
+) -> None:
+    """A file that isn't there, or isn't this account's to read, stays that
+    way. A read that fails any other way may work at the next start, and
+    the ID without it would be another one for this start."""
+
+    def fails(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(
+        platform_info, "_LINUX_MACHINE_ID_FILES", (str(tmp_path / "machine-id"),), raising=False
+    )
+    monkeypatch.setattr("builtins.open", fails)
+
+    with pytest.raises(platform_info.MachineIdentifierUnreadable):
+        platform_info.os_machine_identifier()
+
+
+def test_a_registry_read_that_fails_this_once_is_not_taken_for_none(monkeypatch) -> None:
+    registry = _registry({"MachineGuid": WINDOWS_GUID})
+
+    def fails(_key: object, _name: str) -> tuple[str, int]:
+        raise OSError(errno.EIO, "The registry could not be read")
+
+    registry.QueryValueEx = fails  # type: ignore[attr-defined]
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "windows")
+    monkeypatch.setitem(sys.modules, "winreg", registry)
+
+    with pytest.raises(platform_info.MachineIdentifierUnreadable):
+        platform_info.os_machine_identifier()
+
+
+def test_a_registry_the_account_may_not_read_is_none(monkeypatch) -> None:
+    registry = _registry({"MachineGuid": WINDOWS_GUID})
+
+    def refused(_key: object, _name: str) -> tuple[str, int]:
+        raise PermissionError(errno.EACCES, "Access is denied")
+
+    registry.QueryValueEx = refused  # type: ignore[attr-defined]
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "windows")
+    monkeypatch.setitem(sys.modules, "winreg", registry)
+
+    assert platform_info.os_machine_identifier() is None
+
+
 def test_a_registry_without_the_value_is_none(monkeypatch) -> None:
     monkeypatch.setattr(platform_info, "detect_platform", lambda: "windows")
     monkeypatch.setitem(sys.modules, "winreg", _registry({}))
@@ -681,6 +733,74 @@ def test_without_links_or_a_one_step_rename_the_value_is_still_made_and_kept(mon
     assert [entry.name for entry in path.parent.iterdir()] == ["machine-id-seed"]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows' own rename never replaces")
+def test_a_whole_value_another_start_may_have_read_is_not_taken_away_again(monkeypatch) -> None:
+    """Where the name is made first, the value is under it from the moment
+    it is written, before it is synced. A sync that then failed had the
+    file removed again. Another start that had read it by then went on
+    under an ID no later start would have: the next one made a new value."""
+    _neither_links_nor_a_one_step_rename(monkeypatch)
+    path = machine_identity.seed_path()
+    fsync = machine_identity.os.fsync
+    synced = 0
+    read_by_another_start: list[bytes] = []
+
+    def fails_for_the_value_under_its_name(descriptor: int) -> None:
+        nonlocal synced
+        synced += 1
+        if synced == 1:
+            # The file the value is first written to, of this start's own.
+            fsync(descriptor)
+            return
+        read_by_another_start.append(machine_identity.stored_seed())
+        raise OSError(errno.EIO, "Input/output error")
+
+    monkeypatch.setattr(machine_identity.os, "fsync", fails_for_the_value_under_its_name)
+    with pytest.raises(machine_identity.MachineIdError):
+        machine_identity.stored_seed()
+    monkeypatch.setattr(machine_identity.os, "fsync", fsync)
+
+    assert len(read_by_another_start) == 1
+    # The next start has the value the other one read.
+    assert machine_identity.stored_seed() == read_by_another_start[0]
+    assert [entry.name for entry in path.parent.iterdir()] == ["machine-id-seed"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows' own rename never replaces")
+def test_a_value_that_was_not_written_whole_leaves_no_file(monkeypatch) -> None:
+    _neither_links_nor_a_one_step_rename(monkeypatch)
+    path = machine_identity.seed_path()
+    fdopen = machine_identity.os.fdopen
+    opened = 0
+
+    class CutShort:
+        def __init__(self, handle: Any) -> None:
+            self._handle = handle
+
+        def __enter__(self) -> CutShort:
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            self._handle.close()
+
+        def write(self, data: bytes) -> int:
+            self._handle.write(data[:10])
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+    def second_file_fills_the_disk(descriptor: int, mode: str) -> Any:
+        nonlocal opened
+        opened += 1
+        handle = fdopen(descriptor, mode)
+        return handle if opened == 1 else CutShort(handle)
+
+    monkeypatch.setattr(machine_identity.os, "fdopen", second_file_fills_the_disk)
+
+    with pytest.raises(machine_identity.MachineIdError):
+        machine_identity.stored_seed()
+
+    assert list(path.parent.iterdir()) == []
+
+
 def test_a_value_another_start_is_still_writing_is_waited_for() -> None:
     """Where the name is made first and the value written into it, another
     start can find the name with less than a value under it. It waits for
@@ -689,15 +809,24 @@ def test_a_value_another_start_is_still_writing_is_waited_for() -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     value = SEED_A.hex().encode("ascii") + b"\n"
     path.write_bytes(value[:20])
-    reading = threading.Event()
+    seen_cut_short = threading.Event()
     read = machine_identity._read
+    reads: list[str] = []
 
     def read_and_say(name: Path, **how: Any) -> bytes | None:
-        reading.set()
-        return read(name, **how)
+        try:
+            found = read(name, **how)
+        except machine_identity._StillBeingWritten:
+            # Only now does the other start go on: this one has seen the
+            # value cut short, and has to come back for the rest.
+            reads.append("cut short")
+            seen_cut_short.set()
+            raise
+        reads.append("whole")
+        return found
 
     def the_other_start_finishes() -> None:
-        assert reading.wait(30)
+        assert seen_cut_short.wait(30)
         path.write_bytes(value)
 
     writer = threading.Thread(target=the_other_start_finishes)
@@ -709,6 +838,7 @@ def test_a_value_another_start_is_still_writing_is_waited_for() -> None:
             assert machine_identity.stored_seed() == SEED_A
         finally:
             writer.join(30)
+    assert reads[0] == "cut short" and reads[-1] == "whole"
 
 
 def test_a_value_that_stays_cut_short_is_still_an_error(monkeypatch) -> None:
@@ -1173,6 +1303,10 @@ def test_start_makes_the_value(monkeypatch, tmp_path: Path, capsys) -> None:
             return None
 
     monkeypatch.setattr(daemon_module, "ShimDaemon", Runs)
+    # An identifier of the test's own: with the real one, a read that
+    # didn't come back in time on the computer the tests run on would stop
+    # this start, which is another test's subject.
+    _this_computer_is(monkeypatch, tmp_path, "linux")
     assert not machine_identity.seed_path().exists()
 
     assert asyncio.run(cli._cmd_start(_config(tmp_path))) == 0

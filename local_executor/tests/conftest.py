@@ -4,6 +4,7 @@ import pytest
 
 from autogpt_local_executor import install
 from autogpt_local_executor.computer_use import concealed
+from autogpt_local_executor.config import ShimConfig, environment_variable
 
 
 @pytest.fixture(autouse=True)
@@ -27,6 +28,19 @@ def _away_from_the_real_file_keys(
     tests list. A test that needs either variable sets it."""
     monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path_factory.mktemp("fallback")))
     monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _away_from_the_shells_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep every test from the settings whoever runs the tests has exported
+    for their own shim: each AUTOGPT_SHIM_* variable that sets a config
+    field (AUTOGPT_SHIM_ENABLE_HARDWARE, AUTOGPT_SHIM_MAX_CONCURRENT and the
+    rest). A config a test builds reads them, so a test that expects a
+    default, or a setting to be off, failed in that person's shell and
+    passed everywhere else. A test that means one to be read sets it.
+    tests/test_shell_settings.py holds this to every field."""
+    for field in ShimConfig.model_fields:
+        monkeypatch.delenv(environment_variable(field), raising=False)
 
 
 @pytest.fixture(autouse=True)

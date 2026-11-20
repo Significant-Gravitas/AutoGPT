@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextlib
-import importlib.util
 import logging
 import os
 import shutil
@@ -36,28 +35,52 @@ from .mcp_client import McpClosedError, McpError, StdioMcpClient
 logger = logging.getLogger(__name__)
 
 DRIVER_NAME = "cua-driver"
-# How to add computer use to a shim that is installed without it, as the
-# platform's setup card installs it: the extra's packages are added to the
-# install that is there. pip leaves an installed package as it is, whatever
-# it was installed from (a Git revision, an index, a file), and fetches
-# only what the extra asks for. So the shim keeps its revision, which is
-# the one its deployment's platform speaks the protocol of, and a download
-# that fails leaves it as it was.
-#
-# The hint used to be `pipx install --force` on the repository with no
-# revision: that replaced the shim with whatever was on the default
-# branch, and removed the installed one before the new one was built.
-# `pipx install` without --force does nothing for a package pipx already
-# has, extra or not, which is why this runs pip in pipx's environment.
-# docs/COMPUTER_USE.md says the same, and tests/test_install_hint.py runs
-# pip to hold it to this.
-#
-# Double quotes, which cmd.exe, PowerShell and POSIX shells all take (the
-# text has no $, backtick or !); cmd.exe would split single-quoted text at
-# its spaces.
-COMPUTER_USE_INSTALL = (
-    'pipx runpip autogpt-local-executor install "autogpt-local-executor[computer-use]"'
+# What the computer-use extra brings, as pyproject.toml lists it: everywhere,
+# and on macOS as well. tests/test_install_hint.py holds the two together.
+COMPUTER_USE_PACKAGES = (f"{DRIVER_NAME}=={REVIEWED_DRIVER_VERSION}",)
+COMPUTER_USE_PACKAGES_MACOS = (
+    "pyobjc-framework-ApplicationServices>=10.0",
+    "pyobjc-framework-Cocoa>=10.0",
+    "pyobjc-framework-Quartz>=10.0",
 )
+
+
+def computer_use_install(platform: str | None = None) -> str:
+    """How to add computer use to a shim that is installed without it, as
+    the platform's setup card installs it: the extra's packages are added
+    to the install that is there. pip leaves an installed package as it
+    is, whatever it was installed from (a Git revision, an index, a file),
+    and fetches only what it is asked for. So the shim keeps its revision,
+    which is the one its deployment's platform speaks the protocol of, and
+    a download that fails leaves it as it was.
+
+    The packages are named one by one and added with `pipx inject`, which
+    records them as added to the shim's environment and leaves alone what
+    pipx recorded the shim was installed from. pipx installs from that
+    record again at `pipx reinstall` and `pipx upgrade`, and adds the
+    injected packages back after it. Naming the extra instead (`pipx runpip
+    <shim> install "<shim>[computer-use]"`) left the shim's files alone as
+    well, but pipx then took `<shim>[computer-use]` for the shim's source,
+    in place of the revision: the next reinstall or upgrade would have
+    looked for the shim by name on the package index. Before that the hint
+    was `pipx install --force` on the repository with no revision, which
+    replaced the shim with whatever was on the default branch; `pipx
+    install` without --force does nothing for a package pipx already has.
+    docs/COMPUTER_USE.md says the same, and tests/test_install_hint.py
+    holds the hint to it.
+
+    Double quotes, which cmd.exe, PowerShell and POSIX shells all take
+    (the text has no $, backtick or !, and `>` and `=` inside them are
+    text to all three); cmd.exe would split single-quoted text at its
+    spaces."""
+    packages: tuple[str, ...] = COMPUTER_USE_PACKAGES
+    if (sys.platform if platform is None else platform) == "darwin":
+        packages += COMPUTER_USE_PACKAGES_MACOS
+    return "pipx inject autogpt-local-executor " + " ".join(f'"{package}"' for package in packages)
+
+
+# The hint for the computer this runs on.
+COMPUTER_USE_INSTALL = computer_use_install()
 START_TIMEOUT_SECONDS = 30.0
 LIST_TIMEOUT_SECONDS = 30.0
 # A driver that keeps stopping is given up on until the window has passed.
@@ -72,6 +95,11 @@ HOME_FOLDER_SECONDS = 2.0
 # holding the bridge's lock: as long as HELLO waits for it
 # (handlers.DRIVER_LOOKUP_SECONDS).
 RESTART_LOOKUP_SECONDS = 5.0
+# How long the answer of a look that outlasted a caller's wait is kept for
+# the callers that come next (CuaDriverBridge.find_binary): long enough for
+# the request after the one that gave up, short enough that what it found
+# is still where it was.
+LATE_ANSWER_SECONDS = 60.0
 
 # The cua settings (CUA*) the driver may inherit from the shim's environment:
 # the ones cua's own SDK hands a driver it embeds (cua-driver-sdk's
@@ -142,18 +170,35 @@ def _executable_name() -> str:
 
 
 def bundled_binary() -> Path | None:
-    """The binary inside the installed `cua-driver` wheel. The package is
-    found without importing it: its __init__ loads a native library."""
-    try:
-        spec = importlib.util.find_spec("cua_driver")
-    except (ImportError, ValueError):
-        return None
-    if spec is None or not spec.submodule_search_locations:
-        return None
-    for location in spec.submodule_search_locations:
-        candidate = Path(location) / "bin" / _executable_name()
-        if candidate.is_file():
-            return candidate
+    """The binary inside the installed `cua-driver` wheel, which puts it at
+    `cua_driver/bin/` in a folder Python imports from: the first folder of
+    sys.path that holds it there, as an absolute path.
+
+    Looked for in those folders directly, not through the import system.
+    importlib.util.find_spec holds the interpreter's import lock while each
+    of its finders looks, and a finder stats its folder. With a folder of
+    sys.path on a mount that stopped answering, this look, in its thread,
+    held that lock for as long as the mount stalled, and the first import of
+    any module on any other thread waits for that lock. The event loop's
+    thread is one of them: the loop stopped, and no caller's bound on the
+    look could run out. A folder that stalls still holds this look, and
+    nothing else.
+
+    Nor is the package imported: its __init__ loads a native library."""
+    name = _executable_name()
+    for folder in list(sys.path):
+        if not isinstance(folder, str):
+            continue
+        # An empty entry is the current folder, as Python reads it.
+        candidate = Path(folder or os.curdir, "cua_driver", "bin", name)
+        try:
+            mode = os.stat(candidate).st_mode
+        except (OSError, ValueError):
+            # Not there, or the entry is no folder (an archive), or it
+            # can't be read.
+            continue
+        if stat.S_ISREG(mode):
+            return candidate.absolute()
     return None
 
 
@@ -321,7 +366,7 @@ class CuaDriverBridge:
         # The display variables the running driver started with.
         self._display: tuple[str | None, ...] | None = None
         # The look for the driver's binary under way, or the last (find_binary).
-        self._looking: asyncio.Future[Path | None] | None = None
+        self._look: _Look | None = None
         # The look at the person's home folder under way, or the last
         # (_working_folder).
         self._home_looking: asyncio.Future[Path | None] | None = None
@@ -349,7 +394,7 @@ class CuaDriverBridge:
         while it restarts, since a start lists the same tools."""
         return self._snapshot
 
-    async def find_binary(self) -> Path | None:
+    async def find_binary(self, *, to_start: bool = False) -> Path | None:
         """The driver this bridge runs, made executable, or None when it
         isn't installed: find_driver_binary and ensure_executable, in a
         thread of their own. They stat files in the folders on sys.path, for
@@ -363,18 +408,37 @@ class CuaDriverBridge:
         for that look rather than start another, which would stall too. So
         a stall holds one thread, however many callers come.
 
+        The answer of a look that a caller gave up on is kept when it comes,
+        for LATE_ANSWER_SECONDS: the callers of that time take it without
+        another look. With a look that takes longer than its callers wait,
+        every time (a slow share, not a dead one), each caller gave up, the
+        answer came with nobody waiting, and the next caller began a look
+        that took as long: the driver was there and never started. A start
+        (`to_start`) uses a kept answer up, so the start after it looks
+        again and finds a driver that was moved or upgraded; a caller that
+        only asks whether the driver is there (HELLO, the preflight, the
+        display watch) leaves it for the start that follows. A look that
+        every caller waited out, the usual one, keeps nothing: the next
+        caller looks afresh.
+
         That thread is a daemon thread, not one of the event loop's workers
         (_in_a_thread_of_its_own): a look still held when the shim is told
         to stop doesn't keep it from stopping. Every caller bounds its own
         wait."""
-        looking = self._looking
-        if looking is None or looking.done():
+        look = self._look
+        if look is None or (look.answer.done() and not look.kept()):
             explicit = self._explicit_binary
-            looking = self._looking = _in_a_thread_of_its_own(
-                lambda: _runnable_driver(explicit), "driver-lookup"
-            )
-            looking.add_done_callback(_retrieved)
-        return await asyncio.shield(looking)
+            look = self._look = _Look(lambda: _runnable_driver(explicit))
+        try:
+            return await asyncio.shield(look.answer)
+        except asyncio.CancelledError:
+            # This caller stopped waiting, so the answer is the next one's.
+            look.outlasted_a_caller = True
+            to_start = False
+            raise
+        finally:
+            if to_start:
+                look.used_by_a_start = True
 
     async def snapshot(self, *, deadline: float | None = None) -> DriverSnapshot:
         """What the driver offers, starting it if need be. With `deadline`
@@ -542,11 +606,12 @@ class CuaDriverBridge:
             # stopped answering held it for good, and every call, stop and
             # close() behind it. Past the limit the start fails, the look
             # goes on in its thread, and the next start waits for that same
-            # look. Nothing here counts against the restart budget: no
-            # driver was started.
+            # look, or takes its answer if it has come since (find_binary):
+            # the one start that doesn't look afresh. Nothing here counts
+            # against the restart budget: no driver was started.
             try:
                 async with asyncio.timeout(RESTART_LOOKUP_SECONDS):
-                    binary = await self.find_binary()
+                    binary = await self.find_binary(to_start=True)
             except TimeoutError:
                 raise DriverUnavailable(
                     f"Looking for cua-driver took longer than {RESTART_LOOKUP_SECONDS:g} s: "
@@ -555,7 +620,7 @@ class CuaDriverBridge:
                 ) from None
             if binary is None:
                 raise DriverUnavailable(
-                    "cua-driver is not installed. Add the computer-use extra to this "
+                    "cua-driver is not installed. Add computer use's packages to this "
                     "install, which leaves the local executor itself as it is: "
                     f"{COMPUTER_USE_INSTALL}",
                     code=ErrorCode.DEPENDENCY_MISSING,
@@ -820,6 +885,40 @@ def _in_a_thread_of_its_own(look: Callable[[], _T], name: str) -> asyncio.Future
     return asyncio.wrap_future(done)
 
 
+class _Look:
+    """One look for the driver's binary (CuaDriverBridge.find_binary): its
+    answer, when that came, and what its callers did with it."""
+
+    def __init__(self, find: Callable[[], Path | None]) -> None:
+        # When the answer came (time.monotonic), written by the look's
+        # thread before the answer is, so whoever sees the answer sees it.
+        self.answered_at: float | None = None
+        # Whether a caller stopped waiting before it had the answer.
+        self.outlasted_a_caller = False
+        # Whether a start has had the answer.
+        self.used_by_a_start = False
+
+        def look() -> Path | None:
+            try:
+                return find()
+            finally:
+                self.answered_at = time.monotonic()
+
+        self.answer = _in_a_thread_of_its_own(look, "driver-lookup")
+        self.answer.add_done_callback(_retrieved)
+
+    def kept(self) -> bool:
+        """Whether a caller that comes now takes this look's answer rather
+        than look again: a caller gave up on the look, no start has had
+        its answer, and the answer is no older than LATE_ANSWER_SECONDS."""
+        return (
+            self.outlasted_a_caller
+            and not self.used_by_a_start
+            and self.answered_at is not None
+            and time.monotonic() - self.answered_at < LATE_ANSWER_SECONDS
+        )
+
+
 def _retrieved(task: asyncio.Future[Any]) -> None:
     """Mark a start's failure seen, a look's (find_binary, _working_folder)
     or a stop's: the callers that waited for it may all have given up, and
@@ -830,6 +929,9 @@ def _retrieved(task: asyncio.Future[Any]) -> None:
 
 __all__ = [
     "COMPUTER_USE_INSTALL",
+    "COMPUTER_USE_PACKAGES",
+    "COMPUTER_USE_PACKAGES_MACOS",
+    "computer_use_install",
     "DRIVER_NAME",
     "CallNotStarted",
     "CuaDriverBridge",

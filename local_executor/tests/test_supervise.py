@@ -10,8 +10,11 @@ daemon again as those two do.
 
 from __future__ import annotations
 
+import os
+import signal
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -194,11 +197,150 @@ def test_a_real_child_is_run_again_until_it_exits_to_stop(
     assert runs.read_text(encoding="utf-8") == "xxx"
 
 
-def test_a_child_is_not_started_once_a_stop_was_asked_for() -> None:
+def test_a_child_is_not_started_once_a_stop_was_asked_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Not started at all: one started and stopped at once would return the
+    same 0."""
+
+    def started(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("a daemon was started after the stop")
+
+    monkeypatch.setattr(supervise.subprocess, "Popen", started)
     stop = threading.Event()
     stop.set()
 
     assert supervise._Child().run([sys.executable, "-c", "raise SystemExit(75)"], stop) == 0
+
+
+# ── A stop signalled while the daemon is being started ───────────────────────
+
+
+class _Daemon:
+    """A daemon's process, for a start that is interrupted: it runs until it
+    is ended."""
+
+    def __init__(self) -> None:
+        self.ended = 0
+        self.returncode: int | None = None
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.ended += 1
+        self.returncode = -15
+
+    def wait(self) -> int:
+        assert self.returncode is not None, "the supervisor waited for a daemon nobody ended"
+        return self.returncode
+
+
+def test_a_stop_signalled_while_the_daemon_is_being_started_does_not_wait_for_itself(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Python runs a signal handler on the main thread, between two of its
+    instructions, wherever that thread is: here, in the middle of starting
+    the daemon. The start held a lock while it made the process, and the
+    handler, on that same thread, waited for the lock to end the daemon:
+    for good. The supervisor never stopped, and the daemon ran on."""
+    stop = supervise._Stop()
+    child = supervise._Child()
+    daemons: list[_Daemon] = []
+
+    def start(_command: Any, **_kwargs: Any) -> _Daemon:
+        daemons.append(_Daemon())
+        # The signal lands here, with the process made and not yet the
+        # child's: what the handler does (run_supervised).
+        supervise._stop_asked(stop, child)
+        return daemons[-1]
+
+    monkeypatch.setattr(supervise.subprocess, "Popen", start)
+    exits: list[int] = []
+    running = threading.Thread(
+        target=lambda: exits.append(child.run(["daemon"], stop)), daemon=True
+    )
+
+    running.start()
+    running.join(20)
+
+    assert not running.is_alive(), "the stop waited for a lock its own thread held"
+    # The daemon the stop found no process for yet was ended once it had one.
+    [daemon] = daemons
+    assert daemon.ended == 1
+    assert exits == [-15]
+    assert stop.is_set()
+
+
+def test_a_stop_signalled_while_the_daemon_runs_ends_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    stop = supervise._Stop()
+    child = supervise._Child()
+    daemon = _Daemon()
+
+    def wait() -> int:
+        supervise._stop_asked(stop, child)
+        assert daemon.returncode is not None
+        return daemon.returncode
+
+    daemon.wait = wait  # type: ignore[method-assign]
+    monkeypatch.setattr(supervise.subprocess, "Popen", lambda _command, **_kwargs: daemon)
+
+    assert child.run(["daemon"], stop) == -15
+    assert daemon.ended == 1
+    # And with no daemon running, there is nothing to end.
+    supervise._stop_asked(stop, child)
+    assert daemon.ended == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="no signal reaches a handler on Windows")
+def test_a_real_signal_during_the_start_ends_the_daemon_and_the_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The handler itself, run by Python where the signal lands."""
+    daemons: list[_Daemon] = []
+
+    def start(_command: Any, **_kwargs: Any) -> _Daemon:
+        daemons.append(_Daemon())
+        os.kill(os.getpid(), signal.SIGTERM)
+        return daemons[-1]
+
+    monkeypatch.setattr(supervise.subprocess, "Popen", start)
+    before = signal.getsignal(signal.SIGTERM)
+
+    assert supervise.run_supervised(["start", "--supervise"]) == -15
+
+    [daemon] = daemons
+    assert daemon.ended >= 1
+    assert signal.getsignal(signal.SIGTERM) is before
+
+
+def test_the_supervisors_stop_takes_no_lock() -> None:
+    """threading.Event.set takes the lock Event.wait holds around its own
+    bookkeeping: a signal that landed there would wait for a lock its own
+    thread held. The supervisor's stop is an attribute, set with none."""
+    stop = supervise._Stop()
+    assert not isinstance(stop, threading.Event)
+    assert not any(
+        isinstance(value, type(threading.Lock()) | type(threading.RLock()) | threading.Condition)
+        for value in vars(stop).values()
+    )
+
+    assert stop.is_set() is False
+    assert stop.wait(0.01) is False
+    stop.set()
+    assert stop.is_set() is True
+    assert stop.wait(600) is True
+
+
+def test_a_pause_ends_soon_after_the_stop() -> None:
+    stop = supervise._Stop()
+    threading.Timer(0.05, stop.set).start()
+    began = time.monotonic()
+
+    assert stop.wait(600) is True
+
+    # Within a poll or two, not the ten minutes the pause was for.
+    assert time.monotonic() - began < 60
 
 
 # ── Who gets the loop ────────────────────────────────────────────────────────
@@ -274,6 +416,25 @@ def test_the_windows_task_turns_the_supervisor_on() -> None:
     assert "<RestartOnFailure>" not in rendered
 
 
+def test_the_windows_task_starts_the_shim_whether_or_not_a_network_is_up() -> None:
+    """The task was set to run only when a network is available, and at a
+    logon one may not be yet (Wi-Fi that connects a little later, a laptop
+    opened offline). Nothing in the task would have started the shim once
+    the network came: the setting that starts a task after a missed start
+    is, by Microsoft's reference, for time-based triggers only, and this
+    task's one trigger is the logon. That setting read as if it covered
+    the case, and is gone with the condition.
+
+    The shim waits for the platform by itself, as it does under launchd and
+    systemd, which start it whatever the network."""
+    rendered = install.render_template("taskscheduler.xml.template", _context())
+
+    assert "<RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>" in rendered
+    assert "<StartWhenAvailable>" not in rendered
+    assert rendered.count("<LogonTrigger>") == 1
+    assert "<TimeTrigger>" not in rendered and "<CalendarTrigger>" not in rendered
+
+
 @pytest.mark.parametrize("template", ["launchd.plist.template", "systemd.service.template"])
 def test_launchd_and_systemd_restart_the_shim_themselves(template: str) -> None:
     rendered = install.render_template(template, _context())
@@ -290,3 +451,45 @@ def test_the_help_says_what_the_option_is_for(
     text = " ".join(capsys.readouterr().out.split())
     assert "--supervise" in text
     assert "Windows task" in text
+
+
+# ── An option written short ──────────────────────────────────────────────────
+
+
+def _spellings_argparse_takes_for_the_option() -> list[str]:
+    """Every way of writing `--supervise` that `start` accepts: argparse
+    takes any beginning of a long option that no other option shares."""
+    taken = []
+    for length in range(3, len(supervise.SUPERVISE_OPTION) + 1):
+        spelling = supervise.SUPERVISE_OPTION[:length]
+        try:
+            parsed = cli._build_parser().parse_args(["start", spelling])
+        except SystemExit:
+            continue
+        if parsed.supervise:
+            taken.append(spelling)
+    return taken
+
+
+def test_the_daemon_is_started_without_the_option_however_it_was_written() -> None:
+    """`start --supervis` turns the supervisor on too. Only the option
+    written out was left out of the daemon's command, so the daemon got
+    `--supervis`, became a supervisor itself, and started another: no
+    daemon ever ran."""
+    spellings = _spellings_argparse_takes_for_the_option()
+    assert supervise.SUPERVISE_OPTION in spellings
+    assert len(spellings) > 1, "argparse takes no shorter spelling: nothing to guard"
+
+    for spelling in spellings:
+        command = supervise.daemon_command(
+            ["--config", "c.toml", "start", spelling, "--enable-shell"]
+        )
+        assert command[3:] == ["--config", "c.toml", "start", "--enable-shell"], spelling
+        # And the daemon it starts isn't asked to supervise.
+        assert not cli._build_parser().parse_args(command[3:]).supervise
+
+
+def test_an_argument_that_is_no_beginning_of_the_option_is_kept() -> None:
+    kept = ["--config", "supervise.toml", "start", "--superb", "-s", "--", "--supervisor"]
+
+    assert supervise.daemon_command([*kept, "--su"])[3:] == kept

@@ -258,6 +258,66 @@ async def test_a_look_whose_caller_is_cancelled_counts_as_given_up_on(away: _Awa
     assert away.looks == 1
 
 
+@pytest.mark.parametrize("given_up_by", ["its-caller-cancelled", "its-deadline"])
+async def test_a_request_waiting_its_turn_is_refused_once_the_look_ahead_is_given_up_on(
+    away: _Away, given_up_by: str
+) -> None:
+    """A second request for a folder waits its turn behind the first's
+    look. When that look was given up on, a request that came a moment
+    later was refused at once, but the one already waiting went on waiting
+    for the look, to its own deadline."""
+    checks = _checks()
+    first = asyncio.ensure_future(
+        checks.run(
+            "/share/gone",
+            away,
+            deadline=await _by(BOUND if given_up_by == "its-deadline" else WITHIN),
+        )
+    )
+    await _until(lambda: away.looks == 1)
+    second = asyncio.ensure_future(checks.run("/share/gone", away, deadline=await _by(WITHIN)))
+    await asyncio.sleep(0.05)
+    assert not second.done()
+
+    if given_up_by == "its-caller-cancelled":
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+    else:
+        with pytest.raises(_timeout(), match="didn't answer in time"):
+            await asyncio.wait_for(first, timeout=WITHIN)
+
+    # Then, not at its own deadline: that is further off than this waits.
+    with pytest.raises(_timeout(), match="still hasn't answered"):
+        await asyncio.wait_for(second, timeout=WITHIN / 5)
+    assert away.looks == 1
+
+
+async def test_a_request_waiting_for_a_thread_is_refused_once_every_look_is_given_up_on(
+    away: _Away,
+) -> None:
+    """With every thread taken and the last look still waited for given up
+    on, nothing frees a thread soon: the request that waited for one is
+    refused then, as one that came a moment later is."""
+    checks = _checks(max_stuck=2)
+    with pytest.raises(_timeout()):
+        await checks.run("/share/a", away, deadline=await _by(BOUND))
+    last = asyncio.ensure_future(checks.run("/share/b", away, deadline=await _by(WITHIN)))
+    await _until(lambda: away.looks == 2)
+    waiting = asyncio.ensure_future(checks.run("/share/c", away, deadline=await _by(WITHIN)))
+    await asyncio.sleep(0.05)
+    assert not waiting.done()
+
+    last.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await last
+
+    # Then, not at its own deadline: that is further off than this waits.
+    with pytest.raises(_timeout(), match="Too many folders"):
+        await asyncio.wait_for(waiting, timeout=WITHIN / 5)
+    assert away.looks == 2
+
+
 async def test_only_so_many_looks_are_left_running_whatever_their_folders(away: _Away) -> None:
     checks = _checks(max_stuck=3)
     for folder in ("/share/a", "/share/b", "/share/c"):
@@ -269,6 +329,45 @@ async def test_only_so_many_looks_are_left_running_whatever_their_folders(away: 
 
     assert away.looks == 3
     assert checks.stuck() == 3
+
+
+async def test_a_request_waiting_for_a_thread_goes_on_when_a_look_given_up_on_returns() -> None:
+    """Every thread is taken: one look was given up on, and another's caller
+    still waits. A third request waits for a thread, and it watched only the
+    looks still waited for. So when the one given up on returned, and its
+    thread was free, the request went on waiting for the other, to its own
+    deadline, and was refused."""
+    checks = _checks(max_stuck=2)
+    given_up_on, waited_for = threading.Event(), threading.Event()
+
+    def left_running() -> str:
+        given_up_on.wait(WITHIN * 4)
+        return "late"
+
+    def still_waited_for() -> str:
+        waited_for.wait(WITHIN * 4)
+        return "held"
+
+    with pytest.raises(_timeout()):
+        await checks.run("/share/a", left_running, deadline=await _by(BOUND))
+    holding = asyncio.ensure_future(
+        checks.run("/share/b", still_waited_for, deadline=await _by(WITHIN * 2))
+    )
+    try:
+        await _until(lambda: len(checks._looks) == 2)
+        third = asyncio.ensure_future(
+            checks.run("/share/c", lambda: "third", deadline=await _by(WITHIN / 5))
+        )
+        await asyncio.sleep(0.05)
+        assert not third.done()
+
+        given_up_on.set()
+
+        assert await asyncio.wait_for(third, timeout=WITHIN) == "third"
+    finally:
+        given_up_on.set()
+        waited_for.set()
+        assert await asyncio.wait_for(holding, timeout=WITHIN) == "held"
 
 
 async def test_an_answer_that_comes_after_the_deadline_is_dropped(away: _Away) -> None:

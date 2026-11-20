@@ -22,6 +22,13 @@
   all. So the action runs `start` with its supervise option, with which the
   shim starts its daemon again itself after an exit that asks for it (75) or
   a crash, as launchd and systemd do for it elsewhere.
+
+  The task has no network condition. With one, Task Scheduler runs a task
+  only when a network is available, which at a logon it may not be yet
+  (Wi-Fi that connects a little later), and its setting for starting a task
+  once a missed start becomes possible is for time-based triggers, not this
+  one. The shim waits for the platform itself, with or without a network
+  when it starts.
 -->
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
@@ -46,8 +53,7 @@
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
     <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
     <AllowHardTerminate>true</AllowHardTerminate>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
     <IdleSettings>
       <StopOnIdleEnd>false</StopOnIdleEnd>
       <RestartOnIdle>false</RestartOnIdle>

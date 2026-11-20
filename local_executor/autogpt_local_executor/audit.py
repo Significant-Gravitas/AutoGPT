@@ -227,6 +227,13 @@ class AuditWriter:
             # The first record of the chain this writer is on: what tells
             # its own log, cut short, from another (_take_up_the_log_as_it_is).
             self._first_hmac = _first_hmac(self.path)
+            # Evidence of a loss found under this writer that isn't in the
+            # log yet (_take_up_the_log_as_it_is): the next record, for a
+            # log that was cut back, which no rotation may come before; and
+            # the last record known of a log that was emptied, removed or
+            # replaced, until AUDIT_RECORDS_REMOVED is written.
+            self._cut_back_to_show = False
+            self._removal_to_record: tuple[int, str] | None = None
             # 0600 on POSIX; on Windows the file keeps its folder's ACL.
             if not self.path.exists():
                 # Create empty so first write can fsync against an existing inode
@@ -285,10 +292,18 @@ class AuditWriter:
             # records are still there.
             if _file_identity(self.path) != self._file_state:
                 self._take_up_the_log_as_it_is()
+            if self._removal_to_record is not None:
+                self._record_the_removal()
             # Rotate before writing if we'd cross a threshold. Rotation resets
-            # the in-memory chain state.
-            self._maybe_rotate()
+            # the in-memory chain state. Not with a cut-back log's evidence
+            # still to write: this record, which follows one that is gone.
+            # Rotated first, the shortened log is a valid chain in its
+            # rotated file, the new log is another, and nothing shows the
+            # loss.
+            if not self._cut_back_to_show:
+                self._maybe_rotate()
             self._append_record(op, session_id, machine_id, request_id, details, result)
+            self._cut_back_to_show = False
             self._file_state = _file_identity(self.path)
 
     def _take_up_the_log_as_it_is(self) -> None:
@@ -349,6 +364,9 @@ class AuditWriter:
                 self.path,
                 last[0],
             )
+            # What shows it in the log is the next record, which isn't
+            # written yet (_write_sync).
+            self._cut_back_to_show = True
             return
         held = _in_a_rotated_file(self.path, last)
         self._adopt()
@@ -362,6 +380,19 @@ class AuditWriter:
             self.path,
             last[0],
         )
+        # Kept until that record is in the log (_record_the_removal): the
+        # chain it names is no longer this writer's, so a record that
+        # couldn't be written (a full disk) would otherwise never be.
+        self._removal_to_record = last
+
+    def _record_the_removal(self) -> None:
+        """Write the AUDIT_RECORDS_REMOVED record that is still owed, and
+        owe it no longer once it is in the log. Called with the log's lock
+        held, before the record that brought the writer here: a failure
+        leaves it owed for the next write, and a failure of the record after
+        it doesn't write it twice."""
+        last = self._removal_to_record
+        assert last is not None
         self._append_record(
             "AUDIT_RECORDS_REMOVED",
             self._default_session_id or "-",
@@ -375,6 +406,7 @@ class AuditWriter:
                 "error_code": "AUDIT_RECORDS_REMOVED",
             },
         )
+        self._removal_to_record = None
 
     def _adopt(self) -> None:
         """Take the chain the log holds now as this writer's."""

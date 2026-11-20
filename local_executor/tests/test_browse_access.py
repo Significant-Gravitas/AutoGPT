@@ -154,16 +154,28 @@ def test_a_folder_that_cannot_be_read_or_searched_is_still_left_out(
 def test_a_grant_is_issued_and_restored_only_for_a_folder_that_can_be_written(
     tmp_path: Path,
 ) -> None:
-    """The grant's own check keeps the rule the browser's choice has."""
+    """The grant's own check keeps the rule the browser's choice has, and
+    says which rule: write access that went after the folder was chosen was
+    refused as "unavailable", which didn't tell the person to pick a folder
+    the account can write to."""
     folder = tmp_path / "read-only"
     folder.mkdir()
     assert session_grants.canonical_directory(folder) == folder
     folder.chmod(0o555)
     try:
-        with pytest.raises(RootGrantError):
+        with pytest.raises(RootGrantError, match="this account can't write to it"):
             session_grants.canonical_directory(folder)
     finally:
         folder.chmod(0o755)
+    # A folder that can't be opened, or isn't there, is still unavailable.
+    folder.chmod(0o300)
+    try:
+        with pytest.raises(RootGrantError, match="^Selected root is unavailable$"):
+            session_grants.canonical_directory(folder)
+    finally:
+        folder.chmod(0o755)
+    with pytest.raises(RootGrantError, match="^Selected root is unavailable$"):
+        session_grants.canonical_directory(tmp_path / "not-there")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="what POSIX's access(2) is asked")
@@ -360,7 +372,7 @@ def test_on_windows_a_folder_the_account_cannot_write_to_opens_but_cannot_be_cho
 
             with pytest.raises(DirectoryBrowseError):
                 browser.resolve(roots.browse_id, folder.directory_ref)
-            with pytest.raises(RootGrantError):
+            with pytest.raises(RootGrantError, match="this account can't write to it"):
                 session_grants.canonical_directory(read_only)
             assert browser.resolve(roots.browse_id, mine.directory_ref) == read_only / "mine"
     finally:

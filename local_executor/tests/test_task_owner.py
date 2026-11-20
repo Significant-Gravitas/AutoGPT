@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 import re
 import subprocess
 import sys
@@ -30,6 +29,7 @@ import pytest
 
 from autogpt_local_executor import cli
 from autogpt_local_executor import install as install_mod
+from tests.test_uninstall import real_service_manager_asked_for
 
 # The real command runner, kept before conftest.py stands a refusing one in
 # for it: only the test at the end, on a task of its own, may use it.
@@ -417,7 +417,7 @@ def _real(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
 
 
 @pytest.mark.skipif(
-    not (os.environ.get("CI") or os.environ.get("AUTOGPT_SHIM_TEST_SERVICE_MANAGER")),
+    not real_service_manager_asked_for(),
     reason="registers a throwaway task with the OS: runs in CI, or with "
     "AUTOGPT_SHIM_TEST_SERVICE_MANAGER=1",
 )
@@ -457,6 +457,8 @@ def test_real_task_scheduler_registers_the_task_for_the_account_that_installed_i
         # The supervising `start` is what it runs.
         assert "--supervise</Arguments>" in shown.stdout
 
+        # The task was registered and has never run. `schtasks /End` succeeds
+        # for it, with no instance to end, so the delete after it is reached.
         stopped = install_mod._stop_scheduled_task(
             _REAL_RUN_COMMAND, task=task, elevated=install_mod._is_elevated()
         )

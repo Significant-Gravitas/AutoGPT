@@ -344,3 +344,118 @@ async def test_verify_says_what_a_removed_record_says(
 
     assert cli._audit_verify_all(writer.path) == 0
     assert "up to seq=10" in capsys.readouterr().out
+
+
+# ── Review: evidence that must outlast a rotation and a failed write ─────────
+
+
+@pytest.mark.parametrize("how", ["in-place", "replaced"])
+async def test_a_cut_back_log_is_not_rotated_away_before_the_record_that_shows_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, how: str
+) -> None:
+    """A log that was cut back fails verification at the writer's next
+    record, which follows one that is no longer there. A rotation that fell
+    due at that write came first: it put the shortened log away, a valid
+    chain by itself, and started a new one. Both verified, and nothing
+    showed the loss."""
+    from autogpt_local_executor import audit as audit_module
+
+    writer = _writer(tmp_path)
+    await _write(writer, *NAMES)
+    _cut_back(writer.path, 4, how=how)
+    # The log's first record is now older than a log may get.
+    monkeypatch.setattr(audit_module, "ROTATE_MAX_AGE_SECONDS", -1.0)
+
+    await _write(writer, "after-the-cut")
+
+    files = [writer.path, *list_rotated_files(writer.path)]
+    broken = [path.name for path in files if {"sequence_gap", "chain_break"} <= _kinds(path)]
+    assert len(broken) == 1, {path.name: _kinds(path) for path in files}
+    # Rotation goes on as usual once the record is in.
+    await _write(writer, "next")
+    assert _records(writer.path)[-1]["request_id"] == "next"
+
+
+async def test_a_removal_whose_record_could_not_be_written_is_recorded_at_the_next_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The log was emptied under the writer, and the disk was full when it
+    went to say so. The writer had already let go of the last record it
+    knew, so its next write, with room again, began a clean chain with no
+    AUDIT_RECORDS_REMOVED in it."""
+    writer = _writer(tmp_path)
+    await _write(writer, *NAMES[:3])
+    last = _records(writer.path)[-1]
+    writer.path.write_bytes(b"")
+    append = writer._append
+
+    def full(_line: str) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(writer, "_append", full)
+    with pytest.raises(OSError, match="No space left"):
+        await _write(writer, "while-full")
+    monkeypatch.setattr(writer, "_append", append)
+
+    await _write(writer, "room-again")
+
+    records = _records(writer.path)
+    assert [record["op"] for record in records] == ["AUDIT_RECORDS_REMOVED", "EXECUTE_COMMAND"]
+    assert records[0]["details"] == {"last_seq": last["seq"], "last_hmac": last["hmac"]}
+    assert records[1]["request_id"] == "room-again"
+    assert AuditWriter.verify(writer.path, KEY) == []
+
+
+async def test_a_removal_is_recorded_once_when_the_write_after_it_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    writer = _writer(tmp_path)
+    await _write(writer, *NAMES[:3])
+    writer.path.write_bytes(b"")
+    append = writer._append
+    calls = 0
+
+    def full_after_the_first(line: str) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError(28, "No space left on device")
+        append(line)
+
+    monkeypatch.setattr(writer, "_append", full_after_the_first)
+    with pytest.raises(OSError, match="No space left"):
+        await _write(writer, "while-full")
+
+    await _write(writer, "room-again")
+
+    assert [record["op"] for record in _records(writer.path)] == [
+        "AUDIT_RECORDS_REMOVED",
+        "EXECUTE_COMMAND",
+    ]
+    assert AuditWriter.verify(writer.path, KEY) == []
+
+
+async def test_verify_does_not_vouch_for_a_removal_record_in_a_log_that_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The note for an AUDIT_RECORDS_REMOVED record is read off the file as
+    it is. In a log that fails verification the record may be one nobody
+    signed (written in by hand, or changed), and `audit verify` printed
+    what it says as plainly as for a log that verified."""
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
+    writer = _writer(tmp_path)
+    await _write(writer, *NAMES)
+    writer.path.unlink()
+    await _write(writer, "after")
+    # The record is changed after the shim wrote it: it now names another
+    # last record, and its HMAC is no longer its own.
+    changed = writer.path.read_bytes().replace(b'"last_seq": 10', b'"last_seq": 3', 1)
+    assert changed != writer.path.read_bytes()
+    writer.path.write_bytes(changed)
+
+    for verify in (cli._audit_verify, cli._audit_verify_all):
+        assert verify(writer.path) == 1
+        out = " ".join(capsys.readouterr().out.split())
+        assert "records that the log before it" not in out
+        assert "note: seq=1 reads as a record that the log before it, up to seq=3" in out
+        assert "failed verification" in out

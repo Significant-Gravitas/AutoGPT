@@ -153,6 +153,8 @@ it, at its next record:
   there: the log **fails verification** from that record on (a sequence
   gap and a chain break), the shim's own log says so at error level, and
   the next start refuses the log like any other that fails verification.
+  That record is written before any rotation that falls due: rotated away
+  first, the shortened log would be a valid chain in its rotated file.
   Keep the file for whoever looks into it, and move it aside.
 - **Another log in its place**: empty, gone, or a chain the shim wasn't on.
   A rotation by another writer leaves exactly that, with the shim's chain
@@ -162,9 +164,14 @@ it, at its next record:
   can't tell those apart, so it doesn't break the chain over them (a prune
   would then fail the next start). It takes the log up and writes an
   **`AUDIT_RECORDS_REMOVED`** record first, with the sequence number and
-  HMAC of the last record it knew, and says the same in its own log. The
-  log still verifies; `audit verify` and `verify-all` print a note for
-  each such record they find.
+  HMAC of the last record it knew, and says the same in its own log. If
+  that record can't be written (a full disk), it stays owed and is the
+  first thing the next write puts in the log. A rotated file that can't be
+  read counts as not holding the shim's last record: the shim doesn't hold
+  back its writes over an old file. The log still verifies; `audit verify`
+  and `verify-all` print a note for each such record they find. In a file
+  that fails verification the note says so: such a record may be one nobody
+  signed.
 
 With no shim running there is nothing to remember the head, and a log cut
 back at its end, or removed, leaves no sign. To start a new log under a
@@ -399,8 +406,10 @@ require shipping a CA flow we don't need for v0.
   it had.
 - **A log emptied, removed or replaced under a running shim** — the shim's
   first record in the log it then finds is `AUDIT_RECORDS_REMOVED`, naming
-  the last record it knew. The chain isn't broken for this, since a
-  rotation followed by a prune looks the same.
+  the last record it knew, unless a rotated file holds that record: then
+  another writer rotated the log, nothing is missing, and no such record is
+  written. The chain isn't broken for this, since a rotation followed by a
+  prune looks the same.
 - **Field tampering** — HMAC mismatch on the tampered record.
 - **Wholesale log replacement** — verifier needs the audit key; an
   attacker who replaces both the log and the key in the keychain has

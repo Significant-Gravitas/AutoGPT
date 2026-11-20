@@ -178,7 +178,7 @@ Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
 | Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/co.agpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim`, a task of the account that ran `install` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...` from that account's own prompt: see [The Windows task's account](#the-windows-tasks-account)) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` undoes both: see [Uninstalling](#uninstalling). |
-| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: that account's own logon (Task Scheduler `<LogonTrigger>` with the account's `UserId`) | All require user opt-in: `install` prints the systemctl / launchctl / schtasks command that starts the service and never runs it. The macOS `SuccessfulExit=false` flag is load-bearing: launchd starts the daemon again after every nonzero exit, no more often than every 10 seconds (its default throttle). It doesn't watch TCC.db: while computer use is requested and Accessibility or Screen Recording isn't granted, each start runs the preflight, which starts cua-driver to check the grants, and exits 78 again, so the start after consent is granted in System Settings comes up without the user touching launchctl. See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
+| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: that account's own logon (Task Scheduler `<LogonTrigger>` with the account's `UserId`), with no network condition: a network may not be up yet at the logon, and the shim waits for the platform itself | All require user opt-in: `install` prints the systemctl / launchctl / schtasks command that starts the service and never runs it. The macOS `SuccessfulExit=false` flag is load-bearing: launchd starts the daemon again after every nonzero exit, no more often than every 10 seconds (its default throttle). It doesn't watch TCC.db: while computer use is requested and Accessibility or Screen Recording isn't granted, each start runs the preflight, which starts cua-driver to check the grants, and exits 78 again, so the start after consent is granted in System Settings comes up without the user touching launchctl. See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
 | Logs | `~/Library/Logs/autogpt-local-executor/*.log` | `journalctl --user -u autogpt-shim` + `$XDG_STATE_HOME/autogpt-local-executor/` | `%LOCALAPPDATA%\autogpt-local-executor\logs\` | Audit log location per row "Audit log" below. |
 | Restart after an exit | launchd, on any non-zero exit (`KeepAlive: {SuccessfulExit=false}`), at most every 10 s | systemd, on failure after 5 s (`Restart=on-failure`), except after 77 and 78 | The shim itself: the task runs `autogpt-shim start --supervise` | Task Scheduler doesn't start a program again after it exits. Its restart-on-failure setting applies when the action can't be started at all; a program that starts and then exits, with whatever code, is a run that completed. So under the task the shim runs its daemon as a child process and starts it again after an exit that asks for it (75) or a crash, with a pause of 5 s that doubles up to a minute while the daemon doesn't stay up for a minute. 0, 77 and 78 end it, as under systemd. A plain `autogpt-shim start` in a terminal has no such loop. |
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
@@ -230,10 +230,13 @@ still has it, and it would start a second shim for the same computer at
 every login beside the new one, where the platform lets one connection per
 computer stand. So on macOS `install` and `uninstall` also ask launchd for a
 service under the earlier label (`FORMER_LAUNCHD_LABEL` in `install.py`),
-unload it and remove its file, and say so; with none they say nothing. If it
-can't be unloaded, `install` says so before the new one is loaded, and
-`uninstall` exits 1 with the command that stops it. That code goes once no
-Mac has such a service.
+unload it and remove its file, and say so; with none they say nothing.
+`install` does it once the new entry is written, so a write that fails
+leaves the earlier service as it was. If the earlier service can't be
+unloaded, launchd can't be asked about it, or its file can't be removed,
+`install` says so before the new one is loaded, and `uninstall` exits 1,
+with the command that stops it. That code goes once no Mac has such a
+service.
 
 When the service can't be stopped, it says what failed, removes the file
 all the same, prints one command that stops the service without the file,
@@ -347,9 +350,10 @@ matter. macOS's is read by running `ioreg`, which can fail or not answer in
 its five seconds at a busy login. The ID derived without it would be
 another one, and for that start the platform would see a new computer, so
 the start stops with exit 75 and the next one reads it again. On Linux and
-Windows a read that fails keeps failing from one start to the next (no such
-file or value, or one the account may not read), so there it counts as no
-identifier, and the ID is the same each time.
+Windows, a file or a registry value that isn't there, or that the account
+may not read, stays that way from one start to the next, so it counts as no
+identifier, and the ID is the same each time. A read that fails any other
+way there (an I/O error) stops the start like the Mac's.
 
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
@@ -402,7 +406,9 @@ and the value written under it; never a look for the name followed by a
 rename, between which another start's value could take the name and be
 replaced. A file under the name is therefore a whole value, or on those
 last filesystems one another start is writing that moment, which a start
-waits two seconds for. A file there that then isn't a whole value stops
+waits two seconds for. Once a whole value is under the name it stays, even
+if syncing it to disk then fails, since another start may have read it by
+then. A file there that then isn't a whole value stops
 `start` (exit 78) rather than be replaced. So does a folder the value
 can't be kept in (exit 78, or 75 when
 a restart can fix it, such as a full disk): the shim doesn't run under an

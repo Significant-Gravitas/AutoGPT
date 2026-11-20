@@ -161,6 +161,8 @@ def is_inside_jail(
 def assert_inside_jail(
     requested_path: str | os.PathLike[str],
     allowed_root: str | os.PathLike[str],
+    *,
+    asked: str | os.PathLike[str] | None = None,
 ) -> Path:
     """Raise PathJailError if `requested_path` is outside `allowed_root`.
 
@@ -173,8 +175,13 @@ def assert_inside_jail(
     namespace, elsewhere on the disk, or one that climbs above the root
     through `..` at any point, is refused without a `realpath`, `stat` or
     `open` of it.
+
+    `asked` is the path as the request named it, for a check of a path an
+    earlier check resolved (open_jail_file): a refusal's message names
+    that one, and the resolved path it was given stays in `detail`.
     """
     raw = str(requested_path)
+    named = raw if asked is None else str(asked)
 
     # 1. Lexical normalize. expanduser handles `~`; we keep the result as a
     #    PurePath for the reserved-name / ADS / invalid-char checks. Nothing
@@ -193,19 +200,19 @@ def assert_inside_jail(
     if _is_reserved_name(lex):
         raise PathJailError(
             "PATH_RESERVED_NAME",
-            f"Path uses a Windows reserved device name: {raw!r}",
+            f"Path uses a Windows reserved device name: {named!r}",
         )
 
     if _has_alternate_data_stream(str(lex)):
         raise PathJailError(
             "PATH_INVALID_CHARS",
-            f"Path contains an NTFS alternate data stream: {raw!r}",
+            f"Path contains an NTFS alternate data stream: {named!r}",
         )
 
     if _has_invalid_chars(str(lex)):
         raise PathJailError(
             "PATH_INVALID_CHARS",
-            f"Path contains characters illegal on this OS: {raw!r}",
+            f"Path contains characters illegal on this OS: {named!r}",
         )
 
     # 2. Resolve the root: the folder the person chose, and the one place
@@ -231,7 +238,7 @@ def assert_inside_jail(
     #    all before the path could be refused.
     if _plainly_outside(str(lex), _root_spellings(allowed_root, root_resolved)):
         raise _outside(
-            raw,
+            named,
             allowed_root,
             # Worked out on the names alone, as the check was.
             f"{raw!r} comes to {os.path.normpath(from_root(lex, allowed_root))!r} by its "
@@ -249,7 +256,7 @@ def assert_inside_jail(
     except (OSError, ValueError) as exc:
         raise PathJailError(
             "PATH_INVALID_CHARS",
-            f"Cannot resolve path {raw!r}: {_reason(exc)}",
+            f"Cannot resolve path {named!r}: {_reason(exc)}",
             detail=f"{raw!r} couldn't be resolved: {exc}",
         ) from exc
 
@@ -268,7 +275,7 @@ def assert_inside_jail(
         return Path(resolved)
 
     raise _outside(
-        raw,
+        named,
         allowed_root,
         f"{raw!r} resolves to {resolved!r}, outside the root, which is {root_resolved!r}",
     )
@@ -311,9 +318,16 @@ def _root_spellings(allowed_root: str | os.PathLike[str], root_resolved: str) ->
     root was configured in it.
 
     The configured root comes first: it is the one a request's path is
-    joined to (from_root).
+    joined to (from_root). A root configured with `.` or `..` in it
+    (`/work/staging/../shared`) is kept as it was given and reported that
+    way in HELLO, so the platform's paths begin with it as written: that
+    spelling is one of the root's, ahead of the same root with its dots
+    worked out.
     """
-    spellings = [os.path.abspath(os.fspath(allowed_root)), root_resolved]
+    configured = os.fspath(allowed_root)
+    spellings = [os.path.abspath(configured), root_resolved]
+    if os.path.isabs(configured) and configured != spellings[0]:
+        spellings.insert(0, configured)
     home = os.path.expanduser("~")
     if os.path.isabs(home):
         home_resolved = _resolved_folder(home)
@@ -370,7 +384,9 @@ def _plainly_outside(
     if candidate is None:
         return True
     for spelling in spellings:
-        root = _named(spelling, windows)
+        # As it is written too: a path under a root configured with `..`
+        # in it begins with those same names.
+        root = _named(spelling, windows, keep_dots=True)
         if root is not None and candidate[0] == root[0] and _stays_under(candidate[1], root[1]):
             return False
     return True
@@ -508,14 +524,19 @@ def open_jail_file(
     allowed_root: str | os.PathLike[str],
     *,
     write: bool = False,
+    asked: str | os.PathLike[str] | None = None,
 ) -> Iterator[BinaryIO]:
     """Open a single-linked regular file, without truncating before validation.
 
     This checks the content descriptor but does not pin or traverse ancestor
     directory descriptors. Concurrent same-user filesystem changes remain out
     of scope for this path-based preview.
+
+    A handler gives the path its first check resolved, which is checked
+    again here, and the path as the request named it as `asked`: a refusal
+    at this second check names that one (assert_inside_jail).
     """
-    path = assert_inside_jail(requested_path, allowed_root)
+    path = assert_inside_jail(requested_path, allowed_root, asked=asked)
     try:
         _assert_safe_content_stat(path.stat())
     except FileNotFoundError:
@@ -539,6 +560,8 @@ def write_jail_file(
     requested_path: str | os.PathLike[str],
     allowed_root: str | os.PathLike[str],
     data: bytes,
+    *,
+    asked: str | os.PathLike[str] | None = None,
 ) -> None:
     """Write `data` to a single-linked regular file inside the jail, or create it.
 
@@ -552,8 +575,10 @@ def write_jail_file(
     isn't in), the old file's ACL isn't what the new one gets from the
     folder (on Linux and macOS), or (on Windows) its owner or DACL isn't,
     the file is overwritten in place.
+
+    `asked` is the path as the request named it, as for open_jail_file.
     """
-    path = assert_inside_jail(requested_path, allowed_root)
+    path = assert_inside_jail(requested_path, allowed_root, asked=asked)
     owner: tuple[int, int] | None = None
     set_id = False
     try:
@@ -576,7 +601,7 @@ def write_jail_file(
     try:
         _replace_with(path, data, mode, owner)
     except PermissionError:
-        with open_jail_file(path, allowed_root, write=True) as file:
+        with open_jail_file(path, allowed_root, write=True, asked=asked) as file:
             if set_id and mode is not None and hasattr(os, "fchmod"):
                 # Before the contents change, so they never carry the bits,
                 # even when the write fails part way. A file whose set-ID

@@ -37,9 +37,9 @@ import logging
 import signal
 import subprocess
 import sys
-import threading
 import time
 from collections.abc import Callable, Sequence
+from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +57,55 @@ STOP_CODES = frozenset({0, 77, 78})
 FIRST_PAUSE_SECONDS = 5.0
 LONGEST_PAUSE_SECONDS = 60.0
 SETTLED_SECONDS = 60.0
+# How often a pause between two runs looks whether a stop was asked for.
+STOP_POLL_SECONDS = 0.2
+
+
+class Stop(Protocol):
+    """A stop that can be asked for, looked at and waited for:
+    threading.Event's part in the loop, which a test passes, and _Stop's."""
+
+    def is_set(self) -> bool: ...
+
+    def set(self) -> None: ...
+
+    def wait(self, timeout: float) -> bool: ...
+
+
+class _Stop:
+    """The supervisor's stop, with no lock of its own.
+
+    The stop's signal handler sets it, and Python runs a handler on the main
+    thread, between two of its instructions, wherever that thread is.
+    threading.Event.set takes the lock that Event.wait holds around its own
+    bookkeeping, so a signal that landed there would wait for a lock its own
+    thread held, for good. Setting an attribute takes none, and `wait`
+    looks at it every STOP_POLL_SECONDS."""
+
+    def __init__(self) -> None:
+        self._asked = False
+
+    def is_set(self) -> bool:
+        return self._asked
+
+    def set(self) -> None:
+        self._asked = True
+
+    def wait(self, timeout: float) -> bool:
+        """Wait until the stop is asked for, `timeout` seconds at most, and
+        say whether it was."""
+        give_up = time.monotonic() + timeout
+        while not self._asked:
+            remaining = give_up - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(remaining, STOP_POLL_SECONDS))
+        return self._asked
 
 
 def supervise(
     run: Callable[[], int],
-    stop: threading.Event,
+    stop: Stop,
     *,
     wait: Callable[[float], bool] | None = None,
     clock: Callable[[], float] = time.monotonic,
@@ -90,30 +134,54 @@ def supervise(
 def daemon_command(arguments: Sequence[str]) -> list[str]:
     """The command that runs the daemon itself for a supervisor started with
     `arguments` (its own, without the program): the same ones without the
-    option that asked for the supervisor, run by this interpreter."""
+    option that asked for the supervisor, run by this interpreter.
+
+    However the option was written. argparse takes any beginning of a long
+    option that no other option shares, `--supervis` say, and a daemon
+    handed that would take it the same way: it would be a supervisor too,
+    start another, and no daemon would ever run. On a command line that
+    turned the supervisor on, an argument that is a beginning of the
+    option is the option: argparse reads nothing that starts with `--` as
+    another option's value."""
     return [
         sys.executable,
         "-m",
         "autogpt_local_executor",
-        *(argument for argument in arguments if argument != SUPERVISE_OPTION),
+        *(argument for argument in arguments if not _is_the_option(argument)),
     ]
 
 
+def _is_the_option(argument: str) -> bool:
+    """Whether `argument` is SUPERVISE_OPTION, whole or cut short: `--s` and
+    longer. `--` alone ends the options, and is no option."""
+    return len(argument) > 2 and SUPERVISE_OPTION.startswith(argument)
+
+
 class _Child:
-    """The daemon's process, while one runs, for a stop to end."""
+    """The daemon's process, while one runs, for a stop to end.
+
+    With no lock. The stop's signal handler ends the daemon (end), and
+    Python runs a handler on the thread that runs the daemon (run), between
+    two of its instructions. A lock that `run` held while it made the
+    process was one the handler then waited for on that same thread, for
+    good: the supervisor never stopped, and the daemon ran on. Everything
+    here is that one thread's, so there is nothing for a lock to keep
+    apart."""
 
     def __init__(self) -> None:
         self._process: subprocess.Popen[bytes] | None = None
-        self._lock = threading.Lock()
 
-    def run(self, command: Sequence[str], stop: threading.Event) -> int:
+    def run(self, command: Sequence[str], stop: Stop) -> int:
         """Run `command` to its exit and return its exit code. No input: a
         daemon under a supervisor has nobody to ask."""
-        with self._lock:
-            if stop.is_set():
-                return 0
-            process = self._process = subprocess.Popen(list(command), stdin=subprocess.DEVNULL)
+        if stop.is_set():
+            return 0
+        process = self._process = subprocess.Popen(list(command), stdin=subprocess.DEVNULL)
         try:
+            if stop.is_set():
+                # Asked for while the process was being made, when there was
+                # none yet for the stop to end.
+                self.end()
             while True:
                 try:
                     return process.wait()
@@ -122,29 +190,34 @@ class _Child:
                     # stops itself: it is waited for, and not started again.
                     stop.set()
         finally:
-            with self._lock:
-                self._process = None
+            self._process = None
 
     def end(self) -> None:
         """Ask the running daemon to stop (SIGTERM, which it handles; on
         Windows the process is ended)."""
-        with self._lock:
-            process = self._process
-            if process is not None and process.poll() is None:
-                process.terminate()
+        process = self._process
+        if process is not None and process.poll() is None:
+            process.terminate()
+
+
+def _stop_asked(stop: Stop, child: _Child) -> None:
+    """What the stop's signal handler does: no daemon is started from here
+    on, and the one that runs is told to stop. Nothing in it waits for a
+    lock (_Stop, _Child)."""
+    stop.set()
+    child.end()
 
 
 def run_supervised(arguments: Sequence[str]) -> int:
     """`autogpt-shim start --supervise`: run the daemon, and again after
     each exit that asks for it, until it or a stop ends the loop. Returns
     the daemon's last exit code."""
-    stop = threading.Event()
+    stop = _Stop()
     child = _Child()
     command = daemon_command(arguments)
 
     def stopped(_signal: int, _frame: object) -> None:
-        stop.set()
-        child.end()
+        _stop_asked(stop, child)
 
     # A service manager's stop, where there is one: the daemon is told, and
     # isn't started again. (Task Scheduler ends the task's whole job
@@ -161,7 +234,9 @@ __all__ = [
     "LONGEST_PAUSE_SECONDS",
     "SETTLED_SECONDS",
     "STOP_CODES",
+    "STOP_POLL_SECONDS",
     "SUPERVISE_OPTION",
+    "Stop",
     "daemon_command",
     "run_supervised",
     "supervise",

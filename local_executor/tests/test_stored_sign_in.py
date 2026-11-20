@@ -719,11 +719,25 @@ async def test_a_refresh_cancelled_during_its_write_keeps_the_turn_until_the_wri
         assert platform.sent == ["refresh-0"]
         refresh.cancel()
         # The write is still in the keychain, so the refresh isn't over, and
-        # a sign-out on the same store waits for the turn.
+        # a sign-out on the same store waits for the turn. Until it has
+        # tried for the turn: a sign-out that hadn't come that far yet
+        # isn't done either, whoever has the turn.
+        tries: list[bool] = []
+        try_for_the_turn = auth_module._Turn._try
+
+        def seen(turn: Any) -> bool:
+            taken = try_for_the_turn(turn)
+            tries.append(taken)
+            return taken
+
+        monkeypatch.setattr(auth_module._Turn, "_try", seen)
         signing_out = asyncio.ensure_future(store.clear_tokens())
-        await asyncio.wait([refresh, signing_out], timeout=1.0)
+        async with asyncio.timeout(60):
+            while not tries and not signing_out.done():
+                await asyncio.sleep(0.01)
+        assert not signing_out.done(), "the sign-out went ahead of the write"
+        assert not any(tries), "the sign-out took the turn while the write was under way"
         assert not refresh.done()
-        assert not signing_out.done()
     finally:
         keychain.go.set()
 

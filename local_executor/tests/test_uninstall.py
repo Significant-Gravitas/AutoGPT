@@ -17,7 +17,7 @@ import subprocess
 import sys
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -735,15 +735,19 @@ def test_the_command_to_stop_a_task_by_hand_deletes_it_only_once_it_is_ended(
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="cmd.exe is Windows'")
-def test_cmd_runs_the_second_step_only_after_a_first_that_succeeded() -> None:
+def test_cmd_runs_the_second_step_only_after_a_first_that_succeeded(tmp_path: Path) -> None:
     """What the command above rests on, with the real cmd.exe: a first step
     that fails (a file that isn't there) and one that succeeds, each written
-    both ways."""
+    both ways. Run in a folder of the test's own, which is empty: in the
+    folder the tests were started from, a file of that name would have made
+    the first step succeed."""
     fails = "type autogpt-shim-no-such-file.txt 2>nul"
     succeeds = "ver >nul"
+    assert list(tmp_path.iterdir()) == []
 
     def ran_the_second(first: str, joined_with: str) -> bool:
-        return "deleted" in _real(["cmd", "/c", f"{first} {joined_with} echo deleted"]).stdout
+        ran = _real(["cmd", "/c", f"{first} {joined_with} echo deleted"], cwd=tmp_path)
+        return "deleted" in ran.stdout
 
     assert not ran_the_second(fails, "&&")
     assert ran_the_second(succeeds, "&&")
@@ -968,10 +972,37 @@ def test_tests_cannot_reach_the_real_service_manager(monkeypatch: pytest.MonkeyP
 
 # ── The real service managers, on a service of the test's own ────────────────
 
+
+def real_service_manager_asked_for(environ: Mapping[str, str] | None = None) -> bool:
+    """Whether the tests that register a throwaway service with the OS run:
+    in CI, or with AUTOGPT_SHIM_TEST_SERVICE_MANAGER=1. Any value used to
+    do, so `=0`, set to keep them off, turned them on."""
+    environ = os.environ if environ is None else environ
+    return bool(environ.get("CI")) or environ.get("AUTOGPT_SHIM_TEST_SERVICE_MANAGER") == "1"
+
+
+@pytest.mark.parametrize(
+    ("environ", "asked_for"),
+    [
+        ({}, False),
+        ({"AUTOGPT_SHIM_TEST_SERVICE_MANAGER": "1"}, True),
+        ({"AUTOGPT_SHIM_TEST_SERVICE_MANAGER": "0"}, False),
+        ({"AUTOGPT_SHIM_TEST_SERVICE_MANAGER": ""}, False),
+        ({"AUTOGPT_SHIM_TEST_SERVICE_MANAGER": "false"}, False),
+        ({"CI": "true"}, True),
+        ({"CI": "true", "AUTOGPT_SHIM_TEST_SERVICE_MANAGER": "0"}, True),
+    ],
+)
+def test_the_real_service_managers_are_reached_in_ci_or_when_asked_for_by_1(
+    environ: dict[str, str], asked_for: bool
+) -> None:
+    assert real_service_manager_asked_for(environ) is asked_for
+
+
 # These register a throwaway service with the OS, so they run where that is
-# expected: in CI, or where AUTOGPT_SHIM_TEST_SERVICE_MANAGER is set.
+# expected: in CI, or where AUTOGPT_SHIM_TEST_SERVICE_MANAGER is 1.
 _real_manager = pytest.mark.skipif(
-    not (os.environ.get("CI") or os.environ.get("AUTOGPT_SHIM_TEST_SERVICE_MANAGER")),
+    not real_service_manager_asked_for(),
     reason="registers a throwaway service with the OS: runs in CI, or with "
     "AUTOGPT_SHIM_TEST_SERVICE_MANAGER=1",
 )
@@ -1025,9 +1056,10 @@ def _is_beating(folder: Path) -> bool:
     return False
 
 
-def _real(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+def _real(argv: Sequence[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         list(argv),
+        cwd=cwd,
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,

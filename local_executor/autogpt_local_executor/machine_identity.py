@@ -222,18 +222,26 @@ def _place(temp: Path, path: Path) -> None:
 
 def _write_under_a_new_name(value: bytes, path: Path) -> None:
     """Make the name `path`, which fails if something has it, and write
-    `value` under it. A write that fails takes the name away again: this
-    start made it, and it holds no whole value."""
+    `value` under it. A write that fails part way takes the name away
+    again: this start made it, and it holds no whole value.
+
+    Once the whole value is under the name, it stays, even if syncing it
+    then fails: another start may have read it by then and gone on under
+    its ID, and with the file removed the next start would make another
+    value. The failure is still raised, and this start stops."""
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
     descriptor = os.open(path, flags, 0o600)
+    whole = False
     try:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(value)
             handle.flush()
+            whole = True
             os.fsync(handle.fileno())
     except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(path)
+        if not whole:
+            with contextlib.suppress(OSError):
+                os.unlink(path)
         raise
 
 

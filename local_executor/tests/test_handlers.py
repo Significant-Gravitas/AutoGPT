@@ -2220,6 +2220,44 @@ def test_a_command_whose_job_cannot_be_made_is_never_resumed(
     assert resumed == []
 
 
+def test_a_command_that_cannot_be_resumed_is_refused_as_such_when_its_job_cannot_be_ended(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A command that couldn't be let run in its job has the job ended. When
+    that failed as well, its failure took the place of the first: what came
+    out was a plain OSError, where a command that wasn't run is known by its
+    JobError, and the request was answered as a start that failed for no
+    stated reason."""
+    from autogpt_local_executor import windows_jobs
+
+    class Job:
+        closed = False
+
+        def terminate(self) -> None:
+            raise OSError(errno.EACCES, "the job would not end")
+
+        def close(self) -> None:
+            self.closed = True
+
+    job = Job()
+
+    def not_resumed(_kernel32: object, _pid: int) -> None:
+        raise OSError(errno.EPERM, "the thread would not resume")
+
+    monkeypatch.setattr(windows_jobs, "_kernel32", lambda: object())
+    monkeypatch.setattr(windows_jobs, "_job_holding", lambda _kernel32, _pid: job)
+    monkeypatch.setattr(windows_jobs, "_resume", not_resumed)
+
+    with caplog.at_level(logging.WARNING, logger="autogpt_local_executor.windows_jobs"):
+        with pytest.raises(windows_jobs.JobError, match="could not be let run") as refused:
+            windows_jobs.run_in_job(4321)
+
+    assert "the thread would not resume" in str(refused.value)
+    # The job is let go of all the same, and why it wasn't ended is logged.
+    assert job.closed
+    assert "the job would not end" in caplog.text
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows job objects")
 @pytest.mark.asyncio
 async def test_a_windows_command_that_cannot_get_a_job_is_refused_before_it_runs(
