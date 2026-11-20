@@ -94,7 +94,10 @@ describe("ExecutionListSection", () => {
       render(<ExecutionListSection activeTab="running" agents={agents} />);
       // Runs the zero-delay timers that deliver the list without leaving 12:00:10.
       await act(() => vi.advanceTimersByTimeAsync(100));
-      expect(screen.getByText("Running for 10s")).toBeDefined();
+      // findBy* would hang: Testing Library never advances Vitest's fake timers.
+      await vi.waitFor(() =>
+        expect(screen.getByText("Running for 10s")).toBeDefined(),
+      );
 
       await act(() => vi.advanceTimersByTimeAsync(6_000));
       expect(screen.getByText("Running for 16s")).toBeDefined();

@@ -103,7 +103,7 @@ describe("ActivityItem", () => {
     }
   });
 
-  it("shows 0s, not Unknown, when a running execution started after the floored now", () => {
+  it("shows a few seconds, not Unknown, when a running execution started after the floored now", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-21T12:00:00.400Z"));
     try {
