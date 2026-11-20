@@ -32,13 +32,25 @@ def local_requests(**kwargs) -> Requests:
     return Requests(trusted_origins=["127.0.0.1"], **kwargs)
 
 
+# Far more waits than any cap in these tests asks for.
+MOST_RETRY_WAITS = 10_000
+
+
 async def retry_waits(client: Requests) -> list[float]:
     """The waits between the attempts of one of *client*'s requests that meets
-    a throttle status every time: what its retries would sleep, noted instead."""
+    a throttle status every time: what its retries would sleep, noted instead.
+
+    Fails at ``MOST_RETRY_WAITS``: noting a wait never yields to the event
+    loop, so a budget that never runs out would otherwise hang the test."""
     waits: list[float] = []
 
     async def note(seconds: float) -> None:
         waits.append(seconds)
+        if len(waits) >= MOST_RETRY_WAITS:
+            raise AssertionError(
+                f"The retry budget never ran out: {len(waits)} waits, so it "
+                "is unbounded."
+            )
 
     with patch.object(request_module, "sleep", note):
         budget = client._retry_budget()
