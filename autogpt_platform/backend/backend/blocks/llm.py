@@ -1178,11 +1178,16 @@ def _log_timeout_outcome(
 def _block_timeout_error(
     llm_model: LLMModel, max_tokens: int | None, timeout_seconds: float
 ) -> TimeoutError:
-    """Provider-agnostic timeout text plus the one remedy only blocks expose."""
+    """Provider-agnostic timeout text plus the one remedy only blocks expose.
+
+    A retry's timeout is what was left of the shared deadline on the real
+    clock, so the message rounds it to a tenth of a second.
+    """
     budget = max_tokens or llm_model.max_output_tokens
     hint = f" (currently {budget})" if budget else ""
+    target = f"{llm_model.metadata.provider}/{llm_model.value}"
     return TimeoutError(
-        f"{timeout_error(f'{llm_model.metadata.provider}/{llm_model.value}', timeout_seconds)}"
+        f"{timeout_error(target, round(timeout_seconds, 1))}"
         f" You can also lower the advanced Max Tokens setting{hint}."
     )
 
