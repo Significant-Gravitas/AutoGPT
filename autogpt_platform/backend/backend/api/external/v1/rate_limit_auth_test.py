@@ -5,8 +5,27 @@ import pytest
 from fastapi import HTTPException
 from prisma.enums import APIKeyPermission
 
-from backend.api.external import middleware
+from backend.api.external import auth_rate_limit, middleware
 from backend.data.auth import api_key
+
+
+@pytest.mark.parametrize("bearer", [False, True], ids=["api-key", "bearer-key"])
+async def test_v1_client_authenticates_without_admission_redis(
+    mocker, v1_client, v1_counter, v1_generated_keys, v1_key_rows, bearer
+):
+    redis = mocker.AsyncMock()
+    redis.eval.return_value = 1
+    get_redis = mocker.patch.object(
+        auth_rate_limit, "get_redis_async", return_value=redis
+    )
+    key = v1_generated_keys[0].key
+    headers = {"Authorization": f"Bearer {key}"} if bearer else {"X-API-Key": key}
+
+    response = await v1_client.get("/v1/me", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["id"] == v1_key_rows[0].user_id
+    get_redis.assert_not_awaited()
 
 
 @pytest.mark.parametrize("bearer", [False, True], ids=["api-key", "bearer-key"])

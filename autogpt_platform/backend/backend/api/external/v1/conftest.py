@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import OAuthAccessToken, OAuthApplication
 
-from backend.api.external import rate_limit
+from backend.api.external import middleware, rate_limit
 from backend.api.external.fastapi_app import external_api
 from backend.api.external.v1.routes import UserInfoResponse
 from backend.data.auth import api_key
@@ -129,6 +129,14 @@ async def v1_client(mocker, v1_auth_storage, v1_clock):
         "backend.api.external.v1.routes.user_db.get_user_by_id",
         side_effect=user_by_id,
     )
+    # Leave Redis admission checks to tests that exercise the limiter.
+    mocker.patch.object(
+        middleware, "enforce_api_key_validate_rate_limit", return_value=None
+    )
+    mocker.patch.object(
+        middleware, "refund_api_key_validate_rate_limit", return_value=None
+    )
+
     async with AsyncClient(
         transport=ASGITransport(app=external_api), base_url="http://test"
     ) as client:
