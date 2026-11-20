@@ -161,6 +161,44 @@ async def test_publishing_a_skill_that_is_not_in_the_library_is_refused(
         await skill_submission_db.submit_skill(creator, _request())
 
 
+async def test_a_package_from_outside_the_library_submits_like_a_library_skill(
+    creator, mocker
+):
+    library = mocker.patch.object(skill_submission_db, "read_user_skill_package")
+    sibling = SkillFile(relative_path="notes.md", content=b"# Notes\n")
+
+    submission = await skill_submission_db.submit_skill_package(
+        creator, _request(), LIBRARY_SKILL, [sibling]
+    )
+
+    library.assert_not_called()
+    assert submission.status == prisma.enums.SubmissionStatus.PENDING
+    assert submission.slug == "brand-voice-guide"
+    files = await skill_db.file_meta_by_version([submission.skill_listing_version_id])
+    assert [file.path for file in files[submission.skill_listing_version_id]] == [
+        "notes.md"
+    ]
+    created = await prisma.models.SkillListingVersion.prisma().find_unique(
+        where={"id": submission.skill_listing_version_id}
+    )
+    assert created is not None
+    assert created.body == LIBRARY_SKILL.body
+    assert created.sourceSkillSlug == "brand-voice-guide"
+
+
+async def test_a_package_from_outside_the_library_still_needs_a_profile(
+    setup_test_user,
+):
+    await prisma.models.Profile.prisma().delete_many(where={"userId": setup_test_user})
+
+    with pytest.raises(PreconditionFailed, match="Marketplace Profile"):
+        await skill_submission_db.submit_skill_package(
+            setup_test_user, _request(), LIBRARY_SKILL, []
+        )
+
+    assert await prisma.models.SkillListing.prisma().count() == 0
+
+
 async def test_a_slug_another_creator_holds_is_refused(creator):
     await prisma.models.SkillListing.prisma().create(
         data={"slug": "brand-voice-guide", "owningUserId": None}

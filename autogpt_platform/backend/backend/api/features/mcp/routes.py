@@ -7,7 +7,7 @@ frontend can list available tools on an MCP server before placing a block.
 
 import asyncio
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
 import fastapi
@@ -24,6 +24,7 @@ from backend.api.features.mcp.oauth_registration import (
     check_preregistered_endpoints,
     preregistered_client,
     preregistered_revocation_endpoint,
+    requested_scopes,
     requires_registered_client,
     select_client_auth_method,
 )
@@ -228,6 +229,10 @@ class MCPOAuthLoginRequest(BaseModel):
         description="OAuth scopes to request. Omit or use null to use catalogue or discovered defaults; "
         "an empty list requests no scopes.",
     )
+    client: Literal["native"] | None = Field(
+        default=None,
+        description="Set to native when the mobile app starts the sign-in",
+    )
 
     @field_validator("scopes")
     @classmethod
@@ -279,19 +284,16 @@ async def mcp_oauth_login(
     server_url = normalize_mcp_url(request.server_url)
     frontend_base_url = settings.config.frontend_base_url
     catalog_entry = get_mcp_catalog_entry_for_url(server_url)
-    catalog_scopes: list[str] | None = None
-    if catalog_entry:
-        if "oauth" not in catalog_entry.mcp_server.auth_methods:
-            raise fastapi.HTTPException(
-                status_code=400,
-                detail={
-                    "code": NO_OAUTH_CODE,
-                    "message": f"{catalog_entry.display_name} uses "
-                    f"{' / '.join(catalog_entry.mcp_server.auth_methods)} "
-                    f"authentication. {catalog_entry.mcp_server.setup_instructions}",
-                },
-            )
-        catalog_scopes = catalog_entry.mcp_server.oauth_scopes
+    if catalog_entry and "oauth" not in catalog_entry.mcp_server.auth_methods:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail={
+                "code": NO_OAUTH_CODE,
+                "message": f"{catalog_entry.display_name} uses "
+                f"{' / '.join(catalog_entry.mcp_server.auth_methods)} "
+                f"authentication. {catalog_entry.mcp_server.setup_instructions}",
+            },
+        )
     client = MCPClient(server_url)
 
     # Step 1: Discover protected-resource metadata (RFC 9728)
@@ -360,11 +362,10 @@ async def mcp_oauth_login(
     scopes = (
         request.scopes
         if request.scopes is not None
-        else (
-            catalog_scopes
-            if catalog_scopes is not None
-            else (protected_resource or {}).get("scopes_supported")
-            or metadata.get("scopes_supported", [])
+        else requested_scopes(
+            catalog_entry.mcp_server if catalog_entry else None,
+            protected_resource,
+            metadata,
         )
     )
     issuer = _validated_issuer(metadata, expected_issuer)
@@ -499,6 +500,7 @@ async def mcp_oauth_login(
             "issuer": issuer,
             "iss_required": iss_required,
         },
+        native=request.client == "native",
     )
 
     # Step 5: Build and return the login URL
@@ -706,7 +708,7 @@ async def mcp_store_token(
     Used by the Copilot MCPSetupCard when the server doesn't support the MCP
     OAuth discovery flow (returns 400 from /oauth/login).  Subsequent
     ``run_capability`` MCP calls will automatically pick up the credential via
-    ``_auto_lookup_credential``.
+    ``auto_lookup_mcp_credential``.
     """
     try:
         authorization = normalize_mcp_authorization(request.token.get_secret_value())

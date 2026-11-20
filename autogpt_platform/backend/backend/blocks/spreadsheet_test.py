@@ -14,6 +14,7 @@ backend test suite has no binary fixtures, and building it makes the exact
 difference between a literal "N/A" cell and a genuinely empty one explicit.
 """
 
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -142,6 +143,107 @@ async def test_excel_cell_containing_the_delimiter_survives(tmp_path):
         target.unlink(missing_ok=True)
 
     assert rows == [{"name": "widget", "note": "a;b"}]
+
+
+# The .xlsx caps: 50 MiB per member, 200 MiB per workbook.
+XLSX_MEMBER_CAP = 50 * 1024 * 1024
+
+
+def add_member(workbook: Path, name: str, size: int) -> None:
+    """Append a member of ``size`` zero bytes, written in pieces."""
+    with (
+        zipfile.ZipFile(workbook, "a", zipfile.ZIP_DEFLATED) as archive,
+        archive.open(name, "w") as member,
+    ):
+        for start in range(0, size, 4 * 1024 * 1024):
+            member.write(b"\0" * min(4 * 1024 * 1024, size - start))
+
+
+@pytest.mark.asyncio
+async def test_excel_member_unpacking_past_the_cap_is_refused_unread(workbook_path):
+    add_member(workbook_path, "xl/media/image1.png", XLSX_MEMBER_CAP + 1)
+    assert workbook_path.stat().st_size < 1_000_000
+
+    with (
+        patch(
+            "pandas.read_excel",
+            side_effect=AssertionError("the workbook was read"),
+        ) as read_excel,
+        pytest.raises(ValueError, match="unpacks to more than"),
+    ):
+        await read_rows(file_input=MediaFileType("book.xlsx"))
+    read_excel.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_excel_is_read_from_the_bytes_that_were_checked(workbook_path):
+    import io
+
+    import pandas as pd
+
+    from backend.blocks import spreadsheet
+    from backend.util.file_content_parser import check_xlsx_unpacked_size
+
+    checked: list[bytes] = []
+    read: list[bytes] = []
+    real_read_excel = pd.read_excel
+    original = workbook_path.read_bytes()
+
+    def check_then_change_file(archive, **kwargs):
+        checked.append(archive.getvalue())
+        check_xlsx_unpacked_size(archive, **kwargs)
+        workbook_path.write_bytes(b"not the workbook that was checked")
+
+    def record_read(source, *args, **kwargs):
+        assert isinstance(source, io.BytesIO)
+        read.append(source.getvalue())
+        return real_read_excel(source, *args, **kwargs)
+
+    with (
+        patch.object(spreadsheet, "check_xlsx_unpacked_size", check_then_change_file),
+        patch("pandas.read_excel", record_read),
+    ):
+        rows = await read_rows(file_input=MediaFileType("book.xlsx"))
+
+    assert checked == [original]
+    assert read == checked
+    assert rows[0]["status"] == "N/A"
+
+
+@pytest.mark.asyncio
+async def test_excel_member_at_the_cap_is_read(workbook_path):
+    add_member(workbook_path, "xl/media/image1.png", XLSX_MEMBER_CAP)
+
+    rows = await read_rows(file_input=MediaFileType("book.xlsx"))
+
+    assert rows[0]["status"] == "N/A"
+
+
+@pytest.mark.asyncio
+async def test_excel_member_past_the_cap_is_reported_once(workbook_path):
+    add_member(workbook_path, "xl/media/image1.png", XLSX_MEMBER_CAP + 1)
+
+    with (
+        patch("backend.util.file_content_parser.sentry_sdk.capture_message") as report,
+        pytest.raises(ValueError, match="unpacks to more than"),
+    ):
+        await read_rows(file_input=MediaFileType("book.xlsx"))
+
+    report.assert_called_once()
+    assert report.call_args.args == ("xlsx workbook over unpack limit",)
+    assert report.call_args.kwargs["level"] == "warning"
+    assert report.call_args.kwargs["tags"] == {
+        "xlsx_limit": "MAX_XLSX_MEMBER_BYTES",
+        "xlsx_source": "spreadsheet_block",
+    }
+
+
+@pytest.mark.asyncio
+async def test_excel_within_the_caps_is_not_reported(workbook_path):
+    with patch("backend.util.file_content_parser.sentry_sdk.capture_message") as report:
+        await read_rows(file_input=MediaFileType("book.xlsx"))
+
+    report.assert_not_called()
 
 
 @pytest.mark.asyncio

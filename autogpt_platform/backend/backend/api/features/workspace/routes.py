@@ -4,8 +4,8 @@ Workspace API routes for managing user file storage.
 
 import asyncio
 import logging
-import os
 import re
+from collections.abc import AsyncIterator
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
@@ -13,17 +13,18 @@ import aiohttp
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
 from fastapi import Depends, Query, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from prisma.errors import UniqueViolationError
 from pydantic import BaseModel, Field, field_validator
 
-from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.api.features.workspace.preview import build_preview_response
+from backend.api.features.workspace.service import store_workspace_upload
 from backend.copilot.db import get_chat_session_expert_ids
 from backend.copilot.rate_limit import (
     enforce_payment_paywall,
     get_workspace_storage_limit_bytes,
 )
+from backend.copilot.tools.skills import invalidate_skills_index_for_path
 from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import (
     WorkspaceFile,
@@ -32,15 +33,13 @@ from backend.data.workspace import (
     get_workspace,
     get_workspace_file,
     get_workspace_size_breakdown,
-    get_workspace_total_size,
     rename_workspace_file,
 )
 from backend.data.workspace_scope import (
     resolve_expert_workspace_scope,
     session_path_prefix,
 )
-from backend.util.settings import Config
-from backend.util.workspace import WorkspaceManager, format_bytes
+from backend.util.workspace import WorkspaceManager
 from backend.util.workspace_storage import (
     WorkspaceStorageBackend,
     get_workspace_storage,
@@ -57,18 +56,21 @@ def _sanitize_filename_for_header(
     Uses RFC5987 encoding for non-ASCII characters.
     """
     # Remove CR, LF, and null bytes (header injection prevention)
-    sanitized = re.sub(r"[\r\n\x00]", "", filename)
-    # Escape quotes
-    sanitized = sanitized.replace('"', '\\"')
+    cleaned = re.sub(r"[\r\n\x00]", "", filename)
     # For non-ASCII, use RFC5987 filename* parameter
     # Check if filename has non-ASCII characters
     try:
-        sanitized.encode("ascii")
-        return f'{disposition}; filename="{sanitized}"'
+        cleaned.encode("ascii")
     except UnicodeEncodeError:
-        # Use RFC5987 encoding for UTF-8 filenames
-        encoded = quote(sanitized, safe="")
+        # Use RFC5987 encoding for UTF-8 filenames. Encode the raw name, not
+        # the quoted-string escaped one, so `"` arrives as %22 (not %5C%22).
+        encoded = quote(cleaned, safe="")
         return f"{disposition}; filename*=UTF-8''{encoded}"
+    # Quoted-string: escape backslash before quote. Otherwise `\"` in the
+    # name becomes `\\"`, the quote closes the string, and the rest of the
+    # name is parsed as extra parameters (e.g. an injected filename*).
+    escaped = cleaned.replace("\\", "\\\\").replace('"', '\\"')
+    return f'{disposition}; filename="{escaped}"'
 
 
 logger = logging.getLogger(__name__)
@@ -79,20 +81,23 @@ router = fastapi.APIRouter(
 
 
 def _create_streaming_response(
-    content: bytes, file: WorkspaceFile, *, inline: bool = False
-) -> Response:
-    """Create a streaming response for file content."""
+    content: AsyncIterator[bytes], file: WorkspaceFile, *, inline: bool = False
+) -> StreamingResponse:
+    """Create a streaming response for file content.
+
+    Sent chunked, without Content-Length: the size on the file record is not
+    measured from the stored bytes, and a wrong one would break the download.
+    """
     disposition = _sanitize_filename_for_header(
         file.name, disposition="inline" if inline else "attachment"
     )
-    return Response(
+    return StreamingResponse(
         content=content,
         media_type=file.mime_type,
         headers={
             "Content-Disposition": disposition,
             "Content-Security-Policy": "sandbox",
             "X-Content-Type-Options": "nosniff",
-            "Content-Length": str(len(content)),
         },
     )
 
@@ -100,19 +105,22 @@ def _create_streaming_response(
 _STORAGE_READ_ATTEMPTS = 2
 
 
-async def _read_file_content(
+async def _stream_file_content(
     storage: WorkspaceStorageBackend, file: WorkspaceFile
-) -> bytes:
-    """Read a file's bytes, retrying once on a transient storage error.
+) -> AsyncIterator[bytes]:
+    """Stream a file's bytes, retrying the first read once on a transient error.
 
-    Content missing from storage is a 404, not a server error. A storage read
-    that keeps failing (a GCS body cut off mid-transfer, a timeout, a 5xx from
-    the bucket) is a 502, logged with its traceback so it reaches Sentry.
+    The first chunk is read here, while the status can still change. Content
+    missing from storage is a 404, not a server error. A first read that keeps
+    failing (a timeout, a 5xx from the bucket) is a 502, logged with its
+    traceback so it reaches Sentry; a failure after it ends the response early.
     """
     attempt = 1
     while True:
+        chunks = storage.retrieve_stream(file.storage_path)
         try:
-            return await storage.retrieve(file.storage_path)
+            first_chunk = await anext(chunks, b"")
+            return _prepend(first_chunk, chunks)
         except FileNotFoundError:
             logger.warning(
                 f"File {file.id} has a record but no content in storage "
@@ -121,12 +129,14 @@ async def _read_file_content(
             raise fastapi.HTTPException(status_code=404, detail="File not found")
         except (aiohttp.ClientError, OSError) as e:
             if attempt < _STORAGE_READ_ATTEMPTS:
-                logger.warning(f"Retrying read of file {file.id} after {e!r}")
+                logger.warning(
+                    f"Retrying read of file {file.id} after {type(e).__name__}"
+                )
                 attempt += 1
                 continue
             logger.error(
                 f"Failed to read file {file.id} from storage after {attempt} "
-                f"attempts (storagePath={file.storage_path}): {e!r}",
+                f"attempts (storagePath={file.storage_path}): {type(e).__name__}",
                 exc_info=True,
             )
             raise fastapi.HTTPException(
@@ -160,8 +170,14 @@ async def create_file_download_response(
         if url and not url.startswith("/api/"):
             return fastapi.responses.RedirectResponse(url=url, status_code=302)
 
-    content = await _read_file_content(storage, file)
+    content = await _stream_file_content(storage, file)
     return _create_streaming_response(content, file, inline=inline)
+
+
+async def _prepend(first: bytes, rest: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
+    yield first
+    async for chunk in rest:
+        yield chunk
 
 
 class WorkspaceFileUploadResponse(BaseModel):
@@ -308,9 +324,14 @@ async def delete_workspace_file(
         raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
 
     manager = WorkspaceManager(user_id, workspace.id)
-    deleted = await manager.delete_file(file_id)
-    if not deleted:
+    file = await manager.get_file_info(file_id)
+    if file is None:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
+    try:
+        if not await manager.delete_file(file_id):
+            raise fastapi.HTTPException(status_code=404, detail="File not found")
+    finally:
+        await invalidate_skills_index_for_path(user_id, file.path)
 
     return DeleteFileResponse(deleted=True)
 
@@ -333,6 +354,9 @@ async def rename_workspace_file_route(
     workspace = await get_workspace(user_id)
     if workspace is None:
         raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
+    file = await get_workspace_file(file_id, workspace.id)
+    if file is None:
+        raise fastapi.HTTPException(status_code=404, detail="File not found")
     try:
         renamed = await rename_workspace_file(file_id, workspace.id, payload.name)
     except UniqueViolationError:
@@ -341,6 +365,9 @@ async def rename_workspace_file_route(
         )
     except SkillLimitError as exc:
         raise fastapi.HTTPException(status_code=409, detail=str(exc))
+    finally:
+        # A rename stays in its folder, including after a lost acknowledgement.
+        await invalidate_skills_index_for_path(user_id, file.path)
     if renamed is None:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
     expert_by_session = await _expert_ids_by_session(user_id, [renamed])
@@ -366,77 +393,9 @@ async def upload_file(
     so the agent's session-scoped tools can discover them automatically.
     """
     # Empty-string session_id drops session scoping; normalize to None.
-    session_id = session_id or None
-
-    config = Config()
-
-    # Sanitize filename — strip any directory components
-    filename = os.path.basename(file.filename or "upload") or "upload"
-
-    # Read file content with early abort on size limit
-    max_file_bytes = config.max_file_size_mb * 1024 * 1024
-    chunks: list[bytes] = []
-    total_size = 0
-    while chunk := await file.read(64 * 1024):  # 64KB chunks
-        total_size += len(chunk)
-        if total_size > max_file_bytes:
-            raise fastapi.HTTPException(
-                status_code=413,
-                detail=f"File exceeds maximum size of {config.max_file_size_mb} MB",
-            )
-        chunks.append(chunk)
-    content = b"".join(chunks)
-
-    # Get or create workspace
-    workspace = await get_or_create_workspace(user_id)
-
-    # Write file via WorkspaceManager (handles virus scan, per-file size,
-    # and per-user tier-based storage quota internally).
-    manager = WorkspaceManager(user_id, workspace.id, session_id)
-    try:
-        workspace_file = await manager.write_file(
-            content, filename, overwrite=overwrite, metadata={"origin": "user-upload"}
-        )
-    except VirusDetectedError as e:
-        raise fastapi.HTTPException(status_code=400, detail=str(e)) from e
-    except VirusScanError as e:
-        raise fastapi.HTTPException(status_code=500, detail=str(e)) from e
-    except OSError as e:
-        logger.exception("Failed to store uploaded workspace file")
-        raise fastapi.HTTPException(
-            status_code=500, detail="Unable to store file. Please try again."
-        ) from e
-    except ValueError as e:
-        # write_file raises ValueError for path-conflict, size-limit, and
-        # storage-quota cases; map each to its correct HTTP status.
-        message = str(e)
-        if message.startswith(("File too large", "Storage limit exceeded")):
-            raise fastapi.HTTPException(status_code=413, detail=message) from e
-        raise fastapi.HTTPException(status_code=409, detail=message) from e
-
-    # Post-write storage check — eliminates TOCTOU race on the quota.
-    # If a concurrent upload pushed us over the limit, undo this write.
-    storage_limit_bytes = await get_workspace_storage_limit_bytes(user_id)
-    new_total = await get_workspace_total_size(workspace.id)
-    if storage_limit_bytes and new_total > storage_limit_bytes:
-        try:
-            # Route through WorkspaceManager so the storage backend blob is
-            # removed too — soft_delete_workspace_file alone leaks the blob.
-            await manager.delete_file(workspace_file.id)
-        except Exception as e:
-            logger.warning(
-                f"Failed to delete over-quota file {workspace_file.id} "
-                f"in workspace {workspace.id}: {e}"
-            )
-        raise fastapi.HTTPException(
-            status_code=413,
-            detail=(
-                f"Storage limit exceeded. "
-                f"You've used {format_bytes(new_total)} of your "
-                f"{format_bytes(storage_limit_bytes)} quota. "
-                f"Delete some files or upgrade your plan for more storage."
-            ),
-        )
+    workspace_file = await store_workspace_upload(
+        user_id, file, session_id=session_id or None, overwrite=overwrite
+    )
 
     return WorkspaceFileUploadResponse(
         file_id=workspace_file.id,

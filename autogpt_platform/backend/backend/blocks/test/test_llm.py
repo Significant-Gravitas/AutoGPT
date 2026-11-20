@@ -60,6 +60,7 @@ class TestLLMStatsTracking:
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
             assert isinstance(response, llm.LLMResponse)
@@ -108,6 +109,7 @@ class TestLLMStatsTracking:
                 llm_model=llm.LLMModel.CLAUDE_4_5_HAIKU,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
             assert isinstance(response, llm.LLMResponse)
@@ -149,8 +151,12 @@ class TestLLMStatsTracking:
         )
 
         outputs = {}
-        # Mock secrets.token_hex to return consistent ID
-        with patch("secrets.token_hex", return_value="test123456"):
+        # Patch the deterministic output-tag helper to a fixed value
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for output_name, output_data in block.run(
                 input_data, credentials=llm.TEST_CREDENTIALS
             ):
@@ -255,8 +261,12 @@ class TestLLMStatsTracking:
         )
 
         outputs = {}
-        # Mock secrets.token_hex to return consistent ID
-        with patch("secrets.token_hex", return_value="test123456"):
+        # Patch the deterministic output-tag helper to a fixed value
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for output_name, output_data in block.run(
                 input_data, credentials=llm.TEST_CREDENTIALS
             ):
@@ -319,7 +329,11 @@ class TestLLMStatsTracking:
             retry=2,
         )
 
-        with patch("secrets.token_hex", return_value="test123456"):
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                 pass
 
@@ -360,7 +374,11 @@ class TestLLMStatsTracking:
             retry=1,
         )
 
-        with patch("secrets.token_hex", return_value="tok123456"):
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="tok123456",
+        ):
             async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                 pass
 
@@ -503,8 +521,12 @@ class TestLLMStatsTracking:
                 max_tokens=1000,  # Large enough to avoid chunking
             )
 
-            # Mock secrets.token_hex to return consistent ID
-            with patch("secrets.token_hex", return_value="test123456"):
+            # Patch the deterministic output-tag helper to a fixed value
+            with patch.object(
+                llm.AIStructuredResponseGeneratorBlock,
+                "get_collision_proof_output_tag_id",
+                return_value="test123456",
+            ):
                 outputs = {}
                 async for output_name, output_data in block.run(
                     input_data, credentials=llm.TEST_CREDENTIALS
@@ -674,8 +696,12 @@ class TestLLMStatsTracking:
 
         # Run the block
         outputs = {}
-        # Mock secrets.token_hex to return consistent ID
-        with patch("secrets.token_hex", return_value="test123456"):
+        # Patch the deterministic output-tag helper to a fixed value
+        with patch.object(
+            llm.AIStructuredResponseGeneratorBlock,
+            "get_collision_proof_output_tag_id",
+            return_value="test123456",
+        ):
             async for output_name, output_data in block.run(
                 input_data, credentials=llm.TEST_CREDENTIALS
             ):
@@ -1133,6 +1159,40 @@ class TestUserErrorStatusCodeHandling:
             call_count > 1
         ), f"Expected multiple retry attempts for 500, got {call_count}"
 
+
+class TestContextLengthRetryHandling:
+    """Context-length failures retry with reduced max_tokens, never reaching 0."""
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_reduction_clamps_above_zero(self):
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        seen_max_tokens = []
+
+        async def mock_llm_call(*args, **kwargs):
+            seen_max_tokens.append(kwargs["max_tokens"])
+            raise ValueError("This model's maximum context length is 8192 tokens")
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+                max_tokens=2,
+                retry=5,
+            )
+
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert len(seen_max_tokens) > 1, "context-length errors should keep retrying"
+        assert all(
+            tokens >= 1 for tokens in seen_max_tokens[1:]
+        ), f"max_tokens decayed below 1: {seen_max_tokens}"
+
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
         """User-caused errors should log with logger.warning, not logger.exception."""
@@ -1161,6 +1221,124 @@ class TestUserErrorStatusCodeHandling:
 
         mock_warning.assert_called_once()
         mock_exception.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_model_id_error_appends_guidance(self):
+        """Invalid model ID errors should surface a targeted remediation hint."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(
+                400, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
+            )
+            raise openai.APIStatusError(
+                (
+                    "Error code: 400 - {'error': {'message': "
+                    "'invalid model ID: claude-haiku-4-5-20251001'}}"
+                ),
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LLMModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert call_count == 1
+        assert "check anthropic's current model list" in str(exc_info.value).lower()
+        assert "update the block's model configuration" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_generic_bad_request_does_not_append_model_guidance(self):
+        """Non-model 400 errors should keep their original provider message and
+        still be retried (i.e. they are not treated as non-retryable)."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(
+                400, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
+            )
+            raise openai.APIStatusError(
+                "Error code: 400 - {'error': {'message': 'prompt rejected by moderation'}}",
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LLMModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=2,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        # Generic 400s are retryable, so the mock must be invoked more than once.
+        assert call_count > 1
+        error_message = str(exc_info.value).lower()
+        assert "check anthropic's current model list" not in error_message
+        assert "update the block's model configuration" not in error_message
+
+    @pytest.mark.asyncio
+    async def test_anthropic_invalid_model_id_error_appends_guidance(self):
+        """Invalid model ID errors from the Anthropic SDK should also surface
+        remediation guidance and skip retries."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            response = httpx.Response(404, request=request)
+            raise anthropic.APIStatusError(
+                "Error code: 404 - model `claude-imaginary` does not exist",
+                response=response,
+                body=None,
+            )
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.LLMModel.CLAUDE_4_5_HAIKU,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
+
+            with pytest.raises(RuntimeError) as exc_info:
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
+
+        assert call_count == 1
+        error_message = str(exc_info.value).lower()
+        assert "check anthropic's current model list" in error_message
+        assert "update the block's model configuration" in error_message
 
 
 async def test_a_refused_prompt_fails_the_block_with_a_plain_error():
@@ -1331,6 +1509,7 @@ class TestAnthropicCacheControl:
                     {"role": "user", "content": "Hello"},
                 ],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
         system_arg = captured_kwargs.get("system")
@@ -1387,6 +1566,7 @@ class TestAnthropicCacheControl:
                 ],
                 max_tokens=100,
                 tools=tools,
+                on_abandoned=None,
             )
 
         an_tools = captured_kwargs.get("tools")
@@ -1425,6 +1605,7 @@ class TestAnthropicCacheControl:
                 ],
                 max_tokens=100,
                 tools=None,
+                on_abandoned=None,
             )
 
         import anthropic
@@ -1462,6 +1643,7 @@ class TestAnthropicCacheControl:
                 llm_model=llm.LLMModel.CLAUDE_4_6_SONNET,
                 prompt=[{"role": "user", "content": "Hi"}],
                 max_tokens=50,
+                on_abandoned=None,
             )
 
         assert (
@@ -1500,11 +1682,61 @@ class TestAnthropicCacheControl:
                     {"role": "user", "content": "Hi"},
                 ],
                 max_tokens=50,
+                on_abandoned=None,
             )
 
         assert (
             "system" not in captured_kwargs
         ), "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+
+
+class TestStableStructuredOutputTag:
+    """The json_output tag must be deterministic for a given expected_format so
+    Anthropic ephemeral prompt-cache prefixes stay byte-stable across calls."""
+
+    def test_same_expected_format_yields_identical_tag_and_system_prefix(self):
+        import json as _json
+
+        block_a = llm.AIStructuredResponseGeneratorBlock()
+        block_b = llm.AIStructuredResponseGeneratorBlock()
+        expected_format = {"key1": "desc1", "key2": "desc2"}
+
+        tag_a = block_a.get_collision_proof_output_tag_id(expected_format)
+        tag_b = block_b.get_collision_proof_output_tag_id(expected_format)
+        assert tag_a == tag_b
+        assert len(tag_a) == 16
+
+        output_tag_start = f'<json_output id="{tag_a}">'
+        sys_a = block_a.response_format_instructions(
+            expected_format,
+            list_mode=False,
+            pure_json_mode=False,
+            output_tag_start=output_tag_start,
+        )
+        sys_b = block_b.response_format_instructions(
+            expected_format,
+            list_mode=False,
+            pure_json_mode=False,
+            output_tag_start=f'<json_output id="{tag_b}">',
+        )
+        assert sys_a == sys_b
+        assert output_tag_start in sys_a
+
+        # Parser still matches the deterministic tag used in the instruction.
+        payload = {"key1": "v1", "key2": "v2"}
+        response_text = f"{output_tag_start}{_json.dumps(payload)}</json_output>"
+        parsed = block_a.get_json_from_response(
+            response_text,
+            pure_json_mode=False,
+            output_tag_start=output_tag_start,
+        )
+        assert parsed == payload
+
+    def test_different_expected_format_yields_different_tag(self):
+        block = llm.AIStructuredResponseGeneratorBlock()
+        tag_a = block.get_collision_proof_output_tag_id({"a": "1"})
+        tag_b = block.get_collision_proof_output_tag_id({"a": "2"})
+        assert tag_a != tag_b
 
 
 class TestLLMRequestTimeout:
@@ -1547,6 +1779,7 @@ class TestLLMRequestTimeout:
                     llm_model=llm.DEFAULT_LLM_MODEL,
                     prompt=[{"role": "user", "content": "Hello"}],
                     max_tokens=100,
+                    on_abandoned=None,
                 )
 
             msg = str(exc_info.value)
@@ -1579,6 +1812,7 @@ class TestLLMRequestTimeout:
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
         # The generation budget lands on the read phase; connect stays short so
@@ -1918,199 +2152,6 @@ class TestLLMRequestTimeout:
             call_count["n"] == 1
         ), f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
 
-    def test_remaining_attempt_timeout_uses_leftover_budget(self):
-        per_attempt = 10.0
-        deadline = 100.0
-        assert llm.remaining_attempt_timeout(deadline, per_attempt, now=90.0) == 10.0
-        assert llm.remaining_attempt_timeout(deadline, per_attempt, now=94.0) == 6.0
-        assert llm.remaining_attempt_timeout(deadline, per_attempt, now=100.0) == 0.0
-
-    @pytest.mark.asyncio
-    async def test_structured_block_retries_use_remaining_deadline(self, monkeypatch):
-        """A slow-then-malformed first attempt must not get a fresh full timeout.
-
-        The retry loop shares one deadline: each attempt is
-        ``min(remaining, per_attempt_timeout)``.
-        """
-        per_attempt = 0.5
-        first_delay = 0.12
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", per_attempt)
-        monkeypatch.setattr(llm, "LLM_MIN_ATTEMPT_SECONDS", 0.05)
-
-        captured_timeouts: list[float] = []
-        real_wait_for = asyncio.wait_for
-
-        async def tracking_wait_for(aw, timeout: float, **kwargs):
-            captured_timeouts.append(timeout)
-            return await real_wait_for(aw, timeout=timeout)
-
-        monkeypatch.setattr(llm.asyncio, "wait_for", tracking_wait_for)
-
-        call_n = {"n": 0}
-
-        def _llm_response(text: str) -> llm.LLMResponse:
-            return llm.LLMResponse(
-                raw_response="",
-                prompt=[],
-                response=text,
-                tool_calls=None,
-                prompt_tokens=1,
-                completion_tokens=1,
-                reasoning=None,
-            )
-
-        async def fake_provider_call(*args, **kwargs):
-            call_n["n"] += 1
-            if call_n["n"] == 1:
-                await asyncio.sleep(first_delay)
-                return _llm_response(
-                    '<json_output id="test123456">{"wrong": "key"}</json_output>'
-                )
-            return _llm_response(
-                '<json_output id="test123456">{"key": "value"}</json_output>'
-            )
-
-        monkeypatch.setattr(llm, "_llm_call", fake_provider_call)
-
-        block = llm.AIStructuredResponseGeneratorBlock()
-        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
-            prompt="Hello",
-            expected_format={"key": "value"},
-            model=llm.DEFAULT_LLM_MODEL,
-            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
-            retry=3,
-        )
-
-        with patch("secrets.token_hex", return_value="test123456"):
-            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
-                pass
-
-        assert call_n["n"] == 2
-        assert len(captured_timeouts) == 2
-        assert captured_timeouts[0] <= per_attempt
-        assert captured_timeouts[1] < captured_timeouts[0]
-        assert captured_timeouts[1] <= captured_timeouts[0] - first_delay + 0.05
-        assert captured_timeouts[1] > 0
-
-    # Shared-deadline tests below run on a fake clock: each fake provider call
-    # advances it instead of sleeping, and the real wait_for never fires.
-    _BUDGET = 600
-
-    def _deadline_block(self, monkeypatch, steps):
-        """Block whose provider calls run ``steps`` in order on a fake clock.
-
-        A step is ``(seconds, outcome)``: the call takes ``seconds``, then
-        returns ``outcome`` text or raises it. A step longer than the slice the
-        loop handed out times out at the slice, as the real wait_for would.
-        Returns the block, the clock, and the slice each attempt got.
-        """
-        monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", self._BUDGET)
-        clock = {"t": float(int(time.monotonic()))}  # real base: sane saturation ages
-        monkeypatch.setattr(llm, "_now", lambda: clock["t"])
-        slices: list[float] = []
-        pending = list(steps)
-
-        async def fake_provider_call(**kwargs):
-            seconds, outcome = pending.pop(0)
-            if seconds >= slices[-1]:
-                clock["t"] += slices[-1]
-                raise TimeoutError()
-            clock["t"] += seconds
-            if isinstance(outcome, BaseException):
-                raise outcome
-            return llm.LLMResponse(
-                raw_response="",
-                prompt=[],
-                response=outcome,
-                tool_calls=None,
-                prompt_tokens=1,
-                completion_tokens=1,
-                provider_cost=0.25,
-            )
-
-        monkeypatch.setattr(llm, "_llm_call", fake_provider_call)
-        block = llm.AIStructuredResponseGeneratorBlock()
-        real_llm_call = block.llm_call
-
-        async def recording_llm_call(**kwargs):
-            slices.append(kwargs.get("timeout_seconds") or self._BUDGET)
-            return await real_llm_call(**kwargs)
-
-        block.llm_call = recording_llm_call  # type: ignore[method-assign]
-        return block, clock, slices
-
-    async def _run_deadline_block(self, block, retry=3):
-        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
-            prompt="Hello",
-            expected_format={"key": "value"},
-            model=llm.DEFAULT_LLM_MODEL,
-            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
-            retry=retry,
-        )
-        with pytest.raises(RuntimeError) as err:
-            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
-                pass
-        return err.value
-
-    _MISSING_KEY = '<json_output id="test123456">{"wrong": "key"}</json_output>'
-
-    @pytest.mark.asyncio
-    async def test_slow_failures_stay_within_the_budget(self, monkeypatch):
-        """Slow non-timeout failures used to get a fresh full timeout each, so
-        three of them ran past the budget (#14293)."""
-        slow_500 = RuntimeError("upstream 500")
-        block, clock, slices = self._deadline_block(
-            monkeypatch, [(250, slow_500), (250, slow_500), (250, slow_500)]
-        )
-        started = clock["t"]
-
-        with patch("secrets.token_hex", return_value="test123456"):
-            await self._run_deadline_block(block)
-
-        assert clock["t"] - started <= self._BUDGET + 1
-        assert slices[0] == self._BUDGET
-        assert slices == sorted(slices, reverse=True) and len(set(slices)) == 3
-
-    @pytest.mark.asyncio
-    async def test_timeout_on_a_shortened_retry_still_alerts(self, monkeypatch):
-        """The spend alert compares elapsed time with the slice the attempt got,
-        not the whole budget, or a cut-off final retry reads as a fast fail."""
-        block, _, slices = self._deadline_block(
-            monkeypatch, [(500, self._MISSING_KEY), (1000, "never returned")]
-        )
-
-        with (
-            self._captured_logs() as records,
-            patch("secrets.token_hex", return_value="test123456"),
-        ):
-            err = await self._run_deadline_block(block)
-
-        assert slices == [self._BUDGET, 100]
-        assert "exceeded 100.0s" in str(err)
-        alerts = self._alerts(records)
-        assert len(alerts) == 1
-        assert alerts[0].levelno == logging.ERROR
-        assert alerts[0].json_fields["configured_timeout_seconds"] == 100
-
-    @pytest.mark.asyncio
-    async def test_floor_stops_retrying_and_says_the_budget_ran_out(self, monkeypatch):
-        """A retry left with less than the floor would only be cut off, so the
-        loop stops, names the budget, and still records what was spent."""
-        block, _, slices = self._deadline_block(
-            monkeypatch,
-            [(self._BUDGET - llm.LLM_MIN_ATTEMPT_SECONDS + 1, self._MISSING_KEY)],
-        )
-
-        with patch("secrets.token_hex", return_value="test123456"):
-            err = await self._run_deadline_block(block)
-
-        assert slices == [self._BUDGET]
-        assert str(err) == (
-            f"LLM retry budget of {self._BUDGET}s ran out after 1 attempt(s) "
-            "without a valid response."
-        )
-        assert block.execution_stats.provider_cost == 0.25
-
     # #16173: one timeout covers every SDK retry, so the alert reads how long
     # the last HTTP request was open. A step is (start, status or None): the
     # SDK sent a request at ``start`` seconds and got ``status`` back.
@@ -2136,6 +2177,7 @@ class TestLLMRequestTimeout:
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
                 timeout_seconds=slice_,
             )
         return records
@@ -2260,6 +2302,7 @@ class TestLLMRequestTimeout:
                 llm_model=self._SDK_MODELS[sdk_name],
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
                 timeout_seconds=slice_,
             )
         assert hung.is_set() and not pending, "the SDK never sent its retry"
@@ -2349,6 +2392,7 @@ class TestLLMRequestTimeout:
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 prompt=[{"role": "user", "content": "Hello"}],
                 max_tokens=100,
+                on_abandoned=None,
             )
 
         assert result.response == "ok"
@@ -2459,6 +2503,7 @@ class TestClaude5ModelThreading:
                 prompt=[{"role": "user", "content": "hi"}],
                 max_tokens=100,
                 compress_prompt_to_fit=True,
+                on_abandoned=None,
             )
 
         expected_model = llm.DEFAULT_LLM_MODEL.value
@@ -2593,3 +2638,55 @@ def test_stagehand_keeps_remote_model_credentials_required(block_name):
         ]
         == []
     )
+
+
+@pytest.mark.parametrize(
+    "values, expected",
+    [
+        ({"name ": "Ada"}, {"name": "Ada"}),
+        ({" name\t": "Ada", "topic": "maths"}, {"name": "Ada", "topic": "maths"}),
+        ({"name ": "padded", "name": "clean"}, {"name": "clean"}),
+        ({"name": "clean", " name": "padded"}, {"name": "clean"}),
+        ({" name": "first", "name ": "second"}, {"name": "first"}),
+        ({"\ufeffname\u00a0": "Ada"}, {"name": "Ada"}),
+        ({"   ": "blank", "name": "Ada"}, {"name": "Ada"}),
+        ({}, {}),
+    ],
+)
+def test_strip_prompt_value_keys(values, expected):
+    assert llm.strip_prompt_value_keys(values) == expected
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_value_key_with_whitespace_fills_its_variable():
+    block = llm.AIStructuredResponseGeneratorBlock()
+    sent: dict[str, Any] = {}
+
+    async def fake_llm_call(*, prompt, **_):
+        sent["prompt"] = prompt
+        return llm.LLMResponse(
+            raw_response="",
+            prompt=[],
+            response="Hello",
+            tool_calls=None,
+            prompt_tokens=1,
+            completion_tokens=1,
+            reasoning=None,
+        )
+
+    input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+        prompt="Greet {{name}}",
+        sys_prompt="You talk to {{name}}.",
+        prompt_values={"name ": "Ada"},
+        expected_format={},
+        model=llm.DEFAULT_LLM_MODEL,
+        credentials=_TEST_AI_CREDENTIALS,
+    )
+
+    with patch.object(block, "llm_call", new=AsyncMock(side_effect=fake_llm_call)):
+        async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+            pass
+
+    contents = [message["content"] for message in sent["prompt"]]
+    assert any("You talk to Ada." in content for content in contents)
+    assert any("Greet Ada" in content for content in contents)

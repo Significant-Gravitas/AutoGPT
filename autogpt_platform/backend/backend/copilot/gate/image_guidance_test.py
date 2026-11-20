@@ -25,11 +25,16 @@ async def test_binary_guidance_is_trusted_and_never_echoes_the_path(
     monkeypatch.setattr(e2b_file_tools, "is_sdk_tool_path", lambda _: False)
     monkeypatch.setattr(e2b_file_tools, "resolve_sandbox_path", lambda path: path)
     monkeypatch.setattr(e2b_file_tools, "_is_allowed_local", lambda _: not sandboxed)
+    monkeypatch.setattr(
+        e2b_file_tools,
+        "resolve_allowed_local_path",
+        lambda path, _cwd: None if sandboxed else path,
+    )
     tool_adapter.set_execution_context(
         "user-1", ChatSession.new("user-1", dry_run=False)
     )
     monkeypatch.setattr(
-        tool_adapter, "gate_non_registry_tool", AsyncMock(return_value=None)
+        tool_adapter, "gate_non_registry_tool", AsyncMock(return_value=(None, None))
     )
     monkeypatch.setattr(
         tool_adapter, "release_non_registry_read", AsyncMock(return_value=None)

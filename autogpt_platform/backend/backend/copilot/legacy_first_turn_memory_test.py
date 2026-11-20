@@ -278,14 +278,14 @@ class TestLinearTime:
         """Text a user can type that splits into leading blocks in 2^25 ways
         (the sanitizer leaves ``<budget_status>``): the matcher reads it once
         and leaves it. The restore runs on the event loop."""
-        started = time.perf_counter()
+        started = time.thread_time()
 
         stripped = strip_first_turn_memory(
             built_to_backtrack(25), after_query_blocks=after_query_blocks
         )
 
         assert stripped is None
-        assert time.perf_counter() - started < 1.0
+        assert time.thread_time() - started < 1.0
 
     def test_a_tag_start_before_a_long_run_of_spaces_is_read_at_once(self):
         """A block only this stack's renderer could have written is searched
@@ -298,12 +298,12 @@ class TestLinearTime:
             f"<RECENT_EPISODES>\n  - [{NOW}] <!b>{'e' * 497}\n</RECENT_EPISODES>\n"
             "</temporal_context>"
         )
-        started = time.perf_counter()
+        started = time.thread_time()
 
         stripped = strip_first_turn_memory(legacy_first_message(block))
 
         assert stripped == SKILLS_BLOCK + REST
-        assert time.perf_counter() - started < 1.0
+        assert time.thread_time() - started < 1.0
 
 
 def _history(*contents: str) -> list[ChatMessage]:

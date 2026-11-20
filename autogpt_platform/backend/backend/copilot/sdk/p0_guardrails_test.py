@@ -197,7 +197,7 @@ class TestSecurityEnvVars:
 
             env = build_sdk_env(sdk_cwd="/workspace/session-1")
 
-        assert env.get("CLAUDE_CODE_TMPDIR") == "/workspace/session-1"
+        assert env.get("CLAUDE_CODE_TMPDIR") == "/workspace/session-1.cli"
 
     def test_tmpdir_absent_when_sdk_cwd_not_provided(self):
         """CLAUDE_CODE_TMPDIR must NOT be set when sdk_cwd is None."""
@@ -457,6 +457,29 @@ class TestIsTransientApiError:
         assert is_transient_api_error("SOCKET CONNECTION WAS CLOSED UNEXPECTEDLY")
         assert is_transient_api_error("econnreset")
 
+    def test_request_too_large_is_not_retried_like_a_rate_limit(self):
+        # Shares rate_limit_exceeded with an ordinary rate limit, but the same
+        # request is refused every time.
+        assert not is_transient_api_error(_OPENAI_REQUEST_TOO_LARGE)
+        assert is_transient_api_error(_OPENAI_RATE_LIMITED)
+
+
+# OpenAI's two TPM refusals: one request over the limit, and a full minute.
+_OPENAI_REQUEST_TOO_LARGE = (
+    "Error code: 429 - {'error': {'message': 'Request too large for "
+    "gpt-4.1-mini-2025-04-14 (for limit gpt-4.1-mini-long-context) in "
+    "organization org-test on tokens per min (TPM): Limit 400000, Requested "
+    "520131. The input or output tokens must be reduced in order to run "
+    "successfully.', 'type': 'tokens', 'param': None, 'code': "
+    "'rate_limit_exceeded'}}"
+)
+_OPENAI_RATE_LIMITED = (
+    "Error code: 429 - {'error': {'message': 'Rate limit reached for "
+    "gpt-4.1-mini-2025-04-14 in organization org-test on tokens per min "
+    "(TPM): Limit 400000, Used 390000, Requested 20000. Please try again in "
+    "1.5s.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}"
+)
+
 
 # The bundled CLI's (2.1.284) wording for API errors it gives up on.
 _CLI_529 = (
@@ -485,6 +508,10 @@ class TestIsTransientAssistantError:
     def test_other_categories_need_a_transient_text(self, category: str):
         assert not is_transient_assistant_error(category, "Prompt is too long")
         assert is_transient_assistant_error(category, "upstream status code 503")
+
+    def test_request_too_large_is_not_retried_under_a_rate_limit_category(self):
+        assert not is_transient_assistant_error("rate_limit", _OPENAI_REQUEST_TOO_LARGE)
+        assert is_transient_assistant_error("rate_limit", _OPENAI_RATE_LIMITED)
 
 
 # ---------------------------------------------------------------------------

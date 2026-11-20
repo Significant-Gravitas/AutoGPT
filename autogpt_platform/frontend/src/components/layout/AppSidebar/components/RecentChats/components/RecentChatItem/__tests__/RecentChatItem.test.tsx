@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RecentChatItem } from "../RecentChatItem";

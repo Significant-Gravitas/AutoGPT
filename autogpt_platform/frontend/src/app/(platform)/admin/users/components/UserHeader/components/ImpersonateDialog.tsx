@@ -34,7 +34,7 @@ export function ImpersonateDialog({
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
-        <Text variant="body" className="text-foreground-secondary">
+        <Text variant="body" tone="secondary">
           You&apos;ll see and act as this user across the whole platform until
           you stop. A notice goes to the audit channel first, then this page
           reloads.

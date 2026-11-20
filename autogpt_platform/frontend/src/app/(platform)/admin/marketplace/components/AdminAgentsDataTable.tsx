@@ -1,14 +1,13 @@
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/molecules/Table/components/TablePrimitives";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
-import { PaginationControls } from "../../../../../components/__legacy__/ui/pagination-controls";
+import { PaginationControls } from "@/components/molecules/PaginationControls/PaginationControls";
 import { getAdminListingsWithVersions } from "@/app/(platform)/admin/marketplace/actions";
 import { ExpandableRow } from "./ExpandleRow";
 import { SearchAndFilterAdminMarketplace } from "./SearchFilterForm";
@@ -69,9 +68,9 @@ export async function AdminAgentsDataTable({
           <TableBody>
             {listings.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center">
+                <td colSpan={7} className="px-2 py-10 text-center align-middle">
                   No submissions found
-                </TableCell>
+                </td>
               </TableRow>
             ) : (
               listings.map((listing) => {

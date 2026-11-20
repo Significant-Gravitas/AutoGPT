@@ -8,13 +8,6 @@ import {
   vi,
 } from "vitest";
 
-// Read once at load by `flag-backend`, so it has to be set before the imports below.
-const previousBackend = vi.hoisted(() => {
-  const previous = process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND;
-  process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = "server";
-  return previous;
-});
-
 import { getGetFeatureFlagsMockHandler } from "@/app/api/__generated__/endpoints/feature-flags/feature-flags.msw";
 import type { FrontendFlagValues } from "@/app/api/__generated__/models/frontendFlagValues";
 import openapi from "@/app/api/openapi.json";
@@ -49,11 +42,6 @@ beforeEach(() => {
 });
 
 afterAll(() => {
-  if (previousBackend === undefined) {
-    delete process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND;
-  } else {
-    process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = previousBackend;
-  }
   useAuthStore.setState({ user: null, isUserLoading: true });
 });
 

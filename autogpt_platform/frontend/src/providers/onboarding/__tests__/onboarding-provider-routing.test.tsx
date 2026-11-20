@@ -45,6 +45,7 @@ vi.mock("@/hooks/useOnboardingTimezoneDetection", () => ({
 
 let mockIsCompleted = false;
 const completedCallCount = { value: 0 };
+const stateCallCount = { value: 0 };
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1CheckIfOnboardingIsCompleted: () => {
     completedCallCount.value += 1;
@@ -58,8 +59,10 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
       data: { is_completed: mockIsCompleted },
     });
   },
-  getV1OnboardingState: () =>
-    Promise.resolve({ status: 200, data: { completedSteps: [] } }),
+  getV1OnboardingState: () => {
+    stateCallCount.value += 1;
+    return Promise.resolve({ status: 200, data: { completedSteps: [] } });
+  },
   patchV1UpdateOnboardingState: () => Promise.resolve({ status: 200 }),
   postV1CompleteOnboardingStep: () => Promise.resolve({ status: 200 }),
 }));
@@ -76,6 +79,7 @@ describe("OnboardingProvider routing — logged-in user", () => {
     mockIsLoggedIn = true;
     mockIsCompleted = false;
     completedCallCount.value = 0;
+    stateCallCount.value = 0;
   });
 
   test("silences cancellation and retries initialization after navigation", async () => {
@@ -104,6 +108,28 @@ describe("OnboardingProvider routing — logged-in user", () => {
     await waitFor(() => expect(completedCallCount.value).toBe(2));
     expect(routerReplace).toHaveBeenCalledWith("/onboarding");
     consoleError.mockRestore();
+  });
+
+  test("retries a dropped request without alarming the user", async () => {
+    mockPathname = "/marketplace";
+    completionError = new TypeError("Failed to fetch");
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    render(
+      <OnboardingProvider>
+        <div />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() => expect(completedCallCount.value).toBe(2), {
+      timeout: 3000,
+    });
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+    );
+    expect(toast).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   test("still reports a genuine initialization failure", async () => {
@@ -236,6 +262,67 @@ describe("OnboardingProvider routing — logged-in user", () => {
     );
   });
 
+  // SECRT-3384: `?next=/home` is only the default landing. The auth pages
+  // drop it, so the provider must route the user itself instead of waiting on
+  // a deep-link redirect that never comes.
+  test.each(["/signup", "/login"])(
+    "incomplete user on %s?next=/home is redirected to /onboarding, not left waiting",
+    async (path) => {
+      mockPathname = path;
+      window.history.replaceState(null, "", `${path}?next=%2Fhome`);
+      mockIsCompleted = false;
+
+      render(
+        <OnboardingProvider>
+          <div data-testid="child" />
+        </OnboardingProvider>,
+      );
+
+      await waitFor(() =>
+        expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+      );
+      expect(routerReplace).not.toHaveBeenCalledWith("/home");
+    },
+  );
+
+  test.each([
+    [false, "/signup", "/onboarding?utm_source=newsletter"],
+    [true, "/login", "/home?utm_source=newsletter"],
+  ])(
+    "leaving an auth page keeps a campaign link's tracking params (completed: %s, %s)",
+    async (isCompleted, path, expected) => {
+      mockPathname = path;
+      window.history.replaceState(
+        null,
+        "",
+        `${path}?next=${encodeURIComponent("/home?utm_source=newsletter")}`,
+      );
+      mockIsCompleted = isCompleted;
+
+      render(
+        <OnboardingProvider>
+          <div data-testid="child" />
+        </OnboardingProvider>,
+      );
+
+      await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(expected));
+    },
+  );
+
+  test("completed user on /login?next=/copilot is redirected to /home", async () => {
+    mockPathname = "/login";
+    window.history.replaceState(null, "", "/login?next=%2Fcopilot");
+    mockIsCompleted = true;
+
+    render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith("/home"));
+  });
+
   test("incomplete user on /reset-password stays put (recovery session must set password first)", async () => {
     // A Supabase recovery link signs the user in and lands them on
     // /reset-password. Bouncing them to /onboarding would skip the password
@@ -254,6 +341,47 @@ describe("OnboardingProvider routing — logged-in user", () => {
     expect(completedCallCount.value).toBe(0);
   });
 
+  test.each(["/link/abc123", "/link/slack/installed"])(
+    "incomplete user on %s stays put (link token must not be lost to onboarding)",
+    async (path) => {
+      mockPathname = path;
+      mockIsCompleted = false;
+
+      render(
+        <OnboardingProvider>
+          <div data-testid="child" />
+        </OnboardingProvider>,
+      );
+
+      await new Promise((r) => setTimeout(r, 30));
+      expect(routerReplace).not.toHaveBeenCalled();
+      expect(completedCallCount.value).toBe(0);
+    },
+  );
+
+  test("leaving /link/<token> for another page still redirects to /onboarding", async () => {
+    mockPathname = "/link/abc123";
+    mockIsCompleted = false;
+    const { rerender } = render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+    await new Promise((r) => setTimeout(r, 30));
+    expect(routerReplace).not.toHaveBeenCalled();
+
+    mockPathname = "/home";
+    rerender(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() =>
+      expect(routerReplace).toHaveBeenCalledWith("/onboarding"),
+    );
+  });
+
   test("incomplete user already on /onboarding stays put", async () => {
     mockPathname = "/onboarding";
     mockIsCompleted = false;
@@ -267,5 +395,32 @@ describe("OnboardingProvider routing — logged-in user", () => {
     // Give async work time to resolve, then assert no redirect.
     await new Promise((r) => setTimeout(r, 30));
     expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  test("leaves an unfinished user's state to the wizard instead of reading it again", async () => {
+    mockPathname = "/onboarding";
+    mockIsCompleted = false;
+
+    render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() => expect(completedCallCount.value).toBe(1));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(stateCallCount.value).toBe(0);
+  });
+
+  test("still reads the state of a finished user outside the wizard", async () => {
+    mockPathname = "/home";
+    mockIsCompleted = true;
+
+    render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+    await waitFor(() => expect(stateCallCount.value).toBe(1));
   });
 });

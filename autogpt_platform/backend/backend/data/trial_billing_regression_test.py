@@ -47,10 +47,16 @@ async def test_stale_trial_does_not_abort_later_pages(error: Exception):
         ),
     ):
         tiers: dict[str, SubscriptionTier] = {}
+        failed_trials: dict[str, str] = {}
         incomplete = await _collect_status_page(
-            "active", {"price_pro": SubscriptionTier.PRO}, tiers
+            "active",
+            {"price_pro": SubscriptionTier.PRO},
+            tiers,
+            failed_trials=failed_trials,
         )
-    assert incomplete is True
+    # A failed trial re-sync skips only its customer; the snapshot stays complete.
+    assert incomplete is False
+    assert failed_trials == {"sub_stale": "cus_stale"}
     assert tiers == {"cus_paid": SubscriptionTier.PRO}
     assert listing.await_args_list[1].kwargs["starting_after"] == "sub_stale"
 

@@ -58,7 +58,7 @@ export function ApprovalFields({
     <div data-slot="approval-fields" className="flex flex-col gap-2">
       <dl
         data-slot="approval-fields-list"
-        className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[minmax(5rem,9rem)_minmax(0,1fr)] sm:gap-y-2"
+        className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-body sm:grid-cols-[minmax(5rem,9rem)_minmax(0,1fr)] sm:gap-y-2"
       >
         {shown.map((field) => (
           <div
@@ -74,7 +74,7 @@ export function ApprovalFields({
             </dt>
             <dd
               data-slot="approval-fields-value"
-              className="mb-1.5 min-w-0 text-foreground-strong [overflow-wrap:anywhere] sm:mb-0"
+              className="mb-1.5 min-w-0 [overflow-wrap:anywhere] text-foreground-strong sm:mb-0"
             >
               <FieldOrReference
                 name={field.key}
@@ -91,8 +91,8 @@ export function ApprovalFields({
       {more > 0 && (
         <Button
           variant="link"
-          size="small"
-          className="h-auto min-w-0 self-start px-0 py-0 text-sm"
+          size="inline"
+          className="self-start"
           onClick={() => setShowAll(true)}
         >
           Show {more} more

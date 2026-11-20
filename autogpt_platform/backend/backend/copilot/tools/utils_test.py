@@ -1,11 +1,21 @@
 """Tests for chat tools utility functions."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
+from backend.api.features.library.exceptions import (
+    LibraryAgentInAnotherOrganizationError,
+)
 from backend.blocks.http import SendAuthenticatedWebRequestBlock
+from backend.copilot.credential_selection import CredentialPin, set_turn_credential_pins
+from backend.copilot.tools.helpers import unattended_missing_credentials_error
+from backend.copilot.tools.utils import (
+    find_matching_credential,
+    get_or_create_library_agent,
+)
 from backend.data.model import CredentialsFieldInfo, HostScopedCredentials
 
 
@@ -253,6 +263,31 @@ def test_the_credential_the_user_picked_wins():
     assert picked is not None and picked.id == "personal"
 
 
+def test_http_hosts_keep_their_own_account_picks():
+    credentials = [
+        HostScopedCredentials(id=f"{host}-{account}", provider="http", host=host)
+        for host in ("api.linear.app", "api.github.com")
+        for account in ("work", "personal")
+    ]
+    selected = {
+        "http:api.linear.app": "api.linear.app-work",
+        "http:api.github.com": "api.github.com-personal",
+    }
+    for host, account in (("api.linear.app", "work"), ("api.github.com", "personal")):
+        field = CredentialsFieldInfo.model_validate(
+            {
+                "credentials_provider": ["http"],
+                "credentials_types": ["host_scoped"],
+                "discriminator_values": [f"https://{host}/v1"],
+            },
+            by_alias=True,
+        )
+        picked = find_matching_credential(
+            credentials, field, selected, ask_when_ambiguous=True
+        )
+        assert picked is not None and picked.id == f"{host}-{account}"
+
+
 def test_a_chat_tool_asks_rather_than_choosing_between_two_accounts():
     # None surfaces as a missing credential, which is the card with a picker.
     assert _find([_key_cred("work"), _key_cred("personal")], ask=True) is None
@@ -286,6 +321,43 @@ def test_a_system_credential_is_used_when_the_user_has_none_of_their_own():
     assert _find([openai_credentials], ask=True, field=field) is openai_credentials
     own = _key_cred("own-openai", provider="openai")
     assert _find([own, openai_credentials], ask=True, field=field) is own
+
+
+def _exa_field() -> CredentialsFieldInfo:
+    return CredentialsFieldInfo.model_validate(
+        {"credentials_provider": ["exa"], "credentials_types": ["api_key"]},
+        by_alias=True,
+    )
+
+
+@pytest.mark.parametrize("ask", [True, False], ids=["watched", "unattended"])
+def test_a_refused_sdk_default_is_never_picked_over_the_system_credential(ask):
+    # get_all_creds lists the system credential first and the SDK default
+    # after it. exa-default can't run (Exa isn't a runnable SDK default
+    # provider), so the system credential must be picked, watched or not.
+    from backend.integrations.credentials_store import exa_credentials
+
+    exa_default = _key_cred("exa-default", provider="exa")
+    picked = _find([exa_credentials, exa_default], ask=ask, field=_exa_field())
+    assert picked is exa_credentials
+    assert _find([exa_default], ask=ask, field=_exa_field()) is None
+
+
+def test_a_refused_sdk_default_does_not_stop_the_users_own_key_being_used():
+    own = _key_cred("own-exa", provider="exa")
+    exa_default = _key_cred("exa-default", provider="exa")
+    assert _find([own, exa_default], ask=True, field=_exa_field()) is own
+    assert _find([exa_default, own], field=_exa_field()) is own
+
+
+@pytest.mark.parametrize("ask", [True, False], ids=["watched", "unattended"])
+def test_a_runnable_sdk_default_still_counts_as_a_usable_credential(ask):
+    field = CredentialsFieldInfo.model_validate(
+        {"credentials_provider": ["tavily"], "credentials_types": ["api_key"]},
+        by_alias=True,
+    )
+    tavily_default = _key_cred("tavily-default", provider="tavily")
+    assert _find([tavily_default], ask=ask, field=field) is tavily_default
 
 
 # ---------------------------------------------------------------------------
@@ -382,6 +454,64 @@ async def test_a_pin_for_one_host_leaves_the_credentials_for_other_hosts():
     assert matched["credentials"].id == "other-host"
 
 
+async def test_a_deleted_host_pin_never_switches_to_another_key():
+    field = CredentialsFieldInfo.model_validate(
+        {
+            "credentials_provider": ["http"],
+            "credentials_types": ["host_scoped"],
+            "discriminator_values": ["https://api.linear.app/graphql"],
+        },
+        by_alias=True,
+    )
+    matched, missing = await _match_with_pins(
+        [HostScopedCredentials(id="personal", provider="http", host="api.linear.app")],
+        {"credentials": field},
+        {"http:api.linear.app": CredentialPin(id="deleted-work")},
+    )
+    assert matched == {}
+    assert len(missing) == 1
+
+
+@pytest.mark.parametrize(
+    "host, expected",
+    [
+        ("api.linear.app", "pinned_credential_missing"),
+        ("api.github.com", "missing_credentials"),
+    ],
+)
+async def test_a_missing_host_account_names_only_its_own_pin(host, expected):
+    async def turn():
+        set_turn_credential_pins(
+            {
+                "http:api.linear.app": CredentialPin(
+                    id="deleted-work", title="Linear work"
+                )
+            }
+        )
+        with patch(
+            "backend.copilot.tools.helpers.get_user_credentials",
+            AsyncMock(return_value=[]),
+        ):
+            return await unattended_missing_credentials_error(
+                "HTTP request",
+                {
+                    "credentials": {
+                        "provider": "http",
+                        "types": ["host_scoped"],
+                        "discriminator_values": [f"https://{host}/v1"],
+                    }
+                },
+                "s1",
+                "test-user",
+                None,
+            )
+
+    result = await asyncio.create_task(turn())
+    assert result.error == expected
+    assert ("Linear work" in result.message) is (host == "api.linear.app")
+    assert result.details == {"provider": "http"}
+
+
 async def test_the_error_names_a_pinned_account_that_cannot_do_the_step():
     import asyncio
 
@@ -452,3 +582,21 @@ async def test_a_pin_for_one_host_is_not_blamed_for_a_step_on_another():
     assert result.error == "missing_credentials"
     assert "has no http credential" in result.message
     assert "example-host" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_library_entry_in_another_organization_is_not_reused():
+    """Running a marketplace agent over the External API reuses the user's
+    entry for it, which must be the key's organization's."""
+    lib = MagicMock()
+    lib.get_library_agent_by_graph_id = AsyncMock(
+        return_value=MagicMock(organization_id="org-b")
+    )
+    lib.create_library_agent = AsyncMock()
+
+    with patch("backend.copilot.tools.utils.library_db", return_value=lib):
+        with pytest.raises(LibraryAgentInAnotherOrganizationError):
+            await get_or_create_library_agent(
+                MagicMock(id="graph-1"), "user-1", "org-a", "team-a"
+            )
+    lib.create_library_agent.assert_not_awaited()

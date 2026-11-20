@@ -6,11 +6,13 @@ import {
 import { ConfirmLinkResponse } from "@/app/api/__generated__/models/confirmLinkResponse";
 import { ConfirmUserLinkResponse } from "@/app/api/__generated__/models/confirmUserLinkResponse";
 import { LinkType } from "@/app/api/__generated__/models/linkType";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useParams, useSearchParams } from "next/navigation";
 import {
   getLoginRedirect,
   getPlatformDisplayName,
+  getSignupRedirect,
   getTelegramAuth,
   isUserLink,
   TOKEN_PATTERN,
@@ -36,8 +38,12 @@ export function usePlatformLinkingPage() {
   const searchParams = useSearchParams();
   const rawToken = (params.token as string | undefined) ?? "";
   const token = TOKEN_PATTERN.test(rawToken) ? rawToken : null;
+  // A login_url button tap appends a Telegram-signed identity to this page's
+  // URL; forwarding it lets the backend verify WHO opened the link.
+  const telegramAuth = getTelegramAuth(searchParams);
   const platformFromUrl = getPlatformDisplayName(searchParams.get("platform"));
   const { user, isUserLoading, logOut } = useAuth();
+  const { toast } = useToast();
 
   const {
     data: info,
@@ -76,23 +82,30 @@ export function usePlatformLinkingPage() {
 
   function handleLink() {
     if (!token || !info) return;
-    // A login_url button tap appends a Telegram-signed identity to this
-    // page's URL; forwarding it lets the backend verify WHO opened the link.
-    mutation.mutate({
-      token,
-      data: { telegram_auth: getTelegramAuth(searchParams) },
-    });
+    mutation.mutate({ token, data: { telegram_auth: telegramAuth } });
   }
 
   async function handleSwitchAccount() {
-    await logOut();
-    window.location.href = getLoginRedirect(token);
+    try {
+      await logOut();
+    } catch {
+      // The sign-out never reached the server: this account is still
+      // signed in, so don't send the user on as if it weren't.
+      toast({
+        title: "Couldn't sign you out",
+        description: "Check your connection and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+    window.location.href = getLoginRedirect({ token, telegramAuth });
   }
 
   return {
     status,
     token,
-    loginRedirect: getLoginRedirect(token),
+    loginRedirect: getLoginRedirect({ token, telegramAuth }),
+    signupRedirect: getSignupRedirect({ token, telegramAuth }),
     userEmail: user?.email ?? null,
     viewData: buildViewData({ info, platformFromUrl }),
     successData: buildSuccessData({

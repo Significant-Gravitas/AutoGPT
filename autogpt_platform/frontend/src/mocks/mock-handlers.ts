@@ -12,12 +12,14 @@ import {
 import { getBriefingsMock } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
 import {
   getChatMock,
+  getGetV2ListSessionGroupsMockHandler200,
   getGetV2ListTurnsAtBudgetResetMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
 import { getEmailMock } from "@/app/api/__generated__/endpoints/email/email.msw";
 import { getGetFeatureFlagsMockHandler } from "@/app/api/__generated__/endpoints/feature-flags/feature-flags.msw";
+import { getGetPlatformConfigMockHandler } from "@/app/api/__generated__/endpoints/platform-config/platform-config.msw";
 import {
   getExecutionsMock,
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler,
@@ -34,7 +36,10 @@ import { getIntegrationsMock } from "@/app/api/__generated__/endpoints/integrati
 import { getLibraryMock } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getMetricsMock } from "@/app/api/__generated__/endpoints/metrics/metrics.msw";
 import { getOauthMock } from "@/app/api/__generated__/endpoints/oauth/oauth.msw";
-import { getOnboardingMock } from "@/app/api/__generated__/endpoints/onboarding/onboarding.msw";
+import {
+  getGetV1CheckIfOnboardingIsCompletedMockHandler,
+  getOnboardingMock,
+} from "@/app/api/__generated__/endpoints/onboarding/onboarding.msw";
 import { getOttoMock } from "@/app/api/__generated__/endpoints/otto/otto.msw";
 import { getPresetsMock } from "@/app/api/__generated__/endpoints/presets/presets.msw";
 import { getSchedulesMock } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
@@ -50,8 +55,18 @@ export const mockHandlers = [
   http.get("/api/proxy/api/credits/pro-activation/current", () =>
     HttpResponse.json({ detail: "No activation in progress" }, { status: 404 }),
   ),
+  // No published releases unless a test provides some.
+  http.get("/api/changelog", () => HttpResponse.text("")),
+  http.get("/api/changelog/latest", () => HttpResponse.json({ releases: [] })),
   // No flag vendor unless a test provides one, so every flag serves its default.
   getGetFeatureFlagsMockHandler({ flags: {}, configured: false }),
+  // Payment off unless a test turns it on.
+  getGetPlatformConfigMockHandler({ payment_enabled: false }),
+  // Signed up with email unless a test provides a sign-in provider, so
+  // onboarding has no access step.
+  http.get("*/api/auth/sign-in-providers", () =>
+    HttpResponse.json({ providers: ["credential"] }),
+  ),
   ...getAdminMock(),
   ...getAnalyticsMock(),
   ...getApiKeysMock(),
@@ -78,6 +93,9 @@ export const mockHandlers = [
   // Nothing set to send at a budget reset unless a test sets it up; random
   // jobs would put a scheduled-message chip above every chat's composer.
   getGetV2ListTurnsAtBudgetResetMockHandler200({ jobs: [] }),
+  // No chats in the sidebar unless a test sets some up; random groups would
+  // fill every page's sidebar with experts nobody hired.
+  getGetV2ListSessionGroupsMockHandler200({ groups: [], pinned: [] }),
   ...getChatMock(),
   ...getCreditsMock(),
   ...getDefaultMock(),
@@ -99,6 +117,9 @@ export const mockHandlers = [
   ...getLibraryMock(),
   ...getMetricsMock(),
   ...getOauthMock(),
+  // Onboarded unless a test says otherwise: the paywall and the top-up prompt
+  // wait for this, so a random answer would show or hide them by chance.
+  getGetV1CheckIfOnboardingIsCompletedMockHandler({ is_completed: true }),
   ...getOnboardingMock(),
   ...getOttoMock(),
   ...getPresetsMock(),

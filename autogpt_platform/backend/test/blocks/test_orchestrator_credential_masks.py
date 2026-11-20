@@ -121,7 +121,7 @@ def _setup_mocks(sink_node_id, params, masks):
     mock_processor.on_node_execution = AsyncMock(return_value=NodeExecutionStats())
     # charge_node_usage is awaited before the tool runs; it must be an
     # AsyncMock or the await raises TypeError mid-flight.
-    mock_processor.charge_node_usage = AsyncMock(return_value=None)
+    mock_processor.charge_node_usage = AsyncMock(return_value=(0, 0))
 
     return mock_db, mock_processor
 

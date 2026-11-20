@@ -1085,7 +1085,9 @@ class TestRegressionLibraryAgents:
             result = await fork_library_agent(LIBRARY_AGENT_ID, USER_ID)
 
         # fork_graph must be called with the caller's user_id
-        mock_fork.assert_called_once_with(GRAPH_ID, GRAPH_VERSION, USER_ID)
+        mock_fork.assert_called_once_with(
+            GRAPH_ID, GRAPH_VERSION, USER_ID, organization_id=None, team_id=None
+        )
         # create_library_agent must use the caller's user_id
         assert mock_create_lib.call_args.args[1] == USER_ID
         assert result.id == "lib-forked"
@@ -1154,6 +1156,12 @@ class TestRegressionStore:
         mocker.patch(
             "backend.api.features.store.db.prisma.models.StoreListing.prisma",
             return_value=self.mock_listing_actions,
+        )
+        # A submission checks the role where the workflow lives, which reads
+        # membership rows.
+        mocker.patch(
+            "backend.api.features.store.db.require_role_where_resource_lives",
+            AsyncMock(),
         )
 
     @pytest.mark.asyncio
@@ -1666,6 +1674,14 @@ class TestPR10WebhookTenancy:
             "backend.copilot.tools.run_agent._safe_link_to_chat_share",
             AsyncMock(),
         )
+        # execute_preset checks the caller's role where the run will land,
+        # which reads membership rows.
+        self.mock_role_check = AsyncMock()
+        mocker.patch(
+            "backend.api.features.library.routes.presets"
+            ".require_role_where_resource_lives",
+            self.mock_role_check,
+        )
 
     @pytest.mark.asyncio
     async def test_copilot_agent_run_passes_org_team_to_execution(self, mocker):
@@ -1724,6 +1740,7 @@ class TestPR10WebhookTenancy:
         mock_preset.graph_version = GRAPH_VERSION
         mock_preset.inputs = {"key": "value"}
         mock_preset.credentials = {}
+        mock_preset.webhook_id = None
         mock_preset.organization_id = "org-preset"
         mock_preset.team_id = "team-preset"
 
@@ -1760,6 +1777,11 @@ class TestPR10WebhookTenancy:
         assert call_kwargs["organization_id"] == "org-preset"
         assert call_kwargs["team_id"] == "team-preset"
         assert call_kwargs["user_id"] == USER_ID
+        assert self.mock_role_check.await_args.args[:3] == (
+            USER_ID,
+            "org-preset",
+            "team-preset",
+        )
 
     @pytest.mark.asyncio
     async def test_preset_execution_falls_back_to_ctx_when_untagged(self):
@@ -1770,6 +1792,7 @@ class TestPR10WebhookTenancy:
         mock_preset.graph_version = GRAPH_VERSION
         mock_preset.inputs = {"key": "value"}
         mock_preset.credentials = {}
+        mock_preset.webhook_id = None
         mock_preset.organization_id = None
         mock_preset.team_id = None
 
@@ -2143,6 +2166,12 @@ class TestPR15MarketplaceOrg:
         mocker.patch(
             "backend.api.features.store.db.prisma.models.OrgMember.prisma",
             return_value=self.mock_org_member_actions,
+        )
+        # A submission checks the role where the workflow lives, which reads
+        # membership rows.
+        mocker.patch(
+            "backend.api.features.store.db.require_role_where_resource_lives",
+            AsyncMock(),
         )
 
     @pytest.mark.asyncio

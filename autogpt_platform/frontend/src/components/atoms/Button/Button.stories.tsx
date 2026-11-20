@@ -6,12 +6,13 @@ import {
   ListViewIcon,
   MoreHorizontalIcon,
   PencilEdit02Icon,
+  PlayIcon,
   PlusSignIcon,
   SparklesIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
-import { Play, Plus } from "lucide-react";
 import { TooltipProvider } from "../Tooltip/BaseTooltip";
+import { Icon } from "../Icon/Icon";
 import { Text } from "../Text/Text";
 import { Button } from "./Button";
 
@@ -233,11 +234,47 @@ export const ToggleButtons: Story = {
   },
 };
 
+export const QuietVariants: Story = {
+  render: renderQuietVariants,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          '`ghost-muted`, `ghost-subtle` and `ghost-danger` are ghost Buttons with a quieter label for secondary actions in rows and cards: grey until hovered, and `ghost-danger` turns red for remove actions. `size="icon-2xs"` is a 24px icon-only action.',
+      },
+    },
+  },
+};
+
+export const RowAndInlineSizes: Story = {
+  render: renderRowAndInlineSizes,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          '`size="row"` is a 32px button for actions inside a list row or card. `size="inline"` (14px) and `size="inline-xs"` (12px) drop the box, for a `variant="link"` inside copy.',
+      },
+    },
+  },
+};
+
+export const Shapes: Story = {
+  render: renderShapes,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "`shape` sets the corner radius over the variant's and size's own: `pill` (rounded-full), `rounded` (12px) and `soft` (8px).",
+      },
+    },
+  },
+};
+
 // With icons
 export const WithLeftIcon: Story = {
   args: {
     variant: "primary",
-    leftIcon: <Play className="h-4 w-4" />,
+    leftIcon: <Icon aria-hidden icon={PlayIcon} className="h-4 w-4" />,
     children: "Play",
   },
 };
@@ -245,7 +282,7 @@ export const WithLeftIcon: Story = {
 export const WithRightIcon: Story = {
   args: {
     variant: "outline",
-    rightIcon: <Plus className="h-4 w-4" />,
+    rightIcon: <Icon aria-hidden icon={PlusSignIcon} className="h-4 w-4" />,
     children: "Add Item",
   },
 };
@@ -254,7 +291,7 @@ export const IconOnly: Story = {
   args: {
     variant: "icon",
     size: "icon",
-    children: <Plus className="h-4 w-4" />,
+    children: <Icon aria-hidden icon={PlusSignIcon} className="h-4 w-4" />,
     "aria-label": "Add item",
   },
 };
@@ -274,7 +311,55 @@ export const VariantMatrix: Story = {
   render: renderVariantMatrix,
 };
 
+// The rounded-md family for dialogs, forms and toggle rows that keep the
+// pre-pill look; what the legacy-* variants became.
+export const CompactVariants: Story = {
+  render: renderCompactVariants,
+};
+
 // Render functions as function declarations
+const COMPACT_VARIANTS = [
+  "compact-primary",
+  "compact-destructive",
+  "compact-outline",
+  "compact-ghost",
+] as const;
+
+const COMPACT_SIZES = [
+  "compact",
+  "compact-sm",
+  "compact-icon",
+  "compact-icon-sm",
+] as const;
+
+function renderCompactVariants() {
+  return (
+    <div className="space-y-6 p-8">
+      {COMPACT_VARIANTS.map((variant) => (
+        <div key={variant} className="space-y-2">
+          <Text variant="small-medium" tone="muted">
+            {variant}
+          </Text>
+          <div className="flex flex-wrap items-center gap-3">
+            {COMPACT_SIZES.map((size) => (
+              <Button key={size} variant={variant} size={size}>
+                {size.startsWith("compact-icon") ? (
+                  <Icon icon={PlusSignIcon} size={16} />
+                ) : (
+                  size
+                )}
+              </Button>
+            ))}
+            <Button variant={variant} size="compact" disabled>
+              Disabled
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const MATRIX_VARIANTS = [
   "primary",
   "secondary",
@@ -366,7 +451,7 @@ function renderActionButtons() {
           variant="ghost"
           size="xs"
           leadingIcon={FilterHorizontalIcon}
-          className="text-zinc-600"
+          className="text-foreground-secondary"
         >
           All work
         </Button>
@@ -415,7 +500,7 @@ function renderIconButtons() {
           aria-label="More actions"
         />
       </div>
-      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gradient-to-r from-violet-200 to-sky-200 p-4">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gradient-to-r from-brand/20 to-sky/30 p-4">
         <Button
           variant="floating"
           size="icon-xs"
@@ -449,11 +534,11 @@ function renderToggleButtons() {
         variant="toggle"
         size="xs"
         aria-pressed
-        className="border-zinc-200 bg-white aria-pressed:border-amber-200 aria-pressed:bg-amber-100 aria-pressed:text-amber-700"
+        className="border-border-base bg-surface aria-pressed:border-warning-border aria-pressed:bg-warning-surface aria-pressed:text-warning-foreground"
       >
         Needs review (3)
       </Button>
-      <div className="flex h-7 items-center rounded-md border border-zinc-200 p-0.5">
+      <div className="flex h-7 items-center rounded-md border border-border-base p-0.5">
         <Button
           variant="toggle"
           size="icon-xs"
@@ -479,7 +564,7 @@ function renderContextualLoadingExamples() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="mb-4 text-base font-medium text-neutral-900">
+        <h3 className="mb-4 text-body-lg font-medium text-foreground-strong">
           ✅ Good Examples - Contextual Loading Text
         </h3>
         <div className="flex flex-wrap gap-4">
@@ -511,7 +596,7 @@ function renderContextualLoadingExamples() {
       </div>
 
       <div>
-        <h3 className="mb-4 text-base font-medium text-red-600">
+        <h3 className="mb-4 text-body-lg font-medium text-error-foreground">
           ❌ Avoid - Generic Loading Text
         </h3>
         <div className="flex flex-wrap gap-4">
@@ -525,7 +610,7 @@ function renderContextualLoadingExamples() {
             Working...
           </Button>
         </div>
-        <p className="mt-2 text-sm text-neutral-600">
+        <p className="mt-2 text-body text-foreground-secondary">
           These examples are disabled to show what NOT to do. Use specific
           action-based text instead.
         </p>
@@ -605,13 +690,13 @@ function renderAllVariants() {
     <div className="space-y-12 p-8">
       {/* Large buttons section */}
       <div className="space-y-8">
-        <h2 className="text-3xl font-semibold text-neutral-900">
+        <h2 className="text-heading font-semibold text-foreground-strong">
           Large buttons
         </h2>
         <div className="flex flex-wrap gap-20">
           {/* Primary */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Primary
             </div>
             <div className="flex flex-col gap-8">
@@ -627,7 +712,9 @@ function renderAllVariants() {
               <Button
                 variant="primary"
                 size="large"
-                leftIcon={<Play className="h-5 w-5" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-5 w-5" />
+                }
               >
                 Play
               </Button>
@@ -636,7 +723,7 @@ function renderAllVariants() {
 
           {/* Secondary */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Secondary
             </div>
             <div className="flex flex-col gap-8">
@@ -652,7 +739,9 @@ function renderAllVariants() {
               <Button
                 variant="secondary"
                 size="large"
-                leftIcon={<Play className="h-5 w-5" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-5 w-5" />
+                }
               >
                 Play
               </Button>
@@ -661,7 +750,7 @@ function renderAllVariants() {
 
           {/* Destructive */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Destructive
             </div>
             <div className="flex flex-col gap-8">
@@ -677,7 +766,9 @@ function renderAllVariants() {
               <Button
                 variant="destructive"
                 size="large"
-                leftIcon={<Play className="h-5 w-5" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-5 w-5" />
+                }
               >
                 Play
               </Button>
@@ -686,7 +777,7 @@ function renderAllVariants() {
 
           {/* Outline */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Outline
             </div>
             <div className="flex flex-col gap-8">
@@ -702,7 +793,9 @@ function renderAllVariants() {
               <Button
                 variant="outline"
                 size="large"
-                leftIcon={<Play className="h-5 w-5" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-5 w-5" />
+                }
               >
                 Play
               </Button>
@@ -711,7 +804,7 @@ function renderAllVariants() {
 
           {/* Ghost */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Save
             </div>
             <div className="flex flex-col gap-8">
@@ -727,7 +820,9 @@ function renderAllVariants() {
               <Button
                 variant="ghost"
                 size="large"
-                leftIcon={<Play className="h-5 w-5" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-5 w-5" />
+                }
               >
                 Play
               </Button>
@@ -738,13 +833,13 @@ function renderAllVariants() {
 
       {/* Small buttons section */}
       <div className="space-y-8">
-        <h2 className="text-3xl font-semibold text-neutral-900">
+        <h2 className="text-heading font-semibold text-foreground-strong">
           Small buttons
         </h2>
         <div className="flex flex-wrap gap-20">
           {/* Primary Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Primary
             </div>
             <div className="flex flex-col gap-8">
@@ -760,7 +855,9 @@ function renderAllVariants() {
               <Button
                 variant="primary"
                 size="small"
-                leftIcon={<Play className="h-4 w-4" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-4 w-4" />
+                }
               >
                 Play
               </Button>
@@ -769,7 +866,7 @@ function renderAllVariants() {
 
           {/* Secondary Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Secondary
             </div>
             <div className="flex flex-col gap-8">
@@ -785,7 +882,9 @@ function renderAllVariants() {
               <Button
                 variant="secondary"
                 size="small"
-                leftIcon={<Play className="h-4 w-4" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-4 w-4" />
+                }
               >
                 Play
               </Button>
@@ -794,7 +893,7 @@ function renderAllVariants() {
 
           {/* Destructive Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Destructive
             </div>
             <div className="flex flex-col gap-8">
@@ -810,7 +909,9 @@ function renderAllVariants() {
               <Button
                 variant="destructive"
                 size="small"
-                leftIcon={<Play className="h-4 w-4" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-4 w-4" />
+                }
               >
                 Play
               </Button>
@@ -819,7 +920,7 @@ function renderAllVariants() {
 
           {/* Outline Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Outline
             </div>
             <div className="flex flex-col gap-8">
@@ -835,7 +936,9 @@ function renderAllVariants() {
               <Button
                 variant="outline"
                 size="small"
-                leftIcon={<Play className="h-4 w-4" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-4 w-4" />
+                }
               >
                 Play
               </Button>
@@ -844,7 +947,7 @@ function renderAllVariants() {
 
           {/* Ghost Small */}
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-strong">
               Ghost
             </div>
             <div className="flex flex-col gap-8">
@@ -860,7 +963,9 @@ function renderAllVariants() {
               <Button
                 variant="ghost"
                 size="small"
-                leftIcon={<Play className="h-4 w-4" />}
+                leftIcon={
+                  <Icon aria-hidden icon={PlayIcon} className="h-4 w-4" />
+                }
               >
                 Play
               </Button>
@@ -871,28 +976,28 @@ function renderAllVariants() {
 
       {/* Other button types */}
       <div className="space-y-8">
-        <h2 className="text-3xl font-semibold text-neutral-900">
+        <h2 className="text-heading font-semibold text-foreground-strong">
           Other button types
         </h2>
         <div className="flex gap-20">
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-zinc-800">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-emphasis">
               Icon
             </div>
             <div className="flex flex-col gap-8">
               <Button variant="icon" size="icon">
-                <Plus className="h-4 w-4" />
+                <Icon aria-hidden icon={PlusSignIcon} className="h-4 w-4" />
               </Button>
-              <Button variant="primary" size="icon" className="bg-zinc-700">
-                <Plus className="h-4 w-4" />
+              <Button variant="primary" size="icon" className="bg-action">
+                <Icon aria-hidden icon={PlusSignIcon} className="h-4 w-4" />
               </Button>
               <Button variant="icon" size="icon" disabled>
-                <Plus className="h-4 w-4" />
+                <Icon aria-hidden icon={PlusSignIcon} className="h-4 w-4" />
               </Button>
             </div>
           </div>
           <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-zinc-800">
+            <div className="font-['Geist'] text-body-lg font-medium text-foreground-emphasis">
               Link
             </div>
             <div className="flex flex-col gap-8">
@@ -907,6 +1012,77 @@ function renderAllVariants() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function renderQuietVariants() {
+  return (
+    <div className="flex items-center gap-4 p-8">
+      <Button variant="ghost-muted" size="small" leadingIcon={PencilEdit02Icon}>
+        Rename
+      </Button>
+      <Button variant="ghost-subtle" size="xs">
+        Dismiss
+      </Button>
+      <Button
+        variant="ghost-danger"
+        size="icon-xs"
+        leadingIcon={Cancel01Icon}
+        aria-label="Remove"
+      />
+      <Button
+        variant="ghost-muted"
+        size="icon-2xs"
+        leadingIcon={MoreHorizontalIcon}
+        aria-label="More"
+      />
+    </div>
+  );
+}
+
+function renderRowAndInlineSizes() {
+  return (
+    <div className="space-y-6 p-8">
+      <div className="flex items-center gap-2">
+        <Button variant="primary" size="row">
+          Approve
+        </Button>
+        <Button variant="secondary" size="row">
+          Retry
+        </Button>
+        <Button variant="ghost" size="row">
+          Skip
+        </Button>
+      </div>
+      <Text variant="body" tone="secondary">
+        Payment failed.{" "}
+        <Button variant="link" size="inline">
+          Update your card
+        </Button>
+      </Text>
+      <Text variant="small" tone="muted">
+        Billed monthly.{" "}
+        <Button variant="link" size="inline-xs">
+          Compare plans
+        </Button>
+      </Text>
+    </div>
+  );
+}
+
+function renderShapes() {
+  return (
+    <div className="flex items-center gap-4 p-8">
+      <Button variant="primary" size="small" shape="pill">
+        Pill
+      </Button>
+      <Button variant="primary" size="small" shape="rounded">
+        Rounded
+      </Button>
+      <Button variant="secondary" size="small" shape="soft">
+        Soft
+      </Button>
     </div>
   );
 }

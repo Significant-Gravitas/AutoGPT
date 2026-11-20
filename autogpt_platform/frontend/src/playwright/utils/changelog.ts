@@ -15,15 +15,17 @@ export async function markChangelogSeen(context: BrowserContext) {
 // check, never a test; the page reads the marker after this response lands.
 async function markSeenOnTheWay(route: Route) {
   let response;
+  let body = "";
   try {
     response = await route.fetch();
+    if (response.ok()) body = await response.text();
   } catch {
+    // A test's context closing mid-read disposes the response, which then
+    // can't be fulfilled either.
     await route.abort().catch(() => {});
     return;
   }
-  const [latest] = response.ok()
-    ? parseChangelogIndex(await response.text())
-    : [];
+  const [latest] = parseChangelogIndex(body);
   if (latest) {
     await route
       .request()

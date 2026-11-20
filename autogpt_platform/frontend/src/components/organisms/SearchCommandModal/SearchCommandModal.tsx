@@ -1,7 +1,8 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import { cn } from "@/lib/utils";
 import * as RXDialog from "@radix-ui/react-dialog";
 import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
@@ -117,10 +118,10 @@ export function SearchCommandModal({
       }}
     >
       <RXDialog.Portal>
-        <RXDialog.Overlay className="fixed inset-0 z-[80] bg-black/20 backdrop-blur-sm" />
+        <RXDialog.Overlay className="fixed inset-0 z-[80] bg-scrim/20 backdrop-blur-sm" />
         <RXDialog.Content
           onOpenAutoFocus={handleOpenAutoFocus}
-          className="fixed left-1/2 top-[18vh] z-[80] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-border-base focus:outline-none"
+          className="fixed top-[18vh] left-1/2 z-[80] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-border-base focus:outline-none"
           onKeyDown={handleKeyDown}
         >
           <RXDialog.Title className="sr-only">Search</RXDialog.Title>
@@ -133,9 +134,11 @@ export function SearchCommandModal({
           >
             <Icon
               icon={Search01Icon}
-              className="h-5 w-5 shrink-0 text-foreground-emphasis"
+              tone="emphasis"
+              className="h-5 w-5 shrink-0"
             />
             <Input
+              bare
               ref={inputRef}
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
@@ -148,7 +151,7 @@ export function SearchCommandModal({
                   : undefined
               }
               autoComplete="off"
-              className="h-9 border-0 bg-transparent px-0 text-base text-foreground shadow-none placeholder:text-foreground-body focus-visible:ring-0"
+              className="h-9 border-0 bg-transparent px-0 text-foreground-base shadow-none placeholder:text-foreground-body focus-visible:ring-0"
             />
             {isLoading && isSearching ? (
               <LoadingSpinner
@@ -160,8 +163,8 @@ export function SearchCommandModal({
             {query ? (
               <Button
                 type="button"
-                variant="ghost"
-                size="icon-sm"
+                variant="compact-ghost"
+                size="compact-icon-sm"
                 aria-label="Clear search"
                 onClick={() => onQueryChange("")}
                 className="shrink-0"
@@ -176,16 +179,21 @@ export function SearchCommandModal({
               id={`${idPrefix}-results`}
               data-slot="search-command-modal-results"
               className={cn(
-                "max-h-[26rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border-base",
+                "scrollbar-thin max-h-[26rem] scrollbar-thumb-border-base scrollbar-track-transparent overflow-y-auto",
                 totalCount === 0 && "max-h-none",
               )}
             >
               {isError ? (
-                <div
-                  data-slot="search-command-modal-error"
-                  className="px-3 py-8 text-center text-sm text-error"
-                >
-                  {errorLabel}
+                <div className="px-3 py-8">
+                  <Text
+                    variant="body-tight"
+                    as="div"
+                    tone="error"
+                    align="center"
+                    data-slot="search-command-modal-error"
+                  >
+                    {errorLabel}
+                  </Text>
                 </div>
               ) : showResults ? (
                 <SearchCommandResults
@@ -206,11 +214,16 @@ export function SearchCommandModal({
                 // Kowalski's strategy-feedback-immediate rule.
                 <SearchCommandSkeleton />
               ) : showEmptyState ? (
-                <div
-                  data-slot="search-command-modal-empty"
-                  className="px-3 py-8 text-center text-sm text-foreground-tertiary"
-                >
-                  {isSearching ? searchingEmptyLabel : idleEmptyLabel}
+                <div className="px-3 py-8">
+                  <Text
+                    variant="body-tight"
+                    as="div"
+                    tone="muted"
+                    align="center"
+                    data-slot="search-command-modal-empty"
+                  >
+                    {isSearching ? searchingEmptyLabel : idleEmptyLabel}
+                  </Text>
                 </div>
               ) : null}
             </div>
@@ -218,7 +231,7 @@ export function SearchCommandModal({
           <Separator />
           <div
             data-slot="search-command-modal-footer"
-            className="flex items-center justify-between gap-4 bg-surface-muted px-4 py-4 text-xs text-foreground-body"
+            className="flex items-center justify-between gap-4 bg-surface-muted px-4 py-4"
           >
             <div
               data-slot="search-command-modal-hints"
@@ -228,50 +241,97 @@ export function SearchCommandModal({
                 data-slot="search-command-modal-hint"
                 className="flex items-center gap-1.5"
               >
-                <kbd
-                  data-slot="search-command-modal-key"
-                  // TODO(tokens): no shadow token for the key-cap shadow.
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface font-sans text-caption-sm leading-inherit text-foreground-emphasis shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
+                <span
+                  // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
                 >
-                  ↑
-                </kbd>
-                <kbd
-                  data-slot="search-command-modal-key"
-                  // TODO(tokens): no shadow token for the key-cap shadow.
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface font-sans text-caption-sm leading-inherit text-foreground-emphasis shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
-                >
-                  ↓
-                </kbd>
-                <span data-slot="search-command-modal-hint-label">
-                  Navigate
+                  <Text
+                    variant="caption-sm"
+                    as="kbd"
+                    tone="emphasis"
+                    data-slot="search-command-modal-key"
+                    className="block"
+                  >
+                    ↑
+                  </Text>
                 </span>
+                <span
+                  // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-border-base bg-surface shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
+                >
+                  <Text
+                    variant="caption-sm"
+                    as="kbd"
+                    tone="emphasis"
+                    data-slot="search-command-modal-key"
+                    className="block"
+                  >
+                    ↓
+                  </Text>
+                </span>
+                <Text
+                  variant="small-tight"
+                  as="span"
+                  tone="body"
+                  data-slot="search-command-modal-hint-label"
+                >
+                  Navigate
+                </Text>
               </div>
               <div
                 data-slot="search-command-modal-hint"
                 className="flex items-center gap-1.5"
               >
-                <kbd
-                  data-slot="search-command-modal-key"
-                  // TODO(tokens): no shadow token for the key-cap shadow.
-                  className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border-base bg-surface px-1 font-sans text-caption-sm leading-inherit text-foreground-emphasis shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
+                <span
+                  // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
+                  className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border-base bg-surface px-1 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
                 >
-                  ↵
-                </kbd>
-                <span data-slot="search-command-modal-hint-label">Select</span>
+                  <Text
+                    variant="caption-sm"
+                    as="kbd"
+                    tone="emphasis"
+                    data-slot="search-command-modal-key"
+                    className="block"
+                  >
+                    ↵
+                  </Text>
+                </span>
+                <Text
+                  variant="small-tight"
+                  as="span"
+                  tone="body"
+                  data-slot="search-command-modal-hint-label"
+                >
+                  Select
+                </Text>
               </div>
             </div>
             <div
               data-slot="search-command-modal-hint"
               className="flex items-center gap-1.5"
             >
-              <kbd
-                data-slot="search-command-modal-key"
-                // TODO(tokens): no shadow token for the key-cap shadow.
-                className="inline-flex h-5 items-center justify-center rounded-md border border-border-base bg-surface px-1.5 font-sans text-caption-sm leading-inherit text-foreground-emphasis shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
+              <span
+                // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
+                className="inline-flex h-5 items-center justify-center rounded-md border border-border-base bg-surface px-1.5 shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)]"
               >
-                esc
-              </kbd>
-              <span data-slot="search-command-modal-hint-label">Close</span>
+                <Text
+                  variant="caption-sm"
+                  as="kbd"
+                  tone="emphasis"
+                  data-slot="search-command-modal-key"
+                  className="block"
+                >
+                  esc
+                </Text>
+              </span>
+              <Text
+                variant="small-tight"
+                as="span"
+                tone="body"
+                data-slot="search-command-modal-hint-label"
+              >
+                Close
+              </Text>
             </div>
           </div>
         </RXDialog.Content>

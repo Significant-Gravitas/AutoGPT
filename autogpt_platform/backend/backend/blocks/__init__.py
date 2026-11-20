@@ -166,12 +166,3 @@ def get_io_block_ids() -> Sequence[str]:
 @cached(ttl_seconds=3600)
 def get_output_block_ids() -> Sequence[str]:
     return [id for id, B in get_blocks().items() if B().block_type == BlockType.OUTPUT]
-
-
-@cached(ttl_seconds=3600)
-def get_human_in_the_loop_block_ids() -> Sequence[str]:
-    return [
-        id
-        for id, B in get_blocks().items()
-        if B().block_type == BlockType.HUMAN_IN_THE_LOOP
-    ]

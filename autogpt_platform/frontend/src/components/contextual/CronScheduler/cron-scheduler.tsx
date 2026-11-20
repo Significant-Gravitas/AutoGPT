@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -6,10 +6,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/atoms/Select/components/SelectPrimitives";
-import { Label } from "@/components/__legacy__/ui/label";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Button } from "@/components/__legacy__/ui/button";
-import { CronFrequency, makeCronExpression } from "@/lib/cron-expression-utils";
+import { Label } from "@/components/atoms/Label/Label";
+import { BaseInput } from "@/components/atoms/Input/BaseInput";
+import { Text } from "@/components/atoms/Text/Text";
+import { Button } from "@/components/atoms/Button/Button";
+import {
+  CronFrequency,
+  CUSTOM_INTERVAL_MAX,
+  makeCronExpression,
+  parseCustomInterval,
+} from "@/lib/cron-expression-utils";
+import {
+  type CustomIntervalDraft,
+  useCustomIntervalField,
+} from "@/lib/hooks/useCustomIntervalField";
 
 const weekDays = [
   { label: "Su", value: 0 },
@@ -51,10 +61,15 @@ export function CronScheduler({
   const [selectedWeekDays, setSelectedWeekDays] = useState<number[]>([]);
   const [selectedMonthDays, setSelectedMonthDays] = useState<number[]>([]);
   const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
-  const [customInterval, setCustomInterval] = useState<{
-    value: number;
-    unit: "minutes" | "hours" | "days";
-  }>({ value: 1, unit: "minutes" });
+  const [customInterval, setCustomInterval] = useState<CustomIntervalDraft>({
+    value: "1",
+    unit: "minutes",
+  });
+  const intervalField = useCustomIntervalField({
+    interval: customInterval,
+    onChange: setCustomInterval,
+  });
+  const intervalErrorId = useId();
 
   // Parse initial cron expression and set state
   useEffect(() => {
@@ -105,7 +120,7 @@ export function CronScheduler({
       setFrequency("custom");
       const interval = parseInt(minute.substring(2));
       if (!isNaN(interval)) {
-        setCustomInterval({ value: interval, unit: "minutes" });
+        setCustomInterval({ value: String(interval), unit: "minutes" });
       }
     } else if (
       hour.startsWith("*/") &&
@@ -117,7 +132,7 @@ export function CronScheduler({
       setFrequency("custom");
       const interval = parseInt(hour.substring(2));
       if (!isNaN(interval)) {
-        setCustomInterval({ value: interval, unit: "hours" });
+        setCustomInterval({ value: String(interval), unit: "hours" });
       }
     } else if (
       dayOfMonth.startsWith("*/") &&
@@ -129,7 +144,7 @@ export function CronScheduler({
       setFrequency("custom");
       const interval = parseInt(dayOfMonth.substring(2));
       if (!isNaN(interval)) {
-        setCustomInterval({ value: interval, unit: "days" });
+        setCustomInterval({ value: String(interval), unit: "days" });
         const hourNum = parseInt(hour);
         const minuteNum = parseInt(minute);
         if (!isNaN(hourNum) && !isNaN(minuteNum)) {
@@ -208,7 +223,12 @@ export function CronScheduler({
             : [],
       months: frequency === "yearly" ? selectedMonths : [],
       customInterval:
-        frequency === "custom" ? customInterval : { unit: "minutes", value: 1 },
+        frequency === "custom"
+          ? {
+              unit: customInterval.unit,
+              value: parseCustomInterval(customInterval.value),
+            }
+          : { unit: "minutes", value: 1 },
     });
     onCronExpressionChange(cronExpr);
   }, [
@@ -225,7 +245,11 @@ export function CronScheduler({
   return (
     <div className="max-w-md space-y-6">
       <div className="space-y-4">
-        <Label className="text-base font-medium">Repeat</Label>
+        <Label>
+          <Text variant="large-medium-tight" as="span" tone="inherit">
+            Repeat
+          </Text>
+        </Label>
 
         <Select
           value={frequency}
@@ -263,35 +287,41 @@ export function CronScheduler({
         )}
 
         {frequency === "custom" && (
-          <div className="flex items-center gap-2">
-            <Label>Every</Label>
-            <Input
-              type="number"
-              min="1"
-              className="w-20"
-              value={customInterval.value}
-              onChange={(e) =>
-                setCustomInterval({
-                  ...customInterval,
-                  value: parseInt(e.target.value),
-                })
-              }
-            />
-            <Select
-              value={customInterval.unit}
-              onValueChange={(value: any) =>
-                setCustomInterval({ ...customInterval, unit: value })
-              }
-            >
-              <SelectTrigger className="w-32">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="minutes">Minutes</SelectItem>
-                <SelectItem value="hours">Hours</SelectItem>
-                <SelectItem value="days">Days</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label>Every</Label>
+              <BaseInput
+                type="number"
+                min="1"
+                max={CUSTOM_INTERVAL_MAX[customInterval.unit]}
+                className="w-20"
+                value={customInterval.value}
+                onChange={intervalField.handleValueChange}
+                onBlur={intervalField.handleBlur}
+                aria-invalid={intervalField.error ? true : undefined}
+                aria-describedby={
+                  intervalField.error ? intervalErrorId : undefined
+                }
+              />
+              <Select
+                value={customInterval.unit}
+                onValueChange={intervalField.handleUnitChange}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="minutes">Minutes</SelectItem>
+                  <SelectItem value="hours">Hours</SelectItem>
+                  <SelectItem value="days">Days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {intervalField.error && (
+              <Text id={intervalErrorId} variant="body-tight" tone="error">
+                {intervalField.error}
+              </Text>
+            )}
           </div>
         )}
       </div>
@@ -301,8 +331,8 @@ export function CronScheduler({
           <div className="flex items-center gap-2">
             <Label>On</Label>
             <Button
-              variant="outline"
-              className="h-8 px-2 py-1 text-xs"
+              variant="compact-outline"
+              size="compact-sm"
               onClick={() => {
                 if (selectedWeekDays.length === weekDays.length) {
                   setSelectedWeekDays([]);
@@ -311,23 +341,29 @@ export function CronScheduler({
                 }
               }}
             >
-              {selectedWeekDays.length === weekDays.length
-                ? "Deselect All"
-                : "Select All"}
+              <Text variant="small-medium-tight" as="span" tone="inherit">
+                {selectedWeekDays.length === weekDays.length
+                  ? "Deselect All"
+                  : "Select All"}
+              </Text>
             </Button>
             <Button
-              variant="outline"
-              className="h-8 px-2 py-1 text-xs"
+              variant="compact-outline"
+              size="compact-sm"
               onClick={() => setSelectedWeekDays([1, 2, 3, 4, 5])}
             >
-              Weekdays
+              <Text variant="small-medium-tight" as="span" tone="inherit">
+                Weekdays
+              </Text>
             </Button>
             <Button
-              variant="outline"
-              className="h-8 px-2 py-1 text-xs"
+              variant="compact-outline"
+              size="compact-sm"
               onClick={() => setSelectedWeekDays([0, 6])}
             >
-              Weekends
+              <Text variant="small-medium-tight" as="span" tone="inherit">
+                Weekends
+              </Text>
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -335,9 +371,12 @@ export function CronScheduler({
               <Button
                 key={day.value}
                 variant={
-                  selectedWeekDays.includes(day.value) ? "default" : "outline"
+                  selectedWeekDays.includes(day.value)
+                    ? "compact-primary"
+                    : "compact-outline"
                 }
-                className="h-10 w-10 p-0"
+                size="compact-icon"
+                className="h-10 w-10"
                 onClick={() => {
                   setSelectedWeekDays((prev) =>
                     prev.includes(day.value)
@@ -351,9 +390,9 @@ export function CronScheduler({
             ))}
           </div>
           {selectedWeekDays.length === 0 && (
-            <p className="text-sm text-error">
+            <Text variant="body-tight" tone="error">
               Please select at least one day of the week
-            </p>
+            </Text>
           )}
         </div>
       )}
@@ -362,7 +401,12 @@ export function CronScheduler({
           <Label>Days of Month</Label>
           <div className="flex gap-2">
             <Button
-              variant={selectedMonthDays.length === 31 ? "default" : "outline"}
+              variant={
+                selectedMonthDays.length === 31
+                  ? "compact-primary"
+                  : "compact-outline"
+              }
+              size="compact"
               onClick={() => {
                 setSelectedMonthDays(
                   Array.from({ length: 31 }, (_, i) => i + 1),
@@ -374,9 +418,10 @@ export function CronScheduler({
             <Button
               variant={
                 selectedMonthDays.length < 31 && selectedMonthDays.length > 0
-                  ? "default"
-                  : "outline"
+                  ? "compact-primary"
+                  : "compact-outline"
               }
+              size="compact"
               onClick={() => {
                 setSelectedMonthDays([]);
               }}
@@ -384,13 +429,15 @@ export function CronScheduler({
               Customize
             </Button>
             <Button
-              variant="outline"
+              variant="compact-outline"
+              size="compact"
               onClick={() => setSelectedMonthDays([15])}
             >
               15th
             </Button>
             <Button
-              variant="outline"
+              variant="compact-outline"
+              size="compact"
               onClick={() => setSelectedMonthDays([31])}
             >
               Last Day
@@ -402,9 +449,12 @@ export function CronScheduler({
                 <Button
                   key={i + 1}
                   variant={
-                    selectedMonthDays.includes(i + 1) ? "default" : "outline"
+                    selectedMonthDays.includes(i + 1)
+                      ? "compact-primary"
+                      : "compact-outline"
                   }
-                  className="h-10 w-10 p-0"
+                  size="compact-icon"
+                  className="h-10 w-10"
                   onClick={() => {
                     setSelectedMonthDays((prev) =>
                       prev.includes(i + 1)
@@ -419,9 +469,9 @@ export function CronScheduler({
             </div>
           )}
           {selectedMonthDays.length === 0 && (
-            <p className="text-sm text-error">
+            <Text variant="body-tight" tone="error">
               Please select at least one day of the month
-            </p>
+            </Text>
           )}
         </div>
       )}
@@ -430,8 +480,8 @@ export function CronScheduler({
           <Label>Months</Label>
           <div className="flex gap-2">
             <Button
-              variant="outline"
-              className="h-8 px-2 py-1 text-xs"
+              variant="compact-outline"
+              size="compact-sm"
               onClick={() => {
                 if (selectedMonths.length === months.length) {
                   setSelectedMonths([]);
@@ -442,9 +492,11 @@ export function CronScheduler({
                 }
               }}
             >
-              {selectedMonths.length === months.length
-                ? "Deselect All"
-                : "Select All"}
+              <Text variant="small-medium-tight" as="span" tone="inherit">
+                {selectedMonths.length === months.length
+                  ? "Deselect All"
+                  : "Select All"}
+              </Text>
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -454,9 +506,12 @@ export function CronScheduler({
                 <Button
                   key={i}
                   variant={
-                    selectedMonths.includes(monthNumber) ? "default" : "outline"
+                    selectedMonths.includes(monthNumber)
+                      ? "compact-primary"
+                      : "compact-outline"
                   }
-                  className="px-2 py-1"
+                  size="compact"
+                  className="px-2"
                   onClick={() => {
                     setSelectedMonths((prev) =>
                       prev.includes(monthNumber)
@@ -471,9 +526,9 @@ export function CronScheduler({
             })}
           </div>
           {selectedMonths.length === 0 && (
-            <p className="text-sm text-error">
+            <Text variant="body-tight" tone="error">
               Please select at least one month
-            </p>
+            </Text>
           )}
         </div>
       )}
@@ -482,7 +537,7 @@ export function CronScheduler({
         !(frequency === "custom" && customInterval.unit !== "days") && (
           <div className="flex items-center gap-4 space-y-2">
             <Label className="pt-2">At</Label>
-            <Input
+            <BaseInput
               type="time"
               value={selectedTime}
               onChange={(e) => setSelectedTime(e.target.value)}
