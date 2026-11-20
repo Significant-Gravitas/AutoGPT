@@ -73,6 +73,7 @@ def _block() -> MagicMock:
     block.disabled = False
     block.input_schema = input_schema
     block.execution_stats = NodeExecutionStats(input_token_count=10)
+    block.with_retired_models_replaced.side_effect = lambda input_data: input_data
     block.ran = MagicMock()
 
     async def execute(_input_data, **_kwargs):

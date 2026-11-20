@@ -1,5 +1,7 @@
+import { useHasSessionCookie } from "@/components/auth/SessionCookieProvider";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
+import { useServerRenderedForm } from "@/hooks/useServerRenderedForm";
 import { getAuthDeepLink, sanitizeAuthNext } from "@/lib/auth-redirect";
 import { providerCallbackPath } from "@/lib/auth/provider-callback";
 import { isBannedNotice } from "@/lib/auth/account-banned";
@@ -22,12 +24,14 @@ import z from "zod";
 import { login as loginAction } from "./actions";
 import { getPostLoginPath, getSignInErrorNotice } from "./helpers";
 import { isTeamEmail } from "@/lib/auth/team-email";
+import { SIGN_IN_CODE_SENT } from "@/lib/auth/sign-in-code";
 import { clearImpersonationEverywhere } from "@/lib/impersonation";
 
 export function useLoginPage() {
   useCaptureMarketingPrompt();
 
   const { user, isUserLoading, isLoggedIn } = useAuth();
+  const hasSessionCookie = useHasSessionCookie();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,6 +69,9 @@ export function useLoginPage() {
     searchParams.get("error"),
     searchParams.get("provider"),
   );
+  // A provider sign-in that can't vouch for its address waits on a code
+  // emailed there (require-sign-in-code.ts).
+  const isWaitingOnCode = searchParams.get("error") === SIGN_IN_CODE_SENT;
   const showBannedNotice = isBannedNotice(searchParams);
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in
@@ -85,6 +92,7 @@ export function useLoginPage() {
       password: "",
     },
   });
+  const { formRef, isHydrated } = useServerRenderedForm(form);
 
   async function handleProviderLogin(provider: LoginProvider) {
     setLoadingProvider(provider);
@@ -172,15 +180,26 @@ export function useLoginPage() {
     }
   }
 
+  // Back to the form, keeping only the deep link.
+  function handleLeaveSignInCode() {
+    router.replace(
+      safeNext ? `/login?next=${encodeURIComponent(safeNext)}` : "/login",
+    );
+  }
+
   return {
     form,
+    formRef,
     feedback:
       feedback ??
       signInErrorNotice ??
-      (isWaitlisted ? null : getSocialSignInError(microsoftErrorCode)),
+      (isWaitlisted || isWaitingOnCode
+        ? null
+        : getSocialSignInError(microsoftErrorCode)),
     nextUrl: safeNext,
     verificationEmail,
     verificationNotice,
+    isWaitingOnCode,
     showBannedNotice,
     user,
     isLoading,
@@ -188,11 +207,15 @@ export function useLoginPage() {
     isMicrosoftLoading: loadingProvider === "microsoft",
     isMicrosoftEnabled: environment.isMicrosoftLoginEnabled(),
     isCloudEnv,
-    isUserLoading,
+    // Without a session cookie the visitor is signed out, so the form shows at
+    // once; with one, it waits for the session check.
+    isCheckingSession: hasSessionCookie && isUserLoading,
+    isHydrated,
     showNotAllowedModal,
     handleSubmit: form.handleSubmit(handleLogin),
     handleProviderLogin,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleBackToLogin: () => setVerificationEmail(null),
+    handleLeaveSignInCode,
   };
 }

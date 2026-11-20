@@ -22,11 +22,11 @@ from backend.blocks.pinecone import PineconeQueryBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.copilot import tree
 from backend.copilot.context import set_execution_context
-from backend.copilot.gate import CEILING_UNIT_MICRODOLLARS, check_action
+from backend.copilot.gate import CEILING_UNIT_MICRODOLLARS, check_action, spent_approval
 from backend.copilot.gate import subject as subject_module
 from backend.copilot.gate.headline import Headline
 from backend.copilot.gate.policy import Effect
-from backend.copilot.gate.review import open_review, review_payload
+from backend.copilot.gate.review import open_review, review_id_for, review_payload
 from backend.copilot.gate.subject import Subject, block_subject
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.copilot.tools.gate_subject_test import _graph, _node, _sub
@@ -132,6 +132,7 @@ def gate(redis):
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.review_store.consume", store.consume),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held.kept_for_its_card", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value=None)),
     ):
         yield store
@@ -262,6 +263,28 @@ async def test_the_approval_runs_next_turn_and_buys_the_chat_one_more_dollar(
     assert (await _check(_PAID)).allowed
     await charge_turn(turn_2, 1)
     assert not (await _check(_PAID)).allowed
+
+
+async def test_a_money_card_the_fold_spent_buys_the_chat_one_more_dollar(gate, chat):
+    """The gate spends the card the fold read as the call reaches it, and lets
+    the call through on it, so the dollar is bought there, without a lookup.
+    Kills: dropping the raise from the gate's branch for the fold's call."""
+    await _open(chat, ceiling=0)
+    review_id = review_id_for(_CHAT, "user-1", "t", {"q": 1})
+    card = SimpleNamespace(
+        node_exec_id=review_id,
+        status=ReviewStatus.APPROVED,
+        payload={"spend": {}},
+        created_at=datetime.now(UTC),
+        updated_at=None,
+        reviewed_at=datetime.now(UTC),
+    )
+    with spent_approval.running(review_id, spent_approval.FoldPass(card)):
+        assert (await _check(_PAID)).allowed
+    gate.consume.assert_awaited_once_with(card, "user-1")
+    gate.find_review.assert_not_awaited()
+    ceiling = (await chat.snapshot(_ledger_id()))["ceiling"]
+    assert ceiling == CEILING_UNIT_MICRODOLLARS
 
 
 async def test_an_approval_of_any_other_card_raises_nothing(gate, chat):
