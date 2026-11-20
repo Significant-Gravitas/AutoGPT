@@ -2,8 +2,14 @@ import asyncio
 from datetime import datetime
 from typing import Annotated, Optional
 
-from autogpt_libs.auth import get_request_context, get_user_id, requires_user
+from autogpt_libs.auth import (
+    get_request_context,
+    get_user_id,
+    requires_resource_permission,
+    requires_user,
+)
 from autogpt_libs.auth.models import RequestContext
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from fastapi import APIRouter, Body, HTTPException, Path, Query, Response, Security
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 
@@ -33,6 +39,34 @@ from backend.util.models import MAX_PAGE
 # No router-level auth dependency: the two /public/shared routes are
 # deliberately unauthenticated, so each route keeps its own.
 router = APIRouter()
+
+# The request's org (and team) must let the caller see runs, change them or
+# share them. Withdrawing a share stays open to the run's owner whatever their
+# role, since it only takes exposure away.
+RunViewContext = Annotated[
+    RequestContext,
+    Security(
+        requires_resource_permission(
+            OrgAction.VIEW_RESOURCES, TeamAction.VIEW_EXECUTIONS
+        )
+    ),
+]
+RunChangeContext = Annotated[
+    RequestContext,
+    Security(
+        requires_resource_permission(
+            OrgAction.CREATE_RESOURCES, TeamAction.CREATE_AGENTS
+        )
+    ),
+]
+RunShareContext = Annotated[
+    RequestContext,
+    Security(
+        requires_resource_permission(
+            OrgAction.SHARE_RESOURCES, TeamAction.VIEW_EXECUTIONS
+        )
+    ),
+]
 
 
 @router.post(
@@ -85,7 +119,7 @@ async def _stop_graph_run(
 )
 async def list_graphs_executions(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: RunViewContext,
 ) -> list[execution_db.GraphExecutionMeta]:
     paginated_result = await execution_db.get_graph_executions_paginated(
         user_id=user_id,
@@ -143,7 +177,7 @@ async def get_executions_cost_summary(
 async def list_graph_executions(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: RunViewContext,
     page: int = Query(1, ge=1, le=MAX_PAGE, description="Page number (1-indexed)"),
     page_size: int = Query(
         25, ge=1, le=100, description="Number of executions per page"
@@ -182,7 +216,7 @@ async def get_graph_execution(
     graph_id: str,
     graph_exec_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: RunViewContext,
 ) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
     result = await execution_db.get_graph_execution(
         user_id=user_id,
@@ -226,7 +260,7 @@ async def get_graph_execution(
 async def delete_graph_execution(
     graph_exec_id: str,
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: RunChangeContext,
 ) -> None:
     await sharing.delete_execution(user_id, graph_exec_id)
 
@@ -239,7 +273,7 @@ async def enable_execution_sharing(
     graph_id: Annotated[str, Path],
     graph_exec_id: Annotated[str, Path],
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    ctx: RunShareContext,
     _body: ExecutionShareRequest = Body(default=ExecutionShareRequest()),
 ) -> ExecutionShareResponse:
     """Enable sharing for a graph execution."""

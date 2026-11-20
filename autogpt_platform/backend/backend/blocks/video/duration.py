@@ -10,7 +10,8 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.video._utils import open_video_clip, strip_chapters_inplace
+from backend.blocks.video._render import strip_chapters_inplace
+from backend.blocks.video._utils import open_video_clip
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file

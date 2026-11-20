@@ -84,6 +84,10 @@
       "reason": "Chart series colours, written by recharts as SVG attributes, where CSS variables do not resolve."
     },
     {
+      "files": "src/app/(platform)/copilot/tools/RenderUI/components/ChartCanvas.tsx",
+      "reason": "Chart series, grid and annotation colours, written by recharts as SVG attributes, where CSS variables do not resolve."
+    },
+    {
       "files": "src/app/(platform)/team/[expertId]/components/ExpertOverview/components/ActivityChart.tsx",
       "reason": "Chart series colours and the bar separator, written by recharts as SVG attributes, where CSS variables do not resolve."
     },

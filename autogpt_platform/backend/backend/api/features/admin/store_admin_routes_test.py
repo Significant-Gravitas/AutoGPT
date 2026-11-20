@@ -7,6 +7,7 @@ Tests are organized by what they protect:
   and add-to-library uses get_graph_as_admin (not get_graph)
 """
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,9 +19,12 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import SubmissionStatus
 
+from backend.api.features.store.model import ReviewSubmissionRequest
+from backend.api.features.store.skill_model import SkillReviewRequest
 from backend.data.graph import get_graph, get_graph_as_admin
 from backend.util.exceptions import NotFoundError
 
+from . import store_admin_routes
 from .store_admin_routes import router as store_admin_router
 
 # Shared constants
@@ -360,3 +364,42 @@ async def test_library_member_can_view_pending_agent_in_builder() -> None:
         ]["in"]
     )
     assert SubmissionStatus.PENDING in statuses
+
+
+@pytest.mark.asyncio
+async def test_approving_a_submission_clears_the_store_caches_off_the_event_loop(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    routes = store_admin_routes
+    mocker.patch.object(
+        routes.store_db,
+        "check_submission_already_approved",
+        AsyncMock(return_value=False),
+    )
+    mocker.patch.object(routes.store_db, "review_store_submission", AsyncMock())
+    mocker.patch.object(
+        routes.skill_submission_db, "review_skill_submission", AsyncMock()
+    )
+    clears: list[str] = []
+
+    def clear_all_caches() -> None:
+        try:
+            asyncio.get_running_loop()
+            clears.append("on the event loop")
+        except RuntimeError:
+            clears.append("off the event loop")
+
+    mocker.patch.object(routes.store_cache, "clear_all_caches", clear_all_caches)
+
+    await routes.review_submission(
+        SLV_ID,
+        ReviewSubmissionRequest(
+            store_listing_version_id=SLV_ID, is_approved=True, comments=""
+        ),
+        user_id=ADMIN_USER_ID,
+    )
+    await routes.review_skill_submission(
+        SLV_ID, SkillReviewRequest(is_approved=True, comments=""), user_id=ADMIN_USER_ID
+    )
+
+    assert clears == ["off the event loop"] * 2

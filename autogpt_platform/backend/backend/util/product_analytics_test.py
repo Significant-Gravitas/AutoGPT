@@ -557,9 +557,9 @@ def test_safe_error_detail_is_truncated() -> None:
 
 def test_safe_error_detail_is_fast_on_a_huge_body() -> None:
     body = "a" * 200_000 + " alice@example.com"
-    start = time.monotonic()
+    start = time.thread_time()
     assert product_analytics.safe_error_detail(body) == "a" * 200
-    assert time.monotonic() - start < 1
+    assert time.thread_time() - start < 1
 
 
 def test_safe_error_detail_drops_a_word_cut_by_the_scan_limit() -> None:

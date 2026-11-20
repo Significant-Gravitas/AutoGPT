@@ -44,10 +44,15 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Config
 from backend.util.text import split_camelcase
+from backend.util.type import ConversionError, coerce_inputs_to_schema
 
 from ._preview import ChangePreview
 
 logger = logging.getLogger(__name__)
+
+# The account behind a file picker: GoogleDriveFile's ``credentials_id`` field
+# and its ``_credentials_id`` alias, either of which it accepts.
+_PICKER_ACCOUNT_KEYS = frozenset({"_credentials_id", "credentials_id"})
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
@@ -359,7 +364,7 @@ class BlockSchema(BaseModel):
             jsonschema.validate(json.to_dict(data), property_schema)
             return None
         except jsonschema.ValidationError as e:
-            return str(e)
+            return json.describe_validation_error(e, field_name=field_name)
 
     @classmethod
     def get_fields(cls) -> set[str]:
@@ -923,14 +928,13 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             - should_pause: True if execution should be paused for review
             - input_data_to_use: The input data to use (may be modified by reviewer)
         """
-        if not (
-            self.is_irreversible_action and execution_context.sensitive_action_safe_mode
-        ):
+        if not self.is_irreversible_action:
             return False, input_data
 
         from backend.blocks.helpers.review import HITLReviewHelper
 
-        # Handle the review request and get decision
+        # A reviewer's answer on this step decides it even with the safe mode
+        # off; the safe mode only decides whether a step with none asks.
         decision = await HITLReviewHelper.handle_review_decision(
             input_data=input_data,
             user_id=user_id,
@@ -949,6 +953,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             ),
             block=self,
             execution_context=execution_context,
+            ask=execution_context.sensitive_action_safe_mode,
         )
 
         if decision is None:
@@ -972,7 +977,50 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 block_name=self.name,
                 block_id=self.id,
             )
-        return False, reviewed_data
+        if reviewed_data == input_data:
+            # Safe mode off, an "approve future", or an approval with nothing
+            # changed: the run's own input, already coerced, runs as it is.
+            return False, input_data
+        return False, self._approved_input(input_data, reviewed_data)
+
+    def _approved_input(
+        self, input_data: BlockInput, reviewed_data: dict[str, Any]
+    ) -> BlockInput:
+        """The input as the reviewer approved it.
+
+        The reviewer's payload decides every field they could edit, and a
+        field they removed stays removed. Fields a reviewer can't edit,
+        credentials and secrets, plus the account behind a file picker, come
+        from this run's own input: the payload was stored before the run
+        resolved them (a chat's resume injects its credentials afterwards).
+        The result is coerced like the input was.
+        """
+        properties = self.input_schema.jsonschema().get("properties", {})
+        kept = {
+            name
+            for name, prop in properties.items()
+            if "credentials_provider" in prop or prop.get("secret")
+        }
+        approved = {k: v for k, v in reviewed_data.items() if k not in kept}
+        approved |= {k: v for k, v in input_data.items() if k in kept}
+        for auto in self.input_schema.get_auto_credentials_fields().values():
+            field = auto["field_name"]
+            edited, own = approved.get(field), input_data.get(field)
+            if not isinstance(edited, dict):
+                continue
+            pinned = {k: v for k, v in edited.items() if k not in _PICKER_ACCOUNT_KEYS}
+            if isinstance(own, dict):
+                pinned |= {k: v for k, v in own.items() if k in _PICKER_ACCOUNT_KEYS}
+            approved[field] = pinned
+        try:
+            coerce_inputs_to_schema(approved, self.input_schema)
+        except ConversionError as e:
+            raise BlockInputError(
+                message=f"The approved input is invalid: {e}",
+                block_name=self.name,
+                block_id=self.id,
+            ) from e
+        return approved
 
     async def _execute(
         self,

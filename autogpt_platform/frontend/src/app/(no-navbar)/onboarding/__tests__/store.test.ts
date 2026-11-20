@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { buildStepLayout, MAX_STEP, useOnboardingWizardStore } from "../store";
+import {
+  buildStepLayout,
+  DEFAULT_STEP_ORDER,
+  MAX_STEP,
+  resolveStepOrder,
+  useOnboardingWizardStore,
+} from "../store";
 
 beforeEach(() => {
   useOnboardingWizardStore.getState().reset();
@@ -136,9 +142,9 @@ describe("useOnboardingWizardStore", () => {
     });
 
     it("clamps at the last step", () => {
-      useOnboardingWizardStore.getState().goToStep(7);
+      useOnboardingWizardStore.getState().goToStep(MAX_STEP);
       useOnboardingWizardStore.getState().nextStep();
-      expect(useOnboardingWizardStore.getState().currentStep).toBe(7);
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(MAX_STEP);
     });
   });
 
@@ -202,6 +208,8 @@ describe("buildStepLayout", () => {
       buildStepLayout({ hasPlan: true }),
       buildStepLayout({ hasPlan: true, hasConnect: true }),
       buildStepLayout({}),
+      buildStepLayout({ order: resolveStepOrder(["hire", "role"]) }),
+      buildStepLayout({ order: ["hire", "team", "preparing"] }),
     ]) {
       expect(layout.hire).toBeUndefined();
     }
@@ -244,8 +252,48 @@ describe("buildStepLayout", () => {
   });
 
   it("fits every layout under MAX_STEP", () => {
-    expect(buildStepLayout({ hasPlan: true, hasConnect: true }).preparing).toBe(
-      MAX_STEP,
+    expect(
+      buildStepLayout({ hasPlan: true, hasConnect: true, hasAccess: true })
+        .preparing,
+    ).toBe(MAX_STEP);
+  });
+});
+
+describe("step order", () => {
+  it("shows the sign-in access step only to accounts that can connect one", () => {
+    expect(buildStepLayout({}).access).toBeUndefined();
+    expect(buildStepLayout({ hasAccess: true }).access).toBe(1);
+  });
+
+  it("keeps the default order when no experiment asks otherwise", () => {
+    expect(resolveStepOrder([])).toEqual(DEFAULT_STEP_ORDER);
+    expect(resolveStepOrder(true)).toEqual(DEFAULT_STEP_ORDER);
+  });
+
+  it("leads with the steps an experiment names and keeps the rest in order", () => {
+    expect(resolveStepOrder(["role", "access", "role", "nonsense"])).toEqual([
+      "role",
+      "access",
+      "team",
+      "autopilot",
+      "painPoints",
+      "subscription",
+      "connect",
+      "preparing",
+    ]);
+  });
+
+  it("puts the access step after the paywall, where connecting needs a plan", () => {
+    const withPaywall = resolveStepOrder(["access", "role"], { paywall: true });
+
+    expect(withPaywall.indexOf("access")).toBe(
+      withPaywall.indexOf("subscription") + 1,
     );
+    expect(withPaywall.slice(0, 2)).toEqual(["role", "team"]);
+    expect(resolveStepOrder(["access"])[0]).toBe("access");
+  });
+
+  it("always finishes with preparing", () => {
+    expect(resolveStepOrder(["preparing", "role"]).at(-1)).toBe("preparing");
   });
 });
