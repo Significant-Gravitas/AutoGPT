@@ -418,8 +418,8 @@ with `details.reason: "not_answering"`:
   inside their five seconds included, so no more than eight are ever left
   waiting. With all eight given up on, every request that looks at a folder
   gets `DIRECTORY_UNAVAILABLE` at once, until one of them returns. While one
-  of the eight is still inside its five seconds, a further request waits
-  for it, inside its own.
+  of the eight is still inside its five seconds, a further request waits,
+  inside its own, and goes on as soon as any of the eight returns.
 
 A chat's data session makes its folder as it starts, as a legacy session
 does, within the same five seconds. Past them the chat's session ends
