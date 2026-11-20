@@ -5,12 +5,11 @@ model its provider still serves carries the provider's shutdown date, and runs
 as itself until that day."""
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
 
-from backend.blocks import _base
 from backend.blocks.llm import AITextGeneratorBlock, LLMModel, LLMResponse
 from backend.data.execution import ExecutionContext
 from backend.data.llm_registry import llm_models
@@ -181,21 +180,77 @@ async def test_an_llm_block_given_an_unknown_model_still_fails():
         await _run_ai_text_generator("gpt-0")
 
 
-@pytest.mark.asyncio
-async def test_a_swap_is_logged_once_per_process(on_day, monkeypatch, caplog):
-    """A node left on a switched-off model logs its swap on the first run
-    only, not on every run."""
-    on_day(GPT_5_SHUTDOWN)
-    monkeypatch.setattr(_base, "_LOGGED_MODEL_SWAPS", set())
+def test_the_day_a_shutdown_date_is_read_against_is_the_utc_day(monkeypatch):
+    """23:30 UTC on 10 Dec is already 11 Dec on a host east of UTC+0:30; the
+    gate must still read 10 Dec."""
+    instant = datetime(2026, 12, 10, 23, 30, tzinfo=timezone.utc)
 
-    with caplog.at_level(logging.INFO, logger="backend.blocks._base"):
-        assert await _run_ai_text_generator("o3-mini") == [LLMModel.GPT6_1_TERRA]
-        assert await _run_ai_text_generator("o3-mini") == [LLMModel.GPT6_1_TERRA]
+    class HostEastOfUtc(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:  # a naive now() is the host's local clock: UTC+14 here
+                return (instant + timedelta(hours=14)).replace(tzinfo=None)
+            return instant.astimezone(tz)
 
-    swaps = [
+    monkeypatch.setattr(llm_models, "datetime", HostEastOfUtc)
+    assert llm_models._today() == date(2026, 12, 10)
+    assert retired_model_fallback("gpt-5-2025-08-07") is None
+
+
+async def _run_and_log(model: str, caplog) -> list[str]:
+    async def provider_call(*, llm_model: LLMModel, prompt: list, **kwargs):
+        return LLMResponse(
+            raw_response=None,
+            prompt=prompt,
+            response="Hello.",
+            tool_calls=None,
+            prompt_tokens=1,
+            completion_tokens=1,
+        )
+
+    with (
+        patch("backend.blocks.llm.llm_call", provider_call),
+        caplog.at_level(logging.INFO, logger="backend.blocks._base"),
+    ):
+        async for _ in AITextGeneratorBlock().execute(
+            {"prompt": "hi", "model": model, "credentials": PLATFORM_OPENAI},
+            credentials=openai_credentials,
+            execution_context=ExecutionContext(user_id="user", node_exec_id="ne-1"),
+        ):
+            pass
+    return [
         record.getMessage()
         for record in caplog.records
-        if "in place of o3-mini" in record.getMessage()
+        if "catalog fallbacks" in record.getMessage()
     ]
-    assert len(swaps) == 1
-    assert "runs gpt-6.1-terra in place of o3-mini" in swaps[0]
+
+
+@pytest.mark.asyncio
+async def test_a_swapped_run_logs_the_model_swap(on_day, caplog):
+    """Each swapped run logs one INFO line with its node execution id: the
+    run's recorded inputs keep the stored model, so this is its record."""
+    on_day(GPT_5_SHUTDOWN)
+    assert await _run_and_log("gpt-5-2025-08-07", caplog) == [
+        "Block AITextGeneratorBlock runs switched-off models' catalog fallbacks "
+        "(node exec ne-1): model gpt-5-2025-08-07 -> gpt-6.1-sol"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_swap_log_names_the_model_not_the_stored_spelling(on_day, caplog):
+    on_day(GPT_5_SHUTDOWN)
+    assert await _run_and_log("weird prefix/o3-mini", caplog) == [
+        "Block AITextGeneratorBlock runs switched-off models' catalog fallbacks "
+        "(node exec ne-1): model o3-mini -> gpt-6.1-terra"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_value_too_deep_to_resolve_still_fails_the_input_check(on_day):
+    """A thousand provider prefixes recurse through ``LLMModel._missing_``. The
+    value is unknown, and the block's input check refuses it, as before."""
+    on_day(GPT_5_SHUTDOWN)
+    deep = "x/" * 1000 + "o3-mini"
+    assert retired_model_fallback(deep) is None
+    with pytest.raises(BlockInputError):
+        await _run_ai_text_generator(deep)

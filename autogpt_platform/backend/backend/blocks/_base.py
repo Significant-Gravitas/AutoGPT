@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.llm_registry.llm_models import (
     is_llm_model_field,
+    resolved_model_value,
     retired_model_fallback,
 )
 from backend.data.model import (
@@ -53,10 +54,6 @@ from backend.util.type import ConversionError, coerce_inputs_to_schema
 from ._preview import ChangePreview
 
 logger = logging.getLogger(__name__)
-
-# (block, stored model, model run) swaps `Block._execute` has logged in this
-# process: a node left on a switched-off model would otherwise log every run.
-_LOGGED_MODEL_SWAPS: set[tuple[str, str, str]] = set()
 
 # The account behind a file picker: GoogleDriveFile's ``credentials_id`` field
 # and its ``_credentials_id`` alias, either of which it accepts.
@@ -1063,16 +1060,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 
         serving = self.with_retired_models_replaced(input_data)
         if serving is not input_data:
-            for name, value in serving.items():
-                stored = input_data.get(name)
-                stored = getattr(stored, "value", stored)
-                swap = (self.name, str(stored), str(value))
-                if value != stored and swap not in _LOGGED_MODEL_SWAPS:
-                    _LOGGED_MODEL_SWAPS.add(swap)
-                    logger.info(
-                        f"Block {self.name} runs {value} in place of {stored}, "
-                        "which the catalog has switched off (logged once per process)"
-                    )
+            # One line per run: it carries the node execution id, and the
+            # run's recorded inputs keep the stored model.
+            moved = ", ".join(
+                f"{name} {resolved_model_value(input_data[name])} -> {value}"
+                for name, value in serving.items()
+                if value != input_data.get(name)
+            )
+            logger.info(
+                f"Block {self.name} runs switched-off models' catalog fallbacks "
+                f"(node exec {execution_context.node_exec_id}): {moved}"
+            )
             input_data = serving
 
         # Validate the input data (original or reviewer-modified) once.

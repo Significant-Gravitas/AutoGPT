@@ -3847,6 +3847,11 @@ async def test_migrate_llm_models_covers_preset_overrides():
         "migrate_llm_models must run UPDATEs against AgentNodeExecutionInputOutput "
         "for preset rows, not just AgentNode.constantInput."
     )
+    # Both preset statements are bounded to preset rows: without the bound
+    # the planner walks the whole execution-I/O table at every boot.
+    preset_statements = {q for q in queries if '"AgentNodeExecutionInputOutput"' in q}
+    assert len(preset_statements) == 2
+    assert all('io."agentPresetId" IS NOT NULL' in q for q in preset_statements)
 
 
 def test_graph_meta_from_db_carries_org_team():

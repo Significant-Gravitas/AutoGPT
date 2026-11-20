@@ -370,7 +370,9 @@ async def test_boot_pass_moves_shut_down_models_once_and_nothing_else(
             assert moves == set()
 
 
-async def test_boot_pass_rewrites_only_llm_block_preset_overrides(retirement_env):
+async def test_boot_pass_rewrites_only_llm_block_preset_overrides(
+    retirement_env, caplog
+):
     """A preset's override of an LLM node moves off a model OpenAI has shut
     down. The same value in a Codex node's override (Codex's own list offers
     gpt-5.1-codex), an image node's override, and objects a workflow input
@@ -407,10 +409,23 @@ async def test_boot_pass_rewrites_only_llm_block_preset_overrides(retirement_env
 
     # The real boot pass, over every row in the test database as at app
     # start; only this test's rows are asserted.
-    for _ in range(2):
-        await migrate_llm_models(DEFAULT_LLM_MODEL)
+    for boot in range(2):
+        caplog.clear()
+        with caplog.at_level(logging.INFO, logger="backend.data.graph"):
+            await migrate_llm_models(DEFAULT_LLM_MODEL)
         assert {row: await _preset_input(row) for row in expected} == expected
         assert await _node_model(codex_node) == "gpt-5.1-codex"
+        moves = {
+            record.getMessage()
+            for record in caplog.records
+            if record.getMessage().startswith("LLM model migration moved")
+        }
+        # The LLM node's override counts as a preset move, not a node move.
+        preset_move = (
+            "LLM model migration moved 0 node(s) and 1 preset override(s) from "
+            "'gpt-5.1-codex' to 'gpt-6.1-sol'"
+        )
+        assert (preset_move in moves) == (boot == 0)
 
 
 async def test_retire_counts_preset_values_and_leaves_them_alone(

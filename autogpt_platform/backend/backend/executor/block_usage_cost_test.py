@@ -456,6 +456,47 @@ def test_every_cost_filter_match_uses_the_run_input():
     ] == []
 
 
+def test_every_executor_reader_of_an_input_model_reads_the_model_that_runs():
+    """A function in the executor that reads an input's `model` reads the model
+    the block runs: it goes through `_with_schema_defaults` or
+    `with_retired_models_replaced`. The cost log, the dry-run usage record and
+    the stop estimate read it today, as must any reader added after them."""
+    executor_root = Path(executor_utils.__file__).parent
+    readers: dict[str, set[str | None]] = {}
+    for path in executor_root.rglob("*.py"):
+        if path.name.endswith("_test.py"):
+            continue
+        for func in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            calls = [node for node in ast.walk(func) if isinstance(node, ast.Call)]
+            if any(_reads_model(call) for call in calls):
+                readers[f"{path.relative_to(executor_root)}::{func.name}"] = {
+                    _called_name(call) for call in calls
+                }
+
+    assert {
+        "cost_tracking.py::log_system_credential_cost",
+        "manager.py::execute_node",
+        "billing.py::_with_stop_estimate",
+    } <= readers.keys()
+    assert [
+        name
+        for name, called in readers.items()
+        if not called & {"_with_schema_defaults", "with_retired_models_replaced"}
+    ] == []
+
+
+def _reads_model(call: ast.Call) -> bool:
+    return (
+        isinstance(call.func, ast.Attribute)
+        and call.func.attr == "get"
+        and bool(call.args)
+        and isinstance(call.args[0], ast.Constant)
+        and call.args[0].value == "model"
+    )
+
+
 def _called_name(call: ast.Call) -> str | None:
     if isinstance(call.func, ast.Name):
         return call.func.id

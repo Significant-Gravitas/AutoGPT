@@ -2989,11 +2989,15 @@ async def migrate_llm_models(fallback: LLMModel):
         AND "constantInput" ? ($4)::text
         AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
         """
+    # ``io."agentPresetId" IS NOT NULL`` bounds both preset statements to
+    # preset rows. Without it the planner walks the whole execution-I/O table,
+    # every row run outputs included, once per statement at every boot.
     preset_targeted_query = """
         UPDATE {schema_prefix}"AgentNodeExecutionInputOutput" AS io
         SET "data" = jsonb_set(io."data"::jsonb, $1, to_jsonb($2), true)
         FROM {schema_prefix}"AgentPreset" AS p, {schema_prefix}"AgentNode" AS n
-        WHERE io."agentPresetId" = p."id"
+        WHERE io."agentPresetId" IS NOT NULL
+        AND io."agentPresetId" = p."id"
         AND n."agentGraphId" = p."agentGraphId"
         AND n."agentGraphVersion" = p."agentGraphVersion"
         AND io."name" = ($3)::text || split_part(n."id", '-', 1)
@@ -3005,7 +3009,8 @@ async def migrate_llm_models(fallback: LLMModel):
         UPDATE {{schema_prefix}}"AgentNodeExecutionInputOutput" AS io
         SET "data" = jsonb_set(io."data"::jsonb, $1, to_jsonb($2), true)
         FROM {{schema_prefix}}"AgentPreset" AS p, {{schema_prefix}}"AgentNode" AS n
-        WHERE io."agentPresetId" = p."id"
+        WHERE io."agentPresetId" IS NOT NULL
+        AND io."agentPresetId" = p."id"
         AND n."agentGraphId" = p."agentGraphId"
         AND n."agentGraphVersion" = p."agentGraphVersion"
         AND io."name" = ($3)::text || split_part(n."id", '-', 1)

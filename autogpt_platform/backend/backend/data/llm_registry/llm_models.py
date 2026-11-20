@@ -490,8 +490,19 @@ def scheduled_model_fallback(value: object) -> "tuple[LLMModel, date | None] | N
         return None
     try:
         return RETIRED_MODEL_FALLBACKS.get(LLMModel(value))
-    except ValueError:
+    except (ValueError, RecursionError):
+        # Hundreds of provider prefixes recurse through ``_missing_``. Such a
+        # value is unknown, and the block's input check refuses it as before.
         return None
+
+
+def resolved_model_value(value: object) -> str:
+    """The ``LLMModel`` value *value* resolves to, as a log names it: the
+    enum's spelling, not the stored one. Its text when it resolves to none."""
+    try:
+        return LLMModel(value).value
+    except (ValueError, RecursionError):
+        return str(value)
 
 
 def retired_model_fallback(value: object) -> "LLMModel | None":
