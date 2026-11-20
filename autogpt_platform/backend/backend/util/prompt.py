@@ -32,8 +32,13 @@ _IMAGE_TOKEN_ESTIMATE = 4096
 
 
 def _tok_len(text: str, enc) -> int:
-    """True token length of *text* in tokenizer *enc* (no wrapper cost)."""
-    return len(enc.encode(str(text)))
+    """True token length of *text* in tokenizer *enc* (no wrapper cost).
+
+    Text that spells a special token, such as ``<|endoftext|>``, is counted as
+    plain text: tiktoken raises on it by default, and users or tool output can
+    write it.
+    """
+    return len(enc.encode(str(text), disallowed_special=()))
 
 
 def _msg_tokens(msg: dict, enc) -> int:
@@ -181,7 +186,7 @@ def _truncate_middle_tokens(text: str, enc, max_tok: int) -> str:
     Return *text* shortened to ≈max_tok tokens by keeping the head & tail
     and inserting an ellipsis token in the middle.
     """
-    ids = enc.encode(str(text))
+    ids = enc.encode(str(text), disallowed_special=())
     if len(ids) <= max_tok:
         return text  # nothing to do
 

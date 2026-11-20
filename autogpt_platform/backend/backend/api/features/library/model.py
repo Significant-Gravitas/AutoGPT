@@ -7,7 +7,12 @@ import prisma.enums
 import prisma.models
 import pydantic
 
-from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
+from backend.data.graph import (
+    NODE_INPUT_MASK_PREFIX,
+    GraphModel,
+    GraphSettings,
+    GraphTriggerInfo,
+)
 from backend.data.includes import MAX_NODE_INPUT_OUTPUT_FETCH
 from backend.data.model import (
     CredentialsMetaInput,
@@ -27,9 +32,6 @@ if TYPE_CHECKING:
     from backend.data.integrations import WebhookWithoutSecrets
 
 logger = logging.getLogger(__name__)
-
-
-NODE_INPUT_MASK_PREFIX = "_node_input_mask_"
 
 
 def node_input_mask_key(node_id: str) -> str:

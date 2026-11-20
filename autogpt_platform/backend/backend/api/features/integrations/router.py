@@ -60,6 +60,7 @@ from backend.integrations.codex.login import (
     CodexLoginFailedError,
     CodexLoginPendingError,
 )
+from backend.integrations.credential_input import normalize_user_supplied_credentials
 from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
@@ -1211,6 +1212,7 @@ async def create_credentials(
         error := scope_error(provider.value, credentials.scope)
     ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+    normalize_user_supplied_credentials(credentials)
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
@@ -1295,6 +1297,8 @@ async def delete_credentials(
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
+    # CredentialsDeletionResponse always reports deleted=true, so only return it
+    # once the stored row is actually gone.
     return CredentialsDeletionResponse(revoked=tokens_revoked)
 
 
@@ -1328,7 +1332,20 @@ async def delete_and_revoke_credentials(
     )
 
     if provider == ProviderName.CODEX:
-        return await revoke_codex_credentials(creds_manager, user_id, creds.id)
+        try:
+            return await revoke_codex_credentials(creds_manager, user_id, creds.id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+            ) from None
+        except Exception as error:
+            logger.warning(
+                "Codex credential deletion failed with %s", type(error).__name__
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete credentials",
+            ) from None
 
     await creds_manager.delete(user_id, creds.id)
 
