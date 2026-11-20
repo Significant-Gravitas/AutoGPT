@@ -84,7 +84,7 @@ let websiteID: string | null | undefined;
 // The account PostHog's saved state shows identified, read once with them.
 let savedAccount: string | null | undefined;
 // The account the settled id was merged into on an earlier page.
-let spentFor: string | null = null;
+let mergedIntoAccount: string | null = null;
 let sessionUserID: string | null = null;
 let pageLanding: FirstLanding | null = null;
 const settledListeners = new Set<() => void>();
@@ -114,7 +114,7 @@ export function isAnonymousIDSettled(): boolean {
  * `userID` (null: nobody signed in), so it must be rotated.
  */
 export function isAnonymousIDSpentFor(userID: string | null): boolean {
-  return settled && spentFor !== null && spentFor !== userID;
+  return settled && mergedIntoAccount !== null && mergedIntoAccount !== userID;
 }
 
 /** Calls `listener` when a consented id settles after the session is known. */
@@ -142,15 +142,12 @@ export function getAnonymousID(): string | null {
 function resolveConsentedID(): string | null {
   if (savedAccount === undefined) savedAccount = readSavedPostHogAccount();
   if (savedAccount && session !== "unknown" && savedAccount !== sessionUserID) {
-    // The stored landing is the earlier visitor's, and persistFirstLanding
-    // never overwrites one.
-    removeStorage(FIRST_LANDING_KEY);
-    persistFirstLanding();
+    replaceFirstLanding();
     return saveID(memoryID ?? newID());
   }
   const stored = readStorage(ANONYMOUS_ID_KEY);
   if (ownDeviceID === undefined) ownDeviceID = readOwnPostHogDeviceID();
-  if (stored || ownDeviceID) spentFor = savedAccount;
+  if (stored || ownDeviceID) mergedIntoAccount = savedAccount;
   if (stored) return stored;
   const id = ownDeviceID ?? chooseWebsiteID();
   if (id === undefined) return null;
@@ -224,6 +221,13 @@ function persistFirstLanding(): void {
   writeStorage(FIRST_LANDING_KEY, JSON.stringify(pageLanding));
 }
 
+// The stored landing is an earlier visitor's, and persistFirstLanding never
+// overwrites one, so this page's landing takes its place.
+function replaceFirstLanding(): void {
+  removeStorage(FIRST_LANDING_KEY);
+  persistFirstLanding();
+}
+
 function forgetStoredIdentity(): void {
   removeStorage(ANONYMOUS_ID_KEY);
   removeStorage(FIRST_LANDING_KEY);
@@ -253,7 +257,7 @@ export function resetAnonymousID({
   settled = true;
   ownDeviceID = null;
   websiteID = null;
-  spentFor = null;
+  mergedIntoAccount = null;
   if (!keepLanding) pageLanding = null;
   forgetStoredIdentity();
   if (!hasConsentFor("analytics")) return;
@@ -270,7 +274,7 @@ export function resetAnonymousIDForTests(): void {
   ownDeviceID = undefined;
   websiteID = undefined;
   savedAccount = undefined;
-  spentFor = null;
+  mergedIntoAccount = null;
   settledListeners.clear();
   pageLanding = null;
 }
@@ -298,14 +302,13 @@ function readSharedPostHogDeviceID(): string | null {
   return name ? parseDeviceID(readCookie(name)) : null;
 }
 
-// The cookie too: it holds the same state, and may outlive localStorage.
+// localStorage is this app's own. The cookie holds the same state and may
+// outlive it, so it counts only when localStorage has none: a stale cookie
+// must not mark a fresh id as merged.
 function readSavedPostHogAccount(): string | null {
   const name = getPostHogPersistenceName();
   if (!name) return null;
-  return (
-    parseIdentifiedAccount(readStorage(name)) ??
-    parseIdentifiedAccount(readCookie(name))
-  );
+  return parseIdentifiedAccount(readStorage(name) ?? readCookie(name));
 }
 
 function getPostHogPersistenceName(): string | null {

@@ -10,6 +10,7 @@ import {
   followAnalyticsConsentForIdentity,
   getAnonymousID,
   getPostHogDeviceID,
+  isAnonymousIDSpentFor,
   readFirstLanding,
   resetAnonymousID,
   resetAnonymousIDForTests,
@@ -87,6 +88,32 @@ describe("getAnonymousID", () => {
 
     expect(id).toBeTruthy();
     expect(getAnonymousID()).toBe(id);
+  });
+});
+
+describe("an id an earlier page merged into an account", () => {
+  afterEach(() => {
+    document.cookie = "ph_phc_test_posthog=; Path=/; Max-Age=0";
+  });
+
+  it("trusts this app's PostHog state over a stale shared cookie", () => {
+    window.localStorage.setItem(ANONYMOUS_ID_KEY, "stored-id");
+    window.localStorage.setItem(
+      "ph_phc_test_posthog",
+      JSON.stringify({ distinct_id: "stored-id", $device_id: "stored-id" }),
+    );
+    document.cookie = `ph_phc_test_posthog=${encodeURIComponent(
+      JSON.stringify({
+        distinct_id: "user-A",
+        $device_id: "other-device",
+        $user_state: "identified",
+      }),
+    )}; Path=/`;
+
+    setAnalyticsIdentitySignedIn("user-B");
+
+    expect(getAnonymousID()).toBe("stored-id");
+    expect(isAnonymousIDSpentFor("user-B")).toBe(false);
   });
 });
 

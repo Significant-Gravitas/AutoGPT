@@ -281,11 +281,28 @@ describe("analytics identity on account transitions", () => {
       );
     });
 
-    it("rotates it before another account signs in", () => {
+    it("rotates it, and PostHog's identity, before another account signs in", () => {
+      posthog.get_distinct_id.mockReturnValue("user-A");
+      posthog.reset.mockImplementation(() => {
+        posthog.get_distinct_id.mockReturnValue("fresh-device");
+      });
+
       useAuthStore.setState({ user: userB });
 
-      expect(getAnonymousID()).not.toBe("merged-id");
-      expect(posthog.reset).not.toHaveBeenCalled();
+      expect(posthog.reset).toHaveBeenCalledOnce();
+      expect(getAnonymousID()).toBe("fresh-device");
+    });
+
+    it("resets once when user A switches to user B", () => {
+      posthog.get_distinct_id.mockReturnValue("user-A");
+      posthog.reset.mockImplementation(() => {
+        posthog.get_distinct_id.mockReturnValue("fresh-device");
+      });
+      useAuthStore.setState({ user: userA });
+
+      useAuthStore.setState({ user: userB });
+
+      expect(posthog.reset).toHaveBeenCalledOnce();
     });
 
     it("keeps it for user A", () => {
