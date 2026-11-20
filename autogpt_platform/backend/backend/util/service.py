@@ -468,7 +468,7 @@ class AppService(BaseAppService, ABC):
             exceptions.ConflictError, cls._handle_internal_http_error(409)
         )
         app.add_exception_handler(DataError, cls._handle_internal_http_error(400))
-        # Not the query's fault: the database dropped, refused or timed it out.
+        # Not the query's fault: its connection was lost, refused or timed out.
         app.add_exception_handler(
             DatabaseConnectionError, cls._handle_internal_http_error(503)
         )

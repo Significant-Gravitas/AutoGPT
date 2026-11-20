@@ -1,17 +1,19 @@
-"""A query the database never got to run raises ``DatabaseConnectionError``,
-which the database manager's client retries; a query the database rejected
-raises its own class, answered at once, as before. Only the query engine's
-HTTP answers are recorded; the client, the database manager and its RPC
-client are the real ones."""
+"""A query that failed because the connection was lost, refused or timed out
+raises ``DatabaseConnectionError``, which the database manager's client
+retries; any other failed query, a statement timeout included, raises its own
+class, answered at once, as before. Only the query engine's HTTP answers are
+recorded; the client, the database manager and its RPC client are the real
+ones."""
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import httpx
 import pytest
-from prisma.errors import PrismaError, RawQueryError, UniqueViolationError
+from prisma.errors import DataError, PrismaError, RawQueryError, UniqueViolationError
 
 from backend.data import db
 from backend.data.db_errors import DatabaseConnectionError
@@ -34,25 +36,39 @@ def _engine_error(code: str | None, message: str, meta: object = None) -> dict:
     return {"errors": [{"error": message, "user_facing_error": user_facing}]}
 
 
-def _raw_query_failed(sqlstate: str, reason: str) -> dict:
+def _raw_query_failed(sqlstate: str, message: str) -> dict:
     return _engine_error(
         "P2010",
-        f"Raw query failed. Code: `{sqlstate}`. Message: `ERROR: {reason}`",
-        {"code": sqlstate, "message": f"ERROR: {reason}"},
+        f"Raw query failed. Code: `{sqlstate}`. Message: `{message}`",
+        {"code": sqlstate, "message": message},
     )
 
 
-# CLOSED and the raw statement timeout are as the query engine (5.17) sent them
-# against Postgres 15, for a terminated backend and a pg_sleep past the timeout.
+def _query_failed(code: str, message: str, severity: str) -> dict:
+    """A Postgres error outside a raw query, which the engine sends with no
+    code and quotes in full."""
+    return _engine_error(
+        None,
+        "Error occurred during query execution:\nConnectorError(ConnectorError { "
+        f'user_facing_error: None, kind: QueryError(PostgresError {{ code: "{code}", '
+        f'message: "{message}", severity: "{severity}", detail: None, column: None, '
+        "hint: None }), transient: false })",
+    )
+
+
+# As the query engine (5.17) sent them against Postgres 15: CLOSED for a pooled
+# connection whose backend was terminated while idle, both terminated-backend
+# answers for a backend terminated mid-query (a raw query and a model query),
+# and the raw statement timeout for a pg_sleep past it. The other statement
+# timeout is AUTOGPT-SERVER-AFC's message.
 _SERVER = {"database_host": "db.internal", "database_port": 5432}
-# AUTOGPT-SERVER-AFC: a statement timeout outside a raw query.
-_STATEMENT_TIMED_OUT = (
-    "Error occurred during query execution:\nConnectorError(ConnectorError { "
-    'user_facing_error: None, kind: QueryError(PostgresError { code: "57014", '
-    'message: "canceling statement due to statement timeout", severity: '
-    '"ERROR", detail: None, column: None, hint: None }), transient: false })'
-)
+_TERMINATED = "terminating connection due to administrator command"
+_TIMED_OUT = "canceling statement due to statement timeout"
 CLOSED = _engine_error("P1017", "Server has closed the connection.")
+# The engine can send its answer as a JSON string, which prisma decodes.
+CLOSED_AS_A_STRING = json.dumps(CLOSED)
+TERMINATED_RAW = _raw_query_failed("57P01", f"FATAL: {_TERMINATED}")
+STATEMENT_TIMED_OUT = _query_failed("57014", _TIMED_OUT, "ERROR")
 DUPLICATE = _engine_error("P2002", "Unique constraint failed on the fields: (`id`)")
 NO_ROW = {"data": {"result": None}}
 
@@ -61,6 +77,9 @@ NO_ROW = {"data": {"result": None}}
     "answer, raised",
     [
         pytest.param(CLOSED, DatabaseConnectionError, id="P1017-null-meta"),
+        pytest.param(
+            CLOSED_AS_A_STRING, DatabaseConnectionError, id="P1017-string-encoded"
+        ),
         pytest.param(
             _engine_error(
                 "P1001", "Can't reach database server at `db.internal:5432`", _SERVER
@@ -78,24 +97,32 @@ NO_ROW = {"data": {"result": None}}
             id="P1002",
         ),
         pytest.param(
-            _engine_error("P1008", "Operations timed out after `10s`", {"time": "10s"}),
+            _query_failed("57P01", _TERMINATED, "FATAL"),
             DatabaseConnectionError,
+            id="backend-terminated",
+        ),
+        pytest.param(
+            TERMINATED_RAW, DatabaseConnectionError, id="backend-terminated-raw"
+        ),
+        pytest.param(
+            _raw_query_failed(
+                "22P02", 'ERROR: invalid input syntax for type uuid: "57P01"'
+            ),
+            RawQueryError,
+            id="quotes-57P01-raw",
+        ),
+        # A timeout is answered as before, not retried: it mostly means an
+        # overloaded database, which re-running the statement would load more.
+        pytest.param(
+            _engine_error("P1008", "Operations timed out after `10s`", {"time": "10s"}),
+            DataError,
             id="P1008",
         ),
+        pytest.param(STATEMENT_TIMED_OUT, DataError, id="statement-timeout"),
         pytest.param(
-            _engine_error(None, _STATEMENT_TIMED_OUT),
-            DatabaseConnectionError,
-            id="statement-timeout",
-        ),
-        pytest.param(
-            _raw_query_failed("57014", "canceling statement due to statement timeout"),
-            DatabaseConnectionError,
-            id="statement-timeout-raw",
-        ),
-        pytest.param(
-            _raw_query_failed("57014", "canceling statement due to user request"),
+            _raw_query_failed("57014", f"ERROR: {_TIMED_OUT}"),
             RawQueryError,
-            id="cancel-on-request-raw",
+            id="statement-timeout-raw",
         ),
         pytest.param(DUPLICATE, UniqueViolationError, id="P2002-null-meta"),
     ],
@@ -117,27 +144,44 @@ async def test_an_answer_without_errors_is_returned_as_before():
     assert result == [{"health_check": 1}]
 
 
+@pytest.mark.parametrize(
+    "dropped",
+    [
+        pytest.param([CLOSED], id="P1017"),
+        pytest.param([CLOSED_AS_A_STRING], id="P1017-string-encoded"),
+        # As seen live: the query after a backend terminated mid-query gets its
+        # dead pooled connection back (P1017), and the next one a new connection.
+        pytest.param([TERMINATED_RAW, CLOSED], id="backend-terminated-raw"),
+    ],
+)
 async def test_the_database_manager_client_retries_a_query_the_database_dropped(
-    monkeypatch, no_retry_wait
+    monkeypatch, no_retry_wait, dropped
 ):
-    async with _database_manager_answering(monkeypatch, CLOSED, NO_ROW) as (
+    async with _database_manager_answering(monkeypatch, *dropped, NO_ROW) as (
         client,
         statuses,
     ):
         active = await client.is_auth_session_active("session-1", "user-1")
 
     assert active is False
-    assert statuses == [503, 200]
+    assert statuses == [503] * len(dropped) + [200]
 
 
-async def test_the_database_manager_client_answers_a_rejected_query_at_once(
-    monkeypatch, no_retry_wait
+@pytest.mark.parametrize(
+    "answer, raised",
+    [
+        pytest.param(DUPLICATE, UniqueViolationError, id="P2002"),
+        pytest.param(STATEMENT_TIMED_OUT, DataError, id="statement-timeout"),
+    ],
+)
+async def test_the_database_manager_client_answers_other_query_errors_at_once(
+    monkeypatch, no_retry_wait, answer, raised
 ):
-    async with _database_manager_answering(monkeypatch, DUPLICATE, NO_ROW) as (
+    async with _database_manager_answering(monkeypatch, answer, NO_ROW) as (
         client,
         statuses,
     ):
-        with pytest.raises(UniqueViolationError):
+        with pytest.raises(raised):
             await client.is_auth_session_active("session-1", "user-1")
 
     assert statuses == [400]
@@ -152,7 +196,7 @@ def no_retry_wait(monkeypatch):
 
 
 @asynccontextmanager
-async def _engine_answering(*answers: dict) -> AsyncIterator[Any]:
+async def _engine_answering(*answers: object) -> AsyncIterator[Any]:
     """The query engine of the backend's client, answering each request with
     the next of *answers* instead of a query engine process."""
     pending = iter(answers)
@@ -175,7 +219,7 @@ def _client_on(engine: Any) -> Any:
 
 @asynccontextmanager
 async def _database_manager_answering(
-    monkeypatch: pytest.MonkeyPatch, *answers: dict
+    monkeypatch: pytest.MonkeyPatch, *answers: object
 ) -> AsyncIterator[tuple[DatabaseManagerAsyncClient, list[int]]]:
     """The database manager's retrying client, served in process by the
     database manager's own app, whose queries get *answers* in turn. Yields
