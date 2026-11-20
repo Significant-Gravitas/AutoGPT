@@ -75,10 +75,10 @@ import unicodedata
 
 import idna
 
-ZERO_WIDTH_NON_JOINER = "‌"
-ZERO_WIDTH_JOINER = "‍"
+ZERO_WIDTH_NON_JOINER = "\u200c"
+ZERO_WIDTH_JOINER = "\u200d"
 
-_EMOJI_SELECTOR = "️"
+_EMOJI_SELECTOR = "\ufe0f"
 _SKIN_TONES = range(0x1F3FB, 0x1F400)
 # U+2194 LEFT RIGHT ARROW: a math symbol (Sm) to Unicode, and a pictograph in
 # the sequences that use it.
