@@ -1,5 +1,9 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import {
+  getGetExperimentalListLocalExecutorsQueryKey,
+  type getExperimentalListLocalExecutorsResponse,
+} from "@/app/api/__generated__/endpoints/copilot/copilot";
+import {
   getGetExperimentalListLocalExecutorsMockHandler200,
   getPostExperimentalListLocalExecutorDirectoriesMockHandler200,
 } from "@/app/api/__generated__/endpoints/copilot/copilot.msw";
@@ -7,6 +11,7 @@ import type { DirectoryListRequest } from "@/app/api/__generated__/models/direct
 import { server } from "@/mocks/mock-server";
 import { Key, storage } from "@/services/storage/local-storage";
 import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -297,6 +302,50 @@ describe("the folder dialog with more than one computer", () => {
     await choose(user, "Workstation · Windows");
 
     expect(screen.queryAllByText(LAPTOP_CONNECTED)).toHaveLength(0);
+  });
+
+  test("names a computer that connects at the moment another is chosen", async () => {
+    const user = userEvent.setup();
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={client}>
+        <ExecutionTargetPicker />
+      </QueryClientProvider>,
+    );
+    await openTheFolderDialog(user);
+    await openTheSetupSteps(user);
+    connected = [WORKSTATION, LAPTOP];
+    await checkAgain(user);
+    await seesTheNotice(LAPTOP_CONNECTED);
+
+    // The list's next answer and the person's choice reach one render. A
+    // click and a network answer can't be made to land together, so both are
+    // put where the picker reads them.
+    connected = [WORKSTATION, LAPTOP, STUDIO];
+    act(() => {
+      client.setQueryData<getExperimentalListLocalExecutorsResponse>(
+        getGetExperimentalListLocalExecutorsQueryKey(),
+        (answer) =>
+          answer?.status === 200
+            ? { ...answer, data: { executors: connected } }
+            : answer,
+      );
+      useCopilotUIStore.getState().setNewChatExecutionTarget({
+        kind: "local",
+        machineID: LAPTOP.machine_id,
+        machineLabel: LAPTOP.display_name,
+        connectionID: LAPTOP.connection_id,
+        browseID: null,
+        directoryRef: null,
+        displayPath: null,
+      });
+    });
+
+    await seesTheNotice("Studio · macOS connected. Choose it under Computer.");
+    expect(chosenComputer()).toBe("Laptop · macOS");
   });
 
   test("takes the notice away only when that computer disconnects", async () => {
