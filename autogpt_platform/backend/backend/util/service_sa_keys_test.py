@@ -62,38 +62,34 @@ def test_keys_starting_with_sa_cross_the_rpc_both_ways(
     settings.secrets.internal_api_key = "internal-key-for-tests-0123456789abcdef"
     monkeypatch.setattr(service_auth, "Settings", lambda: settings)
     monkeypatch.setenv(f"{EchoService.__name__.upper()}_HOST", "127.0.0.1")
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        monkeypatch.setattr(EchoService, "port", probe.getsockname()[1])
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        monkeypatch.setattr(EchoService, "port", listener.getsockname()[1])
 
-    with _serving(EchoService().build_fastapi_app()):
-        client = get_service_client(EchoServiceClient)
-        try:
-            assert client.echo(REPORT) == REPORT
-            assert client.echo_async(REPORT) == REPORT
-        finally:
-            client.close()
+        with _serving(EchoService().build_fastapi_app(), listener):
+            client = get_service_client(EchoServiceClient)
+            try:
+                assert client.echo(REPORT) == REPORT
+                assert client.echo_async(REPORT) == REPORT
+            finally:
+                client.close()
 
 
 @contextmanager
-def _serving(app: FastAPI) -> Iterator[None]:
-    server = uvicorn.Server(
-        uvicorn.Config(
-            app,
-            host="127.0.0.1",
-            port=EchoService.port,
-            lifespan="off",
-            log_config=None,
-        )
+def _serving(app: FastAPI, listener: socket.socket) -> Iterator[None]:
+    """Serve ``app`` on the already-bound ``listener``, so no other process can
+    take its port between choosing it and serving on it."""
+    server = uvicorn.Server(uvicorn.Config(app, lifespan="off", log_config=None))
+    thread = threading.Thread(
+        target=server.run, kwargs={"sockets": [listener]}, daemon=True
     )
-    thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
-    deadline = time.monotonic() + 30
-    while not server.started:
-        if time.monotonic() > deadline or not thread.is_alive():
-            raise RuntimeError("test RPC server did not start")
-        time.sleep(0.02)
     try:
+        deadline = time.monotonic() + 30
+        while not server.started:
+            if time.monotonic() > deadline or not thread.is_alive():
+                raise RuntimeError("test RPC server did not start")
+            time.sleep(0.02)
         yield
     finally:
         server.should_exit = True
