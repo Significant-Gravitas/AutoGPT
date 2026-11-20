@@ -1,4 +1,4 @@
-"""Creating a user/password login through the v2 API checks its scope."""
+"""v2 credential creation checks a login's scope and refuses blank secrets."""
 
 from unittest.mock import AsyncMock
 
@@ -95,3 +95,27 @@ def test_login_with_a_scope_stores_it(create: AsyncMock, provider: str, scope: s
     stored = create.await_args.args[1]
     assert stored.provider == provider
     assert stored.scope == scope
+
+
+def _api_key(api_key: str, title: str = "t") -> dict:
+    return {"type": "api_key", "provider": "openai", "title": title, "api_key": api_key}
+
+
+def test_blank_secret_is_rejected_and_nothing_stored(create: AsyncMock):
+    response = client.post("/integrations/credentials", json=_api_key("   "))
+
+    assert response.status_code == 422
+    assert response.json()["error"]["message"] == "API key must not be empty"
+    create.assert_not_awaited()
+
+
+def test_padded_secret_is_stored_stripped(create: AsyncMock):
+    response = client.post(
+        "/integrations/credentials", json=_api_key(" sk-padded \n", title=" K ")
+    )
+
+    assert response.status_code == 201
+    stored = create.await_args.args[1]
+    assert stored.api_key.get_secret_value() == "sk-padded"
+    assert stored.title == "K"
+    assert "sk-padded" not in response.text

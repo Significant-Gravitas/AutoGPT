@@ -306,10 +306,12 @@ export const ChatInput = memo(function ChatInput({
     isTranscribing,
     transcriptionError,
     hasFailedRecording,
+    isRecordingUnreadable,
     retryTranscription,
     downloadFailedRecording,
     dismissTranscriptionError,
     elapsedTime,
+    startRecording,
     toggleRecording,
     handleKeyDown: voiceHandleKeyDown,
     showMicButton,
@@ -322,6 +324,8 @@ export const ChatInput = memo(function ChatInput({
     inputId,
     isStreaming,
   });
+  // The mic button is also the Stop control, so Record again follows it.
+  const isMicDisabled = disabled || isTranscribing || isStreaming;
 
   const { isGlowing: isMicGlowing, dismissGlow } = useOnboardingMicGlow({
     isTranscribing,
@@ -449,6 +453,7 @@ export const ChatInput = memo(function ChatInput({
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
       {mentions.isOpen && (
         <MentionDropdown
+          trigger={mentions.trigger}
           options={mentions.options}
           showFiles={mentions.showFiles}
           hasIntegrations={mentions.hasIntegrations}
@@ -484,7 +489,9 @@ export const ChatInput = memo(function ChatInput({
           <TranscriptionErrorBar
             message={transcriptionError}
             isRetrying={isTranscribing}
-            onRetry={retryTranscription}
+            onRetry={isRecordingUnreadable ? undefined : retryTranscription}
+            onRecordAgain={isRecordingUnreadable ? startRecording : undefined}
+            isRecordAgainDisabled={isMicDisabled}
             onDownload={downloadFailedRecording}
             onDismiss={dismissTranscriptionError}
             className={stacked ? undefined : "mt-1.5"}
@@ -609,7 +616,7 @@ export const ChatInput = memo(function ChatInput({
                 isRecording={isRecording}
                 isTranscribing={isTranscribing}
                 isStreaming={isStreaming}
-                disabled={disabled || isTranscribing || isStreaming}
+                disabled={isMicDisabled}
                 highlight={isMicGlowing}
                 className={iconButtonClass}
                 onClick={() => {

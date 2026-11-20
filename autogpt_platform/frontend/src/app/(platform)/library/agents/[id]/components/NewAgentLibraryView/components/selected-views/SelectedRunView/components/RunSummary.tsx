@@ -39,11 +39,9 @@ export function RunSummary({ run }: Props) {
                     correctnessScore >= 0.8
                       ? "bg-success"
                       : correctnessScore >= 0.6
-                        ? // oxlint-disable-next-line design-system/no-raw-colors -- yellow-500 #F5C000 has no role; the score bar's gold step is deferred (see PR)
-                          "bg-yellow-500"
+                        ? "bg-yellow"
                         : correctnessScore >= 0.4
-                          ? // oxlint-disable-next-line design-system/no-raw-colors -- orange-500 #FE8700 has no role; the score bar's orange step is deferred (see PR)
-                            "bg-orange-500"
+                          ? "bg-orange"
                           : "bg-error"
                   }`}
                   style={

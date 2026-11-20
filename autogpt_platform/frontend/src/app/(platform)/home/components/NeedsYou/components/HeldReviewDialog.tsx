@@ -169,7 +169,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
                     chatLink ? (
                       <Link
                         href={current.item.primary_action.href}
-                        className="rounded-sm text-body font-medium text-foreground-emphasis underline underline-offset-4 hover:text-foreground focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
+                        className="rounded-sm text-body font-medium text-foreground-emphasis underline underline-offset-4 hover:text-foreground-base focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
                       >
                         Open chat
                       </Link>

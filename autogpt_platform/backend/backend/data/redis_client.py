@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+import threading
+import time
 from collections.abc import AsyncGenerator
 from weakref import ReferenceType, WeakKeyDictionary, ref
 
@@ -14,7 +16,7 @@ from redis.backoff import ExponentialBackoff, NoBackoff
 from redis.cluster import ClusterNode, RedisCluster
 from redis.exceptions import ClusterDownError
 from redis.exceptions import ConnectionError as RedisConnectionError
-from redis.exceptions import RedisError
+from redis.exceptions import MovedError, RedisError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from redis.retry import Retry
 
@@ -35,6 +37,12 @@ SOCKET_CONNECT_TIMEOUT = float(os.getenv("REDIS_SOCKET_CONNECT_TIMEOUT", "5"))
 # PING on idle sockets to detect half-open connections without waiting for
 # the OS TCP keepalive (~2h default).
 HEALTH_CHECK_INTERVAL = int(os.getenv("REDIS_HEALTH_CHECK_INTERVAL", "30"))
+# A pub/sub subscription that has heard nothing for PUBSUB_PING_AFTER seconds
+# PINGs its shard, and is reported lost when no reply comes within
+# PUBSUB_PONG_TIMEOUT: a partitioned shard closes nothing, so only a missing
+# reply gives it away (see ``sharded_pubsub``).
+PUBSUB_PING_AFTER = float(os.getenv("REDIS_PUBSUB_PING_AFTER", "15"))
+PUBSUB_PONG_TIMEOUT = float(os.getenv("REDIS_PUBSUB_PONG_TIMEOUT", "10"))
 
 # Skip the HOST-pinning remap when each shard's announced hostname resolves
 # directly (e.g. compose DNS names redis-0/redis-1/redis-2).
@@ -268,12 +276,50 @@ def resolve_shard_for_channel(channel: str) -> tuple[str, int]:
     return _address_remap((node.host, node.port))
 
 
+def follow_moved_slot(error: MovedError) -> None:
+    """Point the cached slot map at the shard a MOVED reply named.
+
+    ``resolve_shard_for_channel`` reads ``get_redis()``'s slot map, which only
+    a command through that client corrects, and it stays cached for an hour:
+    without this, a listener resubscribing after a reshard keeps dialling the
+    shard that no longer owns its channel.
+    """
+    get_redis().nodes_manager.move_slot(error)
+
+
+def refresh_slot_map() -> None:
+    """Re-read which shard owns which slot, at most every few seconds: a
+    shard-pinned connection that can't reach its shard may be dialling one
+    that failed over. Blocks on the network; call it off the event loop.
+    Skipped while another refresh is running, so a long outage holds at most
+    one worker thread here."""
+    global _slot_map_refreshed_at
+    if not _slot_map_refresh_lock.acquire(blocking=False):
+        return
+    try:
+        now = time.monotonic()
+        if now - _slot_map_refreshed_at < _SLOT_MAP_REFRESH_EVERY_S:
+            return
+        _slot_map_refreshed_at = now
+        get_redis().nodes_manager.initialize()
+    finally:
+        _slot_map_refresh_lock.release()
+
+
+_SLOT_MAP_REFRESH_EVERY_S = 5.0
+_slot_map_refreshed_at = float("-inf")
+_slot_map_refresh_lock = threading.Lock()
+
+
 @conn_retry("RedisShardedPubSub", "Acquiring connection")
 def connect_sharded_pubsub(channel: str) -> Redis:
     """Open a plain ``Redis`` connection pinned to the channel's owning shard."""
     host, port = resolve_shard_for_channel(channel)
-    # socket_timeout=None: pubsub reads block indefinitely; a spurious
-    # read timeout forces a reconnect whose PING races with subscribe-mode.
+    # socket_timeout=None on purpose: a quiet subscription is healthy, so a
+    # socket read timeout mustn't end it. ShardedSubscription checks liveness
+    # above the socket instead: it bounds each read, PINGs a quiet stream, and
+    # turns off redis-py's retry, so a lost connection is reported rather than
+    # silently resubscribed.
     c = Redis(
         host=host,
         port=port,

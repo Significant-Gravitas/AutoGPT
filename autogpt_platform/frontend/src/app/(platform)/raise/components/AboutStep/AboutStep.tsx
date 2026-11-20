@@ -33,9 +33,9 @@ export function AboutStep({
     return (
       <div
         className={cn(
-          "ml-auto max-w-[80%] rounded-2xl border px-4 py-3 text-body-md leading-relaxed text-foreground",
+          "ml-auto max-w-[80%] rounded-2xl border px-4 py-3 text-body-md leading-relaxed text-foreground-base",
           isSkipped && "flex w-fit items-center gap-2",
-          bubbleClassFor(color) ?? "border-accent bg-accent/5",
+          bubbleClassFor(color) ?? "border-brand bg-brand/5",
         )}
       >
         {isSkipped ? (

@@ -48,6 +48,9 @@ class _SpanPerCommandRedis:
     async def hmget(self, _key, _fields):
         return await self._command("HMGET", ["completed", "turn-1"])
 
+    async def get(self, _key):
+        return await self._command("GET", None)
+
     async def xadd(self, _key, _fields):
         return await self._command("XADD", "1-0")
 

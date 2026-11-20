@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -18,10 +19,12 @@ from backend.blocks.llm import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     AICredentials,
+    LLMModel,
     LLMResponse,
 )
 from backend.data.execution import ExecutionContext
 from backend.util.exceptions import BlockExecutionError
+from backend.util.llm.providers import SMALL_CALL_REASONING_FLOOR
 
 _TEST_AI_CREDENTIALS = cast(AICredentials, TEST_CREDENTIALS_INPUT)
 
@@ -135,6 +138,95 @@ class TestMaxTokensRegression:
 
         assert captured_kwargs["max_tokens"] == MIN_LLM_OUTPUT_TOKENS
         assert captured_kwargs["max_tokens"] == 16
+
+
+# ---------------------------------------------------------------------------
+# The models #17071 moves workflows onto reason or think before they answer.
+# Their thinking counts against the 16-token cap, so the request asks each one
+# for its least reasoning, and raises the cap where it still reasons.
+# ---------------------------------------------------------------------------
+
+
+async def _run_to_the_provider(model: LLMModel) -> dict[str, Any]:
+    """Run the block through the real ``llm_call`` and provider code, with the
+    provider's SDK client replaced, and return the request it was sent."""
+    openai_create = AsyncMock(return_value=SimpleNamespace())
+    anthropic_create = AsyncMock(
+        return_value=SimpleNamespace(
+            content=[SimpleNamespace(type="text", text="true")],
+            usage=SimpleNamespace(
+                input_tokens=40,
+                output_tokens=1,
+                cache_read_input_tokens=0,
+                cache_creation_input_tokens=0,
+            ),
+            stop_reason="end_turn",
+        )
+    )
+    with (
+        patch(
+            "backend.util.llm.providers.openai.AsyncOpenAI",
+            return_value=SimpleNamespace(
+                responses=SimpleNamespace(create=openai_create)
+            ),
+        ),
+        patch(
+            "backend.util.llm.providers.anthropic.AsyncAnthropic",
+            return_value=SimpleNamespace(
+                messages=SimpleNamespace(create=anthropic_create)
+            ),
+        ),
+        patch(
+            "backend.util.llm.providers.extract_responses_tool_calls",
+            return_value=None,
+        ),
+        patch(
+            "backend.util.llm.providers.extract_responses_content",
+            return_value="true",
+        ),
+        patch(
+            "backend.util.llm.providers.extract_responses_reasoning",
+            return_value=None,
+        ),
+        patch(
+            "backend.util.llm.providers.extract_responses_usage",
+            return_value=(40, 1),
+        ),
+    ):
+        outputs = await _collect_outputs(
+            AIConditionBlock(), _make_input(model=model), credentials=TEST_CREDENTIALS
+        )
+    assert outputs["result"] is True and "error" not in outputs
+    (create,) = [c for c in (openai_create, anthropic_create) if c.await_count]
+    return create.call_args.kwargs
+
+
+class TestReasoningReplacementsAnswer:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("model", "effort", "cap"),
+        [
+            (LLMModel.GPT6_LUNA, "none", MIN_LLM_OUTPUT_TOKENS),
+            (LLMModel.GPT6_1_TERRA, "none", MIN_LLM_OUTPUT_TOKENS),
+            (LLMModel.GPT5_6_SOL, "none", MIN_LLM_OUTPUT_TOKENS),
+            # No "none" or "minimal": it reasons at "low", so the cap leaves room.
+            (LLMModel.GPT6_1_SOL, "low", SMALL_CALL_REASONING_FLOOR),
+        ],
+    )
+    async def test_openai_replacements_get_their_least_effort(
+        self, model: LLMModel, effort: str, cap: int
+    ):
+        request = await _run_to_the_provider(model)
+        assert request["model"] == model.value
+        assert request["reasoning"] == {"effort": effort}
+        assert request["max_output_tokens"] == cap
+
+    @pytest.mark.asyncio
+    async def test_sonnet_5_5_answers_without_thinking_first(self):
+        request = await _run_to_the_provider(LLMModel.CLAUDE_5_5_SONNET)
+        assert request["model"] == LLMModel.CLAUDE_5_5_SONNET.value
+        assert request["thinking"] == {"type": "between_tools"}
+        assert request["max_tokens"] == MIN_LLM_OUTPUT_TOKENS
 
 
 # ---------------------------------------------------------------------------

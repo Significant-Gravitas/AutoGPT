@@ -1,8 +1,7 @@
 "use client";
 
-// TODO(tokens): chart and canvas colours, which have no tokens yet: #7DD3FC,
-// #86EFAC, #FDE68A, #FCA5A5, #C4B5FD, #BEF264, #FDBA74, #93C5FD, #F0ABFC,
-// #A855F7, #6366F1, #EC4899, #111827, #94A3B8.
+// Node and edge colours stay hex: the canvas renderer draws them, where CSS
+// variables do not resolve (ds-colour-exempt.json).
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";

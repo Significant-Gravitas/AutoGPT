@@ -22,7 +22,7 @@ async def test_a_spent_allowance_stops_the_block_before_it_runs(dry_run_boundari
 
     assert outputs == [("error", "You've reached your daily usage limit.")]
     block.ran.assert_not_called()
-    refusal.assert_awaited_once_with("user-1")
+    refusal.assert_awaited_once_with("user-1", surface="block")
     track.assert_not_awaited()
 
 
@@ -73,6 +73,7 @@ def _block() -> MagicMock:
     block.disabled = False
     block.input_schema = input_schema
     block.execution_stats = NodeExecutionStats(input_token_count=10)
+    block.with_retired_models_replaced.side_effect = lambda input_data: input_data
     block.ran = MagicMock()
 
     async def execute(_input_data, **_kwargs):

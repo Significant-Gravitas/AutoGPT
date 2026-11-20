@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/atoms/Input/Input";
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { LongNumberHint } from "@/components/contextual/LongNumberHint/LongNumberHint";
+import { hasLongWholeNumber } from "@/lib/json-text";
 
 interface InputExpanderModalProps {
   isOpen: boolean;
@@ -35,6 +37,10 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
   const [tempValue, setTempValue] = useState(defaultValue);
   const [isCopied, setIsCopied] = useState(false);
   const { toast } = useToast();
+  const longNumberHintId =
+    inputType === "json" && hasLongWholeNumber(tempValue)
+      ? `${inputId}-long-number`
+      : undefined;
 
   useEffect(() => {
     if (isOpen) {
@@ -74,20 +80,27 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
       <Dialog.Content>
         <div className="flex flex-col gap-4 px-1">
           <Text variant="body">{description}</Text>
-          <Input
-            type="textarea"
-            label={title || "Edit value"}
-            hideLabel
-            id={inputId}
-            value={tempValue}
-            className={cn(
-              "!min-h-[300px]",
-              inputType === "json" && "font-mono text-body",
+          <div className="mb-6 flex flex-col gap-2">
+            <Input
+              type="textarea"
+              label={title || "Edit value"}
+              hideLabel
+              id={inputId}
+              value={tempValue}
+              wrapperClassName="mb-0"
+              className={cn(
+                "!min-h-[300px]",
+                inputType === "json" && "font-mono text-body",
+              )}
+              onChange={(e) => setTempValue(e.target.value)}
+              placeholder={placeholder || "Enter text..."}
+              aria-describedby={longNumberHintId}
+              autoFocus
+            />
+            {longNumberHintId && (
+              <LongNumberHint text={tempValue} id={longNumberHintId} />
             )}
-            onChange={(e) => setTempValue(e.target.value)}
-            placeholder={placeholder || "Enter text..."}
-            autoFocus
-          />
+          </div>
 
           <div className="flex items-center justify-end gap-1">
             <Button

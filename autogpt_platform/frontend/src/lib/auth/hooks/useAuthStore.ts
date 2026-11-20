@@ -20,6 +20,7 @@ import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notificati
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
+import { forgetConnectAttempt } from "../connect-attempt";
 import { reloadForNewDeployment } from "../deployment-reload";
 import {
   broadcastLogout,
@@ -588,8 +589,12 @@ useAuthStore.subscribe((state, previousState) => {
   // than this tab last had starts without it, however the last session
   // ended. Not on a sign-out itself: a failed refresh also drops the user,
   // and a brand-new one must keep their walkthrough.
-  if (state.user && state.user.id !== previousState.user?.id)
+  if (state.user && state.user.id !== previousState.user?.id) {
     claimOnboardingHandoff(state.user.id);
+    // A Google or Microsoft sign-in this tab started has finished, so /login
+    // mustn't offer it without connecting after a later sign-out.
+    forgetConnectAttempt();
+  }
 });
 
 // Headers are built only for the user this store has signed in, so keep the

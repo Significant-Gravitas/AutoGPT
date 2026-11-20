@@ -5,13 +5,14 @@ import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/Pub
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AgentVersionChangelog } from "./components/AgentVersionChangelog";
 import { AgentSettingsModal } from "./components/modals/AgentSettingsModal/AgentSettingsModal";
 import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
 import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptySchedules } from "./components/other/EmptySchedules";
 import { EmptyTasks } from "./components/other/EmptyTasks";
+import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import { EmptyTemplates } from "./components/other/EmptyTemplates";
 import { EmptyTriggers } from "./components/other/EmptyTriggers";
 import { MarketplaceBanners } from "./components/other/MarketplaceBanners";
@@ -23,6 +24,7 @@ import { SelectedScheduleView } from "./components/selected-views/SelectedSchedu
 import { SelectedTemplateView } from "./components/selected-views/SelectedTemplateView/SelectedTemplateView";
 import { SelectedTriggerAgentView } from "./components/selected-views/SelectedTriggerAgentView/SelectedTriggerAgentView";
 import { SelectedTriggerView } from "./components/selected-views/SelectedTriggerView/SelectedTriggerView";
+import { splitPresetInputs } from "./components/selected-views/SelectedTriggerView/helpers";
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
 import {
@@ -43,6 +45,7 @@ export function NewAgentLibraryView() {
     isTemplateLoading,
     error,
     hasAnyItems,
+    schedulesUnavailable,
     activeItemId,
     selectedTriggerKind,
     retryTriggerLists,
@@ -71,6 +74,14 @@ export function NewAgentLibraryView() {
   } = useMarketplaceUpdate({ agent });
 
   const [changelogOpen, setChangelogOpen] = useState(false);
+
+  // A triggered preset whose webhook was detached is filed under Templates, so
+  // its stored inputs can still carry the trigger node's mask. Memoised because
+  // the run modal resets its form whenever these references change.
+  const activeTemplateInputs = useMemo(
+    () => splitPresetInputs(activeTemplate?.inputs),
+    [activeTemplate?.inputs],
+  );
 
   useEffect(() => {
     if (agent) {
@@ -197,7 +208,12 @@ export function NewAgentLibraryView() {
 
   // Keep the selected-content layout while an item is selected — even with
   // zero listable items — so a stale selection can show its not-found state.
-  if (!sidebarLoading && !hasAnyItems && !activeItemId) {
+  if (
+    !sidebarLoading &&
+    !hasAnyItems &&
+    !schedulesUnavailable &&
+    !activeItemId
+  ) {
     return (
       <>
         <div className="flex h-full flex-col">
@@ -261,7 +277,8 @@ export function NewAgentLibraryView() {
               onRunCreated={onRunInitiated}
               onScheduleCreated={onScheduleCreated}
               onTriggerSetup={onTriggerSetup}
-              initialInputValues={activeTemplate?.inputs}
+              initialInputValues={activeTemplateInputs.inputs}
+              initialTriggerConfigValues={activeTemplateInputs.triggerConfig}
               initialInputCredentials={activeTemplate?.credentials}
             />
           </div>
@@ -325,7 +342,11 @@ export function NewAgentLibraryView() {
             agent={agent}
             banner={renderMarketplaceUpdateBanner()}
           >
-            <EmptySchedules />
+            {schedulesUnavailable ? (
+              <SchedulesUnavailableNotice />
+            ) : (
+              <EmptySchedules />
+            )}
           </SelectedViewLayout>
         ) : activeTab === "templates" ? (
           <SelectedViewLayout

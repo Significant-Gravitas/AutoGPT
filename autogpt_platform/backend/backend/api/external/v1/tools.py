@@ -14,7 +14,10 @@ from fastapi import APIRouter, Security
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
-from backend.api.external.middleware import require_permission
+from backend.api.external.middleware import (
+    require_permission,
+    require_resource_permission,
+)
 from backend.api.external.rate_limit import EXECUTION_LIMIT
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import find_agent_tool, run_agent_tool
@@ -118,7 +121,7 @@ async def find_agent(
 async def run_agent(
     request: RunAgentRequest,
     auth: APIAuthorizationInfo = Security(
-        require_permission(APIKeyPermission.USE_TOOLS)
+        require_resource_permission(APIKeyPermission.USE_TOOLS)
     ),
 ) -> dict[str, Any]:
     """

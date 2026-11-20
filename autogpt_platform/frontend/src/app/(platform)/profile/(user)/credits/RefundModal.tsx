@@ -79,7 +79,7 @@ export const RefundModal = ({
         <div className="py-4">
           <div className="space-y-4">
             {error && (
-              <div className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 text-destructive">
+              <div className="flex items-center gap-2 rounded-md border border-error bg-error/10 p-3 text-error">
                 <Icon aria-hidden icon={AlertCircleIcon} className="h-4 w-4" />
                 <Text variant="body-tight" tone="inherit">
                   {error}

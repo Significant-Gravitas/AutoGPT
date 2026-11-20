@@ -124,7 +124,7 @@ export function IntegrationsToggle({ expert, className, size = "md" }: Props) {
         {hidden.length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-caption font-medium text-sidebar-foreground/90 tabular-nums">
+              <span className="text-caption font-medium text-foreground-emphasis/90 tabular-nums">
                 +{hidden.length}
               </span>
             </TooltipTrigger>

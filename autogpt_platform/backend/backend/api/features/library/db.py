@@ -50,9 +50,13 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 from backend.util.json import SafeJson
+from backend.util.json import dumps as json_dumps
 from backend.util.models import Pagination
 from backend.util.product_analytics import track_listing_added_to_library
 from backend.util.settings import Config
+from backend.util.sql import escape_like
+from backend.util.text_limits import MAX_INSTRUCTIONS_LENGTH, MAX_LONG_NAME_LENGTH
+from backend.util.url_redaction import mask_credential
 
 from . import model as library_model
 from ._add_to_library import (
@@ -67,6 +71,19 @@ from .embeddings import schedule_library_agent_embedding
 logger = logging.getLogger(__name__)
 config = Config()
 integration_creds_manager = IntegrationCredentialsManager()
+
+# What `create_preset` and `update_preset` will store. Bounded here rather than
+# on `LibraryAgentPresetCreatable`, because `LibraryAgentPreset` reads stored
+# rows through that model: a bound on it would make a row already over the
+# bound unreadable. The text bounds are the graph's own, because
+# `save_as_preset` and the legacy-trigger migration name a preset after its
+# graph, so anything a graph can carry has to be storable here. How MANY
+# inputs a preset holds is bounded by the read cap instead
+# (`check_preset_input_count`), so a stored preset always comes back whole.
+MAX_PRESET_INPUT_BYTES = 256 * 1024
+MAX_PRESETS_PER_PAGE = 100
+MAX_PRESET_NAME_LENGTH = MAX_LONG_NAME_LENGTH
+MAX_PRESET_DESCRIPTION_LENGTH = MAX_INSTRUCTIONS_LENGTH
 
 
 async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[str, int]:
@@ -181,22 +198,21 @@ async def list_library_agents(
 
     # Build search filter if applicable
     if search_term:
+        pattern = escape_like(search_term)
         # Match both the snapshotted marketplace name/description (shown on the
         # card for downloaded agents) and the underlying graph's own values, so
         # searching the displayed title always finds the agent.
         where_clause["OR"] = [
-            {"name": {"contains": search_term, "mode": "insensitive"}},
-            {"description": {"contains": search_term, "mode": "insensitive"}},
+            {"name": {"contains": pattern, "mode": "insensitive"}},
+            {"description": {"contains": pattern, "mode": "insensitive"}},
             {
                 "AgentGraph": {
-                    "is": {"name": {"contains": search_term, "mode": "insensitive"}}
+                    "is": {"name": {"contains": pattern, "mode": "insensitive"}}
                 }
             },
             {
                 "AgentGraph": {
-                    "is": {
-                        "description": {"contains": search_term, "mode": "insensitive"}
-                    }
+                    "is": {"description": {"contains": pattern, "mode": "insensitive"}}
                 }
             },
         ]
@@ -593,6 +609,7 @@ async def create_library_agent(
         user_id: The user to whom the agent will be added.
         hitl_safe_mode: Whether HITL blocks require manual review (default True).
         sensitive_action_safe_mode: Whether sensitive action blocks require review.
+            Both seed a new entry only; an existing entry keeps its settings.
         create_library_agents_for_sub_graphs: If True, creates LibraryAgent records for sub-graphs as well.
 
     Returns:
@@ -694,12 +711,8 @@ async def create_library_agent(
                                 if organization_id
                                 else {}
                             ),
-                            "settings": SafeJson(
-                                GraphSettings(
-                                    human_in_the_loop_safe_mode=hitl_safe_mode,
-                                    sensitive_action_safe_mode=sensitive_action_safe_mode,
-                                ).model_dump()
-                            ),
+                            # Settings are the user's: restoring an entry keeps
+                            # them, as the marketplace re-add does.
                             **(
                                 {"Folder": {"connect": {"id": folder_id}}}
                                 if folder_id and graph_entry is graph
@@ -857,7 +870,17 @@ async def create_graph_in_library(
 
     Without ``organization_id`` the graph is untagged and the library entry
     goes to the user's default team.
+
+    A graph ID belonging to somebody else makes the new graph a copy of
+    theirs, such as one Otto saves from the JSON of their workflow: the
+    sub-graph nodes it inherited that name one of the user's own graphs are
+    blanked, and ones the user added are kept (see
+    `graph_db.clear_sub_graph_refs_owned_by`).
     """
+    if await graph_db.graph_owner_id(graph.id) not in (None, user_id):
+        await graph_db.clear_sub_graph_refs_owned_by(
+            graph, user_id, edited_from=graph.id
+        )
     graph.version = 1
     graph_model = graph_db.make_graph_model(graph, user_id)
     graph_model.reassign_ids(user_id=user_id, reassign_graph_id=True)
@@ -995,13 +1018,26 @@ async def fork_graph_in_library(
     team_id: str | None = None,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
     """Save *graph* as a new graph in the user's library, forked from version
-    *forked_from_version* of the graph ID it carries."""
+    *forked_from_version* of the graph ID it carries, which belongs to
+    somebody else.
+
+    Sub-graph nodes it inherited that name one of the user's own graphs are
+    blanked; ones the user added are kept (see `create_graph_in_library`).
+    """
     logger.info(
         f"Saving graph {graph.id} v{forked_from_version} as a fork for user {user_id}"
     )
     graph.forked_from_id = graph.id
     graph.forked_from_version = forked_from_version
-    graph.name = f"{graph.name} (copy)"
+    source = await graph_db.get_graph(
+        graph.id, forked_from_version, user_id, include_subgraphs=True
+    )
+    # The caller sends the sub-graphs; only those of the copied version have a source.
+    copied = {(sub.id, sub.version) for sub in source.sub_graphs} if source else set()
+    graph_db.record_copy_sources(
+        sub for sub in graph.sub_graphs if (sub.id, sub.version) in copied
+    )
+    graph.name = graph_db.fork_name(graph.name)
     return await create_graph_in_library(
         graph, user_id, organization_id=organization_id, team_id=team_id
     )
@@ -1311,19 +1347,25 @@ async def _cleanup_webhooks_for_graph(graph_id: str, user_id: str) -> None:
             await integrations_db.unlink_webhook_from_graph(
                 webhook_id=webhook.id, graph_id=graph_id, user_id=user_id
             )
-            logger.info(f"Unlinked webhook {webhook.id} from graph {graph_id}")
+            logger.info(
+                f"Unlinked webhook {mask_credential(webhook.id)} from graph {graph_id}"
+            )
         except Exception:
             logger.exception(
-                f"Failed to unlink webhook {webhook.id} from graph {graph_id}"
+                f"Failed to unlink webhook {mask_credential(webhook.id)} from graph {graph_id}"
             )
 
 
-async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
-    """
-    Deletes a library agent for the given user
-    """
-    await prisma.models.LibraryAgent.prisma().delete_many(
-        where={"agentGraphId": graph_id, "userId": user_id}
+async def cleanup_graph_for_permanent_delete(graph_id: str, user_id: str) -> None:
+    """Stop everything that drives the user's graph before it is permanently
+    deleted: the same schedule, webhook and trigger-agent cleanup that
+    `delete_library_agent` does for a library entry. The library entries and
+    presets themselves are removed with the graph by
+    `graph_db.delete_graph_permanently`."""
+    await _cleanup_schedules_for_graph(graph_id=graph_id, user_id=user_id)
+    await _cleanup_webhooks_for_graph(graph_id=graph_id, user_id=user_id)
+    await _cleanup_trigger_agents_for_graph(
+        action_graph_id=graph_id, user_id=user_id, soft_delete=False
     )
 
 
@@ -2048,20 +2090,25 @@ async def bulk_move_agents_to_folder(
     agent_ids: list[str],
     folder_id: Optional[str],
     user_id: str,
+    organization_id: Optional[str] = None,
 ) -> list[library_model.LibraryAgent]:
     """
     Moves multiple library agents to a folder.
 
     Args:
-        agent_ids: The IDs of the library agents.
+        agent_ids: The IDs of the library agents. Graph IDs are also accepted
+            and move every library entry of that graph.
         folder_id: The target folder ID (None for root).
         user_id: The ID of the user.
+        organization_id: If set, only entries of this organization, or
+            untagged ones, are found.
 
     Returns:
-        The updated LibraryAgents.
+        The moved LibraryAgents.
 
     Raises:
-        NotFoundError: If any agent or the folder doesn't exist.
+        NotFoundError: If any agent or the folder doesn't exist. Nothing is
+            moved in that case.
         DatabaseError: If there's a database error.
     """
     logger.debug(f"Bulk moving {len(agent_ids)} agents to folder #{folder_id}")
@@ -2071,26 +2118,66 @@ async def bulk_move_agents_to_folder(
     if folder_id:
         await get_folder(folder_id, user_id)
 
-    # Update all agents
-    await prisma.models.LibraryAgent.prisma().update_many(
-        where={
-            "id": {"in": agent_ids},
-            "userId": user_id,
-            "isDeleted": False,
-        },
-        data={"folderId": folder_id},
+    if not agent_ids:
+        return []
+
+    # A graph ID can name the graph's entries in several organizations.
+    in_organization = (
+        [
+            cast(
+                prisma.types.LibraryAgentWhereInput,
+                organization_filter({organization_id, None}),
+            )
+        ]
+        if organization_id is not None
+        else None
     )
 
-    # Fetch and return updated agents
-    agents = await prisma.models.LibraryAgent.prisma().find_many(
-        where={
-            "id": {"in": agent_ids},
-            "userId": user_id,
-        },
-        include=library_agent_include(
-            user_id, include_nodes=False, include_executions=False
-        ),
-    )
+    # Resolve every ID before writing, so an unknown one moves nothing.
+    # Archived agents can be moved; deleted ones can't.
+    where: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "isDeleted": False,
+        "OR": [
+            {"id": {"in": agent_ids}},
+            {"agentGraphId": {"in": agent_ids}},
+        ],
+    }
+    if in_organization:
+        where["AND"] = in_organization
+    matches = await prisma.models.LibraryAgent.prisma().find_many(where=where)
+    found = {a.id for a in matches} | {a.agentGraphId for a in matches}
+    missing = [i for i in dict.fromkeys(agent_ids) if i not in found]
+    if missing:
+        raise NotFoundError(
+            f"Workflows not found in your library: {', '.join(missing)}"
+        )
+
+    to_move = [a for a in matches if a.folderId != folder_id]
+    if not to_move:
+        return []
+
+    # Move and read back in one transaction with the same filter, so the
+    # returned list is exactly what this call moved. The organization is
+    # checked again because an entry can be re-tagged after the lookup.
+    scope: prisma.types.LibraryAgentWhereInput = {
+        "id": {"in": [a.id for a in to_move]},
+        "userId": user_id,
+        "isDeleted": False,
+    }
+    if in_organization:
+        scope["AND"] = in_organization
+    async with transaction() as tx:
+        await prisma.models.LibraryAgent.prisma(tx).update_many(
+            where=scope,
+            data={"folderId": folder_id},
+        )
+        agents = await prisma.models.LibraryAgent.prisma(tx).find_many(
+            where=scope,
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
+        )
 
     schedule_info = await _fetch_schedule_info(user_id)
     return [
@@ -2226,6 +2313,11 @@ async def list_presets(
             "Invalid pagination input: page=%d, page_size=%d", page, page_size
         )
         raise InvalidInputError("Invalid pagination parameters")
+    # Capped here rather than per route, so every caller is covered.
+    if page_size > MAX_PRESETS_PER_PAGE:
+        raise InvalidInputError(
+            f"At most {MAX_PRESETS_PER_PAGE} presets per page, got {page_size}"
+        )
 
     query_filter: prisma.types.AgentPresetWhereInput = {
         "userId": user_id,
@@ -2341,6 +2433,7 @@ async def create_preset(
     logger.debug(
         f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
+    check_preset_text(preset.name, preset.description)
     # Fast preflight; the count that actually gates the write is re-run
     # locked, immediately before the insert, below.
     await check_preset_count(user_id)
@@ -2363,7 +2456,7 @@ async def create_preset(
     if webhook_id:
         webhook = await integrations_db.get_webhook(webhook_id)
         if webhook.user_id != user_id:
-            raise NotFoundError(f"Webhook #{webhook_id} not found")
+            raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
 
     if expert_id:
         organization_id, team_id = await _resolve_private_expert_tenancy_or_not_found(
@@ -2371,11 +2464,12 @@ async def create_preset(
             expert_id,
             f"Expert #{expert_id} not found",
         )
-        if webhook is not None and (
-            webhook.organization_id,
-            webhook.team_id,
-        ) != (organization_id, team_id):
-            raise NotFoundError(f"Webhook #{webhook_id} not found")
+        if (
+            webhook_id
+            and webhook is not None
+            and (webhook.organization_id, webhook.team_id) != (organization_id, team_id)
+        ):
+            raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
     else:
         organization_id, team_id = await resolve_member_tenancy(
             user_id, graph.organization_id, graph.team_id
@@ -2518,6 +2612,7 @@ async def update_preset(
     logger.debug(
         f"Updating preset #{preset_id} ({repr(current.name)}) for user #{user_id}",
     )
+    check_preset_text(name, description)
 
     expert_tenancy: tuple[str, str | None] | None = None
     if current.expert_id:
@@ -2593,17 +2688,42 @@ async def update_preset(
 MAX_PRESETS_PER_USER = 1000
 
 
+# A caller with a side effect of its own calls these before it, so a value
+# this would refuse never reaches a webhook registration.
+def check_preset_text(name: Optional[str], description: Optional[str]) -> None:
+    for field_name, value, max_length in (
+        ("name", name, MAX_PRESET_NAME_LENGTH),
+        ("description", description, MAX_PRESET_DESCRIPTION_LENGTH),
+    ):
+        if len(value or "") > max_length:
+            raise InvalidInputError(
+                f"Preset {field_name} is too long: "
+                f"at most {max_length} characters are allowed"
+            )
+
+
 def preset_input_rows(
     entries: Mapping[str, object],
 ) -> list[prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput]:
     """One row per name, bounded here rather than at each caller."""
-    check_preset_input_count(entries)
+    check_preset_inputs(entries)
     return [
         prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(
             name=name, data=SafeJson(data)
         )
         for name, data in entries.items()
     ]
+
+
+def check_preset_inputs(entries: Mapping[str, object]) -> None:
+    """Both bounds on what one preset's inputs may be: how many, and how big."""
+    check_preset_input_count(entries)
+    payload_bytes = len(json_dumps(entries).encode())
+    if payload_bytes > MAX_PRESET_INPUT_BYTES:
+        raise InvalidInputError(
+            f"A preset's inputs hold at most {MAX_PRESET_INPUT_BYTES} bytes, "
+            f"got {payload_bytes}"
+        )
 
 
 def check_preset_input_count(entries: Mapping[str, object]) -> None:
@@ -2673,7 +2793,7 @@ async def set_preset_webhook(
     if webhook_id:
         webhook = await integrations_db.get_webhook(webhook_id)
         if webhook.user_id != user_id:
-            raise NotFoundError(f"Webhook #{webhook_id} not found")
+            raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
         if current.expertId:
             organization_id, team_id = (
                 await _resolve_private_expert_tenancy_or_not_found(
@@ -2686,7 +2806,7 @@ async def set_preset_webhook(
                 organization_id,
                 team_id,
             ):
-                raise NotFoundError(f"Webhook #{webhook_id} not found")
+                raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
             update_data["organizationId"] = organization_id
             update_data["teamId"] = team_id
 
@@ -2831,19 +2951,67 @@ async def migrate_webhook_presets_to_new_version(
     }
     if in_organizations:
         migrate_where["AND"] = in_organizations
-    count = await prisma.models.AgentPreset.prisma().update_many(
-        where=migrate_where,
-        data={"agentGraphVersion": new_graph.version},
-    )
+
+    # reassign_ids() gives every node a new UUID when an agent is edited, so a
+    # preset's stored `_node_input_mask_{old_prefix}` key would no longer match
+    # the new version's trigger node at execution (the mask would be dropped and
+    # the trigger would silently stop firing). Re-key the mask to the new node's
+    # prefix, in the same transaction as the version bump: a preset pinned to the
+    # new version with the old key is no longer a retry candidate, so a partial
+    # write kills the trigger for good.
+    async with transaction() as tx:
+        count = await prisma.models.AgentPreset.prisma(tx).update_many(
+            where=migrate_where,
+            data={"agentGraphVersion": new_graph.version},
+        )
+        # Scoped to presets now pinned to this version so a preset that a
+        # concurrent activation already bumped past it isn't re-keyed to the
+        # wrong node.
+        prefixed = await prisma.models.AgentNodeExecutionInputOutput.prisma(
+            tx
+        ).find_many(
+            where={
+                "agentPresetId": {"in": ids_to_migrate},
+                "name": {"startswith": library_model.NODE_INPUT_MASK_PREFIX},
+                "AgentPreset": {"is": {"agentGraphVersion": new_graph.version}},
+            },
+        )
+        await prisma.models.AgentNodeExecutionInputOutput.prisma(tx).update_many(
+            where={"id": {"in": _trigger_mask_row_ids(prefixed)}},
+            data={"name": library_model.node_input_mask_key(new_trigger_node.id)},
+        )
+
     if count > 0:
         logger.info(
             f"Migrated {count} webhook preset(s) for graph #{new_graph.id} "
             f"to version {new_graph.version} (user #{user_id})"
         )
+
     return library_model.WebhookPresetMigrationResult(
         migrated_count=count,
         skipped_presets=skipped_presets,
     )
+
+
+def _trigger_mask_row_ids(
+    rows: list[prisma.models.AgentNodeExecutionInputOutput],
+) -> list[str]:
+    """Each preset's trigger-config row, picked as its readers pick it: a graph
+    input may use the mask prefix too."""
+    by_preset: dict[
+        str | None, dict[str, prisma.models.AgentNodeExecutionInputOutput]
+    ] = {}
+    for row in rows:
+        by_preset.setdefault(row.agentPresetId, {})[row.name] = row
+    return [
+        named[key].id
+        for named in by_preset.values()
+        if (
+            key := library_model.stored_trigger_mask_key(
+                {name: row.data for name, row in named.items()}
+            )
+        )
+    ]
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:

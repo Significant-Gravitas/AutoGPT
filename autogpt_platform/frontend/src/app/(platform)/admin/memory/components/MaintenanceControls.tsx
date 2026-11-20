@@ -56,8 +56,7 @@ export function MaintenanceControls({
         type="button"
         onClick={onRatification}
         disabled={ratificationPending}
-        // oxlint-disable-next-line design-system/no-raw-colors -- teal has no role; a role would change the hue (deferred)
-        className="rounded-md bg-teal-600 px-3 py-1.5 text-body font-medium text-action-foreground hover:bg-teal-700 disabled:opacity-50"
+        className="rounded-md bg-success px-3 py-1.5 text-body font-medium text-action-foreground hover:bg-success-foreground disabled:opacity-50"
         title="Run ONLY the ratification supersession sweep — promotes hit tentatives, supersedes unratified ones past their grace period."
       >
         {ratificationPending ? "Ratifying…" : "Ratification"}
@@ -66,8 +65,7 @@ export function MaintenanceControls({
         type="button"
         onClick={onNightly}
         disabled={nightlyActive}
-        // oxlint-disable-next-line design-system/no-raw-colors -- indigo has no role; info or brand would change the hue (deferred)
-        className="rounded-md bg-indigo-700 px-3 py-1.5 text-body font-medium text-action-foreground hover:bg-indigo-800 disabled:opacity-50"
+        className="rounded-md bg-indigo px-3 py-1.5 text-body font-medium text-action-foreground hover:bg-indigo/90 disabled:opacity-50"
         title="Run the FULL nightly batch — what the 03:00 cron does. Fans out dream pass + ratification sweep (+ future P2/P3/P4/P11 stages) in one pass."
       >
         {nightlyActive

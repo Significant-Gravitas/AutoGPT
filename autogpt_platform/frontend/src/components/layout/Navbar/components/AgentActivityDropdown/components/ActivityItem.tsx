@@ -6,6 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { isCompletedWithErrors } from "@/lib/run-health";
 import { formatTimeAgo } from "@/lib/utils/time";
 import Link, { useLinkStatus } from "next/link";
+import { useNowSecond } from "@/hooks/useNowSecond";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
 import {
@@ -47,6 +48,12 @@ interface Props {
 }
 
 export function ActivityItem({ execution }: Props) {
+  const isActiveStatus =
+    execution.status === AgentExecutionStatus.RUNNING ||
+    execution.status === AgentExecutionStatus.QUEUED;
+  // Tick every second so live elapsed advances without waiting for stats.
+  const nowMs = useNowSecond(isActiveStatus);
+
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
@@ -70,8 +77,7 @@ export function ActivityItem({ execution }: Props) {
           <Icon
             icon={Alert01Icon}
             size={18}
-            // oxlint-disable-next-line design-system/no-raw-colors -- orange/yellow hue kept; warning-foreground would be a hue change (deferred visual change)
-            className="text-yellow-600"
+            className="text-yellow-foreground"
           />
         );
       default:
@@ -81,10 +87,6 @@ export function ActivityItem({ execution }: Props) {
 
   function getItemDisplay() {
     // Handle active statuses (running/queued)
-    const isActiveStatus =
-      execution.status === AgentExecutionStatus.RUNNING ||
-      execution.status === AgentExecutionStatus.QUEUED;
-
     if (isActiveStatus) {
       const timeAgo = execution.started_at
         ? formatTimeAgo(execution.started_at.toString())
@@ -92,7 +94,7 @@ export function ActivityItem({ execution }: Props) {
       const statusText =
         execution.status === AgentExecutionStatus.QUEUED ? "queued" : "running";
       return [
-        `Started ${timeAgo}, ${getExecutionDuration(execution)} ${statusText}`,
+        `Started ${timeAgo}, ${getExecutionDuration(execution, new Date(nowMs))} ${statusText}`,
       ];
     }
 
@@ -165,7 +167,7 @@ export function ActivityItem({ execution }: Props) {
   if (withExecutionLink) {
     return (
       <Link
-        className="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-bgLightGrey"
+        className="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-surface-hover"
         href={linkUrl}
       >
         <div className="min-w-0 flex-1">{content}</div>

@@ -138,7 +138,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="start-date"
-            className="text-body text-muted-foreground"
+            className="text-body text-foreground-tertiary"
           >
             Start Date{" "}
             <span className="text-caption">
@@ -154,7 +154,10 @@ export function PlatformCostContent({ searchParams }: Props) {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="end-date" className="text-body text-muted-foreground">
+          <label
+            htmlFor="end-date"
+            className="text-body text-foreground-tertiary"
+          >
             End Date <span className="text-caption">(local time)</span>
           </label>
           <input
@@ -168,7 +171,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="provider-filter"
-            className="text-body text-muted-foreground"
+            className="text-body text-foreground-tertiary"
           >
             Provider
           </label>
@@ -184,7 +187,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="user-id-filter"
-            className="text-body text-muted-foreground"
+            className="text-body text-foreground-tertiary"
           >
             User ID
           </label>
@@ -200,7 +203,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="model-filter"
-            className="text-body text-muted-foreground"
+            className="text-body text-foreground-tertiary"
           >
             Model
           </label>
@@ -216,7 +219,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="block-filter"
-            className="text-body text-muted-foreground"
+            className="text-body text-foreground-tertiary"
           >
             Block
           </label>
@@ -232,7 +235,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="type-filter"
-            className="text-body text-muted-foreground"
+            className="text-body text-foreground-tertiary"
           >
             Type
           </label>
@@ -248,7 +251,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="execution-id-filter"
-            className="text-body text-muted-foreground"
+            className="text-body text-foreground-tertiary"
           >
             Execution ID
           </label>
@@ -264,7 +267,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="execution-path-filter"
-            className="text-body text-muted-foreground"
+            className="text-body text-foreground-tertiary"
           >
             Path
           </label>
@@ -285,7 +288,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="source-filter"
-            className="text-body text-muted-foreground"
+            className="text-body text-foreground-tertiary"
           >
             Source
           </label>
@@ -302,7 +305,7 @@ export function PlatformCostContent({ searchParams }: Props) {
         </div>
         <button
           onClick={handleFilter}
-          className="rounded bg-primary px-4 py-1.5 text-body text-primary-foreground hover:bg-primary/90"
+          className="rounded bg-action px-4 py-1.5 text-body text-action-foreground hover:bg-action/90"
         >
           Apply
         </button>
@@ -332,7 +335,7 @@ export function PlatformCostContent({ searchParams }: Props) {
               page: "1",
             });
           }}
-          className="rounded border px-4 py-1.5 text-body hover:bg-muted"
+          className="rounded border px-4 py-1.5 text-body hover:bg-surface-hover"
         >
           Clear
         </button>
@@ -382,7 +385,7 @@ export function PlatformCostContent({ searchParams }: Props) {
                         key={b.bucket}
                         className="flex flex-col items-center rounded border p-2 text-center"
                       >
-                        <span className="text-caption text-muted-foreground">
+                        <span className="text-caption text-foreground-tertiary">
                           {b.bucket}
                         </span>
                         <span className="text-lead font-semibold">
@@ -409,7 +412,7 @@ export function PlatformCostContent({ searchParams }: Props) {
                 aria-selected={tab === t}
                 aria-controls={`tabpanel-${t}`}
                 onClick={() => updateUrl({ tab: t, page: "1" })}
-                className={`px-4 py-2 text-body font-medium ${tab === t ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                className={`px-4 py-2 text-body font-medium ${tab === t ? "border-b-2 border-action text-action" : "text-foreground-tertiary hover:text-foreground-base"}`}
               >
                 {t === "overview"
                   ? "By Provider"

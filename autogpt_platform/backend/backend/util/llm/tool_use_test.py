@@ -109,6 +109,7 @@ class TestStructuredToolChoice:
             "anthropic/claude-opus-5-5",
             "claude-opus-5-5-20261015",
             "claude-fable-5-1",
+            "claude-fable-5-2",
         ],
     )
     def test_models_that_reject_forcing_get_auto(self, model: str):
