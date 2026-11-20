@@ -7,6 +7,7 @@ instead of sleeping, and a call as long as its slice times out at the slice, as
 the real ``wait_for`` would.
 """
 
+import asyncio
 import logging
 import time
 from collections.abc import Iterator
@@ -232,3 +233,31 @@ async def test_an_override_cannot_lengthen_the_request(monkeypatch, spend_alerts
     assert vars(spend_alerts[0])["json_fields"]["configured_timeout_seconds"] == (
         _BUDGET
     )
+
+
+@pytest.mark.asyncio
+async def test_the_slice_is_what_cuts_a_silent_request_off(monkeypatch):
+    """The fake clock above can't see the real ``wait_for``, so this request
+    never answers: the slice must be what stops it, not the whole budget."""
+    monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", _BUDGET)
+
+    async def never_answers(**kwargs) -> llm.LLMResponse:
+        await asyncio.Event().wait()
+        raise AssertionError("the request was never cut off")
+
+    monkeypatch.setattr(llm, "_llm_call", never_answers)
+
+    # A 0.05 s slice inside a 5 s bound: a wait at the whole budget would hit
+    # the outer bound, whose TimeoutError carries no "exceeded" message.
+    with pytest.raises(TimeoutError, match="exceeded 0.05s"):
+        await asyncio.wait_for(
+            llm.llm_call(
+                credentials=llm.TEST_CREDENTIALS,
+                llm_model=llm.DEFAULT_LLM_MODEL,
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=None,
+                on_abandoned=None,
+                timeout_seconds=0.05,
+            ),
+            timeout=5,
+        )
