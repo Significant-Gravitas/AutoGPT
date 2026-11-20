@@ -15,6 +15,8 @@ on:
       - ".github/scripts/platform-single-container-smoke.sh"
       - ".github/workflows/platform-single-container-docker.yml"
       - "autogpt_platform/backend/Dockerfile"
+      - "autogpt_platform/backend/backend/util/trusted_proxies.py"
+      - "autogpt_platform/backend/backend/util/trusted_proxies_vectors.json"
       - "autogpt_platform/backend/poetry.lock"
       - "autogpt_platform/backend/pyproject.toml"
       - "autogpt_platform/docker-compose.yml"
@@ -37,6 +39,13 @@ permissions:
 env:
   DEPLOY_IMAGE: docker.io/significantgravitas/autogpt
   BUILD_CACHE_IMAGE: ghcr.io/significant-gravitas/autogpt-single-container-buildcache
+
+# Releases publish images from this workflow, so it never reads or writes the
+# Actions cache: not for setup-buildx's binary, and not for the Trivy
+# vulnerability database, which each scan downloads fresh from Trivy's
+# default mirror. Image layers come from the GHCR registry cache, which this
+# setting doesn't touch.
+cache-mode: none
 
 jobs:
   authorize-publication:
@@ -104,7 +113,7 @@ jobs:
 
       - name: Authenticate to GHCR build cache
         continue-on-error: ${{ github.event_name == 'pull_request' }}
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -149,7 +158,7 @@ jobs:
       - name: Build image without publishing
         id: build-image
         background: true
-        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
         with:
           source: .
           files: autogpt_platform/single-container/docker-bake.hcl
@@ -213,6 +222,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           skip-setup-trivy: true
+          cache: false
           image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
           scanners: vuln,secret
           format: json
@@ -229,6 +239,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           skip-setup-trivy: true
+          cache: false
           image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
           scanners: secret
           format: json
@@ -294,7 +305,7 @@ jobs:
 
       - name: Upload single-container reports
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: platform-single-container-ci-${{ matrix.suffix }}
           path: ${{ runner.temp }}/platform-single-container-results
@@ -335,7 +346,7 @@ jobs:
             image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
@@ -347,7 +358,7 @@ jobs:
 
       - name: Build and push platform digest
         id: build
-        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
         with:
           source: .
           files: autogpt_platform/single-container/docker-bake.hcl
@@ -401,6 +412,7 @@ jobs:
           TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
           skip-setup-trivy: true
+          cache: false
           image-ref: ${{ env.DEPLOY_IMAGE }}@${{ steps.digest.outputs.digest }}
           format: table
           ignore-unfixed: true
@@ -415,6 +427,7 @@ jobs:
           TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
           skip-setup-trivy: true
+          cache: false
           image-ref: ${{ env.DEPLOY_IMAGE }}@${{ steps.digest.outputs.digest }}
           scanners: secret
           format: table
@@ -438,7 +451,7 @@ jobs:
           touch "${DIGEST_DIR}/${PLATFORM_SUFFIX}-${digest_hex}"
 
       - name: Upload verified digest
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: platform-single-container-publish-digest-${{ matrix.suffix }}
           path: ${{ runner.temp }}/platform-single-container-publish-digests/*
@@ -453,6 +466,9 @@ jobs:
     environment: dockerhub-release
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    outputs:
+      release_digest: ${{ steps.publish.outputs.release_digest }}
+      sha_digest: ${{ steps.publish.outputs.sha_digest }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -474,12 +490,13 @@ jobs:
             image=docker.io/moby/buildkit:v0.32.0@sha256:1f8167fcb0eca5b7126353d35299386945cbb8949cc516c592a49f80cfce4fa2
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Publish and verify manifest
+        id: publish
         shell: bash
         env:
           DIGEST_DIR: ${{ runner.temp }}/platform-single-container-publish-digests
@@ -495,3 +512,49 @@ jobs:
           repository: significantgravitas/autogpt
           short-description: Self-host your AI team. Hire experts, delegate work, and review results with AutoGPT.
           readme-filepath: ./autogpt_platform/single-container/README.md
+
+  # Signed SLSA build provenance for the two image indexes publish-manifest
+  # pushed: the release (vX.Y.Z, which latest also points to) and its
+  # sha-<commit> tag. docs/platform/single-container.md tells users how to
+  # check one. Only actions/attest runs here, so no third-party action or
+  # Docker Hub credential shares the identity it signs with. If this job
+  # fails, re-run it alone: it needs only publish-manifest's outputs, which a
+  # re-run keeps.
+  attest-provenance:
+    name: Attest build provenance
+    needs: [publish-manifest]
+    # Runs once the publish step has written both digests, even if a later
+    # publish-manifest step (the Docker Hub Overview update) failed. When the
+    # publish step fails, it writes no digest and this job is skipped.
+    if: ${{ !cancelled() && needs.publish-manifest.outputs.release_digest != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # signs the build provenance attestations below
+      attestations: write # stores those attestations with the repository
+    steps:
+      - name: Check the digests to attest
+        shell: bash
+        env:
+          RELEASE_DIGEST: ${{ needs.publish-manifest.outputs.release_digest }}
+          SHA_DIGEST: ${{ needs.publish-manifest.outputs.sha_digest }}
+        run: |
+          for digest in "$RELEASE_DIGEST" "$SHA_DIGEST"; do
+            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "refusing to attest an invalid manifest digest" >&2
+              exit 1
+            fi
+          done
+
+      - name: Attest the release image's build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.DEPLOY_IMAGE }}
+          subject-digest: ${{ needs.publish-manifest.outputs.release_digest }}
+
+      - name: Attest the sha-tagged image's build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.DEPLOY_IMAGE }}
+          subject-digest: ${{ needs.publish-manifest.outputs.sha_digest }}

@@ -1467,7 +1467,8 @@ async def test_optional_user_id_parses_the_token_off_the_event_loop(
     mocker.patch("autogpt_libs.auth.jwt_utils.parse_jwt_token", side_effect=parse)
 
     user_id = await get_optional_user_id(
-        HTTPAuthorizationCredentials(scheme="Bearer", credentials="t")
+        Request({"type": "http", "app": FastAPI(), "headers": []}),
+        HTTPAuthorizationCredentials(scheme="Bearer", credentials="t"),
     )
 
     assert user_id == "user-1"

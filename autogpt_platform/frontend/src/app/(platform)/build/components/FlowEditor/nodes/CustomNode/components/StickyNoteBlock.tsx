@@ -18,13 +18,13 @@ export const StickyNoteBlock = ({ data, nodeId }: StickyNoteBlockType) => {
     }, 0);
 
     const colors = [
-      "bg-orange-200",
-      "bg-red-200",
-      "bg-yellow-200",
-      "bg-green-200",
-      "bg-blue-200",
-      "bg-purple-200",
-      "bg-pink-200",
+      "bg-[#ffc88a]",
+      "bg-[#fac5c5]",
+      "bg-[#fae28a]",
+      "bg-[#94d5ac]",
+      "bg-[#bfdbfe]",
+      "bg-[#c0a1fa]",
+      "bg-[#f6abd0]",
     ];
 
     return {

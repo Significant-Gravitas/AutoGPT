@@ -1,7 +1,7 @@
 /**
  * The colour utilities the colour codemods (alias-to-role.ts,
- * palette-to-role.ts) and design-system/no-alias-colours and
- * no-palette-colours read, grouped by how a class uses its colour.
+ * palette-to-role.ts) and design-system/no-shadcn-alias-colours and
+ * no-raw-palette-classes read, grouped by how a class uses its colour.
  */
 
 /** Text and icon colours. */
@@ -36,10 +36,18 @@ export const LINE_UTILITIES = [
   "shadow",
 ];
 
+/** The scrollbar colours (globals.css's tailwind-scrollbar utilities). */
+export const SCROLLBAR_UTILITIES = [
+  "scrollbar-thumb",
+  "scrollbar-track",
+  "scrollbar-corner",
+];
+
 export const COLOUR_UTILITIES = [
   ...TEXT_UTILITIES,
   ...FILL_UTILITIES,
   ...LINE_UTILITIES,
+  ...SCROLLBAR_UTILITIES,
 ];
 
 /**

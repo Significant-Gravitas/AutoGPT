@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { sanitizeAuthNext } from "./auth-redirect";
+import {
+  getAuthDeepLink,
+  isDefaultLanding,
+  sanitizeAuthNext,
+  withAuthTracking,
+} from "./auth-redirect";
 
 describe("sanitizeAuthNext", () => {
   test("returns null when the param is missing or empty", () => {
@@ -106,5 +111,108 @@ describe("sanitizeAuthNext", () => {
     expect(sanitizeAuthNext("/path/with-dash/and_underscore")).toBe(
       "/path/with-dash/and_underscore",
     );
+  });
+});
+
+// `/login?next=/home` is where every signed-out visit to the app root lands.
+// Such a `next` names no page the user chose, so it must not send someone who
+// hasn't finished onboarding to Home.
+describe("isDefaultLanding", () => {
+  test.each([
+    "/",
+    "/home",
+    "/home/",
+    "/home?",
+    "/home#",
+    "/?ref=newsletter",
+    "/#top",
+    "/home?utm_source=newsletter&utm_campaign=launch",
+    "/home?gclid=abc",
+    "/home?fbclid=abc&ref=x",
+  ])("%s is a default landing", (value) => {
+    expect(isDefaultLanding(value)).toBe(true);
+  });
+
+  test.each([
+    "/home?sessionId=abc",
+    "/home?sessionId=abc&utm_source=newsletter",
+    "/home?autosubmit=true",
+    "/home#chat",
+    "/homework",
+    "/home/settings",
+    "/library",
+    "/library?utm_source=newsletter",
+    "/marketplace/agent/autogpt/some-workflow",
+    "/onboarding",
+  ])("%s is not", (value) => {
+    expect(isDefaultLanding(value)).toBe(false);
+  });
+});
+
+describe("getAuthDeepLink", () => {
+  test.each([
+    "/",
+    "/home",
+    "/home/",
+    "/copilot",
+    "/copilot/",
+    "/copilot?utm_source=newsletter",
+    "/home?utm_campaign=launch",
+  ])("drops the default landing %s so onboarding decides", (value) => {
+    expect(getAuthDeepLink(value)).toBeNull();
+  });
+
+  test("drops what sanitizeAuthNext drops", () => {
+    expect(getAuthDeepLink(null)).toBeNull();
+    expect(getAuthDeepLink("")).toBeNull();
+    expect(getAuthDeepLink("https://phishing.site")).toBeNull();
+    expect(getAuthDeepLink("//evil.com/home")).toBeNull();
+    expect(getAuthDeepLink("/\\evil.com")).toBeNull();
+  });
+
+  test.each([
+    ["/library", "/library"],
+    ["/marketplace/agent/autogpt/x", "/marketplace/agent/autogpt/x"],
+    ["/home?sessionId=abc", "/home?sessionId=abc"],
+    ["/copilot?sessionId=abc", "/home?sessionId=abc"],
+    [
+      "/auth/integrations/oauth_callback?code=1",
+      "/auth/integrations/oauth_callback?code=1",
+    ],
+  ])("keeps the real deep link %s", (value, expected) => {
+    expect(getAuthDeepLink(value)).toBe(expected);
+  });
+});
+
+// A campaign or ad visit lands on /login?next=/home?utm_source=…, so the
+// page an auth flow sends the user to must carry those params to analytics.
+describe("withAuthTracking", () => {
+  test.each([
+    [
+      "/onboarding",
+      "/home?utm_source=newsletter",
+      "/onboarding?utm_source=newsletter",
+    ],
+    [
+      "/onboarding",
+      "/copilot?utm_source=ads&utm_campaign=launch&gclid=abc",
+      "/onboarding?utm_source=ads&utm_campaign=launch&gclid=abc",
+    ],
+    ["/copilot", "/home?_gl=1*abc", "/copilot?_gl=1*abc"],
+    ["/onboarding", "/?utm_source=x&step=2", "/onboarding?utm_source=x"],
+  ])(
+    "adds the tracking params to %s for next=%s",
+    (destination, next, expected) => {
+      expect(withAuthTracking(destination, next)).toBe(expected);
+    },
+  );
+
+  test.each([
+    ["/onboarding", null],
+    ["/onboarding", "/home"],
+    ["/onboarding", "/library?utm_source=x"],
+    ["/onboarding", "https://evil.example/home?utm_source=x"],
+  ])("leaves %s alone for next=%s", (destination, next) => {
+    expect(withAuthTracking(destination, next)).toBe(destination);
   });
 });

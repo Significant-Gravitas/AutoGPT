@@ -16,6 +16,7 @@ from backend.util.request import Requests
 
 from .base import BaseTool
 from .models import ErrorResponse, ToolResponseBase, WebFetchResponse
+from .refused_pages import refused_page_notice
 
 logger = logging.getLogger(__name__)
 
@@ -136,15 +137,23 @@ def _html_to_text(html: str) -> str:
     return h.handle(cleaned_html).strip()
 
 
-_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+_TITLE_OPEN_RE = re.compile(r"<title", re.IGNORECASE)
+_TITLE_CLOSE_RE = re.compile(r"</title>", re.IGNORECASE)
 
 
 def _extract_title(html: str) -> str | None:
-    match = _TITLE_RE.search(html)
-    if not match:
+    # A later <title can't have an end the first one lacks.
+    opening = _TITLE_OPEN_RE.search(html)
+    if not opening:
         return None
-    title = re.sub(r"\s+", " ", unescape(match.group(1))).strip()
-    return title or None
+    content_start = html.find(">", opening.end()) + 1
+    if not content_start:
+        return None
+    closing = _TITLE_CLOSE_RE.search(html, content_start)
+    if not closing:
+        return None
+    title = re.sub(r"\s+", " ", unescape(html[content_start : closing.start()]))
+    return title.strip() or None
 
 
 def _is_client_rendered_shell(raw_html: str, extracted_text: str) -> bool:
@@ -262,6 +271,21 @@ class WebFetchTool(BaseTool):
         if len(text) > _MAX_TEXT_CHARS:
             text = text[:_MAX_TEXT_CHARS]
             text_truncated = True
+
+        notice = refused_page_notice(
+            response.url,
+            bot_check=response.headers.get("cf-mitigated", "").lower() == "challenge",
+            # A server error or rate limit is worth a retry, not a sign-in wall.
+            content_withheld=is_html
+            and extract_text
+            and not text.strip()
+            and response.status < 500
+            and response.status != 429,
+        )
+        if notice:
+            return ErrorResponse(
+                message=notice, error="page_refused", session_id=session_id
+            ).from_outside(response.url)
 
         truncated = raw_truncated or text_truncated
         page = text

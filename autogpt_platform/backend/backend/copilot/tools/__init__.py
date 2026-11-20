@@ -18,6 +18,7 @@ from .agent_output import AgentOutputTool
 from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
+from .capability_gates import gate_denied, tool_refused_message
 from .chat_platform import (
     EditChatPlatformMessageTool,
     ListChatPlatformChannelsTool,
@@ -45,6 +46,7 @@ from .expert_resources import (
     RevokeExpertCredentialTool,
 )
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
+from .feedback_prompts import FlagMistakeTool, RequestWorkCheckTool
 from .find_agent import FindAgentTool
 from .find_capability import FindCapabilityTool
 from .find_library_agent import FindLibraryAgentTool
@@ -79,6 +81,7 @@ from .message_session import MessageSessionTool
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
+from .render_ui import RenderUITool
 from .resume_capability import ResumeCapabilityTool
 from .routines import ListRoutinesTool, ScheduleRoutineTool
 from .run_agent import RunAgentTool
@@ -111,6 +114,7 @@ logger = logging.getLogger(__name__)
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
     "ask_question": AskQuestionTool(),
+    "render_ui": RenderUITool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "decompose_goal": DecomposeGoalTool(),
@@ -201,6 +205,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "delete_workspace_file": DeleteWorkspaceFileTool(),
     # The hire's first turn (expert sessions only): greeting + intake card.
     "expert_onboarding": ExpertOnboardingTool(),
+    # Feedback cards in the chat. In no TOOL_GROUPS group: both work in expert
+    # chats as well as Otto's.
+    "request_work_check": RequestWorkCheckTool(),
+    "flag_mistake": FlagMistakeTool(),
     # Expert Soul edits from chat (expert sessions only): preview + confirm
     "update_expert_soul": UpdateExpertSoulTool(),
     "confirm_expert_soul_update": ConfirmExpertSoulUpdateTool(),
@@ -339,6 +347,8 @@ INTERACTIVE_ORIGIN_TOOLS: frozenset[str] = frozenset(
         "raise_expert",
         "update_expert",
         "confirm_expert_change",
+        "grant_expert_credential",
+        "revoke_expert_credential",
     }
 )
 
@@ -483,10 +493,10 @@ async def execute_tool(
     # ``run_capability`` and the permission and envelope gates it applies.
     # Deferred-ness is a property of the tool, not of the turn, so it is
     # refused here rather than left to each caller's gate.
-    if tool_name in DEFERRED_TOOL_NAMES or (
-        tool_name in tool_names_in_groups(disabled_groups)
-        or tool_name in frozenset(disabled_tools)
-    ):
+    denied = tool_name in tool_names_in_groups(
+        disabled_groups
+    ) or tool_name in frozenset(disabled_tools)
+    if denied or tool_name in DEFERRED_TOOL_NAMES:
         logger.warning(
             "Refusing disabled tool: tool=%s user=%s session=%s",
             tool_name,
@@ -497,7 +507,11 @@ async def execute_tool(
             toolCallId=tool_call_id,
             toolName=tool_name,
             output=ErrorResponse(
-                message=f"{tool_name} is not available in this session.",
+                message=(
+                    deferred_name_message(tool_name)
+                    if not denied and is_deferred_name_slip(tool_name)
+                    else tool_refused_message(tool_name)
+                ),
                 error="tool_disabled",
                 session_id=session.session_id,
             ).model_dump_json(),
@@ -523,3 +537,23 @@ async def execute_tool(
     )
 
     return await tool.execute(user_id, session, tool_call_id, **parameters)
+
+
+def is_deferred_name_slip(name: str) -> bool:
+    """Whether naming *name* directly is a slip rather than a denial: a
+    deferred tool this turn may run, through ``run_capability``. A tool this
+    deployment cannot run has no ``tool:`` id to point to."""
+    return (
+        name in DEFERRED_TOOL_NAMES
+        and TOOL_REGISTRY[name].is_available
+        and not gate_denied(name)
+    )
+
+
+def deferred_name_message(name: str) -> str:
+    """Send a model that named a deferred tool to the way it runs, instead of
+    telling it the work cannot be done."""
+    return (
+        f"'{name}' is not called by name, so this call did not run. "
+        f'Run it with run_capability(id="tool:{name}", input={{...}}).'
+    )

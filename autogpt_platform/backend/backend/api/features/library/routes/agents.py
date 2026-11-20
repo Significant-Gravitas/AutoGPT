@@ -7,6 +7,7 @@ from fastapi.responses import Response
 import backend.api.features.library._get_many as get_many
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
+from backend.util.models import MAX_PAGE, MAX_PAGE_SIZE
 
 from .. import db as library_db
 from .. import model as library_model
@@ -26,7 +27,10 @@ router = APIRouter(
 async def list_library_agents(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     ctx: autogpt_auth_lib.RequestContext = Security(
-        autogpt_auth_lib.get_request_context
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.VIEW_RESOURCES,
+            autogpt_auth_lib.TeamAction.VIEW_AGENTS,
+        )
     ),
     search_term: Optional[str] = Query(
         None, description="Search term to filter agents"
@@ -38,11 +42,13 @@ async def list_library_agents(
     page: int = Query(
         1,
         ge=1,
+        le=MAX_PAGE,
         description="Page number to retrieve (must be >= 1)",
     ),
     page_size: int = Query(
         15,
         ge=1,
+        le=MAX_PAGE_SIZE,
         description="Number of agents per page (must be >= 1)",
     ),
     folder_id: Optional[str] = Query(
@@ -89,11 +95,13 @@ async def list_favorite_library_agents(
     page: int = Query(
         1,
         ge=1,
+        le=MAX_PAGE,
         description="Page number to retrieve (must be >= 1)",
     ),
     page_size: int = Query(
         15,
         ge=1,
+        le=MAX_PAGE_SIZE,
         description="Number of agents per page (must be >= 1)",
     ),
 ) -> library_model.LibraryAgentResponse:
