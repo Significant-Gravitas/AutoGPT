@@ -15,12 +15,21 @@ vi.mock("@/services/feature-flags/use-get-flag", async () => {
   };
 });
 
+let paymentEnabled = true;
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: paymentEnabled,
+    isResolved: true,
+  }),
+}));
+
 afterEach(() => {
   mockUseGetFlag.mockReset();
 });
 
 beforeEach(() => {
   mockUseGetFlag.mockReturnValue(true);
+  paymentEnabled = true;
 });
 
 vi.mock("../../StorageBar", () => ({
@@ -66,7 +75,13 @@ function makeUsage({
 }
 
 function mockUsageResponse(body: JsonBodyType) {
-  server.use(http.get("*/api/chat/usage", () => HttpResponse.json(body)));
+  server.use(
+    http.get(
+      "*/api/credits/subscription",
+      () => new HttpResponse(null, { status: 503 }),
+    ),
+    http.get("*/api/chat/usage", () => HttpResponse.json(body)),
+  );
 }
 
 describe("UsagePopover", () => {
@@ -117,7 +132,7 @@ describe("UsagePopover", () => {
     mockUsageResponse(makeUsage({ tier: "PRO" }));
     render(<UsagePopover />);
 
-    expect(await screen.findByText("Pro plan")).toBeDefined();
+    expect(await screen.findByText("Pro")).toBeDefined();
   });
 
   it("never renders the 'Go to billing' button (handled by the card)", async () => {
@@ -139,6 +154,7 @@ describe("UsagePopover", () => {
 
   it("hides the 'Manage billing' link when billing is disabled at the platform level", async () => {
     mockUseGetFlag.mockReturnValue(false);
+    paymentEnabled = false;
     mockUsageResponse(makeUsage());
     render(<UsagePopover />);
 

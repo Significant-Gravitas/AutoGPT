@@ -7,7 +7,10 @@ import {
 } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TaskProgressBar } from "../TaskProgressBar";
-import type { TodoItem } from "../helpers";
+import { EMPTY_TODOS, type TodoItem } from "../helpers";
+
+// The bar calls useReducedMotion once per render.
+const barRenders = vi.hoisted(() => ({ count: 0 }));
 
 vi.mock("framer-motion", () => {
   const MOTION_PROPS = [
@@ -39,7 +42,10 @@ vi.mock("framer-motion", () => {
     AnimatePresence: ({ children }: { children: React.ReactNode }) => (
       <>{children}</>
     ),
-    useReducedMotion: () => false,
+    useReducedMotion: () => {
+      barRenders.count += 1;
+      return false;
+    },
     motion: {
       div: makeMotion("div"),
       span: makeMotion("span"),
@@ -127,5 +133,65 @@ describe("TaskProgressBar", () => {
       />,
     );
     expect(screen.getAllByLabelText("in progress").length).toBeGreaterThan(0);
+  });
+
+  it("skips a render when the chat passes an equal task list again", () => {
+    const { rerender } = render(
+      <TaskProgressBar
+        todos={[todo("Step 1", "completed"), todo("Step 2", "in_progress")]}
+        isStreaming
+      />,
+    );
+    const before = barRenders.count;
+
+    rerender(
+      <TaskProgressBar
+        todos={[todo("Step 1", "completed"), todo("Step 2", "in_progress")]}
+        isStreaming
+      />,
+    );
+
+    expect(barRenders.count).toBe(before);
+  });
+
+  it("skips a render while there is still no task list", () => {
+    const { rerender } = render(
+      <TaskProgressBar todos={EMPTY_TODOS} isStreaming />,
+    );
+    const before = barRenders.count;
+
+    rerender(<TaskProgressBar todos={EMPTY_TODOS} isStreaming />);
+
+    expect(barRenders.count).toBe(before);
+  });
+
+  it("renders again when a task changes state", () => {
+    const { rerender } = render(
+      <TaskProgressBar
+        todos={[todo("Step 1", "in_progress", "Doing step 1")]}
+        isStreaming
+      />,
+    );
+    expect(screen.getByText("Doing step 1")).toBeDefined();
+
+    rerender(
+      <TaskProgressBar todos={[todo("Step 1", "completed")]} isStreaming />,
+    );
+
+    expect(screen.getByText("All tasks complete")).toBeDefined();
+  });
+
+  it("renders again when the reply stops streaming", () => {
+    const todos = [todo("Halted step", "in_progress", "Running step")];
+    const { rerender } = render(
+      <TaskProgressBar todos={todos} isStreaming defaultExpanded />,
+    );
+    expect(screen.getAllByLabelText("in progress").length).toBeGreaterThan(0);
+
+    rerender(
+      <TaskProgressBar todos={todos} isStreaming={false} defaultExpanded />,
+    );
+
+    expect(screen.getAllByLabelText("stopped").length).toBeGreaterThan(0);
   });
 });

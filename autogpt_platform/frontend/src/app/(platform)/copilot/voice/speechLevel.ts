@@ -1,5 +1,5 @@
 /**
- * How loud AutoPilot is at this instant, read off the element that is
+ * How loud Otto is at this instant, read off the element that is
  * playing it, so the meter moves with the words rather than pretending to.
  */
 
@@ -47,12 +47,4 @@ export function readSpeechLevel(): number | null {
   let sum = 0;
   for (const sample of samples) sum += sample * sample;
   return Math.sqrt(sum / samples.length);
-}
-
-/** Test seam. The real graph outlives the tab, by design. */
-export function resetSpeechWatch() {
-  source = null;
-  analyser = null;
-  samples = null;
-  attachedTo = null;
 }

@@ -25,7 +25,7 @@ from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import ChatSessionCreateInput
 
 from backend.copilot.db import (
-    _PENDING_QUESTION_SESSION_COLUMNS,
+    _SESSION_INFO_COLUMNS,
     clear_session_pending_question,
     create_chat_session,
     get_chat_session_metadata,
@@ -92,6 +92,22 @@ async def test_list_query_excludes_dreams_with_null_safe_operator():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("pinned_first", [True, False])
+async def test_list_ordering_is_total_so_offset_paging_cannot_skip_a_row(
+    pinned_first,
+):
+    """``isPinned``/``updatedAt`` alone leave ties in an arbitrary order, and
+    LIMIT/OFFSET over an arbitrary order can drop or repeat a session between
+    pages. The id makes the sort total."""
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await get_user_chat_sessions("u1", pinned_first=pinned_first)
+
+    order_by = raw.call_args.args[0].split("ORDER BY")[1].split("LIMIT")[0]
+    assert order_by.strip().endswith('"id" DESC')
+
+
+@pytest.mark.asyncio
 async def test_list_query_maps_raw_rows_to_chat_session_info():
     raw = AsyncMock(return_value=[_make_prisma_session("sess-42")])
     with patch(_RAW_QUERY_TARGET, raw):
@@ -140,6 +156,25 @@ async def test_autopilot_only_count_query_requires_null_expert_id():
     query = raw.call_args.args[0]
     assert '"expertId" IS NULL' in query
     assert raw.call_args.args[1:] == ("u1",)
+
+
+@pytest.mark.asyncio
+async def test_experts_only_list_query_requires_a_non_null_expert_id():
+    raw = AsyncMock(return_value=[])
+    with patch(_RAW_QUERY_TARGET, raw):
+        await get_user_chat_sessions("u1", experts_only=True)
+
+    query = raw.call_args.args[0]
+    assert '"expertId" IS NOT NULL' in query
+    assert raw.call_args.args[1:] == ("u1", 50, 0)
+
+
+@pytest.mark.asyncio
+async def test_experts_only_is_exclusive_with_both_other_scope_filters():
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        await get_user_chat_sessions("u1", expert_id="expert-1", experts_only=True)
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        await get_user_chat_sessions("u1", autopilot_only=True, experts_only=True)
 
 
 @pytest.mark.asyncio
@@ -357,7 +392,7 @@ async def test_pending_question_query_avoids_select_star_and_excludes_delegated(
 def test_pending_question_projection_columns_exist_in_schema():
     """Guard the hand-maintained projection in the Home pending-question query.
 
-    ``_PENDING_QUESTION_SESSION_COLUMNS`` mirrors the ChatSession schema by
+    ``_SESSION_INFO_COLUMNS`` mirrors the ChatSession schema by
     hand, so a ``schema.prisma`` rename — or a new column with no default on
     the generated ``PrismaChatSession`` model, which the raw query hydrates —
     would otherwise only surface as a runtime query error on Home.
@@ -367,7 +402,7 @@ def test_pending_question_projection_columns_exist_in_schema():
     assert model is not None, "ChatSession model not found in schema.prisma"
     fields = set(re.findall(r"^\s{2}(\w+)", model.group(1), re.M))
 
-    projected = set(re.findall(r'"(\w+)"', _PENDING_QUESTION_SESSION_COLUMNS))
+    projected = set(re.findall(r'"(\w+)"', _SESSION_INFO_COLUMNS))
     assert projected <= fields
 
     required = {

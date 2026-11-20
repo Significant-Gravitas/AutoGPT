@@ -1,5 +1,6 @@
 """Chat transport discovery and the connection a user made their default."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -48,6 +49,22 @@ def _codex_credentials(credential_id: str = "cred-codex") -> OAuth2Credentials:
     )
 
 
+def _microsoft_credentials(
+    credential_id: str = "cred-microsoft",
+) -> OAuth2Credentials:
+    from backend.integrations.oauth.microsoft_365_copilot import (
+        Microsoft365CopilotDeviceAuthHandler,
+    )
+
+    return OAuth2Credentials(
+        id=credential_id,
+        provider="microsoft_365_copilot",
+        access_token=SecretStr("access"),
+        refresh_token=SecretStr("refresh"),
+        scopes=Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES,
+    )
+
+
 @pytest.fixture(autouse=True)
 def transport_env(mocker: pytest_mock.MockerFixture):
     """Hosted deployment, entitled user, no connections, nothing saved."""
@@ -64,8 +81,10 @@ def transport_env(mocker: pytest_mock.MockerFixture):
     )
     mocker.patch.object(
         transports,
-        "get_user_default_chat_route",
-        new=AsyncMock(return_value=(None, None)),
+        "user_db",
+        return_value=MagicMock(
+            get_user_default_chat_route=AsyncMock(return_value=(None, None))
+        ),
     )
     mocker.patch.object(transports, "set_user_default_chat_route", new=AsyncMock())
 
@@ -77,7 +96,7 @@ def _connect(*credential_ids: str) -> None:
 
 
 def _saved(auth_provider: str | None, credential_id: str | None = None) -> None:
-    transports.get_user_default_chat_route.return_value = (
+    transports.user_db().get_user_default_chat_route.return_value = (
         auth_provider,
         credential_id,
     )
@@ -113,6 +132,180 @@ async def test_saved_choice_beats_the_server_pick() -> None:
     _saved("codex", "cred-codex")
 
     assert _default_of(await get_chat_transports(USER_ID)) == ("codex", "cred-codex")
+
+
+@pytest.mark.asyncio
+async def test_the_connections_and_the_saved_default_are_read_side_by_side() -> None:
+    """Each read is a database round trip a new chat waits on: no read waits
+    for another to finish. Read one after another, the first never would."""
+    started = 0
+    all_started = asyncio.Event()
+
+    async def read() -> None:
+        nonlocal started
+        started += 1
+        if started == 3:
+            all_started.set()
+        await all_started.wait()
+
+    async def connections(_user_id: str, provider: str):
+        # The Microsoft lookup reads the shared connection, then the legacy
+        # Copilot one: only its first read is one of the three.
+        await read()
+        if provider == "codex":
+            return [_codex_credentials()]
+        if provider == "microsoft_365_copilot":
+            return [_microsoft_credentials()]
+        return []
+
+    async def saved_default(_user_id: str):
+        await read()
+        return ("codex", "cred-codex")
+
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = connections
+    transports.user_db().get_user_default_chat_route.side_effect = saved_default
+
+    found = await asyncio.wait_for(get_chat_transports(USER_ID), timeout=5)
+
+    assert [(t.auth_provider, t.credential_id) for t in found] == [
+        ("platform", None),
+        ("codex", "cred-codex"),
+        ("microsoft_365_copilot", "cred-microsoft"),
+    ]
+    assert _default_of(found) == ("codex", "cred-codex")
+
+
+@pytest.mark.parametrize("broken", ["codex", "microsoft_365_copilot", "saved default"])
+@pytest.mark.asyncio
+async def test_a_read_that_fails_fails_the_list(broken: str) -> None:
+    """Taken for "no connections", a failed read would hide an account or move
+    the user's default without a word."""
+
+    async def connections(_user_id: str, provider: str):
+        if provider == broken:
+            raise RuntimeError(f"{broken} read failed")
+        return [
+            _codex_credentials() if provider == "codex" else _microsoft_credentials()
+        ]
+
+    async def saved_default(_user_id: str):
+        if broken == "saved default":
+            raise RuntimeError(f"{broken} read failed")
+        return ("microsoft_365_copilot", "cred-microsoft")
+
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = connections
+    transports.user_db().get_user_default_chat_route.side_effect = saved_default
+
+    with pytest.raises(RuntimeError, match=f"{broken} read failed"):
+        await get_chat_transports(USER_ID)
+
+
+@pytest.mark.asyncio
+async def test_failed_reads_raise_in_order_once_every_read_has_ended() -> None:
+    """The Microsoft read fails first, the ChatGPT read after it, and the saved
+    default is still being read. The list fails with the ChatGPT error, the
+    same one whichever read finishes first, and only after the saved default's
+    read has ended: no read is left running once the list has answered."""
+    microsoft_failed = asyncio.Event()
+    codex_failed = asyncio.Event()
+    saved_default_read_ended = False
+
+    async def connections(_user_id: str, provider: str):
+        if provider == "codex":
+            await microsoft_failed.wait()
+            codex_failed.set()
+            raise RuntimeError("codex read failed")
+        microsoft_failed.set()
+        raise RuntimeError("microsoft read failed")
+
+    async def saved_default(_user_id: str):
+        nonlocal saved_default_read_ended
+        await codex_failed.wait()
+        await asyncio.sleep(0)
+        saved_default_read_ended = True
+        return (None, None)
+
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = connections
+    transports.user_db().get_user_default_chat_route.side_effect = saved_default
+
+    with pytest.raises(RuntimeError, match="codex read failed"):
+        await asyncio.wait_for(get_chat_transports(USER_ID), timeout=5)
+    assert saved_default_read_ended
+
+
+@pytest.mark.asyncio
+async def test_microsoft_365_copilot_is_a_secretless_user_connection() -> None:
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [_microsoft_credentials()] if provider == "microsoft_365_copilot" else []
+        )
+    )
+    _saved("microsoft_365_copilot", "cred-microsoft")
+
+    transport_list = await get_chat_transports(USER_ID)
+
+    microsoft = next(
+        transport
+        for transport in transport_list
+        if transport.auth_provider == "microsoft_365_copilot"
+    )
+    assert microsoft.credential_id == "cred-microsoft"
+    assert microsoft.label == "Microsoft 365 Copilot"
+    assert microsoft.default is True
+
+
+@pytest.mark.asyncio
+async def test_a_microsoft_work_connection_offers_copilot_without_a_second_sign_in() -> (
+    None
+):
+    def connection(account_type: str, credential_id: str) -> OAuth2Credentials:
+        credentials = _microsoft_credentials(credential_id)
+        credentials.provider = "microsoft"
+        credentials.metadata["microsoft_identity"] = {
+            "tenant_id": "tenant",
+            "account_id": credential_id,
+            "account_type": account_type,
+        }
+        return credentials
+
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [connection("work", "work"), connection("personal", "personal")]
+            if provider == "microsoft"
+            else []
+        )
+    )
+
+    transport_list = await get_chat_transports(USER_ID)
+
+    assert [
+        transport.credential_id
+        for transport in transport_list
+        if transport.auth_provider == "microsoft_365_copilot"
+    ] == ["work"]
+
+
+@pytest.mark.asyncio
+async def test_linking_microsoft_preserves_the_existing_self_host_chatgpt_default(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _self_hosted_without_deployment(mocker)
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [_codex_credentials()]
+            if provider == "codex"
+            else (
+                [_microsoft_credentials()]
+                if provider == "microsoft_365_copilot"
+                else []
+            )
+        )
+    )
+
+    assert _default_of(await get_chat_transports(USER_ID)) == (
+        "codex",
+        "cred-codex",
+    )
 
 
 @pytest.mark.asyncio
@@ -270,6 +463,18 @@ async def test_chatgpt_without_an_account_is_rejected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_microsoft_copilot_without_an_account_is_rejected() -> None:
+    with pytest.raises(InvalidDefaultChatRoute) as error:
+        await save_default_chat_route(
+            USER_ID,
+            DefaultChatRoute(auth_provider="microsoft_365_copilot"),
+        )
+
+    assert error.value.detail == "microsoft_365_copilot_credential_required"
+    transports.set_user_default_chat_route.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_platform_with_an_account_is_rejected() -> None:
     with pytest.raises(InvalidDefaultChatRoute) as error:
         await save_default_chat_route(
@@ -334,3 +539,45 @@ async def test_platform_is_not_saveable_where_it_is_unavailable(
 
     assert error.value.detail == "chat_transport_not_configured"
     transports.set_user_default_chat_route.assert_not_awaited()
+
+
+# ─── Microsoft 365 Copilot cannot run tools ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_unattended_callers_never_route_to_microsoft() -> None:
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [_microsoft_credentials()] if provider == "microsoft_365_copilot" else []
+        )
+    )
+    _saved("microsoft_365_copilot", "cred-microsoft")
+
+    # The saved default still shows for chats the user opens themselves...
+    assert _default_of(await get_chat_transports(USER_ID)) == (
+        "microsoft_365_copilot",
+        "cred-microsoft",
+    )
+    # ...but a schedule, briefing or bot turn stays on a route that runs tools.
+    assert await transports.resolve_default_chat_route(USER_ID) == (
+        "platform",
+        None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_expired_microsoft_token_without_refresh_is_not_listed() -> None:
+    dead = _microsoft_credentials()
+    dead.access_token_expires_at = 1
+    dead.refresh_token = None
+    transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: (
+            [dead] if provider == "microsoft_365_copilot" else []
+        )
+    )
+
+    assert not [
+        transport
+        for transport in await get_chat_transports(USER_ID)
+        if transport.auth_provider == "microsoft_365_copilot"
+    ]

@@ -2,22 +2,34 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
 import { useEffect } from "react";
+import { environment } from "@/services/environment";
 
+import { MemoryLearningSection } from "./components/MemoryLearningSection";
+import { UnavailableMemorySettings } from "./components/UnavailableMemorySettings";
 import { EraseMemoryCard } from "./components/EraseMemoryCard";
 import { MemoryChatPanel } from "./components/MemoryChatPanel/MemoryChatPanel";
 import { useMemoryChatPanel } from "./components/MemoryChatPanel/useMemoryChatPanel";
 import { RecentMemoriesCard } from "./components/RecentMemoriesCard";
 import { ScopeCard } from "./components/ScopeCard";
 import { SummaryCard } from "./components/SummaryCard";
+import { UnderstandingCard } from "./components/UnderstandingCard/UnderstandingCard";
+import { useLearningHistory } from "./useLearningHistory";
 import { useMemoryPage } from "./useMemoryPage";
 
-function SettingsMemoryPage() {
+export default function SettingsMemoryPage() {
   useEffect(() => {
     document.title = "Memory – AutoGPT Platform";
   }, []);
 
+  if (!environment.isGraphMemoryAvailable()) {
+    return <UnavailableMemorySettings />;
+  }
+
+  return <MemorySettings />;
+}
+
+function MemorySettings() {
   const {
     scopeExpertID,
     selectScope,
@@ -36,15 +48,16 @@ function SettingsMemoryPage() {
   } = useMemoryPage();
 
   const chatPanel = useMemoryChatPanel({ scopeExpertID });
+  const learning = useLearningHistory(scopeExpertID);
 
   return (
     <div className="flex flex-col gap-4">
       <header className="flex min-w-0 flex-col pb-2 pl-4">
-        <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">
+        <Text variant="h4" as="h1">
           Memory
         </Text>
-        <Text variant="body" className="mt-4 max-w-[600px] text-zinc-700">
-          What AutoGPT remembers about you — and who remembers it.
+        <Text variant="body" tone="body" className="mt-4 max-w-[600px]">
+          {"What AutoGPT remembers about you — and who remembers it."}
         </Text>
       </header>
 
@@ -59,6 +72,8 @@ function SettingsMemoryPage() {
         scopeName={scopeName}
         onViewSummary={() => void chatPanel.openWithSeed("summary")}
       />
+
+      {scopeExpertID === null ? <UnderstandingCard /> : null}
 
       {isFactsError ? (
         <ErrorCard
@@ -75,6 +90,8 @@ function SettingsMemoryPage() {
           onForgetTopic={() => void chatPanel.openWithSeed("forget")}
         />
       )}
+
+      <MemoryLearningSection learning={learning} experts={experts} />
 
       <EraseMemoryCard
         scopeName={scopeName}
@@ -93,6 +110,7 @@ function SettingsMemoryPage() {
         status={chatPanel.status}
         error={chatPanel.error}
         queuedMessages={chatPanel.queuedMessages}
+        isTurnSettling={chatPanel.isTurnSettling}
         onSend={chatPanel.onSend}
         onStop={chatPanel.stop}
         onRetry={chatPanel.retryStart}
@@ -101,5 +119,3 @@ function SettingsMemoryPage() {
     </div>
   );
 }
-
-export default withFeatureFlag(SettingsMemoryPage, "graphiti-memory");

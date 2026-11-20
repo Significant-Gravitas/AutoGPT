@@ -7,6 +7,7 @@ from typing_extensions import Optional
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -123,6 +124,7 @@ class TodoistCreateTaskBlock(Block):
                     },
                 )
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -254,6 +256,7 @@ class TodoistGetTasksBlock(Block):
                     }
                 ]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -337,6 +340,7 @@ class TodoistGetTaskBlock(Block):
                     "url": "https://todoist.com/showTask?id=2995104339",
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -443,6 +447,7 @@ class TodoistUpdateTaskBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"update_task": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -529,6 +534,7 @@ class TodoistCloseTaskBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"close_task": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -581,6 +587,7 @@ class TodoistReopenTaskBlock(Block):
                 ("success", True),
             ],
             test_mock={"reopen_task": lambda *args, **kwargs: (True)},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -633,6 +640,8 @@ class TodoistDeleteTaskBlock(Block):
                 ("success", True),
             ],
             test_mock={"delete_task": lambda *args, **kwargs: (True)},
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

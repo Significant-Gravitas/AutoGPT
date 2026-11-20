@@ -18,6 +18,6 @@ async def get_home_dashboard(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     ctx: RequestContext = Security(get_request_context),
 ) -> HomeDashboardResponse:
-    # `organization_id` only selects the credit model; every other source on this
-    # page is owner-scoped.
-    return await build_home_dashboard(user_id=user_id, organization_id=ctx.org_id)
+    # The context selects the credit model and gates the pooled org balance;
+    # every other source on this page is owner-scoped.
+    return await build_home_dashboard(user_id=user_id, ctx=ctx)

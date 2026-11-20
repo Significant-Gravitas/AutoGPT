@@ -1,17 +1,25 @@
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
+import {
+  credentialHosts,
+  credentialService,
+} from "@/components/contextual/CredentialsInput/service-identity";
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import type { RJSFSchema } from "@rjsf/utils";
-import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
+import type { ExpertGrant } from "../SetupRequirementsCard/helpers";
+import type {
+  ClarifyingQuestion,
+  QuestionAnswer,
+} from "../../tools/clarifying-questions";
 
 /** One question card's ask. The card owns the inputs; the asking component
  *  keeps the answers so it can still build its own message. */
 export interface QuestionRequest {
   id: string;
   questions: ClarifyingQuestion[];
-  answers: Record<string, string>;
-  onAnswer: (keyword: string, value: string) => void;
+  answers: Record<string, QuestionAnswer>;
+  onAnswer: (keyword: string, value: QuestionAnswer) => void;
   onSkip: () => void;
 }
 
@@ -51,8 +59,11 @@ export interface McpConnectorRequest {
   error: string | null;
   showManualToken: boolean;
   authScheme: "basic" | "bearer";
+  grantable: boolean;
+  granting: boolean;
   onConnect: () => void;
   onUseToken: (token: string) => void;
+  onGrant: () => void;
 }
 
 /** One setup card's ask, handed to the chain so every card in the chain can
@@ -64,18 +75,35 @@ export interface ConnectorRequest {
   onChange: (key: string, value?: CredentialsMetaInput) => void;
   /** The user finished a sign-in on this row. Distinct from a credential
    *  merely being present, which is also true of a card re-rendered from
-   *  chat history. */
-  onConnected: () => void;
+   *  chat history. Carries the credential the sign-in reported, if it did. */
+  onConnected: (credentialId?: string) => void;
+  /** A saved credential the provider refused when the tool ran. It stays on
+   *  file, so without this the row would auto-select it and read Connected
+   *  with nothing to click. */
+  rejectedCredentialId?: string;
 }
 
 export interface ConnectorRow {
+  key?: string;
+  iconId?: string;
   provider: string;
   displayName: string;
   description: string | null;
   schema: CredentialField[1];
   selected?: CredentialsMetaInput;
   select: (value?: CredentialsMetaInput) => void;
-  onConnected: () => void;
+  onConnected: (credentialId?: string) => void;
+  /** Set when an expert asked: an account credential only counts once the
+   *  expert has been granted it, so the connect dialog offers the account's
+   *  existing credentials first and a freshly connected one is granted. */
+  expertGrant?: ExpertGrant;
+  /** A merged request whose own field does not hold `selected`. The row
+   *  reports the FIRST target's value, so without this a second card asking
+   *  for the same provider reads as answered while its field is still empty. */
+  hasUnansweredTarget: boolean;
+  /** Saved credentials a merged card reported refused. None is usable until
+   *  the user signs in to it again from this row. */
+  rejectedCredentialIds: string[];
 }
 
 /** Flattens every request into one row per provider: two tools asking for
@@ -92,6 +120,7 @@ export function toConnectorRows(
       schema: CredentialField[1];
       selected?: CredentialsMetaInput;
       targets: { request: ConnectorRequest; key: string }[];
+      expertGrant?: ExpertGrant;
     }
   >();
 
@@ -99,15 +128,24 @@ export function toConnectorRows(
     for (const [key, schema] of request.fields) {
       const provider = schema.credentials_provider?.[0];
       if (!provider) continue;
-      const row = rows.get(provider);
+      const hosts = credentialHosts(schema);
+      const rowKey = JSON.stringify([provider, hosts]);
+      const row = rows.get(rowKey);
       if (!row) {
-        rows.set(provider, {
+        rows.set(rowKey, {
           schema,
           targets: [{ request, key }],
           selected: request.selected[key],
+          expertGrant: schema.expert_grant as ExpertGrant | undefined,
         });
         continue;
       }
+      // A granted credential answers every merged requirement at once, so
+      // only accounts eligible for all of them may be offered.
+      row.expertGrant = intersectGrants(
+        row.expertGrant,
+        schema.expert_grant as ExpertGrant | undefined,
+      );
       // One row answers every card that asked for this provider, so it must
       // request the union of their scopes — keeping only the first card's
       // leaves the others permanently unsatisfiable. Scopes only: merging
@@ -119,18 +157,58 @@ export function toConnectorRows(
     }
   }
 
-  return [...rows.entries()].map(([provider, row]) => ({
-    provider,
-    displayName: formatProviderName(provider),
-    description:
-      byName.get(provider)?.description ?? row.schema.description ?? null,
-    schema: row.schema,
-    selected: row.selected,
-    select: (value?: CredentialsMetaInput) =>
-      row.targets.forEach(({ request, key }) => request.onChange(key, value)),
-    onConnected: () =>
-      row.targets.forEach(({ request }) => request.onConnected()),
-  }));
+  return [...rows.entries()].map(([key, row]) => {
+    const provider = row.schema.credentials_provider![0];
+    const service = credentialService(row.schema);
+    return {
+      key,
+      iconId: service?.icon,
+      provider,
+      displayName:
+        service?.name ?? service?.host ?? formatProviderName(provider),
+      description: service
+        ? `Access for ${service.host}`
+        : (byName.get(provider)?.description ?? row.schema.description ?? null),
+      schema: row.schema,
+      selected: row.selected,
+      expertGrant: row.expertGrant,
+      hasUnansweredTarget: row.targets.some(
+        ({ request, key }) => request.selected[key]?.id !== row.selected?.id,
+      ),
+      rejectedCredentialIds: [
+        ...new Set(
+          row.targets.flatMap(({ request }) =>
+            request.rejectedCredentialId ? [request.rejectedCredentialId] : [],
+          ),
+        ),
+      ],
+      select: (value?: CredentialsMetaInput) =>
+        row.targets.forEach(({ request, key }) => request.onChange(key, value)),
+      onConnected: (credentialId?: string) =>
+        row.targets.forEach(({ request }) => request.onConnected(credentialId)),
+    };
+  });
+}
+
+/** Grant candidates eligible for both requirements. A requirement the server
+ *  sent no candidates for — or one belonging to another expert — narrows the
+ *  row to nothing rather than letting the other side's candidates through:
+ *  offering an account for a requirement it was never cleared for would grant
+ *  access the expert was not meant to have. */
+export function intersectGrants(
+  kept: ExpertGrant | undefined,
+  incoming: ExpertGrant | undefined,
+): ExpertGrant | undefined {
+  const defined = kept ?? incoming;
+  if (!defined) return undefined;
+  if (!kept || !incoming || kept.expertId !== incoming.expertId) {
+    return { expertId: defined.expertId, credentials: [] };
+  }
+  const eligible = new Set(incoming.credentials.map((c) => c.id));
+  return {
+    expertId: kept.expertId,
+    credentials: kept.credentials.filter((c) => eligible.has(c.id)),
+  };
 }
 
 /** Merges `incoming`'s scopes into `kept`, leaving every other schema field

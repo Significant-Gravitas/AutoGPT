@@ -73,6 +73,7 @@ async def _create_run(
     is_dry_run: bool = False,
     created_at: datetime | None = None,
     expert_id: str | None = None,
+    organization_id: str | None = None,
 ) -> None:
     # `walltime` is the key the executor actually persists — it comes from
     # GraphExecutionStats.model_dump() in update_graph_execution_stats().
@@ -98,6 +99,7 @@ async def _create_run(
             "endedAt": started_at + timedelta(seconds=duration or 0),
             "stats": SafeJson(stats),
             **({"expertId": expert_id} if expert_id else {}),
+            **({"organizationId": organization_id} if organization_id else {}),
         }
     )
 
@@ -405,6 +407,42 @@ async def test_by_expert_covers_a_roster_larger_than_the_by_agent_cap(
         assert sum(row.cost_cents for row in summary.by_expert) == summary.total_cents
     finally:
         await _cleanup(user_id, [graph_id], expert_ids)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_organization_counts_its_own_runs_and_untagged_ones(
+    server: SpinTestServer,
+):
+    """As `GET /runs` lists them: another organization's runs stay out."""
+    user_id = f"cs-org-{uuid4()}"
+    graph_id = f"cs-g-o-{uuid4()}"
+    await _create_user(user_id)
+    await _create_graph(graph_id, user_id)
+    try:
+        now = datetime.now(timezone.utc)
+        for organization_id, cost in (("org-a", 100), ("org-b", 20), (None, 3)):
+            await _create_run(
+                run_id=f"run-{uuid4()}",
+                user_id=user_id,
+                graph_id=graph_id,
+                status=AgentExecutionStatus.COMPLETED,
+                cost_cents=cost,
+                started_at=now - timedelta(hours=1),
+                organization_id=organization_id,
+            )
+        window = {"since": now - timedelta(days=1), "until": now + timedelta(minutes=1)}
+
+        in_a = await get_user_cost_summary(
+            user_id=user_id, organization_id="org-a", **window
+        )
+        everywhere = await get_user_cost_summary(user_id=user_id, **window)
+
+        assert (in_a.total_cents, in_a.run_count) == (103, 2)
+        assert sorted(r.cost_cents for r in in_a.top_runs) == [3, 100]
+        assert sum(day.cost_cents for day in in_a.daily) == 103
+        assert (everywhere.total_cents, everywhere.run_count) == (123, 3)
+    finally:
+        await _cleanup(user_id, [graph_id])
 
 
 @pytest.mark.asyncio(loop_scope="session")

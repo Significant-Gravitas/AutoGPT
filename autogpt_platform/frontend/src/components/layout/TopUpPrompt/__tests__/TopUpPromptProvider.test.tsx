@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  act,
   render,
   screen,
   fireEvent,
@@ -11,10 +12,12 @@ import {
   getGetV1GetUserCreditsMockHandler,
   getGetV1GetAutoTopUpMockHandler,
 } from "@/app/api/__generated__/endpoints/credits/credits.msw";
+import { getGetV1CheckIfOnboardingIsCompletedMockHandler } from "@/app/api/__generated__/endpoints/onboarding/onboarding.msw";
 import { Key } from "@/services/storage/local-storage";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { useTopUpPrompt } from "@/components/layout/TopUpPrompt/useTopUpPrompt";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { useState } from "react";
 
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the real
@@ -38,10 +41,16 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) =>
-      flag === actual.Flag.ENABLE_PLATFORM_PAYMENT ? isBillingEnabled : false,
+    useGetFlag: () => false,
   };
 });
+
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: isBillingEnabled,
+    isResolved: true,
+  }),
+}));
 
 function setupCredits(args: {
   credits: number;
@@ -107,10 +116,10 @@ describe("TopUpPromptProvider daily auto-opener", () => {
 
     renderProvider();
 
-    // The dialog body copy mentions Autopilot, which the banner copy does not,
+    // The dialog body copy mentions experts, which the banner copy does not,
     // so it unambiguously signals the dialog auto-opened.
     expect(
-      await screen.findByText(/keep your agents and Autopilot/i),
+      await screen.findByText(/keep your workflows and experts/i),
     ).toBeDefined();
   });
 
@@ -127,7 +136,7 @@ describe("TopUpPromptProvider daily auto-opener", () => {
     // credit fetch resolved before we assert the dialog is absent.
     await screen.findByText(/out of automation credits/i);
 
-    expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+    expect(screen.queryByText(/keep your workflows and experts/i)).toBeNull();
   });
 });
 
@@ -219,6 +228,7 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
 
     const banner = await screen.findByRole("alert");
     expect(banner.textContent).toMatch(/out of automation credits/i);
+    expect(banner.textContent).toMatch(/keep your workflows running/i);
     expect(creditRequests).toBe(1);
     fireEvent.click(screen.getByText("page state 0"));
 
@@ -252,7 +262,7 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
     await waitForCreditsFetch();
 
     expect(screen.queryByText(/out of automation credits/i)).toBeNull();
-    expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+    expect(screen.queryByText(/keep your workflows and experts/i)).toBeNull();
   });
 
   test("renders nothing when the billing flag is off", async () => {
@@ -273,7 +283,7 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
     await waitForCreditsFetch();
 
     expect(screen.queryByText(/out of automation credits/i)).toBeNull();
-    expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+    expect(screen.queryByText(/keep your workflows and experts/i)).toBeNull();
   });
 
   test("renders nothing when the user still has a positive balance", async () => {
@@ -289,7 +299,7 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
     await waitForCreditsFetch();
 
     expect(screen.queryByText(/out of automation credits/i)).toBeNull();
-    expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+    expect(screen.queryByText(/keep your workflows and experts/i)).toBeNull();
   });
 
   test("suppresses the prompt when the credits fetch fails", async () => {
@@ -314,6 +324,101 @@ describe("TopUpPromptProvider out-of-credits suppression", () => {
     await waitFor(() => expect(autoTopUpRequested).toBe(true));
 
     expect(screen.queryByText(/out of automation credits/i)).toBeNull();
-    expect(screen.queryByText(/keep your agents and Autopilot/i)).toBeNull();
+    expect(screen.queryByText(/keep your workflows and experts/i)).toBeNull();
+  });
+});
+
+// A new account has 0 credits until onboarding sets up its plan. Neither
+// prompt may show before onboarding is known to be done, and the once-a-day
+// auto-open must not be used up on the way to it.
+describe("TopUpPromptProvider before onboarding is finished", () => {
+  // Released here, not in onTestFinished: a describe's afterEach runs before
+  // the shared teardown, so the answer it lets out is still awaited there.
+  let releaseOnboardingCheck = () => {};
+  afterEach(() => releaseOnboardingCheck());
+
+  function OnboardingAnswer() {
+    const { isOnboardingComplete } = useOnboarding();
+    return <span>onboarding {String(isOnboardingComplete)}</span>;
+  }
+
+  function renderWithAnswer() {
+    return render(
+      <>
+        {providerTree()}
+        <OnboardingAnswer />
+      </>,
+    );
+  }
+
+  // Lets the credit responses already received reach the tree; the
+  // assertions after it are absences, which no event can announce.
+  function settle() {
+    return act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  }
+
+  test("shows neither the dialog nor the banner to a user who has not finished onboarding", async () => {
+    let onboardingChecked = false;
+    server.use(
+      getGetV1CheckIfOnboardingIsCompletedMockHandler(() => {
+        onboardingChecked = true;
+        return { is_completed: false };
+      }),
+    );
+    const { waitForCreditsFetch } = setupCredits({
+      credits: 0,
+      amount: 0,
+      threshold: 0,
+    });
+
+    renderWithAnswer();
+
+    await screen.findByText("ready");
+    await waitForCreditsFetch();
+    await waitFor(() => expect(onboardingChecked).toBe(true));
+    await screen.findByText("onboarding false");
+    await settle();
+
+    expect(screen.queryByText(/out of automation credits/i)).toBeNull();
+    expect(screen.queryByText(/keep your workflows and experts/i)).toBeNull();
+    expect(localStorage.getItem(Key.TOP_UP_MODAL_LAST_SHOWN)).toBeNull();
+  });
+
+  test("waits for the onboarding check, then opens once onboarding is known to be done", async () => {
+    const onboardingAnswer = new Promise<void>((resolve) => {
+      releaseOnboardingCheck = resolve;
+    });
+    let onboardingRequested = false;
+    server.use(
+      getGetV1CheckIfOnboardingIsCompletedMockHandler(async () => {
+        onboardingRequested = true;
+        await onboardingAnswer;
+        return { is_completed: true };
+      }),
+    );
+    const { waitForCreditsFetch } = setupCredits({
+      credits: 0,
+      amount: 0,
+      threshold: 0,
+    });
+
+    renderWithAnswer();
+
+    await screen.findByText("ready");
+    await waitForCreditsFetch();
+    await waitFor(() => expect(onboardingRequested).toBe(true));
+    await settle();
+    expect(screen.getByText("onboarding null")).toBeDefined();
+
+    expect(screen.queryByText(/out of automation credits/i)).toBeNull();
+    expect(screen.queryByText(/keep your workflows and experts/i)).toBeNull();
+    expect(localStorage.getItem(Key.TOP_UP_MODAL_LAST_SHOWN)).toBeNull();
+
+    releaseOnboardingCheck();
+
+    expect(await screen.findByText("onboarding true")).toBeDefined();
+    expect(
+      await screen.findByText(/keep your workflows and experts/i),
+    ).toBeDefined();
   });
 });

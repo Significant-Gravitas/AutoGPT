@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,12 +39,22 @@ function initiated(overrides: Record<string, unknown> = {}) {
   } as never;
 }
 
+const upsertSpy = vi.fn();
+
 function makeWrapper() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return function Wrapper({ children }: { children: ReactNode }) {
-    return createElement(QueryClientProvider, { client }, children);
+    return createElement(
+      QueryClientProvider,
+      { client },
+      createElement(
+        CredentialsActionsContext.Provider,
+        { value: { reload: vi.fn(), upsert: upsertSpy } },
+        children,
+      ),
+    );
   };
 }
 
@@ -348,5 +359,42 @@ describe("useDeviceAuthConnect", () => {
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledWith(undefined));
     expect(result.current.phase).toBe("done");
+  });
+
+  it("seeds the credentials store so a new credential is not reported as removed", async () => {
+    // Invalidating the react-query key does not reach CredentialsProvidersContext
+    // — that is separate state filled by loadCredentials. Without seeding it the
+    // caller selects an id the store has never seen, and useCredentialsInput
+    // flags the brand-new credential as *removed* and deselects it, so the user
+    // is told their connection was removed immediately after connecting. The
+    // OAuth path gets this for free via oAuthCallback.
+    initiate.mockResolvedValue(initiated());
+    poll.mockResolvedValue({
+      status: 200,
+      data: {
+        status: "approved",
+        credentials: {
+          id: "cred-new",
+          provider: "stripe_link",
+          type: "oauth2",
+          title: "Stripe Link",
+        },
+      },
+    } as never);
+
+    const { result } = render();
+    await act(async () => {
+      await result.current.connect();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+
+    await waitFor(() =>
+      expect(upsertSpy).toHaveBeenCalledWith(
+        "stripe_link",
+        expect.objectContaining({ id: "cred-new" }),
+      ),
+    );
   });
 });

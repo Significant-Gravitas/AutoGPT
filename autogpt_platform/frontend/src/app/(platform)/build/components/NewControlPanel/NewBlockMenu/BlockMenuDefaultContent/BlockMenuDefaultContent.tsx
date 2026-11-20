@@ -9,7 +9,7 @@ import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 import { DefaultStateType } from "../types";
 
 export const BlockMenuDefaultContent = () => {
-  const { defaultState } = useBlockMenuStore();
+  const defaultState = useBlockMenuStore((state) => state.defaultState);
 
   return (
     <div className="h-full flex-1 overflow-hidden">

@@ -375,6 +375,7 @@ class TestMCPToolBlockIntegration:
             refresh_token=SecretStr(""),
             scopes=[],
             title="Test MCP credential",
+            metadata={"mcp_server_url": url},
         )
 
         outputs = []

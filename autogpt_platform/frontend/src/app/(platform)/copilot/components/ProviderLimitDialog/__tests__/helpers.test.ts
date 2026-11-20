@@ -8,6 +8,7 @@ function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return {
     offer_id: "platform:deployment",
     provider_family: "autogpt",
+    auth_provider: "platform",
     display_name: "AutoGPT Platform",
     auth_method: "deployment",
     credential_id: null,
@@ -21,18 +22,31 @@ function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
     lock_reason: null,
     unlock_href: null,
     ...over,
-  } as AIConnectionOffer;
+  };
 }
 
 function chatgpt(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return offer({
     offer_id: "codex:cred-1",
     provider_family: "openai",
+    auth_provider: "codex",
     display_name: "ChatGPT",
     auth_method: "chatgpt_oauth",
     credential_id: "cred-1",
     is_default: false,
     ...over,
+  });
+}
+
+function microsoft365(): AIConnectionOffer {
+  return offer({
+    offer_id: "microsoft_365_copilot:cred-9",
+    provider_family: "microsoft",
+    auth_provider: "microsoft_365_copilot",
+    display_name: "Microsoft 365 Copilot",
+    auth_method: "oauth",
+    credential_id: "cred-9",
+    is_default: false,
   });
 }
 
@@ -99,6 +113,62 @@ describe("alternativeConnection", () => {
     );
 
     expect(found).toBeNull();
+  });
+
+  it("continues an out-of-budget platform chat on ChatGPT, never Microsoft 365 Copilot", () => {
+    expect(
+      alternativeConnection([offer(), microsoft365()], limitOn("platform")),
+    ).toBeNull();
+    expect(
+      alternativeConnection(
+        [offer(), microsoft365(), chatgpt()],
+        limitOn("platform"),
+      )?.display_name,
+    ).toBe("ChatGPT");
+  });
+
+  it("never offers Microsoft 365 Copilot when ChatGPT runs out either", () => {
+    // It answers plain messages: none of AutoPilot's tools, none of the task.
+    expect(
+      alternativeConnection(
+        [offer({ selectable: false }), microsoft365(), chatgpt()],
+        limitOn("codex", "cred-1"),
+      ),
+    ).toBeNull();
+  });
+
+  it("knows the connection that failed by its provider, not its id", () => {
+    expect(
+      alternativeConnection(
+        [
+          offer({ selectable: false }),
+          chatgpt({ offer_id: "personal-account" }),
+        ],
+        limitOn("codex", "cred-1"),
+      ),
+    ).toBeNull();
+  });
+
+  it("goes by each connection's provider, not the shape of its id", () => {
+    const workAccount = { ...microsoft365(), offer_id: "work-account" };
+    const personal = chatgpt({ offer_id: "personal-account" });
+
+    expect(
+      alternativeConnection(
+        [offer(), workAccount, personal],
+        limitOn("platform"),
+      ),
+    ).toEqual({
+      display_name: "ChatGPT",
+      auth_provider: "codex",
+      credential_id: "cred-1",
+    });
+    expect(
+      alternativeConnection(
+        [offer({ selectable: false }), workAccount],
+        limitOn("codex", "cred-1"),
+      ),
+    ).toBeNull();
   });
 
   it("has nothing to offer when there are no other connections", () => {

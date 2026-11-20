@@ -3,9 +3,10 @@
 Both the orchestrator (kicking off phase 1) and the dream
 ``batch_callbacks`` (chaining phases 2 → 3 as results arrive) need to
 submit identically: build the per-phase prompt with whatever upstream
-phase outputs we have, force tool_use structured output against the
-phase's Pydantic schema, then enqueue the submission so the
-BatchExecutor polls it. This module owns that flow.
+phase outputs we have, ask for tool_use structured output against the
+phase's Pydantic schema (forced where the phase model accepts a forced
+tool), then enqueue the submission so the BatchExecutor polls it. This
+module owns that flow.
 
 Splitting it out:
   * Keeps the orchestrator focused on routing / cost accounting and
@@ -19,26 +20,38 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.inference.structured_output import (
+    OUTPUT_TOOL_CALL_ONCE,
+    with_output_tool_instruction,
+)
+from backend.copilot.model_normalize import normalize_model_for_anthropic
+from backend.copilot.trial_cost_context import capture_cost_context
 from backend.executor.batch_executor import (
     INITIAL_POLL_DELAY_SECONDS,
     PendingEntry,
     enqueue_pending,
 )
+from backend.util.feature_flag import Flag
 from backend.util.llm.providers import (
     BatchSubmissionRef,
     ProviderResponse,
     call_provider,
     cancel_batch,
 )
-from backend.util.llm.tool_use import force_tool_choice, pydantic_to_anthropic_tool
+from backend.util.llm.tool_use import (
+    is_forced_tool_choice,
+    pydantic_to_anthropic_tool,
+    structured_tool_choice,
+)
 
 from .fetch import DreamInput
-from .locks import read_dream_lock_token
+from .input_bundle import input_bundle_from_dict, input_bundle_to_dict
+from .locks import BATCH_LOCK_TTL_SECONDS, read_dream_lock_token
 from .prompts import (
     build_consolidate_prompt,
     build_recombine_prompt,
@@ -54,9 +67,14 @@ logger = logging.getLogger(__name__)
 DreamPhase = Literal["consolidate", "recombine", "sanitize"]
 
 
-# Tool name the model must emit for each phase. Forced ``tool_choice``
-# constrains output to exactly one tool_use block whose ``input`` matches
-# the corresponding Pydantic schema — no JSON-parse-prose failures.
+# Tool name the model must emit for each phase. A forced ``tool_choice``
+# makes the model answer with exactly one tool_use block — no prose around
+# the JSON. It does not make the ``input`` schema-valid (that takes
+# Anthropic's strict tool mode, which is not enabled), so ``batch_callbacks``
+# still validates each result against the phase's Pydantic model. A model
+# that rejects a forced tool gets ``auto``, with the tool description and
+# the last user turn asking for the call; a text answer is parsed on
+# arrival.
 PHASE_TOOL_NAMES: dict[DreamPhase, str] = {
     "consolidate": "emit_consolidation",
     "recombine": "emit_recombination",
@@ -71,9 +89,11 @@ PHASE_RESPONSE_MODELS: dict[DreamPhase, type[BaseModel]] = {
 }
 
 
-# Max output tokens per phase (mirrors the sync orchestrator's values).
+# Max output tokens per phase (mirrors the sync orchestrator's values). The
+# budget covers thinking as well as the JSON: orchestrator.py's
+# CONSOLIDATE_MAX_TOKENS says why consolidate's is not 4096.
 PHASE_MAX_TOKENS: dict[DreamPhase, int] = {
-    "consolidate": 4096,
+    "consolidate": 16384,
     "recombine": 16384,
     "sanitize": 16384,
 }
@@ -101,20 +121,6 @@ PHASE_DESCRIPTIONS: dict[DreamPhase, str] = {
 }
 
 
-def _to_native_anthropic_model(model: str) -> str:
-    """``anthropic/claude-opus-4.7`` → ``claude-opus-4-7``.
-
-    The batch path always submits to Anthropic's native Batches API
-    (direct key), regardless of the chat transport, so strip the
-    OpenRouter vendor prefix AND convert dots to hyphens — native
-    Anthropic rejects both the prefix and the dot-separated version,
-    and the dream rate card only carries the hyphenated id.
-    """
-    if "/" in model:
-        model = model.split("/", 1)[1]
-    return model.replace(".", "-")
-
-
 def phase_models_for_config(config: "ChatConfig") -> dict[str, str]:
     """Per-phase model map (native-Anthropic form) for the batch path.
 
@@ -123,12 +129,40 @@ def phase_models_for_config(config: "ChatConfig") -> dict[str, str]:
     thinking) for recombine. Built once at submit and threaded through
     the batch payload so the model used to *submit* a phase is the exact
     model used to *price* it — no single-model fan-out across phases.
+
+    The batch path always submits to Anthropic's native Batches API,
+    whatever the chat transport, so every model takes the native spelling
+    (``normalize_model_for_anthropic``), and a non-Anthropic model raises
+    ``ValueError`` here rather than submitting a batch that fails hours
+    later.
     """
+    standard = _native_phase_model(
+        config.fast_standard_model, "CHAT_FAST_STANDARD_MODEL"
+    )
     return {
-        "consolidate": _to_native_anthropic_model(config.fast_standard_model),
-        "recombine": _to_native_anthropic_model(config.fast_advanced_model),
-        "sanitize": _to_native_anthropic_model(config.fast_standard_model),
+        "consolidate": standard,
+        "recombine": _native_phase_model(
+            config.fast_advanced_model, "CHAT_FAST_ADVANCED_MODEL"
+        ),
+        "sanitize": standard,
     }
+
+
+def _native_phase_model(model: str, setting: str) -> str:
+    """*model* in its native Anthropic spelling. The shared normalizer's
+    error suggests enabling OpenRouter, which this path never uses, so a
+    non-Anthropic model gets the two remedies that do apply."""
+    try:
+        return normalize_model_for_anthropic(model)
+    except ValueError as exc:
+        raise ValueError(
+            "The dream batch path submits every phase to Anthropic's Message "
+            f"Batches API, so its phase models must be Anthropic models; got "
+            f"{setting}={model!r}. Choose Anthropic phase models (anthropic/* "
+            "or claude-* slugs), or disable batch routing (the "
+            f"{Flag.DREAM_PASS_BATCH_ENABLED.value!r} flag) so dreams run on "
+            "the sync path."
+        ) from exc
 
 
 async def submit_phase(
@@ -159,6 +193,9 @@ async def submit_phase(
     # multi-phase chain can legitimately outlive a TTL stamped once at the
     # first submit. Re-arm the bundle TTL at every submit so it stays alive
     # exactly as long as some phase batch may still call back.
+    # The payload carries a copy of the attribution the pass runs under (the
+    # one its row keeps, which the callback checks it against).
+    cost_context = await capture_cost_context(user_id)
     await refresh_input_bundle_ttl(pass_id)
     model = phase_models[phase]
     messages = _build_phase_messages(
@@ -168,11 +205,18 @@ async def submit_phase(
         recombined_json=recombined_json,
     )
     tool_name = PHASE_TOOL_NAMES[phase]
+    tool_choice = structured_tool_choice(model, tool_name)
+    description = PHASE_DESCRIPTIONS[phase]
+    if not is_forced_tool_choice(tool_choice):
+        # Nothing forces the call, so the tool description and the last
+        # user turn ask for it.
+        description = f"{description} {OUTPUT_TOOL_CALL_ONCE}"
+        messages = with_output_tool_instruction(messages, tool_name)
     tools = [
         pydantic_to_anthropic_tool(
             PHASE_RESPONSE_MODELS[phase],
             tool_name=tool_name,
-            description=PHASE_DESCRIPTIONS[phase],
+            description=description,
         )
     ]
     # Anthropic's custom_id must match ``^[a-zA-Z0-9_-]{1,64}$`` —
@@ -189,7 +233,7 @@ async def submit_phase(
         max_tokens=PHASE_MAX_TOKENS[phase],
         temperature=PHASE_TEMPERATURES[phase],
         tools=tools,
-        tool_choice=force_tool_choice(tool_name),
+        tool_choice=tool_choice,
         execution_mode="batch",
         custom_id=custom_id,
     )
@@ -209,6 +253,7 @@ async def submit_phase(
         poll_delay_seconds=INITIAL_POLL_DELAY_SECONDS,
         payload={
             "user_id": user_id,
+            "cost_context": cost_context.model_dump(mode="json"),
             "expert_id": input_bundle.expert_id,
             "pass_id": pass_id,
             "job_id": job_id,
@@ -295,10 +340,14 @@ def input_bundle_key(pass_id: str) -> str:
     return f"dream:batch:input:{pass_id}"
 
 
-# 24h TTL matches Anthropic's batch SLA — if a batch hasn't completed
-# in 24h we've already timed out via BatchExecutor's
-# ``MAX_BATCH_LIFETIME_SECONDS`` ceiling.
-INPUT_TTL_SECONDS = 24 * 60 * 60
+# The pass's lease runs ``BATCH_LOCK_TTL_SECONDS`` from its submit and each
+# callback; the reaper closes a pass one lock TTL after its lease lapsed and
+# runs every ten minutes. The per-pass keys (this bundle and the batch state)
+# outlive the lease by twelve hours, so the reaper still finds them to charge
+# and delete behind a backlog of cleanups that keep failing (a pass that ends
+# normally deletes them at once). A batch that never completes is timed out
+# well before, by the BatchExecutor's 24h ``MAX_BATCH_LIFETIME_SECONDS``.
+INPUT_TTL_SECONDS = BATCH_LOCK_TTL_SECONDS + 12 * 60 * 60
 
 
 async def persist_input_bundle(
@@ -324,17 +373,16 @@ async def persist_input_bundle(
     explicitly — reading the live lock key here instead could capture a
     *newer* pass's token (lock expired and was re-acquired between this
     pass's acquire and the persist), letting this pass's callback release
-    a lock it doesn't own hours later. Only when no token is supplied
-    (eval harness calling the batch path without a lock) do we fall back
-    to the live key.
+    a lock it doesn't own hours later. When no token is supplied we fall
+    back to the live key; apply requires a lease before writing.
     """
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
-    payload = _input_bundle_to_dict(input_bundle)
+    payload = input_bundle_to_dict(input_bundle)
     if lock_token is None:
         lock_token = await read_dream_lock_token(
-            input_bundle.user_id, input_bundle.expert_id
+            MemoryScope.build(input_bundle.user_id, input_bundle.expert_id)
         )
     if lock_token is not None:
         payload["lock_token"] = lock_token
@@ -373,9 +421,11 @@ async def read_lock_token(pass_id: str) -> str | None:
     """Dream-lock ownership token persisted alongside the input bundle.
 
     None when the bundle is gone (TTL expired or already cleaned up), is
-    corrupted, or was written while no lock was held — the caller then
-    leaves the lock to its TTL rather than risking a blind delete of a
-    newer pass's lock.
+    corrupted, or was written while no lock was held. The batch paths then
+    go by the lease token the pass's row keeps
+    (``batch_outcome.lock_token_of``); with no token anywhere the pass's
+    ownership of the lock is unknown, and the lock is left held rather
+    than risking a blind delete of a newer pass's lock.
     """
     from backend.data.redis_client import get_redis_async
 
@@ -405,7 +455,7 @@ async def read_input_bundle(pass_id: str) -> DreamInput | None:
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
     try:
-        return _dict_to_input_bundle(json.loads(raw))
+        return input_bundle_from_dict(json.loads(raw))
     except Exception:
         logger.exception("Corrupted DreamInput in Redis for pass=%s — bailing", pass_id)
         return None
@@ -416,83 +466,3 @@ async def delete_input_bundle(pass_id: str) -> None:
 
     redis = await get_redis_async()
     await redis.delete(input_bundle_key(pass_id))
-
-
-def _input_bundle_to_dict(input_bundle: DreamInput) -> dict:
-    return {
-        "user_id": input_bundle.user_id,
-        "expert_id": input_bundle.expert_id,
-        "group_id": input_bundle.group_id,
-        "window_start": input_bundle.window_start.isoformat(),
-        "window_end": input_bundle.window_end.isoformat(),
-        "episodes": [
-            {
-                "uuid": e.uuid,
-                "name": e.name,
-                "content": e.content,
-                "source_description": e.source_description,
-                "valid_at": e.valid_at,
-                "created_at": e.created_at,
-            }
-            for e in input_bundle.episodes
-        ],
-        "facts": [
-            {
-                "uuid": f.uuid,
-                "source": f.source,
-                "target": f.target,
-                "name": f.name,
-                "fact": f.fact,
-                "scope": f.scope,
-                "confidence": f.confidence,
-                "status": f.status,
-                "created_at": f.created_at,
-            }
-            for f in input_bundle.facts
-        ],
-        "recent_sessions": [
-            {
-                "session_id": s.session_id,
-                "title": s.title,
-                "created_at": s.created_at.isoformat() if s.created_at else None,
-                "body": s.body,
-            }
-            for s in input_bundle.recent_sessions
-        ],
-        "known_fact_uuids": list(input_bundle.known_fact_uuids),
-        "known_episode_uuids": list(input_bundle.known_episode_uuids),
-    }
-
-
-def _dict_to_input_bundle(data: dict) -> DreamInput:
-    from .fetch import EpisodeRow, FactRow, SessionRow
-
-    return DreamInput(
-        user_id=data["user_id"],
-        expert_id=data.get("expert_id"),
-        group_id=data["group_id"],
-        window_start=datetime.fromisoformat(data["window_start"]),
-        window_end=datetime.fromisoformat(data["window_end"]),
-        episodes=[EpisodeRow(**e) for e in data.get("episodes") or []],
-        facts=[FactRow(**f) for f in data.get("facts") or []],
-        recent_sessions=[
-            SessionRow(
-                session_id=s["session_id"],
-                title=s.get("title"),
-                created_at=(
-                    datetime.fromisoformat(s["created_at"])
-                    if s.get("created_at")
-                    else None
-                ),
-                body=s.get("body") or "",
-            )
-            for s in data.get("recent_sessions") or []
-        ],
-        known_fact_uuids=set(data.get("known_fact_uuids") or []),
-        known_episode_uuids=set(data.get("known_episode_uuids") or []),
-    )
-
-
-def _dummy_now() -> datetime:
-    """Stub kept for symmetry with Step 4b; never called."""
-    return datetime.now(timezone.utc)

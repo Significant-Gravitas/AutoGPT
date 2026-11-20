@@ -14,13 +14,22 @@ or no expert could run a single LLM block.
 
 import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import prisma.models
 
+from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import ExpertCredentialRef
 from backend.data.model import Credentials
 from backend.integrations.credentials_store import is_system_credential
+from backend.integrations.service_identity import (
+    credential_display_name,
+    service_for_credential,
+)
 from backend.util.exceptions import ExpertNotFoundError
+
+if TYPE_CHECKING:
+    from backend.data.graph import GraphModel
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +73,7 @@ async def _derive_from_workflows(
 
     derived: dict[str, str] = {}
     is_complete = True
+    owned_ids: set[str] | None = None
     for workflow in expert.Workflows or []:
         library_agent = workflow.LibraryAgent
         if library_agent is None:
@@ -80,6 +90,9 @@ async def _derive_from_workflows(
             if graph is None:
                 continue
             matched, _ = await match_user_credentials_to_graph(user_id, graph)
+            pickers = _picker_credential_ids(graph)
+            if pickers and owned_ids is None:
+                owned_ids = {c.id for c in await _user_credentials(user_id)}
         except Exception:
             logger.warning(
                 f"Could not derive credentials for workflow #{workflow.id} on "
@@ -91,7 +104,34 @@ async def _derive_from_workflows(
         for meta in matched.values():
             if not is_system_credential(meta.id):
                 derived[meta.id] = str(meta.provider)
+        for credential_id, provider in pickers.items():
+            if credential_id in (owned_ids or set()) and not is_system_credential(
+                credential_id
+            ):
+                derived.setdefault(credential_id, provider)
     return derived, is_complete
+
+
+def _picker_credential_ids(graph: "GraphModel") -> dict[str, str]:
+    """Credential id → provider for picker-populated fields (``_credentials_id``).
+
+    These never appear in ``match_user_credentials_to_graph``, which only sees
+    explicit credential fields, yet the executor holds them to the same grants.
+    """
+    found: dict[str, str] = {}
+    for part in [graph, *graph.sub_graphs]:
+        for node in part.nodes:
+            if not node.input_default:
+                continue
+            for info in node.block.input_schema.get_auto_credentials_fields().values():
+                value = node.input_default.get(info["field_name"])
+                if isinstance(value, dict) and isinstance(
+                    value.get("_credentials_id"), str
+                ):
+                    found[value["_credentials_id"]] = str(
+                        info.get("config", {}).get("provider", "unknown")
+                    )
+    return found
 
 
 async def _seed_if_needed(user_id: str, expert: prisma.models.Expert) -> None:
@@ -161,14 +201,22 @@ def _to_refs(
     refs: list[ExpertCredentialRef] = []
     for grant in grants:
         credential = by_id.get(grant.credentialId)
-        if credential is None:
+        # A grant of one of the platform's own keys is left over from before
+        # SDK keys counted as the platform's (seeding stored them like a user's
+        # account). Every expert may use those keys anyway, so the row would
+        # only list the platform's key as one of the user's accounts.
+        if credential is None or is_system_credential(credential.id):
             continue
+        identity = service_for_credential(credential)
         refs.append(
             ExpertCredentialRef(
                 credential_id=credential.id,
                 provider=str(credential.provider),
-                title=credential.title or str(credential.provider),
+                title=credential_display_name(credential),
                 type=str(credential.type),
+                service=identity.service,
+                service_name=identity.name,
+                service_icon=identity.icon,
             )
         )
     return refs
@@ -217,6 +265,9 @@ async def grant_expert_credentials(
             ],
             skip_duplicates=True,
         )
+        # A missing grant is what usually kept a scheduled workflow from
+        # getting its schedule at install time; now is the moment to retry.
+        await scheduling.create_pending_workflow_schedules(user_id, expert_id)
     return _to_refs(await _grants(expert_id), credentials)
 
 
@@ -236,6 +287,19 @@ async def revoke_expert_credential(
     return _to_refs(await _grants(expert_id), await _user_credentials(user_id))
 
 
+async def settle_credential_seed(user_id: str, expert_id: str) -> None:
+    """Freeze the allow-list before the expert changes its own workflows.
+
+    Seeding derives grants from installed workflows, so an install made from
+    the expert's own session must not be able to feed it. Stamped even when a
+    workflow failed to derive: a missing grant is visible and fixable, while a
+    self-granted one is not.
+    """
+    expert = await _owned_expert(user_id, expert_id)
+    await _seed_if_needed(user_id, expert)
+    await _stamp_seeded(expert.id)
+
+
 async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[str]:
     """The credential ids *expert_id* may use. Enforcement's source of truth.
 
@@ -250,7 +314,7 @@ async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[st
 def filter_credentials_for_expert(
     credentials: list[Credentials], allowed_ids: set[str]
 ) -> list[Credentials]:
-    """Drop credentials an expert has not been granted, keeping system ones."""
+    """Drop credentials an expert has not been granted, keeping the platform's."""
     return [
         credential
         for credential in credentials

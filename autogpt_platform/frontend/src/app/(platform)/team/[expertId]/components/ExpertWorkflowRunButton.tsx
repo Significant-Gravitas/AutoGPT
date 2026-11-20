@@ -31,7 +31,8 @@ export function ExpertWorkflowRunButton({
         <Button
           type="button"
           variant={variant}
-          size="xs"
+          size="small"
+          textSize="body-md"
           leadingIcon={PlayIcon}
         >
           {isTriggerWorkflow ? "Set up trigger" : "Run"}

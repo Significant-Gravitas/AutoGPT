@@ -1,7 +1,7 @@
 import { act } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { render, screen } from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 
 vi.mock("../speechLevel", () => ({ readSpeechLevel: vi.fn(() => null) }));
 
@@ -30,9 +30,38 @@ describe("VoiceModeBar", () => {
     expect(status.getAttribute("aria-live")).toBe("polite");
   });
 
+  it("offers the retry and the recording when transcription fails", () => {
+    const onRetry = vi.fn();
+    const onDownload = vi.fn();
+    render(
+      <VoiceModeBar
+        state="listening"
+        statusLabel="Listening"
+        failure={{ message: "Transcription failed" }}
+        onRetry={onRetry}
+        onDownload={onDownload}
+        leaveButton={<VoiceModeButton isActive onClick={vi.fn()} />}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toBe("Transcription failed");
+    // The trace says "all well"; it has no business sitting next to an error.
+    expect(screen.queryByRole("status")).toBeNull();
+    // Leaving voice mode stays reachable with the error up.
+    expect(
+      screen.getByRole("button", { name: "Leave voice mode" }),
+    ).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download recording" }));
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onDownload).toHaveBeenCalledTimes(1);
+  });
+
   it("gives listening, thinking and speaking each their own colour", () => {
     // The three read as one continuous animation without it: the handover
-    // from the user's turn to AutoPilot's was the part that did not land.
+    // from the user's turn to Otto's was the part that did not land.
     vi.useFakeTimers();
     const seen = new Set<string>();
     const { container, rerender } = render(
@@ -51,7 +80,7 @@ describe("VoiceModeBar", () => {
     vi.useRealTimers();
   });
 
-  it("follows the synthesised audio while AutoPilot speaks", () => {
+  it("follows the synthesised audio while Otto speaks", () => {
     vi.useFakeTimers();
     const levels = vi.mocked(readSpeechLevel);
     levels.mockReturnValue(0.001);
@@ -157,7 +186,7 @@ describe("VoiceModeButton", () => {
       <VoiceModeButton isActive={false} onClick={vi.fn()} />,
     );
     expect(
-      screen.getByRole("button", { name: "Talk to AutoPilot" }),
+      screen.getByRole("button", { name: "Start voice mode" }),
     ).toBeDefined();
 
     rerender(<VoiceModeButton isActive onClick={vi.fn()} />);
@@ -165,7 +194,7 @@ describe("VoiceModeButton", () => {
     expect(active.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("becomes the stop control while AutoPilot speaks", () => {
+  it("becomes the stop control while Otto speaks", () => {
     // The same click leaves voice mode either way; while a reply is playing
     // the user reads it as "make it stop", so the icon and label say that.
     render(<VoiceModeButton isActive speaking onClick={vi.fn()} />);

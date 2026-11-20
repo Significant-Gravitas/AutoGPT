@@ -12,6 +12,7 @@ from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError, WebhookRegistrationError
 from backend.util.settings import Config
+from backend.util.url_redaction import mask_credential
 
 from .utils import webhook_ingress_url
 
@@ -165,14 +166,16 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         if webhook.triggered_nodes or webhook.triggered_presets:
             # Don't prune webhook if in use
             logger.info(
-                f"Webhook #{webhook_id} kept as it has triggers in other graphs"
+                f"Webhook #{mask_credential(webhook_id)} kept as it has triggers in other graphs"
             )
             return False
 
         if credentials:
             await self._deregister_webhook(webhook, credentials)
         await integrations.delete_webhook(user_id, webhook.id)
-        logger.info(f"Webhook #{webhook_id} deleted as it had no remaining triggers")
+        logger.info(
+            f"Webhook #{mask_credential(webhook_id)} deleted as it had no remaining triggers"
+        )
         return True
 
     # --8<-- [start:BaseWebhooksManager6]
@@ -186,7 +189,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         Verify the authenticity of an incoming webhook request.
 
         Default is a no-op: not every provider's webhook protocol supports
-        signing, so unsigned providers (e.g. Compass, Slant3D) don't override
+        signing, so unsigned providers (e.g. Compass) don't override
         this. Providers whose protocol does sign deliveries (GitHub, Telegram,
         Exa, Airtable) override and raise `fastapi.HTTPException(403)` on
         missing or invalid signatures, using `hmac.compare_digest` for any

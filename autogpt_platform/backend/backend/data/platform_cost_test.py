@@ -15,6 +15,7 @@ from .platform_cost import (
     _build_where,
     _ids_matching_metadata_filter,
     _mask_email,
+    _run_or_chat,
     get_platform_cost_dashboard,
     get_platform_cost_logs,
     get_platform_cost_logs_for_export,
@@ -330,6 +331,16 @@ class TestLogPlatformCost:
         assert data["provider"] == "openai"
         # metadata must be wrapped in SafeJson (a prisma.Json subclass), not a plain dict
         assert isinstance(data["metadata"], Json)
+        # The account's own spend: no expert on the row.
+        assert data["expertId"] is None
+
+    @pytest.mark.asyncio
+    async def test_expert_id_lands_in_its_column(self):
+        mock_create = AsyncMock()
+        with patch("backend.data.platform_cost.PrismaLog.prisma") as mock_prisma:
+            mock_prisma.return_value.create = mock_create
+            await log_platform_cost(_make_entry(expert_id="expert-1"))
+        assert mock_create.call_args[1]["data"]["expertId"] == "expert-1"
 
     @pytest.mark.asyncio
     async def test_metadata_none_passes_none(self):
@@ -823,6 +834,7 @@ def _make_prisma_log_row(
     row.createdAt = datetime(2026, 3, 1, tzinfo=timezone.utc)
     row.userId = "u1"
     row.graphExecId = None
+    row.chatSessionId = None
     row.nodeExecId = None
     row.blockName = "TestBlock"
     row.provider = "openai"
@@ -1046,3 +1058,34 @@ class TestGetPlatformCostLogsForExport:
         assert logs == []
         assert truncated is False
         assert ids_mock.await_args.kwargs["start"] == start
+
+
+@pytest.mark.parametrize(
+    "row,expected",
+    [
+        (
+            {"blockId": "copilot", "graphExecId": None, "chatSessionId": "c1"},
+            {"graph_exec_id": None, "chat_session_id": "c1"},
+        ),
+        (
+            {"blockId": "copilot", "graphExecId": "c2", "chatSessionId": None},
+            {"graph_exec_id": None, "chat_session_id": "c2"},
+        ),
+        (
+            {
+                "blockId": "copilot",
+                "graphExecId": "pass-1",
+                "chatSessionId": None,
+                "metadata": {"source": "dream_pass"},
+            },
+            {"graph_exec_id": "pass-1", "chat_session_id": None},
+        ),
+        (
+            {"blockId": "block-uuid", "graphExecId": "ge-1", "chatSessionId": None},
+            {"graph_exec_id": "ge-1", "chat_session_id": None},
+        ),
+    ],
+    ids=["chat", "chat-before-the-column", "dream-pass", "graph-run"],
+)
+def test_a_cost_row_names_its_run_or_its_chat(row, expected):
+    assert _run_or_chat(MagicMock(**{"metadata": None, **row})) == expected

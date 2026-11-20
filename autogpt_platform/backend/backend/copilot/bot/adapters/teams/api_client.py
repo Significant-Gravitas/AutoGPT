@@ -11,6 +11,7 @@ import asyncio
 import logging
 import time
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -25,8 +26,34 @@ _HTTP_TIMEOUT_SECONDS = 30.0
 _TOKEN_REFRESH_MARGIN_SECONDS = 300
 
 
+def _path_segment(value: str) -> str:
+    """Encode ``value`` as a single, inert URL path segment.
+
+    For a value with no id grammar of its own — an AutoPilot-tool-supplied
+    ``ref_id``, not a Connector-issued id — quoting every reserved character
+    (``/``, ``?``, ``#``, …) stops it from splicing extra path segments into
+    the request, and rejecting a bare ``.``/``..`` stops a same-length
+    dot-segment from being normalized away by the HTTP client, either of
+    which could otherwise redirect the call to a different
+    conversation/activity than the one that was authorized.
+    """
+    if value in (".", ".."):
+        raise TeamsApiError(f"invalid path segment {value!r}")
+    return quote(value, safe="")
+
+
 class TeamsApiError(Exception):
-    """A Bot Connector call failed."""
+    """A Bot Connector call failed.
+
+    ``status_code`` is the HTTP status the Connector responded with, or
+    ``None`` for errors raised before a response arrived (e.g. an untrusted
+    ``serviceUrl``) — callers that need to distinguish "not found" from other
+    rejections (edit outcomes) branch on this rather than parsing the message.
+    """
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class TeamsClient:
@@ -47,6 +74,30 @@ class TeamsClient:
         return await self._post_activity(
             service_url,
             f"v3/conversations/{conversation_id}/activities",
+            activity,
+        )
+
+    async def update_activity(
+        self,
+        service_url: str,
+        conversation_id: str,
+        activity_id: str,
+        activity: dict[str, Any],
+    ) -> None:
+        """Replace a previously sent activity's content in place.
+
+        Unlike ``conversation_id`` (always a real Teams-issued id the caller
+        re-derived and matched before getting here — see
+        ``outbound.edit_message``'s DM authorization), ``activity_id`` is an
+        AutoPilot-tool-supplied ``ref_id`` with no such constraint, so it's
+        the one encoded as an inert path segment here: unescaped, a `/`
+        or a `..` segment in it could redirect this PUT to a different
+        conversation/activity than the one that was authorized.
+        """
+        await self._request(
+            "PUT",
+            service_url,
+            f"v3/conversations/{conversation_id}/activities/{_path_segment(activity_id)}",
             activity,
         )
 
@@ -98,7 +149,8 @@ class TeamsClient:
         response = await self._http.request(method, url, json=payload, headers=headers)
         if response.status_code >= 400:
             raise TeamsApiError(
-                f"{method} {path} failed ({response.status_code}): {response.text[:300]}"
+                f"{method} {path} failed ({response.status_code}): {response.text[:300]}",
+                status_code=response.status_code,
             )
         if not response.content:
             return None
@@ -130,29 +182,36 @@ class TeamsClient:
         return self._token
 
     async def _mint_access_token(self) -> tuple[str, float]:
-        """Client-credentials grant against the bot's own tenant authority.
+        return await mint_app_token(self._http, config.CONNECTOR_SCOPE)
 
-        Single-tenant registrations (the only kind Microsoft issues now) must
-        use ``login.microsoftonline.com/{tenant}``; the tenant-less
-        ``botframework.com`` authority is the multi-tenant form and 401s here.
-        """
-        url = f"https://login.microsoftonline.com/{config.get_tenant_id()}/oauth2/v2.0/token"
-        response = await self._http.post(
-            url,
-            data={
-                "grant_type": "client_credentials",
-                "client_id": config.get_app_id(),
-                "client_secret": config.get_app_password(),
-                "scope": config.CONNECTOR_SCOPE,
-            },
+
+async def mint_app_token(http: httpx.AsyncClient, scope: str) -> tuple[str, float]:
+    """Client-credentials grant for ``scope`` against the bot's own tenant
+    authority; returns the token and its lifetime in seconds.
+
+    Single-tenant registrations (the only kind Microsoft issues now) must
+    use ``login.microsoftonline.com/{tenant}``; the tenant-less
+    ``botframework.com`` authority is the multi-tenant form and 401s here.
+    """
+    url = (
+        f"https://login.microsoftonline.com/{config.get_tenant_id()}/oauth2/v2.0/token"
+    )
+    response = await http.post(
+        url,
+        data={
+            "grant_type": "client_credentials",
+            "client_id": config.get_app_id(),
+            "client_secret": config.get_app_password(),
+            "scope": scope,
+        },
+    )
+    if response.status_code >= 400:
+        raise TeamsApiError(
+            f"could not mint a token for {scope} ({response.status_code}): "
+            f"{response.text[:300]}"
         )
-        if response.status_code >= 400:
-            raise TeamsApiError(
-                f"could not mint Connector token ({response.status_code}): "
-                f"{response.text[:300]}"
-            )
-        body = response.json()
-        token = body.get("access_token")
-        if not token:
-            raise TeamsApiError("token response carried no access_token")
-        return token, float(body.get("expires_in", 3600))
+    body = response.json()
+    token = body.get("access_token")
+    if not token:
+        raise TeamsApiError("token response carried no access_token")
+    return token, float(body.get("expires_in", 3600))

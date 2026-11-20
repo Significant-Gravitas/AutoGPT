@@ -1,4 +1,4 @@
-"""Text-to-speech for AutoPilot voice mode, metered like a chat turn.
+"""Text-to-speech for Otto voice mode, metered like a chat turn.
 
 A spoken reply debits the same per-user microdollar counter and writes the
 same ``PlatformCostLog`` row as the LLM turn that produced it, so voice is
@@ -7,10 +7,12 @@ in-plan usage rather than a free side channel.
 
 import logging
 
+import httpx
 from openai import AsyncOpenAI
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.token_tracking import persist_and_record_usage
+from backend.copilot.trial_cost_context import attributed_usage
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,10 @@ settings = Settings()
 # OpenAI rejects longer inputs outright; the client chunks at sentence
 # boundaries well below this, so hitting it means a malformed request.
 MAX_SPEECH_CHARS = 4096
+
+# One chunk is a sentence, not a generation, so the client's 600 s default bounds
+# nothing a listener is still waiting through. Connect fast-fails as elsewhere.
+SPEECH_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 
 ALLOWED_VOICES = frozenset(
     {
@@ -49,6 +55,7 @@ class SpeechUnavailable(Exception):
     """No OpenAI key is configured, so voice mode cannot synthesise."""
 
 
+@attributed_usage
 async def synthesize_speech(
     *,
     user_id: str,
@@ -111,7 +118,7 @@ async def _meter_speech(
         model=config.voice_tts_model,
         provider="openai",
         block_name_override=TTS_BLOCK_NAME,
-        graph_exec_id_override=session_id,
+        chat_session_id_override=session_id,
         extra_metadata={
             "surface": "voice_mode",
             "characters": characters,
@@ -137,4 +144,4 @@ def _speech_client() -> AsyncOpenAI:
     )
     if not api_key:
         raise SpeechUnavailable("no OpenAI API key configured")
-    return AsyncOpenAI(api_key=api_key)
+    return AsyncOpenAI(api_key=api_key, timeout=SPEECH_TIMEOUT)

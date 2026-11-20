@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -7,6 +7,7 @@ import pytest_asyncio
 from prisma.enums import CreditTransactionType
 from prisma.models import CreditTransaction, Organization, OrgCreditTransaction, User
 
+from backend.copilot.tools.helpers import _charge_block_credits
 from backend.data.credit_history import get_credit_history
 from backend.data.credit_history.queries import credit_history_query
 from backend.data.db import get_database_schema, prisma
@@ -139,6 +140,56 @@ async def test_copilot_and_orphan_usage_are_distinct(history_wallet):
         "block_usage",
         "copilot_tools",
     ]
+    # A row written before chat usage had its own field still names the chat.
+    [chat] = [r for r in page.transactions if r.activity_type == "copilot_tools"]
+    assert (chat.usage_chat_session_id, chat.usage_execution_id) == ("chat-1", None)
+    assert chat.usage_graph_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chat_block_charge_is_attributed_to_its_chat(history_wallet):
+    spend = AsyncMock()
+    await _charge_block_credits(
+        MagicMock(spend_credits=spend),
+        user_id=history_wallet,
+        block_name="Create Folder",
+        block_id="blk",
+        node_exec_id="copilot-node-blk:ab12",
+        cost=7,
+        cost_filter={},
+        session_id="chat-9",
+    )
+    metadata = spend.await_args.kwargs["metadata"]
+    assert (metadata.chat_session_id, metadata.graph_exec_id, metadata.graph_id) == (
+        "chat-9",
+        None,
+        None,
+    )
+    time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    for key in ("first", "second"):
+        await CreditTransaction.prisma().create(
+            data={
+                "userId": history_wallet,
+                "transactionKey": key,
+                "createdAt": time,
+                "amount": -7,
+                "type": CreditTransactionType.USAGE,
+                "metadata": SafeJson(metadata.model_dump(exclude_none=True)),
+            }
+        )
+    await add_charge(history_wallet, "run-charge", -3, time, "run-1")
+
+    page = await get_credit_history(history_wallet)
+
+    by_type = {row.activity_type: row for row in page.transactions}
+    assert set(by_type) == {"copilot_tools", "agent_run"}
+    chat = by_type["copilot_tools"]
+    assert chat.amount == -14 and chat.transaction_key == "chat:chat-9"
+    assert (chat.usage_chat_session_id, chat.usage_execution_id) == ("chat-9", None)
+    assert chat.usage_graph_id is None
+    run = by_type["agent_run"]
+    assert (run.usage_execution_id, run.usage_chat_session_id) == ("run-1", None)
+    assert run.usage_graph_id == "graph-1"
 
 
 @pytest.mark.asyncio(loop_scope="session")

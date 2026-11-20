@@ -3,17 +3,20 @@
 import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { environment } from "@/services/environment";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { PaywallModal } from "./PaywallModal";
+import { WorkflowsMovedNotice } from "../components/WorkflowsMovedNotice/WorkflowsMovedNotice";
 
 // Routes that bypass the paywall regardless of subscription state — primarily
 // the credits page itself (the modal would render on top of itself), auth
 // flows, account management, and admin areas the user needs even when locked
-// out of AutoPilot.
+// out of Otto.
 const PAYWALL_EXEMPT_PREFIXES = [
   "/profile",
+  "/settings",
   "/admin",
   "/auth",
   "/login",
@@ -27,13 +30,14 @@ const PAYWALL_EXEMPT_PREFIXES = [
 export function PaywallGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { isLoggedIn } = useAuth();
-  const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { isPaymentEnabled } = usePlatformPayment();
+  const { isOnboardingComplete } = useOnboarding();
   const { data: subscription, isLoading } = useGetSubscriptionStatus({
     query: {
       select: (res) => (res.status === 200 ? res.data : null),
-      // Skip the call entirely when the flag is off — beta cohort never hits
-      // the paywall, no need to read /credits/subscription on every page load.
-      enabled: isPaymentEnabled === true && isLoggedIn,
+      // Skip the call entirely when payment is off: nobody hits the paywall,
+      // so there is no need to read /credits/subscription on every page load.
+      enabled: isPaymentEnabled && isLoggedIn,
     },
   });
 
@@ -45,23 +49,31 @@ export function PaywallGate({ children }: { children: ReactNode }) {
   // by Stripe webhooks and persists; only fresh users without any tier
   // change land on NO_TIER (the explicit "no active subscription" state).
   const shouldGate =
-    !!isPaymentEnabled &&
+    isPaymentEnabled &&
     // Never gate a logged-out user — they're on their way to /login (e.g. via
     // the modal's own Log out button), and the modal must not linger or block
     // that exit.
     isLoggedIn &&
+    // Onboarding has its own plan step. Unknown counts as unfinished, so the
+    // paywall can't flash while that check is in flight.
+    isOnboardingComplete === true &&
     !isLoading &&
     !isExempt &&
     // Never gate local dev — running the stack locally shouldn't require a
-    // Stripe subscription to reach AutoPilot.
+    // Stripe subscription to reach Otto.
     !environment.isLocal() &&
     !!subscription &&
     subscription.tier === "NO_TIER";
+  // The notice waits until the paywall is decided, so it can't open and then
+  // be replaced by the paywall.
+  const isGateDecided =
+    !isPaymentEnabled || (!isLoading && isOnboardingComplete !== null);
 
   return (
     <>
       {children}
       {shouldGate && <PaywallModal />}
+      {!shouldGate && isGateDecided && <WorkflowsMovedNotice />}
     </>
   );
 }

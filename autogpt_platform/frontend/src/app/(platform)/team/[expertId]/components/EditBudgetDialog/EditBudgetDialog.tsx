@@ -55,7 +55,7 @@ export function EditBudgetDialog({ expert, open, onClose }: Props) {
           </div>
           <div className="flex justify-end gap-2">
             <Button
-              size="xs"
+              size="small"
               type="button"
               variant="secondary"
               onClick={onClose}
@@ -63,7 +63,7 @@ export function EditBudgetDialog({ expert, open, onClose }: Props) {
               Cancel
             </Button>
             <Button
-              size="xs"
+              size="small"
               type="submit"
               variant="primary"
               disabled={isInvalid}

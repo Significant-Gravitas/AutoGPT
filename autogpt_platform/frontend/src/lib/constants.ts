@@ -8,12 +8,13 @@ export const IMPERSONATION_HEADER_NAME = "X-Act-As-User-Id";
 // so both storage mechanisms use a predictable, consistent identifier for the same value.
 export const IMPERSONATION_STORAGE_KEY = "admin-impersonate-user-id";
 export const IMPERSONATION_COOKIE_NAME = "admin-impersonate-user-id";
+export const IMPERSONATION_OWNER_COOKIE_NAME = "admin-impersonate-owner-id";
 
 // API key authentication
 export const API_KEY_HEADER_NAME = "X-API-Key";
-
-// Layout
-export const NAVBAR_HEIGHT_PX = 60;
+export const CLIENT_COUNTRY_TOKEN_HEADER_NAME = "X-Client-Country-Token";
+export const CLIENT_IP_TOKEN_HEADER_NAME = "X-Client-IP-Token";
+export const VERCEL_COUNTRY_HEADER_NAME = "x-vercel-ip-country";
 
 // Routes
 export const MARKETPLACE_EXPERTS_HREF = "/marketplace#experts";

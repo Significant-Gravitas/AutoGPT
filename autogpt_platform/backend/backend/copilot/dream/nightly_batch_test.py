@@ -35,9 +35,7 @@ def _dream_result(
     *,
     error: str | None = None,
     skipped: bool = False,
-    execution_path: Literal[
-        "sync_baseline", "anthropic_batch", "openai_batch"
-    ] = "sync_baseline",
+    execution_path: Literal["sync_baseline", "anthropic_batch"] = "sync_baseline",
 ) -> DreamPassResult:
     return DreamPassResult(
         user_id="u",
@@ -310,3 +308,106 @@ async def test_skipped_or_errored_batch_path_dream_is_not_in_flight():
             result = await run_nightly_batch_submit("u")
 
         assert result.dream_in_flight is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("trigger", ["cron", "admin"])
+async def test_expert_scope_reaches_both_submitters_and_the_owner_pays(trigger):
+    """An expert's nightly cron runs the dream and the sweep on the expert's
+    graph, while the budget check stays on the owner, whose allowance pays
+    for it."""
+    budget = AsyncMock(return_value=(True, None))
+    dream_spy = AsyncMock(return_value=_dream_result())
+    rat_spy = AsyncMock(return_value=_ratification_result())
+    with patch.object(nightly_batch, "check_dream_budget", new=budget), patch(
+        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
+    ), patch.object(nightly_batch, "run_ratification_pass", new=rat_spy):
+        result = await run_nightly_batch_submit(
+            "u", expert_id="expert-1", trigger=trigger
+        )
+
+    budget.assert_awaited_once_with("u")
+    dream_spy.assert_awaited_once_with("u", expert_id="expert-1", trigger=trigger)
+    rat_spy.assert_awaited_once_with("u", expert_id="expert-1")
+    assert result.expert_id == "expert-1"
+
+
+@pytest.mark.asyncio
+async def test_account_scope_runs_the_account_graph():
+    dream_spy = AsyncMock(return_value=_dream_result())
+    rat_spy = AsyncMock(return_value=_ratification_result())
+    with patch.object(
+        nightly_batch,
+        "check_dream_budget",
+        new=AsyncMock(return_value=(True, None)),
+    ), patch(
+        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
+    ), patch.object(
+        nightly_batch, "run_ratification_pass", new=rat_spy
+    ):
+        result = await run_nightly_batch_submit("u")
+
+    dream_spy.assert_awaited_once_with("u", expert_id=None, trigger="cron")
+    rat_spy.assert_awaited_once_with("u", expert_id=None)
+    assert result.expert_id is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "expert_id, runs_learning", [(None, True), ("expert-1", False)]
+)
+async def test_skill_learning_runs_once_per_account_never_per_expert(
+    expert_id: str | None, runs_learning: bool
+):
+    """The learning pass reviews the account's skills and its experts', so
+    with its flag on the account's nightly batch runs it and an expert's
+    leaves it out."""
+    learning = AsyncMock()
+    with patch.object(
+        nightly_batch,
+        "check_dream_budget",
+        new=AsyncMock(return_value=(True, None)),
+    ), patch(
+        "backend.copilot.dream.orchestrator.execute_dream_pass",
+        new=AsyncMock(return_value=_dream_result()),
+    ), patch.object(
+        nightly_batch,
+        "run_ratification_pass",
+        new=AsyncMock(return_value=_ratification_result()),
+    ), patch.object(
+        nightly_batch, "is_feature_enabled", new=AsyncMock(return_value=True)
+    ), patch.object(
+        nightly_batch, "run_skill_learning_pass", new=learning
+    ):
+        await run_nightly_batch_submit("u", expert_id=expert_id)
+
+    if runs_learning:
+        learning.assert_awaited_once_with("u", trigger="nightly")
+    else:
+        learning.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_skill_learning_crash_is_reported_not_raised():
+    with patch.object(
+        nightly_batch,
+        "check_dream_budget",
+        new=AsyncMock(return_value=(True, None)),
+    ), patch(
+        "backend.copilot.dream.orchestrator.execute_dream_pass",
+        new=AsyncMock(return_value=_dream_result()),
+    ), patch.object(
+        nightly_batch,
+        "run_ratification_pass",
+        new=AsyncMock(return_value=_ratification_result()),
+    ), patch.object(
+        nightly_batch, "is_feature_enabled", new=AsyncMock(return_value=True)
+    ), patch.object(
+        nightly_batch,
+        "run_skill_learning_pass",
+        new=AsyncMock(side_effect=RuntimeError("boom")),
+    ):
+        result = await run_nightly_batch_submit("u")
+
+    assert result.learning is None
+    assert result.error == "learning: boom"

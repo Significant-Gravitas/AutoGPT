@@ -1,11 +1,9 @@
 import * as Sentry from "@sentry/nextjs";
 import { cookies } from "next/headers";
 import { after } from "next/server";
-import {
-  ANALYTICS_CONSENT_COOKIE,
-  ANALYTICS_CONSENT_GRANTED,
-} from "@/services/consent/constants";
+import { requestHasConsentFor } from "@/services/consent/consent-server";
 import { environment } from "@/services/environment";
+import { type SignupMethod } from "./account-created-cookie";
 
 const DATAFAST_GOALS_URL = "https://datafa.st/api/v1/goals";
 const ACCOUNT_CREATED_GOAL = "signup";
@@ -13,8 +11,6 @@ const DATAFAST_VISITOR_COOKIE = "datafast_visitor_id";
 const USER_CREATED_HEADER = "X-AutoGPT-User-Created";
 const VISITOR_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-type SignupMethod = "email" | "google";
 
 interface GoalContext {
   apiKey: string;
@@ -83,11 +79,8 @@ function reportTrackingError(error: unknown) {
 async function getGoalContext(
   method: SignupMethod,
 ): Promise<GoalContext | null> {
+  if (!(await requestHasConsentFor("analytics"))) return null;
   const cookieStore = await cookies();
-  const hasConsent =
-    cookieStore.get(ANALYTICS_CONSENT_COOKIE)?.value ===
-    ANALYTICS_CONSENT_GRANTED;
-  if (!hasConsent) return null;
 
   const visitorID = cookieStore.get(DATAFAST_VISITOR_COOKIE)?.value;
   if (!visitorID || !VISITOR_ID_PATTERN.test(visitorID)) return null;

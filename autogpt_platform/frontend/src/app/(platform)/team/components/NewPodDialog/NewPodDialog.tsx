@@ -54,7 +54,7 @@ export function NewPodDialog({ open, onClose, onCreate, isCreating }: Props) {
           />
           <div className="flex justify-end gap-2">
             <Button
-              size="xs"
+              size="small"
               type="button"
               variant="secondary"
               onClick={onClose}
@@ -62,7 +62,7 @@ export function NewPodDialog({ open, onClose, onCreate, isCreating }: Props) {
               Cancel
             </Button>
             <Button
-              size="xs"
+              size="small"
               type="submit"
               variant="primary"
               disabled={!trimmed || isCreating}

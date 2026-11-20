@@ -8,6 +8,7 @@ import {
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
@@ -18,10 +19,18 @@ import {
   type PlanDef,
   TEAM_INTAKE_FORM_URL,
 } from "@/components/molecules/PlanCard/plans";
+import { getEligibleTrialOffer } from "@/components/organisms/SubscriptionPlans/helpers";
+import { useTrialCard } from "@/components/organisms/TrialCard/useTrialCard";
 import {
   getSubscriptionValue,
-  trackAdsConversion,
+  trackAdsConversionBeforeNavigation,
 } from "@/services/analytics/google-ads";
+import {
+  trackCheckoutAbandoned,
+  trackPaywallViewed,
+  trackPlanSelected,
+} from "@/services/analytics/monetization-analytics";
+import { buildPaywallCancelUrl, consumePaywallCheckoutCancel } from "./helpers";
 
 interface CheckoutResponse {
   url?: string;
@@ -42,6 +51,8 @@ const PLAN_LABEL: Record<string, string> = {
 function deriveAvailablePlans(
   tierCosts: Record<string, number> | undefined,
   tierCostsYearly: Record<string, number> | undefined,
+  multipliers: Record<string, number> | undefined,
+  currentTier: string | undefined,
 ): PlanDef[] {
   if (!tierCosts) return [];
   return TIER_DISPLAY_ORDER.filter(
@@ -51,6 +62,14 @@ function deriveAvailablePlans(
     const yearlyCents = tierCostsYearly?.[tier];
     return {
       ...PLAN_METADATA[tier],
+      cta:
+        currentTier === "NO_TIER" && tier !== "BUSINESS"
+          ? `Start ${PLAN_METADATA[tier].name}`
+          : PLAN_METADATA[tier].cta,
+      usage:
+        tier === "MAX" && multipliers?.MAX && multipliers?.PRO
+          ? `${Math.round((multipliers.MAX / multipliers.PRO) * 10) / 10}x`
+          : null,
       usdMonthly: monthlyCents / 100,
       usdYearly: typeof yearlyCents === "number" ? yearlyCents / 100 : null,
     };
@@ -77,6 +96,13 @@ export function usePaywallModal() {
   // calls can only 401.
   useMountEffect(() => {
     void validateSession();
+    trackPaywallViewed("paywall_gate");
+    if (consumePaywallCheckoutCancel()) {
+      trackCheckoutAbandoned({
+        checkout_kind: "subscription",
+        surface: "paywall_gate",
+      });
+    }
   });
   const [selectedCycle, setSelectedCycle] = useState<"monthly" | "yearly">(
     "monthly",
@@ -88,6 +114,8 @@ export function usePaywallModal() {
   // saved card and looks like a no-op. Stage the target tier here and surface
   // a confirmation dialog before firing the mutation.
   const [pendingTier, setPendingTier] = useState<string | null>(null);
+  const checkoutRedirect = useCheckoutRedirect();
+  const [redirectingTier, setRedirectingTier] = useState<string | null>(null);
 
   const country = COUNTRIES[0];
   const isYearly = selectedCycle === "yearly";
@@ -95,7 +123,25 @@ export function usePaywallModal() {
   const plans = deriveAvailablePlans(
     subscription?.tier_costs,
     subscription?.tier_costs_yearly,
+    subscription?.tier_multipliers,
+    subscription?.tier,
   );
+
+  // Trial checkout returns to /settings/billing, which renders the trial
+  // confirmation. By then the enrollment has set a real tier, so the gate
+  // lifts and the user lands on their active trial rather than back here.
+  const trial = useTrialCard("billing");
+  const trialOffer = getEligibleTrialOffer(trial, plans);
+
+  // selectedTier spans the whole click: the request, the wait for the Ads
+  // conversion and the start of the redirect. isPending alone ends before the
+  // redirect, which left the plan buttons clickable for a second checkout.
+  // A trial checkout, or any other checkout leaving the page, holds them too.
+  const isCheckingOut =
+    isPending ||
+    selectedTier !== null ||
+    trial.isStarting ||
+    checkoutRedirect.isRedirecting;
 
   const hasActiveStripeSubscription = Boolean(
     subscription?.has_active_stripe_subscription,
@@ -115,8 +161,9 @@ export function usePaywallModal() {
           // was on so the paywall re-gates immediately. /profile/* is
           // paywall-exempt — landing there let users wander an app that
           // looks unlocked until the next non-exempt navigation.
-          cancel_url: window.location.href,
+          cancel_url: buildPaywallCancelUrl(window.location.href),
           billing_cycle: cycle,
+          surface: "paywall_gate",
         },
       });
       const url = (result?.data as CheckoutResponse | undefined)?.url;
@@ -126,10 +173,12 @@ export function usePaywallModal() {
         // plan definition is only the fallback for a tier priced nowhere else.
         const plan = plans.find((candidate) => candidate.key === tier);
         const apiValue = isYearly ? plan?.usdYearly : plan?.usdMonthly;
-        trackAdsConversion("begin_checkout", {
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
           value: apiValue ?? getSubscriptionValue(tier, cycle),
         });
         window.location.href = url;
+        setRedirectingTier(tier);
+        checkoutRedirect.markRedirecting();
       }
     } catch (error) {
       // 401 means the paywall outlived its session: checkout can never
@@ -152,13 +201,22 @@ export function usePaywallModal() {
   }
 
   async function handleSelectPlan(tier: string) {
-    if (isPending) return;
+    if (isCheckingOut) return;
+    trackPlanSelected({
+      subscription_tier: tier,
+      billing_cycle: selectedCycle,
+      surface: "paywall_gate",
+    });
     // Team (BUSINESS) is contact-sales, not a self-serve Stripe Checkout —
     // divert to the intake form like onboarding + Settings billing do.
     // Without this, the POST hits the backend with tier=BUSINESS which 422s
     // (no LD price) and surfaces a generic "couldn't start checkout" toast.
     if (tier === "BUSINESS") {
       window.open(TEAM_INTAKE_FORM_URL, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (tier === "MAX" && subscription?.tier === "PRO") {
+      router.replace("/settings/billing?upgrade=MAX");
       return;
     }
     // Active Stripe sub → modify-in-place hits saved-card auto-charge; no
@@ -172,7 +230,7 @@ export function usePaywallModal() {
   }
 
   async function confirmPendingTier() {
-    if (!pendingTier) return;
+    if (!pendingTier || isCheckingOut) return;
     const tier = pendingTier;
     await fireUpdate(tier);
     setPendingTier(null);
@@ -182,10 +240,11 @@ export function usePaywallModal() {
     setPendingTier(null);
   }
 
-  // Route through the shared /logout page (same path the Navbar uses) rather
-  // than calling logOut() inline: it runs the full sign-out, then redirects to
-  // /login. Navigating away also unmounts this modal — without the redirect the
-  // user would be left logged-out but stranded behind the paywall.
+  // Route through the shared /logout page (same path the account menu uses)
+  // rather than calling logOut() inline: it runs the full sign-out, then
+  // redirects to /login. Navigating away also unmounts this modal — without
+  // the redirect the user would be left logged-out but stranded behind the
+  // paywall.
   function handleLogout() {
     router.replace("/logout");
   }
@@ -204,16 +263,21 @@ export function usePaywallModal() {
     retryLoadPlans,
     isRetryingPlans: isFetching,
     country,
-    isYearly,
     selectedCycle,
     setSelectedCycle,
     handleSelectPlan,
-    isPending,
-    selectedTier,
+    isPending: isCheckingOut,
+    selectedTier:
+      selectedTier ??
+      (checkoutRedirect.isRedirectingHere ? redirectingTier : null),
     pendingTier,
     pendingTierLabel,
     confirmPendingTier,
     cancelPendingTier,
     handleLogout,
+    handleClose: () => router.replace("/settings/billing"),
+    trial,
+    trialOffer,
+    pausedWorkflowSchedules: subscription?.paused_workflow_schedules ?? 0,
   };
 }

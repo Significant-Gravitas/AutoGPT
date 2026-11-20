@@ -10,11 +10,13 @@ This module states them once, on the side that knows. It is additive —
 ``GET /transports`` keeps its shape, so nothing has to migrate at once.
 """
 
+import asyncio
 import logging
 
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
+from backend.copilot.model_router import ModelMode
 from backend.copilot.provider_tiers import (
     TIER_LABELS,
     codex_tier_models,
@@ -39,7 +41,7 @@ class ConnectionTier(BaseModel):
     """One quality level on a connection.
 
     ``display_model`` is the model this tier resolves to, run through the
-    same router the turn will use — LaunchDarkly cell, then registry, then
+    same router the turn will use — feature-flag cell, then registry, then
     config — so it cannot drift from what actually answers.
 
     On a ChatGPT connection it is the model the catalog pins for that cell,
@@ -62,6 +64,7 @@ class ConnectionTier(BaseModel):
 
 class AIConnectionOffer(BaseModel):
     offer_id: str
+    auth_provider: CopilotLlmAuthProvider
     provider_family: str
     display_name: str
     auth_method: str
@@ -89,16 +92,26 @@ async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
     pick.
     """
     config = ChatConfig()
-    mode = await resolve_engine_mode(user_id, config)
-    models = await platform_tier_models(mode, user_id, config)
+    (mode, models), advanced_allowed, transports = await asyncio.gather(
+        _platform_models(user_id, config),
+        advanced_tier_allowed(user_id),
+        get_chat_transports(user_id),
+    )
     codex_models = codex_tier_models(mode)
-    advanced_allowed = await advanced_tier_allowed(user_id)
     offers = [
         _offer(transport, models, codex_models, advanced_allowed)
-        for transport in await get_chat_transports(user_id)
+        for transport in transports
     ]
     locked = await _locked_codex_offer(user_id, offers, codex_models)
     return offers + ([locked] if locked else [])
+
+
+async def _platform_models(
+    user_id: str, config: ChatConfig
+) -> tuple[ModelMode, dict[CopilotLLMModel, str | None]]:
+    """The engine, and what each platform tier resolves to on it."""
+    mode = await resolve_engine_mode(user_id, config)
+    return mode, await platform_tier_models(mode, user_id, config)
 
 
 async def _locked_codex_offer(
@@ -142,6 +155,7 @@ async def _locked_codex_offer(
 
     return AIConnectionOffer(
         offer_id="codex:locked",
+        auth_provider="codex",
         provider_family="openai",
         display_name="ChatGPT",
         auth_method="chatgpt_oauth",
@@ -236,6 +250,7 @@ def _offer(
 ) -> AIConnectionOffer:
     return AIConnectionOffer(
         offer_id=offer_id_for(transport),
+        auth_provider=transport.auth_provider,
         provider_family=_provider_family(transport.auth_provider),
         display_name=transport.label,
         auth_method=_auth_method(transport.auth_provider),
@@ -245,38 +260,59 @@ def _offer(
         state="ready" if transport.available else "unavailable",
         selectable=transport.available,
         is_default=transport.default,
-        tiers=[
-            ConnectionTier(
-                tier=tier,
-                label=label,
-                selectable=(
-                    transport.available and (advanced_allowed or tier != "advanced")
-                ),
-                display_model=(
-                    platform_models.get(tier)
-                    if transport.auth_provider == "platform"
-                    else codex_models.get(tier)
-                ),
-                lock_reason=(
-                    None
-                    if advanced_allowed or tier != "advanced"
-                    else ADVANCED_TIER_LOCK_REASON
-                ),
-            )
-            for tier, label in TIER_LABELS.items()
-        ],
+        tiers=_tiers_for(
+            transport,
+            platform_models,
+            codex_models,
+            advanced_allowed,
+        ),
         limitations=_limitations(transport),
     )
+
+
+def _tiers_for(
+    transport: ChatTransportResponse,
+    platform_models: dict[CopilotLLMModel, str | None],
+    codex_models: dict[CopilotLLMModel, str | None],
+    advanced_allowed: bool,
+) -> list[ConnectionTier]:
+    if transport.auth_provider == "microsoft_365_copilot":
+        return []
+    models = platform_models if transport.auth_provider == "platform" else codex_models
+    return [
+        ConnectionTier(
+            tier=tier,
+            label=label,
+            selectable=(
+                transport.available and (advanced_allowed or tier != "advanced")
+            ),
+            display_model=models.get(tier),
+            lock_reason=(
+                None
+                if advanced_allowed or tier != "advanced"
+                else ADVANCED_TIER_LOCK_REASON
+            ),
+        )
+        for tier, label in TIER_LABELS.items()
+    ]
 
 
 def _provider_family(auth_provider: CopilotLlmAuthProvider) -> str:
     # Presentation grouping, not the credential discriminator: ChatGPT OAuth
     # and an OpenAI API key are one family and two very different credentials.
-    return "openai" if auth_provider == "codex" else "autogpt"
+    if auth_provider == "codex":
+        return "openai"
+    if auth_provider == "microsoft_365_copilot":
+        return "microsoft"
+    return "autogpt"
 
 
 def _auth_method(auth_provider: CopilotLlmAuthProvider) -> str:
-    return "chatgpt_oauth" if auth_provider == "codex" else "deployment"
+    if auth_provider == "codex":
+        return "chatgpt_oauth"
+    if auth_provider == "microsoft_365_copilot":
+        return "device_code"
+    return "deployment"
 
 
 def _is_hosted() -> bool:
@@ -286,6 +322,8 @@ def _is_hosted() -> bool:
 def _backed_by_label(transport: ChatTransportResponse) -> str:
     if transport.auth_provider == "codex":
         return "Your ChatGPT plan"
+    if transport.auth_provider == "microsoft_365_copilot":
+        return "Your Microsoft 365 Copilot plan"
     return "Your AutoGPT plan" if _is_hosted() else "This server's chat provider"
 
 
@@ -298,8 +336,12 @@ def _description(transport: ChatTransportResponse) -> str:
     """
     if transport.auth_provider == "codex":
         return (
-            "New chats are backed by your ChatGPT plan, and spend no "
-            "AutoGPT credits."
+            "New chats are backed by your ChatGPT plan, and spend no AutoGPT credits."
+        )
+    if transport.auth_provider == "microsoft_365_copilot":
+        return (
+            "New chats are backed by your work or school Microsoft 365 "
+            "Copilot plan, and spend no AutoGPT credits."
         )
     if _is_hosted():
         return "New chats are backed by your AutoGPT plan, and spend AutoGPT credits."
@@ -308,10 +350,17 @@ def _description(transport: ChatTransportResponse) -> str:
 
 def _limitations(transport: ChatTransportResponse) -> list[str]:
     limitations: list[str] = []
-    if transport.auth_provider == "codex":
+    if transport.auth_provider in {"codex", "microsoft_365_copilot"}:
         # Stated because it is a real edge a user can hit, not a policy note:
         # the builder panel rejects a codex route outright.
-        limitations.append("The agent builder's chat panel always runs on AutoGPT.")
+        limitations.append("The workflow builder's chat panel always runs on AutoGPT.")
+    if transport.auth_provider == "microsoft_365_copilot":
+        limitations.extend(
+            [
+                "Microsoft 365 Copilot returns text and does not run AutoGPT tools.",
+                "Local files are unsupported; use OneDrive or SharePoint links.",
+            ]
+        )
     if transport.auth_provider == "platform" and not is_deployment_chat_available():
         limitations.append("No chat provider is configured on this server yet.")
     return limitations

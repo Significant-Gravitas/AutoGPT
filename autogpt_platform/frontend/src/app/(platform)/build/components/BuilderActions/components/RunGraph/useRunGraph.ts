@@ -77,7 +77,7 @@ export const useRunGraph = () => {
   const { mutateAsync: executeGraph, isPending: isExecutingGraph } =
     usePostV1ExecuteGraphAgent({
       mutation: {
-        onSuccess: (response: any) => {
+        onSuccess: (response) => {
           clearAllNodeErrors();
           const { id } = response.data as GraphExecutionMeta;
           setQueryStates({
@@ -108,7 +108,7 @@ export const useRunGraph = () => {
             }
 
             toast({
-              title: errorData?.message || "Graph validation failed",
+              title: errorData?.message || "Workflow validation failed",
               description:
                 "Please fix the validation errors on the highlighted nodes and try again.",
               variant: "destructive",
@@ -146,6 +146,7 @@ export const useRunGraph = () => {
     // closure — saving creates a new graph version and the stale closure value
     // would run the previous (pre-edit) version. See the delete-node-then-run bug.
     const savedGraph = await saveGraph(undefined);
+    if (!savedGraph) return;
 
     if (!dryRun && (hasInputs() || hasCredentials())) {
       // Hand the freshly-saved version to the dialog so it runs THIS version,

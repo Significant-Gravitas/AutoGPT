@@ -17,6 +17,11 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BriefingTabContent } from "../BriefingTabContent";
 
+// The costs breakdown is billing UI: these tests are a billed install's view.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+}));
+
 const mockUseGetV1UserCostSummary = vi.fn();
 vi.mock(
   "@/app/api/__generated__/endpoints/graphs/graphs",
@@ -88,13 +93,13 @@ function makeAgent(overrides: Partial<LibraryAgent> = {}): LibraryAgent {
 }
 
 describe("BriefingTabContent — dispatching", () => {
-  it("renders the costs breakdown toggle on the 'all' tab and no AutoPilot usage limits", () => {
+  it("renders the costs breakdown toggle on the 'all' tab and no expert usage limits", () => {
     mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
     render(<BriefingTabContent activeTab="all" agents={[]} />);
     expect(
       screen.getByRole("button", { name: /see costs breakdown/i }),
     ).toBeDefined();
-    // AutoPilot rate-limit meters live in the Copilot section, not here.
+    // Expert rate-limit meters live in the Copilot section, not here.
     expect(screen.queryByText("Usage limits")).toBeNull();
     expect(screen.queryByText("Today")).toBeNull();
     expect(screen.queryByText("This week")).toBeNull();
@@ -109,7 +114,7 @@ describe("BriefingTabContent — dispatching", () => {
         <BriefingTabContent activeTab={tab} agents={[]} />,
       );
       expect(
-        screen.getByText(/No agents|No recently completed/i),
+        screen.getByText(/No workflows|No recently completed/i),
       ).toBeDefined();
       unmount();
     }
@@ -197,7 +202,7 @@ describe("BriefingTabContent — CostsBreakdown", () => {
     // Headline stats
     expect(screen.getByText("$42.50")).toBeDefined();
     expect(screen.getByText("Most expensive tasks")).toBeDefined();
-    expect(screen.getByText("Spend by agent")).toBeDefined();
+    expect(screen.getByText("Spend by workflow")).toBeDefined();
 
     // Agent names resolved via graph_id lookup
     expect(screen.getAllByText("Alpha").length).toBeGreaterThanOrEqual(1);
@@ -242,7 +247,7 @@ describe("BriefingTabContent — CostsBreakdown", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /see costs breakdown/i }),
     );
-    expect(screen.getByText(/Agent deadbeef/)).toBeDefined();
+    expect(screen.getByText(/Workflow deadbeef/)).toBeDefined();
   });
 
   it("computes Avg / run from billable_run_count, not run_count", () => {
@@ -370,7 +375,7 @@ describe("BriefingTabContent — CostsBreakdown", () => {
   });
 });
 
-describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => {
+describe("BriefingTabContent — CopilotLibrarySummary (skills and follow-ups pill)", () => {
   function setupBriefingMocks() {
     mockUseGetV1UserCostSummary.mockReturnValue(emptyCostSummary());
   }
@@ -434,7 +439,7 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
     // "0 skills · 0 scheduled" would be noise, not a discovery affordance.
     await waitFor(() => {
       expect(screen.queryByTestId("copilot-library-summary")).toBeNull();
-      expect(screen.queryByText("Autopilot library")).toBeNull();
+      expect(screen.queryByText("Skills and follow-ups")).toBeNull();
     });
   });
 
@@ -451,7 +456,7 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
 
     render(<BriefingTabContent activeTab="all" agents={[]} />);
 
-    expect(await screen.findByText("Autopilot library")).toBeDefined();
+    expect(await screen.findByText("Skills and follow-ups")).toBeDefined();
     expect(screen.getByTestId("copilot-library-skills-link").textContent).toBe(
       "2 skills",
     );
@@ -477,7 +482,7 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
 
     render(<BriefingTabContent activeTab="all" agents={[]} />);
 
-    expect(await screen.findByText("Autopilot library")).toBeDefined();
+    expect(await screen.findByText("Skills and follow-ups")).toBeDefined();
     expect(
       screen.getByTestId("copilot-library-followups-link").textContent,
     ).toBe("2 follow-ups");
@@ -491,7 +496,7 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
       getListCopilotFollowupSchedulesMockHandler([]),
       // Graph schedules alone don't count toward the autopilot pill —
       // they belong to the "Scheduled" briefing tab. Pill must stay
-      // hidden so we don't surface a bare "Autopilot library" header
+      // hidden so we don't surface a bare "Skills and follow-ups" header
       // with nothing actionable.
       getGetV1ListExecutionSchedulesForAUserMockHandler([
         makeGraphSchedule({ id: "g1" }),
@@ -502,7 +507,7 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
 
     await waitFor(() => {
       expect(screen.queryByTestId("copilot-library-summary")).toBeNull();
-      expect(screen.queryByText("Autopilot library")).toBeNull();
+      expect(screen.queryByText("Skills and follow-ups")).toBeNull();
     });
   });
 
@@ -516,7 +521,7 @@ describe("BriefingTabContent — CopilotLibrarySummary (Autopilot pill)", () => 
 
     render(<BriefingTabContent activeTab="all" agents={[]} />);
 
-    expect(await screen.findByText("Autopilot library")).toBeDefined();
+    expect(await screen.findByText("Skills and follow-ups")).toBeDefined();
     // Singular form when count is 1 — verifies the pluralization branch.
     expect(screen.getByTestId("copilot-library-skills-link").textContent).toBe(
       "1 skill",

@@ -1,7 +1,10 @@
+import asyncio
 import io
 import logging
 from enum import Enum
 
+from fastapi import HTTPException
+from PIL import Image
 from prisma.models import AgentGraph
 from replicate.client import Client as ReplicateClient
 from replicate.exceptions import ReplicateError
@@ -9,12 +12,18 @@ from replicate.helpers import FileOutput
 
 from backend.data.graph import GraphBaseMeta
 from backend.data.model import CredentialsMetaInput, ProviderName
+from backend.data.redis_client import get_redis_async
+from backend.data.redis_helpers import incr_with_ttl
 from backend.integrations.credentials_store import ideogram_credentials
+from backend.monitoring.instrumentation import record_rate_limit_hit
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+# Per-user cap on agent thumbnails generated with the platform's provider key.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
+DAILY_LIMIT = 25
 
 
 class ImageSize(str, Enum):
@@ -25,18 +34,59 @@ class ImageStyle(str, Enum):
     DIGITAL_ART = "digital art"
 
 
-async def generate_agent_image(agent: GraphBaseMeta | AgentGraph) -> io.BytesIO:
+async def generate_agent_image(
+    agent: GraphBaseMeta | AgentGraph, user_id: str
+) -> io.BytesIO:
+    """Generate a JPEG thumbnail, independent of the provider's image format.
+
+    Each call counts against `user_id`'s daily allowance, and raises
+    HTTPException 429 once it is used up, or 503 if it cannot be checked.
+    """
+    await _reserve_generation(user_id)
     if settings.config.use_agent_image_generation_v2:
-        return await generate_agent_image_v2(graph=agent)
+        image = await _generate_agent_image_v2(graph=agent)
     else:
-        return await generate_agent_image_v1(agent=agent)
+        image = await _generate_agent_image_v1(agent=agent)
+    return await asyncio.to_thread(_as_jpeg, image)
 
 
-async def generate_agent_image_v2(graph: GraphBaseMeta | AgentGraph) -> io.BytesIO:
+async def _reserve_generation(user_id: str) -> None:
+    try:
+        async with asyncio.timeout(3):
+            redis = await get_redis_async()
+            count = await incr_with_ttl(
+                redis, f"agent-image-limit:{user_id}", 24 * 60 * 60
+            )
+    except Exception as exc:
+        raise HTTPException(
+            503, "Agent image generation is temporarily unavailable"
+        ) from exc
+    if count > DAILY_LIMIT:
+        record_rate_limit_hit("agent_image_generation", user_id)
+        raise HTTPException(
+            429, f"Limit: {DAILY_LIMIT} generated agent images per day."
+        )
+
+
+def _as_jpeg(image: io.BytesIO) -> io.BytesIO:
+    content = image.getvalue()
+    with Image.open(io.BytesIO(content)) as generated:
+        if generated.format == "JPEG":
+            return io.BytesIO(content)
+        rgba = generated.convert("RGBA")
+        background = Image.new("RGB", generated.size, "white")
+        background.paste(rgba, mask=rgba.getchannel("A"))
+        output = io.BytesIO()
+        background.save(output, format="JPEG", quality=90)
+    output.seek(0)
+    return output
+
+
+async def _generate_agent_image_v2(graph: GraphBaseMeta | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Ideogram model.
     Returns:
-        str: The URL of the generated image
+        io.BytesIO: The image bytes in the provider's original format.
     """
     if not ideogram_credentials.api_key:
         raise ValueError("Missing Ideogram API key")
@@ -103,7 +153,7 @@ async def generate_agent_image_v2(graph: GraphBaseMeta | AgentGraph) -> io.Bytes
     return io.BytesIO(response.content)
 
 
-async def generate_agent_image_v1(agent: GraphBaseMeta | AgentGraph) -> io.BytesIO:
+async def _generate_agent_image_v1(agent: GraphBaseMeta | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Flux model via Replicate API.
 

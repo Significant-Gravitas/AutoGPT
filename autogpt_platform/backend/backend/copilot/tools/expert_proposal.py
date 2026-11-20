@@ -3,7 +3,7 @@
 Mirrors ``soul_proposal`` for team changes: the preview tools (``hire_expert``,
 ``raise_expert``, ``update_expert``) write nothing and park the exact proposal
 in Redis under a one-time ``confirmation_id``, and ``confirm_expert_change``
-loads it bound to the same Autopilot session, consumes it single-use, and
+loads it bound to the same Otto session, consumes it single-use, and
 applies it.
 """
 
@@ -34,11 +34,14 @@ from backend.util.exceptions import (
     ExpertWriteNotReadableError,
 )
 
+from .expert_change_messages import applied_message
+from .expert_delegation import has_chat_with
 from .models import (
     ErrorResponse,
     ExpertChangeAppliedResponse,
     ExpertChangeKind,
     ExpertChangePreview,
+    ExpertHandoffTask,
     ExpertSummary,
     ToolResponseBase,
 )
@@ -52,8 +55,11 @@ _PROPOSAL_KEY_PREFIX = "copilot:expert_change_proposal:"
 # answered with "already done" instead of the same message an expired
 # preview gets.
 _CONSUMED_KEY_PREFIX = "copilot:expert_change_consumed:"
+# Claimed by whichever of a proposal's two ids (the plain change / "and
+# start") is confirmed first, so one approval can never add a teammate twice.
+_CLAIM_KEY_PREFIX = "copilot:expert_change_claim:"
 _LOG_ID_PREFIX_LENGTH = 12
-_PREVIEW_TOOLS = "hire_expert, raise_expert or update_expert"
+_PREVIEW_TOOLS = "tool:hire_expert, tool:raise_expert or tool:update_expert"
 
 
 class ExpertSoulSnapshot(BaseModel):
@@ -87,6 +93,12 @@ class ExpertChangeProposal(BaseModel):
     # gate refuses it rather than reading it as "answered at -1", which any
     # session with one sequenced user message would clear.
     user_turn_watermark: int | None = None
+    # Only for a hire or new expert proposed for a task already in the chat
+    # (see ``expert_handoff_proposal``): the task, whether confirming this id
+    # hands it over, and the id of the other choice for the same change.
+    handoff: ExpertHandoffTask | None = None
+    hand_off: bool = False
+    sibling_confirmation_id: str | None = None
 
 
 def proposal_key(confirmation_id: str) -> str:
@@ -97,13 +109,17 @@ def _consumed_key(confirmation_id: str) -> str:
     return f"{_CONSUMED_KEY_PREFIX}{confirmation_id}"
 
 
+def _claim_key(confirmation_id: str, sibling_confirmation_id: str) -> str:
+    return f"{_CLAIM_KEY_PREFIX}{min(confirmation_id, sibling_confirmation_id)}"
+
+
 def _stale_preview_error(session_id: str) -> ErrorResponse:
     return ErrorResponse(
         message=(
             "This confirmation_id is unknown or has expired — previews last "
             f"{PROPOSAL_TTL_MINUTES} minutes. If you already confirmed it "
             "earlier in this conversation, that change is APPLIED and the "
-            "expert exists — call list_team to check before doing anything "
+            "expert exists — call tool:list_team to check before doing anything "
             f"else. Only call {_PREVIEW_TOOLS} again for a genuinely new "
             "change."
         ),
@@ -116,7 +132,7 @@ def _unapproved_preview_error(session_id: str) -> ErrorResponse:
         message=(
             "The user has not answered this preview yet, so there is nothing "
             "to confirm. Read the change back to them and call "
-            "confirm_expert_change only after they reply approving it."
+            "tool:confirm_expert_change only after they reply approving it."
         ),
         session_id=session_id,
     )
@@ -180,7 +196,7 @@ async def store_proposal(
 def autopilot_session_guard(
     user_id: str | None, session: ChatSession
 ) -> ErrorResponse | None:
-    """Team changes belong to the user, typing in their own Autopilot chat.
+    """Team changes belong to the user, typing in their own Otto chat.
 
     Two things have to hold, and "no ``expert_id``" only proves the first:
     an expert must not staff its own team, AND the conversation has to be one
@@ -205,7 +221,7 @@ def autopilot_session_guard(
         return ErrorResponse(
             message=(
                 "Only the user can change the team, and only from the "
-                "Autopilot chat. Tell them what you'd add and let them do it "
+                "Otto chat. Tell them what you'd add and let them do it "
                 "there."
             ),
             session_id=session.session_id,
@@ -220,8 +236,9 @@ def autopilot_session_guard(
             message=(
                 "This session was started by an automation, or predates the "
                 "check that tells them apart, so it cannot hire, raise, or "
-                "edit a teammate. Report what the team would need and let the "
-                "user make the change in a new Autopilot chat."
+                "edit a teammate, or change which credentials one may use. "
+                "Report what the team would need and let the user make the "
+                "change in a new Otto chat."
             ),
             session_id=session.session_id,
         )
@@ -292,25 +309,65 @@ async def load_bound_proposal(
     if user_turn_watermark(session) <= proposal.user_turn_watermark:
         return _unapproved_preview_error(session.session_id)
 
+    sibling = proposal.sibling_confirmation_id
+    if sibling is None:
+        return await _consume(redis, confirmation_id, session.session_id, proposal)
+    # One hire parked two ways (the plain hire / "hire and start"): a SET NX
+    # on a key both ids share decides which answer takes it. The other id's
+    # proposal is left in place and refused by this claim, so nothing is
+    # destroyed before this confirm is sure to complete; a failure releases
+    # the claim and the user's answer stays answerable. One shared key rather
+    # than a multi-key DEL, because the two proposal keys can sit on
+    # different cluster slots.
+    claim = _claim_key(confirmation_id, sibling)
+    if not await redis.set(claim, confirmation_id, nx=True, ex=PROPOSAL_TTL_SECONDS):
+        return _already_confirmed_error(session.session_id)
+    try:
+        consumed = await _consume(redis, confirmation_id, session.session_id, proposal)
+    except BaseException:
+        await _release_claim(redis, claim)
+        raise
+    if isinstance(consumed, ErrorResponse):
+        await _release_claim(redis, claim)
+    return consumed
+
+
+async def _consume(
+    redis: AsyncRedisClient,
+    confirmation_id: str,
+    session_id: str,
+    proposal: ExpertChangeProposal,
+) -> ExpertChangeProposal | ErrorResponse:
     # GET and DEL are intentionally separate: binding must be checked before
     # consumption so a mismatched caller cannot invalidate a legitimate
     # proposal.
-    if await redis.delete(key) == 0:
-        return _stale_preview_error(session.session_id)
+    if await redis.delete(proposal_key(confirmation_id)) == 0:
+        return _stale_preview_error(session_id)
     await redis.setex(_consumed_key(confirmation_id), PROPOSAL_TTL_SECONDS, "1")
     return proposal
+
+
+async def _release_claim(redis: AsyncRedisClient, claim: str) -> None:
+    try:
+        await redis.delete(claim)
+    except Exception:
+        logger.warning("Could not release a hire's confirm claim", exc_info=True)
 
 
 async def apply_proposal(
     user_id: str,
     session_id: str,
     proposal: ExpertChangeProposal,
+    *,
+    on_card: bool = True,
 ) -> ToolResponseBase:
+    """Apply *proposal*. *on_card*: the confirm renders as a card the user
+    can act on, which a chat-platform conversation does not show."""
     preview = proposal.preview
     if preview.kind == "hire":
-        return await _apply_hire(user_id, session_id, preview)
+        return await _apply_hire(user_id, session_id, preview, on_card=on_card)
     if preview.kind == "raise":
-        return await _apply_raise(user_id, session_id, preview)
+        return await _apply_raise(user_id, session_id, preview, on_card=on_card)
     if preview.kind == "update":
         return await _apply_update(user_id, session_id, proposal)
     logger.error(
@@ -331,6 +388,8 @@ async def _apply_hire(
     user_id: str,
     session_id: str,
     preview: ExpertChangePreview,
+    *,
+    on_card: bool,
 ) -> ToolResponseBase:
     if preview.template_id is None:
         return _discarded_proposal_error(session_id, "template", "hire_expert")
@@ -339,33 +398,20 @@ async def _apply_hire(
             user_id,
             preview.template_id,
             preview.name or None,
+            "copilot",
         )
     except Exception as e:
         return _hire_failure_response(e, session_id)
+    # Hiring a template already on the team, or fired from it, returns that
+    # expert with the chats they had.
+    has_chat = await has_chat_with(user_id, result.expert.id)
     return ExpertChangeAppliedResponse(
-        message=_hire_message(result.expert.name, result.failed_preloads),
+        message=applied_message(
+            "hire", result.expert.name, has_chat=has_chat, on_card=on_card
+        ),
         session_id=session_id,
         kind="hire",
         expert=_summary(result.expert),
-        failed_workflows=result.failed_preloads,
-    )
-
-
-def _hire_message(name: str, failed_workflows: list[str]) -> str:
-    """A hire whose workflows didn't install must not read as a clean one.
-
-    The expert exists either way, but until the listed workflows are added
-    back it cannot do the part of the job they carried — so the model is
-    told to name them rather than announce an unqualified success.
-    """
-    if not failed_workflows:
-        return f"{name} is hired and on the team. Tell the user who joined and what they own."
-    workflows = ", ".join(failed_workflows)
-    return (
-        f"{name} joined the team, but {len(failed_workflows)} of their "
-        f"workflows could not be installed: {workflows}. Tell the user who "
-        "joined, name the workflows that failed, and say those need to be "
-        f"added from {name}'s team page before that part of the job can run."
     )
 
 
@@ -373,6 +419,8 @@ async def _apply_raise(
     user_id: str,
     session_id: str,
     preview: ExpertChangePreview,
+    *,
+    on_card: bool,
 ) -> ToolResponseBase:
     try:
         result: RaiseResult = await experts_db().create_raised_expert(
@@ -380,6 +428,8 @@ async def _apply_raise(
             preview.name,
             preview.role or None,
             preview.voice_preferences or None,
+            job_title=preview.job_title or None,
+            avatar_url=preview.avatar_url,
             color=preview.color or None,
             tagline=preview.tagline or None,
             about=preview.about or None,
@@ -389,9 +439,8 @@ async def _apply_raise(
     except Exception as e:
         return _raise_failure_response(e, session_id)
     return ExpertChangeAppliedResponse(
-        message=(
-            f"{result.expert.name} is raised and on the team. Tell the user "
-            "who joined and what they own."
+        message=applied_message(
+            "raise", result.expert.name, has_chat=False, on_card=on_card
         ),
         session_id=session_id,
         kind="raise",
@@ -453,7 +502,7 @@ def _stale_expert_error(session_id: str) -> ErrorResponse:
     return ErrorResponse(
         message=(
             "That expert is gone or was edited somewhere else since this "
-            "preview, so nothing was changed. Call update_expert again to "
+            "preview, so nothing was changed. Call tool:update_expert again to "
             "preview the current version."
         ),
         session_id=session_id,
@@ -539,7 +588,7 @@ def _unexpected_failure(
     return ErrorResponse(
         message=(
             "Couldn't complete that change, and the proposal has been "
-            f"discarded. Call {tool_name} again to re-preview and retry."
+            f"discarded. Call tool:{tool_name} again to re-preview and retry."
         ),
         session_id=session_id,
     )
@@ -566,7 +615,7 @@ def _discarded_proposal_error(
     return ErrorResponse(
         message=(
             f"That proposal is missing the {missing} it referred to and has "
-            f"been discarded. Call {tool_name} again to re-preview."
+            f"been discarded. Call tool:{tool_name} again to re-preview."
         ),
         session_id=session_id,
     )

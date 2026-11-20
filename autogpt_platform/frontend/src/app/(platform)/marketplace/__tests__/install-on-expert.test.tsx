@@ -13,7 +13,7 @@ import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { MainAgentPage } from "../components/MainAgentPage/MainAgentPage";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
@@ -21,18 +21,6 @@ const mockUseAuth = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: mockUseAuth,
 }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) =>
-      flag === "hire-experts" ? true : actual.useGetFlag(flag as never),
-  };
-});
 
 const hiredMaria: Expert = {
   id: "expert-maria",
@@ -96,6 +84,10 @@ describe("Install on Expert from marketplace detail", () => {
       user: { id: "user-1" },
       isLoggedIn: true,
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   test("shows the action and installs on the selected expert", async () => {

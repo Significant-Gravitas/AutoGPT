@@ -32,7 +32,11 @@ describe("generateMetadata", () => {
 
   test("returns creator metadata on success", async () => {
     mockGetCreatorDetails.mockResolvedValue({
-      data: { name: "Creator One", description: "Creator profile" },
+      data: {
+        name: "Creator One",
+        description: "Creator profile",
+        avatar_url: "https://cdn.example.com/avatar.png",
+      },
     });
 
     const metadata = await generateMetadata({
@@ -42,6 +46,32 @@ describe("generateMetadata", () => {
     expect(mockGetCreatorDetails).toHaveBeenCalledWith("creator-one");
     expect(metadata.title).toBe("Creator One - AutoGPT Store");
     expect(metadata.description).toBe("Creator profile");
+    expect(metadata.openGraph).toMatchObject({
+      title: "Creator One - AutoGPT Store",
+      description: "Creator profile",
+      type: "profile",
+    });
+    expect(metadata.openGraph?.images).toEqual([
+      "https://cdn.example.com/avatar.png",
+    ]);
+    expect(metadata.twitter).toMatchObject({ card: "summary_large_image" });
+  });
+
+  test("falls back to a text card when the creator has no avatar", async () => {
+    mockGetCreatorDetails.mockResolvedValue({
+      data: {
+        name: "Creator One",
+        description: "Creator profile",
+        avatar_url: null,
+      },
+    });
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ creator: "creator-one" }),
+    });
+
+    expect(metadata.openGraph).not.toHaveProperty("images");
+    expect(metadata.twitter).toMatchObject({ card: "summary" });
   });
 
   test("renders the 404 page when the creator does not exist", async () => {

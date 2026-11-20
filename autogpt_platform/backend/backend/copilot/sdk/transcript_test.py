@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import transcript
 from backend.util import json
 
 from .transcript import (
@@ -298,7 +299,7 @@ class TestStripProgressEntries:
 class TestDeleteTranscript:
     @pytest.mark.asyncio
     async def test_deletes_cli_session_and_meta(self):
-        """delete_transcript removes the CLI session .jsonl and .meta.json."""
+        """delete_transcript removes the CLI session .jsonl, then .meta.json."""
         mock_storage = AsyncMock()
         mock_storage.delete = AsyncMock()
 
@@ -309,32 +310,44 @@ class TestDeleteTranscript:
         ):
             await delete_transcript("user-123", "session-456")
 
-        assert mock_storage.delete.call_count == 2
         paths = [call.args[0] for call in mock_storage.delete.call_args_list]
-        assert any(p.endswith(".jsonl") for p in paths)
-        assert any(p.endswith(".meta.json") for p in paths)
+        assert len(paths) == 2
+        assert paths[0].endswith(".jsonl")
+        assert paths[1].endswith(".meta.json")
 
+    @pytest.mark.parametrize(
+        "delete_effect",
+        [
+            [OSError("jsonl delete failed"), None],
+            OSError("storage unavailable"),
+        ],
+        ids=["jsonl-fails", "both-would-fail"],
+    )
     @pytest.mark.asyncio
-    async def test_continues_on_jsonl_delete_failure(self):
-        """If .jsonl delete fails, .meta.json delete is still attempted."""
+    async def test_a_jsonl_it_cannot_delete_raises_and_keeps_its_meta(
+        self, delete_effect
+    ):
+        """A JSONL left without its meta would be resumed as covering the
+        whole chat, so the meta stays and the caller hears of the failure."""
         mock_storage = AsyncMock()
-        mock_storage.delete = AsyncMock(
-            side_effect=[Exception("jsonl delete failed"), None]
-        )
+        mock_storage.delete = AsyncMock(side_effect=delete_effect)
 
         with patch(
             "backend.copilot.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
-            # Should not raise
-            await delete_transcript("user-123", "session-456")
+            with pytest.raises(OSError):
+                await delete_transcript("user-123", "session-456")
 
-        assert mock_storage.delete.call_count == 2
+        paths = [call.args[0] for call in mock_storage.delete.call_args_list]
+        assert len(paths) == 1
+        assert paths[0].endswith(".jsonl")
 
     @pytest.mark.asyncio
     async def test_handles_meta_delete_failure(self):
-        """If .meta.json delete fails, no exception propagates."""
+        """If .meta.json delete fails once the .jsonl is gone, no exception
+        propagates: a meta without its JSONL is never restored."""
         mock_storage = AsyncMock()
         mock_storage.delete = AsyncMock(
             side_effect=[None, Exception("meta delete failed")]
@@ -347,6 +360,8 @@ class TestDeleteTranscript:
         ):
             # Should not raise
             await delete_transcript("user-123", "session-456")
+
+        assert mock_storage.delete.call_count == 2
 
 
 # --- read_compacted_entries ---
@@ -1005,6 +1020,70 @@ class TestRunCompression:
 class TestCleanupStaleProjectDirs:
     """Tests for cleanup_stale_project_dirs (disk leak prevention)."""
 
+    @pytest.fixture(autouse=True)
+    def legacy_workspace_prefix(self, monkeypatch):
+        monkeypatch.setattr(
+            "backend.copilot.transcript._SAFE_CWD_PREFIX", "/tmp/copilot-"
+        )
+
+    @pytest.mark.parametrize("scoped", [True, False])
+    def test_removes_relocated_projects_only(self, tmp_path, monkeypatch, scoped):
+        prefix = tmp_path / "relocated workspace" / "copilot-"
+        monkeypatch.setattr(transcript, "_SAFE_CWD_PREFIX", str(prefix))
+        projects = tmp_path / "projects"
+        projects.mkdir()
+        monkeypatch.setattr(transcript, "projects_base", lambda: str(projects))
+        target_name = os.path.basename(
+            os.path.dirname(transcript.cli_session_path(str(prefix) + "old", "abc"))
+        )
+        stale = projects / target_name
+        stale.mkdir()
+        stale.joinpath("transcript.jsonl").write_text("old transcript")
+        os.utime(stale, (1, 1))
+        other = projects / (target_name + "-other-session")
+        other.mkdir()
+        os.utime(other, (1, 1))
+        unrelated = projects / ("unrelated" + target_name)
+        unrelated.mkdir()
+        os.utime(unrelated, (1, 1))
+        legacy = projects / "-tmp-copilot-unrelated-profile"
+        legacy.mkdir()
+        os.utime(legacy, (1, 1))
+        fresh = projects / (target_name + "-fresh")
+        fresh.mkdir()
+
+        removed = transcript.cleanup_stale_project_dirs(target_name if scoped else None)
+
+        assert removed == (1 if scoped else 2)
+        assert not stale.exists()
+        assert other.exists() == scoped
+        assert unrelated.exists()
+        assert legacy.exists()
+        assert fresh.exists()
+
+    @pytest.mark.parametrize("target_kind", ["absolute", "parent", "nested"])
+    def test_scoped_cleanup_rejects_path_components(
+        self, tmp_path, monkeypatch, target_kind
+    ):
+        monkeypatch.setattr(transcript, "_SAFE_CWD_PREFIX", "/tmp/copilot-")
+        projects = tmp_path / "projects"
+        projects.mkdir()
+        monkeypatch.setattr(transcript, "projects_base", lambda: str(projects))
+        outside = tmp_path / "-tmp-copilot-other"
+        if target_kind == "nested":
+            outside = projects / "nested" / "-tmp-copilot-other"
+        outside.mkdir(parents=True)
+        outside.joinpath("keep.txt").write_text("preserve")
+        os.utime(outside, (1, 1))
+        candidate = {
+            "absolute": str(outside),
+            "parent": "../-tmp-copilot-other",
+            "nested": "nested/-tmp-copilot-other",
+        }[target_kind]
+
+        assert transcript.cleanup_stale_project_dirs(candidate) == 0
+        assert outside.joinpath("keep.txt").read_text() == "preserve"
+
     def test_removes_old_copilot_dirs(self, tmp_path, monkeypatch):
         """Directories matching copilot pattern older than threshold are removed."""
         from backend.copilot.transcript import (
@@ -1508,6 +1587,32 @@ class TestProcessCliRestore:
         assert not ok
         assert stripped_str == ""
 
+    def test_content_it_cannot_scrub_returns_false(self, tmp_path):
+        """A line the strip cannot parse could be an attachment it must drop,
+        so the session is not restored and nothing is written."""
+        from backend.copilot.sdk.service import process_cli_restore
+        from backend.copilot.transcript import TranscriptDownload
+
+        raw_content = (
+            '{"type":"user","uuid":"u1","parentUuid":null,"message":{"role":"user","content":"hi"}}\n'
+            '{"type":"assistant","uuid":"a1","parentUuid":"u1","message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}\n'
+            '{"type":"attachment","uuid":"m1","attachment":{"type":"file","con\n'
+        )
+        restore = TranscriptDownload(
+            content=raw_content.encode("utf-8"), message_count=2, mode="sdk"
+        )
+
+        with patch(
+            "backend.copilot.sdk.service._write_cli_session_to_disk"
+        ) as write_to_disk:
+            stripped_str, ok = process_cli_restore(
+                restore, str(tmp_path), "12345678-0000-0000-0000-000000000098", "[Test]"
+            )
+
+        assert not ok
+        assert stripped_str == ""
+        write_to_disk.assert_not_called()
+
 
 class TestReadCliSessionFromDisk:
     """``read_cli_session_from_disk`` reads, strips, and optionally writes back the session."""
@@ -1524,18 +1629,37 @@ class TestReadCliSessionFromDisk:
         session_dir.mkdir(parents=True, exist_ok=True)
         return sdk_cwd, session_dir / f"{session_id}.jsonl"
 
-    def test_returns_raw_bytes_for_invalid_utf8(self, tmp_path):
-        """Non-UTF-8 bytes trigger UnicodeDecodeError — returns raw bytes (upload-raw fallback)."""
+    @pytest.mark.parametrize(
+        "unreadable",
+        [
+            b"\xff\xfe invalid utf-8\n",
+            b'{"type":"attachment","uuid":"m2","attachment":{"type":"file","con\n',
+        ],
+        ids=["invalid utf-8", "truncated attachment line"],
+    )
+    def test_a_session_it_cannot_scrub_whole_is_refused(self, tmp_path, unreadable):
+        """Bytes the strip cannot read make the whole file unreadable for
+        upload, the mention attachment before them included."""
         from unittest.mock import patch
 
-        from backend.copilot.sdk.service import read_cli_session_from_disk
+        from backend.copilot.sdk.service import (
+            CliSessionScrubError,
+            read_cli_session_from_disk,
+        )
 
         session_id = "12345678-0000-0000-0000-aabbccdd0001"
         projects_base_dir = str(tmp_path)
         sdk_cwd, session_file = self._build_session_file(tmp_path, session_id)
-
-        # Write raw invalid UTF-8 bytes
-        session_file.write_bytes(b"\xff\xfe invalid utf-8\n")
+        content = (
+            b'{"type":"user","uuid":"u1","parentUuid":null,'
+            b'"message":{"role":"user","content":"read @note.txt"}}\n'
+            b'{"type":"attachment","uuid":"m1","parentUuid":"u1",'
+            b'"attachment":{"type":"file","filename":"note.txt",'
+            b'"content":"The note\'s own words."}}\n'
+            b'{"type":"assistant","uuid":"a1","parentUuid":"m1",'
+            b'"message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}\n'
+        ) + unreadable
+        session_file.write_bytes(content)
 
         with (
             patch(
@@ -1546,11 +1670,12 @@ class TestReadCliSessionFromDisk:
                 "backend.copilot.transcript.projects_base",
                 return_value=projects_base_dir,
             ),
+            pytest.raises(CliSessionScrubError),
         ):
-            result = read_cli_session_from_disk(sdk_cwd, session_id, "[Test]")
+            read_cli_session_from_disk(sdk_cwd, session_id, "[Test]")
 
-        # UnicodeDecodeError path returns the raw bytes (upload-raw fallback)
-        assert result == b"\xff\xfe invalid utf-8\n"
+        # Nothing was written back over the file either.
+        assert session_file.read_bytes() == content
 
     def test_write_back_oserror_still_returns_stripped_bytes(self, tmp_path):
         """OSError on write-back returns stripped bytes for GCS upload (not raw)."""

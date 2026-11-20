@@ -28,3 +28,39 @@ export function buildVoicePreferences(
   if (!sample) return null;
   return `Preferred writing style: ${sample.label}.\n\nExample to match:\n\n${sample.text}`;
 }
+
+import { cn } from "@/lib/utils";
+
+const SELECTABLE_CARD_CLASS_NAME =
+  "border border-border-base bg-canvas transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-focus";
+const CARD_DENSITY = {
+  regular: "rounded-2xl p-5",
+  compact: "rounded-lg p-3",
+};
+
+export interface SelectableCardColors {
+  /** Border, fill and ring once the option is chosen. */
+  selected?: string;
+  /** Hover border and focus ring; defaults lean on neutral tokens. */
+  interactive?: string;
+}
+
+export function selectableCardClassName(
+  isSelected: boolean,
+  interactive = false,
+  colors: SelectableCardColors = {},
+  compact = false,
+) {
+  return cn(
+    SELECTABLE_CARD_CLASS_NAME,
+    compact ? CARD_DENSITY.compact : CARD_DENSITY.regular,
+    colors.interactive ?? "focus-within:ring-focus",
+    isSelected
+      ? (colors.selected ?? "border-brand bg-brand/5 ring-2 ring-brand/20")
+      : interactive &&
+          cn(
+            "cursor-pointer",
+            colors.interactive ? null : "hover:border-foreground-base/30",
+          ),
+  );
+}

@@ -1,3 +1,4 @@
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import useCredentials from "@/hooks/useCredentials";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
@@ -10,15 +11,19 @@ import {
   OAUTH_ERROR_FLOW_CANCELED,
   OAUTH_ERROR_FLOW_TIMED_OUT,
   OAUTH_ERROR_POPUP_BLOCKED,
+  OAUTH_ERROR_POPUP_BLOCKED_NO_TAB,
   OAUTH_ERROR_WINDOW_CLOSED,
   openOAuthPopup,
   preOpenOAuthPopup,
 } from "@/lib/oauth-popup";
+import { trackCredentialConnectionFailure } from "@/services/credentials/connection-analytics";
 import { useEffect, useRef, useState } from "react";
 import {
   countSupportedTypes,
   filterSystemCredentials,
   getActionButtonText,
+  getMissingScopes,
+  getScopeShortfallMessage,
   getSupportedTypes,
   getSystemCredentials,
   processCredentialDeletion,
@@ -153,7 +158,11 @@ export function useCredentialsInput({
       if (!credentials) return;
       if (selectedCredential?.id) return;
 
-      const savedCreds = credentials.savedCredentials;
+      // A block that refuses the platform's shared keys would fail on a
+      // system credential, so only the user's own credentials are candidates.
+      const savedCreds = schema.refuses_platform_credentials
+        ? filterSystemCredentials(credentials.savedCredentials)
+        : credentials.savedCredentials;
       if (savedCreds.length === 0) return;
 
       if (hasAttemptedAutoSelect.current) return;
@@ -177,6 +186,7 @@ export function useCredentialsInput({
       readOnly,
       isOptional,
       onSelectCredential,
+      schema.refuses_platform_credentials,
     ],
   );
 
@@ -277,6 +287,7 @@ export function useCredentialsInput({
           cancelUrl: cancel_url,
           preOpenedWindow,
           timeout: provider === "codex" ? 15 * 60 * 1000 : undefined,
+          sameOriginFlow: provider === "codex",
           // Always enable BroadcastChannel + localStorage listeners — they are
           // the only path that works when the popup is blocked and we fall back
           // to a new tab (window.opener can be severed by cross-origin COOP).
@@ -316,16 +327,17 @@ export function useCredentialsInput({
       if (!isMCP) {
         const requiredScopes = schema.credentials_scopes;
         if (requiredScopes && requiredScopes.length > 0) {
-          const grantedScopes = new Set(credentialResult.scopes || []);
-          const hasAllRequiredScopes = new Set(requiredScopes).isSubsetOf(
-            grantedScopes,
+          const missingScopes = getMissingScopes(
+            requiredScopes,
+            credentialResult.scopes,
           );
 
-          if (!hasAllRequiredScopes) {
-            setOAuthError(
-              "Connection failed: the granted permissions don't match what's required. " +
-                "Please contact the application administrator.",
+          if (missingScopes.length > 0) {
+            trackCredentialConnectionFailure(
+              "credential_scope_shortfall_blocked_selection",
+              { provider },
             );
+            setOAuthError(getScopeShortfallMessage(missingScopes));
             return;
           }
         }
@@ -350,6 +362,10 @@ export function useCredentialsInput({
       }
       // A superseded flow must not surface its errors over the newer flow.
       if (flowId !== oauthFlowIdRef.current) return;
+      if (
+        toastIfPlanRequired(error, "Connecting a service needs an active plan")
+      )
+        return;
       const message = error instanceof Error ? error.message : String(error);
       if (
         message === OAUTH_ERROR_WINDOW_CLOSED ||
@@ -357,8 +373,16 @@ export function useCredentialsInput({
       ) {
         // User closed the popup or clicked cancel — not an error
       } else if (message === OAUTH_ERROR_FLOW_TIMED_OUT) {
+        trackCredentialConnectionFailure("credential_oauth_flow_timed_out", {
+          provider,
+        });
         setOAuthError(OAUTH_ERROR_FLOW_TIMED_OUT);
       } else {
+        if (message === OAUTH_ERROR_POPUP_BLOCKED_NO_TAB) {
+          trackCredentialConnectionFailure("credential_oauth_popup_blocked", {
+            provider,
+          });
+        }
         setOAuthError(`OAuth error: ${message}`);
       }
     } finally {

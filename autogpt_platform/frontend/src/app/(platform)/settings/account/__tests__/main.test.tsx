@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   getGetV1GetNotificationPreferencesMockHandler,
   getGetV1GetUserTimezoneMockHandler,
   getPostV1UpdateNotificationPreferencesMockHandler,
-  getPostV1UpdateUserEmailMockHandler,
   getPostV1UpdateUserTimezoneMockHandler,
 } from "@/app/api/__generated__/endpoints/auth/auth.msw";
 import type { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
@@ -14,11 +13,18 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+
+import {
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
 
 import SettingsPreferencesPage from "../page";
 
@@ -100,7 +106,6 @@ function setupBaseHandlers(
     getGetV1GetUserTimezoneMockHandler({
       timezone: options.timezone ?? "Asia/Kolkata",
     }),
-    getPostV1UpdateUserEmailMockHandler({}),
     getPostV1UpdateNotificationPreferencesMockHandler(defaultPreferences),
     getPostV1UpdateUserTimezoneMockHandler({
       timezone: "Europe/London",
@@ -191,7 +196,6 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
       getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
         submitted = (await request.json()) as NotificationPreferenceDTO;
@@ -248,6 +252,11 @@ describe("SettingsPreferencesPage", () => {
 
     // One click, not two: the design calls these "live one-click links".
     await waitFor(() => expect(applied).toBeDefined());
+    // Must reach the backend through the proxy, not the Next.js
+    // /api/auth/* (Better Auth) catch-all, which 404s.
+    expect(applied?.pathname).toBe(
+      "/api/proxy/api/auth/user/preferences/from-email",
+    );
     expect(applied?.searchParams.get("choice")).toBe("alerts");
     // Token-authenticated, so a bare ?f= from a third-party link is inert.
     expect(applied?.searchParams.get("token")).toBe("signed-token");
@@ -281,7 +290,6 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
       getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
         submitted = (await request.json()) as NotificationPreferenceDTO;
@@ -341,7 +349,6 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateNotificationPreferencesMockHandler(defaultPreferences),
       getPostV1UpdateUserTimezoneMockHandler(async ({ request }) => {
         const body = (await request.json()) as { timezone: string };
@@ -386,7 +393,6 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "not-set" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateNotificationPreferencesMockHandler(defaultPreferences),
       getPostV1UpdateUserTimezoneMockHandler(async ({ request }) => {
         const body = (await request.json()) as { timezone: string };
@@ -462,6 +468,28 @@ describe("SettingsPreferencesPage", () => {
 
     vi.unstubAllGlobals();
   });
+  test("renders the Browser notifications card regardless of the flag", async () => {
+    mockUseGetFlag.mockReturnValue(false);
+    Object.defineProperty(globalThis, "Notification", {
+      value: { permission: "default", requestPermission: vi.fn() },
+      configurable: true,
+      writable: true,
+    });
+    setupBaseHandlers();
+
+    try {
+      render(<SettingsPreferencesPage />);
+
+      expect(await screen.findByText("Browser")).toBeDefined();
+      expect(
+        screen.getByRole("switch", { name: "Notifications" }),
+      ).toBeDefined();
+      expect(screen.getByRole("switch", { name: "Sound" })).toBeDefined();
+    } finally {
+      delete (globalThis as { Notification?: unknown }).Notification;
+    }
+  });
+
   test("hides the notifications card when settings-notifications is off", async () => {
     mockUseGetFlag.mockReturnValue(false);
     setupBaseHandlers();
@@ -471,5 +499,80 @@ describe("SettingsPreferencesPage", () => {
     expect(await screen.findByText("Time zone")).toBeDefined();
     expect(screen.queryByRole("combobox", { name: "Briefing" })).toBeNull();
     expect(screen.queryAllByRole("switch")).toHaveLength(0);
+  });
+  describe("Cookie settings", () => {
+    afterEach(() => {
+      removeCookiebot();
+      vi.unstubAllEnvs();
+      vi.restoreAllMocks();
+    });
+
+    test("opens the Cookiebot dialog from the Cookies card", async () => {
+      configureCookiebot();
+      const { renew } = installCookiebot({ statistics: true });
+      setupBaseHandlers();
+
+      render(<SettingsPreferencesPage />);
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Cookie settings" }),
+      );
+
+      expect(renew).toHaveBeenCalledOnce();
+    });
+
+    test("explains why cookie settings are missing when Cookiebot could not load", async () => {
+      configureCookiebot();
+      vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
+      setupBaseHandlers();
+
+      render(<SettingsPreferencesPage />);
+
+      expect(
+        await screen.findByText(/cookie settings couldn.t load/i),
+      ).toBeDefined();
+      expect(
+        screen.queryByRole("button", { name: "Cookie settings" }),
+      ).toBeNull();
+    });
+
+    test("offers the button once Cookiebot finishes loading", async () => {
+      configureCookiebot();
+      const readyState = vi
+        .spyOn(document, "readyState", "get")
+        .mockReturnValue("interactive");
+      setupBaseHandlers();
+
+      render(<SettingsPreferencesPage />);
+
+      const button = await screen.findByRole("button", {
+        name: "Cookie settings",
+      });
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+
+      const { renew } = installCookiebot();
+      readyState.mockReturnValue("complete");
+      act(() => {
+        window.dispatchEvent(new Event("load"));
+      });
+
+      await waitFor(() =>
+        expect((button as HTMLButtonElement).disabled).toBe(false),
+      );
+      fireEvent.click(button);
+      expect(renew).toHaveBeenCalledOnce();
+    });
+
+    test("hides the Cookies card when no consent banner is configured", async () => {
+      vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
+      setupBaseHandlers();
+
+      render(<SettingsPreferencesPage />);
+
+      expect(await screen.findByText("Time zone")).toBeDefined();
+      expect(
+        screen.queryByRole("button", { name: "Cookie settings" }),
+      ).toBeNull();
+    });
   });
 });

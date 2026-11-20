@@ -6,6 +6,7 @@ from pydantic import SecretStr
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -134,6 +135,8 @@ class PublishToMediumBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def create_post(

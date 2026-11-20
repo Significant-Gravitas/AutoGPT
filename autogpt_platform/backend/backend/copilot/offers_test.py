@@ -17,6 +17,7 @@ from backend.copilot.offers import (
 from backend.copilot.transports import ChatTransportResponse
 from backend.data.llm_registry import registry
 from backend.util.settings import BehaveAs
+from backend.util.testing import Rendezvous
 
 USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
@@ -115,6 +116,31 @@ async def test_provider_family_groups_without_becoming_the_credential(
     assert chatgpt.provider_family == "openai"
     assert chatgpt.auth_method == "chatgpt_oauth"
     assert chatgpt.credential_id == "cred-1"
+
+
+@pytest.mark.asyncio
+async def test_microsoft_offer_uses_device_auth_and_has_no_fake_model_tiers(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_transports(
+        mocker,
+        [
+            _transport(
+                "microsoft_365_copilot",
+                "cred-msft",
+                "Microsoft 365 Copilot",
+            )
+        ],
+    )
+
+    (offer,) = await get_connection_offers(USER_ID)
+
+    assert offer.auth_provider == "microsoft_365_copilot"
+    assert offer.provider_family == "microsoft"
+    assert offer.auth_method == "device_code"
+    assert offer.backed_by_label == "Your Microsoft 365 Copilot plan"
+    assert offer.tiers == []
+    assert "spend no AutoGPT credits" in offer.description
 
 
 @pytest.mark.asyncio
@@ -268,7 +294,7 @@ async def test_chatgpt_states_the_edge_a_user_can_actually_hit(
     (offer,) = await get_connection_offers(USER_ID)
 
     assert offer.limitations == [
-        "The agent builder's chat panel always runs on AutoGPT."
+        "The workflow builder's chat panel always runs on AutoGPT."
     ]
 
 
@@ -575,3 +601,37 @@ class TestAdvancedTierEntitlement:
             new=AsyncMock(side_effect=RuntimeError("billing down")),
         )
         assert await advanced_tier_allowed(USER_ID) is True
+
+
+@pytest.mark.asyncio
+async def test_the_engine_entitlement_and_connections_are_read_side_by_side(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Three independent reads: engine, Advanced entitlement and connections."""
+    meeting = Rendezvous(3)
+    mocker.patch.object(
+        provider_tiers,
+        "resolve_use_sdk",
+        new=AsyncMock(side_effect=meeting.returning(True)),
+    )
+    mocker.patch.object(
+        offers, "has_entitlement", new=AsyncMock(side_effect=meeting.returning(False))
+    )
+    mocker.patch.object(
+        offers,
+        "get_chat_transports",
+        new=AsyncMock(
+            side_effect=meeting.returning(
+                [_transport(default=True), _transport("codex", "cred-1", "ChatGPT")]
+            )
+        ),
+    )
+
+    platform, chatgpt = await get_connection_offers(USER_ID)
+
+    assert [t.display_model for t in platform.tiers] == [
+        "thinking-standard-model",
+        "thinking-advanced-model",
+    ]
+    assert [t.selectable for t in platform.tiers] == [True, False]
+    assert chatgpt.provider_family == "openai"

@@ -55,7 +55,16 @@ def __convert_dict(value: Any) -> dict:
 
 
 def __convert_tuple(value: Any) -> tuple:
-    if isinstance(value, (str, list, set)):
+    if isinstance(value, str):
+        value = value.strip()
+        if value.startswith("[") and value.endswith("]"):
+            try:
+                parsed = json.loads(value)
+                return tuple(parsed) if isinstance(parsed, list) else (value,)
+            except json.JSONDecodeError:
+                return (value,)
+        return (value,)
+    if isinstance(value, (list, set)):
         return tuple(value)
     elif isinstance(value, dict):
         return tuple(value.items())
@@ -68,7 +77,21 @@ def __convert_tuple(value: Any) -> tuple:
 
 
 def __convert_set(value: Any) -> set:
-    if isinstance(value, (str, list, tuple)):
+    if isinstance(value, str):
+        value = value.strip()
+        if value.startswith("[") and value.endswith("]"):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    try:
+                        return set(parsed)
+                    except TypeError:
+                        return {value}
+                return {value}
+            except json.JSONDecodeError:
+                return {value}
+        return {value}
+    if isinstance(value, (list, tuple)):
         return set(value)
     elif isinstance(value, dict):
         return set(value.items())
@@ -94,6 +117,11 @@ def __convert_num(value: Any, num_type: Type[NUM]) -> NUM:
     elif isinstance(value, num_type):
         return value
     else:
+        if num_type is int and isinstance(value, str):
+            try:
+                return num_type(value)
+            except ValueError:
+                pass
         try:
             return num_type(float(value))
         except (ValueError, TypeError):
@@ -104,7 +132,7 @@ def __convert_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     elif isinstance(value, str):
-        if value.lower() in ["true", "1"]:
+        if value.strip().lower() in ["true", "1"]:
             return True
         else:
             return False
@@ -324,7 +352,11 @@ def coerce_inputs_to_schema(data: dict[str, Any], schema: type) -> None:
 
     This is the single authoritative coercion step shared by the executor
     (``validate_exec``) and the CoPilot (``execute_block``).
+
+    A value that can't be converted is left as it is, and the first such
+    error is raised once every other field has been coerced.
     """
+    first_error: ConversionError | None = None
     for name, field_info in schema.model_fields.items():
         value = data.get(name)
         if value is None:
@@ -334,7 +366,21 @@ def coerce_inputs_to_schema(data: dict[str, Any], schema: type) -> None:
             continue
         if _value_satisfies_type(value, target):
             continue
-        data[name] = convert(value, target)
+        try:
+            data[name] = convert(value, target)
+        except ConversionError as e:
+            shown = repr(value)
+            if len(shown) > 100:
+                shown = shown[:100] + "..."
+            target_name = getattr(target, "__name__", str(target))
+            if first_error is None:
+                first_error = ConversionError(
+                    f"Input `{name}` can't take the value {shown}: "
+                    f"it can't be converted to {target_name}"
+                )
+                first_error.__cause__ = e
+    if first_error is not None:
+        raise first_error
 
 
 class FormattedStringType(str):

@@ -37,6 +37,31 @@ describe("synthesizeSpeech", () => {
 
     await expect(synthesizeSpeech("Flag is off.", null)).rejects.toThrow("404");
   });
+
+  it.each([
+    {
+      status: 429,
+      message:
+        "You've reached your usage limit — voice replies are paused until it resets.",
+    },
+    {
+      status: 402,
+      message: "Voice replies need an active AutoGPT subscription.",
+    },
+    {
+      status: 503,
+      message: "Voice replies are unavailable right now. Try again shortly.",
+    },
+  ])(
+    "explains how to recover from HTTP $status",
+    async ({ status, message }) => {
+      vi.mocked(fetch).mockResolvedValueOnce(new Response("", { status }));
+
+      await expect(synthesizeSpeech("A reply.", "session-1")).rejects.toThrow(
+        new Error(message),
+      );
+    },
+  );
 });
 
 describe("transcribeUtterance", () => {

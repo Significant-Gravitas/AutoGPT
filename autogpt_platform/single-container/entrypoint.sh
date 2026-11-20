@@ -40,7 +40,7 @@ prepare_directories() {
   for managed_path in \
     /data/config /data/postgres /data/rabbitmq /data/valkey \
     /data/valkey/17000 /data/valkey/17001 /data/valkey/17002 /data/falkordb \
-    /data/workspaces /data/home /data/frontend-home \
+    /data/workspaces /data/store-media /data/home /data/frontend-home \
     /data/cache /data/cache/backend /data/cache/next \
     "${CODEX_TEMP_ROOT}"; do
     [[ ! -L "${managed_path}" ]] || fatal "refusing symlink at managed data path: ${managed_path}"
@@ -54,6 +54,7 @@ prepare_directories() {
   install -d -m 0750 -o autogpt-valkey -g autogpt-valkey /data/valkey/17002
   install -d -m 0750 -o autogpt-falkor -g autogpt-falkor /data/falkordb
   install -d -m 0750 -o autogpt -g autogpt /data/workspaces
+  install -d -m 0750 -o autogpt -g autogpt /data/store-media
   install -d -m 0750 -o autogpt -g autogpt /data/home
   install -d -m 0700 -o autogpt_frontend -g autogpt_frontend /data/frontend-home
   install -d -m 0711 -o root -g root /data/cache
@@ -107,9 +108,17 @@ configure_environment() {
   )"
   export AUTOGPT_PUBLIC_URL
   log "public URL: ${AUTOGPT_PUBLIC_URL}"
+  # The operator's TRUSTED_PROXIES name the proxies in front of the container.
+  AUTOGPT_TRUSTED_PROXIES="$(
+    "${AUTOGPT_PYTHON}" "${AUTOGPT_ASSET_DIR}/runtime_config.py" \
+      validate-trusted-proxies -- "${TRUSTED_PROXIES:-}"
+  )"
+  [[ -z "${AUTOGPT_TRUSTED_PROXIES}" ]] || \
+    log "proxies in front of the container: ${AUTOGPT_TRUSTED_PROXIES}"
   configure_account_registration
   configure_backend_cors_origin
   write_nginx_public_url_config
+  write_nginx_real_ip_config
 
   export PGDATA=/data/postgres
   export POSTGRES_USER=postgres POSTGRES_DB=postgres
@@ -151,6 +160,8 @@ configure_environment() {
   export NOTIFICATIONMANAGER_HOST=127.0.0.1 PLATFORMLINKINGMANAGER_HOST=127.0.0.1
   export COPILOTEXECUTOR_HOST=127.0.0.1 COPILOTCHATBRIDGE_HOST=127.0.0.1
   export AGENT_API_HOST=127.0.0.1 WEBSOCKET_SERVER_HOST=127.0.0.1
+  # The services' only proxy is the image's nginx, which sends the visitor alone.
+  export TRUSTED_PROXIES=127.0.0.1,::1
   # The persistent backend JSON contains user-tunable product settings, but it
   # must not be able to move or expose appliance services. Environment values
   # have higher Pydantic priority, so pin the fixed internal topology here.
@@ -164,6 +175,7 @@ configure_environment() {
   export PLATFORM_LINKING_SERVICE_PORT="${AUTOGPT_PLATFORM_LINKING_SERVICE_PORT}"
   export COPILOT_CHAT_BRIDGE_PORT="${AUTOGPT_COPILOT_CHAT_BRIDGE_PORT}"
   export BATCH_EXECUTOR_PORT="${AUTOGPT_BATCH_EXECUTOR_PORT}"
+  export SWAP_CREDENTIAL_SERVICE_PORT="${AUTOGPT_SWAP_CREDENTIAL_SERVICE_PORT}"
   # Keep self-hosted product behavior without enabling LOCAL-only API docs and
   # asyncio debug mode on the public REST process.
   # BEHAVE_AS defaults to local (self-hosted product behavior) but stays
@@ -177,7 +189,18 @@ configure_environment() {
   # transport) regardless of subscription tier. That is correct for a
   # single-tenant self-hosted install. Any multi-tenant or hosted deployment
   # MUST set BEHAVE_AS=cloud, or every user gets every gated capability.
-  export APP_ENV=dev BEHAVE_AS="${BEHAVE_AS:-local}" ENABLE_AUTH=true
+  export APP_ENV=dev BEHAVE_AS="${BEHAVE_AS:-local}"
+
+  # AutoPilot's daily/weekly USD spend caps are tuned for AutoGPT Cloud
+  # tiers. Without PostHog flags every account resolves to NO_TIER, which
+  # falls back to the BASIC multiplier and would inherit the cloud ceilings
+  # from ChatConfig. A self-hosted operator pays the model provider directly,
+  # so both caps are off unless the operator sets them. -1 is the "no cap"
+  # sentinel; a positive microdollar amount (1 USD = 1000000) re-enables a
+  # spend guard for that window. An empty value also means "unset" so a
+  # blank template field never reaches Pydantic as a non-integer.
+  export CHAT_DAILY_COST_LIMIT_MICRODOLLARS="${CHAT_DAILY_COST_LIMIT_MICRODOLLARS:--1}"
+  export CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS="${CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS:--1}"
 
   export BETTER_AUTH_URL="${AUTOGPT_PUBLIC_URL}"
   export BETTER_AUTH_INTERNAL_URL=http://127.0.0.1:3001
@@ -222,6 +245,27 @@ write_nginx_public_url_config() {
     printf "set \$autogpt_public_host \"%s\";\n" "${public_host}"
     printf "set \$autogpt_public_scheme \"%s\";\n" "${public_scheme}"
   } >"${path}"
+}
+
+write_nginx_real_ip_config() {
+  local path="${AUTOGPT_RUNTIME_DIR}/nginx/real-ip.conf"
+  [[ ! -L "${path}" ]] || fatal "refusing symlink at nginx real IP config"
+  install -m 0600 -o autogpt_proxy -g autogpt_proxy /dev/null "${path}"
+  nginx_real_ip_config >"${path}"
+}
+
+# nginx takes the visitor from X-Forwarded-For only from a listed proxy, walking
+# right to left past listed ones; with none listed, the connecting peer is it.
+nginx_real_ip_config() {
+  local -a proxies
+  local proxy
+  read -r -a proxies <<<"${AUTOGPT_TRUSTED_PROXIES:-}"
+  ((${#proxies[@]} > 0)) || return 0
+  for proxy in "${proxies[@]}"; do
+    printf "set_real_ip_from %s;\n" "${proxy}"
+  done
+  printf "real_ip_header X-Forwarded-For;\n"
+  printf "real_ip_recursive on;\n"
 }
 
 normalize_integer() {

@@ -61,11 +61,11 @@ export function SetupTriggerTool({ part }: Props) {
         !successOutput &&
         !configRequiredOutput &&
         !needLoginOutput && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-body text-foreground-tertiary">
             <ToolIcon isStreaming={isStreaming} isError={isError} />
             <MorphingTextAnimation
               text={text}
-              className={isError ? "text-red-500" : undefined}
+              className={isError ? "text-error" : undefined}
             />
           </div>
         )}
@@ -117,11 +117,11 @@ function TriggerSetupSuccessCard({ output }: { output: TriggerSetupOutput }) {
   }
 
   return (
-    <div className="grid gap-2 rounded-2xl border bg-background p-3">
+    <div className="grid gap-2 rounded-2xl border bg-canvas p-3">
       <ContentMessage>{output.message}</ContentMessage>
       {output.manual_setup_required && output.webhook_url && (
-        <div className="flex items-center gap-2 rounded-xl border bg-muted/40 p-2">
-          <code className="min-w-0 flex-1 break-all text-xs">
+        <div className="flex items-center gap-2 rounded-xl border bg-surface-hover/40 p-2">
+          <code className="ph-no-capture min-w-0 flex-1 text-caption break-all">
             {output.webhook_url}
           </code>
           <Button

@@ -58,7 +58,7 @@ Blocks represent actions and are the building blocks of your workflows, includin
 - Custom scripts or functions
 - Conditional logic and decision-making components
 
-You can learn more under: [Build your own Blocks](platform/new_blocks.md)
+You can learn more under: [Build your own Blocks](../platform/new_blocks.md)
 
 ## Available Language Models
 

@@ -4,6 +4,7 @@ from typing_extensions import Optional
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -77,6 +78,7 @@ class TodoistListSectionsBlock(Block):
                     ],
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -230,6 +232,7 @@ class TodoistGetSectionBlock(Block):
                     "name": "Groceries",
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -286,6 +289,8 @@ class TodoistDeleteSectionBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"delete_section": lambda *args, **kwargs: (True)},
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

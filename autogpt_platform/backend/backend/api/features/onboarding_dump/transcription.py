@@ -24,6 +24,7 @@ import tempfile
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
+from backend.api.features.onboarding_dump.models import MAX_DURATION_SECS
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -89,10 +90,9 @@ def get_stt_client() -> AsyncOpenAI | None:
 
     Built per call rather than ``@cached``: ``AsyncOpenAI`` binds its
     connection pool to the first event loop that uses it, so a process-wide
-    cache poisons itself across loops. ``backend/util/architecture_test.py``
-    enforces this — the cached helpers in ``util/clients.py`` are a
-    grandfathered allowlist that is being burned down, not the pattern to
-    copy. Finalize runs once per user, so the pool churn is negligible.
+    cache poisons itself across loops. ``architecture_loop_bound_clients_test.py``
+    enforces this; ``per_loop_cached`` is the cached alternative. Finalize
+    runs once per user, so the pool churn is negligible.
     """
     api_key = (
         settings.secrets.openai_internal_api_key or settings.secrets.openai_api_key
@@ -208,6 +208,12 @@ async def split_audio(
         if duration is None or duration <= 0:
             raise TranscriptionFailedError(
                 f"Could not determine the duration of {os.path.basename(filename)}"
+            )
+        # The request caps the claimed duration; this caps the one the loop runs on.
+        if duration > MAX_DURATION_SECS:
+            raise TranscriptionFailedError(
+                f"{os.path.basename(filename)} is longer than the "
+                f"{MAX_DURATION_SECS // 3600} hours a recording may be"
             )
         segments: list[bytes] = []
         start = 0.0
