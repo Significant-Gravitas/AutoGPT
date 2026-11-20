@@ -622,8 +622,10 @@ class BaseTool:
                 toolName=self.name,
                 output=ErrorResponse(
                     message=(
-                        f"{self.name} is not available in this delegated turn. "
-                        "If the task needs it, say so in your report instead."
+                        f"{self.name} is not available in this delegated turn, "
+                        "so the call did not run and nothing was created or "
+                        "changed. Say so in your report, and never report that "
+                        "it happened."
                     ),
                     session_id=session.session_id,
                 ).model_dump_json(),

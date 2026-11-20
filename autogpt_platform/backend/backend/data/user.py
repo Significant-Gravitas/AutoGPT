@@ -52,6 +52,7 @@ from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.product_analytics import track_signup_completed
 from backend.util.settings import Settings
+from backend.util.sql import escape_like
 
 if TYPE_CHECKING:
     from backend.integrations.credentials_store import IntegrationCredentialsStore
@@ -269,7 +270,20 @@ async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields
     )
 
 
-@cached(maxsize=1000, ttl_seconds=30, shared_cache=True)
+# Every message a WebSocket handles checks its account, and while Redis can't be
+# reached every check misses. Under the shared cache's default cap on misses, a
+# busy process's checks would queue behind each other past their 5 s bound, and
+# every socket would close with 1013. These are cheap primary-key lookups, and
+# one user's concurrent checks already share one, so they get room for all.
+_ACCOUNT_LOOKUP_MISSES = 1000
+
+
+@cached(
+    maxsize=1000,
+    ttl_seconds=30,
+    shared_cache=True,
+    max_concurrent_misses=_ACCOUNT_LOOKUP_MISSES,
+)
 async def is_user_banned(user_id: str) -> bool:
     """Whether an admin ban (Better Auth's ``banned``/``banExpires``) holds now.
 
@@ -279,7 +293,12 @@ async def is_user_banned(user_id: str) -> bool:
     return await user_db().is_auth_user_banned(user_id)
 
 
-@cached(maxsize=1000, ttl_seconds=30, shared_cache=True)
+@cached(
+    maxsize=1000,
+    ttl_seconds=30,
+    shared_cache=True,
+    max_concurrent_misses=_ACCOUNT_LOOKUP_MISSES,
+)
 async def is_user_account_closed(user_id: str) -> bool:
     """Whether the owner asked to delete the account (an AccountDeletionRequest
     exists), from any process. Lookup errors propagate, as for the ban."""
@@ -455,11 +474,13 @@ async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | Non
     query = query.strip()
     if not query or len(query) < 3:
         return []
+    # `contains` is an unescaped ILIKE: match `_` and `%` literally.
+    pattern = escape_like(query)
     users = await prisma.user.find_many(
         where={
             "OR": [
-                {"email": {"contains": query, "mode": "insensitive"}},
-                {"name": {"contains": query, "mode": "insensitive"}},
+                {"email": {"contains": pattern, "mode": "insensitive"}},
+                {"name": {"contains": pattern, "mode": "insensitive"}},
             ],
         },
         take=limit,
@@ -1195,11 +1216,6 @@ async def unsubscribe_from_marketing(user_id: str, email: str) -> None:
         )
 
 
-def _escape_like(value: str) -> str:
-    """`value` as a literal LIKE/ILIKE pattern (backslash is the default escape)."""
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 async def record_marketing_opt_out_by_email(email: str, source: str) -> str | None:
     """Record that the account at `email` refused marketing, from `source`.
 
@@ -1216,7 +1232,7 @@ async def record_marketing_opt_out_by_email(email: str, source: str) -> str | No
             # and `%` are wildcards: escape them so only this address matches,
             # and act only when exactly one account does.
             matches = await PrismaUser.prisma().find_many(
-                where={"email": {"equals": _escape_like(email), "mode": "insensitive"}},
+                where={"email": {"equals": escape_like(email), "mode": "insensitive"}},
                 take=2,
             )
             row = matches[0] if len(matches) == 1 else None

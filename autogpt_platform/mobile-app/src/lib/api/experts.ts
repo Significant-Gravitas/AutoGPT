@@ -22,8 +22,9 @@ export const expertKeys = {
   list: ["experts"] as const,
 };
 
-export function listExperts() {
-  return apiRequest<Expert[]>("/api/experts");
+// Takes React Query's context as is, so a dropped query cancels its fetch.
+export function listExperts({ signal }: { signal?: AbortSignal } = {}) {
+  return apiRequest<Expert[]>("/api/experts", { signal });
 }
 
 export interface BundledSkill {
