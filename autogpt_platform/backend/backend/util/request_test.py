@@ -1,4 +1,5 @@
 import codecs
+from io import BytesIO
 from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
@@ -1246,3 +1247,76 @@ def test_allowed_response_charsets_are_canonical_codec_names():
     assert {codecs.lookup(name).name for name in ALLOWED_RESPONSE_CHARSETS} == (
         ALLOWED_RESPONSE_CHARSETS
     )
+
+
+# --- A multipart upload is sent whole on every attempt and redirect hop ---
+
+
+@pytest.mark.asyncio
+async def test_a_retried_upload_sends_the_file_again():
+    """Each attempt re-adds the caller's file object to a new form, and the
+    first attempt leaves it at its end: without a rewind every retry (and
+    every redirect hop) uploads an empty file."""
+    received: list[bytes] = []
+
+    async def upload(request: web.Request) -> web.Response:
+        form = await request.post()
+        field = form["image"]
+        assert isinstance(field, web.FileField)
+        received.append(field.file.read())
+        if len(received) == 1:
+            return web.Response(status=503)
+        return web.json_response({"ok": True})
+
+    app = web.Application()
+    app.router.add_post("/upload", upload)
+    runner, base = await _serve(app)
+
+    try:
+        response = await _local_requests(
+            raise_for_status=False, retry_max_attempts=2, retry_max_wait=0.01
+        ).post(
+            f"{base}/upload",
+            files=[("image", ("cat.png", BytesIO(b"png bytes"), "image/png"))],
+            data={"rank": "1"},
+        )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert received == [b"png bytes", b"png bytes"]
+
+
+@pytest.mark.asyncio
+async def test_an_upload_redirected_with_307_arrives_whole():
+    """A 307 keeps the method and body, so the next hop re-sends the file:
+    it must get the whole file, not a handle the first hop consumed."""
+    received: list[bytes] = []
+
+    async def moved(request: web.Request) -> web.Response:
+        await request.read()
+        raise web.HTTPTemporaryRedirect("/upload")
+
+    async def upload(request: web.Request) -> web.Response:
+        form = await request.post()
+        field = form["image"]
+        assert isinstance(field, web.FileField)
+        received.append(field.file.read())
+        return web.json_response({"ok": True})
+
+    app = web.Application()
+    app.router.add_post("/moved", moved)
+    app.router.add_post("/upload", upload)
+    runner, base = await _serve(app)
+
+    try:
+        response = await _local_requests(raise_for_status=False).post(
+            f"{base}/moved",
+            files=[("image", ("cat.png", BytesIO(b"png bytes"), "image/png"))],
+            data={"rank": "1"},
+        )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert received == [b"png bytes"]
