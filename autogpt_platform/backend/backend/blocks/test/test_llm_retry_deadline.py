@@ -189,7 +189,8 @@ async def test_floor_stops_retrying_and_says_the_budget_ran_out(
     monkeypatch, budget, first_attempt
 ):
     """A retry left with less than the floor would only be cut off, so the
-    loop stops, names the budget, and still records what was spent."""
+    loop stops, names the budget, keeps the last attempt's error, and still
+    records what was spent."""
     block, _, slices = _deadline_block(
         monkeypatch, [(first_attempt, _MISSING_KEY)], budget
     )
@@ -198,10 +199,11 @@ async def test_floor_stops_retrying_and_says_the_budget_ran_out(
         await _run(block)
 
     assert slices == [budget]
-    assert str(err.value) == (
+    assert str(err.value).startswith(
         f"LLM retry budget of {budget}s ran out after 1 attempt(s) "
-        "without a valid response."
+        "without a valid response. Last error: "
     )
+    assert "Missing keys: {'key'}" in str(err.value)
     assert block.execution_stats.provider_cost == 0.25
 
 

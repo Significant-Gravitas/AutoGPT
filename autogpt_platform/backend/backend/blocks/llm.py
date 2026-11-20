@@ -797,9 +797,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     deadline, per_attempt_timeout, _now()
                 )
                 if attempt_timeout < min_attempt_timeout:
+                    # Keep the last attempt's error: it says why none succeeded.
                     error_feedback_message = (
                         f"LLM retry budget of {per_attempt_timeout}s ran out after "
-                        f"{retry_count} attempt(s) without a valid response."
+                        f"{retry_count} attempt(s) without a valid response. "
+                        f"Last error: {error_feedback_message}"
                     )
                     break
             logger.debug(f"LLM request: {prompt}")
