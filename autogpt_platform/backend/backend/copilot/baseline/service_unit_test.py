@@ -3395,13 +3395,33 @@ class TestRefreshFollowUpWarmContext:
 
 
 _GRACE_MS = 300
-# How much later than the grace a join may return: the event loop's timer
-# granularity (about 16 ms on Windows) and the task's cancellation.
-_JOIN_SLACK_S = 0.25
+# Caps a wait the tests expect to end well before it, so a join that waits
+# too long fails the test instead of hanging it. Far longer than a CI runner
+# stalls a test (#16920), and far shorter than the two below.
+_HANG_SECONDS = 10
+# A grace that no fast search outlasts, even on a stalled runner.
+_LONG_GRACE_MS = 60_000
+# The refresh's own deadline, out of the way: only the grace can end a join.
+_LONG_REFRESH_TIMEOUT_S = 60.0
+# How much sooner than its delay the event loop may run a timer: its clock's
+# resolution, about 16 ms on Windows.
+_TIMER_SLACK_S = 0.05
 
 
-async def _search_that_never_answers(*_args, **_kwargs):
-    await asyncio.Event().wait()
+class _HungSearch:
+    """A graph search that never answers, and when its wait was cancelled."""
+
+    def __init__(self) -> None:
+        self.cancelled = asyncio.Event()
+        self.cancelled_at = 0.0
+
+    async def __call__(self, *_args, **_kwargs):
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled_at = asyncio.get_running_loop().time()
+            self.cancelled.set()
+            raise
 
 
 def _staging_edge() -> EntityEdge:
@@ -3422,14 +3442,23 @@ class TestFollowUpRefreshJoinGrace:
     """The baseline engine starts the refresh after the pending fold, with
     nothing to overlap, so ``warm_context_refresh_join_grace_ms`` is its
     whole budget: the most it adds to time-to-first-token. Driven through
-    the real ``refresh_warm_context`` with the graph reads stubbed."""
+    the real ``refresh_warm_context`` with the graph reads stubbed.
 
-    async def _refresh(self, search) -> tuple[str | None, float]:
+    Neither test bounds the join's elapsed time from above, which a stalled
+    CI runner fails while the join is fine; one that waits too long runs
+    into ``_HANG_SECONDS`` instead."""
+
+    async def _refresh(self, search, *, grace_ms: int) -> str | None:
         with (
             patch.object(
                 context_refresh.graphiti_config,
                 "warm_context_refresh_join_grace_ms",
-                _GRACE_MS,
+                grace_ms,
+            ),
+            patch.object(
+                context_refresh.graphiti_config,
+                "context_refresh_timeout",
+                _LONG_REFRESH_TIMEOUT_S,
             ),
             patch.object(graphiti_context, "search_facts", new=search),
             patch.object(
@@ -3443,9 +3472,7 @@ class TestFollowUpRefreshJoinGrace:
                 new=AsyncMock(side_effect=lambda _scope, edges, eps: (edges, eps)),
             ),
         ):
-            loop = asyncio.get_running_loop()
-            started = loop.time()
-            out = await _refresh_follow_up_warm_context(
+            return await _refresh_follow_up_warm_context(
                 None,
                 graphiti_enabled=True,
                 user_id="u-1",
@@ -3454,28 +3481,37 @@ class TestFollowUpRefreshJoinGrace:
                 pre_drain_msg_count=4,
                 message="deploy the staging environment now",
             )
-            return out, loop.time() - started
 
     @pytest.mark.asyncio
-    async def test_a_hung_search_adds_at_most_the_grace(self, caplog):
+    async def test_a_hung_search_is_cancelled_at_the_grace(self, caplog):
         caplog.set_level(logging.INFO, logger=context_refresh.__name__)
+        search = _HungSearch()
+        started = asyncio.get_running_loop().time()
 
-        out, waited = await self._refresh(_search_that_never_answers)
+        async with asyncio.timeout(_HANG_SECONDS):
+            out = await self._refresh(search, grace_ms=_GRACE_MS)
+            await search.cancelled.wait()
 
         assert out is None
-        assert _GRACE_MS / 1000 - 0.05 <= waited <= _GRACE_MS / 1000 + _JOIN_SLACK_S
         late = [r for r in caplog.records if "refresh late, skipped" in r.message]
         assert len(late) == 1 and late[0].levelno == logging.INFO
+        # Not before the grace. Only a lower bound: a stall makes it longer.
+        assert search.cancelled_at - started >= _GRACE_MS / 1000 - _TIMER_SLACK_S
 
     @pytest.mark.asyncio
-    async def test_a_fast_search_is_still_injected(self, caplog):
+    async def test_a_fast_search_is_injected_without_waiting_out_the_grace(
+        self, caplog
+    ):
         caplog.set_level(logging.INFO, logger=context_refresh.__name__)
 
-        out, waited = await self._refresh(AsyncMock(return_value=[_staging_edge()]))
+        # A join that waited out the grace would reach _HANG_SECONDS first.
+        async with asyncio.timeout(_HANG_SECONDS):
+            out = await self._refresh(
+                AsyncMock(return_value=[_staging_edge()]), grace_ms=_LONG_GRACE_MS
+            )
 
         assert out is not None
         assert "the staging environment runs on k3s" in out
-        assert waited < _GRACE_MS / 1000
         assert "refresh late" not in caplog.text
 
 
