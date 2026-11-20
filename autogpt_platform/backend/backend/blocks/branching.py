@@ -150,6 +150,10 @@ class ConditionBlock(Block):
 
         try:
             result = comparison_funcs[operator](value1, value2)
+        except InvalidOperation:
+            # A fraction at or above 2**53 is kept as a Decimal, and ordering
+            # a Decimal against NaN raises where a float compares False.
+            result = False
         except Exception as e:
             raise ValueError(f"Comparison failed: {e}") from e
 
