@@ -1,5 +1,6 @@
 """How ``Requests`` follows a redirect: the method and body each hop is sent
-with, as RFC 9110 §15.4 has it (#17145).
+with, as RFC 9110 §15.4 has it (#17145), and the credential headers a hop to
+another origin leaves behind.
 
 Every test drives real local servers and asserts what each hop received."""
 
@@ -15,8 +16,10 @@ import pytest
 from aiohttp import web
 from pydantic import BaseModel
 
+from backend.util import request as request_module
 from backend.util.request import HTTPClientError, Requests
 from backend.util.request_test_helpers import ENDS_WITHIN_SECONDS, local_requests, serve
+from backend.util.url_redaction import is_credential_header
 
 
 class Received(BaseModel):
@@ -538,3 +541,127 @@ async def test_a_hop_turned_into_a_get_counts_towards_max_redirects():
             )
 
     assert [hop.method for hop in received] == ["POST", "GET", "GET"]
+
+
+# --- Credentials stay on their origin ---
+
+# Dropped on a hop to another origin by name, whatever ``is_credential_header``
+# comes to match: the common API key and token headers, and the names blocks
+# here send credentials under.
+NAMED_CREDENTIAL_HEADERS = [
+    "X-Api-Key",
+    "Api-Key",
+    "X-Goog-Api-Key",
+    "X-Auth-Token",
+    "X-Access-Token",
+    "X-Amz-Security-Token",
+    "Key",
+    "Api_Key",
+    "Profile-Key",
+    "X-Access-Key",
+]
+# Dropped by the shape of their names alone, as a glued name or a name of a
+# provider's own is.
+CREDENTIAL_SHAPED_HEADERS = [
+    "apikey",
+    "Private-Token",
+    "X-Store-Token",
+    "X-Client-Secret",
+    "X-Session-Id",
+    "X-Subscription-Key",
+    "X-Request-Signature",
+    "X-Auth-Email",
+]
+# Headers that carry no credential, which every hop keeps.
+ORDINARY_HEADERS = {
+    "X-Request-Id": "order-1",
+    "Accept": "application/json",
+    "X-Title": "Orders",
+}
+
+
+async def _through_a_307(
+    client: Requests, origin: str, headers: dict[str, str]
+) -> tuple[Received, Received]:
+    """A POST that a 307 sends on, body and all, to *origin*'s next hop."""
+    async with origins() as (first, second, received):
+        first.routes["/start"] = redirect(307, location(second, origin))
+        first.routes["/next"] = second.routes["/next"] = done
+        response = await bounded(
+            client.post(f"{first.base}/start", json={"order": 1}, headers=headers)
+        )
+    assert response.status == 200
+    initial, following = received
+    assert following.server == ("first" if origin == "same-origin" else "second")
+    assert following.body == b'{"order": 1}'
+    return initial, following
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "where", ["headers", "extra_headers"], ids=["call-headers", "client-headers"]
+)
+@pytest.mark.parametrize("header", NAMED_CREDENTIAL_HEADERS + CREDENTIAL_SHAPED_HEADERS)
+async def test_a_hop_to_another_origin_drops_each_credential_header(
+    header: str, where: str
+):
+    credential = {header: "credential-value"}
+    client = local_requests(
+        extra_headers=credential if where == "extra_headers" else None
+    )
+    call_headers = {**ORDINARY_HEADERS, **(credential if where == "headers" else {})}
+
+    initial, following = await _through_a_307(client, "cross-origin", call_headers)
+
+    # It did go out, so the next hop can show it was dropped.
+    assert initial.headers[header.lower()] == "credential-value"
+    assert header.lower() not in following.headers
+    assert {k.lower(): v for k, v in ORDINARY_HEADERS.items()}.items() <= (
+        following.headers.items()
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("header", NAMED_CREDENTIAL_HEADERS)
+async def test_the_named_credential_headers_are_dropped_without_the_name_rule(
+    header: str, monkeypatch: pytest.MonkeyPatch
+):
+    """``is_credential_header`` is tuned for masking logs; a change there must
+    not let a header known to carry a credential through."""
+    monkeypatch.setattr(request_module, "is_credential_header", lambda name: False)
+
+    initial, following = await _through_a_307(
+        local_requests(), "cross-origin", {header: "credential-value"}
+    )
+
+    assert initial.headers[header.lower()] == "credential-value"
+    assert header.lower() not in following.headers
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("header", NAMED_CREDENTIAL_HEADERS + CREDENTIAL_SHAPED_HEADERS)
+async def test_a_hop_on_the_same_origin_keeps_every_header(header: str):
+    headers = {**ORDINARY_HEADERS, header: "credential-value"}
+
+    _, following = await _through_a_307(local_requests(), "same-origin", headers)
+
+    assert {k.lower(): v for k, v in headers.items()}.items() <= (
+        following.headers.items()
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("named", [True, False], ids=["named", "not-named"])
+async def test_a_caller_still_names_the_credential_headers_the_rule_does_not_know(
+    named: bool,
+):
+    header = "X-Passphrase"
+    assert not is_credential_header(header)
+    client = local_requests(sensitive_headers=[header] if named else [])
+
+    initial, following = await _through_a_307(
+        client, "cross-origin", {header: "credential-value"}
+    )
+
+    assert initial.headers["x-passphrase"] == "credential-value"
+    assert ("x-passphrase" in following.headers) is not named

@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.util.json import loads
 from backend.util.request_body import PreparedBody, Uploads, prepare_body
 from backend.util.settings import Config
+from backend.util.url_redaction import is_credential_header
 
 
 class HTTPClientError(Exception):
@@ -249,9 +250,30 @@ def _is_ip_blocked(ip: str) -> bool:
     return False
 
 
-# Lower-cased: HTTP header names are case-insensitive, so a caller passing
-# ``{"authorization": ...}`` must be stripped just like ``{"Authorization": ...}``.
-SENSITIVE_HEADERS = frozenset({"authorization", "proxy-authorization", "cookie"})
+# The headers a hop to another origin drops by name, lower-cased: HTTP header
+# names are case-insensitive, so a caller passing ``{"authorization": ...}``
+# must be stripped just like ``{"Authorization": ...}``. The hop also drops
+# any header ``is_credential_header`` reads as a credential's; the names here
+# are dropped whatever that comes to match.
+SENSITIVE_HEADERS = frozenset(
+    {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        # API keys and tokens under their common names
+        "x-api-key",
+        "api-key",
+        "x-goog-api-key",
+        "x-auth-token",
+        "x-access-token",
+        "x-amz-security-token",
+        # and under the names blocks here send them by
+        "key",
+        "api_key",
+        "profile-key",
+        "x-access-key",
+    }
+)
 
 
 def _drop_headers(headers: dict, names: Iterable[str]) -> None:
@@ -281,15 +303,29 @@ def _remove_insecure_headers(
     sensitive_headers: Iterable[str] = (),
 ) -> dict:
     """
-    Removes sensitive headers (Authorization, Proxy-Authorization, Cookie,
-    plus any names in *sensitive_headers*) when *cross_origin*.
+    Removes, when *cross_origin*, every header that may carry a credential:
+    those in ``SENSITIVE_HEADERS`` and *sensitive_headers*, and any whose name
+    ``is_credential_header`` reads as a credential's, with ``token``,
+    ``secret``, ``key``, ``auth`` or ``session`` (among others) anywhere in
+    it. A hop that stays on the origin keeps every header.
+
+    The rule also takes some names that carry no credential, such as
+    ``Idempotency-Key``: on a hop to another origin, dropping one of those
+    costs less than sending a credential the rule missed.
 
     The caller decides, so that one origin decision covers every carrier of a
     credential: these headers, and the ``auth=``/``cookies=`` kwargs aiohttp
     turns into headers of its own downstream of this call.
     """
     if cross_origin:
-        _drop_headers(headers, [*SENSITIVE_HEADERS, *sensitive_headers])
+        _drop_headers(
+            headers,
+            [
+                *SENSITIVE_HEADERS,
+                *sensitive_headers,
+                *(name for name in headers if is_credential_header(name)),
+            ],
+        )
     return headers
 
 
@@ -771,8 +807,12 @@ class Requests:
     describe it (``Content-Type``, ``Content-Length`` and the rest) or
     aiohttp's ``chunked`` and ``expect100``; a HEAD stays a HEAD. A 307 or
     308, and a 301 or 302 answering any other method, sends the same method
-    and body again. Every hop goes through the same URL checks as the first,
-    and a hop to another origin goes without the credentials.
+    and body again. Every hop goes through the same URL checks as the first.
+    A hop to another origin goes without the ``auth=`` and ``cookies=`` it
+    was given and without any header that may carry a credential: those in
+    ``SENSITIVE_HEADERS`` or ``sensitive_headers``, and any whose name
+    ``is_credential_header`` reads as a credential's. A hop that stays on the
+    origin keeps every header.
 
     A request that may send its body more than once, because it retries or
     follows redirects, sends all of it every time; ``prepare_body`` in
@@ -797,8 +837,9 @@ class Requests:
         sensitive_headers: Iterable[str] = (),
     ):
         self.max_response_bytes = max_response_bytes
-        # Headers bound to the request's origin, like ``Authorization``: a
-        # cross-origin redirect drops them along with ``SENSITIVE_HEADERS``.
+        # Headers bound to the request's origin under names neither
+        # ``SENSITIVE_HEADERS`` nor ``is_credential_header`` knows: a
+        # cross-origin redirect drops them too.
         self.sensitive_headers = frozenset(sensitive_headers)
         self.trusted_origins = []
         for url in trusted_origins or []:
