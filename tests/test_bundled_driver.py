@@ -118,7 +118,12 @@ def test_a_look_held_by_a_folder_does_not_hold_another_threads_import(
     real_stat = os.stat
 
     def stat(path: Any, *args: Any, **kwargs: Any) -> os.stat_result:
-        if os.fspath(path).startswith(str(stalled)):
+        # The folder stops answering for the look, and for the look alone:
+        # then nothing but the look can keep the import waiting. A coverage
+        # tool that measures the import looks at each folder of sys.path
+        # for itself, on the importing thread, and that look isn't what
+        # this test is about.
+        if threading.current_thread() is look and os.fspath(path).startswith(str(stalled)):
             held.set()
             answers.wait(60)
         return real_stat(path, *args, **kwargs)
