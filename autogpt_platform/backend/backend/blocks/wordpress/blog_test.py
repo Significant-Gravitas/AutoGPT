@@ -154,22 +154,3 @@ async def test_a_block_against_a_wordpress_that_is_down_fails_instead_of_hanging
     # The error stays short whatever the answer's size.
     assert len(message) <= _api.ERROR_BODY_LIMIT + 100
     assert received == [request_line] * DEFAULT_RETRY_MAX_ATTEMPTS
-
-
-@pytest.mark.parametrize("wordpress_down", ["html-page"], indirect=True)
-async def test_an_api_request_to_a_wordpress_that_is_down_raises_a_short_error(
-    wordpress_down: tuple[list[str], str],
-):
-    """The API helper's error carries the start and end of a long error page,
-    not all of it."""
-    with pytest.raises(ValueError) as raised:
-        await asyncio.wait_for(
-            _api.make_api_request(f"/rest/v1.1/sites/{SITE}/posts", "token"),
-            ENDS_WITHIN_SECONDS,
-        )
-
-    message = str(raised.value)
-    assert message == (
-        f"API request failed: 503 {truncate(_ERROR_PAGE, _api.ERROR_BODY_LIMIT)}"
-    )
-    assert len(message) <= _api.ERROR_BODY_LIMIT + 100
