@@ -27,6 +27,7 @@ from backend.data.expert_attribution import resolve_attributable_expert
 from backend.data.tenancy import tenancy_for_new_row
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, dumps, sanitize_string
+from backend.util.sql import escape_like
 
 from .duplicate_message_id import is_duplicate_chat_message_id_error
 from .model import (
@@ -1029,7 +1030,7 @@ def _visible_sessions_where(
             f'("organizationId" = ${len(params)} OR "expertId" IS NOT NULL)'
         )
     if title_contains:
-        params.append(f"%{_escape_like(title_contains)}%")
+        params.append(f"%{escape_like(title_contains)}%")
         conditions.append(f'"title" ILIKE ${len(params)}')
     if expert_id is not None:
         params.append(expert_id)
@@ -1244,15 +1245,6 @@ async def get_session_titles(
         where={"id": {"in": session_ids}, "userId": user_id}
     )
     return {row.id: row.title for row in rows}
-
-
-def _escape_like(value: str) -> str:
-    """Escape LIKE wildcards so ``title_contains`` matches literally.
-
-    Parity with Prisma's ``contains`` filter, which escapes them too;
-    Postgres' default LIKE escape character is the backslash.
-    """
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 async def delete_chat_session(
@@ -1717,6 +1709,7 @@ async def list_chat_sessions_by_status(
 async def list_recent_chat_sessions(
     *,
     user_id: str,
+    organization_id: str | None,
     expert_id: str | None = None,
     status: str | None = None,
     limit: int = 50,
@@ -1725,14 +1718,21 @@ async def list_recent_chat_sessions(
     """The user's most recently active sessions, newest first.
 
     Backs ``find_session``. Scoped to ``user_id`` in the query itself, so
-    another user's session is invisible rather than merely unlisted. The
+    another user's session is invisible rather than merely unlisted.
+    ``organization_id`` is matched exactly, with none of the carve-outs of
+    ``_own_org_scope``: this read feeds one session's data into another, and
+    that must not cross organizations. ``None`` matches untagged rows only. The
     expert and status filters are applied in the query too, so ``limit``
     bounds the matches rather than the rows scanned — filtering them in
     Python would silently drop matches older than the window. ``skip`` pages
     the caller past rows it has already looked at, for the one filter that
     cannot move into the query (``task`` reads the metadata JSON).
     """
-    where: ChatSessionWhereInput = {"userId": user_id, "archivedAt": None}
+    where: ChatSessionWhereInput = {
+        "userId": user_id,
+        "organizationId": organization_id,
+        "archivedAt": None,
+    }
     if expert_id:
         where["expertId"] = expert_id
     if status:

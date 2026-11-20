@@ -13,6 +13,7 @@ from uuid import uuid4
 import httpx
 import pytest
 import pytest_asyncio
+import redis.asyncio.cluster
 import sentry_sdk
 from dotenv import load_dotenv
 from sentry_sdk.envelope import Envelope
@@ -22,10 +23,13 @@ from backend.data import redis_client, versioned_cache
 from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
-from backend.util import posthog_client
+from backend.util import cache as shared_cache
+from backend.util import cache_redis, posthog_client
 from backend.util.httpx_client_guard import HttpxClientGuard, left_open_report
 from backend.util.logging import configure_logging
 from backend.util.platform_payment import settings as platform_payment_settings
+from backend.util.redis_client_guard import RedisClientGuard
+from backend.util.redis_client_guard import left_open_report as redis_left_open_report
 from backend.util.settings import Settings
 from backend.util.testing import unreachable_tcp_endpoints
 from backend.util.tracing import traces_sampler
@@ -171,15 +175,41 @@ async def no_leaked_db_transaction(request: pytest.FixtureRequest):
     )
 
 
+@pytest.fixture(autouse=True)
+def patient_shared_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """In production the shared cache waits ``REDIS_OP_TIMEOUT_S`` (1 s) for
+    each Redis command, each connect and each close of a loop's client, then
+    gives up. A runner that pauses that long would turn a test's hit into a
+    miss, or leave a client open for the guard to fail, so a test waits 30 s.
+    A test of a bound sets its own."""
+    monkeypatch.setattr(shared_cache, "REDIS_OP_TIMEOUT_S", 30.0)
+    monkeypatch.setattr(cache_redis, "REDIS_OP_TIMEOUT_S", 30.0)
+
+
 _HTTPX_CLIENTS = HttpxClientGuard()
+# A test fails for leaving the shared cache's client open. One made through
+# backend.data.redis_client is reported instead: closing a loop without
+# shutdown_asyncgens() still leaks those (#17087), and its fix makes the guard
+# enforce for them too.
+_REDIS_CLIENTS = RedisClientGuard(
+    enforced=lambda client: isinstance(client, cache_redis._AsyncRedisCluster)
+)
+_TOLERATED_REDIS_LEAKS: list[str] = []
 
 
 @pytest.fixture(scope="session", autouse=True)
 def record_httpx_clients() -> Iterator[None]:
-    """Shows ``pytest_runtest_teardown`` the LLM SDK clients each test used."""
+    """Shows ``pytest_runtest_teardown`` the LLM SDK clients and the async
+    Redis Cluster clients each test used."""
+    redis_cluster = redis.asyncio.cluster.RedisCluster
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(
             httpx.AsyncClient, "send", _HTTPX_CLIENTS.wrap(httpx.AsyncClient.send)
+        )
+        patch.setattr(
+            redis_cluster,
+            "execute_command",
+            _REDIS_CLIENTS.wrap(redis_cluster.execute_command),
         )
         yield
 
@@ -187,25 +217,49 @@ def record_httpx_clients() -> Iterator[None]:
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_setup(item: pytest.Item) -> Iterator[None]:
     _HTTPX_CLIENTS.start()
+    _REDIS_CLIENTS.start()
     return (yield)
 
 
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_teardown(item: pytest.Item) -> Iterator[None]:
-    """Fail a test that leaves an OpenAI, Anthropic or Groq client open on its
-    closed event loop, so the test that leaked it fails instead of whichever
-    one runs when the client is garbage-collected (``httpx_client_guard.py``).
-    When teardown
-    itself fails, its error stands, with any such clients noted on it."""
+    """Fail a test that leaves an OpenAI, Anthropic or Groq client, or an
+    async Redis Cluster client, open on its closed event loop, so the test
+    that leaked it fails instead of whichever one runs when the client is
+    garbage-collected (``httpx_client_guard.py``, ``redis_client_guard.py``).
+    When teardown itself fails, its error stands, with any such clients noted
+    on it."""
     try:
         result = yield
     except BaseException as error:
-        if left_open := _HTTPX_CLIENTS.stop():
-            error.add_note(left_open_report(item.nodeid, left_open))
+        for report in _clients_left_open(item.nodeid):
+            error.add_note(report)
         raise
-    if left_open := _HTTPX_CLIENTS.stop():
-        pytest.fail(left_open_report(item.nodeid, left_open), pytrace=False)
+    if reports := _clients_left_open(item.nodeid):
+        pytest.fail("\n\n".join(reports), pytrace=False)
     return result
+
+
+def _clients_left_open(nodeid: str) -> list[str]:
+    reports = []
+    if left_open := _HTTPX_CLIENTS.stop():
+        reports.append(left_open_report(nodeid, left_open))
+    if left_open := _REDIS_CLIENTS.stop():
+        reports.append(redis_left_open_report(nodeid, left_open))
+    if _REDIS_CLIENTS.tolerated:
+        _TOLERATED_REDIS_LEAKS.append(
+            redis_left_open_report(nodeid, _REDIS_CLIENTS.tolerated)
+        )
+    return reports
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    if _TOLERATED_REDIS_LEAKS:
+        terminalreporter.section(
+            "async Redis clients left open, reported but not failed (#17087)"
+        )
+        for report in _TOLERATED_REDIS_LEAKS:
+            terminalreporter.write_line(report)
 
 
 @pytest.fixture(autouse=True)

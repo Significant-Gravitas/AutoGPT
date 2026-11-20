@@ -5,6 +5,20 @@ operator flips the model's ``enabled: False`` in a catalog PR separately;
 this module rewrites existing workflow references and records the operation
 in ``LlmModelMigration`` (per-install runtime state) so it can be reverted.
 
+Only nodes of blocks whose ``model`` input is an ``LLMModel`` are rewritten.
+Other blocks name an input ``model`` too, with lists of their own (Stagehand
+offers a few Claude and GPT models, Codex its own GPT models), and a catalog
+replacement can be a value their schema refuses. Those nodes are counted and
+left alone.
+
+Preset rows that name the model are counted and left alone. A preset stores
+a node override (the row named with the node's ``graph.NODE_INPUT_MASK_PREFIX``
+key) only for its trigger node, and no trigger block has a ``model`` input, so
+today none overrides an LLM block; the rest are workflow input values. An LLM
+block given a switched-off model runs its catalog fallback instead, from the
+model's ``shutdown_at`` when it has one (``Block._execute``), so those values
+keep working. Retiring a model with a date is cleanup, any time after it.
+
 CLI::
 
     python -m backend.data.llm_registry.retire --usage <slug>
@@ -22,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import functools
 import json
 import logging
 import sys
@@ -34,7 +49,9 @@ from pydantic import BaseModel
 
 import backend.data.db
 from backend.data.db import get_database_schema, query_raw_with_schema, transaction
+from backend.data.graph import NODE_INPUT_MASK_PREFIX, find_llm_model_fields
 from backend.data.llm_registry.catalog import get_catalog
+from backend.data.llm_registry.llm_models import scheduled_model_fallback
 from backend.data.llm_registry.registry import get_model, load_catalog
 
 logger = logging.getLogger(__name__)
@@ -55,6 +72,18 @@ class RevertResult(BaseModel):
     # Nodes that were manually changed to a third model after the migration
     # are left alone (the revert UPDATE is guarded on the migrated value).
     nodes_already_changed: int
+
+
+class ModelUsage(BaseModel):
+    """What a retirement of one model rewrites, and what it leaves alone."""
+
+    nodes: int
+    # Nodes of other blocks whose own ``model`` list holds the same value.
+    other_block_nodes: int
+    # Presets' overrides of an LLM-block node holding the model.
+    preset_overrides: int
+    # Other preset rows naming the model, most often a workflow input's value.
+    other_preset_inputs: int
 
 
 def _schema_format(query_template: str) -> LiteralString:
@@ -92,20 +121,67 @@ def _validate_replacement(slug: str) -> None:
         )
 
 
-async def count_model_usage(slug: str) -> int:
-    """How many AgentNodes currently reference *slug*."""
-    result = await query_raw_with_schema(
-        """
-        SELECT COUNT(*) as count
-        FROM {schema_prefix}"AgentNode"
-        WHERE "constantInput"::jsonb->>'model' = $1
+@functools.cache
+def _llm_model_block_ids_json() -> str:
+    """JSON array of the blocks whose ``model`` input is an ``LLMModel``.
+    Built once per process: it instantiates every block, and blocks don't
+    change while a process runs."""
+    return json.dumps(
+        sorted(
+            block_id
+            for block_id, field_name in find_llm_model_fields().items()
+            if field_name == "model"
+        )
+    )
+
+
+# A preset's override of one LLM-block node: the row named with that node's
+# mask key, holding the node's ``model``. $1 is the model slug, $2 a JSON
+# array of the LLM block ids, $3 ``NODE_INPUT_MASK_PREFIX``.
+_LLM_PRESET_INPUTS = """
+    FROM {schema_prefix}"AgentNodeExecutionInputOutput" AS io
+    JOIN {schema_prefix}"AgentPreset" AS p ON p."id" = io."agentPresetId"
+    JOIN {schema_prefix}"AgentNode" AS n
+        ON n."agentGraphId" = p."agentGraphId"
+        AND n."agentGraphVersion" = p."agentGraphVersion"
+        AND io."name" = $3::text || split_part(n."id", '-', 1)
+    WHERE io."data"::jsonb->>'model' = $1
+    AND n."agentBlockId" IN (SELECT jsonb_array_elements_text($2::jsonb))
+"""
+
+
+async def model_usage(slug: str) -> ModelUsage:
+    """What a retirement of *slug* would rewrite, and what it leaves alone."""
+    rows = await query_raw_with_schema(
+        'WITH llm_presets AS (SELECT io."id"'
+        + _LLM_PRESET_INPUTS
+        + """)
+        SELECT
+            (SELECT COUNT(*) FROM {schema_prefix}"AgentNode"
+             WHERE "constantInput"::jsonb->>'model' = $1
+             AND "agentBlockId" IN (SELECT jsonb_array_elements_text($2::jsonb))
+            ) AS nodes,
+            (SELECT COUNT(*) FROM llm_presets) AS preset_overrides,
+            (SELECT COUNT(*) FROM {schema_prefix}"AgentNode"
+             WHERE "constantInput"::jsonb->>'model' = $1
+             AND "agentBlockId" NOT IN (SELECT jsonb_array_elements_text($2::jsonb))
+            ) AS other_block_nodes,
+            (SELECT COUNT(*) FROM {schema_prefix}"AgentNodeExecutionInputOutput" AS io
+             WHERE io."agentPresetId" IS NOT NULL
+             AND (io."data"::jsonb->>'model' = $1 OR io."data"::jsonb #>> '{{}}' = $1)
+             AND io."id" NOT IN (SELECT "id" FROM llm_presets)
+            ) AS other_preset_inputs
         """,
         slug,
+        _llm_model_block_ids_json(),
+        NODE_INPUT_MASK_PREFIX,
     )
-    return int(result[0]["count"]) if result else 0
+    return ModelUsage(**{name: int(count) for name, count in rows[0].items()})
 
 
-async def _migrate_nodes_in_tx(tx, source_value: str, target_value: str) -> list[str]:
+async def _migrate_nodes_in_tx(
+    tx, source_value: str, target_value: str, llm_block_ids_json: str
+) -> list[str]:
     """Lock + rewrite AgentNode model references. Returns migrated node ids."""
     node_ids_result = await tx.query_raw(
         _schema_format(
@@ -113,10 +189,12 @@ async def _migrate_nodes_in_tx(tx, source_value: str, target_value: str) -> list
             SELECT id
             FROM {schema_prefix}"AgentNode"
             WHERE "constantInput"::jsonb->>'model' = $1
+            AND "agentBlockId" IN (SELECT jsonb_array_elements_text($2::jsonb))
             FOR UPDATE
             """
         ),
         source_value,
+        llm_block_ids_json,
     )
     migrated_node_ids = [row["id"] for row in node_ids_result or []]
     if migrated_node_ids:
@@ -143,7 +221,7 @@ async def _migrate_nodes_in_tx(tx, source_value: str, target_value: str) -> list
 async def retire_model(
     slug: str, replacement_slug: str, reason: str | None = None
 ) -> MigrationResult:
-    """Rewrite every AgentNode referencing *slug* to *replacement_slug*.
+    """Rewrite every LLM-block node referencing *slug* to *replacement_slug*.
 
     Records an ``LlmModelMigration`` row when any nodes were touched; the
     partial unique index rejects a second active migration for the same
@@ -161,9 +239,13 @@ async def retire_model(
             slug,
         )
 
+    # Built before the transaction opens, so the first build holds no locks.
+    llm_block_ids_json = _llm_model_block_ids_json()
     try:
         async with transaction() as tx:
-            migrated_node_ids = await _migrate_nodes_in_tx(tx, slug, replacement_slug)
+            migrated_node_ids = await _migrate_nodes_in_tx(
+                tx, slug, replacement_slug, llm_block_ids_json
+            )
             migration_id: str | None = None
             if migrated_node_ids:
                 record = await tx.llmmodelmigration.create(
@@ -305,7 +387,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--reason", help="recorded on the migration row")
     parser.add_argument("--yes", action="store_true", help="execute (no dry-run)")
-    parser.add_argument("--usage", metavar="SLUG", help="print node count and exit")
+    parser.add_argument(
+        "--usage", metavar="SLUG", help="print what retiring SLUG rewrites and exit"
+    )
     parser.add_argument("--revert", metavar="MIGRATION_ID", help="revert a migration")
     parser.add_argument("--list", action="store_true", help="list migrations")
     parser.add_argument("--include-reverted", action="store_true")
@@ -328,7 +412,9 @@ async def _run_cli(args: argparse.Namespace) -> int:
     load_catalog()
 
     if args.usage:
-        print(f"{args.usage}: {await count_model_usage(args.usage)} node(s)")
+        usage = await model_usage(args.usage)
+        print(f"{args.usage}: {usage.nodes} node(s)")
+        _print_left_alone(args.usage, usage)
         return 0
     if args.revert:
         result = await revert_model_migration(args.revert)
@@ -357,21 +443,55 @@ async def _run_cli(args: argparse.Namespace) -> int:
         )
         return 2
 
-    usage = await count_model_usage(args.slug)
+    usage = await model_usage(args.slug)
     if not args.yes:
         _validate_replacement(args.replacement)
         print(
-            f"DRY RUN: would migrate {usage} node(s) from '{args.slug}' to "
+            f"DRY RUN: would migrate {usage.nodes} node(s) from '{args.slug}' to "
             f"'{args.replacement}'. Re-run with --yes to execute."
         )
+        _print_left_alone(args.slug, usage)
         return 1
     result = await retire_model(args.slug, args.replacement, reason=args.reason)
     print(result.model_dump_json(indent=2))
-    print(
-        "Reminder: retirement only rewrites graph nodes — flip "
-        f"'{args.slug}' to enabled=False in a catalog PR to stop new use."
-    )
+    _print_left_alone(args.slug, usage)
+    if (source := get_model(args.slug)) is not None and source.is_enabled:
+        print(
+            "Reminder: retirement only rewrites graph nodes — flip "
+            f"'{args.slug}' to enabled=False in a catalog PR to stop new use."
+        )
     return 0
+
+
+def _print_left_alone(slug: str, usage: ModelUsage) -> None:
+    if usage.other_block_nodes:
+        print(
+            f"{usage.other_block_nodes} node(s) of other blocks also name "
+            f"'{slug}' in their own model list and are left alone."
+        )
+    if usage.preset_overrides:
+        print(
+            f"{usage.preset_overrides} preset override(s) of an LLM node name "
+            f"'{slug}' and are left alone."
+        )
+    if usage.other_preset_inputs:
+        print(
+            f"{usage.other_preset_inputs} other preset input(s) name '{slug}' "
+            "(most often a workflow input's value) and are left alone."
+        )
+    if usage.preset_overrides or usage.other_preset_inputs:
+        if (scheduled := scheduled_model_fallback(slug)) is None:
+            print(
+                f"An LLM block given '{slug}' runs it as it is: the catalog "
+                "names no enabled fallback of the same provider for it."
+            )
+        else:
+            fallback, shutdown_at = scheduled
+            when = f"from {shutdown_at.isoformat()}" if shutdown_at else "instead"
+            print(
+                f"An LLM block given '{slug}' runs '{fallback.value}', its "
+                f"catalog fallback, {when}."
+            )
 
 
 if __name__ == "__main__":

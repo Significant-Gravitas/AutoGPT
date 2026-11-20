@@ -94,6 +94,7 @@ function ChatHostView({
     createSession,
     onSend,
     onStartTask,
+    onResendUnconfirmed,
     onEnqueue,
     queuedMessages,
     isLoadingSession,
@@ -189,6 +190,7 @@ function ChatHostView({
           onCreateSession={createSession}
           onSend={onSend}
           onStartTask={onStartTask}
+          onResendUnconfirmed={onResendUnconfirmed}
           onStop={stop}
           onEnqueue={onEnqueue}
           queuedMessages={queuedMessages}

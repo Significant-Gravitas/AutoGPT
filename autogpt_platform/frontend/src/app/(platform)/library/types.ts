@@ -67,6 +67,8 @@ export interface SitrepItemData {
   executionID?: string;
   priority: SitrepPriority;
   message: string;
+  /** Set while `message` is the "Running for …" clock: when the run started. */
+  runningSince?: Date | string;
   status: AgentStatus;
 }
 

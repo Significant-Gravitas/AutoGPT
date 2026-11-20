@@ -98,4 +98,46 @@ describe("groupParts", () => {
     ]);
     expect(blocks[1].key).toBe("b");
   });
+
+  it("turns a result asking for a service into a setup card", () => {
+    const setupOutput = {
+      type: "setup_requirements",
+      message: "To continue, please connect your GitHub account.",
+      setup_info: {
+        agent_id: "connect_github",
+        agent_name: "GitHub",
+        user_readiness: {
+          missing_credentials: {
+            github_credentials: { provider: "github", types: ["oauth2"] },
+          },
+        },
+      },
+    };
+    const parts = [
+      tool("a"),
+      tool("b", "connect_integration", { output: setupOutput } as Partial<StepPart>),
+      tool("c"),
+    ] as Parts;
+
+    const blocks = groupParts(parts);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["steps", "setup", "steps"]);
+    expect(blocks[1].key).toBe("b");
+  });
+
+  it("keeps a setup result with nothing missing, or still running, as a step", () => {
+    const connected = {
+      type: "setup_requirements",
+      setup_info: { user_readiness: { missing_credentials: {} } },
+    };
+    const parts = [
+      tool("a", "run_mcp_tool", { output: connected } as Partial<StepPart>),
+      tool("b", "connect_integration", { state: "input-available" } as Partial<StepPart>),
+    ] as Parts;
+
+    const blocks = groupParts(parts);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["steps"]);
+    expect(blocks[0].kind === "steps" && blocks[0].steps).toHaveLength(2);
+  });
 });
