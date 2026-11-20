@@ -29,6 +29,7 @@ import { BackToTeamLink } from "../components/BackToTeamLink";
 import { ExpertChatDrawer } from "../components/ExpertChatDrawer/ExpertChatDrawer";
 import { expertToChatTarget } from "../components/ExpertChatDrawer/helpers";
 import { FireExpertDialog } from "../components/FireExpertDialog/FireExpertDialog";
+import { ExpertResetSection } from "./components/ExpertResetSection/ExpertResetSection";
 import { SoulDrawer } from "../components/SoulDrawer/SoulDrawer";
 import {
   getExpertCover,
@@ -257,6 +258,7 @@ export default function ExpertDetailPage() {
           <TabsLineContent value="settings">
             <div className="flex flex-col gap-4">
               <ExpertModeSection expert={expert} />
+              <ExpertResetSection expert={expert} />
               <ExpertSettingsSection expert={expert} onFire={openFire} />
             </div>
           </TabsLineContent>

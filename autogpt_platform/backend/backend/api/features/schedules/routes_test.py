@@ -7,6 +7,8 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from autogpt_libs.auth.dependencies import get_request_context
+from autogpt_libs.auth.models import RequestContext
 from fastapi.routing import APIRoute
 
 from backend.api.features.schedules.routes import router
@@ -23,9 +25,7 @@ client = fastapi.testclient.TestClient(app)
 
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user, test_user_id):
-    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
-    from autogpt_libs.auth.models import RequestContext
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
 
@@ -522,6 +522,48 @@ def test_update_schedule_hides_other_users_schedules_behind_404(
     response = client.patch("/schedules/sched-1", json={"cron": "0 9 * * 1-5"})
 
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "org_billing, team_id, team_billing",
+    [(True, None, False), (False, "team-1", True)],
+    ids=["org-billing-manager", "team-billing-manager"],
+)
+def test_a_role_that_covers_only_billing_cannot_create_a_schedule(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+    org_billing: bool,
+    team_id: str | None,
+    team_billing: bool,
+) -> None:
+    """The schedule is tagged with the request's org and team, and its runs
+    start there: a role that covers spend, not running workflows, can't."""
+    app.dependency_overrides[get_request_context] = lambda: RequestContext(
+        user_id=test_user_id,
+        org_id="test-org",
+        team_id=team_id,
+        is_org_owner=False,
+        is_org_admin=False,
+        is_org_billing_manager=org_billing,
+        is_team_admin=False,
+        is_team_billing_manager=team_billing,
+        seat_status="ACTIVE",
+    )
+    mocker.patch(
+        "backend.api.features.schedules.routes.graph_db.get_graph",
+        AsyncMock(return_value=Mock(version=3)),
+    )
+    sched = _patch_scheduler(
+        mocker, add_execution_schedule=AsyncMock(return_value=_job_info())
+    )
+
+    response = client.post(
+        "/graphs/graph-1/schedules",
+        json={"name": "nightly", "cron": "0 3 * * *", "inputs": {}},
+    )
+
+    assert response.status_code == 403, response.text
+    sched.add_execution_schedule.assert_not_awaited()
 
 
 def test_create_schedule_returns_404_for_an_unknown_graph(

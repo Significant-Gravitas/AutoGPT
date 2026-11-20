@@ -22,6 +22,7 @@ from backend.api.features.experts.models import Expert
 from backend.api.features.onboarding_dump import (
     db,
     intro,
+    otto_reply,
     plan_job,
     prompts,
     quality,
@@ -44,7 +45,7 @@ from backend.api.features.onboarding_dump.models import (
 from backend.api.features.onboarding_dump.rate_limit import (
     enforce_personalization_budget,
 )
-from backend.api.utils.validation_errors import bounded_validation_errors
+from backend.api.utils.validation_errors import loggable_validation_errors
 from backend.copilot.db import user_has_any_session
 from backend.data.onboarding import (
     format_brain_dump_for_extraction,
@@ -367,18 +368,32 @@ async def _quality_rejection(
 
     Shared by the voice and typed paths so the reject contract (log, mark
     failed, surface the error code and reason) cannot drift between them.
+    An ``insufficient_content`` reject also sends back what was heard, so
+    the not-enough screen can show it, and which of Otto's fixed first lines
+    fits it (``otto_reply``). ``no_usable_speech`` never does: its
+    text is empty, symbols, a decoder loop or words the person never said.
     """
     logger.info(
         f"Brain dump ({input_mode}) rejected by quality gate for user "
         f"{user_id} ({rejection.error_code}, {rejection.reason})"
     )
     await db.mark_failed(user_id, recording_id, rejection.error_code, rejection.reason)
+    heard = transcript.strip()[:TRANSCRIPT_PREVIEW_CHARS]
+    is_insufficient = rejection.error_code == quality.INSUFFICIENT_CONTENT
     return FinalizeResponse(
         status=BrainDumpStatus.failed,
         input_mode=input_mode,
         error_code=rejection.error_code,
         error_reason=rejection.reason,
         transcript_words=quality.count_words(transcript),
+        transcript_preview=(heard or None) if is_insufficient else None,
+        otto_reply_kind=(
+            await otto_reply.pick_reply_kind(
+                heard, typed=input_mode == BrainDumpInputMode.typed
+            )
+            if is_insufficient and heard
+            else None
+        ),
     )
 
 
@@ -688,7 +703,7 @@ def _saved_wizard_answers(stored: object) -> tuple[str, list[str]] | None:
         progress = OnboardingWizardProgress.model_validate(stored) if stored else None
     except ValidationError as e:
         logger.warning(
-            f"Brain dump team: wizard progress unusable: {bounded_validation_errors(e)}"
+            f"Brain dump team: wizard progress unusable: {loggable_validation_errors(e)}"
         )
         return None
     if progress is None:
@@ -745,7 +760,7 @@ async def team_for_dump(
         team = ExpertRecommendations.model_validate(stored)
     except ValidationError as e:
         logger.warning(
-            f"Brain dump team: stored value unusable: {bounded_validation_errors(e)}"
+            f"Brain dump team: stored value unusable: {loggable_validation_errors(e)}"
         )
         return await _fallback_team(user_id), False
     if team.source == "disabled":

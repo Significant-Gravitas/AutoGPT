@@ -1,0 +1,68 @@
+# zizmor findings we reviewed and accept. Each entry says why it stands, so
+# anything new in the zizmor check is a finding nobody has looked at yet.
+# Add an entry here only with a reason; fix the workflow when you can.
+#
+# Classic (the classic-*.yml workflows) is no longer maintained, so its
+# workflows get security fixes only and their other findings are accepted
+# below, marked "Classic". Remove those entries if Classic is maintained again
+# or removed.
+rules:
+  dangerous-triggers:
+    ignore:
+      # None of these check out or run code from the pull request; they read
+      # its metadata through the API and act on it.
+      #
+      # issue_comment: forwards /batch commands; slash-command-dispatch only
+      # acts for commenters with write access.
+      - batch-command-listener.yml
+      # pull_request_target: sets CLA labels from the PR's commit statuses.
+      - cla-label-sync.yml
+      # issue_comment: !deploy and !undeploy act only for org members,
+      # collaborators and the batch bot (author_association, first step).
+      - platform-dev-deploy-event-dispatcher.yml
+      # pull_request_target: moves PRs opened against master (from a branch
+      # other than dev or hotfix/*) or gitbook to dev; its scripts use only
+      # the PR number and fixed text.
+      - repo-pr-enforce-base-branch.yml
+      # pull_request_target: labels PRs (conflicts, size, paths) from metadata.
+      - repo-pr-label.yml
+      # issue_comment: /reapprove acts only for commenters with write access,
+      # and only on PRs a writer already approved.
+      - repo-pr-reapprove-command.yml
+
+  misfeature:
+    ignore:
+      # The Windows installer tests start Windows PowerShell 5.1 and
+      # PowerShell 7 as separate processes from cmd. Each cmd line is a single
+      # fixed command with no expressions, so there is nothing to analyse.
+      - platform-installer-ci.yml
+
+  # Classic only below this line.
+
+  obfuscation:
+    ignore:
+      # Classic
+      - classic-autogpt-docker-cache-clean.yml
+
+  self-repository:
+    ignore:
+      # Classic
+      - classic-autogpt-ci.yml
+      - classic-autogpt-docker-ci.yml
+      - classic-forge-ci.yml
+
+  template-injection:
+    ignore:
+      # Classic: the expanded values are the workflows' own env, not event data.
+      - classic-autogpt-docker-ci.yml
+      - classic-autogpt-docker-release.yml
+
+  superfluous-actions:
+    ignore:
+      # Classic
+      - classic-benchmark_publish_package.yml
+
+  use-trusted-publishing:
+    ignore:
+      # Classic
+      - classic-benchmark_publish_package.yml

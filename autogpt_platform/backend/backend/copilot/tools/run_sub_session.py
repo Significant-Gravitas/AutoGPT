@@ -307,6 +307,8 @@ class RunSubSessionTool(BaseTool):
                 # origin would put the staffing tools one hop away from the
                 # gate that refuses them directly.
                 origin="automation",
+                # The parent receives only the sub's final text.
+                text_only_result=True,
                 # It starts in the mode the parent's gate enforces.
                 inherited_autopilot_mode=child_autopilot_mode(session, None),
             )

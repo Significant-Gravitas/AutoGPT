@@ -34,6 +34,17 @@ logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter()
 
+# The request's org (and team) must let the caller see its workflows to list
+# its submissions, and publish them to submit, edit or withdraw one.
+_view_submissions = autogpt_libs.auth.requires_resource_permission(
+    autogpt_libs.auth.OrgAction.VIEW_RESOURCES,
+    autogpt_libs.auth.TeamAction.VIEW_AGENTS,
+)
+_publish_submissions = autogpt_libs.auth.requires_resource_permission(
+    autogpt_libs.auth.OrgAction.PUBLISH_TO_STORE,
+    autogpt_libs.auth.TeamAction.PUBLISH_AGENTS,
+)
+
 SubmissionSortKey = Literal["submitted", "runs"]
 SubmissionSortDir = Literal["asc", "desc"]
 
@@ -412,9 +423,7 @@ async def get_my_unpublished_agents(
 async def delete_submission(
     submission_id: str,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    ctx: autogpt_libs.auth.RequestContext = Security(
-        autogpt_libs.auth.get_request_context
-    ),
+    ctx: autogpt_libs.auth.RequestContext = Security(_publish_submissions),
 ) -> bool:
     """Delete a marketplace listing submission"""
     result = await store_db.delete_store_submission(
@@ -433,9 +442,7 @@ async def delete_submission(
 )
 async def get_submissions(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    ctx: autogpt_libs.auth.RequestContext = Security(
-        autogpt_libs.auth.get_request_context
-    ),
+    ctx: autogpt_libs.auth.RequestContext = Security(_view_submissions),
     page: int = Query(ge=1, le=MAX_PAGE, default=1),
     page_size: int = Query(ge=1, le=MAX_PAGE_SIZE, default=20),
     search_query: str | None = Query(default=None, max_length=100),
@@ -491,9 +498,7 @@ def _parse_status_filter(
 async def create_submission(
     submission_request: store_model.StoreSubmissionRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    ctx: autogpt_libs.auth.RequestContext = Security(
-        autogpt_libs.auth.get_request_context
-    ),
+    ctx: autogpt_libs.auth.RequestContext = Security(_publish_submissions),
 ) -> store_model.StoreSubmission:
     """Submit a new marketplace listing for review"""
     # Defensive: ``ctx`` may be the unresolved ``Security()`` sentinel when
@@ -534,9 +539,7 @@ async def edit_submission(
     store_listing_version_id: str,
     submission_request: store_model.StoreSubmissionEditRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
-    ctx: autogpt_libs.auth.RequestContext = Security(
-        autogpt_libs.auth.get_request_context
-    ),
+    ctx: autogpt_libs.auth.RequestContext = Security(_publish_submissions),
 ) -> store_model.StoreSubmission:
     """Update a pending marketplace listing submission"""
     result = await store_db.edit_store_submission(
@@ -809,8 +812,11 @@ async def generate_image(
     summary="Get cache metrics in Prometheus format",
     tags=["store", "metrics"],
     response_class=fastapi.responses.PlainTextResponse,
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
 )
-async def get_cache_metrics():
+# Not async: cache_info() scans Redis with the blocking client, so this runs in
+# FastAPI's thread pool rather than on the event loop.
+def get_cache_metrics():
     """
     Get cache metrics in Prometheus text format.
 

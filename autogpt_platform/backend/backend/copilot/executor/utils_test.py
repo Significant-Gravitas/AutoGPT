@@ -479,7 +479,7 @@ async def test_schedule_chat_turn_passes_content_dedupe_off_to_the_save():
 
 
 @pytest.mark.asyncio
-async def test_schedule_chat_turn_rides_the_first_send_on_a_refreshed_slot_whatever_it_was_told():
+async def test_schedule_chat_turn_without_a_client_id_rides_the_same_texts_turn():
     # Two sends of one text racing past the in-flight check: the second only
     # refreshes the first's slot, so it must neither start a second turn nor
     # be refused back to the client.
@@ -491,11 +491,25 @@ async def test_schedule_chat_turn_rides_the_first_send_on_a_refreshed_slot_whate
             session_id="s1",
             user_id="u1",
             message="yes",
-            message_id="client-send-2",
-            dedupe_content=False,
         )
 
     assert turn_id is None
+    append.assert_not_awaited()
+    dispatch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_schedule_chat_turn_keeps_a_distinct_client_send_retryable_on_a_busy_slot():
+    with _scheduling(admitted=False, trailing_user_text="yes") as (append, dispatch):
+        with pytest.raises(SessionNotIdle):
+            await utils.schedule_chat_turn(
+                session_id="s1",
+                user_id="u1",
+                message="yes",
+                message_id="client-send-2",
+                dedupe_content=False,
+            )
+
     append.assert_not_awaited()
     dispatch.assert_not_awaited()
 

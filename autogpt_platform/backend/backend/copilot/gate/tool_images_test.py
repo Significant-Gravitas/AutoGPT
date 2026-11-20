@@ -1,14 +1,15 @@
 import io
 import json
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from PIL import Image
 from prisma.enums import ReviewStatus
 
-from backend.copilot import pending_message_helpers
-from backend.copilot.gate import held
+from backend.copilot import pending_message_helpers, pending_message_reconciliation
+from backend.copilot.gate import held, spent_approval
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads import trusted_read
 from backend.copilot.gate.reads_test import _Fetch, _session, rows
@@ -64,14 +65,30 @@ async def test_approved_action_keeps_image_with_non_json_metadata(monkeypatch, i
         args={"file_id": "f"},
     )
     tool = AsyncMock(spec=BaseTool)
-    tool.execute.return_value = StreamToolOutputAvailable(
+    output = StreamToolOutputAvailable(
         toolCallId=call.tool_call_id,
         output={"created_at": datetime(2026, 1, 1, tzinfo=UTC), "pages": 1},
     ).with_image(image)
+
+    async def reaches_its_gate(*_args, **_kwargs):
+        # A real tool's gate spends the fold's card before the call runs.
+        fold_pass = spent_approval.take_pass(call.review_id)
+        assert fold_pass is not None
+        assert await spent_approval.use(fold_pass, "user-1") is None
+        return output
+
+    tool.execute.side_effect = reaches_its_gate
     consume = AsyncMock(return_value=True)
     monkeypatch.setattr(held.review_store, "consume", consume)
+    row = SimpleNamespace(
+        node_exec_id=call.review_id,
+        status=ReviewStatus.APPROVED,
+        created_at=datetime.now(UTC),
+        updated_at=None,
+        reviewed_at=datetime.now(UTC),
+    )
 
-    outcome, output = await held._run("user-1", session, call, tool)
+    outcome, output = await held._run("user-1", session, call, row, tool)
 
     assert outcome == "approved"
     released = HeldImage.model_validate_json(output)
@@ -83,7 +100,7 @@ async def test_approved_action_keeps_image_with_non_json_metadata(monkeypatch, i
     tool.execute.assert_awaited_once_with(
         "user-1", session, call.tool_call_id, file_id="f"
     )
-    consume.assert_awaited_once_with(call.review_id, "user-1")
+    consume.assert_awaited_once_with(row, "user-1")
 
 
 @pytest.mark.parametrize("engine", ["sdk", "baseline"])
@@ -220,9 +237,12 @@ async def test_pending_image_persistence_keeps_pixels_out_of_chat_rows(
             session.messages[-1].sequence = 0
         return session
 
-    requeue = AsyncMock()
+    restore = AsyncMock()
+    store = AsyncMock()
+    store.get_chat_messages_by_ids.return_value = []
+    monkeypatch.setattr(pending_message_reconciliation, "chat_db", lambda: store)
     monkeypatch.setattr(pending_message_helpers, "persist_session_safe", persist)
-    monkeypatch.setattr(pending_message_helpers, "push_pending_message", requeue)
+    monkeypatch.setattr(pending_message_helpers, "restore_pending_messages", restore)
     result = await pending_message_helpers.persist_pending_as_user_rows(
         session, transcript, [message], log_prefix="test"
     )
@@ -231,8 +251,8 @@ async def test_pending_image_persistence_keeps_pixels_out_of_chat_rows(
     if persisted:
         assert session.messages[-1].content == message.content
         assert image.data_base64 in transcript.to_jsonl()
-        requeue.assert_not_awaited()
+        restore.assert_not_awaited()
     else:
         assert not session.messages
         assert image.data_base64 not in transcript.to_jsonl()
-        requeue.assert_awaited_once_with(session.session_id, message)
+        restore.assert_awaited_once_with(session.session_id, [message])

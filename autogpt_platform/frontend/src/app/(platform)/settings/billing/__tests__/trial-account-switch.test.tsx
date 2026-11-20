@@ -17,6 +17,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import {
+  findCancelConfirmation,
   deferredTrialResponse,
   setTrialUser,
   trialOffer,
@@ -111,9 +112,9 @@ describe("trial account isolation", () => {
       await screen.findByRole("button", { name: "Cancel trial" }),
     );
     fireEvent.click(
-      within(
-        await screen.findByRole("dialog", { name: "Cancel your trial?" }),
-      ).getByRole("button", { name: "Cancel trial" }),
+      within(await findCancelConfirmation()).getByRole("button", {
+        name: "Cancel trial",
+      }),
     );
     await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
     act(() => setTrialUser("user-b"));
@@ -245,9 +246,7 @@ function trialForCurrentUser() {
 
 async function confirmCancel() {
   fireEvent.click(await screen.findByRole("button", { name: "Cancel trial" }));
-  const confirm = await screen.findByRole("dialog", {
-    name: "Cancel your trial?",
-  });
+  const confirm = await findCancelConfirmation();
   fireEvent.click(
     within(confirm).getByRole("button", { name: "Cancel trial" }),
   );

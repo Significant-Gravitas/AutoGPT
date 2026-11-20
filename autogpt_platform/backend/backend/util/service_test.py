@@ -26,6 +26,7 @@ from backend.util import service as service_module
 from backend.util import service_rpc_models_test_support as rpc_models
 from backend.util import tracing
 from backend.util.exceptions import (
+    ConflictError,
     DatabaseError,
     ExpertLimitExceededError,
     ExpertNotFoundError,
@@ -234,6 +235,33 @@ def test_expert_lookup_errors_preserve_rpc_status_and_type():
         client._handle_call_method_response(
             response=missing_tenancy_response,
             method_name="resolve_private_expert_tenancy",
+        )
+
+
+def test_a_conflict_is_answered_as_a_409_not_a_server_error():
+    """A conflict is the caller's to resolve, as a 409. Left to the catch-all
+    it was a 500: logged as an error, and the server dropped the connection
+    after it, which failed the caller's next call on that pooled connection."""
+    app = FastAPI()
+    AppService._register_exception_handlers(app)
+
+    @app.post("/add_graph_execution_schedule")
+    def add_graph_execution_schedule():
+        raise ConflictError("Taken")
+
+    response = TestClient(app, raise_server_exceptions=False).post(
+        "/add_graph_execution_schedule"
+    )
+
+    assert response.status_code == 409
+    assert response.json()["type"] == "ConflictError"
+    client = cast(
+        _SupportsHandleCallMethodResponse,
+        get_service_client(ServiceTestClient, request_retry=False),
+    )
+    with pytest.raises(ConflictError, match="Taken"):
+        client._handle_call_method_response(
+            response=response, method_name="add_graph_execution_schedule"
         )
 
 
@@ -1693,6 +1721,8 @@ _ANSWERED_AT_ONCE_SHARED_ERRORS = {
     "RaisedExpertLifetimeLimitExceededError",
     "RoutineNotFoundError",
     "RoutineUnansweredAsksError",
+    "ScheduleLimitError",
+    "SchedulerUnavailableError",
     "SharedCredentialsRefusedError",
     "UserBannedError",
     "UserPaywalledError",
