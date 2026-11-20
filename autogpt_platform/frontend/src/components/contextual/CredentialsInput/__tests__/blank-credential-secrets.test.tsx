@@ -264,6 +264,32 @@ describe("HostScopedCredentialsModal", () => {
     expect(createHostScopedCredentials).not.toHaveBeenCalled();
   });
 
+  it("does not delete the existing credential when a header name repeats in another case", async () => {
+    renderModal();
+    type("Enter host (e.g., api.example.com)", "api.example.com");
+    fireEvent.click(screen.getByRole("button", { name: /Add Another Header/ }));
+    const names = screen.getAllByPlaceholderText(
+      "Header name (e.g., Authorization)",
+    );
+    const values = screen.getAllByPlaceholderText(
+      "Header value (e.g., Bearer token123)",
+    );
+    fireEvent.change(names[0], { target: { value: "Authorization" } });
+    fireEvent.change(values[0], { target: { value: "Bearer x" } });
+    fireEvent.change(names[1], { target: { value: "authorization" } });
+    fireEvent.change(values[1], { target: { value: "Bearer y" } });
+
+    fireEvent.click(submitButton());
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Use each header name once" }),
+      ),
+    );
+    expect(deleteCredentials).not.toHaveBeenCalled();
+    expect(createHostScopedCredentials).not.toHaveBeenCalled();
+  });
+
   it("trims the host before replacing the existing credential", async () => {
     renderModal();
     type("Enter host (e.g., api.example.com)", "  api.example.com  ");

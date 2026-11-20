@@ -413,6 +413,11 @@ export function headerPairsToRecord(
   );
 }
 
+export function hasRepeatedHeaderName(headers: Record<string, string>) {
+  const names = Object.keys(headers).map((name) => name.toLowerCase());
+  return new Set(names).size !== names.length;
+}
+
 export function addHeaderPairToList(pairs: HeaderPair[]): HeaderPair[] {
   return [...pairs, { key: "", value: "" }];
 }
