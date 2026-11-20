@@ -402,6 +402,8 @@ merges the website pageviews into the new user:
 | `voice_recording_downloaded` | browser | live | `turn_index` | The audio is downloaded instead. |
 | `voice_mode_permission_denied` | browser | live | `stage` | Microphone permission is refused. |
 | `voice_mode_error` | browser | live | `stage` | The VAD, synthesis or send failed. |
+| `dictation_rejected` | browser | live | — | The transcription API cannot read a recording from the chat composer's mic, and the composer offers Record again in place of Retry. |
+| `dictation_rerecorded` | browser | live | — | A new composer recording starts while that rejection is on screen. |
 | `visual_option_clicked` | browser | live | none | An option card in one of Otto's visual answers is clicked, which sends its title as the user's reply. |
 | `experts_section_viewed` | browser | live | — | The marketplace experts shelf renders with results. |
 | `expert_profile_opened` | browser | live | `template_id` | An expert profile page opens. |
@@ -626,8 +628,10 @@ Calls that skip OpenRouter never reach Broadcast and have no
 `$ai_generation`: direct Anthropic and Claude Code subscription deployments,
 a user's connected Codex account and the local transport. Auxiliary calls
 that are not attributed yet (the baseline path's context compaction, the
-action gate's classifiers, web search, Graphiti memory) arrive without the
-user or chat when their client goes through OpenRouter.
+action gate's classifiers, web search, Graphiti memory) send no user or
+chat, and none had reached PostHog by 18 Nov 2026: every `$ai_generation`
+in the production project from the past 60 days had both (the check is in
+[`privacy-objections.md`](privacy-objections.md), step 5).
 
 ## Feedback prompts
 
@@ -906,4 +910,5 @@ so nobody adds a duplicate:
 - `$pageleave`, `$autocapture`, `$identify` and `$feature_flag_called`:
   posthog-js (`capture_pageleave` and `autocapture` are on).
 - `$ai_generation`: OpenRouter Broadcast, for every AutoPilot LLM call that
-  goes through OpenRouter (see [LLM analytics](#llm-analytics)).
+  goes through OpenRouter with the user attached (see
+  [LLM analytics](#llm-analytics)).

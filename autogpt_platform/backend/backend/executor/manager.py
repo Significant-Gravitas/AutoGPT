@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import logging
 import os
 import threading
@@ -324,7 +325,8 @@ def execute_graph(
     cluster_lock: ClusterLock,
 ):
     """Execute graph using thread-local ExecutionProcessor instance"""
-    processor: ExecutionProcessor = _tls.processor
+    # Each run keeps its state on a copy of its own, sharing the thread's loops.
+    processor: ExecutionProcessor = copy.copy(_tls.processor)
     try:
         return processor.on_graph_execution(
             graph_exec_entry, cancel_event, cluster_lock
@@ -365,19 +367,20 @@ MODERATION_NODE_UPDATE_SECONDS = 30.0
 
 
 def _await_moderation(
-    moderation: Coroutine[Any, Any, Exception | None],
+    moderation: Coroutine[Any, Any, ModerationError | None],
     loop: asyncio.AbstractEventLoop,
     *,
     moderation_type: Literal["input", "output"],
     graph_exec: GraphExecutionEntry,
     log_metadata: LogMetadata,
 ) -> None:
-    """Run an AutoMod check on *loop* and raise the error it returns, if any.
+    """Run an AutoMod check on *loop* and fail the run if it refuses it.
 
-    A check that outlasts its wait is cancelled and counts as AutoMod failing,
-    so the run only goes on without it when ``automod_fail_open`` is set. A run
-    failed this way has its nodes failed as a refused check of the same kind
-    fails them.
+    The wait bounds the check alone. A check that outlasts it is cancelled and
+    counts as AutoMod failing, so the run only goes on without it when
+    ``automod_fail_open`` is set. A refused run has its nodes failed and
+    masked, with a bound of their own, before the refusal is raised, so the
+    time those writes take can't turn a refusal into a timeout.
     With AutoMod off there is nothing to wait for, so the check is not run.
     """
     if not automod_manager.config.enabled:
@@ -385,7 +388,7 @@ def _await_moderation(
         return
     future = asyncio.run_coroutine_threadsafe(moderation, loop)
     try:
-        moderation_error = future.result(timeout=MODERATION_WAIT_SECONDS)
+        refusal = future.result(timeout=MODERATION_WAIT_SECONDS)
     except TimeoutError:
         future.cancel()
         fail_open = automod_manager.config.fail_open
@@ -396,8 +399,7 @@ def _await_moderation(
         )
         if fail_open:
             return
-        _fail_nodes_for_moderation(loop, graph_exec, moderation_type, log_metadata)
-        raise ModerationError(
+        refusal = ModerationError(
             message=(
                 f"Execution failed due to {moderation_type} content moderation error"
             ),
@@ -405,23 +407,29 @@ def _await_moderation(
             graph_exec_id=graph_exec.graph_exec_id,
             moderation_type=moderation_type,
         )
-    if moderation_error:
-        raise moderation_error
+    if refusal is None:
+        return
+    _fail_nodes_for_moderation(
+        loop, graph_exec, moderation_type, refusal.content_id, log_metadata
+    )
+    raise refusal
 
 
 def _fail_nodes_for_moderation(
     loop: asyncio.AbstractEventLoop,
     graph_exec: GraphExecutionEntry,
     moderation_type: Literal["input", "output"],
+    content_id: str | None,
     log_metadata: LogMetadata,
 ) -> None:
-    """Fail the run's nodes as a refused check of this kind fails them. At the
-    input check the run fails before its queue is filled, so nothing would ever
-    run its nodes, and they would otherwise stay queued in a failed run; at the
-    output check, the nodes whose outputs went unchecked."""
+    """Fail and mask the run's nodes as a refused check of this kind does. At
+    the input check the run fails before its queue is filled, so nothing would
+    ever run its nodes, and they would otherwise stay queued in a failed run; at
+    the output check, the completed nodes whose outputs were refused or went
+    unchecked. The run fails whether or not this finishes in time."""
     update = asyncio.run_coroutine_threadsafe(
         automod_manager.update_failed_nodes_for_moderation(
-            get_db_async_client(), graph_exec.graph_exec_id, moderation_type
+            get_db_async_client(), graph_exec.graph_exec_id, moderation_type, content_id
         ),
         loop,
     )
@@ -431,7 +439,7 @@ def _fail_nodes_for_moderation(
         update.cancel()
         log_metadata.error(
             f"Could not fail the nodes of graph execution {graph_exec.graph_exec_id} "
-            f"after its {moderation_type} moderation timed out: {e!r}"
+            f"after its {moderation_type} moderation refused it: {e!r}"
         )
 
 
@@ -569,8 +577,9 @@ async def execute_node(
     if isinstance(node_block, AgentExecutorBlock):
         _input_data = AgentExecutorBlock.Input(**node.input_default)
         _input_data.inputs = input_data
-        if nodes_input_masks:
-            _input_data.nodes_input_masks = nodes_input_masks
+        # Like user_id, the masks are the run's own: a mask saved on the node
+        # would rewrite the sub-graph's inputs behind every check that reads it.
+        _input_data.nodes_input_masks = nodes_input_masks
         _input_data.user_id = user_id
         input_data = _input_data.model_dump()
     elif isinstance(node_block, MCPToolBlock):
@@ -843,7 +852,9 @@ async def execute_node(
             await track_dry_run_block_cost(
                 node_block.execution_stats,
                 user_id=user_id,
-                model=input_data.get("model"),
+                model=node_block.with_retired_models_replaced(
+                    input_data, node_block.execution_stats.resolved_model
+                ).get("model"),
             )
 
 
@@ -1524,17 +1535,7 @@ class ExecutionProcessor:
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
             )
-        elif exec_meta.status == ExecutionStatus.REVIEW:
-            exec_meta.status = ExecutionStatus.RUNNING
-            log_metadata.info(
-                f"⚙️ Graph execution #{graph_exec.graph_exec_id} was waiting for review, resuming execution."
-            )
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
-                status=ExecutionStatus.RUNNING,
-            )
-        else:
+        elif exec_meta.status != ExecutionStatus.REVIEW:
             log_metadata.warning(
                 f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution status is `{exec_meta.status}`."
             )
@@ -1557,6 +1558,19 @@ class ExecutionProcessor:
         if not _in_the_runners_org(db_client, graph_exec):
             _stop_outside_its_org(
                 db_client, graph_exec, exec_meta, exec_stats, log_metadata
+            )
+            return
+
+        if exec_meta.status == ExecutionStatus.REVIEW:
+            # Only the answer to its review resumes a run waiting for one: it
+            # moves the run to QUEUED and publishes it again with the run's
+            # current settings. A delivery that finds the run in REVIEW is a
+            # duplicate of one that already took it there (a late original
+            # after an admin requeue, a dead pod's redelivery), and the safe
+            # modes it carries may be stale: resuming from it could let the
+            # waiting step through without the user's answer.
+            log_metadata.info(
+                f"Left graph execution #{graph_exec.graph_exec_id} waiting for review."
             )
             return
 
@@ -1795,13 +1809,33 @@ class ExecutionProcessor:
                         queued_node_exec.pre_flight_charge = block_pre_flight
                         with execution_stats_lock:
                             execution_stats.cost += cost
-                        # Check if we crossed the low balance threshold
-                        billing.handle_low_balance(
-                            db_client=db_client,
-                            user_id=graph_exec.user_id,
-                            current_balance=remaining_balance,
-                            transaction_cost=cost,
-                        )
+                        # Check if we crossed the low balance threshold.
+                        # The charge has landed, so a failed check is logged
+                        # instead of failing the run and keeping the charge.
+                        try:
+                            billing.handle_low_balance(
+                                db_client=db_client,
+                                user_id=graph_exec.user_id,
+                                current_balance=remaining_balance,
+                                transaction_cost=cost,
+                            )
+                        except Exception as low_balance_error:
+                            log_metadata.exception(
+                                f"Low-balance check failed after charging node "
+                                f"{queued_node_exec.node_exec_id}"
+                            )
+                            send_rate_limited_discord_alert(
+                                "handle_low_balance",
+                                low_balance_error,
+                                "low_balance_check",
+                                f"🚨 **Low-Balance Check Failed**\n"
+                                f"User: {graph_exec.user_id}\n"
+                                f"Graph ID: {graph_exec.graph_id}\n"
+                                f"Execution ID: {graph_exec.graph_exec_id}\n"
+                                f"Node Execution ID: {queued_node_exec.node_exec_id}\n"
+                                f"Error Type: {type(low_balance_error).__name__}\n"
+                                f"Error: {str(low_balance_error)[:200]}\n",
+                            )
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
@@ -2469,7 +2503,11 @@ class ExecutionManager(AppProcess):
             logger.warning(
                 f"[{self.service_name}] Graph {graph_exec_id} already running locally; rejecting duplicate."
             )
-            _ack_message(reject=True, requeue=True)
+            # Kept, not dropped: it may be the resume of a run still finishing
+            # its pass here. Through the delay queue, so a duplicate (an admin
+            # requeue of a run that wasn't lost) doesn't lap the queue for as
+            # long as the run lasts.
+            _ack_message(reject=True, requeue=True, delay=True)
             return
 
         # Try to acquire cluster-wide execution lock

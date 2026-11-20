@@ -23,6 +23,7 @@ from pydantic_settings import (
 )
 
 from backend.util.data import get_data_path
+from backend.util.trusted_proxies import parse_trusted_proxies
 
 logger = logging.getLogger(__name__)
 
@@ -249,19 +250,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1500,
         description=(
             "Wall-clock cap on a single LLM provider request, covering the whole "
-            "generation (the block path is non-streaming). Raising it lengthens how "
+            "generation (the block path is non-streaming). An LLM block's retries "
+            "share it, each getting what is left. Raising it lengthens how "
             "long a stalled provider holds one of `num_graph_workers` slots. "
             "AgentExecutor and expert blocks opt out of the per-node cap, so for those "
             "this is the only per-call wall-clock bound."
-        ),
-    )
-    auth_legacy_token_deadline: int | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "Exclusive Unix timestamp cutoff for accepting user JWTs without sid "
-            "during auth rollout. Unset preserves legacy signature/expiry validation; "
-            "zero rejects them immediately. Tokens with sid always require an active session."
         ),
     )
     enable_subscription_credit_grant: bool = Field(
@@ -619,17 +612,28 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     # Documented in docs/platform/client-ip.md: update it with any change here.
+    trusted_proxies: str = Field(
+        default="",
+        description="The proxies in front of the backend, as comma-separated IP "
+        "addresses or CIDR ranges, the same list the frontend reads. The client "
+        "is the first X-Forwarded-For address from the right that is not listed, "
+        "read only from a listed peer, for uvicorn (request.client) and the "
+        "External API's per-address limits alike. When set, TRUSTED_PROXY_COUNT "
+        "and FORWARDED_ALLOW_IPS are ignored.",
+    )
+
+    # Documented in docs/platform/client-ip.md: update it with any change here.
     trusted_proxy_count: int = Field(
         # Prod is Cloudflare -> Google LB -> pod, so the client is 3rd from the
         # right; 1 keys every anonymous caller on the LB's address, one bucket.
         default=3,
         ge=0,
-        description="How many X-Forwarded-For entries our own proxies append. "
-        "The client IP is that many entries from the right; everything further "
-        "left is caller-controlled and must not be trusted. The default is the "
-        "hosted platform: Cloudflare appends the client, Google's load balancer "
-        "appends Cloudflare's address and its own. 0 ignores the header and uses "
-        "the socket peer.",
+        description="Deprecated: set TRUSTED_PROXIES, which replaces it. Read "
+        "only while TRUSTED_PROXIES is empty: how many X-Forwarded-For entries "
+        "our own proxies append, so the External API's client IP is that many "
+        "entries from the right. The default is the hosted platform: Cloudflare "
+        "appends the client, Google's load balancer appends Cloudflare's address "
+        "and its own. 0 ignores the header and uses the socket peer.",
     )
 
     e2b_egress_proxy_address: str = Field(
@@ -656,6 +660,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Most E2B boxes one account may have running at once in this "
         "deployment on the platform's E2B key; a start past it is refused. 0 turns "
         "the cap off.",
+    )
+
+    e2b_egress_proxy_ca_cert: str = Field(
+        default="",
+        description="PEM certificate of the swap proxy's signing CA (the "
+        "certificate only, never the key), installed in every box pinned to "
+        "the proxy (see backend.util.e2b_proxy_trust). Set it together with "
+        "e2b_egress_proxy_address: boxes are pinned without it, but TLS to "
+        "bound hosts then fails inside them, and every pin logs that. Several "
+        "certificates are trusted together, which is how a rotation is "
+        "rolled out.",
     )
 
     frontend_base_url: str = Field(
@@ -782,6 +797,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "How long a page read (library agents, Home) waits for the scheduler "
             "before rendering without schedule badges. Healthy reads take well "
             "under a second; the Vercel proxy gives up at 30s."
+        ),
+    )
+
+    schedule_list_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        description=(
+            "How long a schedule list someone is waiting on (schedule pages, admin "
+            "diagnostics) waits for the scheduler before answering 503."
         ),
     )
 
@@ -1298,6 +1322,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Allowed callback URL origins for external OAuth flows. "
         "External apps must have their callback URLs start with one of these origins.",
     )
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def validate_trusted_proxies(cls, v: str) -> str:
+        """Refuse to start on an entry no reader could match, rather than walk
+        past nothing and put every caller behind the proxy in one bucket.
+        A value listing no proxy (only commas or spaces) is unset, as the
+        frontend and the container read it. Kept as written: readers parse it
+        with parse_trusted_proxies."""
+        return v if parse_trusted_proxies(v) else ""
 
     @field_validator("trusted_frontend_origins")
     @classmethod

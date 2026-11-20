@@ -62,8 +62,8 @@ _NO_FALLBACK_STATUSES = frozenset({401, 403, 407, 429})
 # Bound on ``input_required`` retries when the server only wants its
 # ``requestState`` echoed back (no interactive input requested).
 _MAX_INPUT_REQUIRED_RETRIES = 3
-# ``Requests`` retries throttled/5xx responses forever unless told otherwise.
-# MCP calls run inside graph executions and chat turns, so keep them bounded.
+# How many times ``Requests`` sends a throttled/5xx call. MCP calls run inside
+# graph executions and chat turns, so they get the same small bound everywhere.
 _HTTP_RETRY_ATTEMPTS = 3
 _SUPPORTED_AUTH_SCHEMES = {
     "basic": "Basic",

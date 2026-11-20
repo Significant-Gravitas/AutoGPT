@@ -48,3 +48,24 @@ export function normalizeOnboardingProfile(
     painPoints: resolvedPainPoints,
   };
 }
+
+// What "Loading your setup…" is still waiting for; the Sentry report names them.
+export type SetupInput = "account" | "layout" | "progress";
+
+interface SetupState {
+  hasAccount: boolean;
+  isLayoutReady: boolean;
+  isProgressReady: boolean;
+}
+
+export function pendingSetupInputs({
+  hasAccount,
+  isLayoutReady,
+  isProgressReady,
+}: SetupState): SetupInput[] {
+  const inputs: SetupInput[] = [];
+  if (!hasAccount) inputs.push("account");
+  if (!isLayoutReady) inputs.push("layout");
+  if (!isProgressReady) inputs.push("progress");
+  return inputs;
+}

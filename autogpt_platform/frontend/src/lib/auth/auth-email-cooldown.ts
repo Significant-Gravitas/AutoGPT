@@ -15,8 +15,8 @@ export interface WindowLimit {
 
 interface Where {
   field: string;
-  value: string | Date;
-  operator?: "eq" | "gt" | "starts_with" | "ends_with";
+  value: string | string[] | Date;
+  operator?: "eq" | "gt" | "in" | "starts_with" | "ends_with";
 }
 
 /**
@@ -117,17 +117,50 @@ export async function claimWindowSlot(
 ) {
   const window = currentWindow(windowSeconds);
   const windowEndsAt = (window + 1) * windowSeconds;
-  for (let index = 0; index < max; index++) {
-    const id = slotID(identifier, window, index);
-    if (await rowExists(context, id)) continue;
+  const slot = await claimSlot(
+    context,
+    identifier,
+    max,
+    window,
+    windowEndsAt - Date.now() / 1000,
+  );
+  return slot?.id ?? null;
+}
+
+// The same race-safe slots for an identifier that is never reused (one
+// emailed code's tries), kept until it expires instead of per clock window.
+// Returns the claimed slot's index, from 0, or null when all `max` are taken.
+export async function claimOneOf(
+  context: AuthEmailContext,
+  identifier: string,
+  max: number,
+  expiresInSeconds: number,
+) {
+  const slot = await claimSlot(context, identifier, max, 0, expiresInSeconds);
+  return slot?.index ?? null;
+}
+
+async function claimSlot(
+  context: AuthEmailContext,
+  identifier: string,
+  max: number,
+  window: number,
+  expiresInSeconds: number,
+) {
+  const ids = Array.from({ length: max }, (_, index) =>
+    slotID(identifier, window, index),
+  );
+  const taken = await existingIDs(context, ids);
+  for (const [index, id] of ids.entries()) {
+    if (taken.has(id)) continue;
     try {
       await createVerification(context, {
         id,
         identifier,
         value: "sent",
-        expiresInSeconds: windowEndsAt - Date.now() / 1000,
+        expiresInSeconds,
       });
-      return id;
+      return { id, index };
     } catch (error) {
       if (!(await rowExists(context, id))) throw error;
     }
@@ -143,12 +176,17 @@ export async function releaseWindowSlot(context: AuthEmailContext, id: string) {
 }
 
 async function rowExists(context: AuthEmailContext, id: string) {
-  const rows = await context.adapter.findMany({
+  return (await existingIDs(context, [id])).size > 0;
+}
+
+// Which of these rows are there, in one read.
+async function existingIDs(context: AuthEmailContext, ids: string[]) {
+  const rows = (await context.adapter.findMany({
     model: "verification",
-    where: [{ field: "id", value: id }],
-    limit: 1,
-  });
-  return rows.length > 0;
+    where: [{ field: "id", value: ids, operator: "in" }],
+    limit: ids.length,
+  })) as Array<{ id: string }>;
+  return new Set(rows.map((row) => row.id));
 }
 
 export function createVerification(

@@ -134,10 +134,7 @@ async def get_cached_creator_details(username: str):
 
 
 def forget_store_listings() -> None:
-    """Clear the store caches (listings, listing pages, creators, creator
-    pages), best effort, once an account is closed or kept, so its listings
-    and creator page go or come back at once rather than within 5 minutes,
-    as an admin review does."""
+    """Clear listing and creator caches after a committed change, best effort."""
     try:
         clear_all_caches()
     except Exception:

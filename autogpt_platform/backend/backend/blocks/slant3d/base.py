@@ -112,11 +112,23 @@ class Slant3DBlockBase(Block):
                 json={"name": path.name, "platformId": platform_id},
             )
             data = upload["data"]
-            await Requests(retry_max_attempts=1).put(
+            # Sent once: a presigned URL is signed for its own host and path,
+            # so no redirect could take the upload elsewhere, and a request
+            # that sends once streams the file instead of holding it in memory.
+            # A redirect comes back as the response, so the status is checked
+            # here rather than raised: only a 2xx means the file was stored.
+            stored = await Requests(retry_max_attempts=1, raise_for_status=False).put(
                 data["presignedUrl"],
                 data=content,
                 headers={"Content-Type": "application/octet-stream"},
+                allow_redirects=False,
             )
+            if not stored.ok:
+                # Named by its status alone: the URL carries its signature.
+                raise RuntimeError(
+                    f"Slant3D's file storage didn't take the upload "
+                    f"(HTTP {stored.status})"
+                )
             confirmed = await self._make_request(
                 "POST",
                 "files/confirm-upload",

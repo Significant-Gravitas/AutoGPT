@@ -54,7 +54,11 @@ from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.model import ChatSession, create_chat_session
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.routines import ScheduleRoutineTool
-from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
+from backend.copilot.tools.skills import (
+    _NAME_RE,
+    list_user_skills,
+    read_user_skill_with_body,
+)
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
@@ -5345,6 +5349,7 @@ def _output_node_exec(
     added_minutes: int = 0,
     queued_minutes: int | None = None,
     stats: dict | None = None,
+    output: list | None = None,
 ) -> SimpleNamespace:
     base = datetime(2026, 8, 14, 9, 0, tzinfo=timezone.utc)
     return SimpleNamespace(
@@ -5364,6 +5369,7 @@ def _output_node_exec(
             if execution_data is None
             else []
         ),
+        Output=[SimpleNamespace(name="output", data=item) for item in output or []],
     )
 
 
@@ -5433,6 +5439,36 @@ def test_outputs_from_node_execs_uses_last_cleared_input_message():
         ]
     )
     assert outputs == {"rows": ["b"]}
+
+
+def test_outputs_from_node_execs_uses_yielded_output_over_input_value():
+    outputs = experts_db._outputs_from_node_execs(
+        [_output_node_exec("report", {"rows": 2}, output=["2 rows"])]
+    )
+    assert outputs == {"report": ["2 rows"]}
+
+
+def test_outputs_from_node_execs_masks_moderation_cleared_outputs():
+    moderated = "Failed due to content moderation"
+    outputs = experts_db._outputs_from_node_execs(
+        [
+            _output_node_exec(
+                "report",
+                "raw secret",
+                output=["formatted secret"],
+                stats={
+                    "error": moderated,
+                    "cleared_inputs": {
+                        "name": ["report"],
+                        "value": [moderated],
+                        "format": [moderated],
+                    },
+                    "cleared_outputs": {"output": [moderated]},
+                },
+            )
+        ]
+    )
+    assert outputs == {"report": [moderated]}
 
 
 def test_outputs_from_node_execs_falls_back_when_stats_are_corrupt():
@@ -5647,6 +5683,27 @@ async def test_classify_run_outputs_degrades_only_corrupt_execution():
         "exec-bad": ("unknown", None),
         "exec-good": ("doc", "report"),
     }
+
+
+@pytest.mark.asyncio
+async def test_classify_run_outputs_reads_what_the_output_node_yielded():
+    """A formatted output is classified as the text it rendered, so the query
+    must load the Output rows: Prisma returns only the relations it includes."""
+
+    async def find_many(*, where, include):
+        node_exec = _output_node_exec("report", {"rows": 2}, output=["word " * 100])
+        if not include.get("Output"):
+            node_exec.Output = None
+        return [SimpleNamespace(agentGraphExecutionId="exec-1", **vars(node_exec))]
+
+    with patch.object(
+        prisma.models.AgentNodeExecution,
+        "prisma",
+        return_value=SimpleNamespace(find_many=find_many),
+    ):
+        classified = await experts_db._classify_run_outputs(["exec-1"])
+
+    assert classified == {"exec-1": ("doc", "report")}
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -6043,6 +6100,87 @@ async def test_update_skills_from_a_stale_list_keeps_a_skill_the_client_never_sa
     assert "fresh-skill" in names
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_attaching_a_marketplace_skill_reaches_the_cached_index(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    """The expert's skill index is cached for minutes. A marketplace name lands
+    on the row alone, and the next rebuild heals the user's own copy into the
+    expert's folder, so the attach has to drop the cached index or the expert
+    would not see the skill until the entry expired."""
+
+    async def _listing_name(_listing_id):
+        return "deep-research"
+
+    monkeypatch.setattr(experts_db, "_resolve_marketplace_skill_name", _listing_name)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+    fake = _FakeWorkspaceManager()
+    fake.files["/skills/deep-research/SKILL.md"] = (
+        b"---\nname: deep-research\ndescription: d\n---\nsteps\n"
+    )
+
+    with patch(
+        "backend.copilot.tools.skills._get_user_skill_manager",
+        new=AsyncMock(return_value=fake),
+    ):
+        assert await list_user_skills(test_user.id, expert_id) == []
+        await experts_db.update_skills(
+            test_user.id, expert_id, [], marketplace_listing_ids=["listing-1"]
+        )
+        listed = await list_user_skills(test_user.id, expert_id)
+
+    assert [s.name for s in listed] == ["deep-research"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_skills_failing_part_way_still_drops_the_cached_index(
+    server: SpinTestServer, test_user, monkeypatch
+):
+    """A name written before the failure stays on the row, so the cached index
+    must not keep showing the list from before it for minutes."""
+    names = {"listing-1": "deep-research", "listing-2": "web-research"}
+    real_add = experts_db.add_expert_skill_name
+    added: list[str] = []
+
+    async def _listing_name(listing_id):
+        return names[listing_id]
+
+    async def _add_one_then_fail(user_id, expert_id, name):
+        if added:
+            raise RuntimeError("the database went away")
+        added.append(name)
+        await real_add(user_id, expert_id, name)
+
+    monkeypatch.setattr(experts_db, "_resolve_marketplace_skill_name", _listing_name)
+    monkeypatch.setattr(experts_db, "add_expert_skill_name", _add_one_then_fail)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    expert_id = hired.expert.id
+    fake = _FakeWorkspaceManager()
+    fake.files["/skills/deep-research/SKILL.md"] = (
+        b"---\nname: deep-research\ndescription: d\n---\nsteps\n"
+    )
+
+    with patch(
+        "backend.copilot.tools.skills._get_user_skill_manager",
+        new=AsyncMock(return_value=fake),
+    ):
+        assert await list_user_skills(test_user.id, expert_id) == []
+        with pytest.raises(RuntimeError):
+            await experts_db.update_skills(
+                test_user.id,
+                expert_id,
+                [],
+                marketplace_listing_ids=["listing-1", "listing-2"],
+            )
+        listed = await list_user_skills(test_user.id, expert_id)
+
+    assert added == ["deep-research"]
+    assert [s.name for s in listed] == ["deep-research"]
+
+
 async def _no_library_skills(_user_id, _names):
     return {}
 
@@ -6153,6 +6291,23 @@ async def test_list_templates_filters_by_category(server: SpinTestServer):
     assert seller.id not in listed
 
     assert marketer.categories == ["marketing"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_list_templates_search_matches_underscores_literally(
+    server: SpinTestServer,
+):
+    """A roster search is a literal substring match: `_` is the character,
+    not a one-character wildcard (#15660)."""
+    suffix = uuid.uuid4().hex[:8]
+    named = await _template(f"first_last {suffix}")
+    lookalike = await _template(f"firstxlast {suffix}")
+
+    found = await experts_db.list_templates(search_query=f"first_last {suffix}")
+
+    listed = {t.id for t in found}
+    assert named.id in listed
+    assert lookalike.id not in listed
 
 
 @pytest.mark.asyncio(loop_scope="session")
