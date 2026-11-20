@@ -5,7 +5,6 @@ import asyncio
 import contextlib
 import io
 import os
-import select
 import tempfile
 import threading
 import tracemalloc
@@ -34,6 +33,8 @@ from backend.util.request_test_helpers import (
 # the pipe case writes the whole payload before anything reads it.
 _PAYLOAD = b"#1=CARTESIAN_POINT('',(0.,0.,0.));\n" * 100
 _STEP_HEADER = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n"
+# One page: the least a Linux pipe holds at the soft limit; macOS starts at 16 KiB.
+_PIPE_CAPACITY = 4096
 
 
 def _bytes(payload: bytes) -> ContextManager[bytes]:
@@ -89,9 +90,9 @@ def _bytesio_past_what_was_read(payload: bytes) -> BinaryIO:
 
 def _pipe(payload: bytes) -> BinaryIO:
     """A stream that can't seek, as a pipe or a socket can't."""
-    # A pipe takes a write of up to PIPE_BUF bytes whole, so this can't block
-    # waiting for a reader.
-    assert len(payload) <= select.PIPE_BUF
+    # The pipe holds all of the payload, so writing it can't block waiting
+    # for a reader.
+    assert len(payload) <= _PIPE_CAPACITY
     read_end, write_end = os.pipe()
     try:
         os.write(write_end, payload)
