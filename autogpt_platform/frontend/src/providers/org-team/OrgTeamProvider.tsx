@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useOrgTeamStore } from "@/services/org-team/store";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useEffect, useRef } from "react";
@@ -21,6 +22,11 @@ interface Props {
  */
 export default function OrgTeamProvider({ children }: Props) {
   const { isLoggedIn, user, isUserLoading } = useAuth();
+  // Loaded with no user is how the auth store leaves a start-up that couldn't
+  // reach the backend: nobody is known to be signed in, or signed out.
+  const isSessionUnknown = useAuthStore(
+    (state) => state.hasLoadedUser && !state.user,
+  );
   const { activeOrgID, setActiveOrg, setOrgs, setLoaded, clearContext } =
     useOrgTeamStore();
 
@@ -37,7 +43,9 @@ export default function OrgTeamProvider({ children }: Props) {
     }
 
     if (!isLoggedIn || !user) {
-      clearContext();
+      // Only a session known to be gone drops the stored org and team. One
+      // nobody could check keeps them for when a retry finds the user.
+      if (!isSessionUnknown) clearContext();
       return;
     }
 
@@ -73,7 +81,7 @@ export default function OrgTeamProvider({ children }: Props) {
     }
 
     loadOrgs();
-  }, [isLoggedIn, user, isUserLoading]);
+  }, [isLoggedIn, user, isUserLoading, isSessionUnknown]);
 
   // Drop org-scoped data when the org switches. resetQueries (NOT
   // clear) — clear() removes queries without notifying mounted

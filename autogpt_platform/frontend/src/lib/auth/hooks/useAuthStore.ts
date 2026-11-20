@@ -182,9 +182,17 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
             const epoch = get().sessionEpoch;
             const { user, ...result } = await fetchUser();
             if (get().sessionEpoch !== epoch) return;
-            set(result);
-            if (user) adoptUser(user);
-            else set({ user: null });
+            // fetchUser marks a lookup that got no answer (an error or its
+            // deadline) as loaded with no user. That says nothing about the
+            // session, so start-up stays loading until the fallback below
+            // answers: read as signed out meanwhile, it cost the tab its
+            // active org and team (#17104).
+            const lookupUnanswered = !user && result.hasLoadedUser;
+            if (!lookupUnanswered) {
+              set(result);
+              if (user) adoptUser(user);
+              else set({ user: null });
+            }
 
             // If fetchUser didn't return a user, validate the session to ensure we have the latest state
             // This handles race conditions after login where cookies might not be immediately available
@@ -196,11 +204,16 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
               if (get().sessionEpoch !== epoch) return;
 
               if (validationResult.unavailable) {
+                // Nothing answered: start-up ends as the lookup left it,
+                // with the session unknown rather than ended.
+                if (lookupUnanswered) set(result);
                 handleUnavailable(validationResult.unavailable);
               } else if (validationResult.user && validationResult.isValid) {
                 adoptUser(validationResult.user);
                 set({ hasLoadedUser: true, isUserLoading: false });
               } else {
+                // The backend answered that nobody is signed in.
+                set({ hasLoadedUser: false, isUserLoading: false });
                 // fetchUser answered without an error that there is no
                 // session, and the fallback found none either. Only then is
                 // the visitor known to be signed out; after an error the
