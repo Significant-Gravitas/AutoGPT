@@ -251,27 +251,37 @@ describe("HostScopedCredentialsModal", () => {
     }) as HTMLButtonElement;
   }
 
-  it("does not delete the existing credential when every header is blank", async () => {
-    renderModal();
-    type("Enter host (e.g., api.example.com)", "api.example.com");
-    type("Header name (e.g., Authorization)", "Authorization");
-    type("Header value (e.g., Bearer token123)", "   ");
+  // The backend strips with Python's str.strip(), which also removes U+0085
+  // and U+001C-U+001F, so it refuses a header made only of them as blank.
+  it.each([
+    ["a value of spaces", "Authorization", "   "],
+    ["a value of U+0085", "Authorization", "\u0085"],
+    ["a name of U+001F", "\u001f", "Bearer x"],
+  ])(
+    "does not delete the existing credential when the only header has %s",
+    async (_, name, value) => {
+      renderModal();
+      type("Enter host (e.g., api.example.com)", "api.example.com");
+      type("Header name (e.g., Authorization)", name);
+      type("Header value (e.g., Bearer token123)", value);
 
-    expect(submitButton().disabled).toBe(true);
-    fireEvent.submit(submitButton().closest("form")!);
+      expect(submitButton().disabled).toBe(true);
+      fireEvent.submit(submitButton().closest("form")!);
 
-    await waitFor(() =>
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Add at least one header" }),
-      ),
-    );
-    expect(deleteCredentials).not.toHaveBeenCalled();
-    expect(createHostScopedCredentials).not.toHaveBeenCalled();
-  });
+      await waitFor(() =>
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Add at least one header" }),
+        ),
+      );
+      expect(deleteCredentials).not.toHaveBeenCalled();
+      expect(createHostScopedCredentials).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     ["exactly", "Authorization"],
     ["with padding", " Authorization "],
+    ["with a trailing U+0085", "Authorization\u0085"],
     ["in another case", "authorization"],
   ])(
     "does not delete the existing credential when a header name repeats %s",

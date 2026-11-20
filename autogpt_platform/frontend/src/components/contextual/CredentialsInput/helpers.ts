@@ -399,13 +399,26 @@ export function resolveActionTarget(
 
 export type HeaderPair = { key: string; value: string };
 
+// Trims everything the backend's str.strip() trims. trim() keeps U+001C to
+// U+001F and U+0085, so a header of only those would pass here and then be
+// refused by the backend.
+const STRIPPED_BY_BACKEND = /[\s\u001c-\u001f\u0085]/;
+
+function trimLikeBackend(text: string) {
+  let start = 0;
+  let end = text.length;
+  while (start < end && STRIPPED_BY_BACKEND.test(text[start])) start++;
+  while (end > start && STRIPPED_BY_BACKEND.test(text[end - 1])) end--;
+  return text.slice(start, end);
+}
+
 export function headerPairsToRecord(
   pairs: HeaderPair[],
 ): Record<string, string> {
   return pairs.reduce(
     (acc, pair) => {
-      if (pair.key.trim() && pair.value.trim()) {
-        acc[pair.key.trim()] = pair.value.trim();
+      if (trimLikeBackend(pair.key) && trimLikeBackend(pair.value)) {
+        acc[trimLikeBackend(pair.key)] = trimLikeBackend(pair.value);
       }
       return acc;
     },
@@ -415,8 +428,8 @@ export function headerPairsToRecord(
 
 export function hasRepeatedHeaderName(pairs: HeaderPair[]) {
   const names = pairs
-    .filter((pair) => pair.key.trim() && pair.value.trim())
-    .map((pair) => pair.key.trim().toLowerCase());
+    .filter((pair) => trimLikeBackend(pair.key) && trimLikeBackend(pair.value))
+    .map((pair) => trimLikeBackend(pair.key).toLowerCase());
   return new Set(names).size !== names.length;
 }
 
