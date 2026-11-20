@@ -2090,6 +2090,7 @@ async def bulk_move_agents_to_folder(
     agent_ids: list[str],
     folder_id: Optional[str],
     user_id: str,
+    organization_id: Optional[str] = None,
 ) -> list[library_model.LibraryAgent]:
     """
     Moves multiple library agents to a folder.
@@ -2099,6 +2100,8 @@ async def bulk_move_agents_to_folder(
             and move every library entry of that graph.
         folder_id: The target folder ID (None for root).
         user_id: The ID of the user.
+        organization_id: If set, only entries of this organization, or
+            untagged ones, are found.
 
     Returns:
         The moved LibraryAgents.
@@ -2120,20 +2123,26 @@ async def bulk_move_agents_to_folder(
 
     # Resolve every ID before writing, so an unknown one moves nothing.
     # Archived agents can be moved; deleted ones can't.
-    matches = await prisma.models.LibraryAgent.prisma().find_many(
-        where={
-            "userId": user_id,
-            "isDeleted": False,
-            "OR": [
-                {"id": {"in": agent_ids}},
-                {"agentGraphId": {"in": agent_ids}},
-            ],
-        },
-    )
+    where: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "isDeleted": False,
+        "OR": [
+            {"id": {"in": agent_ids}},
+            {"agentGraphId": {"in": agent_ids}},
+        ],
+    }
+    if organization_id is not None:
+        # A graph ID can name the graph's entries in several organizations.
+        where["AND"] = [
+            {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
+        ]
+    matches = await prisma.models.LibraryAgent.prisma().find_many(where=where)
     found = {a.id for a in matches} | {a.agentGraphId for a in matches}
     missing = [i for i in dict.fromkeys(agent_ids) if i not in found]
     if missing:
-        raise NotFoundError(f"Library agents not found: {', '.join(missing)}")
+        raise NotFoundError(
+            f"Workflows not found in your library: {', '.join(missing)}"
+        )
 
     to_move = [a for a in matches if a.folderId != folder_id]
     if not to_move:

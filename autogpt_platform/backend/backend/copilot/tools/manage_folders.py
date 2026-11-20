@@ -590,6 +590,7 @@ class MoveAgentsToFolderTool(BaseTool):
                 agent_ids=agent_ids,
                 folder_id=folder_id,
                 user_id=user_id,
+                organization_id=external_tenant(session),
             )
         except NotFoundError as e:
             return ErrorResponse(
@@ -604,12 +605,11 @@ class MoveAgentsToFolderTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Unknown IDs raise above, so nothing moved means all are already there.
         if not moved:
+            place = "in that folder" if folder_id else "at root level"
             return ErrorResponse(
-                message=(
-                    "No workflows were moved. Check that the IDs belong to "
-                    "workflows in your library."
-                ),
+                message=f"No workflows were moved: they're already {place}.",
                 error="no_agents_moved",
                 session_id=session_id,
             )

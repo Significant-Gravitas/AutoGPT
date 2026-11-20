@@ -56,6 +56,34 @@ async def _agent(user_id: str, **flags: bool) -> LibraryAgent:
     )
 
 
+async def _entries_of_one_graph(
+    user_id: str, organizations: list[str | None]
+) -> list[LibraryAgent]:
+    """One library entry per version of a new graph, tagged in turn."""
+    graph_id = str(uuid.uuid4())
+    entries = []
+    for version, organization_id in enumerate(organizations, start=1):
+        await AgentGraph.prisma().create(
+            data={
+                "id": graph_id,
+                "version": version,
+                "name": "Folder Move Test",
+                "userId": user_id,
+            }
+        )
+        entries.append(
+            await LibraryAgent.prisma().create(
+                data={
+                    "userId": user_id,
+                    "agentGraphId": graph_id,
+                    "agentGraphVersion": version,
+                    "organizationId": organization_id,
+                }
+            )
+        )
+    return entries
+
+
 async def _folder_of(library_agent_id: str) -> str | None:
     row = await LibraryAgent.prisma().find_unique(where={"id": library_agent_id})
     assert row is not None
@@ -98,6 +126,27 @@ async def test_archived_agent_can_be_moved(server: SpinTestServer, by: str):
 
     assert [a.id for a in moved] == [agent.id]
     assert await _folder_of(agent.id) == folder
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_organization_moves_only_its_own_and_untagged_entries(
+    server: SpinTestServer,
+):
+    user = await _user()
+    folder = await _folder(user)
+    own, other, untagged = await _entries_of_one_graph(user, ["org-a", "org-b", None])
+
+    moved = await bulk_move_agents_to_folder(
+        [own.agentGraphId], folder, user, organization_id="org-a"
+    )
+
+    assert sorted(a.id for a in moved) == sorted([own.id, untagged.id])
+    assert await _folder_of(other.id) is None
+    with pytest.raises(NotFoundError, match=other.id):
+        await bulk_move_agents_to_folder(
+            [other.id], folder, user, organization_id="org-a"
+        )
+    assert await _folder_of(other.id) is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
