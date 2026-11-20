@@ -12,7 +12,6 @@ it was when the turn started, on either engine's own tool path. A turn the
 CLI's budget backstop cuts off is still charged what its call cost.
 """
 
-from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +66,6 @@ async def test_a_trial_users_turns_are_spent_from_the_trial(
     ledger: PlatformLedger,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    client_cleanup: AsyncExitStack,
 ) -> None:
     if scenario.needs_cli and _resolve_cli_path() is None:
         pytest.skip("No Claude Code CLI binary available")
@@ -75,7 +73,7 @@ async def test_a_trial_users_turns_are_spent_from_the_trial(
     account = TrialAccount(session.user_id, spent_before=SPENT_BEFORE)
     account.install(monkeypatch, ledger)
     run_turn, executor = _turn_runner(
-        scenario, provider, session, tmp_path, monkeypatch, client_cleanup
+        scenario, provider, session, tmp_path, monkeypatch
     )
     remaining_at_start: list[float] = []
     paid_budget_at_start: dict[int, float | None] = {}
@@ -162,7 +160,6 @@ async def test_a_trial_turn_reads_the_trial_once_before_the_model_answers(
     ledger: PlatformLedger,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    client_cleanup: AsyncExitStack,
 ) -> None:
     """The allowance gate, the turn's cost attribution and the engine's budget
     all look the trial up before the model's first request, and they share one
@@ -184,7 +181,7 @@ async def test_a_trial_turn_reads_the_trial_once_before_the_model_answers(
 
     store.get_subscription_trial.side_effect = read_noting_when
     run_turn, executor = _turn_runner(
-        scenario, provider, session, tmp_path, monkeypatch, client_cleanup
+        scenario, provider, session, tmp_path, monkeypatch
     )
 
     for turn, prompt in enumerate(PROMPTS[:CONVERTED_TURN]):
@@ -207,7 +204,6 @@ async def test_a_tool_sees_the_trial_as_it_is_when_the_tool_runs(
     ledger: PlatformLedger,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    client_cleanup: AsyncExitStack,
 ) -> None:
     if scenario.needs_cli and _resolve_cli_path() is None:
         pytest.skip("No Claude Code CLI binary available")
@@ -216,7 +212,7 @@ async def test_a_tool_sees_the_trial_as_it_is_when_the_tool_runs(
     account.install(monkeypatch, ledger)
     tool = _PaywalledLookup(account)
     run_turn, executor = _turn_runner(
-        scenario, provider, session, tmp_path, monkeypatch, client_cleanup, tool=tool
+        scenario, provider, session, tmp_path, monkeypatch, tool=tool
     )
     prompt = PROMPTS[1]
     session.messages.append(ChatMessage(role="user", content=prompt))
@@ -242,7 +238,6 @@ async def test_a_turn_the_budget_backstop_cuts_off_is_still_charged(
     ledger: PlatformLedger,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    client_cleanup: AsyncExitStack,
 ) -> None:
     """A trial with less left than one call costs: the CLI stops the turn after
     that call, the call is charged in full, and the next turn is refused before
@@ -255,7 +250,7 @@ async def test_a_turn_the_budget_backstop_cuts_off_is_still_charged(
     )
     account.install(monkeypatch, ledger)
     run_turn, executor = _turn_runner(
-        scenario, provider, session, tmp_path, monkeypatch, client_cleanup
+        scenario, provider, session, tmp_path, monkeypatch
     )
     # The tool round: the CLI would make a second call after the first.
     prompt = PROMPTS[1]
@@ -317,7 +312,6 @@ def _turn_runner(
     session: ChatSession,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    client_cleanup: AsyncExitStack,
     *,
     tool: BaseTool | None = None,
 ) -> tuple[SdkTurnsViaExecutor | BaselineTurnsViaExecutor, Executor]:
@@ -335,10 +329,10 @@ def _turn_runner(
             monkeypatch,
             config,
             executor,
-            base_url=f"{provider.url}{scenario.client_path}",
+            provider,
+            path=scenario.client_path,
             model=scenario.model,
         )
-        client_cleanup.push_async_callback(runner.aclose)
         if tool is not None:
             monkeypatch.setitem(TOOL_REGISTRY, TOOL_NAME, tool)
             runner.run_registry_tools(monkeypatch)

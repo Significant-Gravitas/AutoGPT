@@ -90,7 +90,7 @@ export const MainSearchResultPage = ({
             <Text variant="large-medium-tight" as="h2" tone="emphasis">
               Showing results for:
             </Text>
-            <h1 className="font-poppins text-2xl leading-8 font-semibold text-foreground-emphasis">
+            <h1 className="font-poppins text-heading-md leading-8 font-semibold text-foreground-emphasis">
               &quot;{searchTerm}&quot;
             </h1>
           </div>

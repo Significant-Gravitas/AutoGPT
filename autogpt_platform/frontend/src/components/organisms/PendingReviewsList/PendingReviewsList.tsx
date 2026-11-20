@@ -17,6 +17,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { AttentionCard } from "@/components/organisms/AttentionCard/AttentionCard";
 import { SpendApprovalCard } from "./components/SpendApprovalCard/SpendApprovalCard";
 import { spendSummary } from "./components/SpendApprovalCard/helpers";
+import { isGateReview, waitingOnLine } from "./helpers";
 
 interface PendingReviewsListProps {
   reviews: PendingHumanReviewModel[];
@@ -24,8 +25,6 @@ interface PendingReviewsListProps {
   emptyMessage?: string;
 }
 
-// Copilot action-gate approvals bind exact arguments; auto-approve cannot apply.
-export const COPILOT_GATE_NODE_PREFIX = "copilot-node-gate-";
 // An expert's spend approval (backend SPEND_REVIEW_MARKER) unlocks her week,
 // not a node, so auto-approving its node would do nothing.
 const SPEND_REVIEW_MARKER = "expert-spend:";
@@ -237,15 +236,11 @@ export function PendingReviewsList({
         data-slot="pending-reviews-list-empty"
         className="flex flex-col items-center justify-center py-12 text-center"
       >
-        <Icon
-          icon={Clock01Icon}
-          size={48}
-          className="mb-4 text-muted-foreground"
-        />
-        <Text variant="h4" className="text-muted-foreground">
+        <Icon icon={Clock01Icon} size={48} tone="muted" className="mb-4" />
+        <Text variant="h4" tone="muted">
           {emptyMessage}
         </Text>
-        <Text variant="body" className="mt-2 max-w-md text-muted-foreground">
+        <Text variant="body" tone="muted" className="mt-2 max-w-md">
           When workflows have human-in-the-loop blocks, they will appear here
           for your review and approval.
         </Text>
@@ -291,15 +286,13 @@ export function PendingReviewsList({
               </AttentionCard.Icon>
               <Text
                 variant="large-semibold"
-                className="overflow-hidden text-ellipsis text-textBlack"
+                className="overflow-hidden text-ellipsis text-foreground-base"
               >
                 Your review is needed
               </Text>
             </AttentionCard.Row>
-            <Text variant="large" className="text-textGrey">
-              {reviewGroups.every(([nodeId]) => isGateReview(nodeId))
-                ? "Otto is waiting for your approval before the action below."
-                : "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed."}
+            <Text variant="large" tone="body">
+              {waitingOnLine(reviewGroups)}
             </Text>
           </div>
 
@@ -336,13 +329,13 @@ export function PendingReviewsList({
                         <Icon
                           icon={ArrowRight01Icon}
                           size={20}
-                          className="text-foreground-secondary"
+                          tone="secondary"
                         />
                       ) : (
                         <Icon
                           icon={ArrowDown01Icon}
                           size={20}
-                          className="text-foreground-secondary"
+                          tone="secondary"
                         />
                       )}
                       <div
@@ -408,7 +401,7 @@ export function PendingReviewsList({
                           onClick={() => processGroup(nodeId, true)}
                           disabled={isBusy}
                           variant="primary"
-                          className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
+                          className="flex min-w-20"
                           loading={groupAction === "approve"}
                         >
                           {reviewCount === 1
@@ -419,7 +412,7 @@ export function PendingReviewsList({
                           onClick={() => processGroup(nodeId, false)}
                           disabled={isBusy}
                           variant="destructive"
-                          className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-error-hover px-4 py-3"
+                          className="flex min-w-20"
                           loading={groupAction === "reject"}
                         >
                           {reviewCount === 1
@@ -434,7 +427,7 @@ export function PendingReviewsList({
             })}
           </div>
 
-          <Text variant="small" className="text-textGrey">
+          <Text variant="small" tone="body">
             Each decision applies only to the reviews shown above it. You can
             turn auto-approval on or off using the toggle for each node.
           </Text>
@@ -442,10 +435,6 @@ export function PendingReviewsList({
       )}
     </div>
   );
-}
-
-function isGateReview(nodeId: string | null | undefined) {
-  return !!nodeId?.startsWith(COPILOT_GATE_NODE_PREFIX);
 }
 
 function isSpendReview(nodeId: string) {

@@ -45,10 +45,7 @@ async def test_recovery_prices_the_sent_prompt_before_conversation_growth(
         answer_words, fail_followup, successful_requests
     ) as provider:
         run_turn = BaselineTurns(
-            monkeypatch,
-            config,
-            base_url=f"{provider.url}/anthropic/v1",
-            model=MODEL,
+            monkeypatch, config, provider, path="/anthropic/v1", model=MODEL
         )
 
         async def answer_tool(*, tool_call_id: str, **_: Any):
@@ -69,11 +66,8 @@ async def test_recovery_prices_the_sent_prompt_before_conversation_growth(
         session.title = "Request boundary regression"
         prompt = "Hello, please answer in detail"
         session.messages.append(ChatMessage(role="user", content=prompt))
-        try:
-            await run_turn(session, prompt, new_pod=False)
-            await ledger.settle()
-        finally:
-            await run_turn.aclose()
+        await run_turn(session, prompt, new_pod=False)
+        await ledger.settle()
 
         last_request = provider.bodies[successful_requests - 1]
         prompt_tokens = estimate_token_count(last_request["messages"], model=MODEL)
@@ -91,7 +85,6 @@ async def test_recovery_prices_the_sent_prompt_before_conversation_growth(
         expected = round((prompt_tokens + tool_tokens) * 0.1 + output_tokens * 0.5)
         assert [charge.microdollars for charge in ledger.spend] == [expected]
         assert [charge.microdollars for charge in ledger.tree] == [expected]
-        assert run_turn.client.is_closed()
         assert not provider.unexpected
 
 

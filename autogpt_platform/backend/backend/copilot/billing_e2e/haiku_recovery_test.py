@@ -72,21 +72,14 @@ async def test_missing_usage_does_not_tier_the_whole_turn_output(
         }
     )
     run_turn = BaselineTurns(
-        monkeypatch,
-        config,
-        base_url=f"{provider.url}/anthropic/v1",
-        model="claude-haiku-5-5",
+        monkeypatch, config, provider, path="/anthropic/v1", model="claude-haiku-5-5"
     )
     session = ChatSession.new("haiku-recovery-test", dry_run=False)
     session.title = "Recovery regression"
     prompt = f"Look this up {TOOL_MARKER}" if requests == 2 else "Hello"
     session.messages.append(ChatMessage(role="user", content=prompt))
-    try:
-        await run_turn(session, prompt, new_pod=False)
-        await ledger.settle()
-    finally:
-        await run_turn.aclose()
-    assert run_turn.client.is_closed()
+    await run_turn(session, prompt, new_pod=False)
+    await ledger.settle()
     assert not provider.unexpected
     assert len(provider.calls) == requests
     if report_usage:

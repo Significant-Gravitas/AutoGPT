@@ -15,7 +15,7 @@ export function DreamUsageSummary({ usage }: Props) {
   if (!usage) {
     return (
       <div
-        className="rounded-md border border-dashed bg-surface p-4 text-center text-sm text-foreground-tertiary"
+        className="rounded-md border border-dashed bg-surface p-4 text-center text-body text-foreground-tertiary"
         data-testid="dream-usage-empty"
       >
         No token usage was recorded for this dream pass.
@@ -51,7 +51,7 @@ export function DreamUsageSummary({ usage }: Props) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs">
+        <table className="w-full text-left text-caption">
           <thead className="text-foreground-tertiary">
             <tr>
               <th className="px-2 py-1 font-medium">Phase</th>

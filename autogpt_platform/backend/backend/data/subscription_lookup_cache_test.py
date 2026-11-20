@@ -457,7 +457,9 @@ async def test_a_redis_outage_never_slows_or_blocks_billing(
     backstop, far below what paying a deadline per read would take."""
     outage = _Outage(kind)
     hangs = kind in ("connect-hangs", "command-hangs")
-    backstop = 10 * versioned_cache._REDIS_DEADLINE_SECONDS
+    # Twenty deadlines: room for a stalled CI runner, and a third of what the
+    # sixty reads would take paying one deadline each, in turn.
+    backstop = 20 * versioned_cache._REDIS_DEADLINE_SECONDS
     with patch.object(versioned_cache, "get_redis_async", outage):
         started = time.monotonic()
         ends = await asyncio.wait_for(

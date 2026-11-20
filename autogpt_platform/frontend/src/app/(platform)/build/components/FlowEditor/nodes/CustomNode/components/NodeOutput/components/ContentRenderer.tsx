@@ -16,14 +16,16 @@ export const TextRenderer: React.FC<{
       : text;
 
   return (
-    <Text
-      variant="small-tight"
-      tone="inherit"
-      as="div"
-      className="bg-surface-muted p-3 break-words"
-    >
-      {truncated}
-    </Text>
+    <div className="bg-surface-muted p-3">
+      <Text
+        variant="small-tight"
+        tone="inherit"
+        as="div"
+        className="break-words"
+      >
+        {truncated}
+      </Text>
+    </div>
   );
 };
 

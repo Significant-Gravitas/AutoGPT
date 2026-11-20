@@ -66,10 +66,7 @@ async def test_provider_failures_are_excluded_but_disconnects_remain_billable(
     )
     async with FailingStreamProvider(requests, failure, usage_mode) as provider:
         run_turn = BaselineTurns(
-            monkeypatch,
-            config,
-            base_url=f"{provider.url}/anthropic/v1",
-            model=MODEL,
+            monkeypatch, config, provider, path="/anthropic/v1", model=MODEL
         )
 
         async def answer_tool(*, tool_call_id: str, **_: Any):
@@ -113,7 +110,6 @@ async def test_provider_failures_are_excluded_but_disconnects_remain_billable(
             await ledger.settle()
         finally:
             provider.release.set()
-            await run_turn.aclose()
 
         assert len(provider.bodies) == requests
         prompt_estimates = [
@@ -151,7 +147,6 @@ async def test_provider_failures_are_excluded_but_disconnects_remain_billable(
             abs(sum(row.entry.cost_microdollars for row in ledger.cost_log) - expected)
             <= tolerance
         )
-        assert run_turn.client.is_closed()
         assert not provider.unexpected
 
 

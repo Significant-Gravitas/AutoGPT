@@ -1,10 +1,14 @@
 import { compareEntryIds } from "../../turnConverter";
 import type { PersistedRow } from "../../turnLog";
 import type { SessionView } from "../../turnRuntime";
+import { persistedPromptId } from "../../turnTail";
 import { loadRecordedTurn } from "../recordedTurns";
 
+export const USER_ID = "user-1";
 const FIXTURE = loadRecordedTurn("baseline-tool-turn");
 const HEARTBEAT_MS = 10_000;
+// Past the client's silence abort (30 s) and its checks (4 s).
+const LATE_RECEIVE_MS = 40_000;
 const LISTENER_READ_MS = 5_000;
 const encoder = new TextEncoder();
 const QUEUED_STREAM = emptyStream();
@@ -17,11 +21,22 @@ const FOLLOW_UP_STREAM = emptyStream({
 // The session GET's rows carry the message id the renderer keys a prompt on.
 type Row = PersistedRow & { id: string };
 
+interface PostedBody {
+  message: string;
+  message_id: string;
+  file_ids: string[] | null;
+  folder_ids: string[] | null;
+}
+
 /** How the next send is answered, or lost, between the client and the server. */
 export type PostMode =
   | "stream"
   | "lost-before-send"
+  // The request never reaches the server and never answers, as a dead socket holds it.
+  | "hang-before-send"
   | "lost-after-receive"
+  // The request reaches the server only after the client gave up on it.
+  | "late-after-receive"
   // The server started the turn; the response stays open and silent, as a frozen page sees it.
   | "silent-after-receive"
   | "route-error-after-receive"
@@ -62,6 +77,11 @@ export class FaultServer {
   turns: FaultTurn[] = [];
   connections: FaultConnection[] = [];
   requests: { method: string; url: URL }[] = [];
+  /** Each POST's body, in order. */
+  posts: PostedBody[] = [];
+  /** The next POST's answer reaches the client this much later; the server
+   *  has the message at once, as over a slow link. */
+  respondAfterMs = 0;
   postMode: PostMode | (() => PostMode) = "stream";
   resumeMode: ResumeMode = "stream";
   /** Session reads fail while this is above zero; each read takes one. */
@@ -70,18 +90,36 @@ export class FaultServer {
   viewsDown = false;
   /** The user is at the running cap: the next send is queued. */
   queueing = false;
+  /** The session GET's window: only the latest this-many rows. */
+  window: number | null = null;
+  /** The next session GET lists this many of the newest rows late, as one
+   *  that reads the messages just before a send's row and turn land. */
+  lagRowsOnce = 0;
+  /** Views name the session's owner, as a read the page made after a send does. */
+  namesUser = true;
+  /** Runs once as the next session GET starts, as a page read landing meanwhile. */
+  beforeViewOnce: (() => void) | null = null;
   viewReads = 0;
-  private pending: string[] = [];
+  private pending: { text: string; id: string }[] = [];
   private pumps = new Set<() => void>();
 
   fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     const method = init?.method ?? "GET";
     this.requests.push({ method, url });
-    return method === "POST" ? this.post(url, init) : this.resume(url, init);
+    if (method !== "POST") return this.resume(url, init);
+    this.posts.push(JSON.parse(String(init?.body)) as PostedBody);
+    const delay = this.respondAfterMs;
+    this.respondAfterMs = 0;
+    const response = await this.post(url, init);
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    return response;
   }) as typeof fetch;
 
   view(): SessionView {
+    const before = this.beforeViewOnce;
+    this.beforeViewOnce = null;
+    before?.();
     this.viewReads += 1;
     if (this.viewsDown) throw new TypeError("Failed to fetch");
     if (this.failViews > 0) {
@@ -89,9 +127,14 @@ export class FaultServer {
       throw new TypeError("Failed to fetch");
     }
     const turn = this.current();
+    const lag = this.lagRowsOnce;
+    this.lagRowsOnce = 0;
+    const read = lag ? this.history.slice(0, -lag) : this.history;
+    const rows = this.window === null ? read : read.slice(-this.window);
     return {
-      messages: this.history.map((row) => ({ ...row })),
-      has_more_messages: false,
+      user_id: this.namesUser ? USER_ID : null,
+      messages: rows.map((row) => ({ ...row })),
+      has_more_messages: rows.length < read.length,
       active_stream:
         turn?.state === "running"
           ? { turn_id: turn.id, checkpoint: this.checkpoint(turn) }
@@ -105,8 +148,15 @@ export class FaultServer {
     };
   }
 
-  /** Persist a prompt and register its turn, as `schedule_chat_turn` does. */
-  startTurn(text: string, state: FaultTurn["state"] = "running") {
+  /**
+   * Persist a prompt and register its turn, as `schedule_chat_turn` does. A
+   * send's prompt row takes the id the backend scopes from its `message_id`.
+   */
+  startTurn(
+    text: string,
+    state: FaultTurn["state"] = "running",
+    promptId: string | null = null,
+  ) {
     const id = `turn-${this.turns.length + 1}`;
     const promptSequence = this.history.length;
     const turn: FaultTurn = {
@@ -128,7 +178,7 @@ export class FaultServer {
     this.turns.push(turn);
     this.history.push({
       ...FIXTURE.rows[0],
-      id: `row-${promptSequence}`,
+      id: promptId ?? `row-${promptSequence}`,
       content: text,
       sequence: promptSequence,
     });
@@ -146,8 +196,19 @@ export class FaultServer {
     this.history.push(...turn.rows.slice(before, persistedRows(turn)));
     if (turn.published === turn.frames.length) {
       turn.state = "ended";
-      if (this.pending.length)
-        this.startTurn(this.pending.splice(0).join("\n"));
+      // `persist_pending_as_user_rows`: each queued send its own row, then the turn.
+      const drained = this.pending.splice(0);
+      const last = drained.pop();
+      for (const queued of drained) {
+        const sequence = this.history.length;
+        this.history.push({
+          ...FIXTURE.rows[0],
+          id: queued.id,
+          content: queued.text,
+          sequence,
+        });
+      }
+      if (last) this.startTurn(last.text, "running", last.id);
     }
     this.pumps.forEach((pump) => pump());
   }
@@ -172,15 +233,47 @@ export class FaultServer {
     const mode =
       typeof this.postMode === "function" ? this.postMode() : this.postMode;
     if (mode === "lost-before-send") throw new TypeError("Failed to fetch");
+    if (mode === "hang-before-send") return hangUntilAborted(init?.signal);
     if (typeof mode === "object") return refusal(mode.status, mode.body);
-    const { message } = JSON.parse(String(init?.body)) as { message: string };
+    const body = JSON.parse(String(init?.body)) as {
+      message: string;
+      message_id: string;
+      expert_kickoff: boolean;
+    };
+    // `expert_kickoff_message_id`: a kickoff's row is keyed on its expert.
+    const id = body.expert_kickoff
+      ? "expert-kickoff-row"
+      : scopedMessageId(url, body.message_id);
+    if (mode === "late-after-receive") {
+      setTimeout(() => this.arrive(body.message, id), LATE_RECEIVE_MS);
+      return hangUntilAborted(init?.signal);
+    }
+    // The route's claim on the id: a send it already took starts nothing, and
+    // is handed the turn running now, if any.
+    if (this.took(id)) {
+      const running = this.running();
+      return sse(
+        running
+          ? this.open("POST", url, running, "0-0", init?.signal)
+          : emptyStream(),
+      );
+    }
     if (this.running()) {
-      this.pending.push(message);
+      this.pending.push({ text: body.message, id });
+      if (mode === "lost-after-receive") throw new TypeError("Failed to fetch");
       return sse(FOLLOW_UP_STREAM);
     }
-    const turn = this.startTurn(message, this.queueing ? "queued" : "running");
-    if (turn.state === "queued") return sse(QUEUED_STREAM);
+    // The route matches a send on its text too only when it names no id: one
+    // that repeats the trailing user rows is dropped, and no turn starts.
+    if (!body.message_id && this.repeatsTrailingPrompt(body.message))
+      return sse(emptyStream());
+    const turn = this.startTurn(
+      body.message,
+      this.queueing ? "queued" : "running",
+      id,
+    );
     if (mode === "lost-after-receive") throw new TypeError("Failed to fetch");
+    if (turn.state === "queued") return sse(QUEUED_STREAM);
     if (mode === "route-error-after-receive")
       return sse(
         [
@@ -282,6 +375,31 @@ export class FaultServer {
     });
   }
 
+  // The route's claim on a send's id: taken as a row, or queued.
+  private took(id: string) {
+    return (
+      this.history.some((row) => row.id === id) ||
+      this.pending.some((queued) => queued.id === id)
+    );
+  }
+
+  // A request that reaches the server after its client gave up on it: the
+  // route's claim, then the queue behind a running turn, or its own turn.
+  private arrive(text: string, id: string) {
+    if (this.took(id)) return;
+    if (this.running()) this.pending.push({ text, id });
+    else this.startTurn(text, this.queueing ? "queued" : "running", id);
+  }
+
+  // `is_message_duplicate`: the text of one of the trailing user rows.
+  private repeatsTrailingPrompt(text: string) {
+    for (let i = this.history.length - 1; i >= 0; i--) {
+      if (this.history[i].role !== "user") return false;
+      if (this.history[i].content === text) return true;
+    }
+    return false;
+  }
+
   private current(): FaultTurn | null {
     return this.turns[this.turns.length - 1] ?? null;
   }
@@ -304,6 +422,22 @@ export class FaultServer {
     }
     return null;
   }
+}
+
+// `scoped_client_message_id`: the backend keys a send's row on its user,
+// session and client `message_id`.
+function scopedMessageId(url: URL, clientId: string) {
+  const session = url.pathname.split("/").at(-2) ?? "";
+  return persistedPromptId(USER_ID, session, clientId);
+}
+
+function hangUntilAborted(signal: AbortSignal | null | undefined) {
+  return new Promise<Response>((_, reject) => {
+    const abort = () =>
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+    if (signal?.aborted) abort();
+    else signal?.addEventListener("abort", abort, { once: true });
+  });
 }
 
 // A checkpoint names how many of the turn's rows are persisted; the finish, all of them.

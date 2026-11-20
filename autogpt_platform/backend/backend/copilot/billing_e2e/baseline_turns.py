@@ -9,10 +9,9 @@ copilot's tools, which answer the provider's tool call with a canned result.
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from openai import AsyncOpenAI
 
 from backend.copilot import pending_message_helpers
 from backend.copilot.baseline import service as baseline
@@ -22,6 +21,7 @@ from backend.copilot.model_router import ResolvedModel
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tree import root_envelope
 
+from .provider import FakeProvider
 from .wire import TOOL_NAME
 
 
@@ -30,15 +30,16 @@ class BaselineTurns:
         self,
         monkeypatch: pytest.MonkeyPatch,
         config: ChatConfig,
+        provider: FakeProvider,
         *,
-        base_url: str,
+        path: str,
         model: str,
     ) -> None:
-        self.client = AsyncOpenAI(api_key="sk-billing-e2e", base_url=base_url)
+        client = provider.openai_client(path, api_key="sk-billing-e2e")
         save = AsyncMock(side_effect=lambda session, *_, **__: session)
         stubs: dict[str, Any] = {
             "config": config,
-            "_get_main_client": lambda: self.client,
+            "_get_main_client": lambda: client,
             "resolve_model_route": AsyncMock(
                 return_value=ResolvedModel(model=model, source="env")
             ),
@@ -60,6 +61,9 @@ class BaselineTurns:
             "resolve_answered": _no_answered_cards,
             "build_turn_budget_block": AsyncMock(return_value=""),
             "_fetch_graphiti_context": AsyncMock(return_value=""),
+            # A follow-up turn's memory refresh. The baseline binds it by
+            # name, so conftest's patch of context_refresh never reaches it.
+            "start_refresh": MagicMock(return_value=None),
             "_enqueue_graphiti_turn": AsyncMock(),
             "capture_chat_turn": AsyncMock(),
             "build_expert_identity_suffix": AsyncMock(return_value=""),
@@ -67,9 +71,6 @@ class BaselineTurns:
         for name, value in stubs.items():
             monkeypatch.setattr(baseline, name, value)
         monkeypatch.setattr(pending_message_helpers, "upsert_chat_session", save)
-
-    async def aclose(self) -> None:
-        await self.client.close()
 
     async def __call__(
         self, session: ChatSession, prompt: str, *, new_pod: bool

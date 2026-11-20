@@ -2,3 +2,17 @@ onlyBuiltDependencies:
   - "@vercel/speed-insights"
   - esbuild
   - msw
+
+# Better Auth's 2026-11-03 security release
+# (https://better-auth.com/blog/security-release-2026-11-03) is newer than the
+# 7-day minimum-release-age in .npmrc. Remove these entries after 2026-11-10.
+minimumReleaseAgeExclude:
+  - better-auth@1.7.16
+  - "@better-auth/core@1.7.16"
+  - "@better-auth/drizzle-adapter@1.7.16"
+  - "@better-auth/kysely-adapter@1.7.16"
+  - "@better-auth/memory-adapter@1.7.16"
+  - "@better-auth/mongo-adapter@1.7.16"
+  - "@better-auth/prisma-adapter@1.7.16"
+  - "@better-auth/telemetry@1.7.16"
+  - better-call@1.4.5

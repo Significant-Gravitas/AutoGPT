@@ -100,7 +100,7 @@ export function ResolutionModeBar({
   return (
     <div className="flex items-center justify-between gap-2 rounded-t-xl bg-warning-surface px-3 py-2">
       <div className="flex items-center gap-2">
-        <Icon icon={Alert01Icon} className="h-4 w-4 text-warning-foreground" />
+        <Icon icon={Alert01Icon} tone="warning" className="h-4 w-4" />
         <Text variant="body-tight" tone="warning" as="span">
           Remove incompatible connections
         </Text>
@@ -108,7 +108,8 @@ export function ResolutionModeBar({
           <TooltipTrigger asChild>
             <Icon
               icon={InformationCircleIcon}
-              className="h-4 w-4 cursor-help text-warning"
+              tone="warning-bright"
+              className="h-4 w-4 cursor-help"
             />
           </TooltipTrigger>
           <TooltipContent className="max-w-sm">

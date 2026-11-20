@@ -29,7 +29,7 @@ export function WorkflowsMovedWalkthrough() {
             ref={player.fallbackRef}
             role="status"
             tabIndex={-1}
-            className="max-w-sm text-center text-sm leading-relaxed text-foreground-secondary outline-none"
+            className="max-w-sm text-center text-body leading-relaxed text-foreground-secondary outline-none"
           >
             The walkthrough couldn&apos;t load. Open Team, select Otto, then
             choose Workflows.
@@ -61,7 +61,7 @@ export function WorkflowsMovedWalkthrough() {
           {player.playback === "blocked" && (
             <p
               role="status"
-              className="border-t border-border-base px-4 py-3 text-xs leading-relaxed text-foreground-secondary"
+              className="border-t border-border-base px-4 py-3 text-caption leading-relaxed text-foreground-secondary"
             >
               The video couldn&apos;t start. Try playing it again, or open Team,
               select Otto, then choose Workflows.
@@ -89,10 +89,10 @@ function WalkthroughControl({ player }: { player: Player }) {
       )}
       <div className="flex min-h-14 items-center border-t border-border-base/80 bg-surface px-4 py-2">
         <div className={player.hasStarted ? "pr-24" : undefined}>
-          <p className="text-sm font-medium text-foreground-body">
+          <p className="text-body font-medium text-foreground-body">
             See where they live
           </p>
-          <p className="mt-0.5 text-xs text-foreground-tertiary">
+          <p className="mt-0.5 text-caption text-foreground-tertiary">
             {player.durationLabel && (
               <>
                 <span aria-label="Video duration">{player.durationLabel}</span>
@@ -114,7 +114,7 @@ function WalkthroughControl({ player }: { player: Player }) {
         className={
           player.hasStarted
             ? "absolute right-3 bottom-2.5"
-            : "absolute top-[calc(50%-1.75rem)] left-1/2 size-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-surface/20 bg-brand text-action-foreground shadow-xl hover:border-surface/30 hover:bg-accent-strong focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-4"
+            : "absolute top-[calc(50%-1.75rem)] left-1/2 size-16 -translate-x-1/2 -translate-y-1/2 border-surface/20 bg-brand text-action-foreground shadow-xl hover:border-surface/30 hover:bg-accent-strong focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-4"
         }
       >
         <Icon icon={icon} size={player.hasStarted ? 14 : 26} aria-hidden />

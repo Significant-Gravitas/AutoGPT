@@ -175,6 +175,7 @@ describe("useCopilotPage — stable onSend", () => {
       undefined,
       undefined,
       undefined,
+      expect.objectContaining({ isNewChat: false, isExpert: false }),
     );
   });
 
@@ -208,6 +209,7 @@ describe("useCopilotPage — stable onSend", () => {
         undefined,
         undefined,
         undefined,
+        expect.objectContaining({ isNewChat: false, isExpert: false }),
       ),
     );
   });

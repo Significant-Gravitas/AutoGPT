@@ -75,21 +75,17 @@ async def test_three_turns_charge_each_request_at_its_prompt_tier(
         }
     )
     run_turn = BaselineTurns(
-        monkeypatch, config, base_url=f"{provider.url}/anthropic/v1", model=MODEL
+        monkeypatch, config, provider, path="/anthropic/v1", model=MODEL
     )
     session = ChatSession.new("haiku-billing-test", dry_run=False)
     session.title = "Tier pricing test"
     prompts = ("Hello", f"Look this up {TOOL_MARKER}", "Thanks")
-    try:
-        for turn, prompt in enumerate(prompts):
-            provider.turn = ledger.turn = turn
-            session.messages.append(ChatMessage(role="user", content=prompt))
-            await run_turn(session, prompt, new_pod=turn == 2)
-            await ledger.settle()
-    finally:
-        await run_turn.aclose()
+    for turn, prompt in enumerate(prompts):
+        provider.turn = ledger.turn = turn
+        session.messages.append(ChatMessage(role="user", content=prompt))
+        await run_turn(session, prompt, new_pod=turn == 2)
+        await ledger.settle()
 
-    assert run_turn.client.is_closed()
     assert not provider.unexpected
     assert [len(provider.calls_in(turn)) for turn in range(3)] == [1, 2, 1]
     assert [charge.microdollars for charge in ledger.spend] == [5_700, 35_700, 3_500]

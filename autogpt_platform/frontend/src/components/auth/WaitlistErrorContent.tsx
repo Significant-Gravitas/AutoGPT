@@ -38,7 +38,7 @@ export function WaitlistErrorContent(props: Props) {
           up with. Need a hand? Emails us at{" "}
           <a
             href="mailto:contact@agpt.co"
-            className="underline hover:text-foreground"
+            className="underline hover:text-foreground-base"
           >
             contact@agpt.co
           </a>{" "}
@@ -47,7 +47,7 @@ export function WaitlistErrorContent(props: Props) {
             href="https://discord.gg/autogpt"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline hover:text-foreground"
+            className="underline hover:text-foreground-base"
           >
             message us on Discord
           </a>

@@ -20,7 +20,6 @@ import {
   type OutputProperties,
 } from "./outputSchema";
 import { BlockUIType } from "../../types";
-import { cn } from "@/lib/utils";
 import { useBrokenOutputs } from "./useBrokenOutputs";
 import {
   ArrowDown01Icon,
@@ -125,7 +124,7 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
         ? selfIsRelevant || descendantIsRelevant
         : isOutputVisible || selfIsRelevant || descendantIsRelevant;
 
-      const { displayType, colorClass, hexColor } =
+      const { displayType, colorClass } =
         // oxlint-disable-next-line design-system/require-static-classes -- getTypeDisplayInfo returns whole, static class strings
         getTypeDisplayInfo(fieldSchema);
       const isExpanded =
@@ -172,14 +171,15 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
             )}
             <Text
               variant={isBroken ? "body-line-through" : "body"}
-              className={cn("text-foreground-body", isBroken && "text-error")}
+              tone={isBroken ? "error" : "body"}
             >
               {fieldTitle}
             </Text>
             <Text
               variant={isBroken ? "small-line-through" : "small"}
               as="span"
-              className={cn(colorClass, isBroken && "!text-error")}
+              tone={isBroken ? "error" : undefined}
+              className={isBroken ? undefined : colorClass}
             >
               ({displayType})
             </Text>
@@ -189,7 +189,6 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
                 isBroken={isBroken}
                 field_name={fullKey}
                 nodeId={nodeId}
-                hexColor={hexColor}
               />
             )}
           </div>
@@ -206,8 +205,9 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
   return (
     <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-border-base bg-surface py-3.5">
       <Button
-        variant="ghost"
-        className="mr-4 h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
+        variant="toggle"
+        size="inline"
+        className="mr-4"
         onClick={() => setIsOutputVisible(!isOutputVisible)}
       >
         <Text
@@ -219,7 +219,8 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
           <Icon
             icon={ArrowDown01Icon}
             size={16}
-            className={`transition-transform ${isOutputVisible ? "rotate-180" : ""}`}
+            motion="transform"
+            className={isOutputVisible ? "rotate-180" : undefined}
           />
         </Text>
       </Button>

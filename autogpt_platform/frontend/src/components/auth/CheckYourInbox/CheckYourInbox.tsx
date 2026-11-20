@@ -36,7 +36,7 @@ export function CheckYourInbox({
   return (
     <div className="flex w-full flex-col items-center text-center">
       <div className="mb-6 flex size-14 items-center justify-center rounded-full bg-accent-surface">
-        <Icon icon={Mail01Icon} className="size-7 text-brand" />
+        <Icon icon={Mail01Icon} tone="brand" className="size-7" />
       </div>
 
       <Text
@@ -76,12 +76,7 @@ export function CheckYourInbox({
         <Text variant="body-medium" tone="muted">
           {copy.backPrompt}
         </Text>
-        <Button
-          type="button"
-          variant="link"
-          className="h-auto min-w-0 p-0"
-          onClick={onBack}
-        >
+        <Button type="button" variant="link" size="inline" onClick={onBack}>
           {copy.backLabel}
         </Button>
       </div>

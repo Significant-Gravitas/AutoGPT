@@ -139,17 +139,28 @@ class SandboxMetadata(BaseModel):
         }
 
 
-def owned_by_user(metadata: Mapping[str, str], user_id: Optional[str]) -> bool:
-    """Whether a box's metadata says it was created for *user_id*.
+def owned_by_user(
+    metadata: Mapping[str, str],
+    user_id: Optional[str],
+    kind: Optional[SandboxUse] = None,
+) -> bool:
+    """Whether a box's metadata says it was created for *user_id*, and, given
+    *kind*, for that use.
 
     Used before attaching to a sandbox id a caller supplied.  Under the
     platform's E2B key every sandbox id connects, so the stamped user is the
     only thing that makes "reconnect" mean "reconnect to your own box".  A
     box with no parseable metadata is not ours, or predates stamping, and is
-    refused either way.
+    refused either way.  *kind* keeps a reconnect to the boxes its own block
+    makes: a box made for another use holds what that use put in it.
     """
     parsed = SandboxMetadata.parse(metadata)
-    return bool(user_id) and parsed is not None and parsed.user == user_id
+    return (
+        bool(user_id)
+        and parsed is not None
+        and parsed.user == user_id
+        and (kind is None or parsed.kind == kind)
+    )
 
 
 def deployment_env() -> str:

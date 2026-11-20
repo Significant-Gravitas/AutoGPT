@@ -34,8 +34,10 @@ function PreviewButton({
         <Button
           data-slot="file-input-preview"
           variant="outline"
-          size="small"
-          className="h-7 w-7 min-w-0 flex-shrink-0 border-border-strong p-0 text-foreground-tertiary hover:text-info-foreground"
+          size="icon-xs"
+          shape="pill"
+          withTooltip={false}
+          className="flex-shrink-0 text-foreground-tertiary hover:text-info-foreground"
           type="button"
           aria-label="Preview file"
         >
@@ -349,7 +351,7 @@ export function FileInput(props: Props) {
               <Text
                 data-slot="file-input-progress-text"
                 variant="small"
-                className="text-info-foreground"
+                tone="info-strong"
               >
                 {mode === "base64" ? "Processing..." : "Uploading..."}
               </Text>
@@ -366,13 +368,14 @@ export function FileInput(props: Props) {
                 <Icon
                   data-slot="file-input-file-icon"
                   icon={File02Icon}
-                  className="h-4 w-4 flex-shrink-0 text-foreground-secondary"
+                  tone="secondary"
+                  className="h-4 w-4 flex-shrink-0"
                 />
 
                 <Text
                   data-slot="file-input-file-name"
                   variant="small-medium"
-                  className="truncate text-foreground-base"
+                  className="truncate"
                 >
                   {fileInfo
                     ? getFileLabel(fileInfo.name, fileInfo.content_type)
@@ -382,7 +385,7 @@ export function FileInput(props: Props) {
                   <Text
                     data-slot="file-input-file-size"
                     variant="small"
-                    className="text-foreground-tertiary"
+                    tone="muted"
                   >
                     {formatFileSize(fileInfo.size)}
                   </Text>
@@ -402,8 +405,10 @@ export function FileInput(props: Props) {
               <Button
                 data-slot="file-input-clear"
                 variant="outline"
-                size="small"
-                className="h-7 w-7 min-w-0 flex-shrink-0 border-border-strong p-0 text-foreground-tertiary hover:text-error-hover"
+                size="icon-xs"
+                shape="pill"
+                withTooltip={false}
+                className="flex-shrink-0 text-foreground-tertiary hover:text-error-hover"
                 onClick={handleClear}
                 type="button"
                 aria-label="Clear file"
@@ -425,7 +430,7 @@ export function FileInput(props: Props) {
                 variant="outline"
                 size="small"
                 onClick={() => inputRef.current?.click()}
-                className="flex-1 border-border-strong text-caption leading-4"
+                className="flex-1 text-caption leading-4"
                 disabled={isUploading}
                 type="button"
               >
@@ -504,7 +509,8 @@ export function FileInput(props: Props) {
                 <Icon
                   data-slot="file-input-file-icon"
                   icon={File02Icon}
-                  className="h-7 w-7 text-foreground-base"
+                  tone="base"
+                  className="h-7 w-7"
                 />
                 <div
                   data-slot="file-input-file-details"
@@ -541,11 +547,13 @@ export function FileInput(props: Props) {
                 <Button
                   data-slot="file-input-clear"
                   variant="outline"
-                  size="small"
+                  size="icon-xs"
+                  shape="pill"
+                  withTooltip={false}
                   type="button"
                   onClick={handleClear}
                   aria-label="Clear file"
-                  className="h-7 w-7 min-w-0 flex-shrink-0 border-border-strong p-0 text-foreground-tertiary hover:text-error-hover"
+                  className="flex-shrink-0 text-foreground-tertiary hover:text-error-hover"
                 >
                   <Icon
                     data-slot="file-input-clear-icon"

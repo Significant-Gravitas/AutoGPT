@@ -69,7 +69,19 @@ export async function signUpBeforeAccountSetup(
   return user;
 }
 
-function newJourneyUser(): JourneyUser {
+/**
+ * Creates a brand-new account that has not started onboarding, then signs the
+ * browser out again, so the journey can log in through the app's own form.
+ */
+export async function signUpWithoutOnboarding(
+  page: Page,
+): Promise<JourneyUser> {
+  const user = await signUp(page, newJourneyUser());
+  await page.context().clearCookies();
+  return user;
+}
+
+export function newJourneyUser(): JourneyUser {
   const id = `${Date.now()}-${randomBytes(3).toString("hex")}`;
   return {
     email: `journey-${id}@${journeyEmailDomain()}`,
@@ -138,7 +150,7 @@ async function completeOnboarding(page: Page) {
 // The app caps sign-ups per client IP. On a local or CI stack every journey
 // comes from one address, so each sign-up claims its own; a deployed app
 // behind a proxy sets the real address and the cap applies as usual.
-function authHeaders(): Record<string, string> {
+export function authHeaders(): Record<string, string> {
   const origin = appOrigin();
   if (!isLoopback(origin)) return { Origin: origin };
   return {
