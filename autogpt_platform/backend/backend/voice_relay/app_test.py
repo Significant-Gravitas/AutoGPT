@@ -15,7 +15,7 @@ from backend.util.settings import AppEnvironment
 from backend.voice_relay import app as relay_app
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.app import Relay, RelayDeps, first_name_of
-from backend.voice_relay.config import CAPS, DEFAULT_DRAIN_S
+from backend.voice_relay.config import CAPS, DEFAULT_DRAIN_S, MAX_TEXT_BYTES
 from backend.voice_relay.conftest import (
     ORIGIN,
     FakeMedia,
@@ -94,8 +94,9 @@ def test_a_relay_will_not_load_with_every_origin_allowed(configured: list[str]):
         json.dumps({"type": "start", "token": "x", "pad": "x" * 5_000}),
         "not json",
         json.dumps(["start"]),
+        "[" * MAX_TEXT_BYTES,
     ],
-    ids=["hangup-first", "oversized", "not-json", "not-an-object"],
+    ids=["hangup-first", "oversized", "not-json", "not-an-object", "nested-too-deep"],
 )
 async def test_anything_but_start_or_resume_first_is_refused(redis, first):
     async with running_relay(redis, FakeVendor()) as running:

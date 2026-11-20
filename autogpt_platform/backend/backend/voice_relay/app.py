@@ -327,7 +327,7 @@ async def _first_message(ws: WebSocket) -> dict[str, Any]:
         raise _Refused("protocol")
     try:
         first = json.loads(text)
-    except ValueError:
+    except (ValueError, RecursionError):
         raise _Refused("protocol") from None
     if not isinstance(first, dict) or first.get("type") not in ("start", "resume"):
         raise _Refused("protocol")
