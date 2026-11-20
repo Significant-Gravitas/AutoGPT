@@ -126,7 +126,9 @@ async def test_upload_passes_a_stream_and_closes_it(tmp_path):
     block = Slant3DSlicerBlock()
     streams = []
 
-    async def put(url, *, data, headers):
+    async def put(url, *, data, headers, allow_redirects):
+        # Sent once, so the file streams instead of being held in memory.
+        assert allow_redirects is False
         streams.append(data)
         chunks = []
         while chunk := data.read(65536):
