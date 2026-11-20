@@ -15,6 +15,8 @@ import {
   getPostV1CreateNewApiKeyResponseMock200,
 } from "@/app/api/__generated__/endpoints/api-keys/api-keys.msw";
 
+import { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
+
 import SettingsApiKeysPage from "../page";
 
 const toastSpy = vi.fn();
@@ -55,6 +57,45 @@ describe("SettingsApiKeysPage - create flow", () => {
     expect(within(dialog).getByLabelText(/^name$/i)).toBeDefined();
     expect(within(dialog).getByLabelText(/description/i)).toBeDefined();
     expect(within(dialog).getByText(/permissions/i)).toBeDefined();
+  });
+
+  test("lists every permission once, under the API version that checks it, except the OAuth-only one", async () => {
+    server.use(getGetV1ListUserApiKeysMockHandler([]));
+
+    render(<SettingsApiKeysPage />);
+    await screen.findByText(/no api key found/i);
+
+    openCreateDialog();
+    const dialog = await screen.findByRole("dialog");
+
+    const groups = [
+      "API v2",
+      "API v1 and v2",
+      "API v1 only (stops working 2027-02-01)",
+    ].map((name) => within(dialog).getByRole("group", { name }));
+    const listed = groups.flatMap((group) =>
+      within(group)
+        .getAllByRole("checkbox")
+        .map((box) => box.getAttribute("aria-labelledby")),
+    );
+
+    // Only the Local PC companion's OAuth token can carry it; an API key
+    // with it would do nothing.
+    expect(listed.sort()).toEqual(
+      Object.values(APIKeyPermission)
+        .filter((permission) => permission !== "CONNECT_LOCAL_EXECUTOR")
+        .map((permission) => `api-key-scope-${permission}`)
+        .sort(),
+    );
+    expect(
+      within(groups[0]).getByRole("checkbox", { name: "Run Agent" }),
+    ).toBeDefined();
+    expect(
+      within(groups[0]).getByText("Run workflows from your library"),
+    ).toBeDefined();
+    expect(
+      within(groups[2]).getByRole("checkbox", { name: "Execute Graph" }),
+    ).toBeDefined();
   });
 
   test("toggling a permission off re-disables the submit button", async () => {

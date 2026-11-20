@@ -1,5 +1,6 @@
-"""Every write that can change a user's lifecycle snapshot schedules a sync,
-and a PostHog or Stripe failure in that sync never reaches the caller."""
+"""Every write that can change a user's lifecycle snapshot or tier schedules
+a sync, and a PostHog or Stripe failure in that sync never reaches the
+caller."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,7 +12,11 @@ from prisma.enums import SubscriptionTier
 from backend.copilot.rate_limit import set_user_tier
 from backend.data import posthog_lifecycle_sync as lifecycle
 from backend.data import user as user_module
-from backend.data.credit import set_subscription_tier, sync_subscription_from_stripe
+from backend.data.credit import (
+    ACCOUNT_DELETION_CANCELLATION_COMMENT,
+    set_subscription_tier,
+    sync_subscription_from_stripe,
+)
 from backend.data.stripe_reconciliation import _collect_status_page
 
 TRIAL_SUB = {
@@ -36,27 +41,6 @@ async def test_subscription_sync_schedules_by_customer():
     schedule.assert_called_once_with(stripe_customer_id="cus_1")
 
 
-async def test_a_tier_change_honours_track_lifecycle_false():
-    """The tier sweep's opt-out must reach set_subscription_tier too, or a
-    tier change inside the sweep schedules a sync anyway."""
-    update = AsyncMock()
-    with (
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(update=update),
-        ),
-        patch("backend.data.credit.invalidate_subscription_caches"),
-        patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
-    ):
-        await set_subscription_tier(
-            "user-1", SubscriptionTier.PRO, track_lifecycle=False
-        )
-        schedule.assert_not_called()
-        await set_subscription_tier("user-1", SubscriptionTier.PRO)
-        schedule.assert_called_once_with("user-1")
-    assert update.await_count == 2
-
-
 async def test_tier_sweep_does_not_schedule_lifecycle_syncs():
     """The 6-hourly tier sweep re-syncs every trial; scheduling from there
     would fan out one Stripe call per trial and could rate-limit the sweep's
@@ -64,7 +48,8 @@ async def test_tier_sweep_does_not_schedule_lifecycle_syncs():
     page = MagicMock(
         data=[stripe.Subscription.construct_from(TRIAL_SUB, "k")], has_more=False
     )
-    user = MagicMock(subscriptionTier=SubscriptionTier.TRIAL)
+    user = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.TRIAL)
+    prisma = MagicMock(find_first=AsyncMock(return_value=user))
     with (
         patch(
             "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
@@ -75,10 +60,8 @@ async def test_tier_sweep_does_not_schedule_lifecycle_syncs():
             "backend.data.credit._sync_subscription_tier_from_stripe",
             new_callable=AsyncMock,
         ) as inner,
-        patch(
-            "backend.data.stripe_reconciliation.User.prisma",
-            return_value=MagicMock(find_first=AsyncMock(return_value=user)),
-        ),
+        patch("backend.data.stripe_reconciliation.User.prisma", return_value=prisma),
+        patch("backend.data.credit.User.prisma", return_value=prisma),
         patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
     ):
         tiers: dict[str, SubscriptionTier] = {}
@@ -108,14 +91,23 @@ async def test_trial_transitions_schedule_through_the_webhook_choke_point():
     """Trial start, cancel, conversion and expiry are all written by
     ``reconcile_trial_subscription``, which only runs inside
     ``sync_subscription_from_stripe``; its early return still schedules."""
-    user = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.NO_TIER)
+    user = MagicMock(
+        id="user-1", stripeCustomerId="cus_1", subscriptionTier=SubscriptionTier.NO_TIER
+    )
     with (
         patch(
             "backend.data.credit.User.prisma",
             return_value=MagicMock(find_first=AsyncMock(return_value=user)),
         ),
         patch(
-            "backend.data.credit.reconcile_trial_subscription",
+            "backend.data.credit.stripe.Subscription.retrieve_async",
+            AsyncMock(return_value=TRIAL_SUB),
+        ),
+        patch(
+            "backend.data.credit.get_subscription_trial", AsyncMock(return_value=None)
+        ),
+        patch(
+            "backend.data.credit.subscription_trial_stripe.reconcile_trial_subscription",
             new_callable=AsyncMock,
             return_value=(TRIAL_SUB, SubscriptionTier.TRIAL),
         ) as reconcile,
@@ -173,7 +165,46 @@ async def test_webhook_survives_posthog_and_stripe_failures():
     client.capture.assert_not_called()
 
 
-async def test_tier_change_schedules_the_user():
+@pytest.mark.parametrize("track_lifecycle", [True, False])
+async def test_an_account_deletion_cancel_schedules_nothing(track_lifecycle: bool):
+    """The erasure deletes the person; a sync would only bring it back."""
+    cancel = {
+        **TRIAL_SUB,
+        "cancellation_details": {"comment": ACCOUNT_DELETION_CANCELLATION_COMMENT},
+    }
+    with (
+        patch(
+            "backend.data.credit._sync_subscription_tier_from_stripe",
+            new_callable=AsyncMock,
+        ),
+        patch("backend.data.credit.invalidate_billing_lookups", new=AsyncMock()),
+        patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
+    ):
+        await sync_subscription_from_stripe(cancel, track_lifecycle=track_lifecycle)
+    schedule.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "tier", [SubscriptionTier.PRO, SubscriptionTier.NO_TIER], ids=["plan", "drop"]
+)
+async def test_a_tier_write_schedules_a_sync(tier: SubscriptionTier):
+    """SECRT-3411: the person carries the tier, so every tier write syncs it:
+    a cancel with no Stripe subscription, a plan changed in place, the lazy
+    reconcile."""
+    prisma = MagicMock(update=AsyncMock(), update_many=AsyncMock())
+    with (
+        patch("backend.data.credit.User.prisma", return_value=prisma),
+        patch("backend.data.credit.invalidate_subscription_caches"),
+        patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
+    ):
+        await set_subscription_tier("user-1", tier)
+    schedule.assert_called_once_with("user-1")
+
+
+async def test_a_tier_write_inside_a_webhook_or_the_sweep_leaves_the_sync_out():
+    """``sync_subscription_from_stripe`` decides, so an account deletion's
+    cancel doesn't sync the person the erasure deletes; the tier sweep leaves
+    its users to the daily lifecycle sweep."""
     with (
         patch(
             "backend.data.credit.User.prisma",
@@ -182,11 +213,15 @@ async def test_tier_change_schedules_the_user():
         patch("backend.data.credit.invalidate_subscription_caches"),
         patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
     ):
-        await set_subscription_tier("user-1", SubscriptionTier.PRO)
-    schedule.assert_called_once_with("user-1")
+        await set_subscription_tier(
+            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        )
+    schedule.assert_not_called()
 
 
-async def test_admin_tier_override_schedules_the_user():
+async def test_an_admin_tier_override_schedules_a_sync():
+    """An admin's grant changes the plan the limits apply, so the person's
+    tier follows. The sync reads the stored tier, not the request."""
     with (
         patch(
             "backend.copilot.rate_limit.PrismaUser.prisma",
@@ -202,14 +237,52 @@ async def test_admin_tier_override_schedules_the_user():
     schedule.assert_called_once_with("user-1")
 
 
+async def test_a_tier_write_survives_a_failing_sync():
+    """The real scheduler with PostHog failing: the tier write returns
+    normally and the failure stays in the background task."""
+    client = MagicMock()
+    client.capture.side_effect = RuntimeError("posthog down")
+    row = MagicMock(
+        id="user-1",
+        createdAt=None,
+        stripeCustomerId=None,
+        subscriptionTier=SubscriptionTier.PRO,
+        subscriptionTrial=None,
+    )
+    # One model class: the tier write and the sync's read share the patch.
+    prisma = MagicMock(update=AsyncMock(), find_unique=AsyncMock(return_value=row))
+    lifecycle._syncs.clear()
+    with (
+        patch("backend.data.credit.User.prisma", return_value=prisma),
+        patch("backend.data.credit.invalidate_subscription_caches"),
+        patch(f"{lifecycle.__name__}.get_posthog_client", return_value=client),
+        patch(f"{lifecycle.__name__}.queue_lifecycle_fields", new=AsyncMock()),
+    ):
+        await set_subscription_tier("user-1", SubscriptionTier.PRO)
+
+        async def drain() -> None:
+            while lifecycle._background_tasks:
+                await asyncio.gather(*list(lifecycle._background_tasks))
+                await asyncio.sleep(0)
+
+        await asyncio.wait_for(drain(), timeout=10)
+
+    client.capture.assert_called_once()
+
+
 @pytest.mark.parametrize("existing", [False, True])
 async def test_signup_schedules_only_a_new_user(existing: bool):
     db_user = MagicMock(id="user-1", email="a@example.com", name=None)
     app_user = MagicMock(id="user-1")
     with (
         patch.object(user_module, "prisma") as prisma,
-        patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
-        patch.object(user_module, "ensure_personal_org", new_callable=AsyncMock),
+        patch.object(user_module, "ensure_profile", new_callable=AsyncMock),
+        patch.object(
+            user_module,
+            "ensure_personal_org",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
         patch.object(user_module.User, "from_db", return_value=app_user),
         patch.object(user_module, "UserCreationResult") as result,
         patch.object(user_module, "schedule_posthog_lifecycle_sync") as schedule,

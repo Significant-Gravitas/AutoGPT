@@ -5,6 +5,9 @@ import React from "react";
 interface InfiniteListProps<T> {
   items: T[];
   renderItem: (item: T, index: number) => React.ReactNode;
+  /** A stable identity per item, so rows keep their state when items are
+   *  inserted above them. Falls back to the index. */
+  getKey?: (item: T, index: number) => React.Key;
   onEndReached: () => void;
   hasMore: boolean;
   isFetchingMore?: boolean;
@@ -16,6 +19,7 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
   const {
     items,
     renderItem,
+    getKey,
     onEndReached,
     hasMore,
     isFetchingMore,
@@ -41,13 +45,17 @@ export function InfiniteList<T>(props: InfiniteListProps<T>) {
   }, [hasMore, isFetchingMore, onEndReached]);
 
   return (
-    <div className={className}>
+    <div data-slot="infinite-list" className={className}>
       {items.map((item, idx) => (
-        <div key={idx} className={itemWrapperClassName}>
+        <div
+          key={getKey ? getKey(item, idx) : idx}
+          data-slot="infinite-list-item"
+          className={itemWrapperClassName}
+        >
           {renderItem(item, idx)}
         </div>
       ))}
-      <div ref={sentinelRef} />
+      <div ref={sentinelRef} data-slot="infinite-list-sentinel" />
     </div>
   );
 }

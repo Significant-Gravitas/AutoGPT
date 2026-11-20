@@ -21,7 +21,6 @@ test("publish happy path: user can submit, track, and delete an agent submission
   await page.goto("/library");
   await libraryPage.waitForAgentsToLoad();
   await libraryPage.searchAgents(publishableAgentName);
-  await libraryPage.waitForAgentsToLoad();
 
   const createdAgent = page
     .getByTestId("library-agent-card")

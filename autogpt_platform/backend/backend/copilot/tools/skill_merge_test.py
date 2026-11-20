@@ -5,7 +5,11 @@ field, and a field nobody touched keeps the catalog's bytes."""
 import yaml
 
 from backend.copilot.tools.skill_merge import merge_skill_markdown
-from backend.copilot.tools.skills import ParsedSkill, render_skill_markdown
+from backend.copilot.tools.skills import (
+    ParsedSkill,
+    parse_skill_markdown,
+    render_skill_markdown,
+)
 
 CATALOG_V1 = "---\nname: demo\ndescription: First description\nversion: 1\n---\n\n# Demo\n\nintro\nkeep\n"
 CATALOG_V2 = "---\nname: demo\ndescription: Second description\nversion: 2\n---\n\n# Demo\n\nnew intro\nkeep\n"
@@ -91,3 +95,31 @@ def test_text_without_frontmatter_merges_as_plain_text():
 
     assert merged.text == "theirs\nb\nmine\n"
     assert not merged.conflicted
+
+
+def test_a_combined_frontmatter_keeps_the_catalogs_field_order_and_reads_back():
+    catalog_v1 = "---\nname: demo\ndescription: First\nversion: 1\n---\n\n# Demo\n"
+    catalog_v2 = "---\nname: demo\ndescription: Second\nversion: 1\n---\n\n# Demo\n"
+    ours = catalog_v1.replace("version: 1", "version: 3")
+
+    merged = merge_skill_markdown(catalog_v1, ours, catalog_v2)
+
+    assert not merged.conflicted
+    front = merged.text.split("\n---\n", 1)[0][4:]
+    assert [line.split(":")[0] for line in front.splitlines()] == [
+        "name",
+        "description",
+        "version",
+    ]
+    parsed = parse_skill_markdown(merged.text)
+    assert parsed is not None
+    assert (parsed.description, parsed.version) == ("Second", "3")
+
+
+def test_a_side_whose_frontmatter_cannot_be_read_merges_as_plain_text():
+    ours = CATALOG_V1.replace("version: 1", "version: &v 1")
+
+    merged = merge_skill_markdown(CATALOG_V1, ours, CATALOG_V2)
+
+    assert merged.conflicted
+    assert "version: &v 1" in merged.text

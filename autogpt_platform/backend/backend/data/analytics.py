@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.data.db import query_raw_with_schema
 
@@ -35,7 +35,10 @@ class AccuracyTrendsResponse(BaseModel):
 
     latest_data: AccuracyLatestData
     alert: Optional[AccuracyAlertData]
-    historical_data: Optional[list[AccuracyLatestData]] = None
+    historical_data: Optional[list[AccuracyLatestData]] = Field(
+        default=None,
+        description="Daily data points ordered oldest to newest",
+    )
 
 
 async def get_accuracy_trends_and_alerts(
@@ -45,26 +48,40 @@ async def get_accuracy_trends_and_alerts(
     drop_threshold: float = 10.0,
     include_historical: bool = False,
 ) -> AccuracyTrendsResponse:
-    """Get accuracy trends and detect alerts for a specific graph."""
+    """Get accuracy trends and detect alerts for a specific graph.
+
+    Only days with at least one scored execution are included. The 3/7/14-day
+    averages are row windows over those scored days.
+
+    `latest_data` and `alert` are taken from the most recent scored day.
+    `historical_data` (when requested) is ordered oldest to newest.
+    """
     query_template = """
-    WITH daily_scores AS (
+    WITH scored_executions AS (
         SELECT 
             DATE(e."createdAt") as execution_date,
-            AVG(CASE 
+            CASE 
                 WHEN e.stats IS NOT NULL 
                 AND e.stats::json->>'correctness_score' IS NOT NULL
                 AND e.stats::json->>'correctness_score' != 'null'
                 THEN (e.stats::json->>'correctness_score')::float * 100
                 ELSE NULL 
-            END) as daily_score
+            END as score
         FROM {schema_prefix}"AgentGraphExecution" e
         WHERE e."agentGraphId" = $1::text
             AND e."isDeleted" = false
             AND e."createdAt" >= $2::timestamp
             AND e."executionStatus" IN ('COMPLETED', 'FAILED', 'TERMINATED')
             {user_filter}
-        GROUP BY DATE(e."createdAt")
-        HAVING COUNT(*) >= 1  -- Include all days with at least 1 execution
+    ),
+    daily_scores AS (
+        SELECT 
+            execution_date,
+            AVG(score) as daily_score
+        FROM scored_executions
+        GROUP BY execution_date
+        -- Only days with at least 1 scored execution; COUNT(score) skips NULLs
+        HAVING COUNT(score) >= 1
     ),
     trends AS (
         SELECT 
@@ -91,6 +108,7 @@ async def get_accuracy_trends_and_alerts(
             ELSE NULL
         END as drop_percent
     FROM trends
+    -- DESC is load-bearing: result[0] is the latest day and LIMIT 1 relies on it
     ORDER BY execution_date DESC
     {limit_clause}
     """
@@ -147,7 +165,8 @@ async def get_accuracy_trends_and_alerts(
     historical_data = None
     if include_historical:
         historical_data = []
-        for row in result:
+        # The query returns newest first; the chart wants oldest to newest.
+        for row in reversed(result):
             historical_data.append(
                 AccuracyLatestData(
                     date=row["execution_date"],

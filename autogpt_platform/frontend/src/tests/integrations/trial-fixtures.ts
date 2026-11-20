@@ -2,6 +2,7 @@ import { getGetTrialsGetTrialStatusResponseMock200 } from "@/app/api/__generated
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
 import type { TrialStatusResponse } from "@/app/api/__generated__/models/trialStatusResponse";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { screen } from "@/tests/integrations/test-utils";
 
 export const trialOffer: TrialOfferResponse = {
   token: "a".repeat(64),
@@ -26,6 +27,7 @@ export function trialResponse(overrides: Partial<TrialStatusResponse> = {}) {
     active: true,
     converted: false,
     onboarding_credits_previously_received: false,
+    payment_due: null,
     ...overrides,
   });
 }
@@ -46,4 +48,9 @@ export function deferredTrialResponse<T>() {
     resolve = complete;
   });
   return { promise, resolve };
+}
+
+// The cancel dialog, once its trigger was clicked. Its reason is optional.
+export function findCancelConfirmation() {
+  return screen.findByRole("dialog", { name: "Cancel your trial?" });
 }

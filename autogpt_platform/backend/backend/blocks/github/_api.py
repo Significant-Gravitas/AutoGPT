@@ -23,8 +23,13 @@ def _convert_to_api_url(url: str | URL) -> str | URL:
     Converts a standard GitHub URL to the corresponding GitHub API URL.
     Handles repository URLs, issue URLs, pull request URLs, and more.
     """
+    original = url
     if url_as_str := isinstance(url, str):
         url = urlparse(url)
+
+    # Already an API URL (e.g. GraphQL): nothing to rewrite.
+    if (url.hostname or "").lower() == "api.github.com":
+        return original
 
     path_parts = url.path.strip("/").split("/")
 

@@ -4,6 +4,7 @@
 decides on that subject's effect, and the card's headline names it.
 """
 
+import logging
 import re
 from typing import TYPE_CHECKING, Any, Callable
 from urllib.parse import urlsplit
@@ -11,6 +12,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks._base import Block, BlockEffect
+from backend.blocks._preview import ChangePreview
 from backend.copilot.constants import AUTOPILOT_NAME
 from backend.copilot.tree import MICRODOLLARS_PER_CREDIT
 from backend.executor.utils import block_usage_cost
@@ -21,6 +23,8 @@ from .policy import Effect
 
 if TYPE_CHECKING:
     from backend.data.graph import GraphModel
+
+logger = logging.getLogger(__name__)
 
 
 class Subject(BaseModel):
@@ -39,6 +43,12 @@ class Subject(BaseModel):
     # What one call is expected to cost, in microdollars; a paid read or
     # workspace step asks once the chat has spent its ceiling.
     estimate: int = 0
+    # The call creates a schedule: no supervisor reads its runs, so a judge
+    # rule cannot speak for it.
+    schedules: bool = False
+    # What a block will create or change in a connected account, in the
+    # user's words, which the card shows in place of the raw inputs.
+    preview: ChangePreview | None = None
 
 
 # A schema lookup, ``validate_only``, a dry run, or a trigger workflow's details:
@@ -55,16 +65,38 @@ def block_subject(
     if type(block).__name__ in JUDGED_BLOCKS:
         # Judged like the shell: the supervisor's verdict is the reason.
         return Subject(key=f"block:{block.id}", name=name, effect=Effect.SHELL)
+    preview = _preview(block, inputs)
     return Subject(
         key=f"block:{block.id}",
         name=name,
         effect=_gate_effect(effect),
-        reason=_reason(effect, name, culprit=None),
+        # The preview says what changes, so the line under it needs no block name.
+        reason=_PREVIEWED if preview else _reason(effect, name, culprit=None),
         irreversible=_irreversible(effect, block),
         estimate=(
             _priced(effect, lambda: block_usage_cost(block, inputs)[0]) if priced else 0
         ),
+        preview=preview,
     )
+
+
+_PREVIEWED = "Nothing changes in your account until you approve."
+
+
+def _preview(block: Block, inputs: dict[str, Any]) -> ChangePreview | None:
+    """What the call will change, read with the block's defaults filled in so
+    an input the model left out still shows what it creates. A preview that
+    cannot be built leaves the card its raw inputs."""
+    try:
+        defaults = {
+            name: field.get_default(call_default_factory=True)
+            for name, field in block.input_schema.model_fields.items()
+            if not field.is_required()
+        }
+        return block.change_preview({**defaults, **inputs})
+    except Exception:
+        logger.warning(f"No change preview for {block.name}", exc_info=True)
+        return None
 
 
 def workflow_subject(
@@ -81,6 +113,7 @@ def workflow_subject(
         reason=_reason(effect, name, culprit=decided_by),
         irreversible=_irreversible(effect, decided_by),
         estimate=0 if schedules else _priced(effect, lambda: graph_cost_credits(graph)),
+        schedules=schedules,
     )
     steps = _irreversible_steps(graph)
     if unreadable is not None and steps:
@@ -93,13 +126,32 @@ def workflow_subject(
                 f"{_listed(steps)}.",
             }
         )
-    elif subject.effect is Effect.EXTERNAL and len(steps) > 1:
+    elif subject.effect in _OUTWARD and len(steps) > 1:
         # The approval covers the whole run, so the card names every step it covers.
         subject = subject.model_copy(
             update={
                 "irreversible": True,
                 "reason": f"Runs {name}; its steps {_listed(steps)} reach "
                 "outside the platform.",
+            }
+        )
+    elif steps and not subject.irreversible:
+        # A reversible step of a higher tier names the run; the one that can't be
+        # undone must still warn, or approving the card lifts its pause unseen.
+        subject = subject.model_copy(
+            update={
+                "irreversible": True,
+                "reason": f"{subject.reason.removesuffix('.')}; it also has "
+                f"{_steps(steps)} that can't be undone: {_listed(steps)}.",
+            }
+        )
+    if schedules and subject.effect is Effect.EXTERNAL_JUDGED:
+        # No supervisor reads a scheduled run and no irreversible pause catches one.
+        return subject.model_copy(
+            update={
+                "effect": Effect.EXTERNAL,
+                "reason": f"{subject.reason.removesuffix('.')}; this also creates "
+                "a schedule.",
             }
         )
     creates = (
@@ -162,8 +214,10 @@ _EFFECTS = {
     BlockEffect.READ: Effect.READ,
     BlockEffect.WORKSPACE: Effect.WORKSPACE,
     BlockEffect.PLATFORM: Effect.PLATFORM,
+    BlockEffect.EXTERNAL_JUDGED: Effect.EXTERNAL_JUDGED,
     BlockEffect.EXTERNAL: Effect.EXTERNAL,
 }
+_OUTWARD = frozenset({Effect.EXTERNAL_JUDGED, Effect.EXTERNAL})
 
 
 def _priced(effect: BlockEffect | None, credits: Callable[[], int]) -> int:
@@ -184,6 +238,7 @@ def _reason(effect: BlockEffect | None, name: str, culprit: Block | None) -> str
         step = display_name(culprit) if culprit is not None else name
         return f"{AUTOPILOT_NAME} does not know what {step} does, so he asks."
     does = {
+        BlockEffect.EXTERNAL_JUDGED: "reaches outside the platform",
         BlockEffect.EXTERNAL: "reaches outside the platform",
         BlockEffect.PLATFORM: "changes your platform objects",
     }.get(effect)
@@ -216,7 +271,7 @@ def _steps(names: list[str]) -> str:
 
 def _irreversible(effect: BlockEffect | None, block: Block | None) -> bool:
     return (
-        effect is BlockEffect.EXTERNAL
+        effect in (BlockEffect.EXTERNAL_JUDGED, BlockEffect.EXTERNAL)
         and block is not None
         and block.is_irreversible_action
     )

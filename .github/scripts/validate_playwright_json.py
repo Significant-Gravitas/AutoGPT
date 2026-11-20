@@ -45,7 +45,9 @@ def _iter_tests(
         )
 
 
-def validate_report(report: object, min_tests: int = 1) -> int:
+def validate_report(
+    report: object, min_tests: int = 1, allow_known_failures: bool = False
+) -> int:
     root = _require_mapping(report, "report")
     errors = _require_list(root.get("errors"), "errors")
     if errors:
@@ -92,7 +94,9 @@ def validate_report(report: object, min_tests: int = 1) -> int:
             raise ValueError(
                 f"{test_name}.status must be expected, got {test.get('status')!r}"
             )
-        if test.get("expectedStatus") != "passed":
+        # test.fail(): a known bug the test is pinned to. It still has to fail.
+        known_failure = allow_known_failures and test.get("expectedStatus") == "failed"
+        if test.get("expectedStatus") != "passed" and not known_failure:
             raise ValueError(
                 f"{test_name}.expectedStatus must be passed, got "
                 f"{test.get('expectedStatus')!r}"
@@ -106,6 +110,13 @@ def validate_report(report: object, min_tests: int = 1) -> int:
         retry = _require_count(result.get("retry"), f"{test_name}.results[0].retry")
         if retry != 0:
             raise ValueError(f"{test_name}.results[0].retry must be 0, got {retry}")
+        if known_failure:
+            if result.get("status") != "failed":
+                raise ValueError(
+                    f"{test_name}.results[0].status must be failed for a known "
+                    f"failure, got {result.get('status')!r}"
+                )
+            continue
         if result.get("status") != "passed":
             raise ValueError(
                 f"{test_name}.results[0].status must be passed, got "
@@ -161,6 +172,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=1,
         help="minimum number of discovered passing tests required",
     )
+    parser.add_argument(
+        "--allow-known-failures",
+        action="store_true",
+        help="accept tests marked test.fail() that failed as expected",
+    )
     parser.add_argument("report", type=Path)
     return parser.parse_args(argv)
 
@@ -183,7 +199,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        test_count = validate_report(report, min_tests=args.min_tests)
+        test_count = validate_report(
+            report,
+            min_tests=args.min_tests,
+            allow_known_failures=args.allow_known_failures,
+        )
     except ValueError as exc:
         print(f"{args.report}: {exc}")
         return 1

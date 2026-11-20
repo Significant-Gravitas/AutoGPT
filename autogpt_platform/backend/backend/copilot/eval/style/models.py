@@ -159,8 +159,8 @@ class Baseline(BaseModel):
     ts: str
     chat_model: str
     judge_model: str
-    # Which production state these scores describe: hire-experts on or off
-    # changes the team-context rule, the delegation supplement and the tools.
+    # Retained for historical score files produced before delegation was
+    # available to every authenticated account.
     delegation_enabled: bool = True
     cost_usd: float
     note: str = ""

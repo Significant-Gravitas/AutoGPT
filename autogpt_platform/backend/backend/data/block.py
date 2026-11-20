@@ -20,10 +20,7 @@ CompletedBlockOutput = dict[str, list[Any]]  # Completed stream, collected as a 
 
 async def initialize_blocks() -> None:
     from backend.blocks import get_blocks
-    from backend.sdk.cost_integration import sync_all_provider_costs
     from backend.util.retry import func_retry
-
-    sync_all_provider_costs()
 
     @func_retry
     async def sync_block_to_db(block: "AnyBlockSchema") -> None:

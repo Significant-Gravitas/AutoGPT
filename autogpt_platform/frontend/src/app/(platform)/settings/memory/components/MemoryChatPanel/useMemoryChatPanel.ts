@@ -6,6 +6,7 @@ import {
   useGetV2GetSession,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import * as Sentry from "@sentry/nextjs";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -57,14 +58,22 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     ).messages as UiMessages;
   }, [sessionQuery.data, sessionId, hasActiveStream]);
 
-  const { messages, setMessages, sendMessage, stop, status, error } =
-    useCopilotStream({
-      sessionId,
-      hydratedMessages,
-      hasActiveStream,
-      refetchSession: sessionQuery.refetch,
-      copilotModel: undefined,
-    });
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    stop,
+    status,
+    error,
+    isReconnecting,
+    isFinishProbing,
+  } = useCopilotStream({
+    sessionId,
+    hydratedMessages,
+    hasActiveStream,
+    refetchSession: sessionQuery.refetch,
+    copilotModel: undefined,
+  });
 
   const { queuedMessages, queueMessage } = useCopilotPendingChips({
     sessionId,
@@ -87,6 +96,12 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
   // discarded instead of binding its session under the new scope's name.
   const scopeRef = useRef(scopeExpertID);
   const scopeGenRef = useRef(0);
+  useEffect(() => {
+    return () => {
+      scopeGenRef.current += 1;
+    };
+  }, []);
+
   useEffect(() => {
     if (scopeRef.current === scopeExpertID) return;
     scopeRef.current = scopeExpertID;
@@ -119,8 +134,13 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
       pendingPromptRef.current = MEMORY_CHAT_PROMPTS[lastSeedRef.current];
       setSessionId(response.data.id);
     } catch (err) {
+      if (generation !== scopeGenRef.current) return;
+      if (toastIfPlanRequired(err, "The memory chat needs an active plan")) {
+        setIsOpen(false);
+        return;
+      }
       Sentry.captureException(err);
-      if (generation === scopeGenRef.current) setStartError(true);
+      setStartError(true);
     } finally {
       // Only release the lock if this call still owns it — a superseded
       // create must not unlock a newer scope's in-flight create.
@@ -176,5 +196,6 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
     stop,
     onSend,
     queuedMessages,
+    isTurnSettling: isReconnecting || isFinishProbing || hasActiveStream,
   };
 }

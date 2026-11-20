@@ -7,15 +7,58 @@ Per the integration audit (dream/dreaming-graphiti.md §6.4), passing
 the durable ``:RELATES_TO`` edge — not only in the ``:Episodic.content``
 JSON blob, which Cypher cannot filter without parsing.
 
-After this lands, search filters can do ``WHERE e.status = 'active'``
-natively and ratification can flip ``status`` with a single SET.
+Cypher can then filter on ``e.status`` (``recall.live_fact_predicate``)
+and ratification can flip it with a single SET. graphiti's own search does
+not filter on it: ``recall.search_facts`` checks it in Python.
+
+graphiti's attribute extraction writes only what these models declare:
+``extracted_attributes`` drops every other key its model answers.
 """
 
-from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .memory_model import MemoryStatus, SourceKind
+from .memory_model import ExtractedStatus, SourceKind
+
+# Edge properties only the platform writes, never graphiti's extraction: a
+# forget's marker and audit copies (``recall_forget.py``, ``recall_hide.py``),
+# the ratification stamp (``dream/ratification.py``), the web-verification
+# stamp, kept for a verification path that does not exist yet, the recall
+# stamps (``recall_stamp.py``) and the dream's derivation record
+# (``recall_derivation.py``: an invented one would make a user's fact look
+# derived, for a forget's cascade to take). No extraction model declares one
+# (``types_test.py``), so ``extracted_attributes`` drops any the model
+# invents; a stored one still reads back from the edge.
+POLICY_EDGE_FIELDS = frozenset(
+    {
+        "forgotten_at",
+        "fact_redacted",
+        "name_redacted",
+        "ratified_at",
+        "web_verified_at",
+        "recall_count",
+        "last_recalled_at",
+        "prev_recalled_at",
+        "derived_from_facts",
+        "derived_from_episodes",
+    }
+)
+
+
+def extracted_attributes(
+    answer: dict[str, Any], model: type[BaseModel]
+) -> dict[str, Any]:
+    """The attributes in graphiti's extraction ``answer`` that ``model``
+    declares, none of them a policy field.
+
+    graphiti-core 0.30.2 does not validate the answer against ``model``: it
+    keeps every key that fits its length cap (``apply_capped_attributes``)
+    and saves each on the edge or entity. An invented ``forgotten_at`` would
+    make a live fact look forgotten, and carry whatever text it holds to
+    wherever that date is shown."""
+    allowed = model.model_fields.keys() - POLICY_EDGE_FIELDS
+    return {key: value for key, value in answer.items() if key in allowed}
 
 
 class MemoryFact(BaseModel):
@@ -27,8 +70,8 @@ class MemoryFact(BaseModel):
     properties preserve the same shape.
     """
 
-    status: MemoryStatus = Field(
-        default=MemoryStatus.active,
+    status: ExtractedStatus = Field(
+        default=ExtractedStatus.active,
         description="Lifecycle state — active, tentative, superseded, contradicted.",
     )
     confidence: float | None = Field(
@@ -49,20 +92,12 @@ class MemoryFact(BaseModel):
         default=None,
         description="Origin reference — 'session:{id}#msg:{sequence}', tool_call_id, or URL.",
     )
-    web_verified_at: datetime | None = Field(
-        default=None,
-        description="When (if ever) this fact was verified against external web sources.",
-    )
-    ratified_at: datetime | None = Field(
-        default=None,
-        description="When a tentative fact was promoted to active via the ratification loop.",
-    )
     expiration_reason: str | None = Field(
         default=None,
         description=(
-            "Short reason recorded when a fact is retracted or superseded. Examples: "
+            "Short reason recorded when a fact is superseded. Examples: "
             "'stale_fact', 'contradicted_by:{uuid}', 'entity_invalidated:{uuid}', "
-            "'web_contradicted:{url}', 'user_signal', 'unratified'."
+            "'web_contradicted:{url}', 'unratified'."
         ),
     )
 

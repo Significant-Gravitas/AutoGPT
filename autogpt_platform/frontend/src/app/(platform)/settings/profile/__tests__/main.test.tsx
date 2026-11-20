@@ -9,6 +9,8 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
+import { PAYWALL_TOAST_KEY } from "@/components/contextual/PaywallToast/PaywallToast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import {
   getGetV2GetUserProfileMockHandler200,
   getGetV2GetUserProfileMockHandler401,
@@ -653,6 +655,35 @@ describe("SettingsProfilePage - avatar upload", () => {
         }),
       );
     });
+  });
+
+  test("an account without a plan is sent to the plans, not told the upload failed", async () => {
+    server.use(getGetV2GetUserProfileMockHandler200(makeProfile()));
+    toastSpy.mockClear();
+    uploadAvatarSpy.mockRejectedValueOnce(
+      new ApiError("A subscription is required.", 402, null),
+    );
+
+    render(<SettingsProfilePage />);
+
+    await screen.findByLabelText(/display name/i);
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["x"], "avatar.png", { type: "image/png" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Uploading a photo needs an active plan",
+          replaceKey: PAYWALL_TOAST_KEY,
+        }),
+      );
+    });
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Failed to upload photo" }),
+    );
   });
 
   test("rejects an oversized avatar before uploading and explains the limit", async () => {

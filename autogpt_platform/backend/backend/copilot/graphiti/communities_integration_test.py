@@ -67,11 +67,10 @@ async def test_rebuild_returns_structured_result_on_failure(
     )
 
     user_id = _make_user_id(group_id)
-    # derive_group_id will fail validation if we don't have the user_ prefix,
-    # so we have to point the rebuild at the actual fixture group_id by
-    # patching derive_group_id for this call only.
+    # The fixture's group_id has no ``user_`` prefix, so point the rebuild's
+    # MemoryScope at it by patching the group derivation for this call only.
     with patch(
-        "backend.copilot.graphiti.communities.derive_memory_group_id",
+        "backend.copilot.graphiti.scope.derive_memory_group_id",
         return_value=group_id,
     ):
         result = await rebuild_communities_for_user(user_id)
@@ -128,7 +127,7 @@ async def test_detach_delete_clears_orphan_community_nodes(
     # and the orphans this test seeds would stay in place — which would
     # mask the regression the test is supposed to catch.
     with patch(
-        "backend.copilot.graphiti.communities.derive_memory_group_id",
+        "backend.copilot.graphiti.scope.derive_memory_group_id",
         return_value=group_id,
     ):
         await rebuild_communities_for_user(user_id, force=True)
@@ -184,7 +183,7 @@ async def test_rebuild_does_not_touch_other_users_communities(
 
     user_id = _make_user_id(group_id)
     with patch(
-        "backend.copilot.graphiti.communities.derive_memory_group_id",
+        "backend.copilot.graphiti.scope.derive_memory_group_id",
         return_value=group_id,
     ):
         await rebuild_communities_for_user(user_id)

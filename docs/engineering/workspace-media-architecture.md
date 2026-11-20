@@ -106,7 +106,7 @@ manager.read_file("/sessions/other-session/file.txt")  # Works
 
 | Method | Description |
 |--------|-------------|
-| `write_file(content, filename, path?, mime_type?, overwrite?)` | Write file to workspace |
+| `write_file(content, filename, path?, mime_type?, overwrite?, rename_on_conflict?)` | Write file to workspace |
 | `read_file(path)` | Read file by virtual path |
 | `read_file_by_id(file_id)` | Read file by ID |
 | `list_files(path?, limit?, offset?, include_all_sessions?)` | List files |
@@ -122,8 +122,78 @@ WorkspaceManager delegates to `WorkspaceStorageBackend`:
 
 | Backend | When Used | Storage Path Format |
 |---------|-----------|---------------------|
-| `GCSWorkspaceStorage` | `media_gcs_bucket_name` is configured | `gcs://bucket/workspaces/{ws_id}/{file_id}/{filename}` |
+| `GCSWorkspaceStorage` | `private_user_data_bucket` (or the legacy bucket fallback) is configured | `gcs://bucket/workspaces/{ws_id}/{file_id}/{filename}` |
 | `LocalWorkspaceStorage` | No GCS bucket configured | `local://{ws_id}/{file_id}/{filename}` |
+
+### Public and private media
+
+Hosted storage has two trust boundaries:
+
+- `PRIVATE_USER_DATA_BUCKET` is the default destination for user uploads,
+  generated library images, custom Expert avatars, workspaces, transcripts,
+  and temporary agent inputs. Private media is read through an authenticated,
+  non-cacheable API that serves a file to its owner, admins and members of
+  an organization the owner belongs to.
+- `PUBLIC_SITE_MEDIA_BUCKET` contains only objects that a trusted publication
+  flow explicitly copied after approval, plus media whose purpose is inherently
+  public such as OAuth consent-screen logos. Anonymous exact-object reads are
+  allowed, but anonymous bucket listing is not.
+
+An upload caller cannot select the public destination. Publication is a
+separate privileged operation; sharing a private resource grants access through
+its opaque application URL and does not make its storage prefix public.
+
+### Moving a single-bucket deployment to split buckets
+
+Stored rows hold `gcs://<bucket>/...` paths and full GCS URLs, and the storage
+code only reads from the configured private bucket, so the existing bucket must
+become the private one:
+
+1. Create the new public bucket. Deploy with `PRIVATE_USER_DATA_BUCKET` set to
+   the existing `MEDIA_GCS_BUCKET_NAME` bucket and `PUBLIC_SITE_MEDIA_BUCKET`
+   set to the new one. Pointing `PRIVATE_USER_DATA_BUCKET` at a new bucket
+   instead makes every existing workspace file and transcript unreadable.
+   Cloud startup rejects that unsafe partial migration. After every stored
+   bucket-qualified path has been migrated to a new private bucket, clear
+   `MEDIA_GCS_BUCKET_NAME` before selecting the new private bucket.
+   Deploy the frontend first: once the backend has both names set, uploads
+   return `/api/store/submissions/media/...`, which a frontend without the new
+   rewrite answers with a 404.
+   If anonymous users hold `roles/storage.objectViewer` on the old bucket,
+   they can list every object in it until step 4. Swap that binding for
+   `roles/storage.legacyObjectReader` first: existing links keep working and
+   listing stops.
+2. Copy everything that is already public to the public bucket and repoint its
+   rows: `poetry run python scripts/publish_live_media.py` (dry run), then
+   again with `--apply` until it exits 0. A non-zero exit means a live
+   reference was not published (copy failure, conflict, an object outside the
+   listing's owners or an unrecognised URL) and would break in step 4. This
+   covers approved listing media, the avatars of creators with a public
+   listing, library copies of listing images and OAuth app logos. It is also
+   the repair tool when a copy at approval time failed.
+3. Rewrite the remaining private media URLs to the authenticated API path:
+   `poetry run python scripts/backfill_private_media_urls.py` (dry run), then
+   `--apply`, re-running until it reports no conflicts. It exits 2 while any
+   reference stays on the old bucket (held as public, cross-user, ambiguous,
+   malformed or unrecognised): those stop loading in step 4, so check the
+   counts before going on. Both scripts commit in small batches and can be
+   re-run.
+4. Run step 2's dry run once more and check it exits 0. Then remove every
+   public binding from the old bucket and turn on public access prevention, so
+   no object-level grant can expose a file again.
+
+The private media endpoint serves a file to its owner, to admins and to
+members of an organization the owner belongs to, so a leaked URL is useless to
+anyone else. Published copies are never deleted automatically: when a listing
+is taken down or a creator changes their avatar, the old public copy stays in
+the public bucket until someone removes it by hand.
+
+Hosted private image uploads are limited to 4 MiB so the frontend proxy can
+buffer and deliver the complete authenticated response below Vercel's body
+limit. Private videos retain the general 50 MiB upload limit and are delivered
+in bounded range responses. An oversized object written before this limit is
+served only after the same authorization check, using a 60-second signed URL
+that bypasses the frontend proxy without granting bucket listing access.
 
 ---
 
@@ -180,6 +250,9 @@ output = await store_media_file(
 # In graphs:  Returns "data:image/png;base64,..."
 ```
 
+A stored output never replaces another file: when its name is taken, it is
+stored beside it as `name (1).ext`, `name (2).ext`, and so on.
+
 ### Execution Context
 
 `store_media_file()` requires an `ExecutionContext` with:
@@ -204,6 +277,12 @@ output = await store_media_file(
 2. `WorkspaceManager.write_file()` — scans before persistence
 
 Tools like `WriteWorkspaceFileTool` don't need to scan because `WorkspaceManager.write_file()` handles it.
+
+Each file goes to ClamAV whole, in one stream. A file ClamAV won't take whole (one over its `StreamMaxLength`) fails the scan with `VirusScanError` and is refused; it is never scanned in pieces. So ClamAV's `StreamMaxLength` and `MaxFileSize` must each be at least the larger of `upload_file_size_limit_mb` (256 MB by default) and `max_file_size_mb` (100 MB by default). So must its `PCREMaxFileSize` (100M by default): ClamAV doesn't run the regular expressions in its signatures on a larger file, so those signatures can't match it. `MaxScanSize` counts an archive plus everything unpacked from it, so it needs more: a 250 MiB zip holding 250 MiB of files goes past 256M. `docker-compose.yml` sets the first three to `256M` and `MaxScanSize` to `1024M`, four times the cap. A deployment that runs its own ClamAV needs the same, and must raise them all if either cap goes above 256 MB.
+
+ClamAV stops scanning a file at many of its limits: these sizes, scan time (`MaxScanTime`), archive nesting (`MaxRecursion`) and others. Without `AlertExceedsMax` it then answers that the file is clean. `docker-compose.yml` turns `AlertExceedsMax` on, so such a file comes back as `Heuristics.Limits.Exceeded.<limit>`, and a file ClamAV reports that way is refused with `VirusDetectedError`, as "too large or complex to scan whole". Not every limit reports that way, so two cases still get through without a full scan: a file over `MaxHTMLNormalize`, for one, is scanned without its HTML normalised, and an encrypted archive passes without its contents being scanned unless `AlertEncrypted` is on, which it isn't here. `MaxScanTime` is set to 300000 ms, above ClamAV's 120 s default: a 250 MiB zip of 1000 files took about 104 s on one CPU and 207 s on half of one.
+
+A scan's deadline grows with the file: 60 seconds plus one per MiB, so a 256 MiB upload has about five minutes to stream and scan, a little more than `MaxScanTime`. Setting `CLAMAV_SERVICE_TIMEOUT` (a whole number of seconds above 0) replaces that with a fixed deadline for every scan.
 
 ### Persistence
 
@@ -333,11 +412,13 @@ async def upload_file(file: UploadFile, user_id: str, workspace_id: str):
 
 | Setting | Purpose | Default |
 |---------|---------|---------|
-| `media_gcs_bucket_name` | GCS bucket for workspace storage | None (uses local) |
+| `private_user_data_bucket` | Private GCS bucket for user media, workspace storage, transcripts, and temporary uploads | Falls back to `media_gcs_bucket_name`, then local storage |
+| `public_site_media_bucket` | Public GCS bucket for explicitly published marketplace media and OAuth app logos | Falls back to `media_gcs_bucket_name` for compatibility |
+| `media_gcs_bucket_name` | Legacy single-bucket setting for self-hosted compatibility | None |
 | `workspace_storage_dir` | Local storage directory | `{app_data}/workspaces` |
 | `max_file_size_mb` | Maximum file size in MB | 100 |
 | `clamav_service_enabled` | Enable virus scanning | true |
 | `clamav_service_host` | ClamAV daemon host | localhost |
 | `clamav_service_port` | ClamAV daemon port | 3310 |
 | `clamav_max_concurrency` | Max concurrent scans to ClamAV daemon | 5 |
-| `clamav_mark_failed_scans_as_clean` | If true, scan failures pass content through instead of rejecting (⚠️ security risk if ClamAV is unreachable) | false |
+| `clamav_mark_failed_scans_as_clean` | If true, accept files above the client-side scan limit (`max_scan_size`, 2 GB) without scanning (⚠️ security risk). ClamAV connection errors and stream refusals still reject files. | false |

@@ -3,7 +3,6 @@
 import logging
 from typing import Any
 
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.ingest import (
     MAX_EPISODE_BODY_BYTES,
     enqueue_episode,
@@ -18,6 +17,7 @@ from backend.copilot.graphiti.memory_model import (
     RuleMemory,
     SourceKind,
 )
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -178,15 +178,17 @@ class MemoryStoreTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        if not await is_enabled_for_user(user_id):
-            return ErrorResponse(
-                message="Memory features are not enabled for your account.",
-                session_id=session.session_id,
-            )
-
         if not name or not content:
             return ErrorResponse(
                 message="Both 'name' and 'content' are required.",
+                session_id=session.session_id,
+            )
+
+        try:
+            memory_scope = MemoryScope.build(user_id, session.expert_id)
+        except ValueError:
+            return ErrorResponse(
+                message="Invalid user ID for memory operations.",
                 session_id=session.session_id,
             )
 
@@ -261,13 +263,12 @@ class MemoryStoreTool(BaseTool):
             )
 
         queued = await enqueue_episode(
-            user_id,
+            memory_scope,
             session.session_id,
             name=name,
             episode_body=episode_body,
             source_description=source_description,
             is_json=True,
-            expert_id=session.expert_id,
         )
 
         if not queued:

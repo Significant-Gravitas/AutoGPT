@@ -25,7 +25,13 @@ from backend.blocks._base import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
-from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
+from backend.util.file import (
+    MediaFileType,
+    check_total_file_size,
+    get_exec_file_path,
+    store_media_file,
+)
+from backend.util.html_to_text import BoundedHTML2Text
 from backend.util.settings import Settings
 
 from ._auth import (
@@ -42,6 +48,9 @@ settings = Settings()
 # No-wrap policy for plain text emails to prevent 78-char hard-wrap
 NO_WRAP_POLICY = SMTP.clone(max_line_length=0)
 
+# An HTML body converts to at most this many times its own length of text.
+_MAX_BODY_EXPANSION = 10
+
 
 def serialize_email_recipients(recipients: list[str]) -> str:
     """Serialize recipients list to comma-separated string.
@@ -54,6 +63,8 @@ def serialize_email_recipients(recipients: list[str]) -> str:
 
 # RFC 5322 simplified pattern: local@domain where domain has at least one dot
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# RFC 5321's limit on an address; checked before the pattern runs.
+_MAX_EMAIL_LENGTH = 254
 
 
 def validate_email_recipients(recipients: list[str], field_name: str = "to") -> None:
@@ -62,13 +73,17 @@ def validate_email_recipients(recipients: list[str], field_name: str = "to") -> 
     Raises ``ValueError`` with a user-friendly message listing every
     invalid entry so the caller (or LLM) can correct them in one pass.
     """
-    invalid = [addr for addr in recipients if not _EMAIL_RE.match(addr.strip())]
+    invalid = [addr for addr in recipients if not _is_valid_email(addr.strip())]
     if invalid:
         formatted = ", ".join(f"'{a}'" for a in invalid)
         raise ValueError(
             f"Invalid email address(es) in '{field_name}': {formatted}. "
             f"Each entry must be a valid email address (e.g. user@example.com)."
         )
+
+
+def _is_valid_email(address: str) -> bool:
+    return len(address) <= _MAX_EMAIL_LENGTH and bool(_EMAIL_RE.match(address))
 
 
 @runtime_checkable
@@ -163,6 +178,7 @@ async def create_mime_message(
 
     # Handle attachments if any
     if input_data.attachments:
+        total_size = 0
         for attach in input_data.attachments:
             local_path = await store_media_file(
                 file=attach,
@@ -171,6 +187,8 @@ async def create_mime_message(
             )
             assert execution_context.graph_exec_id  # Validated by store_media_file
             abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
+            total_size += Path(abs_path).stat().st_size
+            check_total_file_size(total_size)
             part = MIMEBase("application", "octet-stream")
             with open(abs_path, "rb") as f:
                 part.set_payload(f.read())
@@ -283,9 +301,7 @@ class GmailBase(Block, ABC):
             html_content = self._decode_base64(body["data"])
             if html_content:
                 try:
-                    import html2text
-
-                    h = html2text.HTML2Text()
+                    h = BoundedHTML2Text(_MAX_BODY_EXPANSION * len(html_content))
                     h.ignore_links = False
                     h.ignore_images = True
                     return h.handle(html_content)
@@ -734,6 +750,7 @@ class GmailCreateDraftBlock(GmailBase):
                     "message": {"id": "msg1"},
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -878,6 +895,7 @@ class GmailAddLabelBlock(GmailBase):
                     "label_id": "Label_1",
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -964,6 +982,7 @@ class GmailRemoveLabelBlock(GmailBase):
                     "label_id": "Label_1",
                 },
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1239,6 +1258,7 @@ async def _build_reply_message(
     msg.attach(_make_mime_text(input_data.body, input_data.content_type))
 
     # Handle attachments
+    total_size = 0
     for attach in input_data.attachments:
         local_path = await store_media_file(
             file=attach,
@@ -1247,6 +1267,8 @@ async def _build_reply_message(
         )
         assert execution_context.graph_exec_id  # Validated by store_media_file
         abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
+        total_size += Path(abs_path).stat().st_size
+        check_total_file_size(total_size)
         part = MIMEBase("application", "octet-stream")
         with open(abs_path, "rb") as f:
             part.set_payload(f.read())
@@ -1485,6 +1507,7 @@ class GmailDraftReplyBlock(GmailBase):
                     "message": {"id": "m2", "threadId": "t1"},
                 }
             },
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1761,9 +1784,12 @@ To: {original_to}
         msg.attach(_make_mime_text(body, input_data.content_type))
 
         # Include original attachments if requested
+        total_size = 0
         if input_data.includeAttachments:
             attachments = await self._get_attachments(service, original)
             for attachment in attachments:
+                total_size += attachment.size
+                check_total_file_size(total_size)
                 # Download and attach each original attachment
                 attachment_data = await self.download_attachment(
                     service, input_data.messageId, attachment.attachment_id
@@ -1786,6 +1812,8 @@ To: {original_to}
             )
             assert execution_context.graph_exec_id  # Validated by store_media_file
             abs_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
+            total_size += Path(abs_path).stat().st_size
+            check_total_file_size(total_size)
             part = MIMEBase("application", "octet-stream")
             with open(abs_path, "rb") as f:
                 part.set_payload(f.read())

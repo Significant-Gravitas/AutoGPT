@@ -18,6 +18,7 @@ from backend.copilot.bot.turn_stream import _clarification_message
 from .adapter import (
     TelegramAdapter,
     _collect_mentionable_users,
+    _context_from_callback_query,
     _decode_target,
     _encode_target,
     _verify_secret,
@@ -98,6 +99,68 @@ class TestDispatch:
         assert ctx.text == "hello there"
 
     @pytest.mark.asyncio
+    async def test_forum_topic_gives_the_combined_post_target(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(
+            _group("@OurBot hi", message_thread_id=7, is_topic_message=True)
+        )
+        ctx = seen[0]
+        assert ctx.channel_name == "Builders"
+        assert ctx.public_channel_id == "-100555"
+        assert ctx.public_thread_id == "7"
+        assert ctx.post_channel_id == "-100555|7"
+        assert a.looks_like_channel_id(ctx.post_channel_id)
+
+    def test_a_button_click_in_a_topic_keeps_the_location(self):
+        message = _group("pick one", message_thread_id=7, is_topic_message=True)
+        query = {"message": message["message"], "from": {"id": 42}}
+        ctx = _context_from_callback_query(query, "")
+        assert ctx is not None
+        assert ctx.channel_name == "Builders"
+        assert ctx.public_channel_id == "-100555"
+        assert ctx.public_thread_id == "7"
+        assert ctx.post_channel_id == "-100555|7"
+
+    @pytest.mark.asyncio
+    async def test_a_reply_thread_outside_a_forum_is_not_a_topic(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(_group("@OurBot hi", message_thread_id=7))
+        assert seen[0].public_thread_id is None
+        assert seen[0].post_channel_id == seen[0].channel_id == "-100555|7"
+
+    def test_a_button_click_in_a_reply_thread_posts_back_into_it(self):
+        message = _group("pick one", message_thread_id=7)
+        query = {"message": message["message"], "from": {"id": 42}}
+        ctx = _context_from_callback_query(query, "")
+        assert ctx is not None
+        assert ctx.public_thread_id is None
+        assert ctx.post_channel_id == ctx.channel_id == "-100555|7"
+
+    @pytest.mark.asyncio
+    async def test_reply_to_the_bot_is_flagged(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(
+            _group("and now?", reply_to_message={"from": {"id": 999, "is_bot": True}})
+        )
+        assert seen[0].replied_to_bot is True
+        assert seen[0].bot_mentioned is False
+
+    @pytest.mark.asyncio
+    async def test_dm_context_has_no_location(self):
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        await a._dispatch_update(_dm("hi"))
+        assert seen[0].channel_name is None
+        assert seen[0].post_channel_id is None
+
+    @pytest.mark.asyncio
     async def test_group_message_without_mention_is_ignored(self):
         a = _adapter()
         seen = []
@@ -159,6 +222,35 @@ class TestDispatch:
             await a._dispatch_update(update)
         handle.assert_awaited_once()
         assert seen == []
+
+    @pytest.mark.asyncio
+    async def test_private_start_sends_the_link_account_button(self):
+        # The full path a user takes from the Bots page: t.me/<bot>?start=connect
+        # makes Telegram post "/start connect" from the private chat.
+        a = _adapter()
+        seen = []
+        a.on_message(lambda ctx, adapter: seen.append(ctx) or _noop())
+        a._api.resolve_user = AsyncMock(return_value=MagicMock(linked=False))
+        a._api.create_user_link_token = AsyncMock(
+            return_value=MagicMock(link_url="https://platform.example/link/tok")
+        )
+        update = _dm(
+            "/start connect",
+            entities=[{"type": "bot_command", "offset": 0, "length": 6}],
+        )
+        await a._dispatch_update(update)
+
+        assert seen == []  # never reaches the chat pipeline
+        a._api.create_user_link_token.assert_awaited_once_with(
+            platform="telegram", platform_user_id="42", platform_username="bently"
+        )
+        assert a._client.call.call_args.args == ("sendMessage",)
+        sent = a._client.call.call_args.kwargs
+        assert sent["chat_id"] == "42"
+        button = sent["reply_markup"]["inline_keyboard"][0][0]
+        assert button["text"] == "Link Account"
+        # login_url, so the /link page can verify who tapped it.
+        assert button["login_url"] == {"url": "https://platform.example/link/tok"}
 
     @pytest.mark.asyncio
     async def test_command_handler_error_is_contained(self):

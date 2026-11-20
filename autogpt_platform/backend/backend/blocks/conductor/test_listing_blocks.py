@@ -61,6 +61,7 @@ async def test_get_session_returns_the_recent_tail_by_default():
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "session_id": "s1",
                 "message_limit": 20,
+                "include_messages": True,
             },
         )
     ids = [m["id"] for m in outputs["messages"]]
@@ -83,7 +84,12 @@ async def test_get_session_short_transcript_needs_a_single_request():
         return_value=_session_client(transcript),
     ):
         outputs = await collect(
-            block, {"credentials": TEST_CREDENTIALS_INPUT, "session_id": "s1"}
+            block,
+            {
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "session_id": "s1",
+                "include_messages": True,
+            },
         )
     assert [m["id"] for m in outputs["messages"]] == [r["id"] for r in rows]
     assert outputs["latest_reply"] == "Done"
@@ -107,6 +113,7 @@ async def test_get_session_after_reads_forward_from_the_cursor():
                 "session_id": "s1",
                 "after": "r-tool",
                 "message_limit": 2,
+                "include_messages": True,
             },
         )
     assert [m["id"] for m in outputs["messages"]] == ["r-progress", "r-result"]

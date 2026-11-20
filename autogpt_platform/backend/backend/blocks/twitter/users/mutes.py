@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -41,7 +42,7 @@ class TwitterUnmuteUserBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["users.read", "users.write", "offline.access"]
+            ["users.read", "mute.write", "offline.access"]
         )
 
         target_user_id: str = SchemaField(
@@ -71,6 +72,7 @@ class TwitterUnmuteUserBlock(Block):
                 ("success", True),
             ],
             test_mock={"unmute_user": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -178,6 +180,7 @@ class TwitterGetMutedUsersBlock(Block):
                     None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -274,7 +277,7 @@ class TwitterMuteUserBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["users.read", "users.write", "offline.access"]
+            ["users.read", "mute.write", "offline.access"]
         )
 
         target_user_id: str = SchemaField(
@@ -304,6 +307,7 @@ class TwitterMuteUserBlock(Block):
                 ("success", True),
             ],
             test_mock={"mute_user": lambda *args, **kwargs: True},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

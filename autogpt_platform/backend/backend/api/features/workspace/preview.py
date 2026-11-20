@@ -7,25 +7,24 @@ whole file to the browser:
 * raster images        -> resized WebP thumbnail (Pillow)
 * PDFs                 -> first page rasterised to WebP (pypdfium2)
 * Office openxml docs  -> embedded ``docProps/thumbnail`` re-encoded to WebP
+                         (matched by extension too, whatever the stored MIME)
 * text-like files      -> first N bytes (partial read, no full download)
 
 Image/PDF/Office thumbnails are cached in Redis keyed by file checksum so
-repeat views and re-renders are free. All CPU-bound work runs in a thread so
-the event loop is never blocked.
+repeat views and re-renders are free. Every render of a file's bytes runs in a
+short-lived child process with a time and memory limit (see ``preview_render``),
+so neither the event loop nor its thread pool waits on one.
 """
 
 import asyncio
 import base64
-import io
 import logging
-import zipfile
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable
 
 import fastapi
-import pypdfium2
 from fastapi.responses import Response
-from PIL import Image
 
+from backend.api.features.workspace import preview_render
 from backend.data.redis_client import get_redis_async
 from backend.data.workspace import WorkspaceFile
 from backend.util.workspace_storage import get_workspace_storage
@@ -33,9 +32,17 @@ from backend.util.workspace_storage import get_workspace_storage
 logger = logging.getLogger(__name__)
 
 PREVIEW_CACHE_TTL = 86_400  # 1 day
-WEBP_QUALITY = 80
-MAX_IMAGE_PIXELS = 50_000_000  # decompression-bomb guard (~50 MP)
+# Each thumbnail renders in its own child process; cap how many run at once so a
+# burst of large previews can't hold many full-resolution bitmaps in memory
+# together.
+MAX_CONCURRENT_RENDERS = 4
 CACHE_HEADERS = {"Cache-Control": "private, max-age=86400"}
+# A text preview is always served as plain text.
+TEXT_PREVIEW_HEADERS = {
+    **CACHE_HEADERS,
+    "Content-Security-Policy": "sandbox",
+    "X-Content-Type-Options": "nosniff",
+}
 
 # Per-kind size ceilings. The frontend mirrors these exactly so it never
 # requests a preview for a file this big (it shows an illustration instead);
@@ -67,11 +74,9 @@ _TEXT_HINTS = (
 # types fall back to a static illustration on the frontend and never request a
 # preview, so they don't need an extension fallback here.
 _TEXT_EXTENSIONS = frozenset({"md", "markdown", "mdx"})
-_EMBEDDED_THUMBNAILS = (
-    "docprops/thumbnail.jpeg",
-    "docprops/thumbnail.jpg",
-    "docprops/thumbnail.png",
-)
+# Office files are often stored with a wrong MIME (text/plain,
+# application/octet-stream), so the extension wins over the stored MIME.
+_OFFICE_EXTENSIONS = frozenset({"pptx", "docx", "xlsx"})
 
 
 async def build_preview_response(
@@ -90,22 +95,20 @@ async def _dispatch_preview(
 ) -> Response:
     mime = (file.mime_type or "").lower()
 
+    if mime in OFFICE_MIMES or _extension(file.name) in _OFFICE_EXTENSIONS:
+        _ensure_size(file, PREVIEW_MAX_DOC_BYTES)
+        return _webp_response(await _office_thumbnail(file, width))
     if mime.startswith("image/") and "svg" not in mime:
         _ensure_size(file, PREVIEW_MAX_IMAGE_BYTES)
         return _webp_response(await _image_thumbnail(file, width))
     if mime == "application/pdf":
         _ensure_size(file, PREVIEW_MAX_DOC_BYTES)
         return _webp_response(await _pdf_thumbnail(file, width))
-    if mime in OFFICE_MIMES:
-        _ensure_size(file, PREVIEW_MAX_DOC_BYTES)
-        return _webp_response(await _office_thumbnail(file, width))
     if _is_text_like(mime, file.name):
         _ensure_size(file, PREVIEW_MAX_TEXT_BYTES)
         content = await _text_preview(file, max_bytes)
         return Response(
-            content=content,
-            media_type=file.mime_type or "text/plain",
-            headers=CACHE_HEADERS,
+            content=content, media_type="text/plain", headers=TEXT_PREVIEW_HEADERS
         )
 
     raise fastapi.HTTPException(
@@ -116,8 +119,11 @@ async def _dispatch_preview(
 def _is_text_like(mime: str, name: str = "") -> bool:
     if mime.startswith("text/") or any(hint in mime for hint in _TEXT_HINTS):
         return True
-    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-    return ext in _TEXT_EXTENSIONS
+    return _extension(name) in _TEXT_EXTENSIONS
+
+
+def _extension(name: str) -> str:
+    return name.rsplit(".", 1)[-1].lower() if "." in name else ""
 
 
 def _ensure_size(file: WorkspaceFile, limit: int) -> None:
@@ -133,37 +139,45 @@ def _webp_response(content: bytes) -> Response:
 # Renderers (cached)
 # ---------------------------------------------------------------------------
 
+_render_semaphores: dict[asyncio.AbstractEventLoop, asyncio.Semaphore] = {}
+
+
+def _render_semaphore() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    semaphore = _render_semaphores.get(loop)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_RENDERS)
+        _render_semaphores[loop] = semaphore
+    return semaphore
+
 
 async def _image_thumbnail(file: WorkspaceFile, width: int) -> bytes:
-    async def render() -> bytes:
-        content = await _retrieve(file)
-        return await _to_thread_webp(_resize_webp, content, width)
-
-    return await _cached(file, "img", width, render)
+    return await _cached(
+        file, "img", width, _render(file, preview_render.image_thumbnail, width)
+    )
 
 
 async def _pdf_thumbnail(file: WorkspaceFile, width: int) -> bytes:
-    async def render() -> bytes:
-        content = await _retrieve(file)
-        return await _to_thread_webp(_pdfium_first_page, content, width)
-
-    return await _cached(file, "pdf", width, render)
+    return await _cached(
+        file, "pdf", width, _render(file, preview_render.pdf_thumbnail, width)
+    )
 
 
 async def _office_thumbnail(file: WorkspaceFile, width: int) -> bytes:
-    async def render() -> bytes:
-        content = await _retrieve(file)
-        try:
-            raw = await asyncio.to_thread(_extract_zip_thumbnail, content)
-        except Exception as e:
-            raise fastapi.HTTPException(
-                status_code=415, detail="Cannot render preview"
-            ) from e
-        if raw is None:
-            raise fastapi.HTTPException(status_code=415, detail="No embedded thumbnail")
-        return await _to_thread_webp(_resize_webp, raw, width)
+    return await _cached(
+        file, "office", width, _render(file, preview_render.office_thumbnail, width)
+    )
 
-    return await _cached(file, "office", width, render)
+
+def _render(
+    file: WorkspaceFile, renderer: preview_render.Renderer, width: int
+) -> Callable[[], Awaitable[bytes]]:
+    async def render() -> bytes:
+        async with _render_semaphore():
+            content = await _retrieve(file)
+            return await _render_in_child(renderer, content, width)
+
+    return render
 
 
 async def _text_preview(file: WorkspaceFile, max_bytes: int) -> bytes:
@@ -176,13 +190,21 @@ async def _retrieve(file: WorkspaceFile) -> bytes:
     return await storage.retrieve(file.storage_path)
 
 
-async def _to_thread_webp(fn: Callable[..., bytes], *args) -> bytes:
-    """Run a sync renderer in a thread, mapping any failure to a 415."""
+async def _render_in_child(
+    renderer: preview_render.Renderer, content: bytes, width: int
+) -> bytes:
+    """Run a renderer in a child process, mapping each outcome to a response."""
     try:
-        return await asyncio.to_thread(fn, *args)
-    except fastapi.HTTPException:
-        raise
-    except Exception as e:
+        return await preview_render.render_in_child(renderer, content, width)
+    except preview_render.PreviewTooLarge as e:
+        raise fastapi.HTTPException(
+            status_code=413, detail="File too large to preview"
+        ) from e
+    except preview_render.NoEmbeddedThumbnail as e:
+        raise fastapi.HTTPException(
+            status_code=415, detail="No embedded thumbnail"
+        ) from e
+    except preview_render.RenderFailed as e:
         raise fastapi.HTTPException(
             status_code=415, detail="Cannot render preview"
         ) from e
@@ -214,51 +236,3 @@ async def _cached(
         except Exception as e:
             logger.warning(f"Preview cache write failed for {file.id}: {e}")
     return content
-
-
-# ---------------------------------------------------------------------------
-# Sync helpers (run in a thread)
-# ---------------------------------------------------------------------------
-
-
-def _resize_webp(content: bytes, width: int) -> bytes:
-    Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
-    with Image.open(io.BytesIO(content)) as img:
-        # Image.open positions at the first frame, so animated GIFs/WebP already
-        # render their frame 0 without an explicit seek.
-        if img.mode not in ("RGB", "RGBA", "L"):
-            img = img.convert("RGB")
-        img.thumbnail((width, width * 4), Image.Resampling.LANCZOS)
-        out = io.BytesIO()
-        img.save(out, format="WEBP", quality=WEBP_QUALITY, method=4)
-        return out.getvalue()
-
-
-def _pdfium_first_page(content: bytes, width: int) -> bytes:
-    pdf = pypdfium2.PdfDocument(content)
-    try:
-        page = pdf[0]
-        page_width = page.get_width() or width
-        # Integer render scale (pypdfium2's scale defaults to int); PIL downscales
-        # to the exact target width afterwards.
-        scale = max(1, min(3, round(width / page_width)))
-        bitmap = page.render(scale=scale)
-        image = bitmap.to_pil()
-        out = io.BytesIO()
-        if image.mode not in ("RGB", "L"):
-            image = image.convert("RGB")
-        image.thumbnail((width, width * 4), Image.Resampling.LANCZOS)
-        image.save(out, format="WEBP", quality=WEBP_QUALITY, method=4)
-        return out.getvalue()
-    finally:
-        pdf.close()
-
-
-def _extract_zip_thumbnail(content: bytes) -> Optional[bytes]:
-    """Return the embedded ``docProps/thumbnail.*`` image from an openxml file."""
-    with zipfile.ZipFile(io.BytesIO(content)) as archive:
-        names = {name.lower(): name for name in archive.namelist()}
-        for candidate in _EMBEDDED_THUMBNAILS:
-            if candidate in names:
-                return archive.read(names[candidate])
-    return None

@@ -4,7 +4,13 @@ import tweepy
 from pydantic import BaseModel
 from tweepy.client import Response
 
-from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchemaOutput
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockEffect,
+    BlockOutput,
+    BlockSchemaOutput,
+)
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -67,7 +73,7 @@ class TwitterGetSpacesBlock(Block):
 
     class Input(SpaceExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["spaces.read", "users.read", "offline.access"]
+            ["space.read", "users.read", "offline.access"]
         )
 
         identifier: Union[SpaceList, UserList] = SchemaField(
@@ -134,6 +140,7 @@ class TwitterGetSpacesBlock(Block):
                     ["Test Space"],
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -222,7 +229,7 @@ class TwitterGetSpaceByIdBlock(Block):
 
     class Input(SpaceExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["spaces.read", "users.read", "offline.access"]
+            ["space.read", "users.read", "offline.access"]
         )
 
         space_id: str = SchemaField(
@@ -281,6 +288,7 @@ class TwitterGetSpaceByIdBlock(Block):
                     {},
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -383,7 +391,7 @@ class TwitterGetSpaceBuyersBlock(Block):
 
     class Input(UserExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["spaces.read", "users.read", "offline.access"]
+            ["space.read", "users.read", "offline.access"]
         )
 
         space_id: str = SchemaField(
@@ -433,6 +441,7 @@ class TwitterGetSpaceBuyersBlock(Block):
                     ["testuser"],
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -510,7 +519,7 @@ class TwitterGetSpaceTweetsBlock(Block):
 
     class Input(TweetExpansionInputs):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["spaces.read", "users.read", "offline.access"]
+            ["space.read", "users.read", "offline.access"]
         )
 
         space_id: str = SchemaField(
@@ -563,6 +572,7 @@ class TwitterGetSpaceTweetsBlock(Block):
                     {},
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

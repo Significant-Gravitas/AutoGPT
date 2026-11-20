@@ -1,4 +1,8 @@
-import { syncPostHogConsent } from "@/providers/posthog/posthog-consent";
+import {
+  forgetPostHogStorage,
+  syncPostHogConsent,
+} from "@/providers/posthog/posthog-consent";
+import { hasConsentFor } from "@/services/consent/consent";
 import posthog from "posthog-js";
 import { resetAnonymousID } from "./anonymous-id";
 import { getPostHogBaseProperties } from "./posthog-base-properties";
@@ -17,6 +21,15 @@ export function resetAnalyticsIdentity(): void {
   }
   if (didReset) restoreBaseProperties();
   resetAnonymousID(anonymousID);
+  // With consent reset() rewrote PostHog's storage with the new identity;
+  // without it (declined or still pending) the old one would stay stored.
+  if (!hasConsentFor("analytics")) {
+    try {
+      forgetPostHogStorage();
+    } catch {
+      // Analytics must never block an account change.
+    }
+  }
   // reset() also drops PostHog's own opt-in, which opts a consenting visitor
   // out until the next page load unless it is restored here.
   if (didReset) {

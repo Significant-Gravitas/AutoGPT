@@ -6,6 +6,8 @@ import { TourEvent } from "@/services/analytics/posthog-events";
 // The tour is public and pre-signup: nothing here may carry an identifier.
 
 export type TourCtaLabel =
+  | "free-trial"
+  | "signup"
   | "pricing"
   | "another-scenario"
   | "self-host"
@@ -15,21 +17,27 @@ const TOUR_START_SESSION_KEY = "tour_start_tracked";
 const POSTHOG_TOUR_START_KEY = "posthog_tour_started";
 
 export function trackTourStart() {
-  // PostHog's guard is marked only once the event is sent or dropped for lack
-  // of consent, not while it waits for the answer.
+  // PostHog's guard is marked only once the event is sent, never while it
+  // waits for the answer or when it is dropped for lack of consent.
   capturePostHogEvent(
     TourEvent.TOUR_STARTED,
     {},
     { oncePerTabKey: POSTHOG_TOUR_START_KEY },
   );
+  // DataFast's guard is marked only once the event goes out: an event dropped
+  // because consent was not known yet gets another chance on the next mount.
   try {
     if (sessionStorage.getItem(TOUR_START_SESSION_KEY)) return;
-    sessionStorage.setItem(TOUR_START_SESSION_KEY, "1");
   } catch {
     // In-app browsers may block sessionStorage — double-counting a visit
     // beats dropping it.
   }
-  analytics.sendDatafastEvent("tour_start", {});
+  if (!analytics.sendDatafastEvent("tour_start", {})) return;
+  try {
+    sessionStorage.setItem(TOUR_START_SESSION_KEY, "1");
+  } catch {
+    // See above.
+  }
 }
 
 export function trackTourScenarioStart(scenarioId: string) {
