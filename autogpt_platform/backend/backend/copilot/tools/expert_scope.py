@@ -19,12 +19,11 @@ from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
 from backend.data.model import Credentials, CredentialsFieldInfo, CredentialsType
 from backend.integrations.credentials_store import is_system_credential
-from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.integrations.service_identity import credential_display_name
 
 from .models import AgentSavedResponse, ErrorResponse, ToolResponseBase
-from .utils import find_matching_credential
+from .utils import credentials_with_grants, find_matching_credential
 
 logger = logging.getLogger(__name__)
 
@@ -83,12 +82,7 @@ async def resolve_credential_scope(
     user_id: str, expert_id: str | None
 ) -> CredentialScopeSnapshot:
     """Load credentials and grants once for one card-building operation."""
-    owned = await IntegrationCredentialsManager().store.get_all_creds(user_id)
-    allowed_ids = (
-        set(await experts_db().expert_allowed_credential_ids(user_id, expert_id))
-        if expert_id is not None
-        else None
-    )
+    owned, allowed_ids = await credentials_with_grants(user_id, expert_id)
     return CredentialScopeSnapshot(owned=owned, allowed_ids=allowed_ids)
 
 
