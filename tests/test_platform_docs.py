@@ -30,6 +30,17 @@ def _text(document: str) -> str:
     return " ".join((ROOT / document).read_text(encoding="utf-8").split())
 
 
+def _says_a_token_in_the_url_is_refused(text: str) -> bool:
+    """Whether `text` says, in the sentence that names `?token=...`, that
+    such a connection is refused."""
+    about_the_url = [
+        sentence for sentence in re.split(r"(?<=[.:])\s", text) if "`?token=...`" in sentence
+    ]
+    return bool(about_the_url) and all(
+        re.search(r"\bis refused\b.*`\?token=\.\.\.`", sentence) for sentence in about_the_url
+    )
+
+
 def test_the_route_in_platform_hooks_takes_the_token_from_the_header() -> None:
     hooks = _text("docs/PLATFORM_HOOKS.md")
 
@@ -37,9 +48,26 @@ def test_the_route_in_platform_hooks_takes_the_token_from_the_header() -> None:
     assert "Query(" not in hooks
     assert not re.search(r"\btoken: str\b", hooks)
     assert "`Authorization: Bearer <access token>` header" in hooks
-    # And it says what happens to a token in the URL.
-    assert "`?token=...`" in hooks
+    # And it says what happens to a token in the URL: the connection is
+    # refused. Naming `?token=...` and the backend's test was all this asked,
+    # which a doc that said such a token is taken would have passed.
+    assert _says_a_token_in_the_url_is_refused(hooks)
     assert "test_query_string_token_is_not_accepted" in hooks
+
+
+def test_the_check_for_a_token_in_the_url_reads_what_is_said_of_it() -> None:
+    refused = (
+        'A connection without that header is refused with "Missing bearer token", also '
+        "when the URL carries `?token=...` (`test_query_string_token_is_not_accepted`)."
+    )
+    taken = (
+        "The token is in the `Authorization: Bearer <access token>` header. A token in "
+        "the URL, `?token=...`, is accepted too (`test_query_string_token_is_not_accepted`)."
+    )
+
+    assert _says_a_token_in_the_url_is_refused(refused)
+    assert not _says_a_token_in_the_url_is_refused(taken)
+    assert not _says_a_token_in_the_url_is_refused("Nothing here names it.")
 
 
 def test_platform_hooks_says_the_platform_side_merged() -> None:
