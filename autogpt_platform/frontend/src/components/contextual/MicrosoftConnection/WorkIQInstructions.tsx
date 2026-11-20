@@ -6,7 +6,7 @@ import {
 
 export function WorkIQInstructions() {
   return (
-    <ol className="list-decimal space-y-3 pl-5 text-sm">
+    <ol className="list-decimal space-y-3 pl-5 text-body">
       <li>
         <a
           href={WORK_IQ_SETUP_URL}
@@ -17,7 +17,7 @@ export function WorkIQInstructions() {
           Enable Work IQ for your organization
         </a>
         . This creates Microsoft&apos;s Work IQ service in your tenant.
-        <pre className="mt-2 overflow-x-auto rounded bg-surface-hover p-2 text-xs">
+        <pre className="mt-2 overflow-x-auto rounded bg-surface-hover p-2 text-caption">
           {`az ad sp create --id ${WORK_IQ_APP_ID}`}
         </pre>
       </li>

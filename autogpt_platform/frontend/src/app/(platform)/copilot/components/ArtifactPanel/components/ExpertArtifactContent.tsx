@@ -20,13 +20,13 @@ interface SectionProps {
 // Same section labels as the team page's soul editor (SoulDrawer), so the
 // charter reads the same here as where it gets edited.
 const LABEL =
-  "mb-1.5 text-xs font-medium uppercase tracking-caps text-foreground-body";
+  "mb-1.5 text-caption font-medium uppercase tracking-caps text-foreground-body";
 
 function Section({ title, text }: SectionProps) {
   return (
     <section>
       <div className={LABEL}>{title}</div>
-      <p className="text-sm leading-relaxed whitespace-pre-line text-foreground-secondary">
+      <p className="text-body leading-relaxed whitespace-pre-line text-foreground-secondary">
         {text}
       </p>
     </section>
@@ -95,7 +95,7 @@ export function ExpertArtifactContent({ expert: artifact }: Props) {
         </div>
       </div>
       {expert.tagline && (
-        <p className="text-sm leading-relaxed text-foreground-body">
+        <p className="text-body leading-relaxed text-foreground-body">
           {expert.tagline}
         </p>
       )}
@@ -121,7 +121,7 @@ export function ExpertArtifactContent({ expert: artifact }: Props) {
       {expert.color && swatchClassFor(expert.color) && (
         <section>
           <div className={LABEL}>Accent</div>
-          <div className="flex items-center gap-2 text-sm text-foreground-secondary">
+          <div className="flex items-center gap-2 text-body text-foreground-secondary">
             <span
               aria-hidden="true"
               className={cn(

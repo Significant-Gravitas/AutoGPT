@@ -231,5 +231,6 @@ def _review_database(session: ChatSession, review_id: str) -> MagicMock:
             )
         }
     )
+    database.claim_approved_review = AsyncMock(return_value=True)
     database.delete_review_by_node_exec_id = AsyncMock()
     return database

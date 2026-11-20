@@ -52,26 +52,28 @@ export const Integration: IntegrationComponent = ({
           {title && (
             <Text
               variant="body-medium"
-              tone="body"
-              className="line-clamp-1 flex-1 group-disabled:text-foreground-subtle"
+              tone={rest.disabled ? "subtle" : "body"}
+              className="line-clamp-1 flex-1"
             >
               {beautifyString(title)}
             </Text>
           )}
-          <Text
-            variant="body-medium"
-            as="span"
-            tone="muted"
-            className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-full bg-surface-hover p-1.5 group-disabled:text-foreground-subtle"
-          >
-            {number_of_blocks}
-          </Text>
+          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-full bg-surface-hover p-1.5">
+            <Text
+              variant="body-medium"
+              as="span"
+              tone={rest.disabled ? "subtle" : "muted"}
+              className="block"
+            >
+              {number_of_blocks}
+            </Text>
+          </span>
         </div>
         <Text
           variant="small-loose"
           as="span"
-          tone="muted"
-          className="line-clamp-1 group-disabled:text-foreground-subtle"
+          tone={rest.disabled ? "subtle" : "muted"}
+          className="line-clamp-1"
         >
           {description}
         </Text>

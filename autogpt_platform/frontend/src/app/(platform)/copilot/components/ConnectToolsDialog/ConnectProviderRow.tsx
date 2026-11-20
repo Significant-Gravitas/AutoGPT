@@ -75,16 +75,17 @@ export function ConnectProviderRow({
             <Icon
               icon={CheckmarkCircle02Icon}
               size={15}
-              className="shrink-0 text-success"
+              tone="success"
+              className="shrink-0"
             />
           )}
         </span>
         {description && (
           <Text
-            variant="small"
+            variant="small-tight"
             as="span"
             tone="muted"
-            className="truncate leading-4"
+            className="truncate"
           >
             {description}
           </Text>

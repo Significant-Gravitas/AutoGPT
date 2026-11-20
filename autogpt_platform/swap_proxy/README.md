@@ -110,7 +110,17 @@ for gigabytes cost the proxy no more than 20 MiB and are then turned away:
 | a held text body that… | request (with `swap_anywhere` only) | response |
 | --- | --- | --- |
 | decodes to more than 20 MiB | sent as it is; audited `body-not-swapped` / `decoded-too-large` | **refused**; audited `refused-response` / `decoded-too-large` |
-| is in an encoding that cannot be decoded within a bound (anything but `gzip`, `deflate`, `br`, `zstd`, or more than one), or is corrupt | sent as it is; audited `body-not-swapped` / `undecodable-encoding` | **refused**; audited `refused-response` / `undecodable-encoding` |
+| is in an encoding that is not decoded (anything but `gzip`, `deflate`, `zstd`, or more than one), or is corrupt | sent as it is; audited `body-not-swapped` / `undecodable-encoding` | **refused**; audited `refused-response` / `undecodable-encoding` |
+
+Brotli (`br`) is never decoded: a box can send a `br` body to any host, and
+nothing it needs sends one, so the proxy does not run a Brotli decoder on a
+box's bytes. So that responses still arrive readable, a box that gets swaps has
+`br` taken out of its `Accept-Encoding` (and `br;q=0` added) on requests to a
+host a credential is bound to, whose responses are scrubbed (and on every
+request while the bindings cannot be read); those servers answer in gzip or
+uncompressed instead. A request to such a host with no `Accept-Encoding`
+(which accepts any coding) gets `br;q=0` alone, so it is answered uncompressed.
+Other hosts get the header as the box sent it.
 
 A request body the proxy will not decode may or may not name a credential;
 nobody can say without decoding it. It goes out untouched, which is the safe
@@ -193,8 +203,11 @@ poetry run swap-proxy
 
 ### The signing CA
 
-The boxes' image trusts one CA certificate, and the proxy signs the certificate
-of every bound host with that CA's key. So:
+Every box trusts one CA certificate, and the proxy signs the certificate of
+every bound host with that CA's key. The backend installs the certificate in
+each box it pins to the proxy, from `E2B_EGRESS_PROXY_CA_CERT`
+(`backend/util/e2b_proxy_trust.py`): the system store, a bundle for Python and
+Node, and the browsers' policies. So:
 
 - **One CA for every replica and every restart.** A replica that signed with a
   CA of its own would break TLS to every bound host inside every box, and it
@@ -212,15 +225,30 @@ of every bound host with that CA's key. So:
   Whoever holds it can read the traffic of every bound host. It is not in the
   image, the repository or a box.
 - **Rotation is a coordinated change**: boxes must trust the new certificate
-  before the proxy starts signing with the new key.
+  before the proxy starts signing with the new key:
+  1. Put both certificates in `E2B_EGRESS_PROXY_CA_CERT` and release it.
+     Each box installs the new set on its next create or reconnect.
+  2. Wait until every box running before that release has reconnected or
+     stopped. E2B stops a box after 24 hours of running at most, so 24 hours
+     is always enough. A box still running on the old set fails TLS to bound
+     hosts once the key changes. A paused box installs the new set when it
+     resumes, but a browser left open in it read its policies when it
+     started: it trusts the new CA only once restarted.
+  3. Switch the proxy to the new key.
+  4. Drop the old certificate from the setting. Each box removes it from its
+     store, bundle and browser policies, and from its NSS database, on its
+     next reconnect.
 
 ### Turning it on
 
 The backend only sends boxes here once `E2B_EGRESS_PROXY_ADDRESS` is set, and
 E2B fails closed. Setting that address and provisioning the CA are **one release
 step**: the proxy reachable at that address, the CA mounted into every replica,
-and its certificate in the image the boxes run. Any one of them missing shows up
-as every box losing either its egress or its TLS to bound hosts.
+and its certificate in the backend's `E2B_EGRESS_PROXY_CA_CERT`. Any one of them missing shows up
+as every box losing either its egress or its TLS to bound hosts. A desktop
+paused with a browser open before the switch gets the CA when it resumes,
+but that browser read its policies when it started: it reaches bound hosts
+only once restarted.
 
 The same address is also what switches boxes from real tokens to placeholders
 (see "What a box holds"): from the moment it is set, a connected account works
@@ -327,9 +355,10 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   reach such a box; cloning the repository still works, since git's packs are
   binary. Lifting this needs a scrub that works on a stream, not a held body.
 - A compressed text response from a bound host that decodes to more than
-  20 MiB, or uses an encoding other than `gzip`, `deflate`, `br` or `zstd` (or
+  20 MiB, or uses an encoding other than `gzip`, `deflate` or `zstd` (or
   several at once), is refused for a box that gets swaps; a request body like
   that is not swapped (with `swap_anywhere`; otherwise it is never swapped).
+  Such a box asks for no `br`, but a server that sends it anyway is refused.
 - The decoded-size limit covers HTTP bodies. Websocket messages are
   decompressed by mitmproxy before the addon sees them, with no limit of ours.
 - A text response with no declared length is held until it is complete, so an

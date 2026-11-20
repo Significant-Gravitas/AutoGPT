@@ -20,7 +20,7 @@ async def _run(**fields: object) -> dict[str, object]:
 
 async def _execute_node(node: Node, data: dict[str, object]) -> dict[str, object]:
     block = get_block(node.block_id)
-    assert block is not None
+    assert type(block) is ConditionBlock
     validated, error = validate_exec(node, data)
     assert validated is not None, error
     return {

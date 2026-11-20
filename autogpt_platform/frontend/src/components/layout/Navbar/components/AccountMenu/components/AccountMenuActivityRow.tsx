@@ -13,7 +13,7 @@ import { ArrowRight01Icon, Pulse01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 const rowClasses =
-  "group relative flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-2 text-left text-sm font-normal text-foreground-body outline-none transition-colors duration-200 ease-out hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none data-[state=open]:bg-surface-hover";
+  "group relative flex w-full items-center gap-3 rounded-lg py-2 pl-3 pr-2 text-left text-body font-normal text-foreground-body outline-none transition-colors duration-200 ease-out hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none data-[state=open]:bg-surface-hover";
 
 export function AccountMenuActivityRow() {
   const { activeExecutions, recentCompletions, recentFailures } =
@@ -53,7 +53,8 @@ export function AccountMenuActivityRow() {
           <span className="flex-1" aria-hidden="true" />
           <Icon
             icon={ArrowRight01Icon}
-            className="relative z-10 shrink-0 text-foreground-body"
+            tone="body"
+            className="relative z-10 shrink-0"
             size={16}
             aria-hidden="true"
           />

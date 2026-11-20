@@ -3,6 +3,9 @@ class MockObject:
         self.__dict__.update(kwargs)
 
     def __getattr__(self, name):
+        # A protocol lookup must miss, or pickle and copy call the None it reads
+        if name.startswith("__") and name.endswith("__"):
+            raise AttributeError(name)
         return self.__dict__.get(name)
 
     def __call__(self, *args, **kwargs):

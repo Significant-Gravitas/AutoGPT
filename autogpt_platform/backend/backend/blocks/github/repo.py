@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from typing_extensions import TypedDict
 
@@ -11,6 +11,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks._preview import ChangePreview
 from backend.data.model import SchemaField
 from backend.util.request import Requests
 
@@ -581,7 +582,17 @@ class GithubCreateRepositoryBlock(Block):
                     "https://github.com/owner/test-repo.git",
                 )
             },
-            effect=BlockEffect.EXTERNAL_JUDGED,
+            effect=BlockEffect.EXTERNAL,
+        )
+
+    def change_preview(self, input_data: dict[str, Any]) -> ChangePreview:
+        # The caller fills in the schema default, which `run` sends to GitHub as is.
+        visibility = "private" if input_data.get("private") is True else "public"
+        name = input_data.get("name")
+        return ChangePreview(
+            ask=f"Create a {visibility} GitHub repository:",
+            object=str(name) if name else None,
+            covers=["name", "private"],
         )
 
     @staticmethod

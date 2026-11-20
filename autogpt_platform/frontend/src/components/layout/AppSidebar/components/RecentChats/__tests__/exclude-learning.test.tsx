@@ -1,4 +1,3 @@
-import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getExcludeSkillLearningSourceMockHandler200 } from "@/app/api/__generated__/endpoints/skill-learning/skill-learning.msw";
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
@@ -11,6 +10,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecentChats } from "../RecentChats";
+import { sidebarBackend } from "./sidebarBackend";
 
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
@@ -32,22 +32,12 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
-const sessions = [
-  {
-    id: "s1",
-    title: "CSV import chat",
-    is_processing: false,
-    created_at: "2026-09-13T00:00:00Z",
-    updated_at: "2026-09-13T00:00:00Z",
-  },
-];
+const chats = [{ id: "s1", title: "CSV import chat" }];
 
 describe("RecentChats — exclude from learning", () => {
   beforeEach(() => {
     toastMock.mockClear();
-    server.use(
-      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-    );
+    server.use(...sidebarBackend(() => chats));
   });
 
   afterEach(() => {

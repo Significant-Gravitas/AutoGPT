@@ -16,11 +16,7 @@ export function ErrorMessage({
 }: Props) {
   return (
     <div data-slot="error-card-message" className="space-y-2">
-      <Text
-        variant={textSize}
-        data-slot="error-card-context"
-        className="text-foreground-body"
-      >
+      <Text variant={textSize} data-slot="error-card-context" tone="body">
         We had the following error when retrieving {context ?? "your data"}:
       </Text>
       <div
@@ -30,18 +26,14 @@ export function ErrorMessage({
         <Text
           variant={textSize}
           data-slot="error-card-detail-text"
-          className="!text-error-foreground"
+          tone="error-strong"
         >
           {errorMessage}
         </Text>
       </div>
       {hint && (
         <div data-slot="error-card-hint" className="!mt-4">
-          <Text
-            variant={textSize}
-            data-slot="error-card-hint-text"
-            className="text-foreground-body"
-          >
+          <Text variant={textSize} data-slot="error-card-hint-text" tone="body">
             {hint}
           </Text>
         </div>

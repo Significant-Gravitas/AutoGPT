@@ -66,20 +66,6 @@ describe("DesktopStreamRenderer", () => {
     ).toBe(true);
   });
 
-  it("shows a notice instead of the frame to a viewer who is not the owner", () => {
-    const ownerBound = {
-      ...streamValue,
-      url: "/api/proxy/api/desktop-preview?token=abc",
-      requires_auth: true,
-    };
-    const { container } = render(
-      <DesktopStreamPreview value={ownerBound} ownerView={false} />,
-    );
-    expect(container.querySelector("iframe")).toBeNull();
-    expect(screen.getByText(/only visible to the owner/i)).toBeDefined();
-    expect(screen.queryByRole("link", { name: /open in new tab/i })).toBeNull();
-  });
-
   it("renders an interactive iframe pointing at the stream URL", () => {
     const { container } = render(
       <>{desktopStreamRenderer.render(streamValue)}</>,
@@ -87,7 +73,12 @@ describe("DesktopStreamRenderer", () => {
     const iframe = container.querySelector("iframe");
     expect(iframe).toBeTruthy();
     expect(iframe?.getAttribute("src")).toBe(streamValue.url);
-    expect(iframe?.getAttribute("sandbox")).toContain("allow-scripts");
+    expect(iframe?.getAttribute("sandbox")).toBe(
+      "allow-scripts allow-same-origin allow-popups",
+    );
+    expect(iframe?.getAttribute("allow")).toBe(
+      "clipboard-read; clipboard-write; fullscreen",
+    );
     expect(screen.getByText("Interactive Desktop")).toBeDefined();
     expect(screen.getByText("e2b")).toBeDefined();
   });
@@ -97,7 +88,35 @@ describe("DesktopStreamRenderer", () => {
     const link = screen.getByRole("link", { name: /open in new tab/i });
     expect(link.getAttribute("href")).toBe(streamValue.url);
     expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
+
+  it.each(["body", "body-md"] as const)(
+    "preserves the %s text size for its callers",
+    (textSize) => {
+      const { rerender } = render(
+        <DesktopStreamPreview value={streamValue} textSize={textSize} />,
+      );
+      expect(
+        screen
+          .getByText("Interactive Desktop")
+          .classList.contains(`text-${textSize}`),
+      ).toBe(true);
+
+      rerender(
+        <DesktopStreamPreview
+          value={{ ...streamValue, requires_auth: true }}
+          ownerView={false}
+          textSize={textSize}
+        />,
+      );
+      expect(
+        screen
+          .getByText(/only visible to the owner/i)
+          .classList.contains(`text-${textSize}`),
+      ).toBe(true);
+    },
+  );
 
   it("tells the viewer the desktop is shared with the AI, and owner-only when auth is required", () => {
     render(<>{desktopStreamRenderer.render(streamValue)}</>);

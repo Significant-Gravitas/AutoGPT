@@ -39,6 +39,7 @@ from backend.data.graph import (
     create_graph,
     make_graph_model,
 )
+from backend.data.human_review import get_pending_reviews_for_execution
 from backend.util.exceptions import BlockExecutionError
 
 from .model import PendingHumanReviewModel, ReviewItem
@@ -1700,6 +1701,150 @@ async def test_a_rejected_irreversible_action_never_runs_when_the_run_resumes(
     with pytest.raises(BlockExecutionError, match="rejected by reviewer"):
         await run_node(resumed)
     create_issue.assert_not_awaited()
+
+
+async def _paused_issue_run(mocker, test_user_id: str, nodes: int):
+    """A run of ``nodes`` irreversible GitHub steps whose first step is parked
+    for review, as in the test above; returns what the tests below drive."""
+    block = GithubMakeIssueBlock()
+    create_issue = mocker.patch.object(
+        GithubMakeIssueBlock,
+        "create_issue",
+        new=mocker.AsyncMock(
+            return_value=(1, "https://github.com/owner/repo/issues/1")
+        ),
+    )
+    queue = mocker.AsyncMock()
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue",
+        new=mocker.AsyncMock(return_value=queue),
+    )
+    graph = make_graph_model(
+        Graph(
+            name="Reviewed irreversible actions",
+            description="",
+            nodes=[Node(block_id=block.id) for _ in range(nodes)],
+            links=[],
+        ),
+        test_user_id,
+    )
+    graph.reassign_ids(user_id=test_user_id, reassign_graph_id=True)
+    await create_graph(graph, user_id=test_user_id)
+    mocker.patch(
+        "backend.api.features.graph_executions.review.service.get_graph_settings",
+        new=mocker.AsyncMock(
+            return_value=GraphSettings(sensitive_action_safe_mode=True)
+        ),
+    )
+    input_data = dict(block.test_input)
+    graph_exec = await create_graph_execution(
+        graph_id=graph.id,
+        graph_version=graph.version,
+        starting_nodes_input=[(node.id, input_data) for node in graph.nodes],
+        inputs={},
+        user_id=test_user_id,
+    )
+    steps = [(ne.node_id, ne.node_exec_id) for ne in graph_exec.node_executions]
+
+    async def run_step(context: ExecutionContext, step: tuple[str, str]) -> list:
+        node_id, node_exec_id = step
+        return [
+            output
+            async for output in block.execute(
+                input_data,
+                execution_context=context.model_copy(
+                    update={"node_id": node_id, "node_exec_id": node_exec_id}
+                ),
+                credentials=TEST_CREDENTIALS,
+                user_id=test_user_id,
+                node_id=node_id,
+                node_exec_id=node_exec_id,
+                graph_exec_id=graph_exec.id,
+                graph_id=graph.id,
+                graph_version=graph.version,
+            )
+        ]
+
+    first_pass = ExecutionContext(
+        user_id=test_user_id,
+        graph_id=graph.id,
+        graph_exec_id=graph_exec.id,
+        graph_version=graph.version,
+        root_execution_id=graph_exec.id,
+        sensitive_action_safe_mode=True,
+    )
+    assert await run_step(first_pass, steps[0]) == []
+    create_issue.assert_not_awaited()
+    assert await update_graph_execution_stats(
+        graph_exec_id=graph_exec.id, status=ExecutionStatus.REVIEW
+    )
+    return input_data, steps, run_step, create_issue, queue, graph_exec
+
+
+def _resumed_context(queue) -> ExecutionContext:
+    queue.publish_message.assert_awaited_once()
+    return GraphExecutionEntry.model_validate_json(
+        queue.publish_message.call_args.kwargs["message"]
+    ).execution_context
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_edited_card_runs_only_the_edited_input_when_the_run_resumes(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    input_data, steps, run_step, create_issue, queue, _ = await _paused_issue_run(
+        mocker, test_user_id, nodes=1
+    )
+    edited = {**input_data, "title": "Title the reviewer wrote"}
+
+    response = await client.post(
+        "/api/review/action",
+        json={
+            "reviews": [
+                {
+                    "node_exec_id": steps[0][1],
+                    "approved": True,
+                    "reviewed_data": edited,
+                }
+            ]
+        },
+    )
+    assert response.status_code == 200
+
+    await run_step(_resumed_context(queue), steps[0])
+    create_issue.assert_awaited_once()
+    sent = create_issue.await_args
+    assert "Title the reviewer wrote" in [*sent.args, *sent.kwargs.values()]
+    assert input_data["title"] not in [*sent.args, *sent.kwargs.values()]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_later_irreversible_step_still_asks_after_the_run_resumes(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    _, steps, run_step, create_issue, queue, graph_exec = await _paused_issue_run(
+        mocker, test_user_id, nodes=2
+    )
+
+    response = await client.post(
+        "/api/review/action",
+        json={"reviews": [{"node_exec_id": steps[0][1], "approved": True}]},
+    )
+    assert response.status_code == 200
+    resumed = _resumed_context(queue)
+    assert resumed.graph_exec_id == graph_exec.id
+
+    await run_step(resumed, steps[0])
+    create_issue.assert_awaited_once()
+    # The step after it has no answer yet: it parks on its own card.
+    assert await run_step(resumed, steps[1]) == []
+    create_issue.assert_awaited_once()
+    pending = await get_pending_reviews_for_execution(graph_exec.id, test_user_id)
+    assert [review.node_exec_id for review in pending] == [steps[1][1]]
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -6,9 +6,15 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
-import type { HandoffTask } from "./expertHandoff";
+import {
+  type HandoffTask,
+  NEW_EXPERT_COPY,
+  type NewExpertKind,
+} from "./expertHandoff";
 
 interface ProposalProps {
+  /** A hire off the roster or a new expert: the card says hire or create. */
+  kind: NewExpertKind;
   name: string;
   role: string | null;
   avatarUrl: string | null;
@@ -29,11 +35,12 @@ interface ProposalProps {
   stepKey: string;
 }
 
-/** A hire proposed for a task the user already described, asked as one
- *  yes/no question: Hire and start, or Not now. The brief and the expert's
- *  charter stay behind one disclosure: the user wrote the task a moment ago
- *  and only needs who, what and the choice to answer. */
+/** A hire or new expert proposed for a task the user already described,
+ *  asked as one yes/no question: Hire (or Create) and start, or Not now. The
+ *  brief and the expert's charter stay behind one disclosure: the user wrote
+ *  the task a moment ago and only needs who, what and the choice to answer. */
 export function HandoffProposal({
+  kind,
   name,
   role,
   avatarUrl,
@@ -45,6 +52,7 @@ export function HandoffProposal({
   stepClassName,
   stepKey,
 }: ProposalProps) {
+  const copy = NEW_EXPERT_COPY[kind];
   return (
     <div className="flex gap-3 p-4">
       <ExpertAvatar
@@ -57,9 +65,9 @@ export function HandoffProposal({
       <div className="min-w-0 flex-1">
         <div key={stepKey} className={stepClassName}>
           <p className="text-body leading-snug font-medium [overflow-wrap:anywhere] text-foreground-emphasis">
-            Hire {name} to take on {task.title}?
+            {copy.Verb} {name} to take on {task.title}?
           </p>
-          <p className="mt-0.5 text-sm [overflow-wrap:anywhere] text-foreground-tertiary">
+          <p className="mt-0.5 text-body [overflow-wrap:anywhere] text-foreground-tertiary">
             {role
               ? `${role} · works on it in their own chat`
               : "Works on it in their own chat"}
@@ -69,19 +77,17 @@ export function HandoffProposal({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button
               variant="primary"
-              size="small"
+              size="row"
               disabled={actions.disabled}
               onClick={actions.onStart}
-              className="h-8 !min-w-0 px-3.5"
             >
-              Hire and start
+              {copy.Verb} and start
             </Button>
             <Button
               variant="ghost"
-              size="small"
+              size="row"
               disabled={actions.disabled}
               onClick={actions.onNotNow}
-              className="h-8 !min-w-0 px-3"
             >
               Not now
             </Button>
@@ -115,17 +121,15 @@ function HandoffDetails({ name, about, task, onShowProfile }: DetailsProps) {
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-1 rounded text-xs font-medium text-foreground-secondary underline-offset-2 hover:underline focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
+        className="inline-flex items-center gap-1 rounded text-caption font-medium text-foreground-secondary underline-offset-2 hover:underline focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
       >
         What {name} will get
         <Icon
           icon={ArrowDown01Icon}
           size={12}
           aria-hidden
-          className={cn(
-            "transition-transform motion-reduce:transition-none",
-            open && "rotate-180",
-          )}
+          motion="transform"
+          className={cn(open && "rotate-180")}
         />
       </button>
       <div
@@ -133,11 +137,11 @@ function HandoffDetails({ name, about, task, onShowProfile }: DetailsProps) {
         hidden={!open}
         className={cn("mt-2 flex-col gap-2", open ? "flex" : "hidden")}
       >
-        <p className="rounded-2xl bg-surface-muted px-3 py-2.5 text-sm [overflow-wrap:anywhere] whitespace-pre-line text-foreground-tertiary">
+        <p className="rounded-2xl bg-surface-muted px-3 py-2.5 text-body [overflow-wrap:anywhere] whitespace-pre-line text-foreground-tertiary">
           {task.brief}
         </p>
         {about && (
-          <p className="text-xs [overflow-wrap:anywhere] text-foreground-subtle">
+          <p className="text-caption [overflow-wrap:anywhere] text-foreground-subtle">
             About {name}: {about}
           </p>
         )}
@@ -145,7 +149,7 @@ function HandoffDetails({ name, about, task, onShowProfile }: DetailsProps) {
           <button
             type="button"
             onClick={onShowProfile}
-            className="self-start rounded text-xs font-medium text-foreground-secondary underline-offset-2 hover:underline focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
+            className="self-start rounded text-caption font-medium text-foreground-secondary underline-offset-2 hover:underline focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
           >
             See {name}&apos;s full profile
           </button>
@@ -162,7 +166,7 @@ interface ReceiptProps {
 /** What an answered hand-off card shrinks to: the record of the choice. */
 export function HandoffReceipt({ children }: ReceiptProps) {
   return (
-    <p className="flex items-center gap-2 text-sm text-foreground-tertiary">
+    <p className="flex items-center gap-2 text-body text-foreground-tertiary">
       <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-muted">
         <Icon icon={Tick02Icon} size={12} aria-hidden />
       </span>

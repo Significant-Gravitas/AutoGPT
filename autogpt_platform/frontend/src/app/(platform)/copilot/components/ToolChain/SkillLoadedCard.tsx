@@ -28,11 +28,7 @@ export function SkillLoadedCard({ output }: Props) {
       data-testid="skill-loaded-card"
     >
       <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-hover">
-        <Icon
-          icon={BookBookmarkIcon}
-          size={15}
-          className="text-foreground-secondary"
-        />
+        <Icon icon={BookBookmarkIcon} size={15} tone="secondary" />
       </div>
       <div className="min-w-0 flex-1">
         <Text

@@ -141,10 +141,8 @@ function BlockCard({
             <Text
               variant="body-medium"
               as="span"
-              tone="emphasis"
-              className={cn(
-                "line-clamp-1 group-disabled:text-foreground-subtle",
-              )}
+              tone={rest.disabled ? "subtle" : "emphasis"}
+              className="line-clamp-1"
             >
               {highlightText(
                 beautifyString(title).replace(/ Block$/, ""),
@@ -156,10 +154,8 @@ function BlockCard({
             <Text
               variant="small-loose"
               as="span"
-              tone="muted"
-              className={cn(
-                "line-clamp-1 group-disabled:text-foreground-subtle",
-              )}
+              tone={rest.disabled ? "subtle" : "muted"}
+              className="line-clamp-1"
             >
               {highlightText(description, highlightedText, "small-bold-loose")}
             </Text>
@@ -170,10 +166,7 @@ function BlockCard({
             "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
           )}
         >
-          <Icon
-            icon={PlusSignIcon}
-            className="h-5 w-5 text-action-foreground"
-          />
+          <Icon icon={PlusSignIcon} tone="inverse" className="h-5 w-5" />
         </div>
       </button>
       {isMCPBlock && (

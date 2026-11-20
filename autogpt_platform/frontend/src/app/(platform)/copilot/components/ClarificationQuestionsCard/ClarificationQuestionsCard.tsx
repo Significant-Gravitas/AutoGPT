@@ -113,7 +113,8 @@ export function ClarificationQuestionsCard({
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-success">
               <Icon
                 icon={CheckmarkCircle02Icon}
-                className="h-4 w-4 text-action-foreground"
+                tone="inverse"
+                className="h-4 w-4"
               />
             </div>
           </div>
@@ -173,7 +174,8 @@ export function ClarificationQuestionsCard({
                         <Icon
                           icon={CheckmarkCircle02Icon}
                           size={20}
-                          className="mt-0.5 text-success"
+                          tone="success"
+                          className="mt-0.5"
                         />
                       ) : (
                         <div className="mt-0 flex h-6 w-6 items-center justify-center rounded-full border border-border-strong font-mono">
@@ -182,17 +184,19 @@ export function ClarificationQuestionsCard({
                       )}
                       <div className="flex-1">
                         <Text
-                          tone="primary"
                           variant="h5"
-                          className="mb-2 font-semibold"
+                          tone="primary"
+                          weight="semibold"
+                          className="mb-2"
                         >
                           {q.question}
                         </Text>
                         {q.example && (
                           <Text
-                            tone="muted"
                             variant="body"
-                            className="mb-2 italic"
+                            tone="muted"
+                            italic
+                            className="mb-2"
                           >
                             Example: {q.example}
                           </Text>

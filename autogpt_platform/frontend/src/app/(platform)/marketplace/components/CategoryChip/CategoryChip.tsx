@@ -19,9 +19,9 @@ export type ChipSize = "small" | "medium" | "default";
 export const CHIP_SHAPE =
   "inline-flex items-center rounded-full border border-separator bg-transparent font-medium text-foreground-base";
 export const CHIP_SIZE: Record<ChipSize, string> = {
-  small: "h-7 gap-1 px-2 text-xs",
-  medium: "h-8 gap-1 px-2 text-xs",
-  default: "h-9 gap-1.5 px-3.5 text-sm",
+  small: "h-7 gap-1 px-2 text-caption",
+  medium: "h-8 gap-1 px-2 text-caption",
+  default: "h-9 gap-1.5 px-3.5 text-body",
 };
 
 const CHIP_ICON_SIZE: Record<ChipSize, number> = {
@@ -53,16 +53,14 @@ const NEUTRAL_GLOSS_SELECTED =
  *  edge, all stronger once selected. */
 function glossyChipStyle(color: string, isSelected: boolean): CSSProperties {
   return {
-    color: `color-mix(in srgb, ${color} ${isSelected ? 45 : 55}%, rgb(var(--color-secondary-foreground)))`,
-    backgroundColor: `color-mix(in srgb, ${color} ${isSelected ? 30 : 12}%, rgb(var(--color-card)))`,
+    color: `color-mix(in srgb, ${color} ${isSelected ? 45 : 55}%, rgb(var(--color-foreground-strong)))`,
+    backgroundColor: `color-mix(in srgb, ${color} ${isSelected ? 30 : 12}%, rgb(var(--color-surface)))`,
     borderColor: `color-mix(in srgb, ${color} ${isSelected ? 60 : 38}%, rgb(var(--color-surface)))`,
     backgroundImage:
-      "linear-gradient(to bottom, rgb(var(--color-card) / 0.8), rgb(var(--color-card) / 0) 65%)",
+      "linear-gradient(to bottom, rgb(var(--color-surface) / 0.8), rgb(var(--color-surface) / 0) 65%)",
     boxShadow: isSelected
-      ? // TODO(tokens): no exact role: rgba(16,24,40) #101828
-        `inset 0 1px 0 rgb(var(--color-surface) / 0.9), 0 1px 2px rgba(16,24,40,0.08), 0 0 0 1px color-mix(in srgb, ${color} 25%, transparent)`
-      : // TODO(tokens): no exact role: rgba(16,24,40) #101828
-        "inset 0 1px 0 rgb(var(--color-surface) / 0.9), 0 1px 2px rgba(16,24,40,0.05)",
+      ? `inset 0 1px 0 rgb(var(--color-surface) / 0.9), 0 1px 2px rgb(var(--color-scrim) / 0.08), 0 0 0 1px color-mix(in srgb, ${color} 25%, transparent)`
+      : "inset 0 1px 0 rgb(var(--color-surface) / 0.9), 0 1px 2px rgb(var(--color-scrim) / 0.05)",
   };
 }
 

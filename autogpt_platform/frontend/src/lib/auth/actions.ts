@@ -1,6 +1,7 @@
 "use server";
-import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
+import { readServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import * as Sentry from "@sentry/nextjs";
+import { isAPIError } from "better-auth/api";
 import { cookies, headers } from "next/headers";
 import {
   IMPERSONATION_COOKIE_NAME,
@@ -90,19 +91,23 @@ export async function getCurrentUser(): Promise<{
 export async function getWebSocketToken(): Promise<{
   token: string | null;
   error?: string;
+  retryable?: boolean;
 }> {
   return await Sentry.withServerActionInstrumentation(
     "getWebSocketToken",
     {},
     async () => {
       try {
-        const token = await getServerAuthToken();
+        const token = await readServerAuthToken();
         return { token };
       } catch (error) {
         console.error("Get WebSocket token error:", error);
         return {
           token: null,
           error: error instanceof Error ? error.message : "Unknown error",
+          retryable: !(
+            isAPIError(error) && [401, 403].includes(error.statusCode)
+          ),
         };
       }
     },

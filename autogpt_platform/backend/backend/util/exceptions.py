@@ -149,6 +149,11 @@ class GraphNotFoundError(NotFoundError):
     """The requested Agent Graph was not found, resulting in an error condition"""
 
 
+class GraphInUseError(Exception):
+    """The graph can't be permanently deleted because other users, or a store
+    listing, still reference it."""
+
+
 class NeedConfirmation(Exception):
     """The user must explicitly confirm that they want to proceed"""
 
@@ -310,6 +315,14 @@ class GraphValidationError(ValueError):
         )
 
 
+class GraphActivationError(ValueError):
+    """A graph cannot be activated, e.g. a required credential is missing,
+    revoked, or its OAuth token can no longer be refreshed.
+
+    Its message is written for the user; the API layer answers it with a 400.
+    """
+
+
 class InvalidInputError(ValueError):
     """Raised when user input validation fails (e.g., search term too long)"""
 
@@ -358,6 +371,25 @@ class WebhookSetupUnavailableError(Exception):
     configuration problem, so don't map it to a 4xx."""
 
 
+class SchedulerUnavailableError(Exception):
+    """The scheduler refused the connection or didn't answer a read in time.
+
+    It restarts on every deploy, so this is transient (HTTP 503): nothing was
+    read or changed, and asking again shortly is safe. A retrying RPC client
+    passes it on at once: the read has already waited out its bound, and
+    retrying would multiply that wait. ``outage_seconds`` is how long this
+    process's schedule reads had been failing when it was raised."""
+
+    def __init__(self, message: str, outage_seconds: float = 0.0):
+        # args carries both, so the RPC layer can rebuild it from them.
+        super().__init__(message, outage_seconds)
+        self.message = message
+        self.outage_seconds = outage_seconds
+
+    def __str__(self):
+        return self.message
+
+
 class ExpertRunPausedError(ValueError):
     """An expert-attributed run (schedule, trigger, or ``run_agent`` from her
     chat) was refused because the expert's schedules are paused (weekly credit
@@ -378,6 +410,11 @@ class ExpertRunPausedError(ValueError):
 class ConflictError(Exception):
     """The request conflicts with the resource's current state (HTTP 409): a name
     already taken, or a lost race with a concurrent change, which a retry may win."""
+
+
+class ScheduleLimitError(ValueError):
+    """The account already holds the most schedules it may (HTTP 400), so a
+    new one is refused until one is deleted."""
 
 
 class EmailUndeliverableError(ValueError):

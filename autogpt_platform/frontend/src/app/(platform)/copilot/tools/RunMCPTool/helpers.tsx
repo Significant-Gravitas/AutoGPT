@@ -215,12 +215,10 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return (
-    <Icon icon={PlugSocketIcon} size={14} className="text-foreground-subtle" />
-  );
+  return <Icon icon={PlugSocketIcon} size={14} tone="subtle" />;
 }

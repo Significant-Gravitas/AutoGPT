@@ -8,6 +8,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { LockIcon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
+import { environment } from "@/services/environment";
 import { cn } from "@/lib/utils";
 import { ExpertSidePanel } from "../ExpertSidePanel/ExpertSidePanel";
 import { LearnedNotes } from "./components/LearnedNotes/LearnedNotes";
@@ -68,18 +69,20 @@ function SoulPanelBody({ expert, onClose }: BodyProps) {
             A living document that shapes every reply.
           </Text>
           <SoulFields soul={soul} updateField={updateField} />
-          <LearnedNotes expertId={expert.id} />
+          {environment.isGraphMemoryAvailable() ? (
+            <LearnedNotes expertId={expert.id} />
+          ) : null}
           <ProtectedRules rules={expert.protected_soul_rules} />
         </div>
         <div
           aria-hidden="true"
           className={cn(
-            "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-sidebar to-transparent transition-opacity duration-200",
+            "pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface-muted to-transparent transition-opacity duration-200",
             hasMoreBelow ? "opacity-100" : "opacity-0",
           )}
         />
       </div>
-      <div className="flex shrink-0 justify-end gap-2 border-t border-t-sidebar-border px-5 py-3">
+      <div className="flex shrink-0 justify-end gap-2 border-t border-t-border-base px-5 py-3">
         <Button type="button" variant="ghost" size="small" onClick={onClose}>
           Cancel
         </Button>

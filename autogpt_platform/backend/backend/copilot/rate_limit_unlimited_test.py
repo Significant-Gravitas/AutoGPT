@@ -11,6 +11,7 @@ from backend.copilot.rate_limit import (
 )
 from backend.data.pro_activation import UsageActivationState
 from backend.data.subscription_trial import TrialState
+from backend.util import platform_payment
 
 
 @pytest.mark.asyncio
@@ -50,9 +51,8 @@ async def test_tier_scaling_preserves_unlimited_windows(
                 }
             ),
         ),
-        patch(
-            "backend.copilot.rate_limit.is_feature_enabled",
-            new=AsyncMock(return_value=False),
+        patch.object(
+            platform_payment.settings.config, "enable_platform_payment", False
         ),
     ):
         daily, weekly, tier = await get_global_rate_limits(

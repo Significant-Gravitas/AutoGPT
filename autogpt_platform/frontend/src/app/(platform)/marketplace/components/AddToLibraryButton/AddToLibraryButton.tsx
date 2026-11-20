@@ -35,8 +35,9 @@ function UndoActions({
         variant="primary"
         size="small"
         as="NextLink"
+        tone="primary"
         // oxlint-disable-next-line design-system/no-restyle -- a light button on the dark toast; no Button variant is light-on-dark
-        className="bg-surface-active text-foreground-strong hover:bg-border-strong hover:text-foreground-emphasis"
+        className="bg-surface-active hover:bg-border-strong hover:text-foreground-emphasis"
         href={libraryHref}
       >
         Open workflow

@@ -104,8 +104,8 @@ function SummaryRow({
       <Text
         variant={emphasized ? "body-medium" : "small"}
         tone={emphasized ? "primary" : "secondary"}
-        // oxlint-disable-next-line design-system/no-restyle -- amounts use tabular figures
-        className="shrink-0 tabular-nums"
+        tabular
+        className="shrink-0"
       >
         {value}
       </Text>

@@ -25,6 +25,7 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util.file import (
     MediaFileType,
+    check_total_file_size,
     get_exec_file_path,
     get_mime_type,
     store_media_file,
@@ -131,6 +132,7 @@ class SendWebRequestBlock(Block):
         if graph_exec_id is None:
             raise ValueError("graph_exec_id is required for file operations")
 
+        total_size = 0
         for media in files:
             # Normalise to a list so we can repeat the same key
             rel_path = await store_media_file(
@@ -139,6 +141,8 @@ class SendWebRequestBlock(Block):
                 return_format="for_local_processing",
             )
             abs_path = get_exec_file_path(graph_exec_id, rel_path)
+            total_size += Path(abs_path).stat().st_size
+            check_total_file_size(total_size)
             async with aiofiles.open(abs_path, "rb") as f:
                 content = await f.read()
                 handle = BytesIO(content)

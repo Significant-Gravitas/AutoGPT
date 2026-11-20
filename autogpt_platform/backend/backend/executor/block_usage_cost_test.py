@@ -1,11 +1,14 @@
 """Tests for the dynamic-pricing branches of block_usage_cost."""
 
+import ast
 import math
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from backend.blocks._base import BlockCost, BlockCostType
+from backend.blocks.ayrshare.post_to_youtube import PostToYouTubeBlock
 from backend.blocks.code_executor import (
     ExecuteCodeBlock,
     ExecuteCodeStepBlock,
@@ -14,7 +17,7 @@ from backend.blocks.code_executor import (
 from backend.blocks.exa.search import ExaSearchBlock
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.search import SearchTheWebBlock
-from backend.blocks.llm import AITextGeneratorBlock, LLMModel
+from backend.blocks.llm import DEFAULT_LLM_MODEL, AITextGeneratorBlock, LLMModel
 from backend.data.block_cost_config import (
     BLOCK_COSTS,
     MODEL_COST,
@@ -354,6 +357,74 @@ def test_llm_block_pre_flight_falls_back_to_model_cost():
         },
     )
     assert cost == MODEL_COST[LLMModel.GPT5]
+
+
+@pytest.mark.parametrize("schema_default_input", [{}, {"model": None}])
+def test_llm_block_price_includes_schema_defaults(schema_default_input: dict):
+    """Pricing fills schema defaults the way the block run does."""
+    block = AITextGeneratorBlock()
+    credentials = {
+        "id": openai_credentials.id,
+        "provider": openai_credentials.provider,
+        "type": openai_credentials.type,
+    }
+    explicit = {"model": DEFAULT_LLM_MODEL.value, "credentials": credentials}
+    implicit = {**schema_default_input, "credentials": credentials}
+    stats = NodeExecutionStats(input_token_count=200_000, output_token_count=50_000)
+
+    assert block_usage_cost(block, implicit)[0] == MODEL_COST[DEFAULT_LLM_MODEL] > 0
+    assert block_usage_cost(block, implicit) == block_usage_cost(block, explicit)
+    assert block_usage_cost(block, implicit, stats=stats) == block_usage_cost(
+        block, explicit, stats=stats
+    )
+
+
+def test_ayrshare_price_tier_follows_the_is_video_default():
+    """YouTube's `is_video` default picks its price tier."""
+    block = PostToYouTubeBlock()
+    assert block_usage_cost(block, {}) == block_usage_cost(block, {"is_video": True})
+
+
+def test_every_cost_filter_match_uses_the_run_input():
+    """Each function that matches cost filters builds the input the block runs
+    on with `_with_schema_defaults`, including any added after these two."""
+    backend_root = Path(executor_utils.__file__).parents[1]
+    callers: dict[str, set[str | None]] = {}
+    for path in backend_root.rglob("*.py"):
+        source = path.read_text()
+        if path.name.endswith("_test.py") or "_is_cost_filter_match" not in source:
+            continue
+        for func in ast.walk(ast.parse(source)):
+            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            called = {
+                _called_name(node)
+                for node in ast.walk(func)
+                if isinstance(node, ast.Call)
+            }
+            if (
+                "_is_cost_filter_match" in called
+                and func.name != "_is_cost_filter_match"
+            ):
+                callers[f"{path.relative_to(backend_root)}::{func.name}"] = called
+
+    assert {
+        "executor/utils.py::block_usage_cost",
+        "executor/billing.py::_block_has_paid_cost_entry",
+    } <= callers.keys()
+    assert [
+        name
+        for name, called in callers.items()
+        if "_with_schema_defaults" not in called
+    ] == []
+
+
+def _called_name(call: ast.Call) -> str | None:
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    return None
 
 
 def test_run_cost_type_remains_unchanged(tmp_block_costs_override):

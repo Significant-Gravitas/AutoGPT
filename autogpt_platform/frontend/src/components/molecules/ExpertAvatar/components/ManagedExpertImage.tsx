@@ -44,7 +44,7 @@ export function ManagedExpertImage({
         style={sizeStyle}
         className={cn(
           classes,
-          "items-center justify-center bg-muted text-foreground",
+          "items-center justify-center bg-surface-hover text-foreground-base",
         )}
       >
         {name.trim().slice(0, 2).toUpperCase() || "AI"}
