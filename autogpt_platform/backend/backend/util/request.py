@@ -718,6 +718,11 @@ class Requests:
 
             # add the file parts
             for field_name, (filename, fh, content_type) in files:
+                # Retries re-enter this method with the same handles: an attempt that
+                # already streamed a file leaves it at EOF, so a retry would upload an
+                # empty part (aiohttp reads from the current position). Rewind so every
+                # attempt sends the whole file (#16954).
+                fh.seek(0)
                 form.add_field(
                     name=field_name,
                     value=fh,

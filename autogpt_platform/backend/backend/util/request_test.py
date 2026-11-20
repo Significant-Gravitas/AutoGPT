@@ -1246,3 +1246,52 @@ def test_allowed_response_charsets_are_canonical_codec_names():
     assert {codecs.lookup(name).name for name in ALLOWED_RESPONSE_CHARSETS} == (
         ALLOWED_RESPONSE_CHARSETS
     )
+
+
+@pytest.mark.asyncio
+async def test_a_retried_upload_resends_the_whole_file():
+    """A throttle retry must upload the file again, not an empty part (#16954).
+
+    ``Requests`` rebuilds the multipart form on each attempt from the caller's
+    ``BytesIO`` handles; the first attempt has already read them to EOF, so the
+    retry sent an empty file.
+    """
+    from io import BytesIO
+
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    uploads: list[bytes] = []
+
+    async def upload(request: aiohttp_web.Request) -> aiohttp_web.Response:
+        form = await request.post()
+        part = form.get("file")
+        uploads.append(part.file.read() if hasattr(part, "file") else b"")
+        if len(uploads) == 1:
+            return aiohttp_web.Response(status=429, text="slow down")
+        return aiohttp_web.json_response({"ok": True})
+
+    app = aiohttp_web.Application()
+    app.router.add_post("/upload", upload)
+    runner = aiohttp_web.AppRunner(app)
+    await runner.setup()
+    site = aiohttp_web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = runner.addresses[0][1]
+
+    try:
+        requests = Requests(
+            trusted_origins=["127.0.0.1"],
+            retry_max_attempts=2,
+        )
+        response = await requests.request(
+            "POST",
+            f"http://127.0.0.1:{port}/upload",
+            files=[("file", ("payload.txt", BytesIO(b"hello world"), "text/plain"))],
+        )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert uploads == [b"hello world", b"hello world"], uploads
