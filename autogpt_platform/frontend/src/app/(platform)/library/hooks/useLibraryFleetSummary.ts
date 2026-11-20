@@ -15,6 +15,7 @@ import {
   useExecutionEvents,
 } from "@/hooks/useExecutionEvents";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
+import { hasUnknownSchedules } from "@/services/schedules/scheduler-availability";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import type { FleetSummary } from "../types";
@@ -118,6 +119,7 @@ export function useLibraryFleetSummary(
       scheduled: 0,
       idle: 0,
       monthlySpend,
+      schedulesUnknown: hasUnknownSchedules(agents),
     };
 
     for (const agent of agents) {

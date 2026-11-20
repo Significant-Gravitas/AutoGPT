@@ -69,6 +69,11 @@ _AMQP_KEYWORDS = [
 
 _AMQP_INDICATORS = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
 
+# ``InternalKeyMiddleware`` logs a refused internal call under this name. Its
+# message holds the request path, which the caller picks, so the message
+# filters below skip it: a path like "/unauthorized" must not hide a refusal.
+_SERVICE_AUTH_LOGGER = "backend.util.service_auth"
+
 # Pika reconnect noise: `conn_retry` already handles these. Drop only the
 # four known signatures so genuine pika ERRORs (auth, declare failures) still
 # reach Sentry. (AUTOGPT-SERVER-6JC/6JD/6JE/6JF.)
@@ -202,7 +207,9 @@ _OLDEST_FIRST_LISTS = frozenset({"values", "frames"})
 # The HTTP client integrations record each outgoing request's query and
 # fragment as sent, an API key in ``?key=`` included, and an ASGI scope among a
 # frame's variables holds the raw query of the request.
-_QUERY_KEYS = frozenset({SPANDATA.HTTP_QUERY, SPANDATA.HTTP_FRAGMENT, "query_string"})
+# Recorded apart from its URL, a fragment can be a bare token.
+_FRAGMENT_KEYS = frozenset({SPANDATA.HTTP_FRAGMENT})
+_QUERY_KEYS = frozenset({SPANDATA.HTTP_QUERY, "query_string"})
 # The IDs and timestamps the SDK writes on an event, its spans and its trace
 # context, which hold a trace together: never searched or charged to the
 # budget, so an event past it keeps its shape. Only there, and only in their
@@ -224,8 +231,8 @@ _SDK_FIELD_VALUE = re.compile(
 # than the request. They are never masked for a value the request carried: a
 # caller can present any value as a credential, and masking one of these would
 # move their errors out of the alerts and issues they belong to. Everywhere
-# else the value is still masked. The transaction is not one: a request no
-# route matched names it after its raw path.
+# else the value is still masked. So is the transaction when a request no
+# route matched names it after its raw path; a matched route's is a name.
 _EVENT_NAMES = frozenset({"environment", "release", "dist", "server_name", "logger"})
 _EXCEPTION_NAMES = frozenset({"type", "module"})
 _CODE_LOCATION_NAMES = frozenset({"function", "module", "filename", "abs_path"})
@@ -354,7 +361,10 @@ def _scrub_breadth_first(
                 parent[key] = _FILTERED_VALUE
                 continue
             budget -= len(value)
-            if key in _QUERY_KEYS:
+            if key in _FRAGMENT_KEYS and value:
+                # A fragment can be a bare token, which no query rule reads.
+                value = REDACTED
+            elif key in _QUERY_KEYS:
                 value = redact_query_string(value)
             names_event = key in search.name_fields.get(id(parent), ())
             parent[key] = _scrub_text(value, search, known=not names_event)
@@ -452,7 +462,13 @@ def _known_credentials(event: dict) -> tuple[str, ...]:
 def _name_fields(event: dict) -> dict[int, frozenset[str]]:
     """The mappings, by identity, whose fields name the event: the event itself,
     its user, its exceptions (their types) and their frames (code locations)."""
-    fields: dict[int, frozenset[str]] = {id(event): _EVENT_NAMES}
+    names = _EVENT_NAMES
+    info = event.get("transaction_info")
+    if isinstance(info, dict) and info.get("source") not in (None, "url"):
+        # A matched route's template names the event as its environment does;
+        # only a raw path, which a request no route matched gives, is masked.
+        names |= {"transaction"}
+    fields: dict[int, frozenset[str]] = {id(event): names}
     user = event.get("user")
     if isinstance(user, dict):
         fields[id(user)] = frozenset({"id"})
@@ -548,10 +564,30 @@ def _raised_from_graphiti_falkordb(exc_tb: TracebackType | None) -> bool:
     return False
 
 
+def _is_internal_service_auth_error(exc_value: BaseException | None) -> bool:
+    """True for the 401 our own RPC client raises when another backend service
+    refuses its internal key: a misconfigured deployment, not a user's bad
+    credentials, though its message says "Unauthorized".
+
+    Only ``backend.util.service.HTTPClientError`` carries it, and a service
+    answers 401 only from ``InternalKeyMiddleware``. Looked up in
+    ``sys.modules`` because that module imports this one; a process that never
+    loaded it cannot have raised one.
+    """
+    service = sys.modules.get("backend.util.service")
+    return (
+        service is not None
+        and isinstance(exc_value, service.HTTPClientError)
+        and getattr(exc_value, "status_code", None) == 401
+    )
+
+
 def _before_send(event, hint):
     """Filter out expected/transient errors from Sentry to reduce noise."""
+    internal_auth_error = False
     if "exc_info" in hint:
         exc_type, exc_value, exc_tb = hint["exc_info"]
+        internal_auth_error = _is_internal_service_auth_error(exc_value)
         exc_msg = str(exc_value).lower() if exc_value else ""
 
         # AMQP/RabbitMQ transient connection errors — expected during deploys
@@ -577,7 +613,7 @@ def _before_send(event, hint):
             return None
 
         # User-caused credential/auth/integration errors — not platform bugs
-        if any(kw in exc_msg for kw in _USER_AUTH_KEYWORDS):
+        if not internal_auth_error and any(kw in exc_msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
         # Expected business logic — exhausted wallet, or a plan that does
@@ -623,7 +659,7 @@ def _before_send(event, hint):
     if logger_name == _FALKORDB_DRIVER_LOGGER and log_msg:
         if any(sig in log_msg.lower() for sig in _FALKORDB_TEARDOWN_SIGNATURES):
             return None
-    if logger_name and log_msg:
+    if logger_name and log_msg and logger_name != _SERVICE_AUTH_LOGGER:
         msg = log_msg.lower()
         noisy_log_patterns = [
             "amqpconnection",
@@ -636,7 +672,7 @@ def _before_send(event, hint):
         if "connection refused" in msg and any(ind in msg for ind in _AMQP_INDICATORS):
             return None
         # Same auth keywords — errors logged via logger.error() bypass exc_info
-        if any(kw in msg for kw in _USER_AUTH_KEYWORDS):
+        if not internal_auth_error and any(kw in msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
     _strip_user_pii(event)

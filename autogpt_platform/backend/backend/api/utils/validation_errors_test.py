@@ -3,6 +3,10 @@ and the mounted apps that must answer through it."""
 
 import logging
 from collections.abc import Iterator, Mapping
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
+from typing import Literal
+from uuid import UUID
 
 import fastapi
 import fastapi.testclient
@@ -12,17 +16,23 @@ import starlette.routing
 from fastapi.exceptions import RequestValidationError
 from pydantic_core import PydanticCustomError
 
+# Private: pydantic-core lists its errors only here. If an upgrade moves it,
+# this module fails to collect, and the renderer's allowlist is then rechecked
+# against the new version's errors.
+from pydantic_core._pydantic_core import list_all_errors
+
 from backend.api.external.v2.errors import add_v2_exception_handlers
 from backend.api.utils import validation_errors
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.api.utils.validation_errors import (
+    CUSTOM_MESSAGE_NOT_LOGGED,
     MAX_REPORTED_VALIDATION_ERRORS,
     MAX_VALIDATION_ERROR_CHARS,
     MAX_VALIDATION_ERROR_LOC_PARTS,
-    VALIDATOR_MESSAGE_NOT_LOGGED,
     bounded_validation_errors,
     loggable_validation_errors,
 )
+from backend.util.url_redaction import REDACTED
 
 OVER_CAP = "x" * (MAX_VALIDATION_ERROR_CHARS + 100)
 TOO_MANY = [0] * (MAX_REPORTED_VALIDATION_ERRORS + 5)
@@ -116,12 +126,159 @@ def test_a_validators_own_message_stays_out_of_the_log() -> None:
 
     logged = loggable_validation_errors(error)
     assert [entry["msg"] for entry in logged] == [
-        VALIDATOR_MESSAGE_NOT_LOGGED,
-        VALIDATOR_MESSAGE_NOT_LOGGED,
+        f"Value error, {REDACTED}",
+        CUSTOM_MESSAGE_NOT_LOGGED,
         "Field required",
     ]
     # The response keeps the validator's message.
     assert "S3cr3t-line-two" in bounded_validation_errors(error)[0]["msg"]
+
+
+# No word a message could hold, and characters no message uses.
+_SENTINEL = "Ꙭqz7§XpW"
+_EXAMPLES = {error["type"]: error for error in list_all_errors()}
+
+
+def _logs_part_of(text: str) -> bool:
+    return (
+        "Ꙭ" in text
+        or "§" in text
+        or any(_SENTINEL[i : i + 4] in text for i in range(len(_SENTINEL) - 3))
+    )
+
+
+@pytest.mark.parametrize("error_type", sorted(_EXAMPLES))
+def test_no_built_in_message_logs_what_its_context_takes_from_the_input(
+    error_type: str,
+) -> None:
+    """Whatever an error's context holds besides the schema's side, such as a
+    parser's account of the refused value, is masked in the log line."""
+    example = dict(_EXAMPLES[error_type].get("example_context") or {})
+    context = {
+        key: value if key in validation_errors._SCHEMA_CONTEXT else _SENTINEL
+        for key, value in example.items()
+    }
+    details = {"type": error_type, "loc": ("x",), "input": _SENTINEL}
+    error = pydantic.ValidationError.from_exception_data(
+        "_Ids", [{**details, "ctx": context} if context else details]
+    )
+
+    [logged] = loggable_validation_errors(error)
+    assert not _logs_part_of(logged["msg"]), logged["msg"]
+
+
+class _Parsed(pydantic.BaseModel):
+    uuid: UUID
+    when: datetime
+    day: date
+    at: time
+    took: timedelta
+    url: pydantic.AnyUrl
+    blob: pydantic.Json[dict]
+    amount: Decimal
+    count: int
+    ratio: float
+    host: pydantic.IPvAnyAddress
+    data: pydantic.Base64Bytes
+    mode: Literal["a", "b"]
+
+
+@pytest.mark.parametrize("field", list(_Parsed.model_fields))
+def test_a_parse_error_logs_no_part_of_the_refused_value(field: str) -> None:
+    with pytest.raises(pydantic.ValidationError) as caught:
+        _Parsed.model_validate({field: _SENTINEL})
+
+    logged = [
+        entry
+        for entry in loggable_validation_errors(caught.value)
+        if entry["loc"][:1] == [field]
+    ]
+    assert logged
+    assert not any(_logs_part_of(entry["msg"]) for entry in logged), logged
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        {"type": "missing", "loc": ("body", ["a", "list"]), "msg": "x"},
+        {"type": "missing", "loc": ("body", {"a": 1}), "msg": "x"},
+        {"type": ["not", "hashable"], "loc": ("body",), "msg": "x"},
+        {"type": "union_tag_invalid", "loc": ("body",), "msg": "x", "ctx": ["a"]},
+        {"type": "missing", "loc": None, "msg": "x"},
+        "not a mapping",
+    ],
+)
+def test_the_log_reads_any_shape_of_error_without_failing(error: object) -> None:
+    """A hand-built error can take shapes pydantic never makes; the log line
+    must not turn the 422 it accompanies into a 500."""
+    logged = loggable_validation_errors(RequestValidationError([error]))
+    assert logged and all(set(entry) == {"type", "loc", "msg"} for entry in logged)
+
+
+@pytest.mark.parametrize("error_type", ["missing", "string_type", "value_error"])
+def test_a_hand_built_errors_own_message_is_not_logged(error_type: str) -> None:
+    """A built-in error's log message comes from pydantic's template, never
+    from the error's own ``msg``, which a hand-built one can fill with the
+    input; one whose template needs a context it lacks is left out."""
+    error = {"type": error_type, "loc": ("body", "name"), "msg": f"bad {_SENTINEL}"}
+
+    [logged] = loggable_validation_errors(RequestValidationError([error]))
+
+    assert not _logs_part_of(logged["msg"]), logged["msg"]
+    assert logged["msg"]
+
+
+def test_a_message_with_nothing_to_mask_logs_as_pydantic_wrote_it() -> None:
+    class Limited(pydantic.BaseModel):
+        name: str
+        count: int = pydantic.Field(gt=5)
+
+    with pytest.raises(pydantic.ValidationError) as caught:
+        Limited.model_validate({"count": 3})
+
+    assert [entry["msg"] for entry in loggable_validation_errors(caught.value)] == [
+        error["msg"] for error in caught.value.errors()
+    ]
+
+
+def test_an_attribute_read_logs_no_part_of_what_it_raised() -> None:
+    """With ``from_attributes``, an attribute that raises puts its exception's
+    text in pydantic's own message."""
+
+    class Read(pydantic.BaseModel):
+        model_config = pydantic.ConfigDict(from_attributes=True)
+        name: str
+
+    class Source:
+        @property
+        def name(self) -> str:
+            raise ValueError(f"bad {_SENTINEL}")
+
+    with pytest.raises(pydantic.ValidationError) as caught:
+        Read.model_validate(Source())
+
+    [logged] = loggable_validation_errors(caught.value)
+    assert logged["type"] == "get_attribute_error"
+    assert not _logs_part_of(logged["msg"]), logged["msg"]
+
+
+def test_a_failing_iterator_logs_no_part_of_what_it_raised() -> None:
+    """An iterator that yields a valid item and then raises puts the
+    exception's text in pydantic's own message."""
+
+    class Listed(pydantic.BaseModel):
+        items: list[int]
+
+    def items() -> Iterator[int]:
+        yield 1
+        raise ValueError(f"bad {_SENTINEL}")
+
+    with pytest.raises(pydantic.ValidationError) as caught:
+        Listed.model_validate({"items": items()})
+
+    [logged] = loggable_validation_errors(caught.value)
+    assert logged["type"] == "iteration_error"
+    assert not _logs_part_of(logged["msg"]), logged["msg"]
 
 
 def test_only_the_reported_errors_locations_are_rewritten(

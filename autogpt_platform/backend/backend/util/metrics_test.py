@@ -35,6 +35,8 @@ from backend.util.metrics import (
     _PIKA_RECONNECT_SIGNATURES,
     _before_send,
 )
+from backend.util.request import http_status_error
+from backend.util.service import HTTPClientError as ServiceHTTPClientError
 from backend.util.settings import AppEnvironment, BehaveAs, Config
 from backend.util.url_redaction import REDACTED
 
@@ -426,6 +428,74 @@ def test_a_credential_in_an_unmatched_routes_path_is_masked_everywhere(
     assert scrubbed["transaction"] == f"/zzz/{REDACTED}"
 
 
+@pytest.mark.parametrize(
+    "transaction_info, kept",
+    [
+        ({"source": "route"}, True),
+        ({"source": "custom"}, True),
+        ({"source": "view"}, True),
+        ({"source": "component"}, True),
+        ({"source": "task"}, True),
+        ({"source": "url"}, False),
+        ({}, False),
+        (None, False),
+    ],
+)
+def test_a_transaction_is_masked_only_when_its_name_is_a_raw_path(
+    monkeypatch: pytest.MonkeyPatch, transaction_info: dict | None, kept: bool
+) -> None:
+    """A name code set keeps its name, whatever a request sends; a raw path,
+    which a request no route matched gives, is masked by the request's
+    values, and so is a name whose source the SDK didn't say."""
+    name = "/api/v1/graphs/a-credential-long-enough/execute"
+    monkeypatch.setattr(metrics, "request_credentials", lambda: (name,))
+    event: dict = {"type": "transaction", "transaction": name}
+    if transaction_info is not None:
+        event["transaction_info"] = transaction_info
+
+    scrubbed = metrics._before_send_transaction(event, {})
+
+    assert (scrubbed["transaction"] == name) is kept
+
+
+def test_a_matched_routes_transaction_keeps_its_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A request can send a route's own template as a credential; the route's
+    events keep their name, and the copy elsewhere is masked."""
+    template = "/api/v1/graphs/{graph_id}/execute"
+    monkeypatch.setattr(metrics, "request_credentials", lambda: (template,))
+    event = {
+        "type": "transaction",
+        "transaction": template,
+        "transaction_info": {"source": "route"},
+        "extra": {"sent": template},
+    }
+
+    scrubbed = metrics._before_send_transaction(event, {})
+
+    assert scrubbed["transaction"] == template
+    assert scrubbed["extra"]["sent"] == REDACTED
+
+
+def test_an_outgoing_requests_fragment_is_masked_whole() -> None:
+    """A fragment can be a bare token, which no query rule reads."""
+    token = "frag3ment-token-Zq81mN2p"
+    event = {
+        "spans": [
+            {"data": {"http.fragment": token, "http.query": "page=2"}},
+            {"data": {"http.fragment": ""}},
+        ]
+    }
+
+    scrubbed = _before_send(event, {})
+
+    assert scrubbed is not None
+    assert scrubbed["spans"][0]["data"]["http.fragment"] == REDACTED
+    assert scrubbed["spans"][0]["data"]["http.query"] == f"page={REDACTED}"
+    assert scrubbed["spans"][1]["data"]["http.fragment"] == ""
+
+
 def test_an_unmatched_routes_transaction_is_masked_as_a_url() -> None:
     """Read as a whole URL, so its query is masked whatever comes before it."""
     secret = "S3cret-query-value-123"
@@ -654,6 +724,44 @@ def test_before_send_keeps_wrapper_around_insufficient_balance_error() -> None:
         exc_info = sys.exc_info()
 
     assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is not None
+
+
+# ---------- 401s: our own services kept, a user's credentials dropped ----------
+
+_INTERNAL_401 = (
+    "Client error '401 Unauthorized' for url 'http://autogpt-database-manager"
+    ".prod-agpt.svc.cluster.local:8005/get_or_create_workspace'"
+)
+
+
+def _exc_info_of(error: Exception):
+    try:
+        raise error
+    except Exception:
+        return sys.exc_info()
+
+
+def test_before_send_keeps_a_401_between_our_own_services() -> None:
+    """SECRT-3186: a service refusing our internal key is a misconfigured
+    deployment, though its message says "Unauthorized"."""
+    exc_info = _exc_info_of(ServiceHTTPClientError(401, _INTERNAL_401))
+    logged = _log_event(
+        "backend.copilot.tools.workspace_files",
+        f"Error listing workspace files: {exc_info[1]}",
+    )
+
+    assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is not None
+    assert _before_send(logged, hint={"exc_info": exc_info}) is not None
+
+
+def test_before_send_drops_a_providers_401_for_a_users_credentials() -> None:
+    exc_info = _exc_info_of(
+        http_status_error(401, "Unauthorized", b'{"error": "invalid api key"}')
+    )
+    logged = _log_event("backend.blocks.github", f"Block failed: {exc_info[1]}")
+
+    assert _before_send({"level": "error"}, hint={"exc_info": exc_info}) is None
+    assert _before_send(logged, hint={"exc_info": exc_info}) is None
 
 
 # ---------- FalkorDB connection-teardown noise → dropped ----------
@@ -1120,6 +1228,59 @@ def test_before_send_filters_emails_and_ips_from_extras_and_frame_vars() -> None
     assert frame_vars["email_count"] == "1"
     assert body["extra"]["email_verified"] is True
     assert body["extra"]["ip_allowlist_enabled"] is True
+
+
+def test_an_asgi_scopes_credential_headers_are_masked_by_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A frame's ASGI scope holds the headers as pairs of bytes, which Sentry
+    shows by their reprs; a header named as a credential is masked whatever
+    its value, which the request's own credentials needn't include."""
+    monkeypatch.setattr(metrics, "request_credentials", lambda: ())
+
+    def handle() -> None:
+        scope = {
+            "type": "http",
+            "headers": [
+                (b"cookie", b"__cf_bm=opaque-cookie-Zq81mN2p"),
+                (b"x-api-key", b"opaque-api-key-Zq81mN2p"),
+                (b"accept", b"*/*"),
+            ],
+        }
+        if scope:
+            raise RuntimeError("the handler failed")
+
+    try:
+        handle()
+    except RuntimeError:
+        event, hint = event_from_exception(
+            sys.exc_info(), client_options=DEFAULT_OPTIONS
+        )
+
+    scrubbed = _before_send(serialize(event), hint)
+
+    assert scrubbed is not None
+    frame_vars = scrubbed["exception"]["values"][0]["stacktrace"]["frames"][-1]["vars"]
+    headers = frame_vars["scope"]["headers"]
+    assert [name for name, _ in headers] == ["b'cookie'", "b'x-api-key'", "b'accept'"]
+    assert headers[0][1] == headers[1][1] == "[Filtered]"
+    assert headers[2][1] == "b'*/*'"
+
+
+@pytest.mark.parametrize(
+    "name", ["b'cookie'", "b'set-cookie'", "b'authorization'", "b'x-api-key'"]
+)
+def test_mask_headers_masks_a_byte_form_credential_header(name: str) -> None:
+    """A header name as Sentry shows an ASGI scope's bytes is read whole, so in
+    either shape `_mask_headers` reads, it keeps no part of its value."""
+    pairs = [[name, "b'opaque-value'"], ["b'accept'", "b'*/*'"]]
+    mapping = {name: "opaque-value", "b'accept'": "*/*"}
+
+    metrics._mask_headers("headers", pairs)
+    metrics._mask_headers("headers", mapping)
+
+    assert pairs == [[name, "[Filtered]"], ["b'accept'", "b'*/*'"]]
+    assert mapping == {name: "[Filtered]", "b'accept'": "*/*"}
 
 
 def _event_with_ip_headers() -> dict:

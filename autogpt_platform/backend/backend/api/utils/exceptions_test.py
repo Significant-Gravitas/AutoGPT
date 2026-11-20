@@ -9,9 +9,10 @@ import pytest
 
 from backend.api.rest_api import app as rest_app
 from backend.api.utils.exceptions import add_exception_handlers
+from backend.util.exceptions import MissingConfigError
 
 
-def _client(*, server_error_detail: bool) -> fastapi.testclient.TestClient:
+def _client(**handler_options: bool) -> fastapi.testclient.TestClient:
     app = fastapi.FastAPI()
 
     @app.get("/boom")
@@ -22,6 +23,10 @@ def _client(*, server_error_detail: bool) -> fastapi.testclient.TestClient:
     async def bad() -> None:
         raise ValueError("limit must be positive")
 
+    @app.get("/unconfigured")
+    async def unconfigured() -> None:
+        raise MissingConfigError("AYRSHARE_API_KEY is not configured")
+
     @app.get("/page")
     async def page(limit: int) -> None:
         pass
@@ -30,7 +35,7 @@ def _client(*, server_error_detail: bool) -> fastapi.testclient.TestClient:
     async def built() -> None:
         _Page.model_validate({"limit": "many"})
 
-    add_exception_handlers(app, server_error_detail=server_error_detail)
+    add_exception_handlers(app, **handler_options)
     return fastapi.testclient.TestClient(app, raise_server_exceptions=False)
 
 
@@ -102,3 +107,25 @@ def test_a_client_error_still_says_what_was_wrong() -> None:
 
     assert response.status_code == 400
     assert response.json()["detail"] == "limit must be positive"
+
+
+@pytest.mark.parametrize(
+    ("handler_options", "detail"),
+    [
+        ({"server_error_detail": True}, "AYRSHARE_API_KEY is not configured"),
+        # The external APIs: hidden like any other server error.
+        ({"server_error_detail": False}, "Internal server error"),
+        # REST: other server errors hidden, the missing setting still named.
+        (
+            {"server_error_detail": False, "expose_missing_config_detail": True},
+            "AYRSHARE_API_KEY is not configured",
+        ),
+    ],
+)
+def test_a_missing_setting_is_named_unless_the_app_hides_it(
+    handler_options: dict[str, bool], detail: str
+) -> None:
+    response = _client(**handler_options).get("/unconfigured")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == detail

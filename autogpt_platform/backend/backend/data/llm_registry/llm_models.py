@@ -218,6 +218,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_4_ARGON = "google/gemini-4-argon"
     GEMINI_4_HYDROGEN = "google/gemini-4-hydrogen"
     GEMINI_4_CARBON = "google/gemini-4-carbon"
+    GEMINI_4_NEON = "google/gemini-4-neon"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     GEMMA_4_31B_IT = "google/gemma-4-31b-it"
