@@ -8,6 +8,7 @@ import pytest
 
 from backend.notifications import mailerlite
 from backend.util.request import DEFAULT_RETRY_MAX_ATTEMPTS
+from backend.util.request_test_helpers import retry_waits
 
 EMAIL = "sam@example.com"
 
@@ -112,8 +113,11 @@ async def test_the_erasure_lookup_uses_the_bounded_client():
     bounded.post.assert_awaited_once()
 
 
-def test_the_shared_client_outlasts_mailerlites_one_minute_window():
-    """Its attempts carry the backoff past a minute: waits of 1, 2, 4, ...
-    seconds, before jitter."""
-    waits = [2**n for n in range(mailerlite.RATE_LIMIT_RETRY_ATTEMPTS - 1)]
+@pytest.mark.asyncio
+async def test_the_shared_client_outlasts_mailerlites_one_minute_window():
+    """Its retries' waits, 1, 2, 4, ... seconds, each plus jitter, carry its
+    attempts past a minute."""
+    waits = await retry_waits(mailerlite._client())
+
+    assert len(waits) == mailerlite.RATE_LIMIT_RETRY_ATTEMPTS - 1
     assert sum(waits) >= 60

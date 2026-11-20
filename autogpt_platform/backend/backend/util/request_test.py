@@ -1,31 +1,14 @@
-import asyncio
 import codecs
-import contextlib
-import io
-import os
-import select
-import socket
-import tempfile
-import threading
-import time
-from io import BytesIO
-from typing import Any, AsyncIterator, BinaryIO, Callable, ContextManager, Iterator
 from unittest.mock import MagicMock
-from urllib.parse import ParseResult, urlparse
+from urllib.parse import urlparse
 
 import idna
 import pytest
 import pytest_mock
-from aiohttp import BodyPartReader, ClientConnectorError, ClientSession, web
-from aiohttp.payload import BufferedReaderPayload
+from aiohttp import web
 
-from backend.util import request as request_module
 from backend.util.request import (
     ALLOWED_RESPONSE_CHARSETS,
-    DEFAULT_RETRY_MAX_ATTEMPTS,
-    HTTPClientError,
-    HTTPServerError,
-    RequestBodyTooLargeError,
     Requests,
     Response,
     ResponseTooLargeError,
@@ -38,6 +21,7 @@ from backend.util.request import (
     resolve_and_check_blocked,
     validate_url_host,
 )
+from backend.util.request_test_helpers import local_requests, serve
 from backend.util.settings import Config
 
 
@@ -1018,17 +1002,6 @@ async def test_untrusted_request_connects_only_to_the_pinned_address(
 # --- Response bodies are read under a size limit ---
 
 
-async def _serve(app: web.Application) -> tuple[web.AppRunner, str]:
-    runner = web.AppRunner(app)
-    await runner.setup()
-    await web.TCPSite(runner, "127.0.0.1", 0).start()
-    return runner, f"http://127.0.0.1:{runner.addresses[0][1]}"
-
-
-def _local_requests(**kwargs) -> Requests:
-    return Requests(trusted_origins=["127.0.0.1"], **kwargs)
-
-
 @pytest.mark.asyncio
 async def test_a_body_at_the_limit_is_read_in_full():
     async def exactly_at_limit(request: web.Request) -> web.Response:
@@ -1036,10 +1009,10 @@ async def test_a_body_at_the_limit_is_read_in_full():
 
     app = web.Application()
     app.router.add_get("/", exactly_at_limit)
-    runner, base = await _serve(app)
+    runner, base = await serve(app)
 
     try:
-        response = await _local_requests(max_response_bytes=4096).get(base)
+        response = await local_requests(max_response_bytes=4096).get(base)
     finally:
         await runner.cleanup()
 
@@ -1053,11 +1026,11 @@ async def test_a_body_over_the_limit_is_refused():
 
     app = web.Application()
     app.router.add_get("/", one_byte_over)
-    runner, base = await _serve(app)
+    runner, base = await serve(app)
 
     try:
         with pytest.raises(ResponseTooLargeError):
-            await _local_requests(max_response_bytes=4096).get(base)
+            await local_requests(max_response_bytes=4096).get(base)
     finally:
         await runner.cleanup()
 
@@ -1073,11 +1046,11 @@ async def test_a_stream_without_a_declared_length_stops_at_the_limit():
 
     app = web.Application()
     app.router.add_get("/", stream)
-    runner, base = await _serve(app)
+    runner, base = await serve(app)
 
     try:
         with pytest.raises(ResponseTooLargeError):
-            await _local_requests(max_response_bytes=16 * 1024).get(base)
+            await local_requests(max_response_bytes=16 * 1024).get(base)
     finally:
         await runner.cleanup()
 
@@ -1089,11 +1062,11 @@ async def test_an_error_body_over_the_limit_is_refused_too():
 
     app = web.Application()
     app.router.add_get("/", failing_with_a_long_body)
-    runner, base = await _serve(app)
+    runner, base = await serve(app)
 
     try:
         with pytest.raises(ResponseTooLargeError):
-            await _local_requests(max_response_bytes=4096, retry_max_attempts=1).get(
+            await local_requests(max_response_bytes=4096, retry_max_attempts=1).get(
                 base
             )
     finally:
@@ -1123,10 +1096,10 @@ async def test_a_head_response_is_not_refused_for_the_size_of_the_resource():
 
     app = web.Application()
     app.router.add_get("/", big)  # aiohttp answers HEAD for it too
-    runner, base = await _serve(app)
+    runner, base = await serve(app)
 
     try:
-        response = await _local_requests(max_response_bytes=4096).head(base)
+        response = await local_requests(max_response_bytes=4096).head(base)
     finally:
         await runner.cleanup()
 
@@ -1263,705 +1236,3 @@ def test_allowed_response_charsets_are_canonical_codec_names():
     assert {codecs.lookup(name).name for name in ALLOWED_RESPONSE_CHARSETS} == (
         ALLOWED_RESPONSE_CHARSETS
     )
-
-
-# --- Throttle statuses are retried, a bounded number of times (#17130) ---
-
-# Every request below talks to a local server, so its attempts take
-# milliseconds; the bound only trips when the retries never stop.
-_ENDS_WITHIN_SECONDS = 10
-
-
-def _scripted(*statuses: int) -> tuple[web.Application, list[int]]:
-    """An app answering *statuses* in turn, repeating the last for good, and
-    the statuses it has served. Each body names its attempt."""
-    served: list[int] = []
-
-    async def answer(request: web.Request) -> web.Response:
-        status = statuses[min(len(served), len(statuses) - 1)]
-        served.append(status)
-        return web.Response(status=status, text=f"attempt {len(served)}")
-
-    app = web.Application()
-    app.router.add_route("*", "/", answer)
-    return app, served
-
-
-# The two clients that retry a throttle status: one raising its errors, with a
-# cap, and one checking statuses itself, on the default.
-_RETRYING_CLIENTS = pytest.mark.parametrize(
-    "client_kwargs",
-    [{"retry_max_attempts": 3}, {"raise_for_status": False}],
-    ids=["raise_for_status-with-a-cap", "status-checked-by-the-caller"],
-)
-
-
-@pytest.mark.asyncio
-async def test_a_persistent_throttle_status_ends_after_the_default_attempts():
-    app, served = _scripted(503)
-    runner, base = await _serve(app)
-
-    try:
-        response = await asyncio.wait_for(
-            _local_requests(raise_for_status=False, retry_max_wait=0).get(base),
-            _ENDS_WITHIN_SECONDS,
-        )
-    finally:
-        await runner.cleanup()
-
-    assert response.status == 503
-    assert len(served) == DEFAULT_RETRY_MAX_ATTEMPTS
-
-
-@pytest.mark.asyncio
-async def test_raise_for_status_retries_up_to_its_cap_then_raises_the_last_error():
-    app, served = _scripted(503)
-    runner, base = await _serve(app)
-
-    try:
-        with pytest.raises(HTTPServerError) as raised:
-            await asyncio.wait_for(
-                _local_requests(retry_max_attempts=3, retry_max_wait=0).get(base),
-                _ENDS_WITHIN_SECONDS,
-            )
-    finally:
-        await runner.cleanup()
-
-    assert served == [503, 503, 503]
-    assert raised.value.status_code == 503
-    assert raised.value.body == b"attempt 3"
-
-
-@pytest.mark.asyncio
-async def test_raise_for_status_without_a_cap_still_makes_one_attempt():
-    app, served = _scripted(503)
-    runner, base = await _serve(app)
-
-    try:
-        with pytest.raises(HTTPServerError):
-            await asyncio.wait_for(
-                _local_requests(retry_max_wait=0).get(base), _ENDS_WITHIN_SECONDS
-            )
-    finally:
-        await runner.cleanup()
-
-    assert served == [503]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("status", [400, 401, 403, 404, 422, 501])
-@pytest.mark.parametrize(
-    "raise_for_status", [True, False], ids=["raising", "status-checked"]
-)
-async def test_a_capped_client_does_not_retry_a_status_that_is_not_a_throttle(
-    status: int, raise_for_status: bool
-):
-    """Only a throttle status is retried: anything else would be sent again,
-    a POST included, for an answer that can't change."""
-    app, served = _scripted(status)
-    runner, base = await _serve(app)
-
-    try:
-        client = _local_requests(
-            raise_for_status=raise_for_status, retry_max_attempts=3, retry_max_wait=0
-        )
-        if raise_for_status:
-            with pytest.raises((HTTPClientError, HTTPServerError)) as raised:
-                await asyncio.wait_for(client.post(base), _ENDS_WITHIN_SECONDS)
-            assert raised.value.status_code == status
-        else:
-            response = await asyncio.wait_for(client.post(base), _ENDS_WITHIN_SECONDS)
-            assert response.status == status
-    finally:
-        await runner.cleanup()
-
-    assert served == [status]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "raise_for_status", [True, False], ids=["raising", "status-checked"]
-)
-async def test_an_explicit_cap_above_the_default_is_honoured(raise_for_status: bool):
-    app, served = _scripted(503)
-    runner, base = await _serve(app)
-
-    try:
-        client = _local_requests(
-            raise_for_status=raise_for_status, retry_max_attempts=5, retry_max_wait=0
-        )
-        if raise_for_status:
-            with pytest.raises(HTTPServerError):
-                await asyncio.wait_for(client.get(base), _ENDS_WITHIN_SECONDS)
-        else:
-            response = await asyncio.wait_for(client.get(base), _ENDS_WITHIN_SECONDS)
-            assert response.status == 503
-    finally:
-        await runner.cleanup()
-
-    assert served == [503] * 5
-
-
-def test_the_default_attempts_wait_seconds_not_minutes():
-    """The default exists so a block against a host that is down fails in
-    seconds: its waits, 1 s, then 2 s and so on, each plus up to 1 s of
-    jitter, come to at most 5 s."""
-    longest_waits = [2**n + 1 for n in range(DEFAULT_RETRY_MAX_ATTEMPTS - 1)]
-    assert sum(longest_waits) <= 5
-
-
-@pytest.mark.asyncio
-async def test_a_throttled_send_waits_its_backoff_before_going_again():
-    """Each retry waits its backoff, here capped at 0.2 s, so two retries take
-    at least 0.4 s (the bound allows for the clock's rounding)."""
-    app, served = _scripted(503)
-    runner, base = await _serve(app)
-
-    try:
-        started = time.monotonic()
-        await asyncio.wait_for(
-            _local_requests(raise_for_status=False, retry_max_wait=0.2).get(base),
-            _ENDS_WITHIN_SECONDS,
-        )
-        elapsed = time.monotonic() - started
-    finally:
-        await runner.cleanup()
-
-    assert served == [503, 503, 503]
-    assert elapsed >= 0.35
-
-
-@pytest.mark.asyncio
-@_RETRYING_CLIENTS
-async def test_a_connection_error_is_never_retried(client_kwargs: dict):
-    attempts: list[str] = []
-
-    def count(url: ParseResult) -> ParseResult:
-        attempts.append(url.geturl())
-        return url
-
-    # Bound but not listening, so a connection to it is refused.
-    with socket.socket() as refusing:
-        refusing.bind(("127.0.0.1", 0))
-        port = refusing.getsockname()[1]
-        with pytest.raises(ClientConnectorError):
-            await asyncio.wait_for(
-                _local_requests(
-                    retry_max_wait=0, extra_url_validator=count, **client_kwargs
-                ).post(f"http://127.0.0.1:{port}/"),
-                _ENDS_WITHIN_SECONDS,
-            )
-
-    assert attempts == [f"http://127.0.0.1:{port}/"]
-
-
-@pytest.mark.asyncio
-@_RETRYING_CLIENTS
-async def test_a_throttle_status_then_success_succeeds_on_the_second_attempt(
-    client_kwargs: dict,
-):
-    app, served = _scripted(429, 200)
-    runner, base = await _serve(app)
-
-    try:
-        response = await asyncio.wait_for(
-            _local_requests(retry_max_wait=0, **client_kwargs).get(base),
-            _ENDS_WITHIN_SECONDS,
-        )
-    finally:
-        await runner.cleanup()
-
-    assert served == [429, 200]
-    assert response.status == 200
-    assert response.text() == "attempt 2"
-
-
-def _chain(
-    scripts: dict[str, list[tuple[int, str | None]]],
-) -> tuple[web.Application, dict[str, list[bytes]]]:
-    """An app where each path answers its script in turn, repeating the last
-    answer for good: a status, and where a redirect leads. It records each
-    request's body, per path."""
-    received: dict[str, list[bytes]] = {path: [] for path in scripts}
-
-    def answering(path: str):
-        async def answer(request: web.Request) -> web.Response:
-            received[path].append(await request.read())
-            script = scripts[path]
-            status, location = script[min(len(received[path]), len(script)) - 1]
-            headers = {"Location": location} if location else {}
-            return web.Response(status=status, headers=headers)
-
-        return answer
-
-    app = web.Application()
-    for path in scripts:
-        app.router.add_route("*", path, answering(path))
-    return app, received
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "method, client_kwargs, scripts, outcome, sends",
-    [
-        pytest.param(
-            "GET",
-            {"raise_for_status": False},
-            {"/a": [(302, "/b")], "/b": [(429, None), (200, None)]},
-            200,
-            {"/a": 1, "/b": 2},
-            id="get-whose-second-hop-is-throttled-once",
-        ),
-        pytest.param(
-            "POST",
-            {"raise_for_status": False},
-            {"/a": [(307, "/b")], "/b": [(503, None), (200, None)]},
-            200,
-            {"/a": 1, "/b": 2},
-            id="post-307-whose-second-hop-is-throttled-once",
-        ),
-        pytest.param(
-            "POST",
-            {"raise_for_status": False},
-            {"/a": [(303, "/b")], "/b": [(429, None), (200, None)]},
-            200,
-            {"/a": 1, "/b": 2},
-            id="post-303-whose-target-is-throttled-once",
-        ),
-        pytest.param(
-            "GET",
-            {"raise_for_status": False, "retry_max_attempts": 3},
-            {"/a": [(302, "/b")], "/b": [(503, None)]},
-            503,
-            {"/a": 1, "/b": 3},
-            id="second-hop-down",
-        ),
-        pytest.param(
-            "GET",
-            {"raise_for_status": False, "retry_max_attempts": 3},
-            {"/a": [(302, "/b")], "/b": [(302, "/c")], "/c": [(503, None)]},
-            503,
-            {"/a": 1, "/b": 1, "/c": 3},
-            id="third-hop-down",
-        ),
-        pytest.param(
-            "GET",
-            {"retry_max_attempts": 3},
-            {"/a": [(302, "/b")], "/b": [(503, None)]},
-            HTTPServerError,
-            {"/a": 1, "/b": 3},
-            id="second-hop-down-raising",
-        ),
-        pytest.param(
-            "GET",
-            {"raise_for_status": False, "retry_max_attempts": 3},
-            {"/a": [(503, None), (302, "/b")], "/b": [(503, None)]},
-            503,
-            {"/a": 2, "/b": 2},
-            id="one-budget-for-the-whole-chain",
-        ),
-    ],
-)
-async def test_a_redirect_chain_sends_again_only_the_throttled_hop(
-    method: str,
-    client_kwargs: dict,
-    scripts: dict[str, list[tuple[int, str | None]]],
-    outcome: int | type[Exception],
-    sends: dict[str, int],
-):
-    """A throttled hop is sent again on its own: the hops before it are not,
-    so a POST is never repeated for a later hop's sake, and the chain shares
-    one budget of throttled sends."""
-    app, received = _chain(scripts)
-    runner, base = await _serve(app)
-
-    try:
-        sent = _local_requests(retry_max_wait=0, **client_kwargs).request(
-            method, f"{base}/a", json={"order": 1} if method == "POST" else None
-        )
-        if isinstance(outcome, int):
-            response = await asyncio.wait_for(sent, _ENDS_WITHIN_SECONDS)
-            assert response.status == outcome
-        else:
-            with pytest.raises(outcome):
-                await asyncio.wait_for(sent, _ENDS_WITHIN_SECONDS)
-    finally:
-        await runner.cleanup()
-
-    assert {path: len(bodies) for path, bodies in received.items()} == sends
-
-
-# Under one 4 KiB page: a pipe can be that small (pipe-user-pages-soft), and
-# the pipe case writes the whole payload before anything reads it.
-_PAYLOAD = b"#1=CARTESIAN_POINT('',(0.,0.,0.));\n" * 100
-_STEP_HEADER = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n"
-
-
-def _bytes(payload: bytes) -> ContextManager[bytes]:
-    return contextlib.nullcontext(payload)
-
-
-def _bytesio(payload: bytes) -> BinaryIO:
-    return BytesIO(payload)
-
-
-def _temp_file(payload: bytes) -> BinaryIO:
-    """A real file on disk: aiohttp closes it once it has sent it."""
-    handle = tempfile.TemporaryFile()
-    handle.write(payload)
-    handle.seek(0)
-    return handle
-
-
-def _bytesio_past_what_was_read(payload: bytes) -> BinaryIO:
-    """A handle the caller already read a header from: the body is the rest."""
-    handle = BytesIO(_STEP_HEADER + payload)
-    handle.seek(len(_STEP_HEADER))
-    return handle
-
-
-def _pipe(payload: bytes) -> BinaryIO:
-    """A stream that can't seek, as a pipe or a socket can't."""
-    # A pipe takes a write of up to PIPE_BUF bytes whole, so this can't block
-    # waiting for a reader.
-    assert len(payload) <= select.PIPE_BUF
-    read_end, write_end = os.pipe()
-    try:
-        os.write(write_end, payload)
-    finally:
-        os.close(write_end)
-    return open(read_end, "rb")
-
-
-async def _lines(payload: bytes) -> AsyncIterator[bytes]:
-    """*payload* as an async iterable, a line at a time."""
-    for line in payload.splitlines(keepends=True):
-        yield line
-
-
-async def _body_of(request: web.Request) -> bytes:
-    """The file part of a multipart request, or else the whole raw body."""
-    if not request.content_type.startswith("multipart/"):
-        return await request.read()
-    part = await (await request.multipart()).next()
-    assert isinstance(part, BodyPartReader)
-    return await part.read()
-
-
-def _sent_as(send: str, body: Any) -> dict:
-    if send == "files":
-        return {"files": [("file", ("part.step", body, "model/step"))]}
-    return {"data": body}
-
-
-@pytest.mark.asyncio
-@_RETRYING_CLIENTS
-@pytest.mark.parametrize(
-    "open_body",
-    [_bytes, _bytesio, _bytesio_past_what_was_read, _temp_file, _pipe],
-    ids=[
-        "bytes",
-        "bytesio",
-        "bytesio-past-what-was-read",
-        "temp-file",
-        "stream-that-cannot-seek",
-    ],
-)
-@pytest.mark.parametrize("send", ["files", "data"])
-async def test_a_body_retried_after_a_throttle_status_is_sent_whole_each_time(
-    send: str, open_body: Callable[[bytes], ContextManager[Any]], client_kwargs: dict
-):
-    received: list[bytes] = []
-
-    async def receive(request: web.Request) -> web.Response:
-        received.append(await _body_of(request))
-        return web.Response(status=429 if len(received) == 1 else 200)
-
-    app = web.Application()
-    app.router.add_post("/", receive)
-    runner, base = await _serve(app)
-
-    try:
-        with open_body(_PAYLOAD) as body:
-            response = await asyncio.wait_for(
-                _local_requests(retry_max_wait=0, **client_kwargs).post(
-                    base, **_sent_as(send, body)
-                ),
-                _ENDS_WITHIN_SECONDS,
-            )
-    finally:
-        await runner.cleanup()
-
-    assert response.status == 200
-    assert received == [_PAYLOAD, _PAYLOAD]
-
-
-@pytest.mark.asyncio
-@_RETRYING_CLIENTS
-async def test_an_async_iterable_body_retried_after_a_throttle_status_is_sent_whole(
-    client_kwargs: dict,
-):
-    received: list[bytes] = []
-
-    async def receive(request: web.Request) -> web.Response:
-        received.append(await request.read())
-        return web.Response(status=429 if len(received) == 1 else 200)
-
-    app = web.Application()
-    app.router.add_post("/", receive)
-    runner, base = await _serve(app)
-
-    try:
-        response = await asyncio.wait_for(
-            _local_requests(retry_max_wait=0, **client_kwargs).post(
-                base, data=_lines(_PAYLOAD)
-            ),
-            _ENDS_WITHIN_SECONDS,
-        )
-    finally:
-        await runner.cleanup()
-
-    assert response.status == 200
-    assert received == [_PAYLOAD, _PAYLOAD]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "open_body",
-    [_bytesio, _temp_file, _pipe],
-    ids=["bytesio", "temp-file", "stream-that-cannot-seek"],
-)
-@pytest.mark.parametrize("send", ["files", "data"])
-async def test_a_body_redirected_with_a_307_reaches_the_next_hop_whole(
-    send: str, open_body: Callable[[bytes], ContextManager[Any]]
-):
-    """A 307 repeats the request, body and all, so the hop must not find a
-    stream where the first send left it, at its end, or closed. A one-attempt
-    client follows redirects too, so it keeps the body for the hop."""
-    received: dict[str, bytes] = {}
-
-    async def moved(request: web.Request) -> web.Response:
-        received[request.path] = await _body_of(request)
-        raise web.HTTPTemporaryRedirect("/final")
-
-    async def final(request: web.Request) -> web.Response:
-        received[request.path] = await _body_of(request)
-        return web.Response(text="stored")
-
-    app = web.Application()
-    app.router.add_post("/", moved)
-    app.router.add_post("/final", final)
-    runner, base = await _serve(app)
-
-    try:
-        with open_body(_PAYLOAD) as body:
-            response = await asyncio.wait_for(
-                _local_requests().post(base, **_sent_as(send, body)),
-                _ENDS_WITHIN_SECONDS,
-            )
-    finally:
-        await runner.cleanup()
-
-    assert response.status == 200
-    assert received == {"/": _PAYLOAD, "/final": _PAYLOAD}
-
-
-@contextlib.contextmanager
-def _sent_once(send: str, payload: bytes) -> Iterator[dict]:
-    """A body that can't be read twice: a pipe, as an upload or as ``data``,
-    or an async iterable."""
-    if send == "async-iterable":
-        yield {"data": _lines(payload)}
-        return
-    with _pipe(payload) as stream:
-        yield _sent_as(send, stream)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("send", ["files", "data", "async-iterable"])
-async def test_a_body_that_cannot_be_read_twice_is_refused_past_the_limit(
-    send: str, monkeypatch: pytest.MonkeyPatch
-):
-    """It has to be held in memory to be sent again, so past the limit the
-    request fails before anything is sent."""
-    monkeypatch.setattr(request_module, "MAX_BUFFERED_BODY_BYTES", 1024)
-    app, served = _scripted(200)
-    runner, base = await _serve(app)
-
-    try:
-        with _sent_once(send, _PAYLOAD) as body:
-            with pytest.raises(RequestBodyTooLargeError):
-                await asyncio.wait_for(
-                    _local_requests().post(base, **body), _ENDS_WITHIN_SECONDS
-                )
-    finally:
-        await runner.cleanup()
-
-    assert served == []
-
-
-class _OneWayStream(io.RawIOBase):
-    """A stream that can't seek, like a pipe or a socket. It counts its reads,
-    and notes one made on the event loop's own thread, where a blocking read
-    would hold up every other request."""
-
-    def __init__(self, payload: bytes):
-        self._rest = payload
-        self._loop_thread = threading.get_ident()
-        self.reads = 0
-        self.read_on_the_loop = False
-
-    def readable(self) -> bool:
-        return True
-
-    def readinto(self, buffer) -> int:
-        self.reads += 1
-        if threading.get_ident() == self._loop_thread:
-            self.read_on_the_loop = True
-        size = min(len(buffer), len(self._rest))
-        buffer[:size] = self._rest[:size]
-        self._rest = self._rest[size:]
-        return size
-
-
-def _receiving(*statuses: int) -> tuple[web.Application, list[bytes]]:
-    """An app taking POSTs to ``/``, answering *statuses* in turn (the last
-    for good), and the body of each request: the file part of an upload."""
-    received: list[bytes] = []
-
-    async def receive(request: web.Request) -> web.Response:
-        received.append(await _body_of(request))
-        return web.Response(status=statuses[min(len(received), len(statuses)) - 1])
-
-    app = web.Application()
-    app.router.add_post("/", receive)
-    return app, received
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("send", ["files", "data"])
-async def test_a_stream_that_cannot_seek_is_read_off_the_event_loop(send: str):
-    stream = _OneWayStream(_PAYLOAD)
-    app, received = _receiving(200)
-    runner, base = await _serve(app)
-
-    try:
-        response = await asyncio.wait_for(
-            _local_requests().post(base, **_sent_as(send, stream)),
-            _ENDS_WITHIN_SECONDS,
-        )
-    finally:
-        await runner.cleanup()
-
-    assert not stream.read_on_the_loop
-    assert response.status == 200
-    assert received == [_PAYLOAD]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("send", ["files", "data"])
-async def test_a_blocked_url_is_refused_before_the_body_is_read(send: str):
-    stream = _OneWayStream(_PAYLOAD)
-
-    with pytest.raises(ValueError, match="blocked or private IP"):
-        await asyncio.wait_for(
-            Requests().post("http://127.0.0.1:1/", **_sent_as(send, stream)),
-            _ENDS_WITHIN_SECONDS,
-        )
-
-    assert stream.reads == 0
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("send", ["files", "data"])
-async def test_a_request_that_sends_once_streams_its_body_unbuffered(
-    send: str, monkeypatch: pytest.MonkeyPatch
-):
-    """One attempt and no redirects: nothing is sent twice, so nothing is held
-    in memory, and a body past the buffer limit still goes out whole."""
-    monkeypatch.setattr(request_module, "MAX_BUFFERED_BODY_BYTES", 1024)
-    app, received = _receiving(200)
-    runner, base = await _serve(app)
-
-    try:
-        with _pipe(_PAYLOAD) as stream:
-            response = await asyncio.wait_for(
-                _local_requests().post(
-                    base, allow_redirects=False, **_sent_as(send, stream)
-                ),
-                _ENDS_WITHIN_SECONDS,
-            )
-    finally:
-        await runner.cleanup()
-
-    assert response.status == 200
-    assert received == [_PAYLOAD]
-
-
-@pytest.mark.asyncio
-@_RETRYING_CLIENTS
-async def test_a_stream_reader_body_retried_after_a_throttle_status_is_sent_whole(
-    client_kwargs: dict,
-):
-    """A download's ``StreamReader``, sent on as the body of another request."""
-    app, received = _receiving(429, 200)
-
-    async def source(request: web.Request) -> web.Response:
-        return web.Response(body=_PAYLOAD)
-
-    app.router.add_get("/source", source)
-    runner, base = await _serve(app)
-
-    try:
-        async with ClientSession() as session:
-            async with session.get(f"{base}/source") as download:
-                response = await asyncio.wait_for(
-                    _local_requests(retry_max_wait=0, **client_kwargs).post(
-                        base, data=download.content
-                    ),
-                    _ENDS_WITHIN_SECONDS,
-                )
-    finally:
-        await runner.cleanup()
-
-    assert response.status == 200
-    assert received == [_PAYLOAD, _PAYLOAD]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("send, part", [("files", "upload"), ("data", "body")])
-async def test_a_body_with_no_way_to_be_sent_again_is_refused_when_it_might_be(
-    send: str, part: str
-):
-    """An aiohttp payload over a pipe is used up by its first send. A request
-    that might send it again refuses it before sending anything; one that
-    sends once streams it."""
-    app, received = _receiving(200)
-    runner, base = await _serve(app)
-
-    try:
-        with _pipe(_PAYLOAD) as stream:
-            with pytest.raises(
-                TypeError, match=f"BufferedReaderPayload {part} can't be sent again"
-            ):
-                await asyncio.wait_for(
-                    _local_requests().post(
-                        base, **_sent_as(send, BufferedReaderPayload(stream))
-                    ),
-                    _ENDS_WITHIN_SECONDS,
-                )
-            assert received == []
-
-            response = await asyncio.wait_for(
-                _local_requests().post(
-                    base,
-                    allow_redirects=False,
-                    **_sent_as(send, BufferedReaderPayload(stream)),
-                ),
-                _ENDS_WITHIN_SECONDS,
-            )
-    finally:
-        await runner.cleanup()
-
-    assert response.status == 200
-    assert received == [_PAYLOAD]
