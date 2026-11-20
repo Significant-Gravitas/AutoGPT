@@ -17,6 +17,8 @@ import pytest
 from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException
 
+from backend.api.features.store.db import create_store_submission
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -1121,6 +1123,14 @@ STORE_LISTING_VERSION_ID = "slv-6666"
 SLUG = "test-agent-slug"
 
 
+@pytest.fixture
+def empty_store_listing_transaction(mocker):
+    transaction = mocker.patch("backend.api.features.store.db.transaction")
+    transaction.return_value.__aenter__.return_value = MagicMock(
+        query_raw=AsyncMock(return_value=[])
+    )
+
+
 class TestRegressionStore:
     """Verify store operations are userId-isolated."""
 
@@ -1151,11 +1161,6 @@ class TestRegressionStore:
         mocker.patch(
             "backend.api.features.store.db.prisma.models.StoreListingVersion.prisma",
             return_value=self.mock_slv_actions,
-        )
-        self.mock_listing_actions = AsyncMock()
-        mocker.patch(
-            "backend.api.features.store.db.prisma.models.StoreListing.prisma",
-            return_value=self.mock_listing_actions,
         )
         # A submission checks the role where the workflow lives, which reads
         # membership rows.
@@ -1228,20 +1233,17 @@ class TestRegressionStore:
         assert len(result.submissions) == 0
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures("empty_store_listing_transaction")
     async def test_regression_create_submission_sets_owning_user(self):
         """create_store_submission() must verify graph ownership via
         userId and set OwningUser on the StoreListing to the caller."""
+
         # Graph lookup must filter by userId
         mock_graph = MagicMock()
         mock_graph.id = GRAPH_ID
         mock_graph.User = MagicMock()
         mock_graph.User.Profile = MagicMock()
         self.mock_agent_graph_actions.find_first = AsyncMock(return_value=mock_graph)
-
-        # Transaction mocks
-        mock_listing = MagicMock()
-        mock_listing.Versions = []
-        self.mock_listing_actions.find_unique = AsyncMock(return_value=None)
 
         mock_listing_obj = MagicMock()
         mock_listing_obj.id = "listing-1"
@@ -1276,31 +1278,14 @@ class TestRegressionStore:
         mock_submission.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
         self.mock_slv_actions.create = AsyncMock(return_value=mock_submission)
 
-        with patch("backend.api.features.store.db.transaction") as mock_tx_ctx:
-            mock_tx = MagicMock()
-            mock_tx_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_tx)
-            mock_tx_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-            # Re-patch with tx-aware returns
-            with (
-                patch(
-                    "backend.api.features.store.db.prisma.models.StoreListing.prisma",
-                    return_value=self.mock_listing_actions,
-                ),
-                patch(
-                    "backend.api.features.store.db.prisma.models.StoreListingVersion.prisma",
-                    return_value=self.mock_slv_actions,
-                ),
-            ):
-                from backend.api.features.store.db import create_store_submission
-
-                await create_store_submission(
-                    user_id=USER_ID,
-                    graph_id=GRAPH_ID,
-                    graph_version=GRAPH_VERSION,
-                    slug=SLUG,
-                    name="Test Agent",
-                    sub_heading="Find test agents fast",
-                )
+        await create_store_submission(
+            user_id=USER_ID,
+            graph_id=GRAPH_ID,
+            graph_version=GRAPH_VERSION,
+            slug=SLUG,
+            name="Test Agent",
+            sub_heading="Find test agents fast",
+        )
 
         # The initial graph lookup must include userId
         self.mock_agent_graph_actions.find_first.assert_called_once()
@@ -1310,6 +1295,12 @@ class TestRegressionStore:
         )
         assert graph_where["userId"] == USER_ID
         assert graph_where["id"] == GRAPH_ID
+
+        self.mock_slv_actions.create.assert_awaited_once()
+        listing = self.mock_slv_actions.create.await_args.kwargs["data"]["StoreListing"]
+        assert listing["connect_or_create"]["create"]["OwningUser"] == {
+            "connect": {"id": USER_ID}
+        }
 
     @pytest.mark.asyncio
     async def test_regression_edit_submission_requires_ownership(self):
@@ -2146,11 +2137,6 @@ class TestPR15MarketplaceOrg:
             "backend.api.features.store.db.prisma.models.AgentGraph.prisma",
             return_value=self.mock_agent_graph_actions,
         )
-        self.mock_listing_actions = AsyncMock()
-        mocker.patch(
-            "backend.api.features.store.db.prisma.models.StoreListing.prisma",
-            return_value=self.mock_listing_actions,
-        )
         self.mock_slv_actions = AsyncMock()
         mocker.patch(
             "backend.api.features.store.db.prisma.models.StoreListingVersion.prisma",
@@ -2175,16 +2161,15 @@ class TestPR15MarketplaceOrg:
         )
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures("empty_store_listing_transaction")
     async def test_create_submission_sets_owning_org_id(self):
-        """create_store_submission with organization_id includes owningOrgId
-        in the StoreListing connect_or_create data."""
+        """A new organization listing connects the caller's organization as its owner."""
+
         mock_graph = MagicMock()
         mock_graph.id = GRAPH_ID
         mock_graph.User = MagicMock()
         mock_graph.User.Profile = MagicMock()
         self.mock_agent_graph_actions.find_first = AsyncMock(return_value=mock_graph)
-
-        self.mock_listing_actions.find_unique = AsyncMock(return_value=None)
 
         mock_submission = MagicMock()
         mock_submission.StoreListing = MagicMock()
@@ -2218,41 +2203,23 @@ class TestPR15MarketplaceOrg:
         mock_submission.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
         self.mock_slv_actions.create = AsyncMock(return_value=mock_submission)
 
-        with patch("backend.api.features.store.db.transaction") as mock_tx_ctx:
-            mock_tx = MagicMock()
-            mock_tx_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_tx)
-            mock_tx_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-            with (
-                patch(
-                    "backend.api.features.store.db.prisma.models.StoreListing.prisma",
-                    return_value=self.mock_listing_actions,
-                ),
-                patch(
-                    "backend.api.features.store.db.prisma.models.StoreListingVersion.prisma",
-                    return_value=self.mock_slv_actions,
-                ),
-            ):
-                from backend.api.features.store.db import create_store_submission
-
-                await create_store_submission(
-                    user_id=USER_ID,
-                    graph_id=GRAPH_ID,
-                    graph_version=GRAPH_VERSION,
-                    slug=SLUG,
-                    name="Test Agent",
-                    sub_heading="Find test agents fast",
-                    organization_id="org-1",
-                )
+        await create_store_submission(
+            user_id=USER_ID,
+            graph_id=GRAPH_ID,
+            graph_version=GRAPH_VERSION,
+            slug=SLUG,
+            name="Test Agent",
+            sub_heading="Find test agents fast",
+            organization_id="org-1",
+        )
 
         # Verify the SLV create call's StoreListing.connect_or_create.create
         # connects the OwningOrg relation. Must be relation-connect syntax,
         # NOT the raw owningOrgId scalar — this nested create uses checked
         # (relation) input and Prisma rejects the whole create when a raw
         # FK field is mixed in (e2e publish flow 500'd on exactly this).
-        self.mock_slv_actions.create.assert_called_once()
-        create_data = self.mock_slv_actions.create.call_args.kwargs.get(
-            "data", self.mock_slv_actions.create.call_args[1].get("data")
-        )
+        self.mock_slv_actions.create.assert_awaited_once()
+        create_data = self.mock_slv_actions.create.await_args.kwargs["data"]
         listing_create = create_data["StoreListing"]["connect_or_create"]["create"]
         assert listing_create["OwningOrg"] == {"connect": {"id": "org-1"}}
         assert "owningOrgId" not in listing_create
@@ -2262,8 +2229,6 @@ class TestPR15MarketplaceOrg:
         """create_store_submission should verify the user is a member of
         the specified organization_id before allowing submission."""
         import inspect
-
-        from backend.api.features.store.db import create_store_submission
 
         # Once membership checking is added, the function should validate
         # that user_id is a member of organization_id before proceeding.

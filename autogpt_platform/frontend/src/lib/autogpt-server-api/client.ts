@@ -1011,10 +1011,12 @@ export default class BackendAPI {
   }
 
   /**
-   * All handlers are invoked after the WebSocket reconnects, once the server
-   * has handled the subscriptions the connect handlers sent again. Anything
-   * published while it was down never arrives, so re-read live state here.
-   * The first connection is not a reconnect.
+   * All handlers are invoked whenever live state should be re-read, because
+   * updates may have been missed: after the WebSocket reconnects, once the
+   * server has handled the subscriptions the connect handlers sent again (a
+   * first connection is not a reconnect), and after a subscribe the server
+   * could not complete settles on a retry, on any connection, the first
+   * included. Re-read live state here.
    *
    * @returns a detacher for the passed handler.
    */

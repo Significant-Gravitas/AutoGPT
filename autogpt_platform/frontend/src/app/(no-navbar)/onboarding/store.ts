@@ -5,7 +5,7 @@ import { cleanWizardText, stepKey, type WizardStepKey } from "./progress";
 export const MAX_PAIN_POINT_SELECTIONS = 3;
 export type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 // The longest layout is self-hosted with the plan and connect steps, plus the
-// sign-in access step for an account that signed up with Microsoft.
+// sign-in access step for an account that signed up with Microsoft or Google.
 export const MAX_STEP: Step = 8;
 
 // Every step the wizard can show, numbered for one deployment. Optional

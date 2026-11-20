@@ -4,12 +4,14 @@ on:
   push:
     branches: [master, dev]
     paths:
+      - ".dockerignore"
       - ".github/workflows/platform-fullstack-ci.yml"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
       - ".github/scripts/validate_cobertura.py"
       - ".github/scripts/test_validate_cobertura.py"
       - ".github/scripts/test_e2e_seed_cache_contract.py"
+      - ".github/scripts/test_frontend_build_context.py"
       - ".github/scripts/hosted_journeys_env.py"
       - ".github/scripts/test_hosted_journeys_env.py"
       - ".github/actions/generate-prisma-client/**"
@@ -20,12 +22,14 @@ on:
       - "autogpt_platform/**"
   pull_request:
     paths:
+      - ".dockerignore"
       - ".github/workflows/platform-fullstack-ci.yml"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
       - ".github/scripts/validate_cobertura.py"
       - ".github/scripts/test_validate_cobertura.py"
       - ".github/scripts/test_e2e_seed_cache_contract.py"
+      - ".github/scripts/test_frontend_build_context.py"
       - ".github/scripts/hosted_journeys_env.py"
       - ".github/scripts/test_hosted_journeys_env.py"
       - ".github/actions/generate-prisma-client/**"
@@ -105,6 +109,7 @@ jobs:
             ../../.github/scripts/test_validate_playwright_json.py \
             ../../.github/scripts/test_validate_cobertura.py \
             ../../.github/scripts/test_e2e_seed_cache_contract.py \
+            ../../.github/scripts/test_frontend_build_context.py \
             ../../.github/scripts/test_hosted_journeys_env.py \
             ../scripted_model/tests \
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
@@ -119,7 +124,7 @@ jobs:
       # ------------------------ Frontend setup ------------------------
 
       - name: Set up Frontend - Set up pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
@@ -208,7 +213,7 @@ jobs:
             # selfhost-journey asserts nothing hosted-only exists; it needs a
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
-            min_tests: 12
+            min_tests: 13
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
             seed: false
@@ -487,7 +492,7 @@ jobs:
           timeout 60 sh -c 'until docker compose -f ../docker-compose.resolved.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done'
 
       - name: Set up tests - Set up pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
@@ -782,7 +787,7 @@ jobs:
       - name: Save Next.js build cache
         if: ${{ !cancelled() && matrix.suite == 'smoke' && steps.next-build-cache-export.outcome == 'success' }}
         continue-on-error: true
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /tmp/next-build-cache
           key: ${{ steps.next-build-cache.outputs.cache-primary-key }}
