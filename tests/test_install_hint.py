@@ -214,6 +214,10 @@ def test_pip_adds_the_extras_package_and_leaves_the_installed_package_alone(
 # ── The docs ─────────────────────────────────────────────────────────────────
 
 _HEADING = re.compile(r"^#{1,6} +(.*)$")
+# What names a revision after the repository: a placeholder for one
+# (`@<revision>`, `@v<version>`), a commit (7 to 40 hex digits) or a release
+# tag (`@v1.2.3`, `@0.4.0`). A name (`@main`) is a branch, which moves.
+_REVISION = re.compile(r"(\.git)?@(v?<[^>\s]+>|[0-9a-f]{7,40}(?![\w./-])|v?\d+(\.\d+)+(?![\w/-]))")
 
 
 def _unpinned_installs(text: str) -> list[tuple[str, str]]:
@@ -227,7 +231,7 @@ def _unpinned_installs(text: str) -> list[tuple[str, str]]:
         if "pipx install" not in line or REPOSITORY not in line:
             continue
         after = line.split(REPOSITORY, 1)[1]
-        if not re.match(r"(\.git)?@[\w<]", after):
+        if not _REVISION.match(after):
             found.append((heading, line.strip()))
     return found
 
@@ -252,7 +256,11 @@ def test_the_check_tells_a_pinned_install_from_an_unpinned_one() -> None:
     text = (
         "## Install\n"
         f"pipx install git+https://{REPOSITORY}.git@0123abc\n"
+        f"pipx install git+https://{REPOSITORY}.git@0123456789abcdef0123456789abcdef01234567\n"
         f'pipx install "git+https://{REPOSITORY}.git@<revision>"\n'
+        f'pipx install "git+https://{REPOSITORY}.git@v<version>"\n'
+        f"pipx install git+https://{REPOSITORY}.git@v1.2.3\n"
+        f"pipx install git+https://{REPOSITORY}@0.4.0\n"
         f"pipx install git+https://{REPOSITORY}.git\n"
         "### For development\n"
         f"pipx install git+https://{REPOSITORY}.git\n"
@@ -262,6 +270,16 @@ def test_the_check_tells_a_pinned_install_from_an_unpinned_one() -> None:
         ("Install", f"pipx install git+https://{REPOSITORY}.git"),
         ("For development", f"pipx install git+https://{REPOSITORY}.git"),
     ]
+
+
+@pytest.mark.parametrize("moving", ["main", "master", "dev", "HEAD", "feat/cua-driver", "latest"])
+def test_a_branchs_name_is_no_revision(moving: str) -> None:
+    """`@main` passed for a pin: anything after the `@` did. A branch moves,
+    so an install that names one gets whatever is at its head that day, as
+    the unpinned install does."""
+    line = f"pipx install git+https://{REPOSITORY}.git@{moving}"
+
+    assert _unpinned_installs(f"## Install\n{line}\n") == [("Install", line)]
 
 
 def test_the_readme_sends_a_person_to_their_deployments_setup_card() -> None:
