@@ -1018,6 +1018,8 @@ def _credential_rejected_response(
     )
     # An expired key's error names the date and what to do about it.
     expiry = f" {exc}" if expired else ""
+    # Both carry the credential's stored title, which comes from outside
+    # AutoGPT, so the content judge reads them; the rest of the message is ours.
     return ErrorResponse(
         message=(
             f"{refused}, so block '{block.name}' did not run.{expiry} Nobody is "
@@ -1031,7 +1033,7 @@ def _credential_rejected_response(
         # The scheduled chat's failure streak reads which connection to fix.
         details={"provider": provider} if provider else None,
         session_id=session_id,
-    ).from_outside()
+    ).from_outside(refused, expiry)
 
 
 def _rejected_credential(

@@ -496,17 +496,20 @@ def find_matching_credential(
     and — for MCP OAuth credentials — the server URL.
 
     ``selected`` maps a provider or provider:host to the credential picked; a
-    pick that fits always wins. ``ask_when_ambiguous`` is for a caller that can
-    ask: when several of the user's own credentials fit and none was picked, it
-    gets ``None``, which surfaces as a setup card where the user chooses. Taking
-    the first fit there would run on whichever account was stored first.
+    pick that fits always wins, even an expired key. ``ask_when_ambiguous`` is
+    for a caller that can ask: when several of the user's own credentials fit
+    and none was picked, it gets ``None``, which surfaces as a setup card where
+    the user chooses. Taking the first fit there would run on whichever account
+    was stored first.
     """
     fits = [c for c in available_creds if _credential_fits(c, field_info)]
     if selected:
-        # A pick wins even after the provider refused its refresh: the run
-        # then asks for that account to be reconnected instead of quietly
-        # switching to another one.
-        for cred in fits:
+        # A pick wins even after the provider refused its refresh or its key
+        # expired: the run then asks for that account to be reconnected, or
+        # for a new key, instead of quietly switching to another one.
+        for cred in available_creds:
+            if not _credential_fits(cred, field_info, as_pick=True):
+                continue
             provider = _provider_slug(cred)
             key = (
                 _selection_key(provider, field_info)
@@ -553,8 +556,12 @@ def _selection_key(provider: str, field_info: CredentialsFieldInfo) -> str:
     return next(iter(keys)) if len(keys) == 1 else provider
 
 
-def _credential_fits(cred: Credentials, field_info: CredentialsFieldInfo) -> bool:
-    if cred.type == "api_key" and cred.is_expired():
+def _credential_fits(
+    cred: Credentials, field_info: CredentialsFieldInfo, *, as_pick: bool = False
+) -> bool:
+    # An expired key is refused when it loads, so it never shadows a key that
+    # works. Only as the user's own pick does it fit, so the run can say so.
+    if cred.type == "api_key" and cred.is_expired() and not as_pick:
         return False
     if cred.provider not in field_info.provider:
         return False
