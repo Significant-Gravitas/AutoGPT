@@ -4598,3 +4598,18 @@ def test_only_reviewed_blocks_override_the_input_check():
         ("MCPToolBlock", "get_mismatch_error"),
         ("PerplexityBlock", "validate_data"),
     }
+
+
+def test_validate_exec_keeps_an_mcp_tools_own_credentials_argument():
+    """An MCP tool's arguments stand in for the block's inputs, and a tool may
+    declare its own `credentials`: an object without an `id` there is the
+    tool's value, not an unset connection."""
+    tool_credentials = {"username": "bob"}
+    node = Node(
+        block_id=MCPToolBlock().id,
+        input_default={"tool_arguments": {"credentials": tool_credentials}},
+    )
+
+    data, msg = validate_exec(node, {})
+
+    assert data == {"credentials": tool_credentials}, msg

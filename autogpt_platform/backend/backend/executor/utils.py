@@ -465,8 +465,11 @@ def validate_exec(
 
     # An optional credentials field holding an id-less object (e.g. `{}`) means
     # "not configured". Treat it like an unset field so it doesn't fail the
-    # nested credentials schema below; required fields stay strict.
-    data = _clear_unset_optional_credentials(schema, data)
+    # nested credentials schema below; required fields stay strict. An MCP
+    # tool's arguments stand in for the block's inputs here, and a tool may
+    # declare its own `credentials`, so those are left as they are.
+    if node_block.block_type != BlockType.MCP_TOOL:
+        data = _clear_unset_optional_credentials(schema, data)
 
     # Coerce first: some blocks' missing-input checks read the converted values.
     # A value that can't be converted is reported after that check, so a node
