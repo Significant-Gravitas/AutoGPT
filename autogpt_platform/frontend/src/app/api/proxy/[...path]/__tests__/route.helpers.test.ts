@@ -1208,6 +1208,12 @@ describe("watchResponseStart", () => {
         "POST",
       ),
     ).toBe(RESPONSE_START_TIMEOUT_MS);
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "experts", "expert-1", "files", "desktop"],
+        "POST",
+      ),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
   });
 
   it("does not abort once cleared (backend started responding)", () => {

@@ -289,9 +289,12 @@ export const CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS = 120_000;
 // the backend still closes.
 export const ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS = 180_000;
 // Opening a desktop can resume or create the box and start its display under
-// a 285 s backend deadline, so a cold start often outlasts the standard
+// the backend's 285 s deadline (_DESKTOP_OPEN_DEADLINE_SECONDS in
+// backend/copilot/computer.py), so a cold start often outlasts the standard
 // budget. Giving up earlier shows an error for a desktop that still comes up.
-export const DESKTOP_OPEN_RESPONSE_START_TIMEOUT_MS = 285_000;
+// A few seconds over that deadline lets the backend's own error through, and
+// stays under the proxy's 290 s fetch ceiling.
+export const DESKTOP_OPEN_RESPONSE_START_TIMEOUT_MS = 288_000;
 
 export function getResponseStartTimeoutMs(
   path: string[],
