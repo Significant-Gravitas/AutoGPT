@@ -55,17 +55,14 @@ from backend.util import json
 # them here so existing ``from backend.blocks.llm import
 # ToolContentBlock`` imports keep working.
 from backend.util.llm.conversions import ToolCall, ToolContentBlock
+from backend.util.llm.http_attempts import HttpAttemptLog, current_http_attempts
 from backend.util.llm.prompt_refusal import PromptRefusedError, is_prompt_refused
 from backend.util.llm.provider_billing import (
     ProviderUnavailableError,
     is_provider_out_of_credits,
     report_provider_out_of_credits,
 )
-from backend.util.llm.providers import (
-    HttpAttemptLog,
-    current_http_attempts,
-    timeout_error,
-)
+from backend.util.llm.providers import timeout_error
 from backend.util.llm.request_too_large import (
     RequestTooLargeError,
     is_request_too_large,
@@ -347,12 +344,12 @@ async def llm_call(
     sent_input_tokens: list[int] = []
     started = _now()
     attempts = HttpAttemptLog(clock=_now)
-    attempts_token = current_http_attempts.set(attempts)
     with track_llm_call(
         graph_exec_id=execution_context.graph_exec_id if execution_context else None,
         provider=llm_model.metadata.provider,
         now=started,
     ):
+        attempts_token = current_http_attempts.set(attempts)
         try:
             return await asyncio.wait_for(
                 _llm_call(
@@ -1156,19 +1153,10 @@ def _log_timeout_outcome(
     is the only surface — see #14292 for the paging decision.
     """
     budget = timeout_seconds
-    # Every earlier request got a response, and SDKs retry only on errors
-    # that bill nothing, so only the last request can have been generating.
+    in_flight, in_flight_source = _in_flight_at_cut_off(elapsed, attempts)
+    threshold = budget * _SPEND_BURNED_ELAPSED_FRACTION
     if attempts.starts:
-        in_flight = attempts.clock() - attempts.starts[-1]
-        in_flight_source = "last_request"
-        threshold = min(
-            budget * _SPEND_BURNED_ELAPSED_FRACTION,
-            _SPEND_BURNED_MIN_IN_FLIGHT_SECONDS,
-        )
-    else:
-        in_flight = elapsed
-        in_flight_source = "elapsed_fallback"
-        threshold = budget * _SPEND_BURNED_ELAPSED_FRACTION
+        threshold = min(threshold, _SPEND_BURNED_MIN_IN_FLIGHT_SECONDS)
     if in_flight < threshold:
         logger.warning(
             f"LLM call timed out after {elapsed:.1f}s and "
@@ -1190,7 +1178,7 @@ def _log_timeout_outcome(
                 "configured_timeout_seconds": budget,
                 "last_request_in_flight_seconds": round(in_flight, 1),
                 "http_attempts": len(attempts.starts),
-                "prior_response_statuses": attempts.statuses,
+                "response_statuses": attempts.statuses,
                 "in_flight_source": in_flight_source,
                 "provider": llm_model.metadata.provider,
                 "model": llm_model.value,
@@ -1205,6 +1193,26 @@ def _log_timeout_outcome(
             }
         },
     )
+
+
+def _in_flight_at_cut_off(
+    elapsed: float, attempts: HttpAttemptLog
+) -> tuple[float, str]:
+    """How long the request the timeout cut off had been open, and how that
+    was measured.
+
+    Only the last request can have been cut off: every earlier one had already
+    ended. An error response bills nothing, so if the last request has one, the
+    SDK was only waiting out its retry backoff and nothing was cut off (#16173).
+    """
+    if not attempts.starts:
+        # A provider path without the hooks: the whole call is all there is.
+        return elapsed, "elapsed_fallback"
+    status = attempts.statuses[-1]
+    if status is not None and status >= 400:
+        return 0.0, "retry_backoff"
+    # No response yet, or a 2xx whose body was still arriving.
+    return attempts.clock() - attempts.starts[-1], "last_request"
 
 
 def _block_timeout_error(

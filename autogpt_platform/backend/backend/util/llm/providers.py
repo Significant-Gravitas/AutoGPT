@@ -36,8 +36,6 @@ import binascii
 import functools
 import json as json_module
 import logging
-from collections.abc import Callable
-from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
@@ -47,7 +45,7 @@ import ollama
 import openai
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from openai.types.shared_params import ResponseFormatJSONObject
-from pydantic import BaseModel, Field
+from pydantic import Field
 from pydantic.dataclasses import dataclass
 
 from backend.data.llm_registry.llm_models import (
@@ -65,6 +63,11 @@ from backend.util.llm.conversions import (
     extract_openai_tool_calls,
     extract_openrouter_cost,
     sanitize_messages_for_utf8,
+)
+from backend.util.llm.http_attempts import (
+    attempt_logging_http_client,
+    record_http_request,
+    record_http_response,
 )
 from backend.util.openai_responses import (
     convert_tools_to_responses_format,
@@ -102,49 +105,6 @@ def request_timeout(timeout_seconds: float) -> httpx.Timeout:
         timeout_seconds,
         connect=FAST_FAIL_TIMEOUT_SECONDS,
         pool=FAST_FAIL_TIMEOUT_SECONDS,
-    )
-
-
-class HttpAttemptLog(BaseModel):
-    """Each HTTP request an SDK sent for one block LLM call, retries included.
-
-    One timeout covers every SDK retry and its backoff, so only the start of
-    the last request tells how long the request that was cut off ran (#16173).
-    """
-
-    clock: Callable[[], float]
-    starts: list[float] = Field(default_factory=list)
-    statuses: list[int] = Field(default_factory=list)
-
-
-# Set by the block-side llm_call; other callers leave it None and record nothing.
-current_http_attempts: ContextVar[HttpAttemptLog | None] = ContextVar(
-    "current_http_attempts", default=None
-)
-
-
-async def _record_http_request(request: httpx.Request) -> None:
-    log = current_http_attempts.get()
-    if log is not None:
-        log.starts.append(log.clock())
-
-
-async def _record_http_response(response: httpx.Response) -> None:
-    log = current_http_attempts.get()
-    if log is not None:
-        log.statuses.append(response.status_code)
-
-
-def _attempt_logging_http_client(sdk: Any) -> httpx.AsyncClient:
-    """The SDK's default httpx client, with hooks that see every SDK retry.
-
-    An SDK never closes a client it was handed, so the caller must.
-    """
-    return sdk.DefaultAsyncHttpxClient(
-        event_hooks={
-            "request": [_record_http_request],
-            "response": [_record_http_response],
-        }
     )
 
 
@@ -578,7 +538,7 @@ async def _call_openai_responses(
     if service_tier:
         extra_body["service_tier"] = service_tier
 
-    http_client = _attempt_logging_http_client(openai)
+    http_client = attempt_logging_http_client(openai.DefaultAsyncHttpxClient)
     try:
         client = openai.AsyncOpenAI(api_key=api_key, http_client=http_client)
         response = await client.responses.create(
@@ -707,7 +667,7 @@ async def _call_anthropic_messages(
             }
         ]
 
-    http_client = _attempt_logging_http_client(anthropic)
+    http_client = attempt_logging_http_client(anthropic.DefaultAsyncHttpxClient)
     try:
         client = anthropic.AsyncAnthropic(api_key=api_key, http_client=http_client)
         try:
@@ -812,7 +772,7 @@ async def _call_groq(
     # the caller set one, so models that reject it never see the field.
     if temperature is not None:
         create_kwargs["temperature"] = temperature
-    http_client = _attempt_logging_http_client(groq)
+    http_client = attempt_logging_http_client(groq.DefaultAsyncHttpxClient)
     try:
         client = groq.AsyncGroq(api_key=api_key, http_client=http_client)
         response = await client.chat.completions.create(**create_kwargs)
@@ -975,8 +935,8 @@ async def _send_ollama_chat(
         "host": host,
         "timeout": request_timeout(timeout_seconds),
         "event_hooks": {
-            "request": [_scope_ollama_key, _record_http_request],
-            "response": [_record_http_response],
+            "request": [_scope_ollama_key, record_http_request],
+            "response": [record_http_response],
         },
     }
     if not is_trusted:
@@ -1132,7 +1092,7 @@ async def _call_openai_compat(
     if extra_body:
         call_kwargs["extra_body"] = extra_body
 
-    http_client = _attempt_logging_http_client(openai)
+    http_client = attempt_logging_http_client(openai.DefaultAsyncHttpxClient)
     try:
         client = openai.AsyncOpenAI(**client_kwargs, http_client=http_client)
         response = await client.chat.completions.create(**call_kwargs)

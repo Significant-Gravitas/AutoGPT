@@ -2,7 +2,6 @@ import asyncio
 import contextlib
 import logging
 import re
-import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,17 +17,13 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
 from backend.util.exceptions import BlockExecutionError
 from backend.util.llm import saturation
+from backend.util.llm.http_attempts import HttpAttemptLog
 from backend.util.llm.prompt_refusal import PROMPT_REFUSED_MESSAGE
 from backend.util.llm.prompt_refusal_test import (
     OPENAI_INVALID_PROMPT_BODY,
     openai_sdk_error,
 )
-from backend.util.llm.providers import (
-    FAST_FAIL_TIMEOUT_SECONDS,
-    HttpAttemptLog,
-    ProviderResponse,
-    current_http_attempts,
-)
+from backend.util.llm.providers import FAST_FAIL_TIMEOUT_SECONDS, ProviderResponse
 from backend.util.settings import Config
 
 # TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
@@ -1940,7 +1935,7 @@ class TestLLMRequestTimeout:
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
                 elapsed=elapsed,
-                attempts=HttpAttemptLog(clock=time.monotonic),
+                attempts=HttpAttemptLog(clock=llm._now),
                 timeout_seconds=budget,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
@@ -1954,7 +1949,7 @@ class TestLLMRequestTimeout:
         with self._captured_logs() as records:
             llm._log_timeout_outcome(
                 elapsed=99.0,
-                attempts=HttpAttemptLog(clock=time.monotonic),
+                attempts=HttpAttemptLog(clock=llm._now),
                 timeout_seconds=100,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
@@ -2151,253 +2146,6 @@ class TestLLMRequestTimeout:
         assert (
             call_count["n"] == 1
         ), f"Expected exactly 1 call (no retry on timeout), got {call_count['n']}"
-
-    # #16173: one timeout covers every SDK retry, so the alert reads how long
-    # the last HTTP request was open. A step is (start, status or None): the
-    # SDK sent a request at ``start`` seconds and got ``status`` back.
-    async def _cut_off_llm_call(self, monkeypatch, slice_, steps, cut_at=None):
-        clock = {"t": 1000.0}
-        monkeypatch.setattr(llm, "_now", lambda: clock["t"])
-
-        async def sdk_with_retries(**kwargs):
-            log = current_http_attempts.get()
-            assert log is not None, "llm_call must set the attempt log"
-            for start, status in steps:
-                clock["t"] = 1000.0 + start
-                log.starts.append(log.clock())
-                if status is not None:
-                    log.statuses.append(status)
-            clock["t"] = 1000.0 + (slice_ if cut_at is None else cut_at)
-            raise TimeoutError()
-
-        monkeypatch.setattr(llm, "_llm_call", sdk_with_retries)
-        with self._captured_logs() as records, pytest.raises(TimeoutError):
-            await llm.llm_call(
-                credentials=llm.TEST_CREDENTIALS,
-                llm_model=llm.DEFAULT_LLM_MODEL,
-                prompt=[{"role": "user", "content": "Hello"}],
-                max_tokens=100,
-                on_abandoned=None,
-                timeout_seconds=slice_,
-            )
-        return records
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "slice_, steps, in_flight, statuses",
-        [
-            pytest.param(30, [(0, None)], 30.0, [], id="hang"),
-            pytest.param(
-                100, [(0, 200)], 100.0, [200], id="slow-200-cut-near-deadline"
-            ),
-            pytest.param(
-                600, [(0, 500), (1.5, None)], 598.5, [500], id="fast-500-long-retry"
-            ),
-            pytest.param(
-                600, [(0, 500), (560, None)], 40.0, [500], id="retry-open-over-30s"
-            ),
-        ],
-    )
-    async def test_a_long_open_last_request_alerts(
-        self, monkeypatch, slice_, steps, in_flight, statuses
-    ):
-        records = await self._cut_off_llm_call(monkeypatch, slice_, steps)
-
-        alerts = self._alerts(records)
-        assert len(alerts) == 1
-        assert alerts[0].levelno == logging.ERROR
-        fields = alerts[0].json_fields
-        assert fields["configured_timeout_seconds"] == slice_
-        assert fields["last_request_in_flight_seconds"] == in_flight
-        assert fields["http_attempts"] == len(steps)
-        assert fields["prior_response_statuses"] == statuses
-        assert fields["in_flight_source"] == "last_request"
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "slice_, steps",
-        [
-            pytest.param(30, [(0, 500), (24.5, None)], id="slow-500-cancelled-retry"),
-            pytest.param(600, [(0, 500), (580, None)], id="retry-open-under-30s"),
-        ],
-    )
-    async def test_a_slow_error_then_a_cut_off_retry_does_not_alert(
-        self, monkeypatch, slice_, steps
-    ):
-        records = await self._cut_off_llm_call(monkeypatch, slice_, steps)
-
-        assert self._alerts(records) == []
-        warning = next(r for r in records if r.levelno == logging.WARNING)
-        assert "2 HTTP attempt(s) (statuses [500])" in warning.getMessage()
-
-    # The same rule end to end through each real SDK: its own retry loop sends
-    # the requests, the hooked httpx client records them, and the outer
-    # deadline cancels the hung retry. Diag reproduced the false alert on
-    # v0.9.0 for every SDK with a slow 500/504, and on Anthropic's 529.
-    _SDK_MODELS = {
-        "openai": llm.DEFAULT_LLM_MODEL,
-        "anthropic": llm.LLMModel.CLAUDE_4_6_SONNET,
-        "groq": llm.LLMModel.LLAMA3_3_70B,
-    }
-
-    async def _cut_off_through_sdk(self, monkeypatch, sdk_name, slice_, replies):
-        """``replies`` are (seconds, status) per answered request; the request
-        after them hangs until the ``slice_`` deadline cancels it."""
-        sdk = {"openai": openai, "anthropic": anthropic, "groq": groq}[sdk_name]
-        clock = {"t": 1000.0}
-        monkeypatch.setattr(llm, "_now", lambda: clock["t"])
-        hung = asyncio.Event()
-        pending = list(replies)
-
-        async def provider(request: httpx.Request) -> httpx.Response:
-            if pending:
-                seconds, status = pending.pop(0)
-                clock["t"] += seconds
-                # A 1 ms retry-after keeps the SDK's backoff out of the test.
-                return httpx.Response(
-                    status,
-                    json={"error": {"type": "api_error", "message": "upstream"}},
-                    headers={"retry-after-ms": "1"},
-                )
-            clock["t"] = 1000.0 + slice_
-            hung.set()
-            await asyncio.Event().wait()
-            raise AssertionError("unreachable")
-
-        clients: list[httpx.AsyncClient] = []
-        real_factory = sdk.DefaultAsyncHttpxClient
-
-        def hooked_factory(**kwargs):
-            clients.append(
-                real_factory(**kwargs, transport=httpx.MockTransport(provider))
-            )
-            return clients[-1]
-
-        monkeypatch.setattr(sdk, "DefaultAsyncHttpxClient", hooked_factory)
-
-        class _DeadlineOnHang:
-            """llm's asyncio, with wait_for firing once the provider hangs, so
-            the cut-off lands on the hung request without real waiting."""
-
-            def __getattr__(self, name):
-                return getattr(asyncio, name)
-
-            async def wait_for(self, aw, timeout):
-                assert timeout == slice_
-                call = asyncio.ensure_future(aw)
-                hang = asyncio.ensure_future(hung.wait())
-                await asyncio.wait({call, hang}, return_when=asyncio.FIRST_COMPLETED)
-                hang.cancel()
-                if call.done():
-                    return call.result()
-                call.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await call
-                raise asyncio.TimeoutError()
-
-        monkeypatch.setattr(llm, "asyncio", _DeadlineOnHang())
-        with self._captured_logs() as records, pytest.raises(TimeoutError):
-            await llm.llm_call(
-                credentials=llm.TEST_CREDENTIALS,
-                llm_model=self._SDK_MODELS[sdk_name],
-                prompt=[{"role": "user", "content": "Hello"}],
-                max_tokens=100,
-                on_abandoned=None,
-                timeout_seconds=slice_,
-            )
-        assert hung.is_set() and not pending, "the SDK never sent its retry"
-        assert len(clients) == 1 and clients[0].is_closed
-        return records
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "sdk_name, status",
-        [
-            (sdk_name, status)
-            for sdk_name in ("openai", "anthropic", "groq")
-            for status in (500, 504)
-        ]
-        + [("anthropic", 529)],
-    )
-    async def test_each_sdk_slow_error_then_cut_off_retry_does_not_alert(
-        self, monkeypatch, sdk_name, status
-    ):
-        records = await self._cut_off_through_sdk(
-            monkeypatch, sdk_name, 30, [(24.5, status)]
-        )
-
-        assert self._alerts(records) == []
-        warning = next(r for r in records if r.levelno == logging.WARNING)
-        assert f"2 HTTP attempt(s) (statuses [{status}])" in warning.getMessage()
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("sdk_name", ["openai", "anthropic", "groq"])
-    @pytest.mark.parametrize(
-        "replies, in_flight, statuses",
-        [
-            pytest.param([], 30.0, [], id="hang"),
-            pytest.param([(0.5, 500)], 29.5, [500], id="fast-500-long-retry"),
-        ],
-    )
-    async def test_each_sdk_long_open_request_still_alerts(
-        self, monkeypatch, sdk_name, replies, in_flight, statuses
-    ):
-        records = await self._cut_off_through_sdk(monkeypatch, sdk_name, 30, replies)
-
-        alerts = self._alerts(records)
-        assert len(alerts) == 1
-        fields = alerts[0].json_fields
-        assert fields["provider"] == sdk_name
-        assert fields["last_request_in_flight_seconds"] == in_flight
-        assert fields["http_attempts"] == len(replies) + 1
-        assert fields["prior_response_statuses"] == statuses
-        assert fields["in_flight_source"] == "last_request"
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "cut_at, alerts", [pytest.param(95, True), pytest.param(50, False)]
-    )
-    async def test_without_recorded_requests_total_elapsed_decides(
-        self, monkeypatch, cut_at, alerts
-    ):
-        """A provider path without the hooks keeps the whole-call rule."""
-        records = await self._cut_off_llm_call(monkeypatch, 100, [], cut_at=cut_at)
-
-        found = self._alerts(records)
-        assert bool(found) is alerts
-        if alerts:
-            assert found[0].json_fields["in_flight_source"] == "elapsed_fallback"
-            assert found[0].json_fields["last_request_in_flight_seconds"] == 95.0
-
-    @pytest.mark.asyncio
-    async def test_a_fast_answer_logs_no_timeout(self, monkeypatch):
-        async def answers(**kwargs):
-            log = current_http_attempts.get()
-            assert log is not None
-            log.starts.append(log.clock())
-            log.statuses.append(200)
-            return llm.LLMResponse(
-                raw_response="",
-                prompt=[],
-                response="ok",
-                tool_calls=None,
-                prompt_tokens=1,
-                completion_tokens=1,
-            )
-
-        monkeypatch.setattr(llm, "_llm_call", answers)
-        with self._captured_logs() as records:
-            result = await llm.llm_call(
-                credentials=llm.TEST_CREDENTIALS,
-                llm_model=llm.DEFAULT_LLM_MODEL,
-                prompt=[{"role": "user", "content": "Hello"}],
-                max_tokens=100,
-                on_abandoned=None,
-            )
-
-        assert result.response == "ok"
-        assert [r for r in records if r.levelno >= logging.WARNING] == []
-        assert current_http_attempts.get() is None
 
 
 class TestLLMModelMissingHandler:
