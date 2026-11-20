@@ -1,10 +1,7 @@
 import { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
-import { isLoadedInteger } from "@/app/api/mutators/integer-provenance";
 import { Text } from "@/components/atoms/Text/Text";
 import { Input } from "@/components/atoms/Input/Input";
 import { Switch } from "@/components/atoms/Switch/Switch";
-import { isUnsafeIntegerText } from "@/lib/integer-input";
-import { parseJsonExact } from "@/lib/json-text";
 import { useEffect, useState } from "react";
 import { JsonDataInput } from "./components/JsonDataInput/JsonDataInput";
 import { ReviewInputFields } from "./components/ReviewInputFields/ReviewInputFields";
@@ -49,7 +46,8 @@ export function PendingReviewCard({
   useEffect(() => {
     if (externalDataValue !== undefined) {
       try {
-        setCurrentData(parseJsonExact(externalDataValue) as ReviewPayload);
+        const parsedData = JSON.parse(externalDataValue);
+        setCurrentData(parsedData);
       } catch {}
     }
   }, [externalDataValue]);
@@ -73,37 +71,8 @@ export function PendingReviewCard({
 
   const renderDataInput = () => {
     const data = currentData;
-    // A number too large for JS loads as its digits; it stays a number field
-    // rather than turning into a text box. A payload that was a string keeps
-    // its text box, even when it holds only digits.
-    const isNumber =
-      typeof data === "number" ||
-      (typeof data === "string" &&
-        isUnsafeIntegerText(data) &&
-        (typeof review.payload === "number" ||
-          isLoadedInteger(
-            `review:${review.node_exec_id}`,
-            [],
-            review.payload,
-          )));
 
-    if (isNumber) {
-      return (
-        <Input
-          id="data-number"
-          label="Value"
-          hideLabel
-          size="small"
-          type="number"
-          value={data}
-          onChange={(e) => {
-            const text = e.target.value.trim();
-            handleDataChange(isUnsafeIntegerText(text) ? text : Number(text));
-          }}
-          placeholder="Enter number"
-        />
-      );
-    } else if (typeof data === "string") {
+    if (typeof data === "string") {
       return (
         <Input
           id="data-string"
@@ -115,6 +84,19 @@ export function PendingReviewCard({
           value={data}
           onChange={(e) => handleDataChange(e.target.value)}
           placeholder="Enter text"
+        />
+      );
+    } else if (typeof data === "number") {
+      return (
+        <Input
+          id="data-number"
+          label="Value"
+          hideLabel
+          size="small"
+          type="number"
+          value={data}
+          onChange={(e) => handleDataChange(Number(e.target.value))}
+          placeholder="Enter number"
         />
       );
     } else if (typeof data === "boolean") {

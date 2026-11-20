@@ -13,9 +13,7 @@ import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { environment } from "@/services/environment";
-import { parseJsonExactWithIntegers } from "@/lib/json-text";
 import { transformDates } from "./date-transformer";
-import { recordIntegers, restoreIntegers } from "./integer-provenance";
 import {
   fetchWithFailureLog,
   logClientRequestFailure,
@@ -30,38 +28,7 @@ function getBaseURL(): string {
   }
 }
 
-// Routes that return block inputs the app shows or sends back: graphs,
-// executions ("Run again"), reviews (also on the home page), library agents
-// and presets, schedules, store listing graphs and builder search results.
-// A rounded integer from them would be saved or run even if never touched.
-const EXACT_INTEGER_ROUTES = [
-  "/api/graphs",
-  "/api/executions",
-  "/api/library/",
-  "/api/review/",
-  "/api/store/listings/versions/",
-  "/api/schedules",
-  "/api/builder/search",
-  "/api/home",
-];
-
-function keepsBigIntegers(url: string): boolean {
-  return EXACT_INTEGER_ROUTES.some((route) => url.startsWith(route));
-}
-
-function parseExact(url: string) {
-  return (text: string): unknown => {
-    const { value, integers } = parseJsonExactWithIntegers(text);
-    // Per browser tab: on the server the notes would be shared between users.
-    if (environment.isClientSide()) recordIntegers(url, value, integers);
-    return value;
-  };
-}
-
-const getBody = async <T>(
-  c: Response | Request,
-  parseJson?: (text: string) => unknown,
-): Promise<T> => {
+const getBody = async <T>(c: Response | Request): Promise<T> => {
   // 204 No Content responses (and 200s with Content-Length: 0) have no body.
   // Calling .json() on them throws "Unexpected end of JSON input" because the
   // backend may still set Content-Type: application/json on 204s. Short-circuit
@@ -76,7 +43,7 @@ const getBody = async <T>(
   const contentType = c.headers.get("content-type");
 
   if (contentType && contentType.includes("application/json")) {
-    return parseJson ? (parseJson(await c.text()) as T) : c.json();
+    return c.json();
   }
 
   if (
@@ -105,10 +72,7 @@ export const customMutator = async <
     | "PUT"
     | "DELETE"
     | "PATCH";
-  const data =
-    typeof requestOptions.body === "string" && environment.isClientSide()
-      ? restoreIntegers(method, url, requestOptions.body)
-      : requestOptions.body;
+  const data = requestOptions.body;
   let headers: Record<string, string> = {
     ...((requestOptions.headers as Record<string, string>) || {}),
   };
@@ -227,10 +191,7 @@ export const customMutator = async <
     throw new ApiError(errorMessage, response.status, responseData);
   }
 
-  const responseData = await getBody<unknown>(
-    response,
-    keepsBigIntegers(url) ? parseExact(url) : undefined,
-  );
+  const responseData = await getBody<unknown>(response);
 
   // Transform ISO date strings to Date objects in the response data
   const transformedData =
