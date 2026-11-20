@@ -37,11 +37,13 @@ def _engine_error(code: str | None, message: str, meta: object = None) -> dict:
 def _raw_query_failed(sqlstate: str, reason: str) -> dict:
     return _engine_error(
         "P2010",
-        f"Raw query failed. Code: `{sqlstate}`. Message: `{reason}`",
-        {"code": sqlstate, "message": reason},
+        f"Raw query failed. Code: `{sqlstate}`. Message: `ERROR: {reason}`",
+        {"code": sqlstate, "message": f"ERROR: {reason}"},
     )
 
 
+# CLOSED and the raw statement timeout are as the query engine (5.17) sent them
+# against Postgres 15, for a terminated backend and a pg_sleep past the timeout.
 _SERVER = {"database_host": "db.internal", "database_port": 5432}
 # AUTOGPT-SERVER-AFC: a statement timeout outside a raw query.
 _STATEMENT_TIMED_OUT = (
