@@ -225,4 +225,81 @@ describe("a refused attachment", () => {
     });
     await waitFor(() => expect(textarea.value).toBe("summarise this"));
   });
+
+  it("says why the upload was refused", async () => {
+    const reason =
+      "Storage limit exceeded. Delete some files or upgrade your plan for more storage.";
+    uploadFileDirect.mockRejectedValue(new ApiError(reason, 413, null));
+    render(<ComposerWithFile />);
+    const textarea = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Message",
+    });
+    fireEvent.change(textarea, { target: { value: "summarise this" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "File upload failed",
+          description: `notes.pdf: ${reason}`,
+        }),
+      ),
+    );
+    await waitFor(() => expect(textarea.value).toBe("summarise this"));
+  });
+
+  it.each([
+    ["the connection drops", new TypeError("Failed to fetch")],
+    [
+      "the server fails",
+      new ApiError(
+        "Virus scanning failed: connection to clamav:3310 refused",
+        500,
+        null,
+      ),
+    ],
+    [
+      "the session has expired",
+      new ApiError("Token validation failed: signature expired", 401, null),
+    ],
+  ])("names only the file when %s", async (_case, error) => {
+    uploadFileDirect.mockRejectedValue(error);
+    render(<ComposerWithFile />);
+    const textarea = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Message",
+    });
+    fireEvent.change(textarea, { target: { value: "summarise this" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "File upload failed",
+          description: "notes.pdf",
+        }),
+      ),
+    );
+    await waitFor(() => expect(textarea.value).toBe("summarise this"));
+  });
+
+  it("shortens a long reason", async () => {
+    uploadFileDirect.mockRejectedValue(
+      new ApiError("x".repeat(500), 400, null),
+    );
+    render(<ComposerWithFile />);
+    const textarea = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Message",
+    });
+    fireEvent.change(textarea, { target: { value: "summarise this" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: `notes.pdf: ${"x".repeat(300)}…`,
+        }),
+      ),
+    );
+    await waitFor(() => expect(textarea.value).toBe("summarise this"));
+  });
 });
