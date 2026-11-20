@@ -768,7 +768,7 @@ async def execute_node(
             ):
                 # Outside the `except ValueError` above, so a field with a
                 # default can't fall back to running without the key.
-                raise credentials.expired_error()
+                raise credentials.expired_error(execution_context.user_timezone)
             if provider_matches(credentials.provider, "codex"):
                 await enforce_codex_access(user_id)
             extra_exec_kwargs[field_name] = credentials

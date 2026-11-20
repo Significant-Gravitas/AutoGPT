@@ -21,6 +21,7 @@ from typing import (
     get_args,
 )
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from prisma.enums import BriefingFrequency, CreditTransactionType, SubscriptionTier
 from pydantic import (
@@ -472,13 +473,18 @@ class APIKeyCredentials(_BaseCredentials):
             return False
         return self.expires_at <= (int(time.time()) if now is None else now)
 
-    def expired_error(self) -> CredentialsExpiredError:
+    def expired_error(self, user_timezone: str = "UTC") -> CredentialsExpiredError:
+        """Dated in *user_timezone* (an IANA name), so its owner reads the day
+        they picked; in UTC when that zone is unknown."""
+        try:
+            zone = ZoneInfo(user_timezone)
+        except (KeyError, ValueError):  # not a zone name, or not one we know
+            zone = ZoneInfo("UTC")
         # Clamped: a key stored with a far-past expiry still gets this message.
-        expired_on = datetime.fromtimestamp(max(self.expires_at or 0, 0), timezone.utc)
+        expired_on = datetime.fromtimestamp(max(self.expires_at or 0, 0), zone)
         name = f" '{self.title}'" if self.title else ""
         return CredentialsExpiredError(
-            f"API key{name} expired on {expired_on:%Y-%m-%d %H:%M} UTC. "
-            "Add a new key."
+            f"API key{name} expired on {expired_on:%Y-%m-%d %H:%M %Z}. Add a new key."
         )
 
     def auth_header(self) -> str:

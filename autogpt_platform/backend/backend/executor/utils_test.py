@@ -34,6 +34,7 @@ from backend.executor.utils import (
     CRED_ERR_UNKNOWN_PREFIX,
     ExecutionNotRequeuedError,
     _is_optional_picker,
+    _user_timezone,
     _validate_node_input_credentials,
     add_graph_execution,
     is_credential_validation_error_message,
@@ -4591,6 +4592,10 @@ async def test_validate_node_input_credentials_rejects_expired_api_key(
         "backend.executor.utils.get_integration_credentials_store",
         return_value=store,
     )
+    user_timezone = mocker.patch(
+        "backend.executor.utils._user_timezone",
+        new=mocker.AsyncMock(return_value="America/Chicago"),
+    )
     node = Node(
         block_id=GithubCommentBlock().id,
         input_default={
@@ -4609,8 +4614,33 @@ async def test_validate_node_input_credentials_rejects_expired_api_key(
         assert message.startswith(CRED_ERR_NOT_AVAILABLE_PREFIX)
         assert "API key 'GitHub key' expired on" in message
         assert is_credential_validation_error_message(message)
+        # Dated in the user's own zone, so it names the day they picked.
+        assert message.endswith(str(key.expired_error("America/Chicago")))
+        user_timezone.assert_awaited_once_with("user-1")
     else:
         assert node.id not in errors
+        # Nothing to date, so the user isn't read.
+        user_timezone.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "lookup, zone",
+    [
+        ({"return_value": MockObject(timezone="Europe/Paris")}, "Europe/Paris"),
+        ({"side_effect": ValueError("User not found")}, "UTC"),
+    ],
+    ids=["set", "no-such-user"],
+)
+async def test_user_timezone_reads_the_users_setting(
+    mocker: MockerFixture, lookup: dict, zone: str
+):
+    mocker.patch("backend.executor.utils.prisma.is_connected", return_value=True)
+    mocker.patch(
+        "backend.executor.utils.user_db.get_user_by_id",
+        new=mocker.AsyncMock(**lookup),
+    )
+
+    assert await _user_timezone("user-1") == zone
 
 
 @pytest.mark.parametrize(

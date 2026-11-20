@@ -1646,17 +1646,25 @@ class TestExecuteBlockCredentialRejection:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_scheduled_turn_is_told_the_key_expired(self):
-        with patch(
-            "backend.copilot.tools.helpers.is_unattended_turn", return_value=True
+        key = self._expired_key()
+        chicago = MagicMock(timezone="America/Chicago")
+        users = MagicMock(get_user_by_id=AsyncMock(return_value=chicago))
+        with (
+            patch(
+                "backend.copilot.tools.helpers.is_unattended_turn", return_value=True
+            ),
+            patch("backend.copilot.tools.helpers.user_db", return_value=users),
         ):
             response = await self._run(
-                RuntimeError("the block must not run"), stored=self._expired_key()
+                RuntimeError("the block must not run"), stored=key
             )
 
         assert isinstance(response, ErrorResponse)
         assert response.error == "credential_rejected"
         assert "'Work Ayrshare key' has expired, so block" in response.message
         assert "Work Ayrshare key' expired on " in response.message
+        # Dated in the user's own zone, so it names the day they picked.
+        assert str(key.expired_error("America/Chicago")) in response.message
         assert "could not be refreshed" not in response.message
         assert "sk-expired" not in response.message
         # The stored title is not ours, so the content judge reads both places

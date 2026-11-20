@@ -362,8 +362,8 @@ def test_a_runnable_sdk_default_still_counts_as_a_usable_credential(ask):
 
 @pytest.mark.parametrize("ask", [True, False], ids=["watched", "unattended"])
 def test_an_expired_key_never_shadows_a_valid_one(ask):
-    # #16234: stored first, an expired key used to be picked by a scheduled
-    # turn (then refused) or offered as a second account to choose from.
+    # #16234: an expired key stored first must not be picked by a scheduled
+    # turn (only to be refused) or offered as a second account to choose from.
     expired = _key_cred("expired")
     expired.expires_at = 1_000_000_000  # 2001
     valid = _key_cred("valid")

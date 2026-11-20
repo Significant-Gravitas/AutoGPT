@@ -520,7 +520,7 @@ async def execute_block(
                         matched_credentials={field_name: cred_meta},
                         session_id=session_id,
                         status_code=None,
-                        exc=credentials.expired_error(),
+                        exc=credentials.expired_error(user_timezone),
                         expired=True,
                     )
                 exec_kwargs[field_name] = credentials
