@@ -417,7 +417,31 @@ def test_the_login_name_is_the_accounts_own() -> None:
         return
     import pwd
 
-    assert _login_name() == pwd.getpwuid(os.getuid()).pw_name
+    try:
+        expected: str | None = pwd.getpwuid(os.getuid()).pw_name
+    except KeyError:
+        # An account the user database has no entry for (a container run
+        # under a numeric ID): it has no login name, and the test's own
+        # lookup failed here before it compared anything.
+        expected = None
+    assert _login_name() == expected
+
+
+def test_an_account_the_user_database_does_not_know_has_no_login_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from autogpt_local_executor.directory_browser import _login_name
+
+    if sys.platform == "win32":
+        pytest.skip("no user database of that kind")
+    import pwd
+
+    def unknown(_uid: int) -> None:
+        raise KeyError("getpwuid(): uid not found")
+
+    monkeypatch.setattr(pwd, "getpwuid", unknown)
+
+    assert _login_name() is None
 
 
 @pytest.mark.parametrize("platform_name", ["darwin", "linux", "wsl2", "windows"])
