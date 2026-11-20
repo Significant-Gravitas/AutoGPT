@@ -11,7 +11,11 @@ import logging
 
 from pydantic import SecretStr
 
-from backend.data.model import APIKeyCredentials, Credentials
+from backend.data.model import (
+    APIKeyCredentials,
+    Credentials,
+    platform_funded_managed_id,
+)
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.integrations.managed_credentials import ManagedCredentialProvider
 from backend.util.settings import Settings
@@ -49,6 +53,9 @@ class AgentMailManagedProvider(ManagedCredentialProvider):
         )
 
         return APIKeyCredentials(
+            # The platform pays AgentMail for this key, so its ID marks it for
+            # billing at the platform price.
+            id=platform_funded_managed_id(self.provider_name),
             provider=self.provider_name,
             title="AgentMail (managed by AutoGPT)",
             api_key=SecretStr(api_key_obj.api_key),

@@ -338,7 +338,7 @@ class GraphExecutionResult(TypedDict):
     execution_id: str
     status: str
     nodes: list[ExecutionNode]
-    output: Optional[list[dict[str, str]]]
+    output: Optional[list[dict[str, Any]]]
 
 
 @v1_router.get(

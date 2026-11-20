@@ -446,5 +446,27 @@ async def test_unified_hybrid_search_schema_prefix():
         assert '"UnifiedContentEmbedding"' in sql_template
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_unified_hybrid_search_matches_categories_literally():
+    """The category score is a LIKE, so `%` and `_` are escaped there; the
+    lexical and semantic signals still get the text as typed."""
+    with (
+        patch(
+            "backend.api.features.search.hybrid_search.query_raw_with_schema",
+            return_value=[],
+        ) as mock_query,
+        patch(
+            "backend.api.features.search.hybrid_search.embed_query",
+            return_value=[0.1] * embeddings.EMBEDDING_DIM,
+        ) as mock_embed,
+    ):
+        await unified_hybrid_search(query="Mark_ting 100%", page=1, page_size=20)
+
+    params = mock_query.call_args.args[1:]
+    assert params[0] == "Mark_ting 100%"
+    assert params[1] == r"mark\_ting 100\%"
+    assert mock_embed.call_args.args[0] == "Mark_ting 100%"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

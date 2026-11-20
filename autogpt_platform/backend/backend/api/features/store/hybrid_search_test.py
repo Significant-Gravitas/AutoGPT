@@ -359,3 +359,25 @@ async def test_hybrid_search_error_handling():
                 )
 
             assert "Database connection error" in str(exc_info.value)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_hybrid_search_matches_categories_literally():
+    """The category score is a LIKE, so `%` and `_` are escaped there; the
+    lexical and semantic signals still get the text as typed."""
+    with (
+        patch(
+            "backend.api.features.store.hybrid_search.query_raw_with_schema",
+            return_value=[],
+        ) as mock_query,
+        patch(
+            "backend.api.features.store.hybrid_search.embed_query",
+            return_value=[0.1] * embeddings.EMBEDDING_DIM,
+        ) as mock_embed,
+    ):
+        await hybrid_search(query="Mark_ting 100%", page=1, page_size=10)
+
+    params = mock_query.call_args.args[1:]
+    assert params[0] == "Mark_ting 100%"
+    assert params[1] == r"mark\_ting 100\%"
+    assert mock_embed.call_args.args[0] == "Mark_ting 100%"
