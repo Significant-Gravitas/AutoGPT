@@ -8,6 +8,7 @@ rows go through ``sanitize_json`` as Postgres's JSON column does.
 import asyncio
 import base64
 import json
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -21,6 +22,7 @@ from backend.copilot.gate import ALLOW, Decision, held, reads
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads import read_review_id
+from backend.copilot.gate.spent_approval import UnconfirmedSpend
 from backend.copilot.model import (
     AutopilotMode,
     ChatMessage,
@@ -37,6 +39,7 @@ from backend.copilot.sdk.tool_adapter import (
     set_execution_context,
 )
 from backend.copilot.tools.base import BaseTool
+from backend.copilot.tools.find_library_agent import FindLibraryAgentTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.copilot.tools.workspace_files import ReadWorkspaceFileTool
 from backend.copilot.trial_cost_context import (
@@ -44,6 +47,7 @@ from backend.copilot.trial_cost_context import (
     capture_cost_context,
     restore_cost_context,
 )
+from backend.data.graph import GraphModel, NodeModel
 from backend.util.json import sanitize_json
 
 _READS = "backend.copilot.gate.reads"
@@ -60,10 +64,23 @@ class _Rows:
         self.held: list[held.HeldCall] = []
 
     async def find_review(self, review_id, user_id, session_id):
-        return self.rows.get(review_id)
+        row = self.rows.get(review_id)
+        # A copy, as a read is: answering the card later leaves it as read.
+        return SimpleNamespace(**vars(row)) if row else None
 
-    async def consume(self, review_id, user_id):
-        return self.rows.pop(review_id, None) is not None
+    async def consume(self, review, user_id):
+        # The row as read: answered differently or replaced since, it stays.
+        stored = self.rows.get(review.node_exec_id)
+        if stored is None or (stored.status, stored.created_at) != (
+            review.status,
+            review.created_at,
+        ):
+            return False
+        del self.rows[review.node_exec_id]
+        return True
+
+    async def discard(self, review, user_id):
+        await self.consume(review, user_id)
 
     async def remember(self, session_id, call):
         self.held.append(call)
@@ -72,8 +89,8 @@ class _Rows:
     async def held_calls(self, session_id):
         return {call.review_id: call for call in self.held}
 
-    async def claim(self, session_id, review_id):
-        kept = [call for call in self.held if call.review_id != review_id]
+    async def claim(self, session_id, call):
+        kept = [held for held in self.held if held is not call]
         claimed, self.held = len(kept) < len(self.held), kept
         return claimed
 
@@ -157,6 +174,7 @@ def rows():
         ),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
+        patch.object(review_store, "discard", fake.discard),
         patch.object(held, "remember", fake.remember),
         patch.object(held, "_held", fake.held_calls),
         patch.object(held, "_claim", fake.claim),
@@ -224,6 +242,32 @@ async def test_flagged_content_is_held_and_clean_content_is_not(rows, verdict):
     else:
         assert result.output == _plain_output(_MARKER)
         assert rows.rows == {}
+
+
+async def test_a_read_held_as_an_identical_read_opened_the_card_is_told_it_waits(
+    rows,
+):
+    """Two identical reads both found no card, and the first opened it. The
+    second's held copy would never be answered, so it is dropped and the read
+    is told the content is withheld, as a read a moment later would be."""
+    opened = rows.open_review_row
+
+    async def get_or_create(review_id, *args):
+        return review_id in rows.rows or await opened(review_id, *args)
+
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await _call(_Fetch(_MARKER), _session())
+        (first,) = rows.held
+        with (
+            patch.object(review_store, "find_review", AsyncMock(return_value=None)),
+            patch.object(review_store, "open_review_row", get_or_create),
+        ):
+            result = await _call(_Fetch(_MARKER), _session())
+
+    assert "withheld while the user reviews it" in json.loads(result.output)["message"]
+    assert rows.held == [first]
+    (row,) = rows.rows.values()
+    assert row.payload[review_store.HELD_GENERATION] == first.generation
 
 
 async def test_a_judge_that_could_not_decide_holds(rows):
@@ -638,12 +682,46 @@ async def test_a_released_read_a_re_read_already_took_is_not_reported_declined(r
         await tool.execute("user-1", _session(), "call-7", url="u")
     rows.answer(ReviewStatus.APPROVED)
     (review,) = rows.rows.values()
-    await rows.consume(review.node_exec_id, "user-1")
+    await rows.consume(review, "user-1")
 
     outcome, late = await reads.answered_read("user-1", review)
 
     assert outcome == "closed"
     assert "declined" not in late and _MARKER not in late
+
+
+async def test_a_late_read_whose_spend_fails_is_not_reported_as_delivered(rows):
+    """The spend raising leaves the bytes unreleased, so the fold must hear
+    that nothing was delivered, not that the read may have run."""
+    tool = _Fetch(_MARKER)
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await tool.execute("user-1", _session(), "call-7", url="u")
+    rows.answer(ReviewStatus.APPROVED)
+    (review,) = rows.rows.values()
+
+    with patch.object(
+        review_store, "consume", AsyncMock(side_effect=ConnectionError("db"))
+    ):
+        with pytest.raises(UnconfirmedSpend):
+            await reads.answered_read("user-1", review)
+
+
+async def test_a_re_read_whose_spend_fails_refuses_and_releases_nothing(rows):
+    """The spend raising is no miss: the read refuses as unchecked, and the
+    approved bytes stay unreleased for the card's own answer."""
+    tool = _Fetch(_MARKER)
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await tool.execute("user-1", _session(), "call-7", url="u")
+    rows.answer(ReviewStatus.APPROVED)
+
+    with patch.object(
+        review_store, "consume", AsyncMock(side_effect=ConnectionError("db"))
+    ):
+        again = await _call(tool, _session())
+
+    assert "could not be checked" in json.loads(again.output)["message"]
+    assert _MARKER not in again.output
+    assert len(rows.rows) == 1
 
 
 async def test_a_re_read_that_loses_the_race_is_not_told_the_user_declined(rows):
@@ -741,7 +819,7 @@ async def test_an_expired_release_already_delivered_reports_it_was_delivered(row
     rows.answer(ReviewStatus.APPROVED)
     (review,) = rows.rows.values()
     review.reviewed_at = datetime.now(UTC) - timedelta(hours=2)
-    await rows.consume(review.node_exec_id, "user-1")
+    await rows.consume(review, "user-1")
 
     outcome, _ = await reads.answered_read("user-1", review)
 
@@ -1391,6 +1469,120 @@ async def test_a_sandbox_files_lines_are_judged_and_an_empty_grep_is_not(
         empty = await grep({"pattern": "nothing"})
     judge.assert_not_awaited()
     assert "No matches found." in _text_from_mcp_result(empty)
+
+
+@pytest.mark.parametrize("lookup", [{"agent_id": "graph-1"}, {"query": "digest"}])
+@pytest.mark.parametrize(
+    "owned, copied",
+    [(False, False), (True, True)],
+    ids=["another user's graph", "the user's copy of a graph"],
+)
+async def test_a_library_graph_is_judged_without_the_listing_around_it(
+    rows, lookup, owned, copied
+):
+    judge = _judge(_HELD)
+    with (
+        patch(f"{_READS}.judge_content", judge),
+        _library_with_graph(owned=owned, copied=copied),
+    ):
+        result = await _call(
+            FindLibraryAgentTool(), _session(), {**lookup, "include_graph": True}
+        )
+
+    judged = judge.await_args.kwargs["text"]
+    assert _MARKER in judged and _STORE_VALUE in judged
+    assert "/library/agents/" not in judged
+    assert _MARKER not in result.output and len(rows.rows) == 1
+    # The card and the chain row are copy, which never says "agent".
+    (row,) = rows.rows.values()
+    assert "agent" not in json.dumps(row.payload["headline"])
+    assert "agent" not in json.loads(result.output)["ask"]
+
+
+@pytest.mark.parametrize(
+    "lookup, owned, listed",
+    [
+        ({"agent_id": "graph-1"}, False, ["lib-1"]),
+        ({"for_creation": True, "goal_summary": "a daily digest"}, False, ["lib-1"]),
+        ({"for_creation": True}, False, []),
+        ({"agent_id": "graph-1", "include_graph": True}, True, ["lib-1"]),
+    ],
+    ids=["no graph", "a create-time match", "no create-time goal", "the user's graph"],
+)
+async def test_a_library_lookup_without_someone_elses_graph_is_not_judged(
+    rows, lookup, owned, listed
+):
+    judge = _judge(_HELD)
+    with patch(f"{_READS}.judge_content", judge), _library_with_graph(owned):
+        result = await _call(FindLibraryAgentTool(), _session(), lookup)
+
+    judge.assert_not_awaited()
+    assert result.success and rows.rows == {}
+    agents = json.loads(result.output).get("agents", [])
+    assert [agent["id"] for agent in agents] == listed
+
+
+def _library_with_graph(owned: bool = False, copied: bool = False):
+    """One library entry whose graph, typed as ``get_graph`` returns it, carries
+    the marker; ``owned`` is whether the user holds that graph, ``copied``
+    whether it was copied from another, and the create-time search finds it."""
+    entry = SimpleNamespace(
+        id="lib-1",
+        name="Daily digest",
+        description="Sends a digest",
+        creator_name="creator",
+        status=SimpleNamespace(value="ready"),
+        can_access_graph=owned,
+        has_external_trigger=False,
+        new_output=False,
+        graph_id="graph-1",
+        graph_version=1,
+        input_schema={},
+        output_schema={},
+        trigger_setup_info=None,
+        organization_id=None,
+    )
+    node = NodeModel(
+        id="node-1",
+        block_id=_STORE_VALUE,
+        input_default={"input": _MARKER},
+        graph_id="graph-1",
+        graph_version=1,
+    )
+    graph = GraphModel(
+        id="graph-1",
+        name="Daily digest",
+        description="Sends a digest",
+        nodes=[node],
+        user_id="creator-1",
+        created_at=datetime.now(UTC),
+    )
+    library = SimpleNamespace(
+        get_library_agent=AsyncMock(return_value=entry),
+        get_library_agent_by_graph_id=AsyncMock(return_value=entry),
+        list_library_agents=AsyncMock(return_value=SimpleNamespace(agents=[entry])),
+    )
+    graphs = SimpleNamespace(
+        get_graph=AsyncMock(return_value=graph),
+        get_copied_graph_ids=AsyncMock(side_effect=lambda ids: ids if copied else []),
+    )
+    stack = ExitStack()
+    for name, db in (
+        ("agent_search.library_db", library),
+        ("agent_search.graph_db", graphs),
+        ("find_library_agent.graph_db", graphs),
+    ):
+        stack.enter_context(patch(f"backend.copilot.tools.{name}", lambda db=db: db))
+    stack.enter_context(
+        patch(
+            "backend.copilot.tools.agent_search.hybrid_search_library_agents",
+            AsyncMock(return_value=[{"content_id": "lib-1", "combined_score": 0.9}]),
+        )
+    )
+    stack.enter_context(
+        patch("backend.copilot.tools.agent_search.track_library_check_outcome")
+    )
+    return stack
 
 
 # A scheduled turn's step that could not run answers with the platform's own

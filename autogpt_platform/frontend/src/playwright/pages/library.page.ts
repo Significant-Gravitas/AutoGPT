@@ -511,8 +511,9 @@ export async function clickRunButton(page: Page): Promise<void> {
   ];
 
   await page.waitForLoadState("domcontentloaded");
-  await page.waitForLoadState("networkidle").catch(() => undefined);
 
+  // The page is ready once one of these task buttons shows; they render
+  // after the agent's data has loaded.
   const timeoutAt = Date.now() + 20000;
 
   while (Date.now() < timeoutAt) {
@@ -1061,44 +1062,21 @@ export async function importAgentFromFile(
     .then(() => true)
     .catch(() => false);
   if (sawUploadingState) {
-    const uploadingState = await uploadingButton
-      .evaluateAll((buttons) => {
-        const visibleButton = buttons.find((button) => {
-          const { width, height } = button.getBoundingClientRect();
-          return (
-            width > 0 &&
-            height > 0 &&
-            window.getComputedStyle(button).visibility !== "hidden"
-          );
-        });
-        if (!visibleButton) {
-          return "gone" as const;
-        }
-        return visibleButton.matches(":disabled") ||
-          visibleButton.getAttribute("aria-disabled") === "true"
-          ? ("disabled" as const)
-          : ("enabled" as const);
-      })
-      .catch(async (error: unknown) => {
-        if (
-          !(error instanceof Error) ||
-          !error.message.includes("Execution context was destroyed")
-        ) {
-          throw error;
-        }
-        if (!/\/build/.test(page.url())) {
-          await page
-            .waitForURL(/\/build/, {
-              timeout: 500,
-              waitUntil: "commit",
-            })
-            .catch(() => {
-              throw error;
-            });
-        }
-        return "build" as const;
-      });
-
+    // The import loads /build as soon as the graph is saved, often in the
+    // middle of this read, so a failed read is retried rather than taken as
+    // a disabled button. Only a page that has left for /build, or a button
+    // that is gone, has nothing left to check.
+    const visibleUploadingButton = uploadingButton
+      .filter({ visible: true })
+      .first();
+    let uploadingState:
+      | Awaited<ReturnType<typeof readUploadingState>>
+      | undefined;
+    await expect(async () => {
+      uploadingState = await readUploadingState(page, visibleUploadingButton);
+    }, 'the "Uploading..." button should be readable').toPass({
+      timeout: 30000,
+    });
     expect(
       uploadingState,
       'upload button should be disabled while "Uploading..." is visible',
@@ -1179,6 +1157,13 @@ export async function importAgentFromFile(
   ).not.toBe("");
 
   return { libraryPage, importedAgent, graphID };
+}
+
+async function readUploadingState(page: Page, button: Locator) {
+  if (/\/build/.test(page.url()) || (await button.count()) === 0) {
+    return "gone";
+  }
+  return (await button.isEnabled({ timeout: 1000 })) ? "enabled" : "disabled";
 }
 
 export async function openSavedAgentInLibrary(

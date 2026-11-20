@@ -1,6 +1,16 @@
 from backend.data import db
 
 
+def auth_session_db():
+    if db.is_connected():
+        from backend.data.auth import session as auth_session_store
+
+        return auth_session_store
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def background_task_db():
     if db.is_connected():
         from backend.copilot import background_task_db as store
@@ -24,6 +34,12 @@ def chat_db():
     return chat_db
 
 
+def chat_db_is_local() -> bool:
+    """Whether ``chat_db()`` is this process's own Prisma client, not the
+    database manager's RPC."""
+    return db.is_connected()
+
+
 def experts_db():
     if db.is_connected():
         from backend.api.features.experts import experts_db as _experts_db
@@ -35,6 +51,19 @@ def experts_db():
         experts_db = get_database_manager_async_client()
 
     return experts_db
+
+
+def expert_kickoff_db():
+    if db.is_connected():
+        from backend.api.features.experts import kickoff as _kickoff
+
+        expert_kickoff_db = _kickoff
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        expert_kickoff_db = get_database_manager_async_client()
+
+    return expert_kickoff_db
 
 
 def expert_check_db():
@@ -52,6 +81,19 @@ def expert_check_db():
         expert_check_db = get_database_manager_async_client(should_retry=False)
 
     return expert_check_db
+
+
+def feedback_prompts_db():
+    if db.is_connected():
+        from backend.data import feedback_prompts as _feedback_prompts_db
+
+        feedback_prompts_db = _feedback_prompts_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        feedback_prompts_db = get_database_manager_async_client()
+
+    return feedback_prompts_db
 
 
 def spend_approval_db():

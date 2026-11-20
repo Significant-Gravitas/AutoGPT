@@ -1,5 +1,6 @@
 import type { HTTPValidationError } from "@/app/api/__generated__/models/hTTPValidationError";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { v4 as uuidv4 } from "uuid";
 import type { OrbScreen } from "./components/MicButton";
 import type { ScreenState } from "./useBrainDumpStep";
 
@@ -97,7 +98,9 @@ export function pickMimeType() {
 }
 
 export function newRecordingId() {
-  return crypto.randomUUID();
+  // uuidv4({}) rather than crypto.randomUUID, which Chrome added only in 92
+  // and which is missing on plain HTTP.
+  return uuidv4({});
 }
 
 export const BRAIN_DUMP_HEADLINE = "Talk to me about your work";
@@ -113,7 +116,9 @@ const INSUFFICIENT_DUMP_ERROR_CODES = [
   "insufficient_content",
 ] as const;
 
-export function isInsufficientDump(errorCode: unknown) {
+export function isInsufficientDump(
+  errorCode: unknown,
+): errorCode is (typeof INSUFFICIENT_DUMP_ERROR_CODES)[number] {
   return (
     typeof errorCode === "string" &&
     INSUFFICIENT_DUMP_ERROR_CODES.some((code) => code === errorCode)

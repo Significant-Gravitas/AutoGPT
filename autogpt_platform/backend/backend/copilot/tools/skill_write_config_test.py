@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -125,17 +126,50 @@ async def test_later_skill_batch_observes_a_changed_file_size_limit(
 
 
 @pytest.mark.asyncio
-async def test_skill_batch_rechecks_quota_before_each_package(package_writes):
+@pytest.mark.parametrize("final_limit", [1, 10_000_000])
+async def test_skill_batch_rechecks_quota_before_each_package(
+    monkeypatch, package_writes, final_limit
+):
     _, publisher, _, limit, _ = package_writes
-    limit.side_effect = [10_000_000, 1, 10_000_000]
+    limit.side_effect = [10_000_000, 1, final_limit]
+    invalidate = AsyncMock()
+    monkeypatch.setattr(skills, "invalidate_skills_index_cache", invalidate)
 
     first, second, third = await _write_batch()
 
     assert isinstance(first, skills.StoredSkill)
     assert isinstance(second, ValueError)
     assert "Storage limit exceeded" in str(second)
-    assert isinstance(third, skills.StoredSkill)
+    expected = skills.StoredSkill if final_limit > 1 else ValueError
+    assert isinstance(third, expected)
     assert [
         call.args[0].path
         for call in publisher.publish_workspace_skill_file.await_args_list
-    ] == ["/skills/skill-0/SKILL.md", "/skills/skill-2/SKILL.md"]
+    ] == ["/skills/skill-0/SKILL.md"] + (
+        ["/skills/skill-2/SKILL.md"] if final_limit > 1 else []
+    )
+    invalidate.assert_awaited_once_with("owner", None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["stored", "reply_lost", "cancelled"])
+async def test_package_publication_still_invalidates_on_success_or_uncertainty(
+    monkeypatch, package_writes, outcome
+):
+    _, publisher, _, _, _ = package_writes
+    invalidate = AsyncMock()
+    monkeypatch.setattr(skills, "invalidate_skills_index_cache", invalidate)
+    if outcome == "reply_lost":
+        publisher.publish_workspace_skill_file.side_effect = RuntimeError("reply lost")
+    elif outcome == "cancelled":
+        publisher.publish_workspace_skill_file.side_effect = asyncio.CancelledError()
+
+    if outcome == "cancelled":
+        with pytest.raises(asyncio.CancelledError):
+            await _write_batch()
+    else:
+        results = await _write_batch()
+        expected = skills.StoredSkill if outcome == "stored" else RuntimeError
+        assert all(isinstance(result, expected) for result in results)
+
+    invalidate.assert_awaited_once_with("owner", None)

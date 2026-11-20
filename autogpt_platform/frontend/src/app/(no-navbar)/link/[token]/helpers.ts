@@ -19,9 +19,25 @@ export function getPlatformDisplayName(raw: string | null | undefined): string {
   return PLATFORM_NAMES[raw.toUpperCase()] ?? raw;
 }
 
-export function getLoginRedirect(token: string | null): string {
-  const next = token ? `/link/${token}` : "/";
-  return `/login?next=${encodeURIComponent(next)}`;
+interface RedirectArgs {
+  token: string | null;
+  telegramAuth?: Record<string, string> | null;
+}
+
+export function getLoginRedirect(args: RedirectArgs): string {
+  return `/login?next=${encodeURIComponent(getReturnPath(args))}`;
+}
+
+export function getSignupRedirect(args: RedirectArgs): string {
+  return `/signup?next=${encodeURIComponent(getReturnPath(args))}`;
+}
+
+// Signing in must not drop the identity a Telegram button put in this page's
+// URL: a group link can only be confirmed with it.
+function getReturnPath({ token, telegramAuth }: RedirectArgs): string {
+  if (!token) return "/";
+  if (!telegramAuth) return `/link/${token}`;
+  return `/link/${token}?${new URLSearchParams(telegramAuth).toString()}`;
 }
 
 export function isUserLink(linkType: LinkType | undefined): boolean {

@@ -18,6 +18,7 @@ const minted = new Map<string, { token: string; mintedAt: number }>();
  * visitor by it. Null when no trusted proxy reports the address, when it is not
  * usable, or when signing fails; the backend then keys on its own peer address.
  */
+// Documented in docs/platform/client-ip.md: update it with any change here.
 export async function getClientIPToken(requestHeaders: Headers) {
   const ip = readClientIP(requestHeaders);
   if (!ip) return null;
