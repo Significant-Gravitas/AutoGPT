@@ -9,7 +9,8 @@ An assert bounds elapsed wall-clock time from above when it requires, by
   through a variable, scaled by a constant (``* 1000`` for milliseconds) or
   kept by ``round``, ``abs``, ``int`` or ``float``, or returned by a function
   of the same module, whole or as one item of a tuple
-  (``out, waited = await self._timed()``); or
+  (``out, waited = await self._timed()``), unless an assignment, an import
+  or a decorator may stand in for that function; or
 - a fresh clock read below a deadline set from an earlier one
   (``clock() < deadline`` where ``deadline = clock() + 1``, or
   ``clock() < started + 1``).
@@ -49,6 +50,8 @@ _WALL_CLOCKS = {
 _LOOP_GETTERS = frozenset({"get_running_loop", "get_event_loop"})
 # Calls that keep the value they are given as a time span.
 _SPAN_PRESERVING_CALLS = frozenset({"abs", "float", "int", "round"})
+# Decorators after which calling the function still runs its own body.
+_TRANSPARENT_DECORATORS = frozenset({"classmethod", "staticmethod"})
 _ARITHMETIC = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -319,9 +322,17 @@ def _returned_scale(node: ast.expr, scope: _Scope) -> float | None:
 
 
 def _called_functions(call: ast.Call, scope: _Scope) -> list[_Scope]:
-    """The module's functions *call* runs: for ``f()`` those the nearest
-    scope defining ``f`` defines, for ``self.f()`` or ``cls.f()`` the methods
-    of the caller's class; for any other call, none."""
+    """The module's functions *call* runs, or none when that is unknown: when
+    a decorator may have replaced one (``_replaced``)."""
+    found = _defined_functions(call, scope)
+    return [] if any(_replaced(f.node) for f in found) else found
+
+
+def _defined_functions(call: ast.Call, scope: _Scope) -> list[_Scope]:
+    """The ``def``s *call* names: for ``f()`` those of the nearest scope
+    binding ``f``, for ``self.f()`` or ``cls.f()`` the caller's class's. None
+    when that scope or class body also binds the name some other way (an
+    assignment, an import), and none for any other call."""
     functions = scope.root.functions
     func = call.func
     if isinstance(func, ast.Name):
@@ -332,7 +343,9 @@ def _called_functions(call: ast.Call, scope: _Scope) -> list[_Scope]:
                 for f in functions.get(func.id, [])
                 if f.outer is here and f.cls is None
             ]
-            if found or func.id in here.values or func.id in here.imports:
+            if func.id in here.values or func.id in here.imports:
+                return []
+            if found:
                 return found
             here = here.outer
         return []
@@ -343,8 +356,31 @@ def _called_functions(call: ast.Call, scope: _Scope) -> list[_Scope]:
     caller = scope
     while caller.cls is None and caller.outer is not None:
         caller = caller.outer
-    methods = functions.get(func.attr, [])
-    return [f for f in methods if caller.cls is not None and f.cls is caller.cls]
+    if caller.cls is None or _rebinds(caller.cls, func.attr):
+        return []
+    return [f for f in functions.get(func.attr, []) if f.cls is caller.cls]
+
+
+def _rebinds(cls: ast.ClassDef, name: str) -> bool:
+    """Whether the class body binds *name* other than by ``def``, as
+    ``timed = wrap(timed)`` does."""
+    return any(
+        isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Store)
+        and node.id == name
+        for node in _own_nodes(cls)
+    )
+
+
+def _replaced(function: ast.AST) -> bool:
+    """Whether a decorator may replace *function*, so that a call runs
+    something other than its body."""
+    if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return False
+    return any(
+        not (isinstance(d, ast.Name) and d.id in _TRANSPARENT_DECORATORS)
+        for d in function.decorator_list
+    )
 
 
 def _returned_values(function: ast.AST, index: int | None) -> Iterator[ast.expr]:

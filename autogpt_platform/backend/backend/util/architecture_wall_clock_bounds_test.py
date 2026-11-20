@@ -234,7 +234,8 @@ def test_the_scan_reads_test_modules_and_only_those(tmp_path: pathlib.Path):
             [],
         ),
         ("def test(ev):\n    assert ev.time() - started < 1", []),
-        # The join-grace tests' old shape (#15003): a helper returns the elapsed.
+        # A helper returns the elapsed time and the caller bounds it (the #15003
+        # join-grace pattern).
         (
             "_GRACE_MS = 300\n"
             "def _refresh():\n    return None, None\n"
@@ -294,6 +295,43 @@ def test_the_scan_reads_test_modules_and_only_those(tmp_path: pathlib.Path):
             "def timed():\n    return time.monotonic() - started\n"
             "def test(timed):\n    assert timed() < 1",
             [],
+        ),
+        (
+            "def timed():\n    return time.monotonic() - started\n"
+            "timed = other\nassert timed() < 1",
+            [],
+        ),
+        (
+            "def timed():\n    return time.monotonic() - started\n"
+            "timed = lambda: 0\nassert timed() < 1",
+            [],
+        ),
+        (
+            "def timed():\n    return time.monotonic() - started\n"
+            "from backend.fake.limits import timed\nassert timed() < 1",
+            [],
+        ),
+        (
+            "class T:\n    def timed(self):\n"
+            "        return time.monotonic() - started\n"
+            "    timed = wrap(timed)\n"
+            "    def test(self):\n        assert self.timed() < 1\n",
+            [],
+        ),
+        (
+            "def wrap(f):\n    return lambda: 0\n"
+            "@wrap\ndef timed():\n    return time.monotonic() - started\n"
+            "assert timed() < 1",
+            [],
+        ),
+        (
+            "class T:\n    @staticmethod\n    def timed():\n"
+            "        return time.monotonic() - started\n"
+            "    @classmethod\n    def timed_cls(cls):\n"
+            "        return time.monotonic() - started\n"
+            "    def test(self):\n"
+            "        assert self.timed() < 1\n        assert self.timed_cls() < 2\n",
+            [1.0, 2.0],
         ),
         (
             "class Timer:\n    def timed(self):\n"
