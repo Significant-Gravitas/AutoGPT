@@ -7,10 +7,16 @@ import re
 logger = logging.getLogger(__name__)
 
 _INPUT_TIER = re.compile(r"input_cost_per_token_above_([0-9]+)k_tokens")
+# Anthropic's documented cache prices as multiples of the input price, used
+# for a rate entry that omits them: reads 0.1x, 5-minute writes 1.25x and
+# 1-hour writes 2x.
+CACHE_READ_MULTIPLIER = 0.1
+CACHE_WRITE_5M_MULTIPLIER = 1.25
+CACHE_WRITE_1H_MULTIPLIER = 2.0
 _CACHE_MULTIPLIERS = {
-    "cache_read_input_token_cost": 0.1,
-    "cache_creation_input_token_cost": 1.25,
-    "cache_creation_input_token_cost_above_1hr": 2.0,
+    "cache_read_input_token_cost": CACHE_READ_MULTIPLIER,
+    "cache_creation_input_token_cost": CACHE_WRITE_5M_MULTIPLIER,
+    "cache_creation_input_token_cost_above_1hr": CACHE_WRITE_1H_MULTIPLIER,
 }
 
 

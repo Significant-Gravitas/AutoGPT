@@ -136,21 +136,33 @@ def test_highest_crossed_tier_wins_without_mutating_cached_rates(rate_file):
     assert card._load_rates()[MODEL] == rates
 
 
-def test_missing_cache_fields_scale_default_multipliers(rate_file):
+@pytest.mark.parametrize(
+    "prompt,read,ttl,expected",
+    [
+        # Below the tier, the rate card's own fallback.
+        (90_000, 60_000, "5m", 0.00485),
+        (90_000, 60_000, "1h", 0.0056),
+        # Above it, the tier's.
+        (150_000, 120_000, "5m", 0.02725),
+        (150_000, 120_000, "1h", 0.031),
+    ],
+)
+def test_missing_cache_fields_scale_default_multipliers(
+    rate_file, prompt, read, ttl, expected
+):
     rates, write = rate_file
     for key in list(rates):
         if key.startswith("cache_"):
             del rates[key]
     write(rates)
-    for ttl, expected in [("5m", 0.02725), ("1h", 0.031)]:
-        assert card.compute_anthropic_cost_usd(
-            model=MODEL,
-            prompt_tokens=150_000,
-            completion_tokens=2_000,
-            cache_read_tokens=120_000,
-            cache_creation_tokens=10_000,
-            cache_ttl=ttl,
-        ) == pytest.approx(expected)
+    assert card.compute_anthropic_cost_usd(
+        model=MODEL,
+        prompt_tokens=prompt,
+        completion_tokens=2_000,
+        cache_read_tokens=read,
+        cache_creation_tokens=10_000,
+        cache_ttl=ttl,
+    ) == pytest.approx(expected)
 
 
 @pytest.mark.parametrize(

@@ -33,20 +33,16 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from backend.copilot.anthropic_rate_tiers import apply_prompt_tier
+from backend.copilot.anthropic_rate_tiers import (
+    CACHE_READ_MULTIPLIER,
+    CACHE_WRITE_1H_MULTIPLIER,
+    CACHE_WRITE_5M_MULTIPLIER,
+    apply_prompt_tier,
+)
 
 logger = logging.getLogger(__name__)
 
 _RATES_PATH = Path(__file__).parent / "anthropic_rates.json"
-
-# Default cache-read multiplier when the source omits the field — Anthropic's
-# documented rate is 10% of the input rate (0.1×).
-_DEFAULT_CACHE_READ_MULTIPLIER = 0.1
-# Default 1h cache-write multiplier when the source omits the field —
-# Anthropic's documented rate is 2.0× input.
-_DEFAULT_CACHE_WRITE_1H_MULTIPLIER = 2.0
-# Default 5m cache-write multiplier — Anthropic's documented 1.25× input.
-_DEFAULT_CACHE_WRITE_5M_MULTIPLIER = 1.25
 
 # Conservative fallback rates used when the rate-card has no entry for the
 # configured model (a fresh Claude release before a vendor refresh, a
@@ -229,7 +225,7 @@ def compute_anthropic_cost_usd(
     cache_read_per_tok = (
         float(raw_cache_read)
         if isinstance(raw_cache_read, (int, float))
-        else input_per_tok * _DEFAULT_CACHE_READ_MULTIPLIER
+        else input_per_tok * CACHE_READ_MULTIPLIER
     )
 
     if cache_ttl == "5m":
@@ -237,7 +233,7 @@ def compute_anthropic_cost_usd(
         cache_write_per_tok = (
             float(raw_cache_write)
             if isinstance(raw_cache_write, (int, float))
-            else input_per_tok * _DEFAULT_CACHE_WRITE_5M_MULTIPLIER
+            else input_per_tok * CACHE_WRITE_5M_MULTIPLIER
         )
     else:
         # 1h is the documented default TTL for our deployments. Unknown
@@ -247,7 +243,7 @@ def compute_anthropic_cost_usd(
         cache_write_per_tok = (
             float(raw_cache_write)
             if isinstance(raw_cache_write, (int, float))
-            else input_per_tok * _DEFAULT_CACHE_WRITE_1H_MULTIPLIER
+            else input_per_tok * CACHE_WRITE_1H_MULTIPLIER
         )
 
     return (

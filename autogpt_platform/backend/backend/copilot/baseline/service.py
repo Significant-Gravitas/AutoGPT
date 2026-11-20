@@ -1051,6 +1051,9 @@ async def _baseline_llm_caller(
             max_tokens=max_tokens_arg,
         )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
+        # Everything the model wrote, including what the thinking stripper
+        # holds back or removes: Anthropic bills all of it as output.
+        generated = ""
         # Direct Anthropic streams no usage (no ``stream_options``), so a
         # request that reports none is priced from estimates when it ends.
         # Anthropic bills each request on its own, at its own prompt's tier.
@@ -1128,6 +1131,7 @@ async def _baseline_llm_caller(
                 _emit_all(state, state.reasoning_emitter.on_delta(delta))
 
                 if delta.content:
+                    generated += delta.content
                     # Text and reasoning must not interleave on the wire — the
                     # AI SDK maps distinct start/end pairs to distinct UI
                     # parts.  Close any open reasoning block before emitting
@@ -1165,8 +1169,9 @@ async def _baseline_llm_caller(
                         if tc.function and tc.function.arguments:
                             entry["arguments"] += tc.function.arguments
         except Exception as error:
-            # A request that failed before answering anything is not charged.
-            if not (round_text or tool_calls_by_index):
+            # A request that failed before the model wrote anything is not
+            # charged.
+            if not (generated or tool_calls_by_index):
                 unreported = False
             # The SDK uses bare APIError for an error SSE event. Transport and
             # response-validation subclasses do not establish provider failure.
@@ -1196,9 +1201,12 @@ async def _baseline_llm_caller(
             if unreported:
                 # Priced now, from what was sent: the updater adds this
                 # request's output and tool results to the conversation next.
-                await _price_unreported_request(
-                    state, final_messages, tools, round_text
+                # Its tool calls are output too.
+                output = generated + "".join(
+                    call["name"] + call["arguments"]
+                    for call in tool_calls_by_index.values()
                 )
+                await _price_unreported_request(state, final_messages, tools, output)
 
     finally:
         # Close open blocks on both normal and exception paths so the
@@ -1266,10 +1274,13 @@ async def _price_unreported_request(
     """Add one direct-Anthropic request that reported no usage to the turn.
 
     Its prompt is estimated from the messages and tool definitions it sent,
-    and its output from the text it streamed, so the rate card prices it at
-    the tier of its own prompt, the way Anthropic bills each request. The
-    tokens are counted on a worker thread: a turn can send up to
-    ``agent_max_turns`` prompts of 100K+ tokens.
+    and its output from everything the model wrote, text and tool calls, so
+    the rate card prices it at the tier of its own prompt, the way Anthropic
+    bills each request. The whole prompt is priced as fresh input: direct
+    mode calls Anthropic's OpenAI-compatible endpoint, which doesn't support
+    prompt caching, so it ignores the ``cache_control`` markers and bills no
+    cache reads or writes. The tokens are counted on a worker thread: a turn
+    can send up to ``agent_max_turns`` prompts of 100K+ tokens.
     """
     counted = state.tool_tokens
     estimate = partial(

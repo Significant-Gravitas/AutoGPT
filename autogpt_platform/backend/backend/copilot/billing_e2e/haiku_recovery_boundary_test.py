@@ -17,10 +17,12 @@ from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.util.prompt import estimate_token_count, estimate_token_count_str
 
 from . import provider as provider_module
+from . import wire
 from .baseline_turns import BaselineTurns
 from .invoice import Route
 from .ledger import PlatformLedger
 from .provider import FakeProvider
+from .replies import cache_ttl
 from .wire import TOOL_NAME
 
 MODEL = "claude-haiku-5-5"
@@ -83,20 +85,26 @@ async def test_recovery_prices_the_sent_prompt_before_conversation_growth(
             estimate_token_count(body["messages"], model=MODEL) + tools
             for body, tools in zip(sent, tool_tokens)
         ]
-        output_tokens = estimate_token_count_str(provider.answer, model=MODEL)
+        outputs = [
+            estimate_token_count_str(text, model=MODEL) for text in provider.written
+        ]
         assert all(tools > 0 for tools in tool_tokens)
         assert all(tokens < 100_000 for tokens in prompts)
         assert len(provider.bodies) == successful_requests + int(fail_followup)
+        assert len(outputs) == successful_requests
         if fail_followup:
             assert (
                 estimate_token_count(provider.bodies[-1]["messages"], model=MODEL)
                 > 100_000
             )
         else:
-            assert output_tokens > 100_000
-        # Every successful request bills its own prompt at the base price; the
-        # answer's output follows the base tier of the prompt that produced it.
-        expected = sum(prompts) * 0.1 + output_tokens * 0.5
+            assert outputs[-1] > 100_000
+        # Every request asks for caching, which Anthropic's OpenAI-compatible
+        # endpoint doesn't support, so each bills its whole prompt as input.
+        assert all(cache_ttl(body) == "1h" for body in sent)
+        # Every successful request bills its own prompt at the base price, and
+        # what it wrote, text and tool calls, at the base tier's output price.
+        expected = sum(prompts) * 0.1 + sum(outputs) * 0.5
         charged = [charge.microdollars for charge in ledger.spend]
         assert len(charged) == 1 and abs(charged[0] - expected) <= 1
         assert [charge.microdollars for charge in ledger.tree] == charged
@@ -112,6 +120,7 @@ class GrowingConversationProvider(FakeProvider):
         self.fail_followup = fail_followup
         self.successful_requests = successful_requests
         self.bodies: list[dict[str, Any]] = []
+        self.written: list[str] = []
 
     async def _chat(self, request: web.Request, route: Route) -> web.StreamResponse:
         self.bodies.append(await request.json())
@@ -144,6 +153,7 @@ class GrowingConversationProvider(FakeProvider):
                 }
                 for i in range(3 if final_request else 1)
             ]
+        self.written.append(wire.written(delta))
         finish = "tool_calls" if calls_tools else "stop"
         chunks = [
             {

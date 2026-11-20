@@ -14,6 +14,7 @@ from backend.copilot.tree import root_envelope
 from backend.util.prompt import estimate_token_count, estimate_token_count_str
 
 from . import provider as provider_module
+from . import wire
 from .baseline_turns import BaselineTurns
 from .invoice import Route
 from .ledger import PlatformLedger
@@ -186,7 +187,6 @@ class FailingStreamProvider(FakeProvider):
         assert len(self.bodies) <= self.requests
         last = len(self.bodies) == self.requests
         output = " amber" * 200
-        self.outputs.append(output)
         base = {
             "id": f"chatcmpl-failure-{len(self.bodies)}",
             "object": "chat.completion.chunk",
@@ -207,6 +207,7 @@ class FailingStreamProvider(FakeProvider):
                 }
                 for i in range(3)
             ]
+        self.outputs.append(wire.written(delta))
         chunks = [
             {**base, "choices": [{"index": 0, "delta": delta, "finish_reason": None}]}
         ]

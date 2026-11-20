@@ -83,7 +83,7 @@ from backend.copilot.response_model import (
 from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript import TranscriptDownload
 from backend.copilot.transcript_builder import TranscriptBuilder
-from backend.util.prompt import CompressResult
+from backend.util.prompt import CompressResult, estimate_token_count_str
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
 
 
@@ -3079,6 +3079,46 @@ class TestUnreportedRequestPricing:
             assert await asyncio.to_thread(counted.wait, 30)
 
         assert state.turn_prompt_tokens == 1_000
+        assert state.cost_usd is not None and state.cost_usd > 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "content",
+        [
+            # Stripped from the answer as reasoning.
+            "<thinking>Add the rows first.</thinking>The total is 42.",
+            "<thinking>Add the rows first.</thinking>",
+            # Held back as a possible tag until the stream ends.
+            "The total is 42 <thin",
+        ],
+    )
+    @pytest.mark.parametrize("dropped", [False, True])
+    async def test_text_kept_out_of_the_answer_is_billed_as_output(
+        self, content: str, dropped: bool
+    ):
+        state = _BaselineStreamState(model="claude-haiku-5-5")
+        stream = MagicMock()
+        stream.close = AsyncMock()
+
+        async def chunks():
+            yield _make_delta_chunk(content=content)
+            if dropped:
+                raise httpx.RemoteProtocolError("peer closed connection")
+
+        stream.__aiter__ = lambda self: chunks()
+        with _direct_anthropic(stream):
+            request = _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}], tools=[], state=state
+            )
+            if dropped:
+                with pytest.raises(httpx.RemoteProtocolError):
+                    await request
+            else:
+                await request
+
+        assert state.turn_completion_tokens == estimate_token_count_str(
+            content, model="claude-haiku-5-5"
+        )
         assert state.cost_usd is not None and state.cost_usd > 0
 
 
