@@ -4,6 +4,7 @@ import { LinkType } from "@/app/api/__generated__/models/linkType";
 import {
   getLoginRedirect,
   getPlatformDisplayName,
+  getSignupRedirect,
   isUserLink,
   TOKEN_PATTERN,
 } from "../helpers";
@@ -29,10 +30,28 @@ describe("platform linking helpers", () => {
   });
 
   test("builds the login redirect for valid and missing tokens", () => {
-    expect(getLoginRedirect("token-123")).toBe(
+    expect(getLoginRedirect({ token: "token-123" })).toBe(
       "/login?next=%2Flink%2Ftoken-123",
     );
-    expect(getLoginRedirect(null)).toBe("/login?next=%2F");
+    expect(getLoginRedirect({ token: null })).toBe("/login?next=%2F");
+  });
+
+  test("keeps a Telegram sign-in through login and sign-up", () => {
+    const telegramAuth = {
+      id: "424242",
+      auth_date: "1750000000",
+      hash: "abc123",
+    };
+    const next = encodeURIComponent(
+      "/link/token-123?id=424242&auth_date=1750000000&hash=abc123",
+    );
+
+    expect(getLoginRedirect({ token: "token-123", telegramAuth })).toBe(
+      `/login?next=${next}`,
+    );
+    expect(getSignupRedirect({ token: "token-123", telegramAuth })).toBe(
+      `/signup?next=${next}`,
+    );
   });
 
   test("identifies user link token types", () => {

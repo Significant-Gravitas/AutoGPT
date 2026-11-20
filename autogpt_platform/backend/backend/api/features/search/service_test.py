@@ -457,6 +457,25 @@ async def test_files_bucket_reranks_by_relevance_not_freshness(mocker):
 
 
 @pytest.mark.asyncio
+async def test_files_bucket_leaves_out_ottos_working_files(mocker):
+    """Search shows the user's files, not the working files Otto keeps."""
+    mock_manager = MagicMock()
+    mock_manager.list_files = AsyncMock(return_value=[])
+    mocker.patch(
+        "backend.api.features.search.service.WorkspaceManager",
+        return_value=mock_manager,
+    )
+    mocker.patch(
+        "backend.api.features.search.service.get_workspace",
+        new=AsyncMock(return_value=MagicMock(id="ws-1")),
+    )
+
+    await service._files_bucket("u1", limit=5, query="build_state")
+
+    assert mock_manager.list_files.await_args.kwargs["include_internal"] is False
+
+
+@pytest.mark.asyncio
 async def test_chats_bucket_reranks_by_relevance_not_recency(mocker):
     """Same rerank guarantee for ``_chats_bucket`` — an older exact-title
     chat must beat fresher contains-only matches."""

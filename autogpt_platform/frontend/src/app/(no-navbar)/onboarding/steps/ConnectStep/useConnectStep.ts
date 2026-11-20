@@ -5,6 +5,7 @@ import {
   useGetV2ListChatConnections,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useQueryClient } from "@tanstack/react-query";
+import { isProviderLinked } from "@/components/contextual/IntegrationsPanel/components/AIConnectionsSection/helpers";
 import { useOAuthConnect } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useOAuthConnect";
 
 import { useOnboardingWizardStore } from "../../store";
@@ -37,14 +38,7 @@ export function useConnectStep() {
     finishConnection,
     isConnecting: isPending,
     skip: nextStep,
-    isChatGPTLinked: (offers ?? []).some(
-      (offer) =>
-        offer.auth_provider === "codex" && Boolean(offer.credential_id),
-    ),
-    isMicrosoftLinked: (offers ?? []).some(
-      (offer) =>
-        offer.auth_provider === "microsoft_365_copilot" &&
-        Boolean(offer.credential_id),
-    ),
+    isChatGPTLinked: isProviderLinked(offers, "codex"),
+    isMicrosoftLinked: isProviderLinked(offers, "microsoft_365_copilot"),
   };
 }

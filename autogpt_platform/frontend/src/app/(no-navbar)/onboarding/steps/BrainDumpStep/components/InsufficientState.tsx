@@ -1,64 +1,85 @@
 "use client";
 
-import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
+import { cn } from "@/lib/utils";
+import { offYourPlateExampleForRole } from "../prompts";
+import { useIsNarrowScreen } from "../useIsNarrowScreen";
+import { InsufficientActions } from "./InsufficientActions";
+import {
+  heardTextOf,
+  ottoFirstLine,
+  type InsufficientMode,
+  type OttoReplyKind,
+} from "./insufficient-copy";
+import { OttoReply } from "./OttoReply";
+import { YourMessage } from "./YourMessage";
 
 interface Props {
-  mode: "voice" | "typed";
+  mode: InsufficientMode;
+  // What Otto heard (voice) or read (typed); null when no words came through.
+  heardText: string | null;
+  // Which of Otto's fixed lines fits it; null for the default line.
+  replyKind: OttoReplyKind | null;
+  role: string;
   canRecord: boolean;
-  onRecordAgain: () => void;
-  onTypeInstead: () => void;
+  onTalk: () => void;
+  onWrite: () => void;
   onSkip: () => void;
 }
 
-// The take went through — it just didn't say enough to personalize from.
-// Calm and specific on purpose: nothing broke, nothing was lost, and all
-// three ways forward stay open. The copy and the primary action follow
-// how the user got here: a voice reject leads with a fresh take, a typed
-// reject leads back to their preserved text.
+// The take went through; it just didn't say enough to plan from. So the
+// screen is the start of a conversation, not an error: what Otto heard, his
+// answer, and one big, easy question. Otto stays still on purpose: the
+// design system allows him a blink and no other motion.
 export function InsufficientState({
   mode,
+  heardText,
+  replyKind,
+  role,
   canRecord,
-  onRecordAgain,
-  onTypeInstead,
+  onTalk,
+  onWrite,
   onSkip,
 }: Props) {
-  const recordIsPrimary = mode === "voice" && canRecord;
+  const isNarrow = useIsNarrowScreen();
+  const ottoSize = isNarrow ? 96 : 120;
+  const heard = heardTextOf(heardText);
+
   return (
-    <div
-      role="alert"
-      className="flex max-w-md flex-col items-center gap-4 text-center"
-    >
-      <Text variant="body" tone="muted">
-        {mode === "voice"
-          ? "We heard you, but there wasn't enough about your work to " +
-            "personalize things yet. A few sentences about what you do — " +
-            "in any language — is all it takes."
-          : "There wasn't enough about your work to personalize things " +
-            "yet. A few sentences about what you do — in any language — " +
-            "is all it takes."}
-      </Text>
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        {canRecord && (
-          <Button
-            variant={recordIsPrimary ? "primary" : "secondary"}
-            size="small"
-            onClick={onRecordAgain}
-          >
-            Record again
-          </Button>
-        )}
-        <Button
-          variant={recordIsPrimary ? "secondary" : "primary"}
-          size="small"
-          onClick={onTypeInstead}
-        >
-          {mode === "typed" ? "Add more detail" : "Type instead"}
-        </Button>
-        <Button variant="ghost" size="small" onClick={onSkip}>
-          Continue without it
-        </Button>
+    <section className="relative isolate flex w-full max-w-xl flex-col items-center">
+      <div
+        aria-hidden="true"
+        className="absolute inset-x-0 -top-10 -z-10 h-1/2 rounded-full bg-accent-surface blur-3xl"
+      />
+      <YourMessage text={heard} />
+      <div
+        className={cn("relative mt-2", isNarrow ? "size-24" : "size-[7.5rem]")}
+      >
+        <div
+          aria-hidden="true"
+          className="absolute -inset-[20%] rounded-full bg-brand/20 blur-2xl"
+        />
+        <AutopilotAvatar transparent size={ottoSize} className="relative" />
       </div>
-    </div>
+      <div className="mt-4 w-full md:mt-5">
+        <OttoReply firstLine={ottoFirstLine(mode, heard, replyKind)} />
+      </div>
+      <Text variant="body" tone="muted" className="mt-3 w-full text-left">
+        Like:{" "}
+        <Text variant="body" tone="secondary" italic as="span">
+          “{offYourPlateExampleForRole(role)}”
+        </Text>
+      </Text>
+      <div className="mt-5 w-full md:mt-6">
+        <InsufficientActions
+          mode={mode}
+          canRecord={canRecord}
+          onTalk={onTalk}
+          onWrite={onWrite}
+          onSkip={onSkip}
+        />
+      </div>
+    </section>
   );
 }

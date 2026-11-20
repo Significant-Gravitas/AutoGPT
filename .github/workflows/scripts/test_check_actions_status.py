@@ -45,9 +45,7 @@ class ProcessCheckRunsTests(unittest.TestCase):
         self.assertEqual(process_check_runs([skipped_check]), (False, True))
 
     def test_accepts_cancellation_superseded_by_passing_workflow_run(self):
-        result = process_check_runs(
-            [CANCELED_CHECK], [CANCELED_RUN, PASSING_RUN]
-        )
+        result = process_check_runs([CANCELED_CHECK], [CANCELED_RUN, PASSING_RUN])
 
         self.assertEqual(result, (False, True))
 
@@ -92,18 +90,14 @@ class ProcessCheckRunsTests(unittest.TestCase):
     def test_rejects_cancellation_replaced_by_failed_workflow_run(self):
         failed_run = {**PASSING_RUN, "conclusion": "failure"}
 
-        result = process_check_runs(
-            [CANCELED_CHECK], [CANCELED_RUN, failed_run]
-        )
+        result = process_check_runs([CANCELED_CHECK], [CANCELED_RUN, failed_run])
 
         self.assertEqual(result, (False, False))
 
     def test_rejects_cancellation_replaced_by_different_workflow(self):
         unrelated_run = {**PASSING_RUN, "workflow_id": 8}
 
-        result = process_check_runs(
-            [CANCELED_CHECK], [CANCELED_RUN, unrelated_run]
-        )
+        result = process_check_runs([CANCELED_CHECK], [CANCELED_RUN, unrelated_run])
 
         self.assertEqual(result, (False, False))
 
@@ -113,11 +107,56 @@ class ProcessCheckRunsTests(unittest.TestCase):
             "details_url": "https://checks.example.com/result/1001",
         }
 
-        result = process_check_runs(
-            [external_check], [CANCELED_RUN, PASSING_RUN]
-        )
+        result = process_check_runs([external_check], [CANCELED_RUN, PASSING_RUN])
 
         self.assertEqual(result, (False, False))
+
+    def test_ignores_an_advisory_reviewer_that_could_not_run(self):
+        """Copilot code review concludes "failure" when Copilot itself is out
+        of quota (HTTP 402); that says nothing about the code and must not
+        block the merge."""
+        copilot = {
+            "id": 7,
+            "name": "copilot-pull-request-reviewer",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        self.assertEqual(process_check_runs([copilot]), (False, True))
+
+    def test_an_advisory_reviewer_still_running_does_not_hold_the_check(self):
+        copilot = {
+            "id": 7,
+            "name": "copilot-pull-request-reviewer",
+            "status": "in_progress",
+            "conclusion": None,
+        }
+        self.assertEqual(process_check_runs([copilot]), (False, True))
+
+    def test_a_real_failure_beside_an_advisory_one_still_fails(self):
+        copilot = {
+            "id": 7,
+            "name": "copilot-pull-request-reviewer",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        failed = {
+            "id": 8,
+            "name": "test",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        self.assertEqual(process_check_runs([copilot, failed]), (False, False))
+
+    def test_a_failing_journeys_leg_is_advisory_but_smoke_still_blocks(self):
+        journeys = {
+            "id": 9,
+            "name": "end-to-end tests (journeys)",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        smoke = {**journeys, "id": 10, "name": "end-to-end tests (smoke)"}
+        self.assertEqual(process_check_runs([journeys]), (False, True))
+        self.assertEqual(process_check_runs([journeys, smoke]), (False, False))
 
     def test_rejects_real_failure(self):
         failed_check = {**CANCELED_CHECK, "conclusion": "failure"}

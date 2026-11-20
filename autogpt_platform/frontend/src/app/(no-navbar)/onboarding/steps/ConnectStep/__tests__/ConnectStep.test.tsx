@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import { getGetV2ListChatConnectionsQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 import {
   getGetV2ListChatConnectionsMockHandler200,
@@ -6,7 +7,12 @@ import {
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import type { ProviderTiers } from "@/app/api/__generated__/models/providerTiers";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/tests/integrations/test-utils";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,6 +58,46 @@ vi.mock("@/components/contextual/DeviceAuth/DeviceAuthConnectButton", () => {
 
   return { DeviceAuthConnectButton: MockDeviceAuthConnectButton };
 });
+
+const workConnection = {
+  id: "work-id",
+  provider: "microsoft",
+  type: "oauth2",
+  title: "Pat Example (work account)",
+  username: "pat@company.example",
+  scopes: ["User.Read"],
+  service: "microsoft",
+  microsoft_identity: {
+    tenant_id: "company-tenant",
+    account_id: "pat",
+    account_type: "work",
+  },
+};
+
+function mockMicrosoftConnection(credentials: unknown[]) {
+  server.use(
+    http.get("*/api/integrations/providers", () => HttpResponse.json([])),
+    http.get("*/api/integrations/:provider/credentials", ({ params }) =>
+      HttpResponse.json(params.provider === "microsoft" ? credentials : []),
+    ),
+    http.post("*/api/integrations/microsoft/check", () =>
+      HttpResponse.json({
+        verified: true,
+        account_type: "work",
+        message: "Connected.",
+        admin_consent_url: null,
+        capabilities: [
+          {
+            service: "copilot",
+            name: "Microsoft 365 Copilot",
+            status: "available",
+            scopes: [],
+          },
+        ],
+      }),
+    ),
+  );
+}
 
 function offer(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   return {
@@ -229,33 +275,48 @@ describe("ConnectStep", () => {
     expect(screen.getByRole("button", { name: "Next" })).toBeDefined();
   });
 
-  it("offers Microsoft device sign-in alongside subscription cards", async () => {
+  it("opens the Microsoft connection from its logo card", async () => {
     mockOffers([offer()]);
+    mockMicrosoftConnection([]);
     render(<ConnectStep />);
 
+    const card = await screen.findByRole("button", {
+      name: "Microsoft 365 Copilot",
+    });
+    expect(card.querySelector("img")?.getAttribute("src")).toBe(
+      "/integrations/microsoft.webp",
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(
-      await screen.findByRole("button", {
-        name: /Connect Microsoft 365 Copilot/,
-      }),
+      screen.queryByText(
+        /included Microsoft 365 Copilot Chat does not qualify/i,
+      ),
+    ).toBeNull();
+    await userEvent.click(card);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByRole("button", { name: "Connect Microsoft" }),
     ).toBeDefined();
     expect(
-      screen.getByText(/included Microsoft 365 Copilot Chat does not qualify/i),
+      within(dialog).getByText(
+        /included Microsoft 365 Copilot Chat does not qualify/i,
+      ),
     ).toBeDefined();
-    expect(screen.getByRole("button", { name: /ChatGPT/ })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Next" })).toBeDefined();
   });
 
   it("refreshes Microsoft connection status without advancing the wizard", async () => {
     mockOffers([offer()]);
+    mockMicrosoftConnection([]);
     render(
       <>
         <QueryClientProbe />
         <ConnectStep />
       </>,
     );
-    await screen.findByRole("button", {
-      name: /Connect Microsoft 365 Copilot/,
-    });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Microsoft 365 Copilot" }),
+    );
     await waitFor(() =>
       expect(
         queryClient?.getQueryState(getGetV2ListChatConnectionsQueryKey())
@@ -263,18 +324,22 @@ describe("ConnectStep", () => {
       ).toBe("idle"),
     );
     mockOffers([offer(), microsoftCopilot()]);
+    mockMicrosoftConnection([workConnection]);
 
     await userEvent.click(
-      screen.getByRole("button", { name: /Connect Microsoft 365 Copilot/ }),
+      await screen.findByRole("button", { name: "Connect Microsoft" }),
     );
+    await userEvent.click(await screen.findByRole("button", { name: "Done" }));
 
     expect(
       await screen.findByText(/Your Microsoft 365 Copilot is connected/),
     ).toBeDefined();
+    expect(screen.getByText("Connected")).toBeDefined();
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(useOnboardingWizardStore.getState().currentStep).toBe(3);
     expect(screen.getByRole("button", { name: /ChatGPT/ })).toBeDefined();
     expect(
-      screen.queryByRole("button", { name: /Connect Microsoft 365 Copilot/ }),
+      screen.queryByRole("button", { name: "Connect Microsoft" }),
     ).toBeNull();
   });
 
@@ -286,7 +351,10 @@ describe("ConnectStep", () => {
       await screen.findByText(/Your Microsoft 365 Copilot is connected/),
     ).toBeDefined();
     expect(screen.getByRole("button", { name: /ChatGPT/ })).toBeDefined();
-    expect(screen.queryByText("Connected")).toBeNull();
+    expect(screen.getByText("Connected")).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Microsoft 365 Copilot" }),
+    ).toBeNull();
     expect(screen.getByText(/does not run AutoGPT tools/)).toBeDefined();
   });
 
@@ -296,7 +364,7 @@ describe("ConnectStep", () => {
 
     expect(await screen.findByText("Connected")).toBeDefined();
     expect(
-      screen.getByRole("button", { name: /Connect Microsoft 365 Copilot/ }),
+      screen.getByRole("button", { name: "Microsoft 365 Copilot" }),
     ).toBeDefined();
   });
 
@@ -307,7 +375,7 @@ describe("ConnectStep", () => {
     expect(
       await screen.findByText(/Your Microsoft 365 Copilot is connected/),
     ).toBeDefined();
-    expect(screen.getByText("Connected")).toBeDefined();
+    expect(screen.getAllByText("Connected")).toHaveLength(2);
     expect(screen.queryByRole("button", { name: /ChatGPT/ })).toBeNull();
     expect(
       screen.queryByRole("button", { name: /Connect Microsoft 365 Copilot/ }),

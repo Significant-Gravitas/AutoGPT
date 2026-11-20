@@ -38,7 +38,7 @@ vi.mock("@/components/atoms/Select/Select", () => ({
 let mockMultiSelectValues: string[] = [];
 let mockMultiSelectOnChange: (values: string[]) => void = () => undefined;
 
-vi.mock("@/components/__legacy__/ui/multiselect", () => ({
+vi.mock("@/components/molecules/MultiSelect/MultiSelect", () => ({
   MultiSelector: ({
     values,
     onValuesChange,

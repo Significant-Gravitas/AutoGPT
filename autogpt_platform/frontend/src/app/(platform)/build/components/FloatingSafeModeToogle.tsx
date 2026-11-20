@@ -51,14 +51,14 @@ function SafeModeButton({
           {isEnabled ? (
             <>
               <Icon icon={SecurityCheckIcon} size={16} />
-              <Text variant="body" className="text-zinc-200">
+              <Text variant="body" className="text-border-base">
                 {label}: ON
               </Text>
             </>
           ) : (
             <>
               <Icon icon={Shield01Icon} size={16} />
-              <Text variant="body" className="text-zinc-600">
+              <Text variant="body" tone="secondary">
                 {label}: OFF
               </Text>
             </>
@@ -67,12 +67,12 @@ function SafeModeButton({
       </TooltipTrigger>
       <TooltipContent>
         <div className="text-center">
-          <div className="font-medium">
+          <Text variant="small-medium-lh-normal" as="div" tone="inherit">
             {label}: {isEnabled ? "ON" : "OFF"}
-          </div>
-          <div className="mt-1 text-xs text-muted-foreground">
+          </Text>
+          <Text variant="small-tight" tone="muted" as="div" className="mt-1">
             {isEnabled ? tooltipEnabled : tooltipDisabled}
-          </div>
+          </Text>
         </div>
       </TooltipContent>
     </Tooltip>
@@ -105,7 +105,7 @@ export function FloatingSafeModeToggle({
         <SafeModeButton
           isEnabled={currentHITLSafeMode}
           label="Human in the loop block approval"
-          tooltipEnabled="The agent will pause at human-in-the-loop blocks and wait for your approval"
+          tooltipEnabled="The workflow will pause at human-in-the-loop blocks and wait for your approval"
           tooltipDisabled="Human in the loop blocks will proceed automatically"
           onToggle={handleHITLToggle}
           isPending={isPending}
@@ -116,7 +116,7 @@ export function FloatingSafeModeToggle({
         <SafeModeButton
           isEnabled={currentSensitiveActionSafeMode}
           label="Sensitive actions blocks approval"
-          tooltipEnabled="The agent will pause at sensitive action blocks and wait for your approval"
+          tooltipEnabled="The workflow will pause at sensitive action blocks and wait for your approval"
           tooltipDisabled="Sensitive action blocks will proceed automatically"
           onToggle={handleSensitiveActionToggle}
           isPending={isPending}

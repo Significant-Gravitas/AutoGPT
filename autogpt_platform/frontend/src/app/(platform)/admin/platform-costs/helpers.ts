@@ -242,6 +242,7 @@ const CSV_HEADERS = [
   "Cache Creation Tokens",
   "Duration (s)",
   "Graph Exec ID",
+  "Chat Session ID",
   "Node Exec ID",
 ];
 
@@ -270,6 +271,7 @@ export function buildCostLogsCsv(logs: CostLogRow[]): string {
       log.cache_creation_tokens,
       log.duration,
       log.graph_exec_id,
+      log.chat_session_id,
       log.node_exec_id,
     ]
       .map(csvEscape)

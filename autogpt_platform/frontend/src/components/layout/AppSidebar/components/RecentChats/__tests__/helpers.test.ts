@@ -1,111 +1,165 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Key, storage } from "@/services/storage/local-storage";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { getDateGroupLabel, groupSessionsByDate } from "../helpers";
+import {
+  getNewChatHref,
+  isGroupCollapsed,
+  mergeGroupSessions,
+  olderPagesMatchGroup,
+  setGroupCollapsed,
+  withoutDeletingSessions,
+} from "../helpers";
+import { toSummary } from "./sidebarBackend";
 
-// Pin "now" so the day-relative labels are deterministic.
-const NOW = new Date("2026-06-30T12:00:00Z");
-
-function isoDaysAgo(days: number): string {
-  const d = new Date(NOW);
-  d.setDate(d.getDate() - days);
-  return d.toISOString();
+function summaries(...ids: string[]) {
+  return ids.map((id, index) => toSummary({ id, title: id }, index));
 }
 
-beforeEach(() => {
-  vi.useFakeTimers();
-  vi.setSystemTime(NOW);
-});
+function page(total: number, ...ids: string[]) {
+  return {
+    status: 200 as const,
+    headers: new Headers(),
+    data: { sessions: summaries(...ids), total },
+  };
+}
 
-afterEach(() => {
-  vi.useRealTimers();
-});
+function pages(total: number, ...ids: string[]) {
+  return { pages: [page(total, ...ids)], pageParams: [0] };
+}
 
-describe("getDateGroupLabel", () => {
-  it("labels today's date as 'Today'", () => {
-    expect(getDateGroupLabel(isoDaysAgo(0))).toBe("Today");
+describe("getNewChatHref", () => {
+  const active = new Set(["expert-maria", "expert/slash"]);
+
+  it("sends the Otto group to the plain home page", () => {
+    expect(getNewChatHref(null, active)).toBe("/home");
   });
 
-  it("labels a future-ish (negative diff) date as 'Today'", () => {
-    const future = new Date(NOW);
-    future.setHours(future.getHours() + 5);
-    expect(getDateGroupLabel(future.toISOString())).toBe("Today");
-  });
-
-  it("labels yesterday as 'Yesterday'", () => {
-    expect(getDateGroupLabel(isoDaysAgo(1))).toBe("Yesterday");
-  });
-
-  it("labels an older same-year date with month and day", () => {
-    // 2026-06-20 -> "June 20"
-    const label = getDateGroupLabel("2026-06-20T08:00:00", "en-US");
-    expect(label).toBe("June 20");
-  });
-
-  it("includes the year for dates in a previous year", () => {
-    const label = getDateGroupLabel("2024-12-01T08:00:00", "en-US");
-    expect(label).toBe("December 1, 2024");
-  });
-
-  it("formats the date end-to-end in the user's locale", () => {
-    // The label must come from a single locale-aware formatter, not from
-    // hand-assembled English-style parts ("20th 六月"-style mixes).
-    expect(getDateGroupLabel("2026-06-20T08:00:00", "en-GB")).toBe("20 June");
-    expect(getDateGroupLabel("2026-06-20T08:00:00", "de-DE")).toBe("20. Juni");
-    expect(getDateGroupLabel("2026-06-20T08:00:00", "zh-CN")).toBe("6月20日");
-    expect(getDateGroupLabel("2024-12-01T08:00:00", "zh-CN")).toBe(
-      "2024年12月1日",
+  it("addresses an active expert and asks for a fresh thread", () => {
+    expect(getNewChatHref("expert-maria", active)).toBe(
+      "/home?expertId=expert-maria&new=1",
     );
   });
+
+  it("encodes the expert id", () => {
+    expect(getNewChatHref("expert/slash", active)).toBe(
+      "/home?expertId=expert%2Fslash&new=1",
+    );
+  });
+
+  it("gives fired experts no link at all", () => {
+    expect(getNewChatHref("expert-max", active)).toBeNull();
+  });
 });
 
-describe("groupSessionsByDate", () => {
-  it("returns an empty array for no sessions", () => {
-    expect(groupSessionsByDate([])).toEqual([]);
+describe("mergeGroupSessions", () => {
+  it("keeps the preview's copy of a chat that both reads hold", () => {
+    const [fresh, second, third] = summaries("a", "b", "c");
+    const stale = { ...fresh, title: "old title" };
+
+    const merged = mergeGroupSessions([fresh], [stale, second, third]);
+
+    expect(merged.map((session) => session.id)).toEqual(["a", "b", "c"]);
+    expect(merged[0]).toBe(fresh);
   });
 
-  it("buckets sessions from the same calendar day into one group", () => {
-    // Local-time (no trailing Z) so the day boundary matches the runner's
-    // timezone — startOfDay() uses local getFullYear/Month/Date.
-    const sessions = [
-      { id: "a", updated_at: "2026-06-30T01:00:00" },
-      { id: "b", updated_at: "2026-06-30T23:00:00" },
-    ];
-    const groups = groupSessionsByDate(sessions);
-    expect(groups).toHaveLength(1);
-    expect(groups[0].label).toBe("Today");
-    expect(groups[0].sessions.map((s) => s.id)).toEqual(["a", "b"]);
+  it("moves a chat that got newer since the older pages were read to the top", () => {
+    const [first, second] = summaries("a", "b");
+    const bumped = {
+      ...second,
+      updated_at: new Date(Date.parse(first.updated_at) + 60_000).toISOString(),
+    };
+
+    expect(
+      mergeGroupSessions([bumped], [first, second]).map((s) => s.id),
+    ).toEqual(["b", "a"]);
   });
 
-  it("orders groups most-recent-day first regardless of input order", () => {
-    const sessions = [
-      { id: "old", updated_at: isoDaysAgo(5) },
-      { id: "today", updated_at: isoDaysAgo(0) },
-      { id: "yesterday", updated_at: isoDaysAgo(1) },
-    ];
-    const groups = groupSessionsByDate(sessions, "en-US");
-    expect(groups.map((g) => g.label)).toEqual([
-      "Today",
-      "Yesterday",
-      getDateGroupLabel(isoDaysAgo(5), "en-US"),
-    ]);
+  it("hands back the preview itself before any older page is read", () => {
+    const preview = summaries("a", "b");
+    expect(mergeGroupSessions(preview, [])).toBe(preview);
   });
 
-  it("preserves input order within a group and never duplicates day buckets", () => {
-    const sessions = [
-      { id: "1", updated_at: "2026-06-28T03:00:00" },
-      { id: "2", updated_at: "2026-06-28T20:00:00" },
-      { id: "3", updated_at: "2026-06-28T11:00:00" },
-    ];
-    const groups = groupSessionsByDate(sessions);
-    expect(groups).toHaveLength(1);
-    expect(groups[0].sessions.map((s) => s.id)).toEqual(["1", "2", "3"]);
-  });
+  it("lists a chat once when two older pages overlap", () => {
+    const [a, b, c] = summaries("a", "b", "c");
 
-  it("labels groups in the given locale", () => {
-    const groups = groupSessionsByDate(
-      [{ id: "a", updated_at: "2026-06-20T08:00:00" }],
-      "de-DE",
+    expect(
+      mergeGroupSessions([a], [a, b, c, c]).map((session) => session.id),
+    ).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("olderPagesMatchGroup", () => {
+  const preview = summaries("a", "b");
+
+  it("matches pages that start with the preview and share its total", () => {
+    expect(olderPagesMatchGroup(pages(5, "a", "b", "c"), preview, 5)).toBe(
+      true,
     );
-    expect(groups[0].label).toBe("20. Juni");
+  });
+
+  it("stops matching once the group's total moves", () => {
+    expect(olderPagesMatchGroup(pages(5, "a", "b", "c"), preview, 4)).toBe(
+      false,
+    );
+  });
+
+  it("stops matching once a newer chat tops the group", () => {
+    expect(
+      olderPagesMatchGroup(pages(5, "a", "b", "c"), summaries("new", "a"), 5),
+    ).toBe(false);
+  });
+
+  it("stops matching when a chat was deleted between two page reads", () => {
+    // c went after the first page was read and before the second: d moved
+    // into the first page's offsets and was never read, and c is still there.
+    const split = {
+      pages: [page(5, "a", "b", "c"), page(4, "e")],
+      pageParams: [0, 3],
+    };
+    expect(olderPagesMatchGroup(split, preview, 4)).toBe(false);
+  });
+});
+
+describe("withoutDeletingSessions", () => {
+  const otto = { expert_id: null, total: 5, sessions: summaries("a", "b") };
+  const maria = { expert_id: "maria", total: 1, sessions: summaries("m") };
+
+  it("leaves every group's object alone when nothing is being deleted", () => {
+    const groups = [otto, maria];
+    expect(withoutDeletingSessions(groups, [])).toBe(groups);
+  });
+
+  it("lowers the total of the group losing a chat and drops an emptied one", () => {
+    const [ottoAfter, ...rest] = withoutDeletingSessions(
+      [otto, maria],
+      ["a", "m"],
+    );
+
+    expect(ottoAfter.total).toBe(4);
+    expect(ottoAfter.sessions.map((session) => session.id)).toEqual(["b"]);
+    expect(rest).toEqual([]);
+  });
+});
+
+describe("collapsed groups", () => {
+  afterEach(() => {
+    storage.clean(Key.RECENT_CHATS_COLLAPSED_GROUPS);
+  });
+
+  it("starts every group open and remembers each collapse on its own", () => {
+    expect(isGroupCollapsed(null)).toBe(false);
+    expect(isGroupCollapsed("maria")).toBe(false);
+
+    setGroupCollapsed("maria", true);
+    expect(isGroupCollapsed("maria")).toBe(true);
+    expect(isGroupCollapsed(null)).toBe(false);
+
+    setGroupCollapsed("maria", false);
+    expect(isGroupCollapsed("maria")).toBe(false);
+  });
+
+  it("treats unreadable stored state as nothing collapsed", () => {
+    storage.set(Key.RECENT_CHATS_COLLAPSED_GROUPS, "{not json");
+    expect(isGroupCollapsed("maria")).toBe(false);
   });
 });

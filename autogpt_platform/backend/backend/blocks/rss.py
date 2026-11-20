@@ -9,6 +9,7 @@ import pydantic
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -105,6 +106,7 @@ class ReadRSSFeedBlock(Block):
                     ]
                 }
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -163,4 +165,5 @@ class ReadRSSFeedBlock(Block):
                     yield "entry", rss_entry
 
             yield "entries", all_entries
-            await asyncio.sleep(input_data.polling_rate)
+            if input_data.run_continuously:
+                await asyncio.sleep(input_data.polling_rate)

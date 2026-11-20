@@ -2,27 +2,23 @@
 
 from typing import Literal
 
-from moviepy.video.io.VideoFileClip import VideoFileClip
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.video._utils import (
-    extract_source_name,
-    get_video_codecs,
-    strip_chapters_inplace,
-)
+from backend.blocks.video._render import clip_video
+from backend.blocks.video._utils import VideoMediaStorage, extract_source_name, run_edit
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
-from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
+from backend.util.file import MediaFileType, get_exec_file_path
 
 
-class VideoClipBlock(Block):
+class VideoClipBlock(VideoMediaStorage, Block):
     """Extract a time segment from a video."""
 
     class Input(BlockSchemaInput):
@@ -59,29 +55,10 @@ class VideoClipBlock(Block):
                 "_store_input_video": lambda *args, **kwargs: "test.mp4",
                 "_store_output_video": lambda *args, **kwargs: "clip_test.mp4",
             },
+            effect=BlockEffect.WORKSPACE,
         )
 
-    async def _store_input_video(
-        self, execution_context: ExecutionContext, file: MediaFileType
-    ) -> MediaFileType:
-        """Store input video. Extracted for testability."""
-        return await store_media_file(
-            file=file,
-            execution_context=execution_context,
-            return_format="for_local_processing",
-        )
-
-    async def _store_output_video(
-        self, execution_context: ExecutionContext, file: MediaFileType
-    ) -> MediaFileType:
-        """Store output video. Extracted for testability."""
-        return await store_media_file(
-            file=file,
-            execution_context=execution_context,
-            return_format="for_block_output",
-        )
-
-    def _clip_video(
+    async def _clip_video(
         self,
         video_abspath: str,
         output_abspath: str,
@@ -89,22 +66,9 @@ class VideoClipBlock(Block):
         end_time: float,
     ) -> float:
         """Extract a clip from a video. Extracted for testability."""
-        clip = None
-        subclip = None
-        try:
-            strip_chapters_inplace(video_abspath)
-            clip = VideoFileClip(video_abspath)
-            subclip = clip.subclipped(start_time, end_time)
-            video_codec, audio_codec = get_video_codecs(output_abspath)
-            subclip.write_videofile(
-                output_abspath, codec=video_codec, audio_codec=audio_codec
-            )
-            return subclip.duration
-        finally:
-            if subclip:
-                subclip.close()
-            if clip:
-                clip.close()
+        return await run_edit(
+            self, clip_video, [video_abspath], output_abspath, start_time, end_time
+        )
 
     async def run(
         self,
@@ -142,7 +106,7 @@ class VideoClipBlock(Block):
                 execution_context.graph_exec_id, output_filename
             )
 
-            duration = self._clip_video(
+            duration = await self._clip_video(
                 video_abspath,
                 output_abspath,
                 input_data.start_time,

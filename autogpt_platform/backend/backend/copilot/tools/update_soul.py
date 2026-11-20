@@ -81,9 +81,9 @@ class UpdateExpertSoulTool(BaseTool):
         return (
             "Propose an edit to this expert's Soul — identity/personality, "
             "voice preferences, or boundaries. Never writes: it returns the "
-            "before/after diff plus a one-time confirmation_id. Show the user "
-            "the diff and, only after they explicitly approve, call "
-            "confirm_expert_soul_update with that confirmation_id."
+            "before/after diff plus a one-time confirmation_id. The user sees "
+            "the diff on a card; only after they approve, call "
+            "tool:confirm_expert_soul_update with that confirmation_id."
         )
 
     @property
@@ -186,9 +186,11 @@ class UpdateExpertSoulTool(BaseTool):
         )
         return ExpertSoulUpdatedResponse(
             message=(
-                "Nothing saved yet. Show the user this before/after diff and ask "
-                "them to approve. Only after they explicitly approve, call "
-                "confirm_expert_soul_update with this confirmation_id."
+                "Nothing saved yet. The user is looking at this diff on a card "
+                "with Approve and Decline buttons — do not repeat it in text. "
+                "Reply with one short line at most and wait. Only after they "
+                "explicitly approve, call tool:confirm_expert_soul_update with "
+                "this confirmation_id."
             ),
             session_id=session_id,
             applied=False,
@@ -221,6 +223,7 @@ class ConfirmExpertSoulUpdateTool(BaseTool):
                 "confirmation_id": {
                     "type": "string",
                     "description": "The confirmation_id returned by update_expert_soul.",
+                    "entity": "soul_change",
                 },
             },
             "required": ["confirmation_id"],
@@ -249,7 +252,7 @@ class ConfirmExpertSoulUpdateTool(BaseTool):
                 message=(
                     "confirm_expert_soul_update applies exactly the previewed "
                     "proposal and does not accept field values. Call "
-                    "update_expert_soul to propose a different edit."
+                    "tool:update_expert_soul to propose a different edit."
                 ),
                 session_id=session_id,
             )

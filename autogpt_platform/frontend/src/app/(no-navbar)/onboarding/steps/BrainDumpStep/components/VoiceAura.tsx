@@ -1,6 +1,5 @@
 "use client";
 
-import type { AvatarConfig } from "@/components/molecules/BotAvatar/helpers";
 import type { MotionValue } from "framer-motion";
 import { type ReactNode, useRef } from "react";
 import {
@@ -12,7 +11,8 @@ import {
 import { VoiceStreaks } from "./VoiceStreaks";
 
 interface Props {
-  config: AvatarConfig;
+  /** Light and mid tones the comets are drawn in. */
+  colors: [string, string];
   size: number;
   levels: MotionValue<number>[];
   isActive: boolean;
@@ -21,11 +21,11 @@ interface Props {
 
 // Wraps an avatar in its voice streaks: one canvas behind it, one in front,
 // so the comets orbit the body in depth. The avatar goes in as children.
-export function VoiceAura({ config, size, levels, isActive, children }: Props) {
+export function VoiceAura({ colors, size, levels, isActive, children }: Props) {
   const fieldRef = useRef<{ key: string; field: StreakField } | null>(null);
-  const key = `${config.shape}.${config.color}.${size}`;
+  const key = `${colors[0]}.${colors[1]}.${size}`;
   if (fieldRef.current === null || fieldRef.current.key !== key) {
-    fieldRef.current = { key, field: createStreakField(config, size) };
+    fieldRef.current = { key, field: createStreakField(colors, size) };
   }
   const storeRef = useRef<StreakStore | null>(null);
   if (storeRef.current === null) storeRef.current = createStreakStore();
@@ -33,8 +33,8 @@ export function VoiceAura({ config, size, levels, isActive, children }: Props) {
   return (
     <div
       data-testid="voice-aura"
-      className="relative flex items-center justify-center"
-      style={{ width: size, height: size }}
+      className="relative flex size-[var(--aura-size)] items-center justify-center"
+      style={{ "--aura-size": `${size}px` } as React.CSSProperties}
     >
       <VoiceStreaks
         field={fieldRef.current.field}

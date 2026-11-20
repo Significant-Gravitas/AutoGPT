@@ -1,0 +1,96 @@
+{
+ "_source": "Jev jev-1.13.0 answers recorded by scripts/supervisor_eval (jev-r4-q4 run, 2026-09-25), question names mapped to gate/jev.py's",
+ "allow": {
+  "verdict": {
+   "type": "choice",
+   "choice": "allow",
+   "confidence": 0.86,
+   "probabilities": {
+    "allow": 0.93,
+    "ask": 0.07
+   }
+  },
+  "must_ask": {
+   "type": "noul",
+   "noul": 0.14
+  },
+  "q1": {
+   "type": "noul",
+   "noul": 0.14
+  },
+  "q2": {
+   "type": "noul",
+   "noul": 0.07
+  },
+  "q3": {
+   "type": "noul",
+   "noul": 0.04
+  },
+  "q4": {
+   "type": "noul",
+   "noul": 0.02
+  }
+ },
+ "ask_on_q1": {
+  "verdict": {
+   "type": "choice",
+   "choice": "ask",
+   "confidence": 1.0,
+   "probabilities": {
+    "allow": 0.0,
+    "ask": 1.0
+   }
+  },
+  "must_ask": {
+   "type": "noul",
+   "noul": 0.97
+  },
+  "q1": {
+   "type": "noul",
+   "noul": 0.97
+  },
+  "q2": {
+   "type": "noul",
+   "noul": 0.06
+  },
+  "q3": {
+   "type": "noul",
+   "noul": 0.03
+  },
+  "q4": {
+   "type": "noul",
+   "noul": 0.03
+  }
+ },
+ "ask_by_choice": {
+  "verdict": {
+   "type": "choice",
+   "choice": "ask",
+   "confidence": 0.2,
+   "probabilities": {
+    "ask": 0.6,
+    "allow": 0.4
+   }
+  },
+  "must_ask": {
+   "type": "noul",
+   "noul": 0.5
+  },
+  "q1": {
+   "type": "noul",
+   "noul": 0.38
+  },
+  "q2": {
+   "type": "noul",
+   "noul": 0.5
+  },
+  "q3": {
+   "type": "noul",
+   "noul": 0.02
+  },
+  "q4": {
+   "type": "noul",
+   "noul": 0.03
+  }
+ }
+}

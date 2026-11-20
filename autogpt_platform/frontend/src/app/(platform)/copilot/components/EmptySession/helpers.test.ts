@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { getExpertRoleLabel, getIntroLine } from "./helpers";
 
 describe("getExpertRoleLabel", () => {
-  // The nine roles the hire flow offers as presets (RoleStep/helpers.ts), which
+  // The roles the hire flow has offered as presets (CategoryStep/helpers.ts), which
   // is the shape most hired experts will carry.
   test.each([
     ["Marketer", "Marketer"],
@@ -11,7 +11,7 @@ describe("getExpertRoleLabel", () => {
     ["Writer", "Writer"],
     ["Analyst", "Analyst"],
     ["Recruiter", "Recruiter"],
-    ["Sales", "Sales expert"],
+    ["Sales", "Sales Development Rep"],
     ["Support", "Support expert"],
     ["Operations", "Operations expert"],
   ])("labels the %s preset as %s", (role, expected) => {
@@ -32,10 +32,17 @@ describe("getExpertRoleLabel", () => {
   test.each([
     ["Marketing", "Marketing expert"],
     ["Customer Success", "Customer Success expert"],
-    ["Social Media", "Social Media expert"],
+    ["Social Media", "Social Media Manager"],
     ["SEO", "SEO expert"],
     ["Legal", "Legal expert"],
   ])("calls the bare-domain custom role %s an expert", (role, expected) => {
+    expect(getExpertRoleLabel(role)).toBe(expected);
+  });
+
+  test.each([
+    ["Social & Content Repurposing", "Social Media Manager"],
+    ["Market & Competitor Intelligence", "Market Research Analyst"],
+  ])("shortens the roster role %s to %s", (role, expected) => {
     expect(getExpertRoleLabel(role)).toBe(expected);
   });
 
@@ -55,7 +62,7 @@ describe("getIntroLine", () => {
 
   test("introduces an expert whose role is a bare domain", () => {
     expect(getIntroLine({ name: "Sam", role: "Sales" })).toBe(
-      "I'm Sam, your Sales expert. What should I take on?",
+      "I'm Sam, your Sales Development Rep. What should I take on?",
     );
   });
 

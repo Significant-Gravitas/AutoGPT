@@ -4,15 +4,18 @@ Step 1 of the confirm-gated raise flow. The parameters mirror the raise API
 (``name`` / ``role`` / ``color`` / ``about`` / ``voice_preferences`` /
 ``weekly_budget``) plus ``boundaries``, so the model has to collect a full
 charter — what the expert owns, what good looks like, and where they stop —
-before the user is ever asked to approve.
+before the user is ever asked to approve. A new expert proposed for a task the
+user already described carries that task, like a hire (see
+``expert_handoff_proposal``): the card then creates and starts it in one click.
 """
 
 import logging
-import uuid
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.api.features.experts.avatar_catalog import DEFAULT_AVATAR_URL
+from backend.api.features.experts.copy_policy import EXPERT_CREATION_COPY_POLICY
 from backend.api.features.experts.models import (
     EXPERT_COLOR_MAX_LENGTH,
     EXPERT_NAME_MAX_LENGTH,
@@ -23,15 +26,18 @@ from backend.api.features.experts.models import (
 )
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
-from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
-from .expert_avatar import AVATAR_ACCESSORIES, AVATAR_SHAPES, build_avatar_url
+from .expert_handoff_proposal import (
+    HANDOFF_PARAMETERS,
+    park_proposal,
+    parse_handoff,
+    proposed_message,
+)
 from .expert_proposal import (
     ExpertChangeProposal,
     autopilot_session_guard,
     capacity_error,
-    store_proposal,
     user_turn_watermark,
 )
 from .models import (
@@ -71,6 +77,7 @@ class _RaiseParams(BaseModel):
 
     name: str = Field(min_length=1, max_length=EXPERT_NAME_MAX_LENGTH)
     role: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
+    job_title: str = Field(default="", max_length=EXPERT_NAME_MAX_LENGTH)
     tagline: str = Field(min_length=1, max_length=EXPERT_TAGLINE_MAX_LENGTH)
     color: str = Field(default="", max_length=EXPERT_COLOR_MAX_LENGTH)
     weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
@@ -89,7 +96,10 @@ class RaiseExpertTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Preview a new expert when no template fits: personal name, role, tagline, color and charter (ownership, success criteria, boundaries). Returns a one-time confirmation_id; never applies the hire. The card shows the charter, so add at most one short line. Wait for the user's approval before calling confirm_expert_change with that id."
+        return (
+            EXPERT_CREATION_COPY_POLICY
+            + " Preview if no template fits; never hires. Collect name, role, tagline, color and charter (ownership, success criteria, boundaries). Card shows charter; add at most one short line. Returns one-time confirmation_id; await user approval before tool:confirm_expert_change. For a task already in the chat, pass handoff_title + handoff_task."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -98,41 +108,31 @@ class RaiseExpertTool(BaseTool):
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": (
-                        "Personal first name, not a job title (use role for that)."
-                    ),
+                    "description": ("First name; put job titles in job_title."),
                 },
                 "role": {
                     "type": "string",
-                    "description": "Short title for what they own.",
+                    "description": "Area owned, e.g. 'SEO & Content'.",
+                },
+                "job_title": {
+                    "type": "string",
+                    "description": "Team job title, e.g. 'SEO Content Manager'.",
                 },
                 "tagline": {
                     "type": "string",
                     "description": (
-                        "Third-person summary under 120 characters, e.g. 'Finds leads and decision-makers.' Shown on the card."
+                        "Card summary: third person, under 120 chars, e.g. 'Finds leads and decision-makers.'"
                     ),
                 },
                 "color": {
                     "type": "string",
                     "enum": COLOR_TOKENS,
-                    "description": ("Accent token for the avatar and chat theme."),
-                },
-                "avatar_shape": {
-                    "type": "string",
-                    "enum": AVATAR_SHAPES,
-                    "description": ("Avatar silhouette; omit for a name-seeded shape."),
-                },
-                "avatar_accessory": {
-                    "type": "string",
-                    "enum": AVATAR_ACCESSORIES,
-                    "description": (
-                        "One accessory suited to their role or personality; omit for a name-seeded choice."
-                    ),
+                    "description": "Avatar/chat accent token.",
                 },
                 "about": {
                     "type": "string",
                     "description": (
-                        "Second-person charter: ownership, working approach and success criteria. Becomes identity."
+                        "Second-person identity: ownership, approach and success criteria."
                     ),
                 },
                 "boundaries": {
@@ -150,6 +150,7 @@ class RaiseExpertTool(BaseTool):
                     "type": "integer",
                     "description": "Weekly credit cap (100 = $1); omit for default.",
                 },
+                **HANDOFF_PARAMETERS,
             },
             "required": ["name", "tagline", "about", "boundaries"],
         }
@@ -161,14 +162,15 @@ class RaiseExpertTool(BaseTool):
         *,
         name: str = "",
         role: str = "",
+        job_title: str = "",
         tagline: str = "",
         color: str = "",
-        avatar_shape: str = "",
-        avatar_accessory: str = "",
         about: str = "",
         boundaries: str = "",
         voice_preferences: str = "",
         weekly_budget: int | None = None,
+        handoff_title: str = "",
+        handoff_task: str = "",
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
@@ -176,30 +178,16 @@ class RaiseExpertTool(BaseTool):
             return error
         assert user_id is not None
 
+        handoff = parse_handoff(handoff_title, handoff_task)
+        if isinstance(handoff, str):
+            return ErrorResponse(message=handoff, session_id=session_id)
+
         color = color.strip()
         if color and color not in COLOR_TOKENS:
             return ErrorResponse(
                 message=(
                     "Invalid expert charter — color must be one of: "
                     + ", ".join(COLOR_TOKENS)
-                ),
-                session_id=session_id,
-            )
-        avatar_shape = avatar_shape.strip()
-        if avatar_shape and avatar_shape not in AVATAR_SHAPES:
-            return ErrorResponse(
-                message=(
-                    "Invalid expert charter — avatar_shape must be one of: "
-                    + ", ".join(AVATAR_SHAPES)
-                ),
-                session_id=session_id,
-            )
-        avatar_accessory = avatar_accessory.strip()
-        if avatar_accessory and avatar_accessory not in AVATAR_ACCESSORIES:
-            return ErrorResponse(
-                message=(
-                    "Invalid expert charter — avatar_accessory must be one of: "
-                    + ", ".join(AVATAR_ACCESSORIES)
                 ),
                 session_id=session_id,
             )
@@ -211,6 +199,7 @@ class RaiseExpertTool(BaseTool):
                 # entries that ``escape_prompt_xml_tags`` cannot neutralise.
                 name=" ".join(name.split()),
                 role=" ".join(role.split()),
+                job_title=" ".join(job_title.split()),
                 tagline=" ".join(tagline.split()),
                 color=color,
                 weekly_budget=weekly_budget,
@@ -250,7 +239,7 @@ class RaiseExpertTool(BaseTool):
                     f"(expert_id: {duplicate.id}, role: {duplicate.role}) — "
                     "do not raise them again. Delegate work to them with "
                     "delegate_to_expert, or change their charter with "
-                    "update_expert. Only propose a differently-named expert "
+                    "tool:update_expert. Only propose a differently-named expert "
                     "if the user truly wants a second, separate one."
                 ),
                 session_id=session_id,
@@ -262,41 +251,33 @@ class RaiseExpertTool(BaseTool):
             kind="raise",
             name=params.name,
             role=params.role,
+            job_title=params.job_title,
             tagline=params.tagline,
             color=params.color,
-            avatar_url=build_avatar_url(
-                params.name,
-                shape=avatar_shape or None,
-                accessory=avatar_accessory or None,
-                color_token=params.color or None,
-            ),
+            # A raised Expert starts on the General fallback; its owner picks or
+            # generates a reviewed appearance from the Team page afterwards.
+            avatar_url=DEFAULT_AVATAR_URL,
             about=soul.identity or "",
             boundaries=soul.boundaries,
             voice_preferences=soul.voice_preferences or "",
             weekly_budget=params.weekly_budget,
         )
-        confirmation_id = str(uuid.uuid4())
-        await store_proposal(
-            await get_redis_async(),
-            confirmation_id,
+        confirmation_id, handoff_confirmation_id = await park_proposal(
             ExpertChangeProposal(
                 user_id=user_id,
                 session_id=session_id,
                 preview=preview,
                 user_turn_watermark=user_turn_watermark(session),
-            ),
+                handoff=handoff,
+            )
         )
         return ExpertChangeProposedResponse(
-            message=(
-                "Nothing created yet. The user is looking at this charter on "
-                "a card with Approve and Decline buttons — do not repeat any "
-                "of it in text. Reply with one short line at most and wait. "
-                "Only after they explicitly approve, call "
-                "confirm_expert_change with this confirmation_id."
-            ),
+            message=proposed_message("raise", handoff is not None),
             session_id=session_id,
             preview=preview,
             confirmation_id=confirmation_id,
+            handoff=handoff,
+            handoff_confirmation_id=handoff_confirmation_id,
         )
 
 

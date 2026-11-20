@@ -5,9 +5,28 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from backend.copilot.model import ChatSession
+    from backend.copilot.model import ChatMessage, ChatSession
 
 EXPERT_KICKOFF_KIND = "expert_kickoff"
+
+# The kickoff the server sends for a hire no browser follows
+# (``experts/kickoff.py``). Word for word the frontend's KICKOFF_PROMPT
+# (``copilot/expertKickoff.ts``), so a hire greets the same way whichever side
+# sends it; change both together. It stays ask-first: one click on Hire once ran
+# a Gmail send (SECRT-2622).
+EXPERT_KICKOFF_PROMPT = (
+    "You were just hired. Call expert_onboarding once, and nothing else, this "
+    "turn: a one-sentence greeting introducing yourself in your voice, with "
+    "no dashes, then "
+    "2-3 short questions the user can answer by tapping. Every question and "
+    "every option must come from your own role and area of expertise and from "
+    "the workflows installed on you — ask which outcome in your area to start "
+    "with, and which of the services your work depends on you should be "
+    "connected to, naming the real providers rather than asking in the "
+    "abstract. Do not ask about work outside your role, whatever else you "
+    "know about the user or their team. Do not run a workflow, create a "
+    "schedule, or start any other work before the answers come back."
+)
 
 _MESSAGE_NAMESPACE = uuid.UUID("d0890fe0-26eb-5ee4-91b4-42a930ce29ac")
 _CLIENT_MESSAGE_NAMESPACE = uuid.UUID("d70473da-722b-55cb-963f-4729e64d7b06")
@@ -59,18 +78,26 @@ def is_hidden_chat_message(metadata: Mapping[str, Any] | None) -> bool:
     return metadata is not None and metadata.get("hidden") is True
 
 
-def is_expert_kickoff_turn(session: "ChatSession") -> bool:
-    """Whether the turn being served answers the hire's kickoff message.
+def is_expert_kickoff_message(message: "ChatMessage") -> bool:
+    """Whether a persisted user row is the server-written kickoff message.
 
     ``expert_kickoff_metadata`` is the only writer of this ``kind`` and the
     chat route never copies request fields into message metadata, so a true
-    here means the server wrote the last user message itself. Nobody has
-    asked for anything yet, which is what makes it safe for callers to
-    narrow the turn down to the onboarding card.
+    here means the server wrote the row itself.
+    """
+    if message.role != "user":
+        return False
+    metadata = message.metadata
+    return metadata is not None and metadata.get("kind") == EXPERT_KICKOFF_KIND
+
+
+def is_expert_kickoff_turn(session: "ChatSession") -> bool:
+    """Whether the turn being served answers the hire's kickoff message.
+
+    Nobody has asked for anything yet on that turn, which is what makes it
+    safe for callers to narrow it down to the onboarding card.
     """
     for message in reversed(session.messages):
-        if message.role != "user":
-            continue
-        metadata = message.metadata
-        return metadata is not None and metadata.get("kind") == EXPERT_KICKOFF_KIND
+        if message.role == "user":
+            return is_expert_kickoff_message(message)
     return False

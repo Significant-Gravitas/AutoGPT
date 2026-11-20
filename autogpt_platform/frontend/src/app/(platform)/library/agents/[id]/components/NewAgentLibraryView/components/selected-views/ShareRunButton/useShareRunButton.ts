@@ -44,7 +44,7 @@ export function useShareRunButton({
       const response = await enableSharing({
         graphId,
         graphExecId: executionId,
-        data: {}, // Empty ShareRequest
+        data: {}, // Empty ExecutionShareRequest
       });
 
       if (response.status === 200) {
@@ -53,7 +53,7 @@ export function useShareRunButton({
         toast({
           title: "Sharing enabled",
           description:
-            "Your agent run is now publicly accessible via the share link.",
+            "Your workflow run is now publicly accessible via the share link.",
         });
       } else {
         toast({

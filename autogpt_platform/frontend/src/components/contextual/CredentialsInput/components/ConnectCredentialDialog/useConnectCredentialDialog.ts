@@ -6,11 +6,12 @@ import {
   AuthType,
   type AuthMethod,
 } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/helpers";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { useState } from "react";
 
 interface Args {
   provider: string;
-  onConnected: () => void;
+  onConnected: (credential?: CredentialsMetaResponse) => void;
   scopes?: string[];
   credentialID?: string;
 }
@@ -38,9 +39,9 @@ export function useConnectCredentialDialog({
     apiKey.form.reset();
   }
 
-  function handleConnected() {
+  function handleConnected(credential?: CredentialsMetaResponse) {
     reset();
-    onConnected();
+    onConnected(credential);
   }
 
   function handleContinue() {
@@ -69,6 +70,7 @@ export function useConnectCredentialDialog({
       (selectedMethod === AuthType.api_key && !apiKey.form.formState.isValid),
     isConnecting: oauth.isPending || apiKey.isPending,
     handleContinue,
+    connectOAuth: oauth.connect,
     reset,
   };
 }

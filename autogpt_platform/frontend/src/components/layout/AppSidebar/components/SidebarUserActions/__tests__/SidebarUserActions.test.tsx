@@ -11,9 +11,10 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
-vi.mock("@/components/ui/sidebar", async (importOriginal) => {
+const sidebar = vi.hoisted(() => ({ state: "expanded" }));
+vi.mock("@/components/molecules/Sidebar/Sidebar", async (importOriginal) => {
   const actual = await importOriginal<object>();
-  return { ...actual, useSidebar: () => ({ state: "expanded" }) };
+  return { ...actual, useSidebar: () => sidebar };
 });
 
 vi.mock("@/components/layout/Navbar/components/Wallet/Wallet", () => ({
@@ -41,6 +42,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  sidebar.state = "expanded";
   vi.clearAllMocks();
   server.resetHandlers();
 });
@@ -68,5 +70,22 @@ describe("SidebarUserActions", () => {
     expect(await screen.findByTestId("wallet")).toBeDefined();
     expect(screen.queryByTestId("agent-activity")).toBeNull();
     expect(screen.queryByTestId("usage-indicator")).toBeNull();
+  });
+
+  // A new account's sidebar starts collapsed to its icon rail. The wallet
+  // used to be hidden there, so on day one nobody could find it (SECRT-3133),
+  // and the walkthrough and the cost tip point at it.
+  it("keeps the wallet reachable when the sidebar is collapsed to its rail", async () => {
+    sidebar.state = "collapsed";
+    mockUseAuth.mockReturnValue({
+      user: { id: "u1", email: "alice@example.com", role: "user" },
+      isLoggedIn: true,
+      isUserLoading: false,
+    });
+    render(<SidebarUserActions />);
+
+    const wallet = await screen.findByTestId("wallet");
+    expect(wallet.closest('[class*="collapsible=icon]:hidden"]')).toBeNull();
+    expect(wallet.closest('[data-tour-target="wallet"]')).not.toBeNull();
   });
 });

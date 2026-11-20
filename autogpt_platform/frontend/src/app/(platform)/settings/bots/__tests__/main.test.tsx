@@ -45,6 +45,22 @@ function slackPlatform(
   };
 }
 
+function telegramPlatform(
+  overrides: Partial<BotPlatformInfo> = {},
+): BotPlatformInfo {
+  return {
+    platform: "TELEGRAM",
+    display_name: "Telegram",
+    icon: "telegram.png",
+    server_noun: "group",
+    add_bot_url: "https://t.me/AutoGPTBot?startgroup=true",
+    dm_url: "https://t.me/AutoGPTBot?start=connect",
+    dm_link: undefined,
+    server_links: [],
+    ...overrides,
+  };
+}
+
 describe("SettingsBotsPage", () => {
   test("renders the header and the Discord card with an Add bot button", async () => {
     server.use(getListBotPlatformsMockHandler([discordPlatform()]));
@@ -308,5 +324,63 @@ describe("SettingsBotsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("bently")).toBeDefined();
     });
+  });
+
+  test("leads the Telegram card with messaging the bot, and keeps adding to a group as a second option", async () => {
+    server.use(getListBotPlatformsMockHandler([telegramPlatform()]));
+
+    render(<SettingsBotsPage />);
+
+    const message = await screen.findByRole("link", {
+      name: /message bot on telegram/i,
+    });
+    expect(message.getAttribute("href")).toBe(
+      "https://t.me/AutoGPTBot?start=connect",
+    );
+    expect(message.getAttribute("target")).toBe("_blank");
+
+    const addToGroup = screen.getByRole("link", { name: /add to a group/i });
+    expect(addToGroup.getAttribute("href")).toBe(
+      "https://t.me/AutoGPTBot?startgroup=true",
+    );
+    expect(
+      message.compareDocumentPosition(addToGroup) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: /add bot to telegram/i }),
+    ).toBeNull();
+    expect(
+      screen.getByText(/no groups linked yet\. use "add to a group"/i),
+    ).toBeDefined();
+  });
+
+  test("falls back to the add-bot button when the backend sends no DM link", async () => {
+    server.use(
+      getListBotPlatformsMockHandler([telegramPlatform({ dm_url: null })]),
+    );
+
+    render(<SettingsBotsPage />);
+
+    const addBot = await screen.findByRole("link", {
+      name: /add bot to telegram/i,
+    });
+    expect(addBot.getAttribute("href")).toBe(
+      "https://t.me/AutoGPTBot?startgroup=true",
+    );
+    expect(
+      screen.queryByRole("link", { name: /message bot on telegram/i }),
+    ).toBeNull();
+  });
+
+  test("only Telegram gets the message-the-bot button", async () => {
+    server.use(getListBotPlatformsMockHandler([discordPlatform()]));
+
+    render(<SettingsBotsPage />);
+
+    expect(
+      await screen.findByRole("link", { name: /add bot to discord/i }),
+    ).toBeDefined();
+    expect(screen.queryByRole("link", { name: /message bot on/i })).toBeNull();
   });
 });

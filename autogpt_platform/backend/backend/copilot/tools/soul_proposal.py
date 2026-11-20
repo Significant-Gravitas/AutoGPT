@@ -39,7 +39,7 @@ def _stale_preview_error(session_id: str) -> ErrorResponse:
     return ErrorResponse(
         message=(
             "This confirmation_id is unknown, expired, or already used. "
-            "Call update_expert_soul again for a fresh preview."
+            "Call tool:update_expert_soul again for a fresh preview."
         ),
         session_id=session_id,
     )
@@ -109,7 +109,7 @@ async def apply_proposal(
         return ErrorResponse(
             message=(
                 "Couldn't apply the Soul edit — the proposal has been "
-                "discarded. Call update_expert_soul again to re-preview "
+                "discarded. Call tool:update_expert_soul again to re-preview "
                 "and retry."
             ),
             session_id=session_id,
@@ -120,7 +120,7 @@ async def apply_proposal(
             message=(
                 "The expert is no longer available or its Soul changed since "
                 "this preview, so the proposal was discarded. Call "
-                "update_expert_soul again to preview the current Soul."
+                "tool:update_expert_soul again to preview the current Soul."
             ),
             session_id=session_id,
         )

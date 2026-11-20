@@ -3,6 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { BubbleChatIcon, Settings01Icon } from "@hugeicons/core-free-icons";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { trackFunnel } from "@/services/experts/experts-analytics";
 import { formatWeeklySpend } from "../../../helpers";
 import { formatUntil } from "../../NowNext/helpers";
 import { StatusBadge } from "./StatusBadge";
@@ -29,22 +30,23 @@ export function AgentRow({ agent }: Props) {
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Text
-            variant="body-medium"
-            tone="primary"
-            className="truncate leading-5"
-          >
+          <Text variant="body-medium-tight" tone="primary" className="truncate">
             {agent.expert.name}
           </Text>
           <StatusBadge status={agent.status} />
         </div>
+        <Text variant="small" tone="secondary" className="break-words">
+          {agent.detail || "No status details available."}{" "}
+          {agent.status === "failed"
+            ? "Open Manage to inspect recent work."
+            : agent.status === "needs_setup"
+              ? "Open Manage to finish setup."
+              : agent.status === "paused"
+                ? "Open Manage to review settings."
+                : "Open Chat to give instructions."}
+        </Text>
         {secondLine ? (
-          <Text
-            variant="small"
-            tone="muted"
-            className="truncate tabular-nums leading-4"
-            unmask={false}
-          >
+          <Text variant="small-tight" tone="muted" tabular className="truncate">
             {secondLine}
           </Text>
         ) : null}
@@ -66,6 +68,11 @@ export function AgentRow({ agent }: Props) {
           size="icon-sm"
           leadingIcon={Settings01Icon}
           aria-label={`Manage ${agent.expert.name}`}
+          onClick={() =>
+            trackFunnel("home_team_member_clicked", {
+              expert_id: agent.expert.id,
+            })
+          }
         />
       </div>
     </div>

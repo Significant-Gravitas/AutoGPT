@@ -42,20 +42,17 @@ _RAISE_MODULE = "backend.copilot.tools.raise_expert"
 _UPDATE_MODULE = "backend.copilot.tools.update_expert"
 _PROPOSAL_MODULE = "backend.copilot.tools.expert_proposal"
 _CONFIRM_MODULE = "backend.copilot.tools.confirm_expert_change"
+_PARK_MODULE = "backend.copilot.tools.expert_handoff_proposal"
 
 _CHARTER = {
     "name": "Otto",
     "role": "Inbox triage",
+    "job_title": "Executive Assistant",
     "tagline": "Sorts your morning inbox and drafts the routine replies.",
     "color": "violet-300",
-    "avatar_shape": "round",
-    "avatar_accessory": "glasses",
     "about": "You group the morning inbox and draft routine replies.",
     "boundaries": "You never send a reply yourself.",
 }
-
-
-AVATAR_KEYS = {"avatar_shape", "avatar_accessory"}
 
 
 class _FakeRedis:
@@ -138,8 +135,7 @@ def _env(
     db.count_raised_experts = AsyncMock(return_value=raised_count)
     db.hire_expert = AsyncMock(
         side_effect=hire_error,
-        return_value=hire_result
-        or SimpleNamespace(expert=_created(), failed_preloads=[]),
+        return_value=hire_result or SimpleNamespace(expert=_created()),
     )
     db.create_raised_expert = AsyncMock(
         side_effect=raise_error,
@@ -149,14 +145,15 @@ def _env(
     db.get_expert = AsyncMock(return_value=_hired_otto())
     db.update_soul_if_current = AsyncMock(return_value=_created("Otto", "exp-2"))
     db.list_experts = AsyncMock(return_value=[])
+    db.start_expert_kickoff = AsyncMock(return_value=True)
     shared_redis = AsyncMock(return_value=redis or _FakeRedis())
     with (
         patch(f"{_HIRE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_RAISE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_UPDATE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_PROPOSAL_MODULE}.experts_db", MagicMock(return_value=db)),
-        patch(f"{_HIRE_MODULE}.get_redis_async", shared_redis),
-        patch(f"{_RAISE_MODULE}.get_redis_async", shared_redis),
+        patch(f"{_CONFIRM_MODULE}.expert_kickoff_db", MagicMock(return_value=db)),
+        patch(f"{_PARK_MODULE}.get_redis_async", shared_redis),
         patch(f"{_UPDATE_MODULE}.get_redis_async", shared_redis),
         patch(f"{_CONFIRM_MODULE}.get_redis_async", shared_redis),
     ):
@@ -233,39 +230,20 @@ class TestPreviewNeverWrites:
         assert resp.preview.about == _CHARTER["about"]
         assert resp.preview.boundaries == _CHARTER["boundaries"]
         assert resp.preview.color == _CHARTER["color"]
-        assert resp.preview.avatar_url == "/avatars/round.lavender.glasses.svg"
         db.create_raised_expert.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_raise_seeds_an_avatar_from_the_name_when_none_is_picked(self):
+    async def test_raise_starts_on_the_general_fallback_appearance(self):
+        """A raised Expert never borrows a roster face or a category sheet; its
+        owner picks or generates an appearance from the Team page later."""
         with _env():
-            charter = {k: v for k, v in _CHARTER.items() if k not in AVATAR_KEYS}
-            resp = await _raise(make_session(_USER), **charter)
+            resp = await _raise(make_session(_USER), **_CHARTER)
         assert isinstance(resp, ExpertChangeProposedResponse)
-        # Golden vector cross-checked against the frontend's configForName:
-        # "otto" seeds wide/butter/crown and the violet token maps to lavender.
-        # A literal, not build_avatar_url(), so a drift in the FNV/LCG
-        # constants or pick order fails here instead of comparing the
-        # implementation to itself.
-        assert resp.preview.avatar_url == "/avatars/wide.lavender.crown.svg"
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_raise_rejects_an_unknown_avatar_shape(self):
-        with _env():
-            resp = await _raise(
-                make_session(_USER), **{**_CHARTER, "avatar_shape": "cube"}
-            )
-        assert isinstance(resp, ErrorResponse)
-        assert "avatar_shape" in resp.message
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_raise_rejects_an_unknown_avatar_accessory(self):
-        with _env():
-            resp = await _raise(
-                make_session(_USER), **{**_CHARTER, "avatar_accessory": "monocle"}
-            )
-        assert isinstance(resp, ErrorResponse)
-        assert "avatar_accessory" in resp.message
+        assert (
+            resp.preview.avatar_url
+            == "/autogpt-characters/v2.1/expert-general-01/neutral/128.webp"
+        )
+        assert "avatar_category" not in RaiseExpertTool().parameters["properties"]
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_hire_preview_carries_the_template_tagline(self):
@@ -556,7 +534,7 @@ class TestConfirm:
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.applied is True
         assert resp.kind == "hire"
-        db.hire_expert.assert_awaited_once_with(_USER, "tpl-scout", "Recon")
+        db.hire_expert.assert_awaited_once_with(_USER, "tpl-scout", "Recon", "copilot")
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_confirm_raises_exactly_what_was_previewed(self):
@@ -569,6 +547,9 @@ class TestConfirm:
             )
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.kind == "raise"
+        # A created expert introduces itself from the card's "Chat with"
+        # kickoff link (#16689), so the server sends no second greeting.
+        db.start_expert_kickoff.assert_not_awaited()
         assert resp.expert.name == "Otto"
         assert resp.expert.tagline == _created().tagline
         assert resp.expert.about == _created().identity
@@ -578,6 +559,7 @@ class TestConfirm:
             _CHARTER["name"],
             _CHARTER["role"],
             None,
+            job_title=_CHARTER["job_title"],
             avatar_url=preview.preview.avatar_url,
             color=_CHARTER["color"],
             tagline=_CHARTER["tagline"],
@@ -846,32 +828,9 @@ class TestApplyProposalDispatch:
         db.hire_expert.assert_not_called()
 
 
-class TestPartialHire:
-    """A hire whose workflows failed to install leaves an expert that cannot
-    do part of its job — the message must say so, or the user only finds out
-    when the work silently doesn't happen."""
-
+class TestHireMessage:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_failed_workflows_are_named_in_the_message(self):
-        partial = SimpleNamespace(
-            expert=_created(),
-            failed_preloads=["Inbox triage", "Daily digest"],
-        )
-        with _env(hire_result=partial):
-            session = make_session(_USER)
-            preview = await _hire(session, template_id="tpl-scout")
-            assert isinstance(preview, ExpertChangeProposedResponse)
-            resp = await _confirm(
-                _approve(session), confirmation_id=preview.confirmation_id
-            )
-        assert isinstance(resp, ExpertChangeAppliedResponse)
-        assert resp.failed_workflows == ["Inbox triage", "Daily digest"]
-        assert "Inbox triage" in resp.message
-        assert "Daily digest" in resp.message
-        assert "is hired and on the team." not in resp.message
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_a_clean_hire_still_reads_as_a_clean_hire(self):
+    async def test_hire_says_setup_continues_in_the_background(self):
         with _env():
             session = make_session(_USER)
             preview = await _hire(session, template_id="tpl-scout")
@@ -880,8 +839,8 @@ class TestPartialHire:
                 _approve(session), confirmation_id=preview.confirmation_id
             )
         assert isinstance(resp, ExpertChangeAppliedResponse)
-        assert resp.failed_workflows == []
-        assert "could not be installed" not in resp.message
+        assert "is hired and on the team" in resp.message
+        assert "background" in resp.message
 
 
 class TestLegacySessionsCannotStaff:

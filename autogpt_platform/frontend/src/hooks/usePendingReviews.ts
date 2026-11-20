@@ -1,5 +1,6 @@
 import {
   useGetV2GetPendingReviews,
+  useGetV2GetPendingReviewsForChatSession,
   useGetV2GetPendingReviewsForExecution,
 } from "@/app/api/__generated__/endpoints/executions/executions";
 import { okData } from "@/app/api/helpers";
@@ -35,6 +36,27 @@ export function usePendingReviewsForExecution(
   return {
     pendingReviews: okData(query.data) || [],
     isLoading: query.isLoading,
+    error: query.error,
+    refetch: query.refetch,
+  };
+}
+
+export function usePendingReviewsForChatSession(
+  chatSessionId: string,
+  options?: UsePendingReviewsForExecutionOptions,
+) {
+  const query = useGetV2GetPendingReviewsForChatSession(chatSessionId, {
+    query: {
+      enabled: options?.enabled ?? !!chatSessionId,
+      refetchInterval: options?.refetchInterval,
+      refetchIntervalInBackground: !!options?.refetchInterval,
+    },
+  });
+
+  return {
+    pendingReviews: okData(query.data) || [],
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
     error: query.error,
     refetch: query.refetch,
   };

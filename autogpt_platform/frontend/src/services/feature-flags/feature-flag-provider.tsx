@@ -1,45 +1,17 @@
 "use client";
 
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import * as Sentry from "@sentry/nextjs";
-import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
-import { useMemo } from "react";
-import { environment } from "../environment";
-import { buildLDContext } from "./helpers";
+import { FlagResolutionContext } from "./flag-resolution";
 
-const LAUNCHDARKLY_INIT_TIMEOUT_MS = 5000;
+export function FeatureFlagProvider({ children }: { children: ReactNode }) {
+  const { isUserLoading } = useAuth();
 
-export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
-  const { user, isUserLoading } = useAuth();
-  const envEnabled = environment.areFeatureFlagsEnabled();
-  const clientId = environment.getLaunchDarklyClientId();
-
-  const context = useMemo(() => {
-    if (isUserLoading) return;
-    return buildLDContext(user);
-  }, [user, isUserLoading]);
-
-  if (!envEnabled) {
-    return <>{children}</>;
-  }
-
-  if (isUserLoading) {
-    return <LoadingSpinner size="large" cover />;
-  }
-
+  // The server reads flags for the signed-in user, so the wait starts once the
+  // session is known. The page renders regardless so crawlers get its content.
   return (
-    <LDProvider
-      clientSideID={clientId ?? ""}
-      context={context}
-      timeout={LAUNCHDARKLY_INIT_TIMEOUT_MS}
-      reactOptions={{ useCamelCaseFlagKeys: false }}
-      options={{
-        inspectors: [Sentry.buildLaunchDarklyFlagUsedHandler()],
-      }}
-    >
+    <FlagResolutionContext.Provider value={!isUserLoading}>
       {children}
-    </LDProvider>
+    </FlagResolutionContext.Provider>
   );
 }

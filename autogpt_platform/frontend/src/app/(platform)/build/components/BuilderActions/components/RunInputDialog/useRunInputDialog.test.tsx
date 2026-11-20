@@ -20,9 +20,23 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 
 const mockExecuteGraph = vi.fn();
+
+interface ExecutionOptions {
+  mutation: {
+    onSuccess: (response: {
+      status: number;
+      data: Record<string, unknown>;
+    }) => void;
+  };
+}
+
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
-  usePostV1ExecuteGraphAgent: () => ({
-    mutateAsync: mockExecuteGraph,
+  usePostV1ExecuteGraphAgent: (options: ExecutionOptions) => ({
+    async mutateAsync(variables: unknown) {
+      const response = await mockExecuteGraph(variables);
+      options.mutation.onSuccess(response);
+      return response;
+    },
     isPending: false,
   }),
 }));
@@ -71,6 +85,10 @@ import { useRunInputDialog } from "./useRunInputDialog";
 describe("useRunInputDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockExecuteGraph.mockResolvedValue({
+      status: 200,
+      data: { id: "run-1", graph_id: "graph-1" },
+    });
   });
 
   afterEach(() => {

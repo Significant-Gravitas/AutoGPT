@@ -179,7 +179,7 @@ async def create_user_and_profile(db: Prisma) -> None:
                 username=AUTOGPT_USERNAME,
                 description="Official AutoGPT agents and templates",
                 links=["https://agpt.co"],
-                avatarUrl="https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/4b5781a6-49e1-433c-9a75-65af1be5c02d.png",
+                avatarUrl="https://storage.googleapis.com/agpt-prod-public-site-media/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/4b5781a6-49e1-433c-9a75-65af1be5c02d.png",
             )
         )
 

@@ -96,3 +96,48 @@ def test_with_session_returns_new_scope_without_mutating():
     assert "expert-a-new" in widened.session_ids
     assert "expert-a-new" not in SCOPE.session_ids
     assert widened.with_session("expert-a-new") is widened
+
+
+# Same grants plus the owner's own files, which is what
+# ``resolve_expert_workspace_scope`` builds for a live hired expert.
+USER_FILES_SCOPE = SCOPE.model_copy(update={"reads_user_files": True})
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/root-file.txt",
+        "/Invoices/2026/march.pdf",
+        "/sessionsish/file.txt",
+        "/skillsets/private.txt",
+    ],
+)
+def test_user_files_are_readable_but_never_writable(path: str):
+    assert USER_FILES_SCOPE.allows_path(path)
+    assert not USER_FILES_SCOPE.allows_path(path, write=True)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/sessions/expert-b/private.txt",
+        "/sessions/personal/private.txt",
+        "/skills/autopilot-skill/SKILL.md",
+        "/experts/expert-b/skills/theirs/SKILL.md",
+        "/sessions/expert-a/../../root-file.txt",
+        "root-file.txt",
+    ],
+)
+def test_the_user_files_grant_opens_nothing_under_the_managed_roots(path: str):
+    assert not USER_FILES_SCOPE.allows_path(path)
+
+
+def test_the_user_files_grant_survives_the_rpc_round_trip():
+    """Carried as a field, so a scope that denies user files cannot come back
+    granting them, and one that grants them cannot come back denying them."""
+    for scope in (SCOPE, USER_FILES_SCOPE):
+        rebuilt = WorkspaceScope.model_validate(scope.model_dump())
+        assert rebuilt.reads_user_files == scope.reads_user_files
+        assert rebuilt.allows_path("/root-file.txt") == scope.allows_path(
+            "/root-file.txt"
+        )

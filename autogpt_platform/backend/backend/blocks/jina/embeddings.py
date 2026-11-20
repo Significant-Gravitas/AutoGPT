@@ -1,6 +1,7 @@
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -33,6 +34,7 @@ class JinaEmbeddingBlock(Block):
             categories={BlockCategory.AI},
             input_schema=JinaEmbeddingBlock.Input,
             output_schema=JinaEmbeddingBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

@@ -6,12 +6,12 @@
 "use client";
 
 import type { GAParams } from "@/types/google";
-import { consent, type ConsentPreferences } from "@/services/consent/cookies";
+import { hasConsentFor } from "@/services/consent/consent";
 import Script from "next/script";
 import { environment } from "../environment";
-import { buildConsentModeScript } from "./consent-mode";
+import { GoogleConsentModeSync } from "./GoogleConsentModeSync";
 import { DATA_LAYER_NAME, gtag } from "./gtag";
-import { isTourPath } from "./loading-policy";
+import { DATAFAST_SCRIPT_SRC } from "./loading-policy";
 import { useSetupAnalytics } from "./useSetupAnalytics";
 
 type DatafastEvent = [name: string, metadata: Record<string, unknown>];
@@ -31,14 +31,15 @@ export function SetupAnalytics(props: SetupProps) {
   const { ga, host } = props;
   const { gaId, debugMode, nonce } = ga;
   const adsID = environment.getGoogleAdsID();
-  const { preferences, googleTagEnabled, dataFastEnabled } =
-    useSetupAnalytics(host);
+  const { googleTagEnabled, dataFastEnabled } = useSetupAnalytics(host);
 
   return (
     <>
-      {/* Google tag: GA4 + Google Ads */}
-      {googleTagEnabled ? (
+      {/* Google tag: GA4 + Google Ads. Nothing to load without an ID: a
+          self-hosted install must not report to anyone else's property */}
+      {googleTagEnabled && (gaId || adsID) ? (
         <>
+          <GoogleConsentModeSync />
           <Script
             id="_custom-ga-init"
             strategy="afterInteractive"
@@ -47,7 +48,6 @@ export function SetupAnalytics(props: SetupProps) {
                 GAID: gaId,
                 adsID,
                 debugMode,
-                preferences,
               }),
             }}
             nonce={nonce}
@@ -60,14 +60,17 @@ export function SetupAnalytics(props: SetupProps) {
           />
         </>
       ) : null}
-      {/* Datafa.st — onLoad is load-bearing: it delivers the events that were
-          queued before the script finished loading */}
+      {/* DataFast is kept for attribution only: the script records the visit
+          and sets the visitor and session cookies that the server-side signup
+          goal, the X-Datafast-* headers and the Stripe checkout metadata read.
+          In-app behaviour goes to PostHog. onLoad is load-bearing: it delivers
+          the /tour events queued before the script finished loading */}
       {dataFastEnabled ? (
         <Script
           strategy="afterInteractive"
           data-website-id="dfid_g5wtBIiHUwSkWKcGz80lu"
           data-domain="agpt.co"
-          src="https://datafa.st/js/script.js"
+          src={DATAFAST_SCRIPT_SRC}
           onLoad={flushDatafastQueue}
         />
       ) : null}
@@ -79,14 +82,14 @@ interface InitScriptArgs {
   GAID: string;
   adsID: string;
   debugMode?: boolean;
-  preferences: ConsentPreferences | null;
 }
 
+// The root layout queued the Consent Mode defaults before anything else, and
+// GoogleConsentModeSync (with Cookiebot's own integration) sends the answer.
 function buildGoogleTagInitScript({
   GAID,
   adsID,
   debugMode,
-  preferences,
 }: InitScriptArgs): string {
   // The IDs come from env vars and go into a nonce-bearing inline script, so
   // they are escaped rather than interpolated raw: a stray quote in a misfilled
@@ -94,9 +97,10 @@ function buildGoogleTagInitScript({
   return [
     `window['${DATA_LAYER_NAME}'] = window['${DATA_LAYER_NAME}'] || [];`,
     `function gtag(){window['${DATA_LAYER_NAME}'].push(arguments);}`,
-    buildConsentModeScript(preferences),
     `gtag('js', new Date());`,
-    `gtag('config', ${JSON.stringify(GAID)}${debugMode ? ", { 'debug_mode': true }" : ""});`,
+    GAID
+      ? `gtag('config', ${JSON.stringify(GAID)}${debugMode ? ", { 'debug_mode': true }" : ""});`
+      : "",
     adsID
       ? `gtag('config', ${JSON.stringify(adsID)}, { 'allow_enhanced_conversions': true });`
       : "",
@@ -121,23 +125,28 @@ const MAX_QUEUED_DATAFAST_EVENTS = 100;
 const datafastQueue: DatafastEvent[] = [];
 let datafastQueueOverflowWarned = false;
 
-function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
-  if (typeof window === "undefined") return;
+// Returns whether the event was sent or queued, so a once-per-session guard
+// can stay unset when the event was dropped.
+function sendDatafastEvent(
+  name: string,
+  metadata: Record<string, unknown>,
+): boolean {
+  if (typeof window === "undefined") return false;
+  // Checked on every event, not only before the script loads: the script
+  // stays on window after consent is taken back. Pre-consent events must not
+  // queue either — they would be replayed once consent is granted.
+  if (!hasConsentFor("analytics")) return false;
   if (window.datafast) {
     // Self-heal if the Script's onLoad never fired (e.g. consent toggle
     // remounted it after the script had already loaded): replay the backlog
     // first so queued events keep their order ahead of this one.
     flushDatafastQueue();
     window.datafast(name, metadata);
-    return;
+    return true;
   }
   // The script loads afterInteractive, so mount-time events (tour_start,
   // tour_scenario_start) fire before window.datafast exists. Queue them and
-  // flush from the Script's onLoad instead of dropping them. Pre-consent
-  // events must not queue — they would be replayed once consent is granted.
-  // /tour is exempt: it loads DataFast without consent by design.
-  const consentExempt = isTourPath(window.location.pathname);
-  if (!consentExempt && !consent.hasConsentFor("analytics")) return;
+  // flush from the Script's onLoad instead of dropping them.
   if (datafastQueue.length >= MAX_QUEUED_DATAFAST_EVENTS) {
     if (!datafastQueueOverflowWarned) {
       datafastQueueOverflowWarned = true;
@@ -145,13 +154,20 @@ function sendDatafastEvent(name: string, metadata: Record<string, unknown>) {
         `DataFast queue full (${MAX_QUEUED_DATAFAST_EVENTS} events); dropping new events until the script loads`,
       );
     }
-    return;
+    return false;
   }
   datafastQueue.push([name, metadata]);
+  return true;
 }
 
 export function flushDatafastQueue() {
-  if (typeof window === "undefined" || !window.datafast) return;
+  if (typeof window === "undefined") return;
+  if (!hasConsentFor("analytics")) {
+    datafastQueue.length = 0;
+    datafastQueueOverflowWarned = false;
+    return;
+  }
+  if (!window.datafast) return;
   const datafast = window.datafast;
   datafastQueue
     .splice(0, datafastQueue.length)
