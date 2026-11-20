@@ -22,7 +22,10 @@ from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import ExpertCredentialRef
 from backend.data.model import Credentials
 from backend.integrations.credentials_store import is_system_credential
-from backend.integrations.service_identity import service_for_credential
+from backend.integrations.service_identity import (
+    credential_display_name,
+    service_for_credential,
+)
 from backend.util.exceptions import ExpertNotFoundError
 
 if TYPE_CHECKING:
@@ -209,7 +212,7 @@ def _to_refs(
             ExpertCredentialRef(
                 credential_id=credential.id,
                 provider=str(credential.provider),
-                title=credential.title or str(credential.provider),
+                title=credential_display_name(credential),
                 type=str(credential.type),
                 service=identity.service,
                 service_name=identity.name,
@@ -305,6 +308,21 @@ async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[st
     """
     expert = await _owned_expert(user_id, expert_id)
     await _seed_if_needed(user_id, expert)
+    return [grant.credentialId for grant in await _grants(expert_id)]
+
+
+async def seeded_expert_credential_ids(
+    user_id: str, expert_id: str
+) -> list[str] | None:
+    """``expert_allowed_credential_ids`` without its seed: ``None`` while the
+    allow-list is unseeded, so the read never writes and can run beside other
+    reads. A caller then seeds with ``expert_allowed_credential_ids``.
+
+    Raises ``ExpertNotFoundError`` for an expert the user does not own.
+    """
+    expert = await _owned_expert(user_id, expert_id)
+    if expert.credentialsSeededAt is None:
+        return None
     return [grant.credentialId for grant in await _grants(expert_id)]
 
 

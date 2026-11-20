@@ -9,13 +9,29 @@ original call. :func:`wake` starts that turn when none is running; a running
 turn's end wakes it instead, once that turn has left its executor
 (``stream_registry.mark_session_completed``). An answer on an idle chat waits
 for the chat's last card, so a burst of answers starts one turn.
+
+A tool outside ``TOOL_REGISTRY`` (an MCP tool the SDK engine registers, such
+as Local PC computer use) runs through the handler the engine hands
+:func:`resolve_answered`, wrapped as it registers it. Either kind runs with
+the fold's pass for the card it read, which the call's gate spends just
+before the call runs.
 """
 
 import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Iterable, Literal
+from functools import partial
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterable,
+    Literal,
+    Mapping,
+)
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, ValidationError
@@ -34,7 +50,7 @@ from backend.copilot.google_data_redaction import (
 from backend.copilot.limit_tracking import track_turn_cap
 from backend.copilot.model import CHAT_STATUS_RUNNING, ChatSession
 from backend.copilot.pending_messages import PendingMessage
-from backend.copilot.response_model import StreamStatus
+from backend.copilot.response_model import StreamStatus, StreamToolOutputAvailable
 from backend.copilot.tool_image import HeldImage, ToolImage, parse_held_image
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
@@ -46,6 +62,16 @@ from . import chat_rules
 from . import review as review_store
 from .headline import headline_for
 from .policy import PARKABLE, effect_for
+from .spent_approval import (
+    EXPIRED,
+    SPENT,
+    UNCONFIRMED,
+    FoldPass,
+    SpentThenFailed,
+    UnconfirmedSpend,
+    expired,
+    running,
+)
 
 if TYPE_CHECKING:
     from backend.api.features.graph_executions.review.model import (
@@ -65,6 +91,10 @@ _KEY = "copilot:gate:held:"
 _MAX_RESULT_CHARS = 120_000
 
 Outcome = Literal["approved", "rejected", "expired", "closed", "unknown"]
+# An MCP handler as the engine registers it: arguments in, MCP result out.
+McpHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+# An approved call, ready to run.
+_Run = Callable[[], Awaitable[tuple[Outcome, str]]]
 
 WAKE_MESSAGE = "I answered an action that was waiting for my approval."
 # Metadata on the user rows an answered card writes: the wake, and each result.
@@ -73,6 +103,11 @@ _RESULT_KEY = "held_call"
 _RESEND = (
     "Nothing ran: the approved action's details were lost before it could run. "
     "Tell the user, and ask them to send the request again if it is still needed."
+)
+_NO_LONGER_OPEN = "Nothing ran: this card is no longer open."
+_MAY_HAVE_RUN = (
+    "The approved action may have run, but its result was lost before it "
+    "reached you. Tell the user, and check the outcome before relying on it."
 )
 
 
@@ -114,20 +149,67 @@ class HeldCall(BaseModel):
     # tree; a call rebuilt from its card has none and is not woken.
     envelope: TurnEnvelope | None = None
     cost_context: TrialCostContext | None = None
+    # The card it waits on: the generation stamped on that card by the park
+    # that opened it. A card's id is reused once the card is gone, so a card
+    # of another generation is another call's. None on a record (and a card)
+    # from before generations were kept.
+    generation: str | None = None
+
+
+def card_generation() -> str:
+    """A new park's generation, unique to it: identical calls parked at once,
+    or one parked just after an earlier card under the id was spent, never
+    share one."""
+    return uuid.uuid4().hex
+
+
+def _generation_of(row: "PendingHumanReviewModel") -> str | None:
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    generation = payload.get(review_store.HELD_GENERATION)
+    return generation if isinstance(generation, str) else None
+
+
+def _of_card(call: HeldCall, row: "PendingHumanReviewModel") -> bool:
+    """Whether the held call is the one this card answers: the same
+    generation. A record from before generations were kept pairs only with a
+    card from before them too, never with a later card under the same id."""
+    return call.generation == _generation_of(row)
+
+
+def _field(call: HeldCall) -> str:
+    """Where the call is held: its review id and its card's generation, so a
+    held call for another card under the same id never shares the slot."""
+    if call.generation is None:
+        return call.review_id
+    return f"{call.review_id}@{call.generation}"
 
 
 async def remember(session_id: str, call: HeldCall) -> bool:
-    """False means the call cannot be finished on approval, so it must not park."""
+    """Hold the call under its card. Only ever adds: a call already held for
+    that card stays as it is, and one held for another card is another
+    call's. False means it could not be stored, so the call must not park."""
+    return await _store(session_id, call, replace=False)
+
+
+async def _rehold(session_id: str, call: HeldCall) -> bool:
+    """Put back a call this fold claimed. Its slot is its park's alone, so
+    all that can have been written there since the claim is a restore's copy
+    of the card, which never runs (it has no cost context): the exact call
+    replaces it."""
+    return await _store(session_id, call, replace=True)
+
+
+async def _store(session_id: str, call: HeldCall, *, replace: bool) -> bool:
     try:
         redis = await get_redis_async()
+        # Encrypted: the arguments can hold a credential, and must stay exact
+        # to match the approval, so they cannot be redacted like the card's.
+        held = JSONCryptor().encrypt(call.model_dump(mode="json"))
         async with redis.pipeline(transaction=True) as pipe:
-            # Encrypted: the arguments can hold a credential, and must stay exact
-            # to match the approval, so they cannot be redacted like the card's.
-            pipe.hset(
-                _key(session_id),
-                call.review_id,
-                JSONCryptor().encrypt(call.model_dump(mode="json")),
-            )
+            if replace:
+                pipe.hset(_key(session_id), _field(call), held)
+            else:
+                pipe.hsetnx(_key(session_id), _field(call), held)
             pipe.expire(_key(session_id), _TTL_SECONDS)
             await pipe.execute()
         return True
@@ -140,7 +222,7 @@ async def remember(session_id: str, call: HeldCall) -> bool:
 
 async def rule_key(session_id: str, review_id: str, tool_name: str) -> str:
     """What a rejection of this card sets to ask: its subject, else its tool."""
-    call = (await _held(session_id)).get(review_id)
+    call = _by_review_id(await _held(session_id)).get(review_id)
     return (call.rule_key if call else None) or tool_name
 
 
@@ -150,7 +232,7 @@ async def subject_keys(session_id: str, review_ids: list[str]) -> dict[str, str]
     if not review_ids:
         return {}
     try:
-        held = await _held(session_id)
+        held = _by_review_id(await _held(session_id))
     except Exception:
         # The approval still lands; only the rule is lost.
         logger.warning(
@@ -167,17 +249,39 @@ async def subject_keys(session_id: str, review_ids: list[str]) -> dict[str, str]
     }
 
 
-async def forget(session_id: str, review_id: str) -> None:
+async def kept_for_its_card(user_id: str, session_id: str, call: HeldCall) -> bool:
+    """Whether the card now open under the call's id is the one it was stored
+    under. An identical call parked a moment before may have opened the card
+    first, so this call's slot would never be answered: it is dropped, and
+    the caller says the call is already waiting. Unreadable, it is kept."""
+    try:
+        rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
+    except Exception:
+        logger.warning(
+            f"Gate could not read back review {call.review_id}", exc_info=True
+        )
+        return True
+    card = rows.get(call.review_id)
+    if card is None or _of_card(call, card):
+        return True
+    await forget(session_id, call)
+    return False
+
+
+async def forget(session_id: str, call: HeldCall) -> None:
     """Drop a call whose card was never opened; nothing can answer it."""
-    await _claim(session_id, review_id)
+    await _claim(session_id, call)
 
 
 async def answered(user_id: str, session_id: str) -> list[HeldCall]:
-    """Held calls whose card has been answered, oldest first."""
+    """Held calls whose card has been answered, oldest first. On the way it
+    drops the held calls no card can answer any more (see :func:`_answered`)."""
     held = await _held(session_id)
-    return [
-        held[review_id] for review_id, _ in await _answered(user_id, session_id, held)
-    ]
+    listed, strays = await _answered(user_id, session_id, held)
+    for field in strays:
+        logger.info(f"Held call {held[field].review_id} has no card; dropped")
+        await _claim(session_id, held[field])
+    return [held[field] for field, _ in listed]
 
 
 async def answered_cards(
@@ -185,29 +289,48 @@ async def answered_cards(
 ) -> "list[PendingHumanReviewModel]":
     """The answered cards whose held calls have not run yet, oldest first."""
     held = await _held(session_id)
-    return [row for _, row in await _answered(user_id, session_id, held)]
+    listed, _ = await _answered(user_id, session_id, held)
+    return [row for _, row in listed]
 
 
 async def _answered(
     user_id: str, session_id: str, held: dict[str, HeldCall]
-) -> "list[tuple[str, PendingHumanReviewModel]]":
+) -> "tuple[list[tuple[str, PendingHumanReviewModel]], list[str]]":
+    """The answered held calls with their cards, oldest first, and the held
+    calls no card can answer any more: theirs is gone, or another park's
+    (generations are never reused). Only those held for longer than an
+    approval lasts count, so a park between storing its call and opening its
+    card is never one."""
     if not held:
-        return []
+        return [], []
     try:
-        rows = await review_db().get_reviews_by_node_exec_ids(list(held), user_id)
+        rows = await review_db().get_reviews_by_node_exec_ids(
+            list({call.review_id for call in held.values()}), user_id
+        )
     except Exception:
         logger.warning(
             f"Gate could not read held calls for session {session_id}", exc_info=True
         )
-        return []
-    return sorted(
+        return [], []
+    listed = sorted(
         (
-            (review_id, row)
-            for review_id, row in rows.items()
-            if row.session_id == session_id and row.status != ReviewStatus.WAITING
+            (field, row)
+            for field, call in held.items()
+            if (row := rows.get(call.review_id)) is not None
+            and row.session_id == session_id
+            and row.status != ReviewStatus.WAITING
+            and _of_card(call, row)
         ),
         key=lambda answered: held[answered[0]].held_at,
     )
+    stale = datetime.now(UTC) - review_store.APPROVAL_TTL
+    strays = [
+        field
+        for field, call in held.items()
+        if call.held_at < stale
+        and ((row := rows.get(call.review_id)) is None or not _of_card(call, row))
+    ]
+    return listed, strays
 
 
 async def resolve_answered(
@@ -215,15 +338,18 @@ async def resolve_answered(
     session: ChatSession,
     deliver: Callable[[PendingMessage], None],
     cap: Callable[[str], str] = lambda text: text,
+    mcp_handlers: Mapping[str, McpHandler] | None = None,
 ) -> AsyncIterator[StreamStatus]:
     """Run every answered held call once and ``deliver`` its result as a user row.
 
     Yields a status before an approved call runs, which the engine streams:
     nothing else reaches the chat while it does. Call only once the turn's
     execution context is set. ``cap`` is the engine's own last step on a
-    direct tool result, so a late one reads the same. The HDEL claims the
-    call, so two turns racing over one card cannot both run it; the gate's own
-    consume stays the second lock behind it.
+    direct tool result, so a late one reads the same. ``mcp_handlers`` runs
+    the engine's MCP tools outside ``TOOL_REGISTRY``. The HDEL claims the
+    call, so two turns racing over one card cannot both run it; the gate
+    spending the card as read, just before the call runs, is the second lock
+    behind it.
     """
     if not user_id:
         return
@@ -236,20 +362,33 @@ async def resolve_answered(
             logger.warning(f"Held call {call.review_id} unreadable", exc_info=True)
             continue
         row = rows.get(call.review_id)
-        tool = _due(call, row, user_id)
+        if row is not None and not _of_card(call, row):
+            # A later card under the id is another call's; this call's is gone.
+            row = None
+        run = _due(user_id, session, call, row, mcp_handlers or {})
         # Before the claim: a stream closed at this yield leaves the call held.
-        if tool:
+        if run:
             yield StreamStatus(
                 message=f"Running the action you approved: {_headline(call, row)}"
             )
-        if not await _claim(session.session_id, call.review_id):
+        if not await _claim(session.session_id, call):
             continue
         try:
-            await _resolve(user_id, session, call, row, tool, deliver, cap)
+            await _resolve(user_id, session, call, row, run, deliver, cap)
+        except SpentThenFailed:
+            recovered = await _recover(user_id, session.session_id, call, row, "spent")
+        except UnconfirmedSpend:
+            recovered = await _recover(
+                user_id, session.session_id, call, row, "unconfirmed"
+            )
         except Exception:
-            logger.warning(f"Held call {call.review_id} not delivered", exc_info=True)
-            for result in await _recover(user_id, session.session_id, call):
-                deliver(result)
+            recovered = await _recover(
+                user_id, session.session_id, call, row, "unspent"
+            )
+        else:
+            continue
+        for result in recovered:
+            deliver(result)
 
 
 async def wake(
@@ -297,11 +436,14 @@ async def wake(
         wake_id = str(
             uuid.uuid5(
                 uuid.NAMESPACE_URL,
-                f"{session_id}:" + ",".join(sorted(c.review_id for c in calls)),
+                # By held call, not review id: a card proposed again under a
+                # spent card's id is a new answer, with a turn of its own.
+                f"{session_id}:" + ",".join(sorted(_field(c) for c in calls)),
             )
         )
         info = await chat_db().get_chat_session_metadata(session_id)
-        if info is None or info.user_id != user_id:
+        # A reset removed the chat: nothing runs in it again.
+        if info is None or info.user_id != user_id or info.archived_at is not None:
             return True
         waiting = await _waiting(user_id, session_id)
         # A running turn's end carries the answers whatever still waits.
@@ -436,19 +578,37 @@ async def _resolve(
     session: ChatSession,
     call: HeldCall,
     row: "PendingHumanReviewModel | None",
-    tool: "BaseTool | None",
+    run: _Run | None,
     deliver: Callable[[PendingMessage], None],
     cap: Callable[[str], str],
 ) -> None:
     if call.cost_context is None or call.cost_context.user_id != user_id:
-        await review_store.consume(call.review_id, user_id)
+        if row is not None:
+            await review_store.discard(row, user_id)
         deliver(_result_row(call, _RESEND, "closed"))
         return
     with restore_cost_context(user_id, call.cost_context):
-        if tool:
-            outcome, output = await _run(user_id, session, call, tool)
+        if run:
+            outcome, output = await run()
         else:
             outcome, output = await _settled(user_id, session, call, row)
+    try:
+        _deliver(call, row, outcome, output, deliver, cap)
+    except Exception as failed:
+        # Only a run on a spent approval, or a released read, is approved.
+        if outcome == "approved":
+            raise SpentThenFailed(call.review_id) from failed
+        raise
+
+
+def _deliver(
+    call: HeldCall,
+    row: "PendingHumanReviewModel | None",
+    outcome: Outcome,
+    output: str,
+    deliver: Callable[[PendingMessage], None],
+    cap: Callable[[str], str],
+) -> None:
     shown = _card_copy(row)
     google_data = is_google_call(call.args) or is_google_output(output)
     image_result = parse_held_image(output) if outcome == "approved" else None
@@ -482,27 +642,48 @@ async def _resolve(
 
 
 async def _recover(
-    user_id: str, session_id: str, call: HeldCall
+    user_id: str,
+    session_id: str,
+    call: HeldCall,
+    row: "PendingHumanReviewModel | None",
+    spend: Literal["spent", "unconfirmed", "unspent"],
 ) -> list[PendingMessage]:
-    """``_resolve`` failed. A card still open goes back for the next turn; a
-    spent approval means the call reached the gate, so it may have run."""
+    """``_resolve`` failed. What the chat hears goes by how far the fold got
+    with the approval (``spend``), never by a guess from the card alone. The
+    card is looked up again only when nothing was spent::
+
+        spend        card the fold read     no card, or a later    lookup
+                     still stands           one under the id       fails
+        -----------  ---------------------  ---------------------  ---------------
+        unspent      held again; the next   "no longer open";      "propose it
+                     turn runs it           not held               again"
+        unconfirmed  "propose it again", not held: nothing ran, and proposed
+                     again it runs on an approval that still stands or asks
+                     afresh (no lookup)
+        spent        "may have run", outcome ``unknown``, not held (no
+                     lookup: the spend deleted exactly the card read)
+
+    ``spent`` is :class:`SpentThenFailed` (the gate's spend went through, then
+    the call or its delivery failed), ``unconfirmed`` is
+    :class:`UnconfirmedSpend` (the spend itself failed), and ``unspent`` is
+    any other failure. A call is held again only where a later turn will find
+    it: a held call whose card is gone is never answered.
+    """
+    logger.warning(f"Held call {call.review_id} not delivered ({spend})", exc_info=True)
+    if spend == "spent":
+        return [_result_row(call, _MAY_HAVE_RUN, "unknown")]
+    if spend == "unconfirmed":
+        return [_result_row(call, UNCONFIRMED, "closed")]
     try:
         rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
-        spent = call.review_id not in rows
     except Exception:
-        spent = False
-    if not spent:
-        await remember(session_id, call)
+        return [_result_row(call, UNCONFIRMED, "closed")]
+    current = rows.get(call.review_id)
+    if current is None or row is None or current.created_at != row.created_at:
+        return [_result_row(call, _NO_LONGER_OPEN, "closed")]
+    if await _rehold(session_id, call):
         return []
-    return [
-        _result_row(
-            call,
-            "The approved action may have run, but its result was lost before it "
-            "reached you. Tell the user, and check the outcome before relying "
-            "on it.",
-            "unknown",
-        )
-    ]
+    return [_result_row(call, UNCONFIRMED, "closed")]
 
 
 def _result_row(
@@ -546,10 +727,14 @@ def _card_copy(card: "PendingHumanReviewModel | None") -> dict[str, Any]:
 
 
 def _due(
-    call: HeldCall, row: "PendingHumanReviewModel | None", user_id: str
-) -> "BaseTool | None":
-    """The tool an answered card's approved call runs with; None when it runs
-    nothing, which :func:`_resolve` then says."""
+    user_id: str,
+    session: ChatSession,
+    call: HeldCall,
+    row: "PendingHumanReviewModel | None",
+    mcp_handlers: Mapping[str, McpHandler],
+) -> _Run | None:
+    """How an answered card's approved call runs; None when it runs nothing,
+    which :func:`_resolve` then says."""
     from backend.copilot.tools import get_tool
 
     from .reads import is_held_read
@@ -558,13 +743,19 @@ def _due(
         row is None
         or row.status != ReviewStatus.APPROVED
         or is_held_read(call.review_id)
-        or _expired(row)
+        or expired(row)
         or call.lost
         or call.cost_context is None
         or call.cost_context.user_id != user_id
     ):
         return None
-    return get_tool(call.tool_name)
+    tool = get_tool(call.tool_name)
+    if tool is not None:
+        return partial(_run, user_id, session, call, row, tool)
+    handler = mcp_handlers.get(call.tool_name)
+    if handler is not None:
+        return partial(_run_handler, user_id, call, row, handler)
+    return None
 
 
 async def _settled(
@@ -578,11 +769,11 @@ async def _settled(
     from .reads import answered_read, is_held_read
 
     if row is None or row.status == ReviewStatus.WAITING:
-        return "closed", "Nothing ran: this card is no longer open."
+        return "closed", _NO_LONGER_OPEN
     if is_held_read(call.review_id):
         return await answered_read(user_id, row)
     if row.status == ReviewStatus.REJECTED:
-        await review_store.consume(call.review_id, user_id)
+        await review_store.discard(row, user_id)
         await chat_rules.set_ask(
             session.session_id,
             call.rule_key or call.tool_name,
@@ -593,20 +784,12 @@ async def _settled(
             "Nothing ran: the user declined this action. Do not retry it or "
             "reach the same effect another way."
         )
-    await review_store.consume(call.review_id, user_id)
-    if _expired(row):
-        return "expired", (
-            "Nothing ran: the approval expired an hour after it was given. "
-            "Propose the call again if it is still needed."
-        )
+    await review_store.discard(row, user_id)
+    if expired(row):
+        return "expired", EXPIRED
     if call.lost:
         return "closed", _RESEND
     return "closed", "Nothing ran: this tool no longer exists."
-
-
-def _expired(row: "PendingHumanReviewModel") -> bool:
-    approved_at = row.reviewed_at or row.updated_at or row.created_at
-    return datetime.now(UTC) - approved_at > review_store.APPROVAL_TTL
 
 
 def _headline(call: HeldCall, row: "PendingHumanReviewModel | None") -> str:
@@ -618,14 +801,75 @@ def _headline(call: HeldCall, row: "PendingHumanReviewModel | None") -> str:
 
 
 async def _run(
-    user_id: str, session: ChatSession, call: HeldCall, tool: "BaseTool"
+    user_id: str,
+    session: ChatSession,
+    call: HeldCall,
+    row: "PendingHumanReviewModel",
+    tool: "BaseTool",
 ) -> tuple[Outcome, str]:
-    # The gate finds the approval for exactly these arguments and spends it.
-    with replaying_bound_args(call.args_bound):
-        result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
-    # With the flag switched off since, the gate ran it without spending the
-    # approval; spend it here so no later identical call rides on it.
-    await review_store.consume(call.review_id, user_id)
+    async def invoke() -> tuple[bool, Callable[[], tuple[Outcome, str]]]:
+        with replaying_bound_args(call.args_bound):
+            result = await tool.execute(
+                user_id, session, call.tool_call_id, **call.args
+            )
+        return result.success, lambda: _tool_outcome(result)
+
+    return await _with_pass(user_id, call, row, invoke)
+
+
+async def _with_pass(
+    user_id: str,
+    call: HeldCall,
+    row: "PendingHumanReviewModel",
+    invoke: Callable[[], Awaitable[tuple[bool, Callable[[], tuple[Outcome, str]]]]],
+) -> tuple[Outcome, str]:
+    """Run the call with a pass for the card the fold read, which its gate
+    spends just before it runs; then say what it came to by how far the spend
+    got. A failure after the spend may have run the call."""
+    fold_pass = FoldPass(row)
+    try:
+        with running(call.review_id, fold_pass):
+            succeeded, outcome = await invoke()
+        return await _passed(user_id, call, fold_pass, outcome, succeeded)
+    except (SpentThenFailed, UnconfirmedSpend):
+        raise
+    except Exception as failed:
+        if fold_pass.use == "spent":
+            raise SpentThenFailed(call.review_id) from failed
+        raise
+
+
+async def _passed(
+    user_id: str,
+    call: HeldCall,
+    fold_pass: FoldPass,
+    ran: Callable[[], tuple[Outcome, str]],
+    succeeded: bool,
+) -> tuple[Outcome, str]:
+    """What the held call came to, by how far its gate got with the card. A
+    call refused before its gate spent nothing, so it isn't approved and its
+    approval stands for the call proposed again."""
+    if fold_pass.use == "spent":
+        return ran()
+    if fold_pass.use == "unconfirmed":
+        raise UnconfirmedSpend(call.review_id)
+    if fold_pass.use == "expired":
+        return "expired", EXPIRED
+    if fold_pass.use == "missed":
+        return "closed", SPENT
+    if fold_pass.use == "unmatched" or succeeded:
+        # It reached its gate with other arguments, or ran without reaching
+        # one: either way it may have run without this card, which must not
+        # then buy an identical call a run.
+        logger.warning(
+            f"Held call {call.review_id} may have run without spending its "
+            f"approval ({fold_pass.use}); dropping the card"
+        )
+        await review_store.discard(fold_pass.card, user_id)
+    return "closed", ran()[1]
+
+
+def _tool_outcome(result: StreamToolOutputAvailable) -> tuple[Outcome, str]:
     if result.image is not None:
         text = (
             result.output
@@ -638,6 +882,50 @@ async def _run(
     return "approved", json.dumps(result.output, default=str)
 
 
+async def _run_handler(
+    user_id: str,
+    call: HeldCall,
+    row: "PendingHumanReviewModel",
+    handler: McpHandler,
+) -> tuple[Outcome, str]:
+    async def invoke() -> tuple[bool, Callable[[], tuple[Outcome, str]]]:
+        result = await handler(call.args)
+        return not result.get("isError"), lambda: _handler_outcome(result)
+
+    return await _with_pass(user_id, call, row, invoke)
+
+
+def _handler_outcome(result: dict[str, Any]) -> tuple[Outcome, str]:
+    blocks = [b for b in result.get("content") or () if isinstance(b, dict)]
+    text = "\n".join(str(b.get("text", "")) for b in blocks if b.get("type") == "text")
+    images = [b for b in blocks if b.get("type") == "image" and b.get("data")]
+    # A late result carries one image: the last that reads, which shows what
+    # the call left on screen (a script's after, not its before). The rest
+    # are named rather than dropped unsaid.
+    shown = next(
+        (image for image in map(_tool_image, reversed(images)) if image is not None),
+        None,
+    )
+    if left_out := len(images) - (shown is not None):
+        text += (
+            f"\n\n({left_out} more image(s) from this call aren't shown: a result "
+            "that waited for approval carries only its last. Take a fresh "
+            "screenshot if you need one.)"
+        )
+    if shown is None:
+        return "approved", text
+    return "approved", HeldImage(text=text, image=shown).model_dump_json()
+
+
+def _tool_image(block: dict[str, Any]) -> ToolImage | None:
+    try:
+        return ToolImage.model_validate(
+            {"mime_type": block.get("mimeType"), "data_base64": str(block["data"])}
+        )
+    except ValidationError:
+        return None
+
+
 async def _restore(
     user_id: str, session_id: str, rows: "Iterable[PendingHumanReviewModel]"
 ) -> None:
@@ -645,9 +933,9 @@ async def _restore(
     rows = [r for r in rows if r.node_exec_id.startswith(gate_prefix)]
     if not rows:
         return
-    held = await _held(session_id)
+    held = (await _held(session_id)).values()
     for row in rows:
-        if row.node_exec_id not in held:
+        if not any(c.review_id == row.node_exec_id and _of_card(c, row) for c in held):
             logger.warning(f"Held call {row.node_exec_id} restored from its card")
             await remember(session_id, _from_row(user_id, session_id, row))
 
@@ -676,10 +964,12 @@ def _from_row(
         args=args if intact else {},
         held_at=row.created_at,
         lost=not intact,
+        generation=_generation_of(row),
     )
 
 
 async def _held(session_id: str) -> dict[str, HeldCall]:
+    """The chat's held calls, by where each is held (see :func:`_field`)."""
     try:
         redis = await get_redis_async()
         raw = await redis.hgetall(_key(session_id))
@@ -690,23 +980,39 @@ async def _held(session_id: str) -> dict[str, HeldCall]:
         return {}
     held: dict[str, HeldCall] = {}
     for key, value in raw.items():
-        review_id = key.decode() if isinstance(key, bytes) else key
+        field = key.decode() if isinstance(key, bytes) else key
         stored = value.decode() if isinstance(value, bytes) else value
         try:
-            held[review_id] = HeldCall.model_validate(JSONCryptor().decrypt(stored))
+            held[field] = HeldCall.model_validate(JSONCryptor().decrypt(stored))
         except ValidationError:
             # Unreadable is the same as gone: the answer restores it from its card.
-            logger.warning(f"Gate could not read held call {review_id}")
+            logger.warning(f"Gate could not read held call {field}")
     return held
 
 
-async def _claim(session_id: str, review_id: str) -> bool:
+async def _claim(session_id: str, call: HeldCall) -> bool:
+    """Take this very held call: one held for another card under the same
+    review id sits in its own slot, so it is never taken in its place."""
     try:
         redis = await get_redis_async()
-        return await redis.hdel(_key(session_id), review_id) == 1
+        return await redis.hdel(_key(session_id), _field(call)) == 1
     except Exception:
-        logger.warning(f"Gate could not claim held call {review_id}", exc_info=True)
+        logger.warning(
+            f"Gate could not claim held call {call.review_id}", exc_info=True
+        )
         return False
+
+
+def _by_review_id(held: dict[str, HeldCall]) -> dict[str, HeldCall]:
+    """One held call per review id: every call under one id has the same
+    arguments, so the same subject, but a restore's copy of the card keeps no
+    rule key, so a call that has one is preferred."""
+    by_id: dict[str, HeldCall] = {}
+    for call in held.values():
+        kept = by_id.get(call.review_id)
+        if kept is None or (kept.rule_key is None and call.rule_key is not None):
+            by_id[call.review_id] = call
+    return by_id
 
 
 def _key(session_id: str) -> str:

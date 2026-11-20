@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from time import time
 from typing import Any
 
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
@@ -9,10 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from backend.data import user as user_store
 from backend.data.db_accessors import auth_session_db, user_db
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
-settings = Settings()
 _SESSION_LOOKUP_TIMEOUT = 5.0
 SESSION_TOKEN_RENEWAL_REQUIRED = "session_token_renewal_required"
 
@@ -26,9 +23,8 @@ class SessionTokenClaims(BaseModel):
 
 async def require_active_auth_session(payload: dict[str, Any]) -> None:
     if "sid" not in payload:
-        deadline = settings.config.auth_legacy_token_deadline
-        if deadline is None or time() < deadline:
-            return
+        # The auth service puts the session id in every token it signs, so a
+        # token without one predates that: the client renews it.
         raise HTTPException(
             status_code=401,
             detail="Session token requires renewal",

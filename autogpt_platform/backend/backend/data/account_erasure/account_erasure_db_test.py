@@ -560,14 +560,15 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
         where={"reviewByUserId": user_id}
     )
 
-    # A rerun finds nothing, can't claim the finished request, changes
-    # nothing and sends nothing.
+    # A rerun finds nothing, can't claim the finished request and sends
+    # nothing: it only repeats the PostHog delete.
     again = await delete_rows(await load_subject(user_id), dry_run=False)
     assert set(again.counts.values()) == {0}
     assert await plan_transfer(user_id) == type(plan)()
     rerun = await routine.erase_account(user_id, dry_run=False)
     assert rerun.not_claimed == "erased already"
-    assert rerun.steps == []
+    assert [step.status for step in rerun.steps] == [StepStatus.DONE]
+    assert not rerun.failed
     outside_services.assert_awaited_once()
     after = await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
         where={"userId": user_id}
@@ -794,6 +795,7 @@ async def test_a_banned_account_erased_leaves_a_ban_record(
         assert (await routine.erase_account(user_id, dry_run=False)).complete
 
     assert await ban_record.is_banned_address(banned_email.upper())
+    assert await ban_record.is_banned_address(banned_email.replace("@", "+again@"))
     assert not await ban_record.is_banned_address(not_banned_email)
     record = await prisma.models.AccountBanRecord.prisma().find_unique_or_raise(
         where={"emailHash": ban_record.email_hash(banned_email) or ""}
@@ -807,3 +809,70 @@ async def test_a_banned_account_erased_leaves_a_ban_record(
     assert not await prisma.models.AccountBanRecord.prisma().count(
         where={"id": record.id}
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_longer_ban_on_another_spelling_outlasts_the_shared_record(
+    server: SpinTestServer, monkeypatch
+):
+    """Two accounts on one mailbox share a record: the second, banned for
+    good, moves its end out to 3 years, and a rerun of it changes nothing."""
+    monkeypatch.setattr(ban_record.settings.secrets, "ban_record_hash_key", "test-key")
+    mailbox = f"ban-{uuid.uuid4().hex[:8]}@example.com"
+    first = Subject(
+        user_id=str(uuid.uuid4()),
+        email=mailbox.replace("@", "+one@"),
+        banned=True,
+        ban_expires=datetime.now(UTC) + timedelta(days=30),
+    )
+    second = Subject(
+        user_id=str(uuid.uuid4()), email=mailbox.replace("@", "+two@"), banned=True
+    )
+    digest = ban_record.email_hash(mailbox) or ""
+
+    try:
+        await ban_record.keep_ban_record(first, dry_run=False)
+        await ban_record.keep_ban_record(second, dry_run=False)
+        record = await prisma.models.AccountBanRecord.prisma().find_unique_or_raise(
+            where={"emailHash": digest}
+        )
+        assert record.deleteAfter - record.recordedAt == ban_record.BAN_RECORD_RETENTION
+
+        await ban_record.keep_ban_record(second, dry_run=False)
+        again = await prisma.models.AccountBanRecord.prisma().find_unique_or_raise(
+            where={"emailHash": digest}
+        )
+        assert again.deleteAfter == record.deleteAfter
+    finally:
+        await prisma.models.AccountBanRecord.prisma().delete_many(
+            where={"emailHash": digest}
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_account_closed_without_the_email_is_erased_without_one(
+    server: SpinTestServer, outside_services: AsyncMock
+):
+    """`--close --now --no-email`: three closed accounts whose confirmation
+    did not go out. One was closed with it skipped, one closed earlier and
+    marked before the erasure, one left as it is: only that last one gets the
+    late email."""
+    skipped, marked, emailed = [await _account() for _ in range(3)]
+    source = prisma.enums.AccountDeletionSource.EMAIL
+    assert await close_account(skipped, source, confirmation_skipped=True)
+    assert await close_account(marked, source)
+    assert await close_account(emailed, source)
+    assert await request.skip_confirmation(marked)
+    for user_id in (skipped, marked, emailed):
+        await _past_the_14_days(user_id)
+        assert (await routine.erase_account(user_id, dry_run=False)).complete
+
+    outside_services.assert_awaited_once()
+    assert outside_services.await_args.args[0] == f"deletion-{emailed[:8]}@example.com"
+    rows = await prisma.models.AccountDeletionRequest.prisma().find_many(
+        where={"userId": {"in": [skipped, marked]}}
+    )
+    assert [(row.confirmationSkipped, row.confirmationSentAt) for row in rows] == [
+        (True, None),
+        (True, None),
+    ]

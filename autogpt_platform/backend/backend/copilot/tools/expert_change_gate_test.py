@@ -21,7 +21,7 @@ from backend.copilot.gate import card_approval, held
 from backend.copilot.gate.card_approval import record_card_decisions
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.headline import Headline
-from backend.copilot.gate.review import review_payload
+from backend.copilot.gate.review import HELD_GENERATION, review_payload
 from backend.copilot.model import (
     AutopilotMode,
     ChatMessage,
@@ -82,6 +82,7 @@ def gate():
         patch(f"{_GATE}.review_store.find_review", store.find_review),
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.held.remember", store.remember),
+        patch(f"{_GATE}.held.kept_for_its_card", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value=None)),
         patch(f"{_GATE}.supervise", store.supervise),
         patch(
@@ -295,11 +296,18 @@ async def test_the_held_confirm_fixture_is_what_an_approved_hold_delivers(gate):
             status=ReviewStatus.APPROVED, payload={}
         )
         approved = SimpleNamespace(
+            node_exec_id=review_id,
             status=ReviewStatus.APPROVED,
             session_id=session.session_id,
+            created_at=datetime.now(UTC),
+            updated_at=None,
             reviewed_at=datetime.now(UTC),
-            # The card the gate stored; the late result carries its arguments.
-            payload=review_payload(call.tool_name, call.args),
+            # The card the gate stored, stamped for this call; the late result
+            # carries its arguments.
+            payload={
+                **review_payload(call.tool_name, call.args),
+                HELD_GENERATION: call.generation,
+            },
         )
         reviews = SimpleNamespace(
             get_reviews_by_node_exec_ids=AsyncMock(return_value={review_id: approved})

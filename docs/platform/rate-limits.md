@@ -103,7 +103,7 @@ Sub-workflows, the workflows a run starts as one of its steps, count toward the 
 
 ### Schedules
 
-You can have up to 200 schedules, paused ones included. A new one past that is refused with a message saying you have reached the most one account can have; delete one to add another.
+You can have up to 200 schedules, paused ones included. A new one past that is refused with a message saying you have reached the most one account can have; delete one to add another. If creating a schedule from a workflow's schedule dialog, in the library or the builder, gets no answer, trying again with the same details in the same tab returns the schedule the first try made instead of counting a second one. If your browser blocks site storage, that holds only until the page reloads.
 
 - **Counted per:** account.
 - **Self-hosting:** `MAX_SCHEDULES_PER_USER` (default `200`).
@@ -221,15 +221,30 @@ The 10-minute windows for the first row start on the clock: at :00, :10, :20 and
 - **What you see:** `429`, with "Too many attempts. Please try again in 3 minutes." — the wait named in seconds under a minute — and an `X-Retry-After` header in seconds.
 - Where the Platform has no IP address for the caller, only the per-address limits apply; see [Client IP Addresses](client-ip.md#signing-in). None of these are configurable.
 
+### Confirming a sign-in with an emailed code
+
+When you continue with a sign-in provider such as Google or Microsoft, and an account already uses your email address, the Platform may email you a 6-digit code before that provider joins the account. It doesn't when the provider runs your mailbox (Gmail through Google, Outlook.com through Microsoft). You type the code into the login page that asked for it.
+
+| Limit                                                                      | Counted per   | What you see                                                                                              |
+| -------------------------------------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------- |
+| 5 codes in each clock hour, from sign-ins and **Send a new code** together | email address | The login page says several codes have already gone to the address, and no new one is sent                |
+| 20 wrong codes in a 30-day window                                          | email address | The sign-in ends, and no code goes to the address until the window ends: log in the way you usually do    |
+| **Send a new code** once a minute                                          | sign-in       | `429` and "Wait a moment before asking for another code."                                                 |
+| 5 tries per code                                                           | sign-in       | After the fifth wrong code the sign-in ends: sign in again for a new code                                 |
+| 10 code checks a minute                                                    | IP address    | `429`, with "Too many attempts. Please try again in 1 minute." — the wait named in seconds under a minute |
+
+- A code expires after 10 minutes, works once, and only in the browser that started the sign-in. A code that couldn't be sent doesn't count toward the five an hour.
+- The hour and the minute start on the clock, and the 30-day windows are fixed too, not rolling. None of these are configurable.
+
 ### The authentication API
 
 Requests to the authentication API under `/api/auth/` are limited per IP address and path:
 
-| Paths                                                 | Limit              |
-| ----------------------------------------------------- | ------------------ |
-| `/sign-in/*`, `/sign-up/*`, `/change-email`           | 3 per 10 seconds   |
-| `/request-password-reset`, `/send-verification-email` | 3 per 60 seconds   |
-| Every other path                                      | 100 per 10 seconds |
+| Paths                                                          | Limit              |
+| -------------------------------------------------------------- | ------------------ |
+| `/sign-in/*`, `/sign-in-code/*`, `/sign-up/*`, `/change-email` | 3 per 10 seconds   |
+| `/request-password-reset`, `/send-verification-email`          | 3 per 60 seconds   |
+| Every other path                                               | 100 per 10 seconds |
 
 Each path counts on its own. A path allows that many requests in a row, and starts counting again once a whole window has passed since the last request it let through. Past the limit, the answer is `429` with `{"message":"Too many requests. Please try again later."}` and an `X-Retry-After` header in seconds.
 
@@ -249,7 +264,7 @@ Where you can close your account yourself, the **Delete account** dialog asks wh
 
 ### API v2
 
-Every call to [API v2](integrating/api-guide.md) shares one limit, on top of the lower limits on a few endpoints that [Errors, rate limits, and pagination](integrating/api-conventions.md#rate-limits) lists:
+Every call to [API v2](integrating/api-guide.md) shares one limit, on top of the lower limits on a few endpoints and on presenting a credential, which [Errors, rate limits, and pagination](integrating/api-conventions.md#rate-limits) lists:
 
 | Caller                                                     | Limit                 | Counted per |
 | ---------------------------------------------------------- | --------------------- | ----------- |
@@ -259,7 +274,7 @@ Every call to [API v2](integrating/api-guide.md) shares one limit, on top of the
 
 - Each minute starts on the clock minute. Responses carry their place in the window in `X-RateLimit-*` headers, and a `429` adds `Retry-After`; a refusal of a credential that keeps failing carries `Retry-After` alone.
 - A request that presents a credential is also counted before the credential is checked, per credential at each IP address, so repeated failures are refused without the cost of checking them.
-- **Self-hosting:** the per-IP counts read `X-Forwarded-For`, not the connection address. Set `TRUSTED_PROXY_COUNT` on the backend to the number of entries your own proxies add; see [Client IP Addresses](client-ip.md#limits-on-the-external-api).
+- **Self-hosting:** behind a reverse proxy, list it in `TRUSTED_PROXIES` on the backend, so the per-IP counts see each caller rather than the proxy; see [Client IP Addresses](client-ip.md#limits-on-the-external-api).
 
 ### API v1
 
