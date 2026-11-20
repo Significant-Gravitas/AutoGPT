@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -62,8 +63,9 @@ def jev(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 def test_every_profile_names_a_block_and_a_model_it_can_run(profile):
     block = get_block(profile.block_id)
     assert block is not None, f"{profile.key}: block {profile.block_id} is gone"
-    model_field = block.input_schema.jsonschema()["properties"]["model"]
-    assert profile.model in model_field["enum"]
+    fields = block.input_schema.jsonschema()["properties"]
+    assert profile.model in fields["model"]["enum"]
+    assert set(re.findall(r'"(\w+)"', profile.inputs)) <= fields.keys()
     catalog = {entry.slug: entry for entry in get_catalog().models}
     if profile.model in catalog:
         assert catalog[profile.model].is_enabled, f"{profile.model} is retired"

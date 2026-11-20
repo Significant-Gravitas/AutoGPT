@@ -53,8 +53,8 @@ PROFILES: tuple[ModelProfile, ...] = (
         when="the request asks to create a new image, picture, logo, illustration"
         " or photo, not a diagram, chart or document",
         strength="It generates images, which you cannot do yourself.",
-        inputs='"prompt": a detailed description of the image; optional "size"'
-        ' and "style"',
+        inputs='"prompt": a detailed description of the image; optional "size":'
+        " square, landscape, portrait, wide or tall",
     ),
     ModelProfile(
         key="video",
