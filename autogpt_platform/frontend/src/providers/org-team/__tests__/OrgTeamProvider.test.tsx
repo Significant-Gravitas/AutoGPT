@@ -170,6 +170,8 @@ describe("OrgTeamProvider", () => {
     renderProvider();
 
     await waitForOrgs();
+    expect(useOrgTeamStore.getState().orgs).toEqual([]);
+    expect(useOrgTeamStore.getState().activeOrgID).toBeNull();
   });
 
   it("keeps the stored org while the session is still hydrating", async () => {

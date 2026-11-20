@@ -386,8 +386,8 @@ async def list_user_orgs(user_id: str) -> list[OrgResponse]:
             "Org": {"deletedAt": None},
         },
         include={"Org": True},
-        # Oldest membership first, as get_request_context picks the personal
-        # org, so the first personal org listed is the one requests default to.
+        # Oldest membership first, by createdAt like get_request_context's
+        # default-org lookup; id only breaks exact ties.
         order=[{"createdAt": "asc"}, {"id": "asc"}],
     )
     orgs = [OrgResponse.from_db(m.Org) for m in memberships if m.Org is not None]
