@@ -449,8 +449,16 @@ next start's). A restart of the driver looks for it afresh, so one that was
 upgraded or moved is found, and waits for that look 5 seconds too: past
 that the request that needed the driver fails, nothing is started, and the
 next request waits for the same look. However many callers there are, the
-look is one, in a thread the shim's stop doesn't wait for. On macOS it starts the driver,
-where one of another release fails the same way, and asks
+look is one, in a thread the shim's stop doesn't wait for. An answer that
+comes after a caller stopped waiting is kept for a minute, for the callers
+of that minute: HELLO and the checks take it as it is, and the first start
+uses it up, so the start after it looks afresh again. Without that, a look
+that took longer than 5 seconds every time (a slow share among those
+folders, not a dead one) never started a driver that was there: each
+request gave up on its own look and the next began another.
+
+On macOS the check before connecting then starts the driver, where one of
+another release fails the same way, and asks
 `check_permissions` for Accessibility and Screen Recording without
 prompting; if either is missing it exits 78 and launchd starts it again
 later, as before. Each chat's session checks again when it starts,

@@ -2187,7 +2187,8 @@ class ComputerUseHandler:
         waited for it to the end, never went out: the machine couldn't
         connect, even for file work. Past the wait HELLO goes without
         computer use, as when the driver isn't installed, and the look goes
-        on: the next HELLO waits for that same look."""
+        on: the next HELLO waits for that same look, or takes its answer
+        if that has come since (kept for driver.LATE_ANSWER_SECONDS)."""
         wait = self._hello_wait
         timeout = DRIVER_LOOKUP_SECONDS if wait is None else min(DRIVER_LOOKUP_SECONDS, wait)
         try:

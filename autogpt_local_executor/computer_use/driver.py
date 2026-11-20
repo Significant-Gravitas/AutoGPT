@@ -96,6 +96,11 @@ HOME_FOLDER_SECONDS = 2.0
 # holding the bridge's lock: as long as HELLO waits for it
 # (handlers.DRIVER_LOOKUP_SECONDS).
 RESTART_LOOKUP_SECONDS = 5.0
+# How long the answer of a look that outlasted a caller's wait is kept for
+# the callers that come next (CuaDriverBridge.find_binary): long enough for
+# the request after the one that gave up, short enough that what it found
+# is still where it was.
+LATE_ANSWER_SECONDS = 60.0
 
 # The cua settings (CUA*) the driver may inherit from the shim's environment:
 # the ones cua's own SDK hands a driver it embeds (cua-driver-sdk's
@@ -345,7 +350,7 @@ class CuaDriverBridge:
         # The display variables the running driver started with.
         self._display: tuple[str | None, ...] | None = None
         # The look for the driver's binary under way, or the last (find_binary).
-        self._looking: asyncio.Future[Path | None] | None = None
+        self._look: _Look | None = None
         # The look at the person's home folder under way, or the last
         # (_working_folder).
         self._home_looking: asyncio.Future[Path | None] | None = None
@@ -373,7 +378,7 @@ class CuaDriverBridge:
         while it restarts, since a start lists the same tools."""
         return self._snapshot
 
-    async def find_binary(self) -> Path | None:
+    async def find_binary(self, *, to_start: bool = False) -> Path | None:
         """The driver this bridge runs, made executable, or None when it
         isn't installed: find_driver_binary and ensure_executable, in a
         thread of their own. They stat files in the folders on sys.path, for
@@ -387,18 +392,37 @@ class CuaDriverBridge:
         for that look rather than start another, which would stall too. So
         a stall holds one thread, however many callers come.
 
+        The answer of a look that a caller gave up on is kept when it comes,
+        for LATE_ANSWER_SECONDS: the callers of that time take it without
+        another look. With a look that takes longer than its callers wait,
+        every time (a slow share, not a dead one), each caller gave up, the
+        answer came with nobody waiting, and the next caller began a look
+        that took as long: the driver was there and never started. A start
+        (`to_start`) uses a kept answer up, so the start after it looks
+        again and finds a driver that was moved or upgraded; a caller that
+        only asks whether the driver is there (HELLO, the preflight, the
+        display watch) leaves it for the start that follows. A look that
+        every caller waited out, the usual one, keeps nothing: the next
+        caller looks afresh.
+
         That thread is a daemon thread, not one of the event loop's workers
         (_in_a_thread_of_its_own): a look still held when the shim is told
         to stop doesn't keep it from stopping. Every caller bounds its own
         wait."""
-        looking = self._looking
-        if looking is None or looking.done():
+        look = self._look
+        if look is None or (look.answer.done() and not look.kept()):
             explicit = self._explicit_binary
-            looking = self._looking = _in_a_thread_of_its_own(
-                lambda: _runnable_driver(explicit), "driver-lookup"
-            )
-            looking.add_done_callback(_retrieved)
-        return await asyncio.shield(looking)
+            look = self._look = _Look(lambda: _runnable_driver(explicit))
+        try:
+            return await asyncio.shield(look.answer)
+        except asyncio.CancelledError:
+            # This caller stopped waiting, so the answer is the next one's.
+            look.outlasted_a_caller = True
+            to_start = False
+            raise
+        finally:
+            if to_start:
+                look.used_by_a_start = True
 
     async def snapshot(self, *, deadline: float | None = None) -> DriverSnapshot:
         """What the driver offers, starting it if need be. With `deadline`
@@ -566,11 +590,12 @@ class CuaDriverBridge:
             # stopped answering held it for good, and every call, stop and
             # close() behind it. Past the limit the start fails, the look
             # goes on in its thread, and the next start waits for that same
-            # look. Nothing here counts against the restart budget: no
-            # driver was started.
+            # look, or takes its answer if it has come since (find_binary):
+            # the one start that doesn't look afresh. Nothing here counts
+            # against the restart budget: no driver was started.
             try:
                 async with asyncio.timeout(RESTART_LOOKUP_SECONDS):
-                    binary = await self.find_binary()
+                    binary = await self.find_binary(to_start=True)
             except TimeoutError:
                 raise DriverUnavailable(
                     f"Looking for cua-driver took longer than {RESTART_LOOKUP_SECONDS:g} s: "
@@ -842,6 +867,40 @@ def _in_a_thread_of_its_own(look: Callable[[], _T], name: str) -> asyncio.Future
 
     threading.Thread(target=work, name=f"autogpt-shim-{name}", daemon=True).start()
     return asyncio.wrap_future(done)
+
+
+class _Look:
+    """One look for the driver's binary (CuaDriverBridge.find_binary): its
+    answer, when that came, and what its callers did with it."""
+
+    def __init__(self, find: Callable[[], Path | None]) -> None:
+        # When the answer came (time.monotonic), written by the look's
+        # thread before the answer is, so whoever sees the answer sees it.
+        self.answered_at: float | None = None
+        # Whether a caller stopped waiting before it had the answer.
+        self.outlasted_a_caller = False
+        # Whether a start has had the answer.
+        self.used_by_a_start = False
+
+        def look() -> Path | None:
+            try:
+                return find()
+            finally:
+                self.answered_at = time.monotonic()
+
+        self.answer = _in_a_thread_of_its_own(look, "driver-lookup")
+        self.answer.add_done_callback(_retrieved)
+
+    def kept(self) -> bool:
+        """Whether a caller that comes now takes this look's answer rather
+        than look again: a caller gave up on the look, no start has had
+        its answer, and the answer is no older than LATE_ANSWER_SECONDS."""
+        return (
+            self.outlasted_a_caller
+            and not self.used_by_a_start
+            and self.answered_at is not None
+            and time.monotonic() - self.answered_at < LATE_ANSWER_SECONDS
+        )
 
 
 def _retrieved(task: asyncio.Future[Any]) -> None:
