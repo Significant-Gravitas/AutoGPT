@@ -457,6 +457,8 @@ def test_real_task_scheduler_registers_the_task_for_the_account_that_installed_i
         # The supervising `start` is what it runs.
         assert "--supervise</Arguments>" in shown.stdout
 
+        # The task was registered and has never run. `schtasks /End` succeeds
+        # for it, with no instance to end, so the delete after it is reached.
         stopped = install_mod._stop_scheduled_task(
             _REAL_RUN_COMMAND, task=task, elevated=install_mod._is_elevated()
         )

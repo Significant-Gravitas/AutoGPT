@@ -757,6 +757,12 @@ def _stop_scheduled_task(run: CommandRunner, *, task: str, elevated: bool) -> Se
     with the task gone nothing can end it by name. So a task that can't be
     ended is kept, for a prompt that may end it.
 
+    `schtasks /End` succeeds for a task with no instance running (one whose
+    shim exited to stop, or that was registered and never run), so such a
+    task goes on to be deleted. A failure of it is a task that couldn't be
+    ended, not one with nothing to end: the real Task Scheduler ends and
+    deletes a task that never ran in tests/test_task_owner.py.
+
     The task is the account's own (`_windows_account_sid`), registered
     from its own prompt, so a prompt that isn't elevated sees it, ends it
     and deletes it.
