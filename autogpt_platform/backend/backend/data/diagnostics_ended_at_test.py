@@ -6,6 +6,7 @@ DB-backed: a FAILED run that ended 30h ago but was written again just now
 
 import uuid
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -148,7 +149,8 @@ async def test_stop_all_long_running_sets_ended_at(graph):
     with patch.object(
         diag, "get_async_execution_queue", new_callable=AsyncMock, return_value=queue
     ):
-        assert await diag.stop_all_long_running_executions("admin") >= 1
+        async with _restoring_other_users_runs(graph[0]):
+            assert await diag.stop_all_long_running_executions("admin") >= 1
 
     await _assert_failed_with_ended_at(stuck.id)
 
@@ -158,6 +160,33 @@ async def test_cleanup_all_stuck_queued_sets_ended_at(graph):
     old = datetime.now(timezone.utc) - timedelta(hours=2)
     stuck = await _execution(graph, AgentExecutionStatus.QUEUED, None, created_at=old)
 
-    assert await diag.cleanup_all_stuck_queued_executions("admin") >= 1
+    async with _restoring_other_users_runs(graph[0]):
+        assert await diag.cleanup_all_stuck_queued_executions("admin") >= 1
 
     await _assert_failed_with_ended_at(stuck.id)
+
+
+@asynccontextmanager
+async def _restoring_other_users_runs(user_id: str) -> AsyncIterator[None]:
+    # The two cleanups above change every matching run in the database, so put
+    # back any other test's RUNNING or QUEUED run they mark FAILED.
+    others = await AgentGraphExecution.prisma().find_many(
+        where={
+            "userId": {"not": user_id},
+            "executionStatus": {
+                "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]
+            },
+        }
+    )
+    try:
+        yield
+    finally:
+        for run in others:
+            await AgentGraphExecution.prisma().update_many(
+                where={"id": run.id, "executionStatus": AgentExecutionStatus.FAILED},
+                data={
+                    "executionStatus": run.executionStatus,
+                    "updatedAt": run.updatedAt,
+                    "endedAt": run.endedAt,
+                },
+            )
