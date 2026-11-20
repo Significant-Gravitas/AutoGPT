@@ -1,7 +1,7 @@
 """Give accounts from before SECRT-2895 the PostHog person properties the live
-code sends since (`posthog_audience`): every account its email type and
-sign-in method, and every checkout opener its first open, country and
-exclude_de_at.
+code sends since (`posthog_audience`): every account its email type, sign-in
+method and `is_internal` (SECRT-2728), and every checkout opener its first
+open, country and exclude_de_at.
 
 An opener is an account whose Stripe customer has a Checkout Session, as for
 `mailerlite-checkout-backfill`, and is worked out the same way
@@ -28,7 +28,12 @@ from pydantic import BaseModel
 from backend.data.notifications import SubscriberField
 from backend.notifications import posthog_audience
 from backend.notifications.audience_enrichment import YES, checkout_fields
-from backend.notifications.posthog_audience import CHECKOUT_OPENED_AT, PersonUpdate
+from backend.notifications.posthog_audience import (
+    CHECKOUT_OPENED_AT,
+    IS_INTERNAL,
+    PersonUpdate,
+    is_internal,
+)
 from backend.util.posthog_client import send_each
 
 NONE = "none"
@@ -40,6 +45,8 @@ class Account(BaseModel):
     created_at: datetime
     timezone: str | None = None
     stripe_customer_id: str | None = None
+    # The auth identity's role (`admin` for our admins).
+    role: str | None = None
 
 
 class AccountUpdate(BaseModel):
@@ -55,6 +62,8 @@ class AudiencePlan(BaseModel):
     # the person holds none yet, so these aren't what PostHog will hold.
     email_types: dict[str, int]
     signin_methods: dict[str, int]
+    # Accounts sent `is_internal` true.
+    internal: int
     # Openers only.
     country_sources: dict[str, int]
     exclude_de_at: int
@@ -90,7 +99,7 @@ def _update(
     billing_country: str | None,
 ) -> PersonUpdate:
     if first_open is None:
-        return posthog_audience.account_update(account.email, providers)
+        return posthog_audience.account_update(account.email, providers, account.role)
     fields = checkout_fields(
         email=account.email,
         created_at=account.created_at,
@@ -99,22 +108,26 @@ def _update(
         timezone=account.timezone,
         stripe_country=billing_country,
     )
-    return posthog_audience.checkout_update(fields, first_open, first_open=True)
+    update = posthog_audience.checkout_update(fields, first_open, first_open=True)
+    update.to_set[IS_INTERNAL] = is_internal(account.email, account.role)
+    return update
 
 
 def _tally(updates: list[AccountUpdate]) -> AudiencePlan:
     email_types: Counter[str] = Counter()
     signin_methods: Counter[str] = Counter()
     sources: Counter[str] = Counter()
-    openers = exclude_de_at = 0
+    openers = exclude_de_at = internal = 0
     for change in updates:
         values = {**change.update.to_set_once, **change.update.to_set}
-        email_types[values.get(SubscriberField.EMAIL_TYPE.value, NONE)] += 1
-        signin_methods[values.get(SubscriberField.SIGNIN_METHOD.value, NONE)] += 1
+        email_types[str(values.get(SubscriberField.EMAIL_TYPE.value, NONE))] += 1
+        signin_methods[str(values.get(SubscriberField.SIGNIN_METHOD.value, NONE))] += 1
+        if values.get(IS_INTERNAL) is True:
+            internal += 1
         if CHECKOUT_OPENED_AT not in values:
             continue
         openers += 1
-        sources[values.get(SubscriberField.COUNTRY_SOURCE.value, NONE)] += 1
+        sources[str(values.get(SubscriberField.COUNTRY_SOURCE.value, NONE))] += 1
         if values.get(SubscriberField.EXCLUDE_DE_AT.value) == YES:
             exclude_de_at += 1
     return AudiencePlan(
@@ -122,6 +135,7 @@ def _tally(updates: list[AccountUpdate]) -> AudiencePlan:
         openers=openers,
         email_types=dict(email_types),
         signin_methods=dict(signin_methods),
+        internal=internal,
         country_sources=dict(sources),
         exclude_de_at=exclude_de_at,
     )

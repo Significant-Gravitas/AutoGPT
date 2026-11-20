@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./src/playwright",
-  testMatch: "tooltip-interaction.browser.spec.ts",
+  testMatch: "*.browser.spec.ts",
   forbidOnly: true,
   retries: 0,
   timeout: 60000,

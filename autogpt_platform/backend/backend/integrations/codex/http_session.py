@@ -90,7 +90,9 @@ class CodexHttpSession:
         event_handler: EventHandler | None,
     ) -> CodexInvocationResult:
         started = time.monotonic()
-        conversation: list[dict[str, Any]] = [_user_message(request.prompt)]
+        conversation: list[dict[str, Any]] = [
+            _user_message(request.prompt, request.image_urls)
+        ]
         tools = [_tool_payload(spec) for spec in dynamic_tools]
 
         response_id = ""
@@ -204,8 +206,17 @@ class CodexHttpSession:
         # with_raw_response returns LegacyAPIResponse for streaming requests;
         # its synchronous parse() returns the AsyncStream to iterate.
         stream = raw.parse()
-        async for event in stream:
-            await _consume_event(event, outcome, event_handler)
+        async with stream:
+            try:
+                async for event in stream:
+                    await _consume_event(event, outcome, event_handler)
+            finally:
+                # Publish the last snapshot once per response, even on cancellation
+                # or failure, before another model call can lose this call's usage.
+                if event_handler is not None and outcome.usage is not None:
+                    await event_handler(
+                        CodexStreamEvent(type="usage", usage=outcome.usage)
+                    )
         return outcome
 
 
@@ -244,15 +255,22 @@ async def _consume_event(
             )
         return
 
-    if kind in ("response.created", "response.completed", "response.in_progress"):
+    if kind in (
+        "response.created",
+        "response.completed",
+        "response.in_progress",
+        "response.incomplete",
+        "response.failed",
+    ):
         response = getattr(event, "response", None)
-        if response is None:
+        if response is not None:
+            outcome.response_id = getattr(response, "id", "") or outcome.response_id
+            outcome.model = getattr(response, "model", None) or outcome.model
+            if (raw_usage := getattr(response, "usage", None)) is not None:
+                outcome.usage = _usage_from(raw_usage)
+        # Failed responses fall through to raise after their usage is captured.
+        if kind != "response.failed":
             return
-        outcome.response_id = getattr(response, "id", "") or outcome.response_id
-        outcome.model = getattr(response, "model", None) or outcome.model
-        if (raw_usage := getattr(response, "usage", None)) is not None:
-            outcome.usage = _usage_from(raw_usage)
-        return
 
     if kind in ("response.failed", "error"):
         raise CodexTurnFailedError(_failure_message(event))
@@ -298,11 +316,15 @@ _ZERO_USAGE = CodexTokenUsage(
 )
 
 
-def _user_message(prompt: str) -> dict[str, Any]:
+def _user_message(prompt: str, image_urls: list[str] | None = None) -> dict[str, Any]:
     return {
         "type": "message",
         "role": "user",
-        "content": [{"type": "input_text", "text": prompt}],
+        "content": [{"type": "input_text", "text": prompt}]
+        + [
+            {"type": "input_image", "image_url": url, "detail": "auto"}
+            for url in image_urls or []
+        ],
     }
 
 
@@ -327,7 +349,14 @@ def _tool_round_items(
     followups = [
         _user_message(result.followup) for result in results if result.followup
     ]
-    return outputs + followups
+    images = [
+        _user_message(
+            f"Images returned by {call.name} ({call.call_id}):", result.image_urls
+        )
+        for call, result in zip(calls, results, strict=True)
+        if result.image_urls
+    ]
+    return outputs + images + followups
 
 
 def _tool_payload(spec: CodexDynamicToolSpec) -> dict[str, Any]:

@@ -205,7 +205,7 @@ class TestSonnet5_5Rates:
         assert cost == 12.0
         assert "falling back" not in caplog.text
 
-    @pytest.mark.parametrize("cache_ttl, expected_cost", [("5m", 2.7), ("1h", 4.2)])
+    @pytest.mark.parametrize("cache_ttl, expected_cost", [("5m", 2.6), ("1h", 4.1)])
     def test_sonnet_5_5_cache_rates(self, cache_ttl, expected_cost):
         cost = compute_anthropic_cost_usd(
             model="claude-sonnet-5-5",

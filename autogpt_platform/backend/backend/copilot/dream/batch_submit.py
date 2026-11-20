@@ -20,12 +20,15 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.inference.structured_output import (
+    OUTPUT_TOOL_CALL_ONCE,
+    with_output_tool_instruction,
+)
 from backend.copilot.model_normalize import normalize_model_for_anthropic
 from backend.copilot.trial_cost_context import capture_cost_context
 from backend.executor.batch_executor import (
@@ -47,14 +50,14 @@ from backend.util.llm.tool_use import (
 )
 
 from .fetch import DreamInput
-from .locks import read_dream_lock_token
+from .input_bundle import input_bundle_from_dict, input_bundle_to_dict
+from .locks import BATCH_LOCK_TTL_SECONDS, read_dream_lock_token
 from .prompts import (
     build_consolidate_prompt,
     build_recombine_prompt,
     build_sanitize_prompt,
 )
 from .schemas import ConsolidationOutput, DreamOperations, RecombinationOutput
-from .structured_output import OUTPUT_TOOL_CALL_ONCE, with_output_tool_instruction
 
 if TYPE_CHECKING:
     from backend.copilot.config import ChatConfig
@@ -190,6 +193,8 @@ async def submit_phase(
     # multi-phase chain can legitimately outlive a TTL stamped once at the
     # first submit. Re-arm the bundle TTL at every submit so it stays alive
     # exactly as long as some phase batch may still call back.
+    # The payload carries a copy of the attribution the pass runs under (the
+    # one its row keeps, which the callback checks it against).
     cost_context = await capture_cost_context(user_id)
     await refresh_input_bundle_ttl(pass_id)
     model = phase_models[phase]
@@ -335,10 +340,14 @@ def input_bundle_key(pass_id: str) -> str:
     return f"dream:batch:input:{pass_id}"
 
 
-# 24h TTL matches Anthropic's batch SLA — if a batch hasn't completed
-# in 24h we've already timed out via BatchExecutor's
-# ``MAX_BATCH_LIFETIME_SECONDS`` ceiling.
-INPUT_TTL_SECONDS = 24 * 60 * 60
+# The pass's lease runs ``BATCH_LOCK_TTL_SECONDS`` from its submit and each
+# callback; the reaper closes a pass one lock TTL after its lease lapsed and
+# runs every ten minutes. The per-pass keys (this bundle and the batch state)
+# outlive the lease by twelve hours, so the reaper still finds them to charge
+# and delete behind a backlog of cleanups that keep failing (a pass that ends
+# normally deletes them at once). A batch that never completes is timed out
+# well before, by the BatchExecutor's 24h ``MAX_BATCH_LIFETIME_SECONDS``.
+INPUT_TTL_SECONDS = BATCH_LOCK_TTL_SECONDS + 12 * 60 * 60
 
 
 async def persist_input_bundle(
@@ -364,14 +373,13 @@ async def persist_input_bundle(
     explicitly — reading the live lock key here instead could capture a
     *newer* pass's token (lock expired and was re-acquired between this
     pass's acquire and the persist), letting this pass's callback release
-    a lock it doesn't own hours later. Only when no token is supplied
-    (eval harness calling the batch path without a lock) do we fall back
-    to the live key.
+    a lock it doesn't own hours later. When no token is supplied we fall
+    back to the live key; apply requires a lease before writing.
     """
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
-    payload = _input_bundle_to_dict(input_bundle)
+    payload = input_bundle_to_dict(input_bundle)
     if lock_token is None:
         lock_token = await read_dream_lock_token(
             MemoryScope.build(input_bundle.user_id, input_bundle.expert_id)
@@ -413,9 +421,11 @@ async def read_lock_token(pass_id: str) -> str | None:
     """Dream-lock ownership token persisted alongside the input bundle.
 
     None when the bundle is gone (TTL expired or already cleaned up), is
-    corrupted, or was written while no lock was held — the caller then
-    leaves the lock to its TTL rather than risking a blind delete of a
-    newer pass's lock.
+    corrupted, or was written while no lock was held. The batch paths then
+    go by the lease token the pass's row keeps
+    (``batch_outcome.lock_token_of``); with no token anywhere the pass's
+    ownership of the lock is unknown, and the lock is left held rather
+    than risking a blind delete of a newer pass's lock.
     """
     from backend.data.redis_client import get_redis_async
 
@@ -445,7 +455,7 @@ async def read_input_bundle(pass_id: str) -> DreamInput | None:
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
     try:
-        return _dict_to_input_bundle(json.loads(raw))
+        return input_bundle_from_dict(json.loads(raw))
     except Exception:
         logger.exception("Corrupted DreamInput in Redis for pass=%s — bailing", pass_id)
         return None
@@ -456,78 +466,3 @@ async def delete_input_bundle(pass_id: str) -> None:
 
     redis = await get_redis_async()
     await redis.delete(input_bundle_key(pass_id))
-
-
-def _input_bundle_to_dict(input_bundle: DreamInput) -> dict:
-    return {
-        "user_id": input_bundle.user_id,
-        "expert_id": input_bundle.expert_id,
-        "group_id": input_bundle.group_id,
-        "window_start": input_bundle.window_start.isoformat(),
-        "window_end": input_bundle.window_end.isoformat(),
-        "episodes": [
-            {
-                "uuid": e.uuid,
-                "name": e.name,
-                "content": e.content,
-                "source_description": e.source_description,
-                "valid_at": e.valid_at,
-                "created_at": e.created_at,
-            }
-            for e in input_bundle.episodes
-        ],
-        "facts": [
-            {
-                "uuid": f.uuid,
-                "source": f.source,
-                "target": f.target,
-                "name": f.name,
-                "fact": f.fact,
-                "scope": f.scope,
-                "confidence": f.confidence,
-                "status": f.status,
-                "created_at": f.created_at,
-            }
-            for f in input_bundle.facts
-        ],
-        "recent_sessions": [
-            {
-                "session_id": s.session_id,
-                "title": s.title,
-                "created_at": s.created_at.isoformat() if s.created_at else None,
-                "body": s.body,
-            }
-            for s in input_bundle.recent_sessions
-        ],
-        "known_fact_uuids": list(input_bundle.known_fact_uuids),
-        "known_episode_uuids": list(input_bundle.known_episode_uuids),
-    }
-
-
-def _dict_to_input_bundle(data: dict) -> DreamInput:
-    from .fetch import EpisodeRow, FactRow, SessionRow
-
-    return DreamInput(
-        user_id=data["user_id"],
-        expert_id=data.get("expert_id"),
-        group_id=data["group_id"],
-        window_start=datetime.fromisoformat(data["window_start"]),
-        window_end=datetime.fromisoformat(data["window_end"]),
-        episodes=[EpisodeRow(**e) for e in data.get("episodes") or []],
-        facts=[FactRow(**f) for f in data.get("facts") or []],
-        recent_sessions=[
-            SessionRow(
-                session_id=s["session_id"],
-                title=s.get("title"),
-                created_at=(
-                    datetime.fromisoformat(s["created_at"])
-                    if s.get("created_at")
-                    else None
-                ),
-                body=s.get("body") or "",
-            )
-            for s in data.get("recent_sessions") or []
-        ],
-        known_fact_uuids=set(data.get("known_fact_uuids") or []),
-        known_episode_uuids=set(data.get("known_episode_uuids") or []),
-    )

@@ -98,7 +98,7 @@ def _waited(outcome: str, result: SessionResult):
 
 
 _OUT_OF_TODAY_MESSAGE = (
-    "Out of AutoPilot budget: your plan's AutoPilot allowance is used up, and "
+    "Out of budget: your plan's allowance is used up, and "
     "your credit balance doesn't cover a run (it needs at least $0.50). Add "
     "credits at https://platform.agpt.co/profile/credits to run it on credits. "
     "The allowance resets 2026-10-12 00:00 UTC."
@@ -133,7 +133,7 @@ async def test_a_spent_trial_says_its_allowance_is_used_up(frontend):
         with pytest.raises(AutoPilotOutOfBudgetError) as raised:
             await _execute()
     assert str(raised.value) == (
-        "Out of AutoPilot budget: the trial's AutoPilot allowance is used up, and "
+        "Out of budget: the trial's allowance is used up, and "
         "your credit balance doesn't cover a run (it needs at least $0.50). Add "
         "credits at https://platform.agpt.co/profile/credits to run it on credits."
     )
@@ -151,7 +151,7 @@ async def test_where_credits_cant_pay_the_refusal_doesnt_send_the_user_to_top_up
         with pytest.raises(AutoPilotOutOfBudgetError) as raised:
             await _execute()
     assert str(raised.value) == (
-        "Out of AutoPilot budget: your plan's AutoPilot allowance is used up. "
+        "Out of budget: your plan's allowance is used up. "
         "The allowance resets 2026-10-12 00:00 UTC."
     )
 

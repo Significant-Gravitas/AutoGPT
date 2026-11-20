@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const streamState = vi.hoisted(() => ({
   status: "ready" as "ready" | "submitted" | "streaming" | "error",
 }));
-const flags = vi.hoisted(() => ({ brainDump: false }));
 
 const sendNewMessage = vi.hoisted(() => vi.fn());
 const completeGreeting = vi.hoisted(() => vi.fn());
@@ -19,11 +18,8 @@ const setPendingFileParts = vi.hoisted(() => vi.fn());
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     CHAT_MODE_OPTION: "chat-mode-option",
-    HIRE_EXPERTS: "hire-experts",
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
   },
-  useGetFlag: (flag: string) =>
-    flag === "onboarding-brain-dump" ? flags.brainDump : false,
+  useGetFlag: () => false,
 }));
 
 vi.mock("nuqs", () => ({
@@ -143,7 +139,6 @@ const initialState = useCopilotUIStore.getState();
 
 beforeEach(() => {
   streamState.status = "ready";
-  flags.brainDump = false;
   sendNewMessage.mockResolvedValue(undefined);
   useCopilotUIStore.setState({
     contextPanelWidth: DEFAULT_PANEL_WIDTH,

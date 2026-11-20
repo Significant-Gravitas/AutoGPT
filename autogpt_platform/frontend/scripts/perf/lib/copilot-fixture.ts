@@ -35,11 +35,23 @@ interface Args {
 export const SESSION_L = "00000000-0000-4000-8000-0000000000a1";
 export const SESSION_M = "00000000-0000-4000-8000-0000000000a2";
 export const SESSION_S = "00000000-0000-4000-8000-0000000000a3";
+export const SESSION_XL = "00000000-0000-4000-8000-0000000000a4";
 
 export const COPILOT_SESSIONS: SessionSpec[] = [
   { id: SESSION_L, title: "Perf: long thread (200)", messageCount: 200 },
   { id: SESSION_M, title: "Perf: medium thread (50)", messageCount: 50 },
   { id: SESSION_S, title: "Perf: short thread (10)", messageCount: 10 },
+];
+
+/** The 10-message chat and a 2,000-message one built by repeating the
+ *  recorded 200 rows, for `copilot-open-long-thread`. */
+export const LONG_THREAD_SESSIONS: SessionSpec[] = [
+  COPILOT_SESSIONS[2],
+  {
+    id: SESSION_XL,
+    title: "Perf: very long thread (2000)",
+    messageCount: 2000,
+  },
 ];
 
 function loadSessionRows(): SessionRow[] {
@@ -87,7 +99,7 @@ export function createCopilotFixture({
 
   function rowsFor(spec: SessionSpec) {
     const rows = [
-      ...allRows.slice(0, spec.messageCount),
+      ...repeatRows(allRows, spec.messageCount),
       ...(extraRows.get(spec.id) ?? []),
     ];
     return rows.map((row) => ({ ...row, session_id: spec.id }));
@@ -231,6 +243,28 @@ export function createCopilotFixture({
       );
     },
   };
+}
+
+/** The first `count` rows, repeating the recorded ones with fresh ids,
+ *  sequences and tool call ids once past their end. Up to 200 this is the
+ *  recorded slice unchanged. */
+function repeatRows(rows: SessionRow[], count: number): SessionRow[] {
+  return Array.from({ length: count }, (_, index) => {
+    const row = rows[index % rows.length];
+    const round = Math.floor(index / rows.length);
+    if (round === 0) return row;
+    const toolCalls = row.tool_calls as { id: string }[] | null;
+    return {
+      ...row,
+      id: `${row.id}-r${round}`,
+      sequence: index,
+      tool_calls: toolCalls?.map((call) => ({
+        ...call,
+        id: `${call.id}-r${round}`,
+      })),
+      tool_call_id: row.tool_call_id ? `${row.tool_call_id}-r${round}` : null,
+    };
+  });
 }
 
 async function until(

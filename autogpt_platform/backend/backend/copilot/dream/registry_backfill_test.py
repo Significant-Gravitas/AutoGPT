@@ -16,19 +16,19 @@ from backend.data.memory_schedule import LiveExpertScope, MemoryScopeSchedule
 from . import registry_backfill
 from .registry_backfill import BackfillFailure, BackfillReport, backfill_schedules
 
-REGISTERED = {"community_rebuild": {"id": "c"}, "dream_nightly_batch": {"id": "n"}}
-ALREADY = {"community_rebuild": None, "dream_nightly_batch": None}
-FLAGS_OFF = {
-    "community_rebuild": {"skipped": True, "reason": "graphiti_communities_disabled"},
+REGISTERED = {"skill_learning_nightly": {"id": "l"}, "dream_nightly_batch": {"id": "n"}}
+ALREADY = {"skill_learning_nightly": None, "dream_nightly_batch": None}
+STOPPED = {
+    "skill_learning_nightly": {"skipped": True, "reason": "scope_paused"},
     "dream_nightly_batch": {"skipped": True, "reason": "dream_pass_disabled"},
 }
 FAILED = {
-    "community_rebuild": {"skipped": True, "reason": "registration_failed"},
+    "skill_learning_nightly": {"skipped": True, "reason": "registration_failed"},
     "dream_nightly_batch": None,
 }
 # One cron registered, the other did not: the scope failed.
 PARTLY_FAILED = {
-    "community_rebuild": {"skipped": True, "reason": "registration_failed"},
+    "skill_learning_nightly": {"skipped": True, "reason": "registration_failed"},
     "dream_nightly_batch": {"id": "n"},
 }
 
@@ -42,7 +42,6 @@ def _row(user_id: str, expert_id: str | None = None) -> MemoryScopeSchedule:
         expert_id=expert_id,
         timezone="UTC",
         state=MemoryScopeScheduleState.ACTIVE,
-        community_job_id=None,
         nightly_job_id=None,
         learning_job_id=None,
         last_nightly_run_at=None,
@@ -188,7 +187,7 @@ async def test_force_re_registers_every_scope(backfill):
 
 @pytest.mark.asyncio
 async def test_outcomes_are_counted_per_scope(backfill):
-    backfill.ensure.side_effect = [FLAGS_OFF, FAILED]
+    backfill.ensure.side_effect = [STOPPED, FAILED]
     backfill.pause.return_value = False
 
     report = await backfill_schedules()
@@ -199,7 +198,7 @@ async def test_outcomes_are_counted_per_scope(backfill):
 
 @pytest.mark.asyncio
 async def test_one_failed_cron_fails_the_scope_and_is_listed(backfill):
-    """Codex's partial-failure case: the community registration failed and
+    """Codex's partial-failure case: the learning registration failed and
     the nightly one succeeded. The scope is failed, not registered, and the
     report names the scope, the cron and the reason."""
     backfill.ensure.side_effect = [PARTLY_FAILED, ALREADY]
@@ -213,7 +212,7 @@ async def test_one_failed_cron_fails_the_scope_and_is_listed(backfill):
             scope_key="u-graph",
             user_id="u-graph",
             expert_id=None,
-            job="community_rebuild",
+            job="skill_learning_nightly",
             reason="registration_failed",
         ),
         BackfillFailure(
@@ -229,7 +228,7 @@ async def test_one_failed_cron_fails_the_scope_and_is_listed(backfill):
 @pytest.mark.asyncio
 async def test_a_record_failure_counts_as_failed(backfill):
     backfill.resume.return_value = {
-        "community_rebuild": {"skipped": True, "reason": "record_failed"},
+        "skill_learning_nightly": {"skipped": True, "reason": "record_failed"},
         "dream_nightly_batch": {"skipped": True, "reason": "record_failed"},
     }
 
@@ -282,9 +281,9 @@ def test_classify_puts_failure_before_any_success():
     assert registry_backfill._classify(REGISTERED) == "registered"
     assert registry_backfill._classify(FAILED) == "failed"
     assert registry_backfill._classify(ALREADY) == "already_scheduled"
-    assert registry_backfill._classify(FLAGS_OFF) == "skipped"
+    assert registry_backfill._classify(STOPPED) == "skipped"
     partly = {
-        "community_rebuild": None,
-        "dream_nightly_batch": FLAGS_OFF["dream_nightly_batch"],
+        "skill_learning_nightly": None,
+        "dream_nightly_batch": STOPPED["dream_nightly_batch"],
     }
     assert registry_backfill._classify(partly) == "already_scheduled"

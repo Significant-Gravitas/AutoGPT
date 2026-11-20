@@ -70,6 +70,7 @@ export function useConnectCredentialDialog({
       (selectedMethod === AuthType.api_key && !apiKey.form.formState.isValid),
     isConnecting: oauth.isPending || apiKey.isPending,
     handleContinue,
+    connectOAuth: oauth.connect,
     reset,
   };
 }

@@ -35,6 +35,17 @@ function outputType(output: unknown): string | null {
   return typeof type === "string" ? type : null;
 }
 
+/** Whether a tool call asked the user clarifying questions. `toolName` is the
+ *  name without the part's `tool-` prefix. */
+export function isQuestionTool(
+  toolName: string | undefined,
+  output: unknown,
+): boolean {
+  return (
+    toolName === "ask_question" || outputType(output) === QUESTION_RESPONSE_TYPE
+  );
+}
+
 // Questions are pending only while the asking assistant message is the last
 // message — any user reply (answers, skip, or a fresh request) supersedes it.
 export function getPendingQuestions(
@@ -49,10 +60,7 @@ export function getPendingQuestions(
     if (!part.type.startsWith("tool-")) continue;
     if (!("state" in part) || part.state !== "output-available") continue;
     const tool = part as ToolUIPart;
-    const isQuestionPart =
-      part.type === "tool-ask_question" ||
-      outputType(tool.output) === QUESTION_RESPONSE_TYPE;
-    if (!isQuestionPart) continue;
+    if (!isQuestionTool(part.type.slice("tool-".length), tool.output)) continue;
     const extracted = extractClarifyingQuestions(tool);
     if (extracted.length === 0) continue;
     questions.push(...extracted);

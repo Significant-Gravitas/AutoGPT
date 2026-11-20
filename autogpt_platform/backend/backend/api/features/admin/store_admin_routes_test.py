@@ -7,6 +7,7 @@ Tests are organized by what they protect:
   and add-to-library uses get_graph_as_admin (not get_graph)
 """
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,9 +19,12 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import SubmissionStatus
 
+from backend.api.features.store.model import ReviewSubmissionRequest
+from backend.api.features.store.skill_model import SkillReviewRequest
 from backend.data.graph import get_graph, get_graph_as_admin
 from backend.util.exceptions import NotFoundError
 
+from . import store_admin_routes
 from .store_admin_routes import router as store_admin_router
 
 # Shared constants
@@ -99,7 +103,7 @@ async def test_admin_download_pending_agent_with_subagents() -> None:
         )
 
     assert result is mock_graph_model
-    mock_get_sub.assert_awaited_once_with(mock_graph)
+    mock_get_sub.assert_awaited_once_with(mock_graph, client=None)
     mock_from_db.assert_called_once_with(
         graph=mock_graph,
         sub_graphs=[mock_sub_graph],
@@ -145,12 +149,9 @@ def test_add_to_library_requires_admin(mock_jwt_user) -> None:
     assert response.status_code == 403
 
 
-def test_skill_submission_file_requires_admin(
-    monkeypatch: pytest.MonkeyPatch, mock_jwt_user
-) -> None:
+def test_skill_submission_file_requires_admin(mock_jwt_user) -> None:
     """This route reads a package nobody has approved, addressed by version id
     with no ownership check of its own — the admin gate is the whole check."""
-    monkeypatch.setenv("FORCE_FLAG_SKILLS_HUB", "true")
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
 
     response = client.get(f"/admin/skills/submissions/{SLV_ID}/files/scripts/run.sh")
@@ -270,7 +271,7 @@ async def test_resolve_graph_admin_uses_get_graph_as_admin() -> None:
     assert result is mock_graph_model
     assert resolved_slv is mock_slv
     mock_admin.assert_awaited_once_with(
-        graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id=ADMIN_USER_ID
+        graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id=ADMIN_USER_ID, client=None
     )
     mock_regular.assert_not_awaited()
 
@@ -365,23 +366,40 @@ async def test_library_member_can_view_pending_agent_in_builder() -> None:
     assert SubmissionStatus.PENDING in statuses
 
 
-@pytest.mark.parametrize(
-    "call",
-    [
-        lambda: client.get("/admin/skills/submissions"),
-        lambda: client.post(f"/admin/skills/submissions/{SLV_ID}/review"),
-        lambda: client.get(f"/admin/skills/submissions/{SLV_ID}/files/SKILL.md"),
-    ],
-    ids=["list-pending", "review", "read-file"],
-)
-def test_skill_review_is_404_when_the_skills_hub_flag_is_off(
-    monkeypatch: pytest.MonkeyPatch, call
+@pytest.mark.asyncio
+async def test_approving_a_submission_clears_the_store_caches_off_the_event_loop(
+    mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """Admin review sits behind the same gate as the creator-facing routes;
-    without it an admin could approve listings nobody can see."""
-    monkeypatch.setenv("FORCE_FLAG_SKILLS_HUB", "false")
+    routes = store_admin_routes
+    mocker.patch.object(
+        routes.store_db,
+        "check_submission_already_approved",
+        AsyncMock(return_value=False),
+    )
+    mocker.patch.object(routes.store_db, "review_store_submission", AsyncMock())
+    mocker.patch.object(
+        routes.skill_submission_db, "review_skill_submission", AsyncMock()
+    )
+    clears: list[str] = []
 
-    response = call()
+    def clear_all_caches() -> None:
+        try:
+            asyncio.get_running_loop()
+            clears.append("on the event loop")
+        except RuntimeError:
+            clears.append("off the event loop")
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Feature not available"
+    mocker.patch.object(routes.store_cache, "clear_all_caches", clear_all_caches)
+
+    await routes.review_submission(
+        SLV_ID,
+        ReviewSubmissionRequest(
+            store_listing_version_id=SLV_ID, is_approved=True, comments=""
+        ),
+        user_id=ADMIN_USER_ID,
+    )
+    await routes.review_skill_submission(
+        SLV_ID, SkillReviewRequest(is_approved=True, comments=""), user_id=ADMIN_USER_ID
+    )
+
+    assert clears == ["off the event loop"] * 2

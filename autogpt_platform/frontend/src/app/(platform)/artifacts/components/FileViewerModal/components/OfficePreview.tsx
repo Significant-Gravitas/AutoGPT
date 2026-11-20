@@ -33,7 +33,7 @@ export function OfficePreview({ file, downloadUrl }: Props) {
     <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="relative flex min-h-0 flex-1 items-center justify-center">
         {isLoaded ? null : <Skeleton className="absolute inset-0" />}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- the preview endpoint already sizes the image */}
         <img
           src={getFilePreviewUrl(file.id, { width: PREVIEW_IMAGE_WIDTH })}
           alt={file.name}

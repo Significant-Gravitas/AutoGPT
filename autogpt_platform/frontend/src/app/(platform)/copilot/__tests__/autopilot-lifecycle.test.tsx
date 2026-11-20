@@ -13,10 +13,12 @@ import {
   clickStop,
   renderHost,
   resetChatRuntimes,
+  sessionHandler,
   STREAM_PATHS,
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
   typeAndSend,
+  type SessionOverride,
 } from "./sse-helpers";
 
 vi.mock("@/services/environment", async (importActual) => {
@@ -47,7 +49,6 @@ const streamPath = vi.hoisted(() => ({ runtime: false }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: {
     CHAT_MODE_OPTION: "CHAT_MODE_OPTION",
-    ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT",
     COPILOT_STREAM_RUNTIME: "copilot-stream-runtime",
   },
   useGetFlag: (flag: string) =>
@@ -67,6 +68,156 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     streamPath.runtime = path === "stream runtime";
   });
 
+  it.each([undefined, null])(
+    "can send and receive with missing session messages (%s)",
+    async (messages) => {
+      server.use(
+        copilotStreamHandler({
+          baseUrl: TEST_BACKEND_BASE_URL,
+          sessionId: TEST_SESSION_ID,
+          chunks: assistantTextChunks("Still able to chat."),
+        }),
+      );
+      renderHost({
+        sessionResponse: http.get(
+          `*/api/chat/sessions/${TEST_SESSION_ID}`,
+          () =>
+            HttpResponse.json({
+              id: TEST_SESSION_ID,
+              created_at: "2026-05-13T00:00:00Z",
+              updated_at: "2026-05-13T00:00:00Z",
+              user_id: "test-user",
+              messages,
+              active_stream: null,
+            }),
+        ),
+      });
+
+      await typeAndSend("hello");
+
+      expect(
+        await screen.findByText("Still able to chat.", undefined, {
+          timeout: 5000,
+        }),
+      ).toBeDefined();
+    },
+  );
+
+  it.each([null, "expert_run", "scheduled_chat_notice"])(
+    "receives a background follow-up without sending again after %s",
+    async (noticeKind) => {
+      const pending = [
+        {
+          role: "user",
+          content: "Research this in the background.",
+          sequence: 0,
+        },
+        {
+          role: "assistant",
+          content: null,
+          sequence: 1,
+          tool_calls: [
+            {
+              id: "background-call",
+              type: "function",
+              function: {
+                name: "run_sub_session",
+                arguments: '{"background":true}',
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "background-call",
+          sequence: 2,
+          content: JSON.stringify({
+            type: "sub_session_status",
+            status: "queued",
+            background_task_id: "background-task",
+          }),
+        },
+        {
+          role: "assistant",
+          content: "I will return with the result.",
+          sequence: 3,
+        },
+      ];
+      let sends = 0;
+      server.use(
+        http.post(
+          `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+          () => {
+            sends += 1;
+            return HttpResponse.error();
+          },
+        ),
+      );
+      renderHost({
+        sessionOverride: { messages: pending, background_pending: true },
+      });
+      await screen.findByText("I will return with the result.");
+      const queued: NonNullable<SessionOverride["messages"]> = [
+        ...pending,
+        {
+          role: "user",
+          content: "Internal follow-up prompt",
+          sequence: 4,
+          metadata: {
+            background_task_notice: "background-task",
+            background_task_stage: "followup",
+            display_content:
+              "Background subtask completed. Otto is following up.",
+          },
+        },
+      ];
+      if (noticeKind) {
+        queued.push({
+          role: "assistant",
+          content: "An unrelated update.",
+          sequence: 5,
+          metadata: {
+            kind: noticeKind,
+            headline: "An unrelated update.",
+            body: "A scheduled run was skipped.",
+          },
+        });
+        server.use(
+          sessionHandler({
+            messages: queued,
+            chat_status: "queued",
+            background_pending: true,
+          }),
+        );
+        await screen.findByText(
+          "Background subtask completed. Otto is following up.",
+          undefined,
+          { timeout: 6000 },
+        );
+      }
+      server.use(
+        sessionHandler({
+          messages: [
+            ...queued,
+            {
+              role: "assistant",
+              content: "The background result is 42.",
+              sequence: queued.length,
+            },
+          ],
+        }),
+      );
+      expect(
+        await screen.findByText("The background result is 42.", undefined, {
+          timeout: 6000,
+        }),
+      ).toBeDefined();
+      expect(screen.queryByText("Internal follow-up prompt")).toBeNull();
+      expect(sends).toBe(0);
+    },
+    15_000,
+  );
+
   describe("Otto streaming — submit / stop lifecycle", () => {
     it("swaps the submit button to Stop while streaming and back to Submit when done", async () => {
       server.use(
@@ -83,15 +234,13 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
       await typeAndSend("hi");
 
-      expect(
-        await screen.findByRole("button", { name: /stop/i }),
-      ).toBeDefined();
+      expect(await screen.findByRole("button", { name: "Stop" })).toBeDefined();
 
       expect(
         await screen.findByText("Hi.", undefined, { timeout: 5000 }),
       ).toBeDefined();
       await waitFor(() => {
-        expect(screen.queryByRole("button", { name: /stop/i })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
       });
     });
 
@@ -185,12 +334,10 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       );
       renderHost();
       const cancels = countCancels();
-      const user = userEvent.setup();
+      const tappedWhileDisarmed = tapStopWithin(150);
 
       await typeAndSend("hello");
-      const stop = await screen.findByRole("button", { name: /^stop$/i });
-      await sleep(150);
-      await user.click(stop);
+      expect(await tappedWhileDisarmed).toBe(true);
       await sleep(200);
       expect(cancels()).toBe(0);
 
@@ -253,4 +400,31 @@ function sendSlot() {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Taps Stop at most `ms` after it mounts. The timer starts before Stop can
+// mount, so it is always due before Stop's 1 s arm. Resolves to `disabled`.
+function tapStopWithin(ms: number) {
+  return new Promise<boolean>((resolve) => {
+    let isDue = false;
+    const observer = new MutationObserver(tap);
+    function tap() {
+      const stop = document.querySelector<HTMLButtonElement>(
+        'button[aria-label="Stop"]',
+      );
+      if (!isDue || !stop) return;
+      observer.disconnect();
+      resolve(stop.disabled);
+      stop.click();
+    }
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributeFilter: ["aria-label"],
+    });
+    setTimeout(() => {
+      isDue = true;
+      tap();
+    }, ms);
+  });
 }

@@ -1,0 +1,128 @@
+[
+  {
+    "id": "row-0",
+    "role": "user",
+    "content": "Set up my sticker listing pipeline",
+    "name": null,
+    "tool_call_id": null,
+    "refusal": null,
+    "tool_calls": null,
+    "function_call": null,
+    "sequence": 0,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:00Z",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-1",
+    "role": "assistant",
+    "content": "",
+    "name": null,
+    "tool_call_id": null,
+    "refusal": null,
+    "tool_calls": [
+      {
+        "id": "find-1",
+        "type": "function",
+        "function": {
+          "name": "find_capability",
+          "arguments": "{\"query\": \"google drive new file trigger\"}"
+        }
+      }
+    ],
+    "function_call": null,
+    "sequence": 1,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:01Z",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-2",
+    "role": "tool",
+    "content": "{}",
+    "name": "find_capability",
+    "tool_call_id": "find-1",
+    "refusal": null,
+    "tool_calls": null,
+    "function_call": null,
+    "sequence": 2,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:02Z",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-3",
+    "role": "assistant",
+    "content": "",
+    "name": null,
+    "tool_call_id": null,
+    "refusal": null,
+    "tool_calls": [
+      {
+        "id": "ask-1",
+        "type": "function",
+        "function": {
+          "name": "ask_question",
+          "arguments": "{\"questions\": [{\"question\": \"How should I spot new designs in your Drive folder?\", \"keyword\": \"Drive trigger\", \"example\": null, \"options\": [\"Check the folder every 15 min\", \"I pick the file each run\"], \"allow_multiple\": false}, {\"question\": \"How should I make the mockups?\", \"keyword\": \"Mockups\", \"example\": null, \"options\": [\"AI-generated mockups\", \"Printify draft products\"], \"allow_multiple\": false}]}"
+        }
+      }
+    ],
+    "function_call": null,
+    "sequence": 3,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:03Z",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-4",
+    "role": "tool",
+    "content": "{\"type\":\"agent_builder_clarification_needed\",\"message\":\"How should I spot new designs in your Drive folder?; How should I make the mockups?\",\"session_id\":\"drift-session\",\"questions\":[{\"question\":\"How should I spot new designs in your Drive folder?\",\"keyword\":\"Drive trigger\",\"example\":null,\"options\":[\"Check the folder every 15 min\",\"I pick the file each run\"],\"allow_multiple\":false},{\"question\":\"How should I make the mockups?\",\"keyword\":\"Mockups\",\"example\":null,\"options\":[\"AI-generated mockups\",\"Printify draft products\"],\"allow_multiple\":false}]}",
+    "name": "ask_question",
+    "tool_call_id": "ask-1",
+    "refusal": null,
+    "tool_calls": null,
+    "function_call": null,
+    "sequence": 4,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:04Z",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-5",
+    "role": "assistant",
+    "content": "Two quick choices for you above.",
+    "name": null,
+    "tool_call_id": null,
+    "refusal": null,
+    "tool_calls": null,
+    "function_call": null,
+    "sequence": 5,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:05Z",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  }
+]

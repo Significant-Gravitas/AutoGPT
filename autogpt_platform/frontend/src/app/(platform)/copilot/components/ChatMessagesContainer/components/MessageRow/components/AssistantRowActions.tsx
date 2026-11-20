@@ -1,5 +1,5 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { MessageActions } from "@/components/ai-elements/message";
+import { MessageActions } from "@/components/organisms/Message/Message";
 import { cn } from "@/lib/utils";
 import { AssistantMessageActions } from "../../AssistantMessageActions";
 import { CopyButton } from "../../CopyButton";
@@ -10,10 +10,11 @@ interface Props {
   readOnly: boolean;
   copyText: string;
   sessionID?: string | null;
+  savedMessageId?: string | null;
 }
 
 const HOVER_REVEAL =
-  "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100";
+  "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100";
 
 export function AssistantRowActions({
   message,
@@ -21,12 +22,14 @@ export function AssistantRowActions({
   readOnly,
   copyText,
   sessionID,
+  savedMessageId,
 }: Props) {
   if (!readOnly) {
     return (
       <AssistantMessageActions
         message={message}
         sessionID={sessionID ?? null}
+        savedMessageId={savedMessageId}
         className={cn(!isLastAssistant && HOVER_REVEAL)}
       />
     );

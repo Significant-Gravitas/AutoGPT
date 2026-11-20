@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from aiohttp import web
 
-from backend.copilot.dream import billing, llm
+from backend.copilot.inference import routing as inference_routing
 from backend.copilot.transport_routing import ProviderRoutingKwargs
 from backend.util.llm import providers
 
@@ -115,9 +115,8 @@ async def dream_provider(
             supports_flex=False,
             cost_log_provider="anthropic",
         )
-        monkeypatch.setattr(llm, "routing_kwargs_for_chat_transport", lambda: routing)
         monkeypatch.setattr(
-            billing, "routing_kwargs_for_chat_transport", lambda: routing
+            inference_routing, "routing_kwargs_for_chat_transport", lambda: routing
         )
         try:
             yield provider

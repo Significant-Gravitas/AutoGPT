@@ -1,0 +1,25 @@
+name: Security - Public advisory sync tests
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/scripts/security_*.py"
+      - ".github/workflows/scripts/test_security_*.py"
+      - ".github/workflows/security-advisory-sync*.yml"
+      - ".github/workflows/classic-autogpt-docker-release.yml"
+      - ".github/security-advisories.public.json"
+      - "SECURITY.md"
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  public-security-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - run: python -m unittest discover -s .github/workflows/scripts -p 'test_security_*.py'

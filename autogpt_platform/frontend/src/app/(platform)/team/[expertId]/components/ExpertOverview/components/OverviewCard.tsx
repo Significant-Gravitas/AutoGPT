@@ -14,12 +14,12 @@ export function OverviewCard({ title, action, className, children }: Props) {
     <section
       aria-label={title}
       className={cn(
-        "flex min-w-0 flex-col gap-3 rounded-2xl bg-white p-4 smooth-shadow-ring-sm",
+        "flex min-w-0 flex-col gap-3 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm",
         className,
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <Text variant="body-medium" tone="primary">
+        <Text variant="body-md-medium" tone="primary">
           {title}
         </Text>
         {action}

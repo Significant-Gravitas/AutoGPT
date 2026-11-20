@@ -92,6 +92,6 @@ Trigger-based agents cannot be started manually. Configure them through **New ag
 | | Schedule | Trigger |
 |---|----------|---------|
 | **How it starts** | Automatically at configured times | When an external event sends data to the webhook URL |
-| **Input source** | Pre-configured when the schedule is created | Provided by the incoming webhook payload |
+| **Input source** | Pre-configured when the schedule is created | The incoming webhook payload, plus any inputs configured when the trigger was set up |
 | **Use case** | Recurring tasks with fixed inputs (daily reports, weekly summaries) | Event-driven tasks (new PR opened, form submitted, payment received) |
 | **Setup** | Through the **New agent task** → **Schedule Task** flow | Through trigger blocks in the builder, then **New agent task** → **Set up Trigger** in the library |

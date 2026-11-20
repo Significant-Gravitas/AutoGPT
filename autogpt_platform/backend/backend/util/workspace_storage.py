@@ -8,6 +8,7 @@ for Google Cloud Storage (cloud deployments) and local filesystem (self-hosted d
 import asyncio
 import hashlib
 import logging
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -16,6 +17,7 @@ from gcloud.aio import storage as async_gcs_storage
 from google.cloud import storage as gcs_storage
 
 from backend.util.gcs_utils import (
+    download_in_chunks,
     download_range,
     download_with_fresh_session,
     generate_signed_url,
@@ -23,6 +25,7 @@ from backend.util.gcs_utils import (
     parse_gcs_path,
 )
 from backend.util.settings import Config
+from backend.util.workspace_storage_base import STREAM_CHUNK_BYTES
 from backend.util.workspace_storage_base import (
     WorkspaceStorageBackend as WorkspaceStorageBackend,
 )
@@ -117,6 +120,11 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         blob_name = self._parse_storage_path(storage_path)
         return await download_with_fresh_session(self.bucket_name, blob_name)
 
+    def retrieve_stream(self, storage_path: str) -> AsyncIterator[bytes]:
+        """Yield a GCS file's content chunk by chunk."""
+        blob_name = self._parse_storage_path(storage_path)
+        return download_in_chunks(self.bucket_name, blob_name, STREAM_CHUNK_BYTES)
+
     async def retrieve_partial(self, storage_path: str, max_bytes: int) -> bytes:
         """Retrieve the first ``max_bytes`` of a GCS file via a Range request."""
         blob_name = self._parse_storage_path(storage_path)
@@ -189,7 +197,9 @@ _gcs_storages: dict[int, GCSWorkspaceStorage] = {}
 _storage_lock = asyncio.Lock()
 
 
-async def get_workspace_storage() -> WorkspaceStorageBackend:
+async def get_workspace_storage(
+    *, config: Config | None = None
+) -> WorkspaceStorageBackend:
     """Return a workspace storage backend for the **current** event loop.
 
     * Local storage → single shared instance (no event-loop affinity).
@@ -198,7 +208,7 @@ async def get_workspace_storage() -> WorkspaceStorageBackend:
     """
     global _local_storage
 
-    config = Config()
+    config = config if config is not None else Config()
 
     # --- Local storage (shared) ---
     bucket_name = config.resolved_private_user_data_bucket

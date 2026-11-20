@@ -60,6 +60,7 @@ export const config = {
      * - /auth/callback (OAuth callback - needs to work without auth)
      * - /api/proxy (backend API proxy - the route handler authenticates
      *   itself via httpOnly cookies)
+     * - /api/changelog (public cached docs proxy - no auth; skip the round-trip)
      * Feel free to modify this pattern to include more paths.
      *
      * Keep the PostHog proxy path (/relay/pnosthog) matched: middleware is
@@ -68,6 +69,6 @@ export const config = {
      * Note: /auth/authorize and /auth/integrations/* ARE protected and need
      * middleware to run for authentication checks.
      */
-    "/((?!_next/static|_next/image|favicon.ico|auth/callback|auth/integrations/mcp_callback|api/proxy|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|auth/callback|auth/integrations/mcp_callback|api/proxy|api/changelog|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

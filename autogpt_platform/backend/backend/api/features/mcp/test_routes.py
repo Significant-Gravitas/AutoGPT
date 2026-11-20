@@ -340,7 +340,7 @@ class TestOAuthLogin:
             )
             mock_register.return_value = {
                 "client_id": "registered-client-id",
-                "client_secret": "registered-secret",
+                "client_secret": "registered-secret",  # pragma: allowlist secret
             }
             mock_cm.store.store_state_token = AsyncMock(
                 return_value=("state-token-123", "code-challenge-abc")
@@ -416,6 +416,40 @@ class TestOAuthLogin:
         assert response.status_code == 200
         data = response.json()
         assert "autogpt-platform" in data["login_url"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        "body, native", [({"client": "native"}, True), ({}, False)]
+    )
+    async def test_oauth_login_passes_the_native_client_on(self, client, body, native):
+        with (
+            patch("backend.api.features.mcp.routes.MCPClient") as MockClient,
+            patch("backend.api.features.mcp.routes.creds_manager") as mock_cm,
+            patch("backend.api.features.mcp.routes.settings") as mock_settings,
+        ):
+            instance = MockClient.return_value
+            instance.discover_auth = AsyncMock(return_value=None)
+            instance.discover_auth_server_metadata = AsyncMock(
+                return_value=(
+                    {
+                        "authorization_endpoint": "https://mcp.example.com/authorize",
+                        "token_endpoint": "https://mcp.example.com/token",
+                    },
+                    "https://mcp.example.com",
+                )
+            )
+            mock_cm.store.store_state_token = AsyncMock(
+                return_value=("state-abc", "challenge-xyz")
+            )
+            mock_settings.config.frontend_base_url = "http://localhost:3000"
+
+            response = await client.post(
+                "/oauth/login",
+                json={"server_url": "https://mcp.example.com/mcp", **body},
+            )
+
+        assert response.status_code == 200
+        assert mock_cm.store.store_state_token.call_args.kwargs["native"] is native
 
     @staticmethod
     def _mock_slack_discovery(MockClient, **metadata_overrides):
@@ -1086,7 +1120,7 @@ class TestOAuthCallback:
                 "authorize_url": "https://auth.sentry.io/authorize",
                 "token_url": "https://auth.sentry.io/token",
                 "client_id": "test-client-id",
-                "client_secret": "test-secret",
+                "client_secret": "test-secret",  # pragma: allowlist secret
                 "server_url": "https://mcp.sentry.dev/mcp",
             }
             mock_state.scopes = ["openid"]

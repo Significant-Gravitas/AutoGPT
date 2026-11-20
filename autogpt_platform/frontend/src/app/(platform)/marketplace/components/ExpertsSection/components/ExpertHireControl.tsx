@@ -9,7 +9,6 @@ import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackFunnel } from "@/services/experts/experts-analytics";
 import { useHireFlow } from "@/services/experts/useHireFlow";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AddTeamIcon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 
 // A small secondary pill, like the team cards' corner buttons.
@@ -28,14 +27,6 @@ interface Props {
  *  hand-off to the expert's first thread — would unmount with it. Here the
  *  flow runs the expert page's own hook and outlives the swap. */
 export function ExpertHireControl({ expert, isHired }: Props) {
-  const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-
-  if (!isHireExpertsEnabled) return null;
-
-  return <EnabledExpertHireControl expert={expert} isHired={isHired} />;
-}
-
-function EnabledExpertHireControl({ expert, isHired }: Props) {
   const { isLoggedIn } = useAuth();
   const {
     hire,
@@ -64,7 +55,8 @@ function EnabledExpertHireControl({ expert, isHired }: Props) {
     control = (
       <Badge
         variant="success"
-        className="rounded-full px-2.5 py-1 shadow-[0_1px_2px_rgba(16,24,40,0.05)]"
+        // oxlint-disable-next-line design-system/no-restyle -- the hired pill matches the hire button's shape; Badge has no pill size
+        className="rounded-full px-2.5 py-1 shadow-subtle"
       >
         <Icon icon={CheckmarkCircle02Icon} size={14} aria-hidden />
         On your team

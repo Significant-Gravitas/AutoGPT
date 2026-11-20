@@ -18,11 +18,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UIMessageChunk } from "ai";
 import { http, type HttpHandler } from "msw";
+import { parseAsString, useQueryState } from "nuqs";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { ReactNode, StrictMode, useState } from "react";
+import { ReactElement, ReactNode, StrictMode, useState } from "react";
 import { expect } from "vitest";
 import { CopilotChatHost } from "../CopilotChatHost";
 import { resetCopilotChatRegistry } from "../copilotChatRegistry";
+import { resetStarToastCounts } from "../helpers/githubStarToast";
 import { resetTurnRuntimes } from "../stream/turnRuntime";
 
 export const TEST_BACKEND_BASE_URL = "http://localhost:18006";
@@ -34,10 +36,12 @@ export const STREAM_PATHS = ["AI SDK", "stream runtime"] as const;
 export type StreamPath = (typeof STREAM_PATHS)[number];
 export const STREAM_RUNTIME_FLAG = "copilot-stream-runtime";
 
-/** Both paths keep a per-session runtime in a module-level map. */
+/** Both paths keep a per-session runtime in a module-level map; the GitHub
+ *  star toast keeps the prompts it has counted in one too. */
 export function resetChatRuntimes() {
   resetCopilotChatRegistry();
   resetTurnRuntimes();
+  resetStarToastCounts();
 }
 
 export interface SessionOverride {
@@ -47,6 +51,7 @@ export interface SessionOverride {
   chat_status?: string;
   expert_id?: string | null;
   metadata?: SessionDetailResponse["metadata"];
+  background_pending?: boolean;
 }
 
 /**
@@ -67,6 +72,7 @@ export function sessionHandler(opts: SessionOverride = {}) {
     active_stream: opts.active_stream ?? null,
     metadata: opts.metadata ?? { dry_run: false, builder_graph_id: null },
     expert_id: opts.expert_id ?? null,
+    background_pending: opts.background_pending ?? false,
   });
 }
 
@@ -100,16 +106,18 @@ export function copilotStreamSequenceHandler({
 function Wrapper({
   children,
   searchParams,
+  hasMemory,
 }: {
   children: ReactNode;
   searchParams: string;
+  hasMemory: boolean;
 }) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   );
   return (
     <QueryClientProvider client={queryClient}>
-      <NuqsTestingAdapter searchParams={searchParams}>
+      <NuqsTestingAdapter searchParams={searchParams} hasMemory={hasMemory}>
         <BackendAPIProvider>
           <OnboardingProvider>
             <TooltipProvider>
@@ -119,6 +127,18 @@ function Wrapper({
         </BackendAPIProvider>
       </NuqsTestingAdapter>
     </QueryClientProvider>
+  );
+}
+
+/** Keyed by session as `CopilotPage` mounts it, so creating one remounts it. */
+function SessionKeyedHost() {
+  const [sessionId] = useQueryState("sessionId", parseAsString);
+  return (
+    <CopilotChatHost
+      key={`chat-host-${sessionId ?? "new"}`}
+      droppedFiles={[]}
+      onDroppedFilesConsumed={() => {}}
+    />
   );
 }
 
@@ -139,6 +159,12 @@ export function renderHost(
     /** Mount under React Strict Mode, as the dev server does: every effect
      *  runs twice on mount, so load-time requests fire twice. */
     strictMode?: boolean;
+    /** Start with no session, as a new chat does: the first send creates
+     *  one, and the host remounts under it. */
+    newChat?: boolean;
+    /** Renders this instead of the chat host, e.g. the whole page when a test
+     *  needs what the page mounts beside the chat. */
+    ui?: ReactElement;
   } = {},
 ) {
   server.use(
@@ -183,14 +209,19 @@ export function renderHost(
       reason: null,
     }),
   );
-  const host = (
-    <CopilotChatHost droppedFiles={[]} onDroppedFilesConsumed={() => {}} />
-  );
+  const host =
+    opts.ui ??
+    (opts.newChat ? (
+      <SessionKeyedHost />
+    ) : (
+      <CopilotChatHost droppedFiles={[]} onDroppedFilesConsumed={() => {}} />
+    ));
+  const searchParams = opts.newChat
+    ? ""
+    : (opts.searchParams ?? `?sessionId=${TEST_SESSION_ID}`);
   return render(opts.strictMode ? <StrictMode>{host}</StrictMode> : host, {
     wrapper: ({ children }) => (
-      <Wrapper
-        searchParams={opts.searchParams ?? `?sessionId=${TEST_SESSION_ID}`}
-      >
+      <Wrapper searchParams={searchParams} hasMemory={!!opts.newChat}>
         {children}
       </Wrapper>
     ),
@@ -222,7 +253,7 @@ export async function typeAndSend(text: string) {
 /** Stop ignores taps for a moment after it appears; wait until it takes one. */
 export async function clickStop() {
   const user = userEvent.setup();
-  const stop = await screen.findByRole("button", { name: /stop/i });
+  const stop = await screen.findByRole("button", { name: "Stop" });
   await waitFor(() => expect(stop.hasAttribute("disabled")).toBe(false), {
     timeout: 3000,
   });

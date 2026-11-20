@@ -1,4 +1,5 @@
 import { getSystemHeaders } from "@/lib/impersonation";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { getWebSocketToken } from "@/lib/auth/actions";
 import type { ChatStatus, UIMessage } from "ai";
 
@@ -7,8 +8,6 @@ import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
 import { parseSpecialMarkers } from "./helpers/messageMarkers";
 import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { TURN_PAUSED_PART_TYPE } from "./turnPause";
-
-export const ORIGINAL_TITLE = "AutoGPT";
 
 /**
  * Title/body/icon for the OS-level notification fired when a copilot session
@@ -27,38 +26,38 @@ export const COPILOT_COMPLETION_NOTIFICATION = {
  * Returns HTTP headers required for direct backend requests from copilot:
  * - Authorization Bearer token (JWT)
  * - X-Act-As-User-Id impersonation header (if an admin is impersonating a user)
+ * - X-PostHog-Session-Id (with analytics consent), so the chat's backend
+ *   events join the browser's PostHog session
  *
  * Use this for all direct-to-backend fetch/SSE calls so that admin user
  * impersonation works consistently across the entire copilot feature.
  */
 export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
-  const { token, error } = await getWebSocketToken();
+  const { token, error, retryable } = await getWebSocketToken();
   if (error || !token) {
     console.warn("[Copilot] Failed to get auth token:", error);
-    throw new CopilotAuthError();
+    throw new CopilotAuthError({ retryable: retryable === true });
   }
   return {
     Authorization: `Bearer ${token}`,
     ...getSystemHeaders(),
+    ...getPostHogSessionHeader(),
   };
 }
 
-/** The server answered and has no session token: signed out, not offline. */
+/**
+ * No usable session token. Without `retryable`, the server answered that
+ * there is no session: signed out, not offline. With it, the token service
+ * failed instead, and a later lookup may work.
+ */
 export class CopilotAuthError extends Error {
-  constructor() {
+  readonly retryable: boolean;
+
+  constructor({ retryable = false }: { retryable?: boolean } = {}) {
     super("Authentication failed — please sign in again.");
     this.name = "CopilotAuthError";
+    this.retryable = retryable;
   }
-}
-
-/**
- * Build the document title showing how many sessions are ready.
- * Returns the base title when count is 0.
- */
-export function formatNotificationTitle(count: number): string {
-  return count > 0
-    ? `(${count}) New activity - ${ORIGINAL_TITLE}`
-    : ORIGINAL_TITLE;
 }
 
 /**
@@ -114,26 +113,61 @@ export function hasActiveBackendStream(result: { data?: unknown }): boolean {
   );
 }
 
+export type VisiblePartKind = "text" | "reasoning" | "tool";
+
+/**
+ * What an assistant part visibly renders: text or reasoning with non-empty
+ * content, or a tool card (tool cards render regardless of state). Null for
+ * the bookkeeping parts (`step-start`, `data-*`) and empty blocks a stream
+ * sends before any content.
+ */
+export function getVisiblePartKind(
+  part: UIMessage["parts"][number],
+): VisiblePartKind | null {
+  if (part.type === "text") return part.text.trim() ? "text" : null;
+  if (part.type === "reasoning") return part.text.trim() ? "reasoning" : null;
+  return part.type.startsWith(TOOL_PART_PREFIX) ? "tool" : null;
+}
+
+/**
+ * The chat's status as the copilot reads it, which AI SDK 7 reports later
+ * than the copilot needs:
+ * - a resume is "submitted" from the moment it is asked for, not only once
+ *   its GET has returned a stream;
+ * - a turn is "streaming" once its `start` chunk has added the reply's
+ *   assistant message, which is when the turn has a name and a Stop can reach
+ *   it, not only at its first content chunk, which would hide Stop for as
+ *   long as the model takes to say anything.
+ */
+export function getEffectiveChatStatus<Status extends string>(
+  status: Status,
+  messages: UIMessage[],
+  isResumePending: boolean,
+): Status | "submitted" | "streaming" {
+  if (isResumePending && (status === "ready" || status === "error")) {
+    return "submitted";
+  }
+  return status === "submitted" && messages.at(-1)?.role === "assistant"
+    ? "streaming"
+    : status;
+}
+
 /**
  * Whether the trailing assistant message has at least one part the UI
- * would visibly render: text with non-empty content, reasoning with
- * non-empty content, any tool part (tool cards render regardless of
- * state), or a Paused card — a turn refused before it ran streams nothing
- * else. Used to gate the resume-snapshot discard — the replay may stream
- * empty reasoning-start / step-start chunks for minutes before any
- * rendered content (e.g. Perplexity deep research), and we do not want to
- * drop the pre-replay snapshot until the user actually sees something.
+ * would visibly render (see `getVisiblePartKind`), or a Paused card — a
+ * turn refused before it ran streams nothing else. Used to gate the
+ * resume-snapshot discard — the replay may stream empty reasoning-start /
+ * step-start chunks for minutes before any rendered content (e.g.
+ * Perplexity deep research), and we do not want to drop the pre-replay
+ * snapshot until the user actually sees something.
  */
 export function hasVisibleAssistantContent(messages: UIMessage[]): boolean {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant") return false;
-  return last.parts.some((part) => {
-    if (part.type === "text" && part.text.trim().length > 0) return true;
-    if (part.type === "reasoning" && part.text.trim().length > 0) return true;
-    if (part.type.startsWith(TOOL_PART_PREFIX)) return true;
-    if (part.type === TURN_PAUSED_PART_TYPE) return true;
-    return false;
-  });
+  return last.parts.some(
+    (part) =>
+      getVisiblePartKind(part) !== null || part.type === TURN_PAUSED_PART_TYPE,
+  );
 }
 
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
@@ -147,8 +181,18 @@ export function resolveInProgressTools(
       "state" in part &&
       (part.state === "input-streaming" || part.state === "input-available")
         ? outcome === "cancelled"
-          ? { ...part, state: "output-error" as const, errorText: "Cancelled" }
-          : { ...part, state: "output-available" as const, output: "" }
+          ? {
+              ...part,
+              state: "output-error" as const,
+              input: part.input,
+              errorText: "Cancelled",
+            }
+          : {
+              ...part,
+              state: "output-available" as const,
+              input: part.input,
+              output: "",
+            }
         : part,
     ),
   }));
@@ -206,6 +250,7 @@ export function resolveInterruptedMessage(messages: UIMessage[]): UIMessage[] {
       return {
         ...part,
         state: "output-error" as const,
+        input: part.input,
         errorText: "Interrupted",
       };
     }
@@ -279,8 +324,9 @@ interface SuppressDuplicateArgs {
  * - ``"reconnecting"``: the stream is reconnecting; the caller should
  *   notify the user (the UI may not yet reflect the disabled state).
  * - ``"duplicate"``: the same text, with the same attachments, was just
- *   submitted and echoed back by the session — safe to silently drop
- *   (user double-clicked).
+ *   submitted, echoed back by the session and not answered yet — safe to
+ *   silently drop (user double-clicked), because the message is already
+ *   on screen.
  */
 export type SuppressReason = "reconnecting" | "duplicate" | null;
 
@@ -320,11 +366,18 @@ export function getSendSuppressionReason({
       .trim();
     // The same caption on other files is a new message, not a resend.
     const lastUserAttachments = attachmentKeys(lastUserMsg?.parts ?? []);
-    if (
+    const isResend =
       lastUserText === text &&
-      lastUserAttachments.join("\n") === attachments.join("\n")
-    )
-      return "duplicate";
+      lastUserAttachments.join("\n") === attachments.join("\n");
+    // A resend is a duplicate only while the first send is still being
+    // answered: the turn is in flight, or its echo is the newest message.
+    // Once a reply (or a Stop marker) followed it, "yes" after "yes" is a
+    // new message, and dropping it would lose text the composer already cleared.
+    const stillBeingAnswered =
+      status === "streaming" ||
+      status === "submitted" ||
+      lastMessage?.role === "user";
+    if (isResend && stillBeingAnswered) return "duplicate";
   }
 
   return null;
@@ -493,4 +546,14 @@ export function isEngineSwitchPart(dataPart: {
   if (dataPart.type !== "data-mode-changed") return false;
   const mode = (dataPart.data as { mode?: string } | undefined)?.mode;
   return mode === "extended_thinking" || mode === "fast";
+}
+
+export const CREATE_SESSION_RETRY_DELAY_MS = 500;
+
+// A network error on create ("Load failed" on Safari, "Failed to fetch" on
+// Chrome) can mean the server committed and only the response was lost. The
+// request names its session id, so one retry adopts that session instead of
+// bouncing the message back to the composer.
+export function retryLostCreateResponse(failureCount: number, error: unknown) {
+  return failureCount < 1 && error instanceof TypeError;
 }

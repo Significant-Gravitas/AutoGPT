@@ -38,7 +38,6 @@ def _http(path: str, *, parent_sampled: bool | None = None) -> dict:
         "/health",
         "/health_check",
         "/health_check_async",
-        "/api/chat/health",
         "/healthz",
     ],
 )

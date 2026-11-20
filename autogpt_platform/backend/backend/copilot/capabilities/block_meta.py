@@ -34,6 +34,7 @@ COPILOT_EXCLUDED_BLOCK_IDS = {
 }
 
 
+# The external API's block-execute route refuses the same blocks (api/external/v1/routes.py).
 def is_graph_only_block(block: AnyBlockSchema) -> bool:
     return (
         block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES

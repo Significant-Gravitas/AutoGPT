@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 
+from backend.copilot import database_manager_fixtures
+from backend.copilot.sdk.cli_version import _VERSIONS, _cli_the_sdk_finds
 from backend.util import json
 
 
@@ -57,6 +60,16 @@ def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Clear env-backed CHAT_* settings so ChatConfig uses constructor values."""
     for var in _CONFIG_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_cli_version_checks():
+    """No test sees a CLI version or path another test read."""
+    _VERSIONS.clear()
+    _cli_the_sdk_finds.cache_clear()
+    yield
+    _VERSIONS.clear()
+    _cli_the_sdk_finds.cache_clear()
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", name="server")
@@ -147,6 +160,17 @@ def build_structured_transcript(
         lines.append(json.dumps(entry, separators=(",", ":")))
         last_uuid = uid
     return "\n".join(lines) + "\n"
+
+
+# No database manager runs for these tests; nor for billing_e2e, dream and
+# graphiti, whose conftests turn the fake on too.
+fake_database_manager_clients = database_manager_fixtures.fake_database_manager_clients
+database_manager = database_manager_fixtures.database_manager
+
+
+def pytest_terminal_summary(terminalreporter: Any) -> None:
+    """Once per run (here only): the calls the fake answered in every folder."""
+    database_manager_fixtures.write_calls_summary(terminalreporter)
 
 
 @pytest.fixture(autouse=True)

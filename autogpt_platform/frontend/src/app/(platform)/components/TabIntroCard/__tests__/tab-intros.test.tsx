@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import { act, render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,15 +7,6 @@ vi.mock("posthog-js", () => ({ default: { capture } }));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "user-1" } }),
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
-    HIRE_EXPERTS: "hire-experts",
-  },
-  useGetFlag: () => false,
-  useFlagStatus: () => ({ enabled: true, ready: true }),
 }));
 
 const completeStep = vi.hoisted(() => vi.fn());
@@ -142,6 +133,15 @@ describe("MarketplaceTabIntro", () => {
 });
 
 describe("BuildTabIntro", () => {
+  it("defers its intro while the builder tutorial is running", async () => {
+    useTutorialStore.getState().setIsTutorialRunning(true);
+    render(<BuildTabIntro />);
+    expect(screen.queryByText("Create your own workflows.")).toBeNull();
+    expect(completeStep).not.toHaveBeenCalled();
+    act(() => useTutorialStore.getState().setIsTutorialRunning(false));
+    expect(await screen.findByText("Create your own workflows.")).toBeDefined();
+    expect(completeStep).not.toHaveBeenCalled();
+  });
   it("sends the user to Otto from the primary CTA", async () => {
     render(<BuildTabIntro />);
     expect(await screen.findByText("Create your own workflows.")).toBeDefined();

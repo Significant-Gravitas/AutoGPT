@@ -67,7 +67,7 @@ async def test_an_expert_scope_never_gets_a_learning_cron(env):
     scope neither registers nor even considers a learning cron."""
     results = await registry.ensure_scope_scheduled(EXPERT)
 
-    assert set(results) == {"community_rebuild", "dream_nightly_batch"}
+    assert set(results) == {"dream_nightly_batch"}
     assert set(env.scheduler.jobs) == job_ids(EXPERT)
     assert env.db.rows[EXPERT.scope_key].learning_job_id is None
     env.scheduler.add_scope_skill_learning_schedule.assert_not_awaited()

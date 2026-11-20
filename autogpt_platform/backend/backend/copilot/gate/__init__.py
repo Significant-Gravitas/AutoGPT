@@ -3,7 +3,8 @@
 Ordering is the design, cheapest and most certain first:
 
 1. gate inactive                          -> ALLOW (today's behaviour)
-2. an approval for exactly these args     -> ALLOW, consumed single-use
+2. an approval for exactly these args     -> ALLOW, consumed single-use;
+   a proposal card's Approve of the id a confirm applies counts as one
 3. what the call acts on: a block, workflow or MCP tool's own effect, or
    the tool's; a call that runs nothing never asks
 4. the user's rule on that subject in this chat -> allow, judge or ask
@@ -20,7 +21,8 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.context import get_current_envelope
-from backend.copilot.model import ChatSession
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
+from backend.copilot.model import ChatSession, chat_of_origin
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
 from backend.copilot.trial_cost_context import capture_cost_context
 from backend.platform_linking.models import Platform
@@ -28,6 +30,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import chat_rules, held
 from . import review as review_store
+from .card_approval import approved_on_card
 from .classifier import DecidedBy, Judgement, supervise
 from .headline import Headline
 from .policy import (
@@ -41,6 +44,7 @@ from .policy import (
     strictest_mode,
     verdict_for_effect,
 )
+from .spent_approval import FoldPass, passing, take_pass, unmatched, use
 from .subject import Subject
 
 logger = logging.getLogger(__name__)
@@ -124,13 +128,29 @@ DECIDED = Decision(allowed=True, decided=True)
 
 
 async def gate_active(user_id: str | None, session: ChatSession) -> bool:
-    """The gate runs only where a signed-in user can answer; sessions nobody
-    is watching stay ungated until they get their own path."""
-    if not user_id or session.metadata.origin != "interactive":
-        return False
-    if session.metadata.source_platform in CARDLESS_PLATFORMS:
+    if not user_id or not await answered_from_chat_of_origin(user_id, session):
         return False
     return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
+
+
+async def answered_from_chat_of_origin(
+    user_id: str | None, session: ChatSession
+) -> bool:
+    """Whether a signed-in user can answer a card for this session's work.
+
+    A sub-session runs work delegated from another chat and answers to the
+    gate of the chat the work started in. A sub whose chat is gone stays gated.
+    """
+    if not user_id:
+        return False
+    origin = await chat_of_origin(session.metadata)
+    if origin is None:
+        return True
+    # Sessions nobody is watching stay unchecked until they get their own path.
+    return (
+        origin.origin == "interactive"
+        and origin.source_platform not in CARDLESS_PLATFORMS
+    )
 
 
 async def unified_approvals(user_id: str) -> bool:
@@ -175,10 +195,20 @@ async def check_action(
     tool_call_id: str = "",
     subject_of: Callable[[], Awaitable[Subject | None]] | None = None,
     context_of: Callable[[], Awaitable[dict[str, str | None] | None]] | None = None,
+    args_bound: bool = False,
 ) -> Decision:
     """``subject_of`` resolves what the call acts on; it runs only once no
     approval answers the call, so an approved call is never re-derived.
-    ``context_of`` reads the files the call runs, for the supervisor only."""
+    ``context_of`` reads the files the call runs, for the supervisor only.
+    ``args_bound``: the tool already resolved ``args``, which a held call keeps
+    so its replay does not resolve them again."""
+    if user_id and passing():
+        fold_pass = take_pass(
+            review_store.review_id_for(session.session_id, user_id, tool_name, args)
+        )
+        if fold_pass is not None:
+            return await _on_fold_pass(fold_pass, user_id, session)
+        unmatched()
     if not await gate_active(user_id, session):
         return ALLOW
     assert user_id is not None
@@ -194,13 +224,17 @@ async def check_action(
 
     review = await review_store.find_review(review_id, user_id, session_id)
     if review is not None and review.status == ReviewStatus.APPROVED:
-        if await review_store.consume(review_id, user_id):
+        # Raises when the spend fails; the tool then refuses, so nothing runs.
+        if await review_store.consume(review, user_id):
             if review_store.is_spend_card(review):
                 await raise_ceiling(CEILING_UNIT_MICRODOLLARS)
             return Decision(allowed=True, approved=True, decided=True)
+        # Lost the race for the card: an identical call spent it. Rarely the
+        # card lapsed and another reader discarded it between this read and
+        # the spend, so nothing ran on it; this call must not run either way.
         return Decision(allowed=False, reason=_CONSUMED)
     if review is not None and review.status == ReviewStatus.REJECTED:
-        await review_store.consume(review_id, user_id)
+        await review_store.discard(review, user_id)
         await chat_rules.set_ask(
             session_id,
             await held.rule_key(session_id, review_id, tool_name),
@@ -212,6 +246,8 @@ async def check_action(
         # The first call's card and stored call stand; re-storing would
         # re-point the late result at the retry's tool call id.
         return Decision(allowed=False, reason=_ALREADY_HELD, review_id=review_id)
+    if await approved_on_card(tool_name, args, user_id, session_id):
+        return Decision(allowed=True, approved=True, decided=True)
 
     subject = await subject_of() if subject_of is not None else None
     effect = subject.effect if subject is not None else effect_for(tool_name)
@@ -274,9 +310,11 @@ async def check_action(
         tool_name=tool_name,
         tool_call_id=tool_call_id,
         args=args,
+        args_bound=args_bound,
         rule_key=rule_key,
         envelope=get_current_envelope(),
         cost_context=await capture_cost_context(user_id),
+        generation=held.card_generation(),
     )
     return await _park(
         call,
@@ -288,6 +326,23 @@ async def check_action(
         ruling.decided_by,
         ruling.spend,
     )
+
+
+async def _on_fold_pass(
+    fold_pass: FoldPass, user_id: str, session: ChatSession
+) -> Decision:
+    """A held call the fold is running reached its gate: spend the card the
+    fold read here, just before the call runs, with the gate on or off, so a
+    call refused before its gate never spends it. Whether the gate is on is
+    read first: a read that fails must not leave the approval spent."""
+    active = await gate_active(user_id, session)
+    if refusal := await use(fold_pass, user_id):
+        return Decision(allowed=False, reason=refusal)
+    if not active:
+        return ALLOW
+    if review_store.is_spend_card(fold_pass.card):
+        await raise_ceiling(CEILING_UNIT_MICRODOLLARS)
+    return Decision(allowed=True, approved=True, decided=True)
 
 
 async def rule_on(
@@ -370,7 +425,9 @@ async def _park(
     decided_by: DecidedBy | None,
     spend: dict[str, int] | None = None,
 ) -> Decision:
-    """Cards queue per chat: the call is kept so its answer can finish it."""
+    """Cards queue per chat: the call is kept so its answer can finish it,
+    under the generation stamped on the card it opens. If an identical call's
+    card was already open under the id, that card's own held call answers it."""
     if not await held.remember(session.session_id, call):
         return Decision(allowed=False, reason=_UNRECORDABLE)
     headline = await review_store.open_review(
@@ -385,10 +442,13 @@ async def _park(
         reason_kind=reason_kind,
         tool_call_id=call.tool_call_id,
         decided_by=decided_by,
+        generation=call.generation,
     )
     if headline is None:
-        await held.forget(session.session_id, call.review_id)
+        await held.forget(session.session_id, call)
         return Decision(allowed=False, reason=_UNRECORDABLE)
+    if not await held.kept_for_its_card(user_id, session.session_id, call):
+        return Decision(allowed=False, reason=_ALREADY_HELD, review_id=call.review_id)
     return Decision(
         allowed=False, reason=reason, review_id=call.review_id, headline=headline
     )
@@ -448,7 +508,7 @@ def _typed_messages(session: ChatSession, upto: int | None = None) -> list[str]:
 
     typed = [
         strip_injected_context_for_display(message.content)
-        for message in session.messages[:upto]
+        for message in without_stored_first_turn_memory(session.messages[:upto])
         if message.role == "user"
         and message.content
         and not held.is_answer_row(message)

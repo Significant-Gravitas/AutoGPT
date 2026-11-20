@@ -13,20 +13,6 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? { enabled: true, ready: true }
-        : actual.useFlagStatus(flag as never),
-  };
-});
-
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -217,6 +203,12 @@ describe("AutopilotCard", () => {
     expect(getStatValue(autopilot, "Skills")).toBe("3");
     expect(getStatValue(autopilot, "Schedules")).toBe("1");
     expect(getStatValue(autopilot, "Workflows")).toBe("1");
+    // Labelled as the team's, on Otto's card alone, and read with the numbers.
+    expect(autopilot.contains(screen.getByText("Across your team"))).toBe(true);
+    within(autopilot).getByRole("link", {
+      name: "View Otto",
+      description: "1 Schedules 3 Skills 1 Workflows Across your team",
+    });
   });
 
   test("leaves out the totals for a team with nothing set up", async () => {
@@ -230,6 +222,7 @@ describe("AutopilotCard", () => {
     expect(within(autopilot).queryByText("Skills")).toBeNull();
     expect(within(autopilot).queryByText("Schedules")).toBeNull();
     expect(within(autopilot).queryByText("Workflows")).toBeNull();
+    expect(within(autopilot).queryByText("Across your team")).toBeNull();
     expect(within(autopilot).queryByText("Built in")).toBeNull();
     expect(within(autopilot).queryByText("Budget")).toBeNull();
     expect(

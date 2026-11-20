@@ -138,13 +138,12 @@ pnpm exec playwright test   # run the same eight-spec Playwright suite directly
 
 - Playwright runs from `frontend/playwright.config.ts` and keeps browser-only code in `frontend/src/playwright/`
 - Global setup creates reusable auth states for deterministic seeded accounts in `frontend/.auth/states/`
-- `getTestUser()` (from `src/playwright/utils/auth.ts`) picks one seeded account for general auth coverage
-- `getTestUserWithLibraryAgents()` uses the rich user created by the data script
+- `getSeededTestUser()` (from `src/playwright/credentials/accounts.ts`) returns a seeded account by key
 
 ### Test users
 
-- **Seeded E2E accounts** — created by backend fixtures and logged in during Playwright global setup. Used by `getTestUser()` and `E2E_AUTH_STATES`
-- **Rich user with library agents** — created by `backend/test/e2e_test_data.py`. Used by `getTestUserWithLibraryAgents()`
+- **Seeded E2E accounts** — created by backend fixtures and logged in during Playwright global setup. Used by `getSeededTestUser()` and `E2E_AUTH_STATES`
+- **Rich user with library agents** — created by `backend/test/e2e_test_data.py`
 
 ### Current Playwright E2E suite
 

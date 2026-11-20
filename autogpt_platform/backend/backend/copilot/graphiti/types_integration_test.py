@@ -1,11 +1,12 @@
 """Integration tests for the custom edge-type schema (P-1.1).
 
 Validates the schema contract that ``MemoryFact`` declares: when a
-``:RELATES_TO`` edge carries the new properties (``status``,
-``confidence``, ``source_kind``, ``scope``, ``provenance``,
-``web_verified_at``, ``ratified_at``, ``expiration_reason``), all of
-them round-trip cleanly through FalkorDB + the AutoGPTFalkorDriver,
-and Cypher queries can filter on them natively.
+``:RELATES_TO`` edge carries its properties (``status``, ``confidence``,
+``source_kind``, ``scope``, ``provenance``, ``expiration_reason``) and the
+platform's attestation stamps (``web_verified_at``, ``ratified_at``, which
+no extraction writes: ``types.POLICY_EDGE_FIELDS``), all of them
+round-trip cleanly through FalkorDB + the AutoGPTFalkorDriver, and Cypher
+queries can filter on them natively.
 
 What this does NOT test: end-to-end ``add_episode`` calls that exercise
 the LLM-driven entity extractor. That path requires a live LLM key and

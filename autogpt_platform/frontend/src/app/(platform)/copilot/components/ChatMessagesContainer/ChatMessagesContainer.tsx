@@ -1,3 +1,4 @@
+import { useCostReplyMoment } from "@/app/(platform)/components/ContextualTips/useTipMoment";
 import { parseSpecialMarkers } from "../../helpers/messageMarkers";
 import { CredentialMentionText } from "../CredentialMention/CredentialMentionText";
 import { cn } from "@/lib/utils";
@@ -6,25 +7,26 @@ import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+} from "@/components/organisms/Conversation/Conversation";
+import {
+  Message,
+  MessageContent,
+} from "@/components/organisms/Message/Message";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { UIDataTypes, UIMessage, UITools } from "ai";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
-import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
+import { isToolCallPending } from "../ToolChain/helpers";
+import { TurnEndAnnouncer } from "../JobStatsBar/TurnEndAnnouncer";
 import { useElapsedAnchor } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  answeredLabel,
-  countHeldCalls,
-  getHeldCallRowKind,
-} from "./heldCallRows";
-import { extractReviewTarget, getLatestCompactionPhase } from "./helpers";
+import { answeredLabel, getHeldCallRowKind } from "./heldCallRows";
+import { extractReviewTargets, getLatestCompactionPhase } from "./helpers";
+import { reviewRefetchKey } from "./reviewRefetchKey";
 import {
   buildMessageIndexById,
   isMidTurnSegmentRow,
@@ -41,6 +43,9 @@ import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
 import { getWorkRunMetadata } from "../WorkCard/helpers";
 import { TailSpacer } from "./components/TailSpacer";
+import { VirtualTranscript } from "./components/VirtualTranscript/VirtualTranscript";
+import type { TranscriptRow } from "./components/VirtualTranscript/helpers";
+import type { JumpToMessage } from "./components/VirtualTranscript/useVirtualTranscript";
 import { MessageRow } from "./components/MessageRow/MessageRow";
 import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { ThreadHeader, type FloatingControls } from "./components/ThreadHeader";
@@ -49,18 +54,25 @@ import {
   PendingUploadMessage,
 } from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { getThinkerHex } from "./thinkerColor";
 import { isSessionOpeningMessage, type SentFrom } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
+import { UnconfirmedSendError } from "../../stream/turnRuntime";
+
+type ChatMessage = UIMessage<unknown, UIDataTypes, UITools>;
 
 interface Props {
-  messages: UIMessage<unknown, UIDataTypes, UITools>[];
+  messages: ChatMessage[];
   status: string;
   error: Error | undefined;
   isLoading: boolean;
   isRestoringActiveSession?: boolean;
+  /** The stream ended but the turn may not have: a reconnect is scheduled
+   *  or the follow-up turn check is still running. */
+  isTurnSettling?: boolean;
   restoreStatusMessage?: string | null;
   /** ISO start time of the active backend turn. Seeds the elapsed-time
    *  counter so restored turns show honest age instead of counting from
@@ -75,6 +87,8 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
+  /** Sends again a message the chat couldn't confirm it sent. */
+  onResend?: () => void;
   turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
@@ -155,7 +169,9 @@ export function LoadMoreSentinel({
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const onLoadMoreRef = useRef(onLoadMore);
-  onLoadMoreRef.current = onLoadMore;
+  useInsertionEffect(() => {
+    onLoadMoreRef.current = onLoadMore;
+  });
   // Pre-mutation scroll snapshot, written synchronously before onLoadMore
   const scrollSnapshotRef = useRef({ scrollHeight: 0, scrollTop: 0 });
   // Consecutive auto-triggered loads that left the container non-scrollable
@@ -237,7 +253,7 @@ export function LoadMoreSentinel({
       {isLoading ? (
         <LoadingSpinner
           data-testid="load-more-spinner"
-          className="h-5 w-5 text-neutral-400"
+          className="h-5 w-5 text-foreground-subtle"
         />
       ) : (
         hasMore && (
@@ -260,6 +276,7 @@ export function ChatMessagesContainer({
   error,
   isLoading,
   isRestoringActiveSession,
+  isTurnSettling,
   restoreStatusMessage,
   activeStreamStartedAt,
   sessionID,
@@ -268,6 +285,7 @@ export function ChatMessagesContainer({
   isLoadingMore,
   onLoadMore,
   onRetry,
+  onResend,
   turnStats,
   queuedMessages,
   pendingSend,
@@ -307,13 +325,23 @@ export function ChatMessagesContainer({
   // Rendered rows, not the array `useChat` owns: a turn whose pending buffer
   // was drained mid-stream renders as chain → follow-up bubble → chain, while
   // the underlying message stays whole. See `splitMessagesAtDrainHints`.
+  // These lists stay memos with the compiler on: the transcript rows reach
+  // the windowed transcript's hooks, which the compiler skips and which key
+  // their row measurements on the rows' identity.
   const renderRows = useMemo(
     () => splitMessagesAtDrainHints(messages),
     [messages],
   );
-  const messageIndexById = useMemo(
-    () => buildMessageIndexById(messages),
-    [messages],
+  const messageIndexById = buildMessageIndexById(messages);
+  const transcriptRows = useMemo(
+    () => toTranscriptRows(renderRows),
+    [renderRows],
+  );
+  // The minimap scrolls to rows by their DOM node; one the windowed
+  // transcript has unmounted is reached through the transcript instead.
+  const jumpRef = useRef<JumpToMessage | null>(null);
+  const [jumpToUnmountedMessage] = useState(
+    () => (messageID: string) => jumpRef.current?.(messageID),
   );
   const lastMessage = messages[messages.length - 1];
   const showPendingSend = !readOnly && !!pendingSend;
@@ -323,28 +351,18 @@ export function ChatMessagesContainer({
   const lastUserMessageID = showPendingSend
     ? PENDING_UPLOAD_MESSAGE_ID
     : (renderRows.findLast((row) => row.role === "user")?.id ?? null);
-  const reviewTarget = useMemo(() => extractReviewTarget(messages), [messages]);
+  const reviewTargets = extractReviewTargets(messages);
 
   // The backend appends a persisted error marker to ``session.messages`` AND
   // yields a ``StreamError`` SSE event on final-failure paths. Both surface
   // the same error string — the marker becomes an in-line ErrorCard bubble,
   // the SSE event sets ``error`` on ``useChat``. Without dedup, the user sees
   // the same error twice. Suppress the trailing banner whenever the last
-  // assistant message already carries the marker.
-  const lastAssistantHasErrorMarker = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      if (msg.role !== "assistant") continue;
-      for (let j = msg.parts.length - 1; j >= 0; j--) {
-        const part = msg.parts[j];
-        if (part.type !== "text") continue;
-        const { markerType } = parseSpecialMarkers(part.text);
-        return markerType === "error" || markerType === "retryable_error";
-      }
-      return false;
-    }
-    return false;
-  }, [messages]);
+  // assistant message already carries the marker. An unconfirmed send is the
+  // client's own finding, about a later prompt: no marker repeats it.
+  const isErrorShownInline =
+    !(error instanceof UnconfirmedSendError) &&
+    hasTrailingErrorMarker(messages);
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
@@ -354,8 +372,17 @@ export function ChatMessagesContainer({
     // the follow-up just landed and nothing has been produced past it, so
     // the text or tool above it is settled and Thinking is the only sign
     // the assistant picked the follow-up up.
+    // A step-start is skipped too: the backend opens a step seconds before
+    // the model writes anything (at the start of a turn, and before each
+    // model call after a tool), so what decides is the part before it.
+    // Thinking stays up through that wait; after text or reasoning it stays
+    // hidden, so nothing flashes between steps.
     let lastIndex = lastMessage.parts.length - 1;
-    while (lastIndex >= 0 && isBookkeepingPart(lastMessage.parts[lastIndex])) {
+    while (
+      lastIndex >= 0 &&
+      (isBookkeepingPart(lastMessage.parts[lastIndex]) ||
+        lastMessage.parts[lastIndex].type === "step-start")
+    ) {
       if (lastMessage.parts[lastIndex].type === PENDING_DRAINED_PART_TYPE)
         return false;
       lastIndex--;
@@ -374,26 +401,28 @@ export function ChatMessagesContainer({
     if (lastPart.type === "reasoning" && lastPart.text.trim().length > 0)
       return true;
 
-    // step-start is a turn boundary emitted right before the next tool or
-    // text chunk. Treat it as inflight so the bubble transitions straight
-    // into the next part without flashing back to "Thinking...".
-    if (lastPart.type === "step-start") return true;
-
     // A pause is how the turn ends, so nothing more is coming to wait on.
     if (lastPart.type === TURN_PAUSED_PART_TYPE) return true;
 
-    if (
-      lastPart.type.startsWith(TOOL_PART_PREFIX) &&
-      "state" in lastPart &&
-      (lastPart.state === "input-streaming" ||
-        lastPart.state === "input-available")
-    )
-      return true;
+    // A running tool, or one paused on the user's approval, shows its own
+    // card, so Thinking must not sit beside it.
+    if (isToolCallPending(lastPart)) return true;
 
     return false;
   })();
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
+  const isTurnBusy =
+    isActivelyStreaming || !!isRestoringActiveSession || !!isTurnSettling;
+  // A host that doesn't report reconnects and finish probes can't tell a
+  // settled turn from a pause between them, so it never claims "Done".
+  const isTurnSettled =
+    isTurnSettling !== undefined && !isTurnBusy && status !== "error" && !error;
+  useCostReplyMoment({
+    messages,
+    isStreaming: isActivelyStreaming,
+    enabled: !readOnly,
+  });
 
   // A live compaction narrates itself via CompactionCard — the generic
   // Thinking indicator must not stack a second spinner and timer under it.
@@ -422,6 +451,7 @@ export function ChatMessagesContainer({
     <ThinkingIndicator
       active={showThinking}
       startedAtMs={streamClock.startedAtMs}
+      color={getThinkerHex({ expertIdentity, isResolvingExpertIdentity })}
     />
   );
   // Public viewers of a shared chat never see a live turn, so the indicator
@@ -441,6 +471,64 @@ export function ChatMessagesContainer({
   }, [isRestoringActiveSession]);
   const restoreClock = useElapsedAnchor(showRestoreFallback);
 
+  function renderRow({ message, rowIndex }: TranscriptRow) {
+    if (getRowHeldCallKind(message) === "answered") {
+      return (
+        <Text tone="muted" variant="small" className="py-1 text-center">
+          {answeredLabel(renderRows, rowIndex)}
+        </Text>
+      );
+    }
+
+    const isLastRow = rowIndex === renderRows.length - 1;
+    const isAssistant = message.role === "assistant";
+    const isLastAssistant = isLastRow && isAssistant;
+    const isCurrentlyStreaming = isLastAssistant && isActivelyStreaming;
+    const nextRow = renderRows[rowIndex + 1];
+    // A segment that only runs up to a mid-turn drain is never the end
+    // of its turn — the same backend turn continues under the follow-up
+    // bubble, so the stats bar and the assistant actions belong to the
+    // last segment alone.
+    const isLastInTurn =
+      isAssistant &&
+      !isMidTurnSegmentRow(message) &&
+      (!nextRow || nextRow.role === "user");
+    const showsTurnStats = isLastInTurn && !isCurrentlyStreaming;
+
+    return (
+      <MessageRow
+        message={message}
+        isLastAssistant={isLastAssistant}
+        isCurrentlyStreaming={isCurrentlyStreaming}
+        isLastInTurn={isLastInTurn}
+        isLatestTurn={isLastRow}
+        isTurnSettled={!isLastRow || isTurnSettled}
+        isTurnSettling={isLastRow && isTurnBusy}
+        turnStat={turnStats?.get(message.id)}
+        turnMessages={
+          showsTurnStats
+            ? turnMessagesForRow(messages, message, messageIndexById)
+            : undefined
+        }
+        elapsedSeconds={isLastRow ? streamClock.frozenSeconds : undefined}
+        indicator={isLastAssistant && showIndicator ? indicator : null}
+        isSessionQueued={
+          message.role === "user" && sessionChatStatus === "queued"
+        }
+        sessionSentFrom={
+          isSessionOpeningMessage(message) ? sessionSentFrom : null
+        }
+        sessionID={sessionID}
+        readOnly={readOnly}
+        compact={isCompact}
+        filePattern={filePattern}
+        fileUrlBuilder={fileUrlBuilder}
+        onRetry={isLastAssistant ? onRetry : undefined}
+        expert={isLastAssistant ? expertIdentity : undefined}
+      />
+    );
+  }
+
   const thread = (
     <>
       {showThreadHeader && (
@@ -450,7 +538,12 @@ export function ChatMessagesContainer({
           floatingControls={floatingControls}
         />
       )}
-      {!isCompact && <ChatMinimap messages={messages} />}
+      {!isCompact && (
+        <ChatMinimap
+          messages={messages}
+          onJumpToUnmounted={jumpToUnmountedMessage}
+        />
+      )}
       <Conversation
         key={sessionID ?? "new"}
         resize="instant"
@@ -463,7 +556,7 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
+            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-4 pt-14 pb-4 md:px-6",
             isCompact && "gap-4 px-4 pt-4",
             showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
@@ -487,75 +580,18 @@ export function ChatMessagesContainer({
             !isRestoringActiveSession &&
             !showPendingSend && (
               <div className="flex flex-1 items-center justify-center">
-                <LoadingSpinner className="text-neutral-600" />
+                <LoadingSpinner className="text-foreground-secondary" />
               </div>
             )}
-          {renderRows.map((message, rowIndex) => {
-            // A run-post renders as a WorkCard inside the row, whatever else
-            // its metadata carries.
-            const heldCallRow = getWorkRunMetadata(message.metadata)
-              ? null
-              : getHeldCallRowKind(message.metadata);
-            if (heldCallRow === "result") return null;
-            if (heldCallRow === "answered") {
-              return (
-                <Text
-                  key={message.id}
-                  variant="small"
-                  className="py-1 text-center text-zinc-500"
-                >
-                  {answeredLabel(renderRows, rowIndex)}
-                </Text>
-              );
-            }
-
-            const isLastRow = rowIndex === renderRows.length - 1;
-            const isAssistant = message.role === "assistant";
-            const isLastAssistant = isLastRow && isAssistant;
-            const isCurrentlyStreaming = isLastAssistant && isActivelyStreaming;
-            const nextRow = renderRows[rowIndex + 1];
-            // A segment that only runs up to a mid-turn drain is never the end
-            // of its turn — the same backend turn continues under the follow-up
-            // bubble, so the stats bar and the assistant actions belong to the
-            // last segment alone.
-            const isLastInTurn =
-              isAssistant &&
-              !isMidTurnSegmentRow(message) &&
-              (!nextRow || nextRow.role === "user");
-            const showsTurnStats = isLastInTurn && !isCurrentlyStreaming;
-
-            return (
-              <MessageRow
-                key={message.id}
-                message={message}
-                isLastAssistant={isLastAssistant}
-                isCurrentlyStreaming={isCurrentlyStreaming}
-                isLastInTurn={isLastInTurn}
-                turnStat={turnStats?.get(message.id)}
-                turnMessages={
-                  showsTurnStats
-                    ? turnMessagesForRow(messages, message, messageIndexById)
-                    : undefined
-                }
-                elapsedSeconds={
-                  isLastRow ? streamClock.frozenSeconds : undefined
-                }
-                indicator={isLastAssistant && showIndicator ? indicator : null}
-                isSessionQueued={
-                  message.role === "user" && sessionChatStatus === "queued"
-                }
-                sessionSentFrom={
-                  isSessionOpeningMessage(message) ? sessionSentFrom : null
-                }
-                sessionID={sessionID}
-                readOnly={readOnly}
-                compact={isCompact}
-                filePattern={filePattern}
-                fileUrlBuilder={fileUrlBuilder}
-                onRetry={isLastAssistant ? onRetry : undefined}
-              />
-            );
-          })}
+          {transcriptRows.length > 0 && (
+            <VirtualTranscript
+              rows={transcriptRows}
+              renderRow={renderRow}
+              lastUserMessageID={lastUserMessageID}
+              compact={isCompact}
+              jumpRef={jumpRef}
+            />
+          )}
           {showPendingSend && pendingSend && (
             <PendingUploadMessage
               pendingSend={pendingSend}
@@ -565,48 +601,46 @@ export function ChatMessagesContainer({
           {showIndicator && lastMessage?.role !== "assistant" && (
             <Message
               from="assistant"
-              className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+              className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
             >
-              <MessageContent className="text-[1rem] leading-relaxed">
+              <MessageContent className="text-body-lg leading-relaxed">
                 {indicator}
               </MessageContent>
             </Message>
           )}
           {!readOnly && isRestoringActiveSession && (
             <Message from="assistant">
-              <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
+              <MessageContent className="text-body-lg leading-relaxed text-foreground-strong">
                 {showRestoreFallback ? (
-                  <div className="flex flex-col gap-1 text-sm text-slate-500">
+                  <div className="flex flex-col gap-1 text-body text-foreground-tertiary">
                     <ThinkingIndicator
                       active
                       startedAtMs={restoreClock.startedAtMs}
                       statusMessage={restoreStatusMessage ?? "Reconnecting…"}
                     />
-                    <span className="pl-6 text-xs text-slate-400">
+                    <span className="pl-6 text-caption text-foreground-subtle">
                       Still syncing the latest progress.
                     </span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 text-sm text-slate-500">
-                    <LoadingSpinner className="h-4 w-4 text-neutral-500" />
+                  <div className="flex items-center gap-2 text-body text-foreground-tertiary">
+                    <LoadingSpinner className="h-4 w-4 text-foreground-tertiary" />
                     <span>Retrieving latest messages</span>
                   </div>
                 )}
               </MessageContent>
             </Message>
           )}
-          {!readOnly && reviewTarget?.kind === "graph" && (
-            <CopilotPendingReviews
-              graphExecId={reviewTarget.graphExecId}
-              graphId={reviewTarget.graphId}
-            />
+          {!readOnly && reviewTargets.runs.length > 0 && (
+            <CopilotPendingReviews runs={reviewTargets.runs} />
           )}
           {!readOnly && sessionID && (
             <CopilotPendingReviews
               chatSessionId={sessionID}
-              pollWhileEmpty={reviewTarget?.kind === "chat"}
-              refetchKey={countHeldCalls(messages)}
+              pollWhileEmpty={reviewTargets.chat || isTurnBusy}
+              refetchKey={reviewRefetchKey(messages)}
               expertName={expertIdentity?.name ?? null}
+              expert={expertIdentity ?? null}
             />
           )}
           {!readOnly &&
@@ -614,24 +648,36 @@ export function ChatMessagesContainer({
               <Message key={idx} from="user">
                 <MessageContent
                   className={cn(
-                    "flex flex-col gap-1 border border-dashed border-zinc-300 bg-zinc-100 px-4 py-2.5 text-zinc-900 opacity-60",
+                    "flex flex-col gap-1 border border-dashed border-border-strong bg-surface-hover px-4 py-2.5 text-foreground-strong opacity-60",
                     isCompact
-                      ? "rounded-xl text-sm leading-6"
-                      : "rounded-3xl text-[1rem] leading-relaxed",
+                      ? "rounded-xl text-body leading-6"
+                      : "rounded-3xl text-body-lg leading-relaxed",
                   )}
                 >
                   <span>
                     <CredentialMentionText text={msg} />
                   </span>
-                  <span className="flex items-center gap-1 text-xs text-slate-500">
+                  <Text
+                    variant="small-tight"
+                    as="span"
+                    tone="muted"
+                    className="flex items-center gap-1"
+                  >
                     <Icon icon={Clock01Icon} className="size-3" />
                     Queued
-                  </span>
+                  </Text>
                 </MessageContent>
               </Message>
             ))}
-          {!readOnly && error && !lastAssistantHasErrorMarker && (
-            <ChatErrorBanner error={error} />
+          {!readOnly && error && !isErrorShownInline && (
+            <ChatErrorBanner error={error} onResend={onResend} />
+          )}
+          {!readOnly && (
+            <TurnEndAnnouncer
+              isBusy={isTurnBusy}
+              isSettled={isTurnSettled}
+              messages={messages}
+            />
           )}
           <TailSpacer
             messageID={lastUserMessageID}
@@ -645,11 +691,49 @@ export function ChatMessagesContainer({
 
   // Every chat surface renders through here, so the pending-answer state
   // (clarifying questions, a hire's onboarding, held calls) lives here too
-  // instead of in each host. A read-only viewer answers nothing.
-  if (readOnly) return thread;
+  // instead of in each host. Read-only viewers receive saved answers only.
   return (
-    <PendingAnswerContexts messages={allMessages}>
+    <PendingAnswerContexts messages={allMessages} readOnly={readOnly}>
       {thread}
     </PendingAnswerContexts>
   );
+}
+
+// A run-post renders as a WorkCard inside the row, whatever else its
+// metadata carries.
+function getRowHeldCallKind(message: ChatMessage) {
+  return getWorkRunMetadata(message.metadata)
+    ? null
+    : getHeldCallRowKind(message.metadata);
+}
+
+// A held call's result row renders nothing, so it stays out of the list: an
+// empty row would still take a gap.
+function toTranscriptRows(renderRows: ChatMessage[]): TranscriptRow[] {
+  const rows: TranscriptRow[] = [];
+  renderRows.forEach((message, rowIndex) => {
+    if (getRowHeldCallKind(message) !== "result") {
+      rows.push({ message, rowIndex });
+    }
+  });
+  return rows;
+}
+
+/** Whether the last assistant message's last text part is a persisted error
+ *  marker (the in-line ErrorCard bubble). */
+function hasTrailingErrorMarker(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "assistant") continue;
+    for (let j = msg.parts.length - 1; j >= 0; j--) {
+      const part = msg.parts[j];
+      if (part.type !== "text") continue;
+      const { markerType } = parseSpecialMarkers(part.text);
+      return markerType === "error" || markerType === "retryable_error";
+    }
+    return false;
+  }
+  return false;
 }

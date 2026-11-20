@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from prisma.enums import NotificationType, SubscriptionTier
 
-from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
+from backend.data.credit import REPLACED_PLAN_CANCELLATION_COMMENT
 from backend.data.notifications import (
     AudienceAction,
     NotificationResult,
@@ -121,10 +121,6 @@ def _context(user, claim=True, audience_ok=True):
             AsyncMock(return_value=("PRO", "monthly")),
         ),
         patch("backend.notifications.lifecycle.track_subscription_ended"),
-        patch(
-            "backend.notifications.lifecycle.is_feature_enabled",
-            AsyncMock(return_value=False),
-        ),
     ]
 
 
@@ -145,8 +141,14 @@ async def _run(coro_factory, user, claim=True, audience_ok=True):
 
 
 @pytest.mark.asyncio
-async def test_first_subscription_gets_the_welcome_and_the_tour():
+@pytest.mark.parametrize(
+    "name,greeted",
+    # The second is what email sign-up stores: the address's local part.
+    [("Sam Carter", "Sam"), ("sam", "there")],
+)
+async def test_first_subscription_gets_the_welcome_and_the_tour(name, greeted):
     user = _User(welcome_sent_at=None)
+    user.name = name
     with patch(
         "backend.notifications.lifecycle._claim_welcome",
         AsyncMock(return_value=True),
@@ -159,7 +161,7 @@ async def test_first_subscription_gets_the_welcome_and_the_tour():
         )
     queued = calls["notify"].await_args.args[0]
     assert queued.type is NotificationType.SUBSCRIPTION_WELCOME
-    assert queued.data.user_name == "Sam"
+    assert queued.data.user_name == greeted
     calls["audience"].assert_awaited_once()
     assert calls["audience"].await_args.args[0].action.value == "enroll_tour"
 
@@ -192,10 +194,16 @@ async def test_only_the_first_failed_charge_emails():
 
 @pytest.mark.asyncio
 async def test_no_retries_left_is_the_final_notice_not_another_heads_up():
-    calls = await _run(
-        lambda: lifecycle.on_payment_failed(_invoice(next_payment_attempt=None)),
-        _User(),
-    )
+    with patch(
+        "backend.notifications.lifecycle.stripe_call",
+        AsyncMock(return_value={"status": "unpaid"}),
+    ):
+        calls = await _run(
+            lambda: lifecycle.on_payment_failed(
+                _invoice(subscription="sub_1", next_payment_attempt=None)
+            ),
+            _User(),
+        )
     queued = calls["notify"].await_args.args[0]
     assert queued.type is NotificationType.PAYMENT_FINAL_NOTICE
 
@@ -324,6 +332,24 @@ async def test_the_ended_email_branches_on_which_road_they_took():
 
 
 @pytest.mark.asyncio
+async def test_an_old_plan_ended_because_another_replaced_it_is_not_churn():
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(
+            _subscription(
+                cancellation_details={
+                    "reason": "cancellation_requested",
+                    "comment": REPLACED_PLAN_CANCELLATION_COMMENT,
+                }
+            )
+        ),
+        _User(),
+    )
+    calls["notify"].assert_not_awaited()
+    calls["ended"].assert_not_called()
+    calls["audience"].assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_subscription_end_is_sent_to_analytics_once():
     calls = await _run(
         lambda: lifecycle.on_subscription_deleted(
@@ -345,30 +371,6 @@ async def test_a_subscription_end_is_sent_to_analytics_once():
         claim=False,
     )
     replay["ended"].assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_our_own_cancel_after_a_failed_renewal_is_involuntary_churn():
-    # Stripe stamps any API cancel "cancellation_requested"; the comment
-    # handle_subscription_payment_failure leaves is what tells them apart.
-    calls = await _run(
-        lambda: lifecycle.on_subscription_deleted(
-            _subscription(
-                cancellation_details={
-                    "reason": "cancellation_requested",
-                    "comment": PAYMENT_FAILURE_CANCELLATION_COMMENT,
-                }
-            )
-        ),
-        _User(),
-    )
-    calls["ended"].assert_called_once_with(
-        user_id="user-1",
-        subscription_tier="PRO",
-        billing_cycle="monthly",
-        reason="payment_failed",
-    )
-    assert calls["notify"].await_args.args[0].data.due_to_payment is True
 
 
 @pytest.mark.asyncio
@@ -620,15 +622,7 @@ async def test_an_ended_subscription_leaves_the_changelog_without_a_status(
     lifecycle_resync.assert_not_awaited()
 
 
-@pytest.mark.parametrize(
-    "enabled,error",
-    [
-        (False, None),
-        (True, None),
-        (False, RuntimeError("Flag lookup failed for sam@example.com")),
-    ],
-)
-async def test_welcome_matches_the_recipients_expert_access(enabled, error, caplog):
+async def test_welcome_includes_experts_without_a_rollout_lookup():
     patches = _context(_User())
     patches.append(
         patch.object(lifecycle, "_claim_welcome", AsyncMock(return_value=True))
@@ -636,23 +630,14 @@ async def test_welcome_matches_the_recipients_expert_access(enabled, error, capl
     for item in patches:
         item.start()
     try:
-        with patch.object(
-            lifecycle,
-            "is_feature_enabled",
-            AsyncMock(return_value=enabled, side_effect=error),
-        ) as flag, patch.object(lifecycle, "_release_welcome", AsyncMock()) as released:
+        with patch.object(lifecycle, "_release_welcome", AsyncMock()) as released:
             await lifecycle.on_checkout_completed(
                 {"customer": CUSTOMER}, _subscription()
             )
             event = lifecycle.queue_notification_async.call_args.args[0]
-            assert event.data.experts_enabled is enabled
-            flag.assert_awaited_once_with(lifecycle.Flag.HIRE_EXPERTS, "user-1")
+            assert event.data.experts_enabled is True
             released.assert_not_awaited()
             lifecycle.queue_audience_change.assert_awaited_once()
-            if error:
-                assert "Could not check Expert access" in caplog.text
-                assert "sam@example.com" not in caplog.text
-                assert "user-1" not in caplog.text
     finally:
         for item in reversed(patches):
             item.stop()

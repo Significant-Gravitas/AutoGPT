@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import type { ReplyTimingStart } from "./helpers/replyTiming";
 import type { StoredAttachmentPart } from "./helpers/workspaceAttachments";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -57,6 +58,10 @@ export interface PendingFirstSend {
   text: string;
   files: File[];
   metadata?: ExpertKickoffMetadata;
+  /** When the user sent it, for the reply timing. Memory only (see
+   *  `partialize`): a full navigation restarts `performance.now()`, so a
+   *  send restored from sessionStorage goes untimed rather than mistimed. */
+  timing?: ReplyTimingStart;
 }
 
 export interface PendingUploadAttachment {
@@ -65,6 +70,10 @@ export interface PendingUploadAttachment {
   sizeBytes?: number;
   /** Local files upload before the send; workspace references are already stored. */
   isUploading: boolean;
+  /** The picked file, so an image can show before it uploads. */
+  file?: File;
+  /** Where a stored file already lives. */
+  url?: string;
 }
 
 /**

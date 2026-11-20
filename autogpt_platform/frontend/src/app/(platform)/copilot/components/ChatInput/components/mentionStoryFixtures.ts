@@ -20,9 +20,65 @@ export const storyCredentials: CredentialsMetaResponse[] = [
   },
 ];
 
+const storyProviders = [
+  {
+    name: "linear",
+    display_name: "Linear",
+    description: "Issues, projects and cycles",
+    supported_auth_types: ["oauth2", "api_key"],
+  },
+  {
+    name: "github",
+    display_name: "GitHub",
+    description: "Repositories, issues and pull requests",
+    supported_auth_types: ["oauth2"],
+  },
+  {
+    name: "notion",
+    display_name: "Notion",
+    description: "Docs and databases",
+    supported_auth_types: ["oauth2"],
+  },
+];
+
 export const mentionStoryHandlers = [
+  http.get("*/api/skills", () =>
+    HttpResponse.json([
+      {
+        name: "fix-issue",
+        description: "Fix a GitHub issue by number",
+        triggers: [],
+        origin: "user",
+        update: null,
+        argument_hint: "[issue-number]",
+        user_invocable: true,
+      },
+      {
+        name: "incident-response",
+        description:
+          "Run the incident workflow: triage, communicate, write the postmortem",
+        triggers: [],
+        origin: "marketplace",
+        update: null,
+        argument_hint: null,
+        user_invocable: true,
+      },
+      {
+        name: "house-style",
+        description: "Background writing rules",
+        triggers: [],
+        origin: "user",
+        update: null,
+        argument_hint: null,
+        user_invocable: false,
+      },
+    ]),
+  ),
   http.get("*/api/integrations/credentials", () =>
     HttpResponse.json(storyCredentials),
+  ),
+  http.get("*/api/integrations/providers", () =>
+    HttpResponse.json(storyProviders),
   ),
   http.get("*/api/experts/:expertId/credentials", () =>
     HttpResponse.json([

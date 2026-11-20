@@ -889,6 +889,149 @@ class TestStripForUpload:
         assert len(lines) == 1
 
 
+def _attachment(uid: str, parent: str, attachment: dict) -> dict:
+    return {
+        "type": "attachment",
+        "uuid": uid,
+        "parentUuid": parent,
+        "attachment": attachment,
+    }
+
+
+class TestStripForUploadMentionAttachments:
+    """The attachments the CLI adds for files, directories, images and agents
+    named in prompt text are left out; every other entry stays, linked."""
+
+    _FILE_TEXT = {
+        "type": "file",
+        "filename": "/tmp/notes/a.txt",
+        "content": {"type": "text", "file": {"filePath": "/tmp/notes/a.txt"}},
+    }
+    _FILE_IMAGE = {
+        "type": "file",
+        "filename": "/tmp/notes/b.png",
+        "content": {"type": "image", "file": {"base64": "AAAA"}},
+    }
+    _KEPT = [
+        {"type": "environment", "snapshot": {"workingDirectory": "/tmp/s"}},
+        {
+            "type": "hook_additional_context",
+            "content": ["follow-up"],
+            "hookName": "PostToolUse:mcp__copilot__noop",
+            "toolUseID": "toolu_1",
+            "hookEvent": "PostToolUse",
+        },
+        {"type": "ultrathink_effort"},
+        {"type": "prompt_snapshot", "systemPrompt": ["system"]},
+        {"type": "date", "date": "2026-10-11"},
+    ]
+
+    def _session(self) -> list[dict]:
+        user = {
+            "type": "user",
+            "uuid": "u1",
+            "parentUuid": None,
+            "message": {"role": "user", "content": "compare these"},
+        }
+        dropped = [
+            _attachment("m1", "u1", self._FILE_TEXT),
+            _attachment("m2", "m1", {"type": "directory", "path": "/tmp/notes"}),
+            _attachment("m3", "m2", self._FILE_IMAGE),
+            _attachment("m4", "m3", {"type": "agent_mention", "agentType": "x"}),
+        ]
+        kept = [
+            _attachment(f"k{i}", "m4" if i == 0 else f"k{i - 1}", attachment)
+            for i, attachment in enumerate(self._KEPT)
+        ]
+        assistant = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": kept[-1]["uuid"],
+            "message": {"role": "assistant", "id": "msg1", "content": "ok"},
+        }
+        return [user, *dropped, *kept, assistant]
+
+    def test_mention_attachments_are_left_out(self):
+        entries = [
+            json.loads(line)
+            for line in strip_for_upload(_make_jsonl(*self._session())).splitlines()
+        ]
+
+        kept_types = [e.get("attachment", {}).get("type") for e in entries]
+        assert kept_types == [
+            None,
+            *(attachment["type"] for attachment in self._KEPT),
+            None,
+        ]
+        assert "/tmp/notes" not in json.dumps(entries)
+
+    def test_the_tree_stays_linked(self):
+        entries = [
+            json.loads(line)
+            for line in strip_for_upload(_make_jsonl(*self._session())).splitlines()
+        ]
+
+        uuids = [e["uuid"] for e in entries]
+        assert [e["parentUuid"] for e in entries] == [None, *uuids[:-1]]
+
+    def test_leaf_and_logical_parent_move_to_the_nearest_kept_entry(self):
+        user = {
+            "type": "user",
+            "uuid": "u1",
+            "parentUuid": None,
+            "message": {"role": "user", "content": "see"},
+        }
+        mention = _attachment("m1", "u1", self._FILE_TEXT)
+        boundary = {
+            "type": "system",
+            "subtype": "compact_boundary",
+            "uuid": "c1",
+            "parentUuid": None,
+            "logicalParentUuid": "m1",
+        }
+        reattached = _attachment("m2", "c1", self._FILE_TEXT)
+        assistant = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "m2",
+            "message": {"role": "assistant", "id": "msg1", "content": "ok"},
+        }
+        last_prompt = {"type": "last-prompt", "leafUuid": "m2"}
+        content = _make_jsonl(
+            user, mention, boundary, reattached, assistant, last_prompt
+        )
+
+        entries = [json.loads(line) for line in strip_for_upload(content).splitlines()]
+
+        by_type = {e["type"]: e for e in entries}
+        assert by_type["system"]["logicalParentUuid"] == "u1"
+        assert by_type["assistant"]["parentUuid"] == "c1"
+        assert by_type["last-prompt"]["leafUuid"] == "c1"
+
+    def test_a_session_without_them_is_unchanged(self):
+        user = {
+            "type": "user",
+            "uuid": "u1",
+            "parentUuid": None,
+            "message": {"role": "user", "content": "hi"},
+        }
+        hook = _attachment("k1", "u1", self._KEPT[1])
+        assistant = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "k1",
+            "message": {"role": "assistant", "id": "msg1", "content": "ok"},
+        }
+        content = _make_jsonl(user, hook, assistant)
+
+        assert strip_for_upload(content) == content
+
+    def test_stripping_twice_changes_nothing(self):
+        once = strip_for_upload(_make_jsonl(*self._session()))
+
+        assert strip_for_upload(once) == once
+
+
 # ---------------------------------------------------------------------------
 # validate_transcript (additional edge cases)
 # ---------------------------------------------------------------------------
@@ -1868,6 +2011,32 @@ class TestExtractContextMessages:
             "user",  # gap user-6
             "assistant",  # gap assistant-7
         ]
+
+    @pytest.mark.asyncio
+    async def test_a_note_for_the_user_is_not_context_without_a_transcript(self):
+        """A skipped-run card posted between turns stays out of the model's
+        history, whichever way the history is built."""
+        messages = _msgs("user", "assistant", "assistant", "user")
+        messages[2].metadata = {"hidden_from_model": True}
+
+        result = await extract_context_messages(None, messages)
+
+        assert [m.content for m in result] == ["user-0", "assistant-1"]
+
+    @pytest.mark.asyncio
+    async def test_a_note_for_the_user_in_the_gap_is_dropped_after_slicing(self):
+        """The watermark counts the hidden row, so dropping it before the gap
+        is sliced would shift the gap and lose a real message."""
+        transcript_content = _make_valid_transcript("user", "assistant")
+        dl = TranscriptDownload(
+            content=transcript_content.encode("utf-8"), message_count=2, mode="sdk"
+        )
+        messages = _msgs("user", "assistant", "assistant", "user", "assistant", "user")
+        messages[2].metadata = {"hidden_from_model": True}
+
+        result = await extract_context_messages(dl, messages)
+
+        assert [m.content for m in result[2:]] == ["user-3", "assistant-4"]
 
 
 # ---------------------------------------------------------------------------
