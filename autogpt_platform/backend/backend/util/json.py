@@ -82,7 +82,12 @@ def dumps(
 
 
 def to_dict(data: Any, **kwargs: Any) -> Any:
-    """`jsonable_encoder` that also turns numpy scalars into plain Python values."""
+    """`jsonable_encoder` that keeps every dict key and also turns numpy scalars
+    into plain Python values."""
+    # By default jsonable_encoder drops every key starting with "_sa", at any
+    # depth, to skip SQLAlchemy ORM state. Nothing here encodes ORM objects,
+    # while block outputs can have such keys ("_sales_total").
+    kwargs.setdefault("sqlalchemy_safe", False)
     # A numpy value can only exist once numpy is imported, so this never imports it.
     if numpy := sys.modules.get("numpy"):
         kwargs["custom_encoder"] = {
