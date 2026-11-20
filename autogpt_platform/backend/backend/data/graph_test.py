@@ -3765,9 +3765,20 @@ async def test_migrate_llm_models_moves_each_value_in_one_step():
     spelling would move a row one step per boot, so no replacement is one."""
     rewrites = await _boot_pass_rewrites()
 
-    stored_values = {stored_value for _, _, stored_value in rewrites}
-    assert stored_values
-    assert not {replacement for _, replacement, _ in rewrites} & stored_values
+    replacement_of = {stored: replacement for _, replacement, stored in rewrites}
+    assert replacement_of
+    chains = sorted(
+        f"{stored!r} -> {replacement!r}, itself mapped to "
+        f"{replacement_of[replacement]!r}"
+        for stored, replacement in replacement_of.items()
+        if replacement in replacement_of
+    )
+    assert not chains, (
+        "LEGACY_MODEL_MAPPINGS sends these spellings to a replacement that is "
+        "itself a key, so a boot moves them only one step: "
+        + "; ".join(chains)
+        + ". Repoint each such key to the final replacement in the same change."
+    )
 
 
 @pytest.mark.asyncio
@@ -3807,6 +3818,24 @@ async def test_migrate_llm_models_logs_what_each_statement_moved(caplog):
         "'o3-mini' to 'gpt-6.1-terra'",
         "LLM model migration moved 4 node(s) and 3 preset override(s) from "
         f"a value outside LLMModel to '{fallback.value}'",
+    }
+
+
+@pytest.mark.asyncio
+async def test_migrate_llm_models_keeps_the_first_keys_replacement_for_a_shared_spelling():
+    """A spelling two keys share goes to the first key's replacement, as it did
+    when each spelling had its own statement."""
+    mappings = {
+        "o3-mini": LLMModel.GPT6_1_TERRA,
+        "openai/o3-mini": LLMModel.GPT6_1_SOL,
+    }
+    with patch("backend.data.graph.LEGACY_MODEL_MAPPINGS", mappings):
+        _, mock_query = await _run_boot_pass_with_sql_mocked()
+
+    sent = [json.loads(call.args[2]) for call in mock_query.await_args_list]
+    assert sent
+    assert {rewrites["openai/o3-mini"] for rewrites in sent} == {
+        LLMModel.GPT6_1_TERRA.value
     }
 
 

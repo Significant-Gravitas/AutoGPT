@@ -2964,14 +2964,16 @@ def _legacy_value_aliases(legacy_value: str, replacement: LLMModel) -> set[str]:
 
 # What ``migrate_llm_models`` logs as the source of a catch-all move.
 _OUTSIDE_LLM_MODEL = "a value outside LLMModel"
-_LLM_MODEL_VALUES = repr(tuple(v.value for v in LLMModel))  # hack but works
+# Where a table's rows go in the boot log's [nodes, preset overrides] counts.
+_NODES, _PRESETS = 0, 1
 
 # The boot pass's statements. $1 is the field as a JSON path; $2 is the
 # ``{stored value: replacement}`` object of ``_legacy_rewrites`` (targeted
-# statements) or the fallback model (catch-alls); the rest scope a statement
-# to the blocks with that field. A targeted statement moves every legacy
-# spelling at once and returns the rows it moved per (stored value,
-# replacement), which the boot log reports.
+# statements) or the fallback model (catch-alls); the next ones scope a
+# statement to the blocks with that field, and a catch-all's last one holds
+# every LLMModel value, the values it leaves alone. A targeted statement moves
+# every legacy spelling at once and returns the rows it moved per (stored
+# value, replacement), which the boot log reports.
 _NODE_MOVES = """
     WITH moved AS (
         UPDATE {schema_prefix}"AgentNode" AS n
@@ -2988,12 +2990,12 @@ _NODE_MOVES = """
     FROM moved
     GROUP BY "stored", "replacement"
     """
-_NODE_CATCH_ALL = f"""
-    UPDATE {{schema_prefix}}"AgentNode"
+_NODE_CATCH_ALL = """
+    UPDATE {schema_prefix}"AgentNode"
     SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
     WHERE "agentBlockId" = ANY(($3)::text[])
     AND "constantInput" ? ($4)::text
-    AND "constantInput"->>($4)::text NOT IN {_LLM_MODEL_VALUES}
+    AND "constantInput"->>($4)::text <> ALL(($5)::text[])
     """
 # ``io."agentPresetId" IS NOT NULL`` bounds both preset statements to preset
 # rows. Without it the planner walks the whole execution-I/O table, every row
@@ -3009,7 +3011,7 @@ _PRESET_MOVES = """
         AND n."agentGraphId" = p."agentGraphId"
         AND n."agentGraphVersion" = p."agentGraphVersion"
         AND io."name" = ($3)::text || split_part(n."id", '-', 1)
-        AND n."agentBlockId" IN (SELECT jsonb_array_elements_text(($4)::jsonb))
+        AND n."agentBlockId" = ANY(($4)::text[])
         AND io."data"::jsonb ? ($5)::text
         AND io."data"::jsonb->>($5)::text = m."stored"
         RETURNING m."stored", m."replacement"
@@ -3018,18 +3020,18 @@ _PRESET_MOVES = """
     FROM moved
     GROUP BY "stored", "replacement"
     """
-_PRESET_CATCH_ALL = f"""
-    UPDATE {{schema_prefix}}"AgentNodeExecutionInputOutput" AS io
+_PRESET_CATCH_ALL = """
+    UPDATE {schema_prefix}"AgentNodeExecutionInputOutput" AS io
     SET "data" = jsonb_set(io."data"::jsonb, $1, to_jsonb($2), true)
-    FROM {{schema_prefix}}"AgentPreset" AS p, {{schema_prefix}}"AgentNode" AS n
+    FROM {schema_prefix}"AgentPreset" AS p, {schema_prefix}"AgentNode" AS n
     WHERE io."agentPresetId" IS NOT NULL
     AND io."agentPresetId" = p."id"
     AND n."agentGraphId" = p."agentGraphId"
     AND n."agentGraphVersion" = p."agentGraphVersion"
     AND io."name" = ($3)::text || split_part(n."id", '-', 1)
-    AND n."agentBlockId" IN (SELECT jsonb_array_elements_text(($4)::jsonb))
+    AND n."agentBlockId" = ANY(($4)::text[])
     AND io."data"::jsonb ? ($5)::text
-    AND io."data"::jsonb->>($5)::text NOT IN {_LLM_MODEL_VALUES}
+    AND io."data"::jsonb->>($5)::text <> ALL(($6)::text[])
     """
 
 
@@ -3054,9 +3056,9 @@ async def migrate_llm_models(fallback: LLMModel):
         node is a block with that LLMModel field: other blocks' own ``model``
         lists (Codex, Stagehand) share values with ``LLMModel``.
 
-    Every API pod awaits this before it serves, so the statement count must
-    not grow with the map: one statement per legacy spelling, block and table
-    was 424 statements per boot.
+    Every API pod awaits this before it serves, so the number of statements
+    depends only on the number of LLMModel field names, not on the map or the
+    blocks.
 
     Logs, at INFO, how many nodes and preset overrides moved from each stored
     value to its replacement, so an install's log shows what changed.
@@ -3069,23 +3071,25 @@ async def migrate_llm_models(fallback: LLMModel):
         return
 
     rewrites = dumps(_legacy_rewrites())
-    # (stored value, replacement) -> [nodes moved, preset overrides moved]
+    llm_model_values = [model.value for model in LLMModel]
+    # (stored value, replacement) -> rows moved, indexed by _NODES and _PRESETS
     moved: defaultdict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0])
     for path in sorted(set(llm_model_fields.values())):
         block_ids = sorted(b for b, field in llm_model_fields.items() if field == path)
         tables = (
-            (_NODE_MOVES, _NODE_CATCH_ALL, (block_ids, path)),
+            (_NODES, _NODE_MOVES, _NODE_CATCH_ALL, (block_ids, path)),
             (
+                _PRESETS,
                 _PRESET_MOVES,
                 _PRESET_CATCH_ALL,
-                (NODE_INPUT_MASK_PREFIX, dumps(block_ids), path),
+                (NODE_INPUT_MASK_PREFIX, block_ids, path),
             ),
         )
-        for kind, (moves, catch_all, scope) in enumerate(tables):
+        for kind, moves, catch_all, scope in tables:
             for row in await query_raw_with_schema(moves, [path], rewrites, *scope):
                 moved[repr(row["stored"]), row["replacement"]][kind] += row["rows"]
             caught = await execute_raw_with_schema(
-                catch_all, [path], fallback.value, *scope
+                catch_all, [path], fallback.value, *scope, llm_model_values
             )
             moved[_OUTSIDE_LLM_MODEL, fallback.value][kind] += caught
 
@@ -3100,7 +3104,9 @@ async def migrate_llm_models(fallback: LLMModel):
 def _legacy_rewrites() -> dict[str, str]:
     """``{stored value: replacement}`` for every stored spelling of a
     LEGACY_MODEL_MAPPINGS key. A spelling two keys share keeps the first key's
-    replacement, as the per-spelling statements this replaced left it."""
+    replacement. No replacement may itself be a stored spelling: a statement
+    matches each row's value as it was before the statement, so a chain would
+    move a row only one step per boot."""
     rewrites: dict[str, str] = {}
     for legacy_value, replacement in LEGACY_MODEL_MAPPINGS.items():
         for stored_value in _legacy_value_aliases(legacy_value, replacement):
