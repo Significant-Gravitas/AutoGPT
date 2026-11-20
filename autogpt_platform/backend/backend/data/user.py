@@ -269,7 +269,20 @@ async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields
     )
 
 
-@cached(maxsize=1000, ttl_seconds=30, shared_cache=True)
+# Every message a WebSocket handles checks its account, and while Redis can't be
+# reached every check misses. Under the shared cache's default cap on misses, a
+# busy process's checks would queue behind each other past their 5 s bound, and
+# every socket would close with 1013. These are cheap primary-key lookups, and
+# one user's concurrent checks already share one, so they get room for all.
+_ACCOUNT_LOOKUP_MISSES = 1000
+
+
+@cached(
+    maxsize=1000,
+    ttl_seconds=30,
+    shared_cache=True,
+    max_concurrent_misses=_ACCOUNT_LOOKUP_MISSES,
+)
 async def is_user_banned(user_id: str) -> bool:
     """Whether an admin ban (Better Auth's ``banned``/``banExpires``) holds now.
 
@@ -279,7 +292,12 @@ async def is_user_banned(user_id: str) -> bool:
     return await user_db().is_auth_user_banned(user_id)
 
 
-@cached(maxsize=1000, ttl_seconds=30, shared_cache=True)
+@cached(
+    maxsize=1000,
+    ttl_seconds=30,
+    shared_cache=True,
+    max_concurrent_misses=_ACCOUNT_LOOKUP_MISSES,
+)
 async def is_user_account_closed(user_id: str) -> bool:
     """Whether the owner asked to delete the account (an AccountDeletionRequest
     exists), from any process. Lookup errors propagate, as for the ban."""

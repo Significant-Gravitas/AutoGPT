@@ -228,11 +228,47 @@ const noManualMemo: Rule.RuleModule = {
   },
 };
 
+/**
+ * Playwright's `networkidle` waits until no request has been open for 500 ms,
+ * so one request that never finishes (a stalled image, a poll) holds the wait
+ * until the test's whole budget is gone, and the failure names the wait
+ * rather than the request.
+ */
+const noNetworkIdle: Rule.RuleModule = {
+  meta: {
+    type: "problem",
+    docs: { description: "Disallow Playwright's networkidle waits" },
+    schema: [],
+  },
+  create(context) {
+    function report(node: Node) {
+      context.report({
+        node,
+        message:
+          "Don't wait for the network to go idle: one open request holds it until the test times out. Wait for the page's own ready signal instead, such as a visible element or the response it renders from.",
+      });
+    }
+    return {
+      Literal(node) {
+        if (node.value === "networkidle") report(node);
+      },
+      TemplateLiteral(node) {
+        if (
+          node.expressions.length === 0 &&
+          node.quasis[0]?.value.cooked === "networkidle"
+        )
+          report(node);
+      },
+    };
+  },
+};
+
 const plugin = {
   meta: { name: "autogpt" },
   rules: {
     "no-hookless-use-function": noHooklessUseFunction,
     "no-manual-memo": noManualMemo,
+    "no-networkidle": noNetworkIdle,
   },
 };
 

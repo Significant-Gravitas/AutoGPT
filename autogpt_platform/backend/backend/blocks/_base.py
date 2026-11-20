@@ -364,7 +364,7 @@ class BlockSchema(BaseModel):
             jsonschema.validate(json.to_dict(data), property_schema)
             return None
         except jsonschema.ValidationError as e:
-            return str(e)
+            return json.describe_validation_error(e, field_name=field_name)
 
     @classmethod
     def get_fields(cls) -> set[str]:

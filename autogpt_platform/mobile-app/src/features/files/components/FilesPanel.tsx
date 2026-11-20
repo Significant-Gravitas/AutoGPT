@@ -1,6 +1,7 @@
 import { ScrollView, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { YourConnections } from "@/features/connections/components/YourConnections/YourConnections";
 import { PanelTopBar } from "@/features/expertPanel/components/PanelTopBar";
 import { createStyles, spacing, type } from "@/lib/theme";
 
@@ -12,7 +13,7 @@ interface Props {
   onClose: () => void;
 }
 
-/** The panel in a chat with Otto: files only. */
+/** The panel in a chat with Otto: files, then your connections. */
 export function FilesPanel({ sessionID, isOpen, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const styles = useStyles();
@@ -29,6 +30,7 @@ export function FilesPanel({ sessionID, isOpen, onClose }: Props) {
         Files
       </Text>
       <FileLibrary sessionID={sessionID} expert={null} isOpen={isOpen} />
+      <YourConnections sessionID={sessionID} isOpen={isOpen} />
     </ScrollView>
   );
 }
