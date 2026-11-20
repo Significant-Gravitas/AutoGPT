@@ -128,6 +128,15 @@ interface AuthStoreState {
   cleanup: () => void;
 }
 
+// Loaded with no user: start-up got no answer it could use and no check has
+// answered since, so nobody is known to be signed in or out. Every sign-out
+// sets hasLoadedUser to false instead.
+export function selectIsSessionUnknown(
+  state: Pick<AuthStoreState, "user" | "hasLoadedUser">,
+): boolean {
+  return state.hasLoadedUser && !state.user;
+}
+
 export const useAuthStore = create<AuthStoreState>((set, get) => {
   function setCurrentRequestContext(params: InitializeParams): void {
     const state = get();
@@ -182,12 +191,14 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
             const epoch = get().sessionEpoch;
             const { user, ...result } = await fetchUser();
             if (get().sessionEpoch !== epoch) return;
-            // fetchUser marks a lookup that got no answer (an error or its
-            // deadline) as loaded with no user. That says nothing about the
-            // session, so start-up stays loading until the fallback below
-            // answers: read as signed out meanwhile, it cost the tab its
-            // active org and team (#17104).
-            const lookupUnanswered = !user && result.hasLoadedUser;
+            // Once start-up ends, consumers read no user as signed out. A
+            // lookup that got no answer (an error or its deadline) says nothing
+            // about the session, so start-up stays loading until the fallback
+            // answers.
+            const lookupUnanswered = selectIsSessionUnknown({
+              user,
+              ...result,
+            });
             if (!lookupUnanswered) {
               set(result);
               if (user) adoptUser(user);
@@ -214,11 +225,11 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
               } else {
                 // The backend answered that nobody is signed in.
                 set({ hasLoadedUser: false, isUserLoading: false });
-                // fetchUser answered without an error that there is no
-                // session, and the fallback found none either. Only then is
-                // the visitor known to be signed out; after an error the
-                // session stays unknown, so an older account can't take the
-                // marketing site's visitor id (anonymous-id.ts).
+                // For the analytics identity only, the visitor counts as signed
+                // out when the lookup also answered, without an error, that
+                // there is no session. After an error their identity stays
+                // unknown, so an older account can't take the marketing site's
+                // visitor id (anonymous-id.ts).
                 if (!result.hasLoadedUser) reportAnalyticsSession(null);
                 if (!validationResult.isValid) {
                   // No session at startup: a target left from the last one
@@ -239,6 +250,12 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
             }
           } finally {
             finishCheck();
+            // A new epoch drops start-up's answers, and a sign-out that never
+            // reached the server sets nothing: start-up still ends, with the
+            // session unknown rather than loading for good.
+            if (get().isUserLoading) {
+              set({ hasLoadedUser: true, isUserLoading: false });
+            }
           }
         } else {
           set({ isUserLoading: false });

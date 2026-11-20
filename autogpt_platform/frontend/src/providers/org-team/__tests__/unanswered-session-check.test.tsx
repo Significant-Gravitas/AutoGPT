@@ -1,4 +1,7 @@
-import { getGetV2ListUserOrganizationsMockHandler } from "@/app/api/__generated__/endpoints/orgs/orgs.msw";
+import {
+  getGetV2ListUserOrganizationsMockHandler,
+  getGetV2ListUserOrganizationsMockHandler401,
+} from "@/app/api/__generated__/endpoints/orgs/orgs.msw";
 import type { OrgResponse } from "@/app/api/__generated__/models/orgResponse";
 import { SESSION_CHECK_DEADLINE_MS } from "@/lib/auth/hooks/session-check-deadline";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
@@ -29,6 +32,7 @@ const member: User = {
   role: "authenticated",
   user_metadata: {},
 };
+const otherUser: User = { ...member, id: "user-2", email: "sam@example.com" };
 
 const PERSONAL_ORG: OrgResponse = {
   id: "org-personal",
@@ -47,6 +51,12 @@ const TEAM_ORG: OrgResponse = {
   slug: "acme",
   is_personal: false,
   member_count: 12,
+};
+const OTHER_PERSONAL_ORG: OrgResponse = {
+  ...PERSONAL_ORG,
+  id: "org-sam",
+  name: "Sam's org",
+  slug: "sam",
 };
 const TEAM_ID = "team-design";
 
@@ -76,10 +86,10 @@ function renderApp() {
 
 // Runs a step, then the promise chains it starts, inside act: React renders,
 // and the provider's effects run on, everything the store published meanwhile.
-async function run<T>(step: () => T): Promise<T> {
-  let result!: T;
+async function run<T>(step: () => T): Promise<Awaited<T>> {
+  let result!: Awaited<T>;
   await act(async () => {
-    result = step();
+    result = await step();
     await vi.advanceTimersByTimeAsync(0);
   });
   return result;
@@ -122,6 +132,16 @@ function expectNoContext() {
   });
   expect(storage.get(Key.ACTIVE_ORG)).toBeNull();
   expect(storage.get(Key.ACTIVE_TEAM)).toBeNull();
+}
+
+async function signIn(user: User) {
+  actions.getCurrentUser.mockResolvedValue({ user });
+  await run(renderApp);
+  await waitForOrgs();
+}
+
+function signOutInAnotherTab() {
+  window.dispatchEvent(new StorageEvent("storage", { key: Key.LOGOUT }));
 }
 
 beforeEach(() => {
@@ -281,6 +301,173 @@ describe("the active org and team at start-up (#17104)", () => {
     actions.validateSession.mockResolvedValue(signedOut);
 
     await run(renderApp);
+
+    expect(useAuthStore.getState()).toMatchObject({
+      user: null,
+      isUserLoading: false,
+    });
+    expectNoContext();
+  });
+});
+
+// The provider keeps them only while the session is unknown, so every way a
+// session ends must read as signed out (selectIsSessionUnknown).
+describe("the active org and team when a signed-in session ends", () => {
+  it.each([
+    {
+      ending: "the user signs out",
+      end: () => useAuthStore.getState().logOut(),
+    },
+    { ending: "another tab signs out", end: signOutInAnotherTab },
+    {
+      ending: "a refresh finds no session",
+      end: () => {
+        actions.refreshSession.mockResolvedValue({
+          user: null,
+          error: "No active session",
+        });
+        return useAuthStore.getState().refreshSession();
+      },
+    },
+    {
+      ending: "a check on refocus finds the session ended",
+      end: () => {
+        actions.validateSession.mockResolvedValue(signedOut);
+        document.dispatchEvent(new Event("visibilitychange"));
+      },
+    },
+  ])("go when $ending", async ({ end }) => {
+    await signIn(member);
+    expectTeamContext();
+
+    await run(end);
+
+    expect(useAuthStore.getState().user).toBeNull();
+    expectNoContext();
+  });
+});
+
+describe("a stored active org the signed-in user isn't in", () => {
+  it("gives way to their own org when someone else signs in after a session nobody could check", async () => {
+    actions.getCurrentUser.mockRejectedValue(networkError);
+    actions.validateSession
+      .mockRejectedValueOnce(networkError)
+      .mockResolvedValue({ user: otherUser, isValid: true });
+    server.use(getGetV2ListUserOrganizationsMockHandler([OTHER_PERSONAL_ORG]));
+
+    await run(renderApp);
+    expectTeamContext();
+    // The last session ended while the backend was unreachable, and the
+    // retry finds someone else signed in.
+    await advance(1_000);
+    await waitForOrgs();
+
+    expect(useAuthStore.getState().user).toEqual(otherUser);
+    expect(useOrgTeamStore.getState()).toMatchObject({
+      activeOrgID: OTHER_PERSONAL_ORG.id,
+      activeTeamID: null,
+    });
+    expect(storage.get(Key.ACTIVE_ORG)).toBe(OTHER_PERSONAL_ORG.id);
+    expect(storage.get(Key.ACTIVE_TEAM)).toBeNull();
+  });
+
+  it("is kept when it's one of their orgs", async () => {
+    await signIn(member);
+
+    expectTeamContext();
+  });
+
+  it.each([
+    {
+      list: "can't be fetched",
+      handler: getGetV2ListUserOrganizationsMockHandler401,
+    },
+    {
+      list: "comes back empty",
+      handler: () => getGetV2ListUserOrganizationsMockHandler([]),
+    },
+  ])("is kept when their org list $list", async ({ handler }) => {
+    server.use(handler());
+
+    await signIn(otherUser);
+
+    expectTeamContext();
+  });
+});
+
+describe("start-up when the session changes while it waits", () => {
+  it.each([
+    {
+      check: "lookup",
+      hold: () => holdNextAnswer(actions.getCurrentUser),
+      answer: { user: member },
+    },
+    {
+      check: "fallback",
+      hold: () => {
+        actions.getCurrentUser.mockRejectedValue(networkError);
+        return holdNextAnswer(actions.validateSession);
+      },
+      answer: signedIn,
+    },
+  ])(
+    "still ends when a sign-out that can't reach the server lands while the $check waits",
+    async ({ hold, answer }) => {
+      const answerCheck = hold();
+      actions.validateSession.mockResolvedValue(signedIn);
+      actions.serverLogout.mockRejectedValue(networkError);
+
+      await run(renderApp);
+      let signOut: Promise<unknown> = Promise.resolve();
+      await run(() => {
+        signOut = useAuthStore
+          .getState()
+          .logOut()
+          .catch((error) => error);
+      });
+      // It tries three times, one and then two seconds apart, then gives up.
+      await advance(3_000);
+      expect(await signOut).toBe(networkError);
+      // The check went out before the sign-out began, so its answer is dropped.
+      await run(() => answerCheck(answer));
+
+      expect(useAuthStore.getState()).toMatchObject({
+        user: null,
+        isUserLoading: false,
+      });
+      // The session never ended: the org and team stay, and the next check
+      // finds the user.
+      expectTeamContext();
+      await run(() => document.dispatchEvent(new Event("visibilitychange")));
+      await waitForOrgs();
+      expect(useAuthStore.getState().user).toEqual(member);
+      expectTeamContext();
+    },
+  );
+
+  it("ends signed out when this tab signs out while the fallback waits", async () => {
+    actions.getCurrentUser.mockRejectedValue(networkError);
+    const answerFallback = holdNextAnswer(actions.validateSession);
+
+    await run(renderApp);
+    await run(() => useAuthStore.getState().logOut());
+    await run(() => answerFallback(signedIn));
+
+    expect(useAuthStore.getState()).toMatchObject({
+      user: null,
+      isUserLoading: false,
+    });
+    expectNoContext();
+  });
+
+  it("ends signed out when another tab signs out while the fallback waits, without taking the next session's answer", async () => {
+    actions.getCurrentUser.mockRejectedValue(networkError);
+    const answerFallback = holdNextAnswer(actions.validateSession);
+
+    await run(renderApp);
+    await run(signOutInAnotherTab);
+    // The fallback reaches the server after someone else signed in there.
+    await run(() => answerFallback({ user: otherUser, isValid: true }));
 
     expect(useAuthStore.getState()).toMatchObject({
       user: null,
