@@ -12,6 +12,7 @@ import pytest
 
 from backend.blocks.llm import AITextGeneratorBlock, LLMModel, LLMResponse
 from backend.data.execution import ExecutionContext
+from backend.data.graph import Link, Node
 from backend.data.llm_registry import llm_models
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CatalogPayload
@@ -19,6 +20,9 @@ from backend.data.llm_registry.llm_models import (
     _retired_model_fallbacks,
     retired_model_fallback,
 )
+from backend.data.model import NodeExecutionStats
+from backend.executor.manager import _validate_queued_input
+from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import openai_credentials
 from backend.util.exceptions import BlockInputError
 
@@ -129,6 +133,12 @@ def test_a_block_runs_a_fallback_only_for_a_switched_off_model_and_only_one_it_c
 
 
 async def _run_ai_text_generator(model: str) -> list[LLMModel]:
+    return await _run_block(
+        {"prompt": "Say hello.", "model": model, "credentials": PLATFORM_OPENAI}
+    )
+
+
+async def _run_block(input_data: dict) -> list[LLMModel]:
     """Run the block for real down to the provider call, and return the model
     each call asked for."""
     asked: list[LLMModel] = []
@@ -146,7 +156,7 @@ async def _run_ai_text_generator(model: str) -> list[LLMModel]:
 
     with patch("backend.blocks.llm.llm_call", provider_call):
         async for _ in AITextGeneratorBlock().execute(
-            {"prompt": "Say hello.", "model": model, "credentials": PLATFORM_OPENAI},
+            input_data,
             credentials=openai_credentials,
             execution_context=ExecutionContext(user_id="user"),
         ):
@@ -172,6 +182,41 @@ async def test_an_llm_block_given_a_switched_off_model_runs_its_fallback(
 ):
     on_day(day)
     assert await _run_ai_text_generator(saved) == [runs]
+
+
+@pytest.mark.asyncio
+async def test_a_model_wired_in_from_a_workflow_input_runs_and_is_charged_as_its_fallback(
+    on_day,
+):
+    """A workflow input wired into the ``model`` pin brings its value when the
+    run starts, where no pass over stored graphs reaches it. The node is queued
+    with the value as sent, then runs, and is priced as, the fallback."""
+    on_day(GPT_5_SHUTDOWN)
+    block = AITextGeneratorBlock()
+    node = Node(
+        id="llm-node",
+        block_id=block.id,
+        input_default={"prompt": "Say hello.", "credentials": PLATFORM_OPENAI},
+        input_links=[
+            Link(
+                source_id="model-input",
+                sink_id="llm-node",
+                source_name="result",
+                sink_name="model",
+            )
+        ],
+    )
+
+    queued, _, input_error = _validate_queued_input(
+        node, {"model": "gpt-5-2025-08-07"}, dry_run=False
+    )
+
+    assert queued is not None and input_error is None
+    assert queued["model"] == "gpt-5-2025-08-07"
+    assert await _run_block(dict(queued)) == [LLMModel.GPT6_1_SOL]
+    stats = NodeExecutionStats(input_token_count=1_000_000, output_token_count=0)
+    _, matched = block_usage_cost(block, queued, stats=stats)
+    assert matched["model"] == LLMModel.GPT6_1_SOL
 
 
 @pytest.mark.asyncio
