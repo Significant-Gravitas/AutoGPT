@@ -102,14 +102,29 @@ describe("control panel buttons", () => {
     expect(document.activeElement).toBe(save);
   });
 
-  it("Search workflow is reachable with Tab", async () => {
-    const user = userEvent.setup();
-    render(<GraphSearchMenu />);
+  describe.each([
+    { name: "Blocks", Control: BlockMenu, content: "block-menu-content" },
+    {
+      name: "Search workflow",
+      Control: GraphSearchMenu,
+      content: "graph-search-content",
+    },
+    {
+      name: "Save",
+      Control: NewSaveControl,
+      content: "save-control-name-input",
+    },
+  ])("$name", ({ name, Control, content }) => {
+    it.each(["{Enter}", "[Space]"])("opens with Tab, then %s", async (key) => {
+      const user = userEvent.setup();
+      render(<Control />);
 
-    await user.tab();
-    expect(document.activeElement).toBe(
-      screen.getByTestId("graph-search-control-button"),
-    );
+      await user.tab();
+      expect(document.activeElement).toBe(screen.getByRole("button", { name }));
+
+      await user.keyboard(key);
+      expect(await screen.findByTestId(content)).toBeDefined();
+    });
   });
 
   it("forwards its ref to a real button", () => {
