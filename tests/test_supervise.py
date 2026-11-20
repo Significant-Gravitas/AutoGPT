@@ -416,6 +416,25 @@ def test_the_windows_task_turns_the_supervisor_on() -> None:
     assert "<RestartOnFailure>" not in rendered
 
 
+def test_the_windows_task_starts_the_shim_whether_or_not_a_network_is_up() -> None:
+    """The task was set to run only when a network is available, and at a
+    logon one may not be yet (Wi-Fi that connects a little later, a laptop
+    opened offline). Nothing in the task would have started the shim once
+    the network came: the setting that starts a task after a missed start
+    is, by Microsoft's reference, for time-based triggers only, and this
+    task's one trigger is the logon. That setting read as if it covered
+    the case, and is gone with the condition.
+
+    The shim waits for the platform by itself, as it does under launchd and
+    systemd, which start it whatever the network."""
+    rendered = install.render_template("taskscheduler.xml.template", _context())
+
+    assert "<RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>" in rendered
+    assert "<StartWhenAvailable>" not in rendered
+    assert rendered.count("<LogonTrigger>") == 1
+    assert "<TimeTrigger>" not in rendered and "<CalendarTrigger>" not in rendered
+
+
 @pytest.mark.parametrize("template", ["launchd.plist.template", "systemd.service.template"])
 def test_launchd_and_systemd_restart_the_shim_themselves(template: str) -> None:
     rendered = install.render_template(template, _context())
