@@ -4,6 +4,7 @@ import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Text } from "@/components/atoms/Text/Text";
 import NextLink from "next/link";
 import { cn } from "@/lib/utils";
+import { stashCopilotPrompt } from "@/services/copilot/prompt-handoff";
 import { useRouter } from "next/navigation";
 import type { SitrepItemData, SitrepPriority } from "../../types";
 import { ContextualActionButton } from "../ContextualActionButton/ContextualActionButton";
@@ -85,9 +86,11 @@ export function SitrepItem({ item }: Props) {
   const router = useRouter();
 
   function handleAskAutoPilot() {
-    const prompt = buildAutoPilotPrompt(item);
-    const encoded = encodeURIComponent(prompt);
-    router.push(`/home?autosubmit=true#prompt=${encoded}`);
+    stashCopilotPrompt({
+      prompt: buildAutoPilotPrompt(item),
+      autosubmit: true,
+    });
+    router.push("/home");
   }
 
   return (
