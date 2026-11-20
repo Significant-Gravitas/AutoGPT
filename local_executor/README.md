@@ -77,11 +77,15 @@ rather than by installing again: see
 
 ### For development
 
-To run the head of the default branch, which no deployment pins:
+To run the package from your checkout of this repository, with your changes
+in it, from the repository's root:
 
 ```bash
-pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git
+pipx install --editable ./local_executor
 ```
+
+For work on the package itself, `AGENTS.md` beside this file sets up a
+virtual environment with the test tools.
 
 ### Which platform
 
