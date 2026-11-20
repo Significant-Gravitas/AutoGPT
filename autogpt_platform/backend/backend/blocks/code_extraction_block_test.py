@@ -12,6 +12,7 @@ from backend.blocks.code_extraction_block import CodeExtractionBlock
         ("```PY \t\n  a = 1  \n```\ntext\n```py\nb = 2\n```", "a = 1\n\nb = 2"),
         ("```py\na = 1\n```\n```py\nb = 2", "a = 1"),
         ("```py\na = 1\n```py\nb = 2\n```", "a = 1"),
+        ("```py\n```js\na = 1\n```", "```js\na = 1"),
         ("```py\na = 1", ""),
         ("```py\n```", ""),
         ("```py\n\n```", ""),
@@ -54,6 +55,15 @@ async def test_run_preserves_source_order_across_aliases() -> None:
     "text, expected",
     [
         ("```py\n\n```\n```python\n \t\n```", []),
+        (
+            "```py\n```\n```python\nanswer = 42\n```",
+            [("python", "answer = 42")],
+        ),
+        (
+            "```python\nanswer = 42\n```\n```py\n``` \t\n"
+            "```python\nprint(answer)\n```",
+            [("python", "answer = 42\n\nprint(answer)")],
+        ),
         (
             "```py\nanswer = 42\n```\n```python\n\n```\n" "```pY\nprint(answer)\n```",
             [("python", "answer = 42\n\nprint(answer)")],

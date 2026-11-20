@@ -109,10 +109,15 @@ class CodeExtractionBlock(Block):
     def extract_code(self, text: str, language: str, *aliases: str) -> str:
         labels = "|".join(re.escape(label) for label in (language, *aliases))
         opener = re.compile(rf"```(?:{labels})[ \t]*\n", re.IGNORECASE)
+        bare_closer = re.compile(r"```[ \t]*(?:\n|$)")
         code_blocks = []
         position = 0
         # A fence with no closer ends the search, as no later fence can have one.
         while opening := opener.search(text, position):
+            # The opener has already consumed the newline before an empty body.
+            if empty_closer := bare_closer.match(text, opening.end()):
+                position = empty_closer.end()
+                continue
             closing = text.find("\n```", opening.end())
             if closing == -1:
                 break
