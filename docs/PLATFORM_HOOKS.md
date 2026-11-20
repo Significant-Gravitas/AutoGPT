@@ -27,7 +27,9 @@ All file paths are relative to `autogpt_platform/backend/backend/`.
 > `local_pc_executor_oauth_client_id` (the one OAuth client whose tokens
 > may connect a computer, `autogpt-local-executor` by default) and
 > `local_llm_policy` (`never`, `prefer_for_fast` or `always`; `never` by
-> default). None of the fields sketched below was added.
+> default). Of the fields sketched below, that last one alone was added,
+> with `prefer_for_fast` where the sketch has `prefer`; none of the other
+> four was.
 
 ```python
 # Add to CopilotConfig (or ChatConfig, whichever owns executor selection):
