@@ -17,6 +17,8 @@ import pytest
 from autogpt_libs.auth.models import RequestContext
 from fastapi import HTTPException
 
+from backend.api.features.store.db import create_store_submission
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -1235,7 +1237,6 @@ class TestRegressionStore:
     async def test_regression_create_submission_sets_owning_user(self):
         """create_store_submission() must verify graph ownership via
         userId and set OwningUser on the StoreListing to the caller."""
-        from backend.api.features.store.db import create_store_submission
 
         # Graph lookup must filter by userId
         mock_graph = MagicMock()
@@ -2163,7 +2164,6 @@ class TestPR15MarketplaceOrg:
     @pytest.mark.usefixtures("empty_store_listing_transaction")
     async def test_create_submission_sets_owning_org_id(self):
         """A new organization listing connects the caller's organization as its owner."""
-        from backend.api.features.store.db import create_store_submission
 
         mock_graph = MagicMock()
         mock_graph.id = GRAPH_ID
@@ -2229,8 +2229,6 @@ class TestPR15MarketplaceOrg:
         """create_store_submission should verify the user is a member of
         the specified organization_id before allowing submission."""
         import inspect
-
-        from backend.api.features.store.db import create_store_submission
 
         # Once membership checking is added, the function should validate
         # that user_id is a member of organization_id before proceeding.

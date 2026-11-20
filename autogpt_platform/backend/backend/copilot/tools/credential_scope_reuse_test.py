@@ -114,10 +114,8 @@ async def test_hint_reuses_snapshot_and_filters_missing_requirements():
         [{"provider": "github", "types": ["oauth2"], "scopes": ["repo"]}]
     )
     with (
-        patch(
-            "backend.copilot.tools.expert_scope.IntegrationCredentialsManager"
-        ) as manager,
-        patch("backend.copilot.tools.expert_scope.experts_db") as experts,
+        patch("backend.copilot.tools.utils.IntegrationCredentialsManager") as manager,
+        patch("backend.data.db_accessors.experts_db") as experts,
     ):
         hint = await ungranted_credential_hint(
             "test-user", "expert-a", {"github"}, requirements, credential_scope=scope

@@ -40,6 +40,7 @@ from .categories import category_filter_values
 from .embeddings import ensure_embedding
 from .hybrid_search import hybrid_search
 from .store_listing_versions import installable_store_version_where
+from .submission_review_state import lock_review_target, withdraw_store_version
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -1589,88 +1590,15 @@ async def review_store_submission(
                 )
             sub_graphs = await get_sub_graphs(submission.AgentGraph)
 
-        reactivated_id = None
-        async with transaction() as tx:
-            if is_approved:
-                for sub_graph in sorted(sub_graphs, key=lambda graph: graph.id):
-                    await _approve_sub_agent(
-                        tx,
-                        sub_graph,
-                        submission.name,
-                        submission.agentGraphVersion,
-                        creator_user_id,
-                    )
-
-                # Update the AgentGraph with store listing data
-                await prisma.models.AgentGraph.prisma(tx).update(
-                    where={
-                        "graphVersionId": {
-                            "id": submission.agentGraphId,
-                            "version": submission.agentGraphVersion,
-                        }
-                    },
-                    data={
-                        "name": submission.name,
-                        "description": submission.description,
-                        "recommendedScheduleCron": submission.recommendedScheduleCron,
-                        "instructions": submission.instructions,
-                    },
-                )
-
-                # Generate embedding for approved listing (best-effort)
-                try:
-                    await ensure_embedding(
-                        version_id=store_listing_version_id,
-                        name=submission.name,
-                        description=submission.description,
-                        sub_heading=submission.subHeading,
-                        categories=submission.categories,
-                        tx=tx,
-                    )
-                except Exception as emb_err:
-                    logger.warning(
-                        f"Could not generate embedding for listing "
-                        f"{store_listing_version_id}: {emb_err}"
-                    )
-
-                target = await _lock_store_review_target(tx, store_listing_version_id)
-                if not target or target["isDeleted"]:
-                    raise ConflictError(
-                        "This submission was replaced or removed. "
-                        "Refresh the listing before approving it."
-                    )
-                await prisma.models.StoreListing.prisma(tx).update(
-                    where={"id": submission.storeListingId},
-                    data={
-                        "hasApprovedVersion": True,
-                        "ActiveVersion": {"connect": {"id": store_listing_version_id}},
-                    },
-                )
-
-            else:
-                reactivated_id = await _withdraw_store_version(tx, submission)
-
-            reviewed_submission = await prisma.models.StoreListingVersion.prisma(
-                tx
-            ).update(
-                where={"id": store_listing_version_id},
-                data={
-                    "submissionStatus": (
-                        prisma.enums.SubmissionStatus.APPROVED
-                        if is_approved
-                        else prisma.enums.SubmissionStatus.REJECTED
-                    ),
-                    "reviewedAt": datetime.now(tz=timezone.utc),
-                    "Reviewer": {"connect": {"id": reviewer_id}},
-                    "reviewComments": external_comments,
-                    "internalComments": internal_comments,
-                },
-                include={"StoreListing": True, "Reviewer": True},
-            )
-            if not reviewed_submission:
-                raise DatabaseError(
-                    f"Failed to update store listing version {store_listing_version_id}"
-                )
+        reviewed_submission, reactivated_id = await _record_submission_review(
+            submission,
+            submission.AgentGraph,
+            sub_graphs,
+            is_approved=is_approved,
+            external_comments=external_comments,
+            internal_comments=internal_comments,
+            reviewer_id=reviewer_id,
+        )
 
         if is_approved:
             reviewed_submission = await _publish_approved_media(reviewed_submission)
@@ -1700,76 +1628,105 @@ async def review_store_submission(
         raise DatabaseError("Failed to create store submission review") from e
 
 
-async def _lock_store_review_target(
-    tx: prisma.Prisma, version_id: str
-) -> dict[str, Any] | None:
-    """Lock the listing before its version, then read the current review state."""
-    rows = await query_raw_with_schema(
-        'SELECT l."activeVersionId", v."isDeleted", '
-        'v."submissionStatus"::text AS "submissionStatus" '
-        'FROM {schema_prefix}"StoreListing" l JOIN {schema_prefix}"StoreListingVersion" v '
-        'ON v."storeListingId" = l.id WHERE v.id = $1 FOR UPDATE OF l, v',
-        version_id,
-        client=tx,
-    )
-    return rows[0] if rows else None
+async def _record_submission_review(
+    submission: prisma.models.StoreListingVersion,
+    root_graph: prisma.models.AgentGraph,
+    sub_graphs: list[prisma.models.AgentGraph],
+    *,
+    is_approved: bool,
+    external_comments: str,
+    internal_comments: str,
+    reviewer_id: str,
+) -> tuple[prisma.models.StoreListingVersion, str | None]:
+    reactivated_id = None
+    async with transaction() as tx:
+        if is_approved:
+            # Direct and parent reviews may write the same listings. Include the
+            # review target in the order in which dependencies are approved.
+            for graph in sorted([root_graph, *sub_graphs], key=lambda graph: graph.id):
+                if graph.id == submission.agentGraphId:
+                    await _approve_direct_submission(tx, submission)
+                else:
+                    await _approve_sub_agent(
+                        tx,
+                        graph,
+                        submission.name,
+                        submission.agentGraphVersion,
+                        root_graph.userId,
+                    )
 
+        else:
+            reactivated_id = await withdraw_store_version(tx, submission)
 
-async def _withdraw_store_version(
-    tx: prisma.Prisma, version: prisma.models.StoreListingVersion
-) -> str | None:
-    """Adjust the listing only if the locked version is still approved.
-
-    The caller writes the rejection in the same transaction. Return the
-    reactivated version ID, if any. Clear the listing's flag only when no
-    other undeleted approval remains.
-    """
-    target = await _lock_store_review_target(tx, version.id)
-    if (
-        not target
-        or target["submissionStatus"] != prisma.enums.SubmissionStatus.APPROVED
-    ):
-        return None
-
-    listings = prisma.models.StoreListing.prisma(tx)
-    if target["activeVersionId"] == version.id:
-        fallback = await prisma.models.StoreListingVersion.prisma(tx).find_first(
-            where={
-                **installable_store_version_where(),
-                "storeListingId": version.storeListingId,
-                "id": {"not": version.id},
-            },
-            order={"version": "desc"},
-        )
-        await listings.update(
-            where={"id": version.storeListingId},
+        reviewed_submission = await prisma.models.StoreListingVersion.prisma(tx).update(
+            where={"id": submission.id},
             data={
-                "ActiveVersion": (
-                    {"connect": {"id": fallback.id}}
-                    if fallback
-                    else {"disconnect": True}
-                )
+                "submissionStatus": (
+                    prisma.enums.SubmissionStatus.APPROVED
+                    if is_approved
+                    else prisma.enums.SubmissionStatus.REJECTED
+                ),
+                "reviewedAt": datetime.now(tz=timezone.utc),
+                "Reviewer": {"connect": {"id": reviewer_id}},
+                "reviewComments": external_comments,
+                "internalComments": internal_comments,
             },
+            include={"StoreListing": True, "Reviewer": True},
         )
-        if fallback:
-            return fallback.id
+        if not reviewed_submission:
+            raise DatabaseError(
+                f"Failed to update store listing version {submission.id}"
+            )
+    return reviewed_submission, reactivated_id
 
-    # Hidden sub-workflows still count as approved without becoming public.
-    await listings.update_many(
+
+async def _approve_direct_submission(
+    tx: prisma.Prisma, submission: prisma.models.StoreListingVersion
+) -> None:
+    # Update the AgentGraph with store listing data
+    await prisma.models.AgentGraph.prisma(tx).update(
         where={
-            "id": version.storeListingId,
-            "hasApprovedVersion": True,
-            "Versions": {
-                "none": {
-                    "id": {"not": version.id},
-                    "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-                    "isDeleted": False,
-                }
-            },
+            "graphVersionId": {
+                "id": submission.agentGraphId,
+                "version": submission.agentGraphVersion,
+            }
         },
-        data={"hasApprovedVersion": False},
+        data={
+            "name": submission.name,
+            "description": submission.description,
+            "recommendedScheduleCron": submission.recommendedScheduleCron,
+            "instructions": submission.instructions,
+        },
     )
-    return None
+
+    # Generate embedding for approved listing (best-effort)
+    try:
+        await ensure_embedding(
+            version_id=submission.id,
+            name=submission.name,
+            description=submission.description,
+            sub_heading=submission.subHeading,
+            categories=submission.categories,
+            tx=tx,
+        )
+    except Exception as emb_err:
+        logger.warning(
+            f"Could not generate embedding for listing {submission.id}: {emb_err}"
+        )
+
+    target = await lock_review_target(tx, submission.id)
+    if target.is_deleted:
+        raise ConflictError(
+            "This submission was replaced or removed. "
+            "Refresh the listing before approving it."
+        )
+    await prisma.models.StoreListing.prisma(tx).update(
+        where={"id": submission.storeListingId},
+        data={
+            "hasApprovedVersion": True,
+            "ActiveVersion": {"connect": {"id": submission.id}},
+        },
+    )
 
 
 async def _publish_approved_media(

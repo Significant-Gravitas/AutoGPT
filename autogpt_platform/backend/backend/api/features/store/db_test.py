@@ -21,6 +21,7 @@ from backend.util.exceptions import (
 from . import categories as store_categories
 from . import db
 from . import exceptions as store_exceptions
+from . import submission_review_state
 from .model import MyAgentsSortBy, ProfileUpdateRequest, SubmissionStats
 from .submission_deletion_test_helpers import mock_submission_deletion
 
@@ -1711,15 +1712,15 @@ def review_mocks(mocker):
     mock_listing.return_value.update_many = AsyncMock(return_value=0)
     mock_listing.return_value.find_first = AsyncMock(return_value=listing)
     locked_review = mocker.patch.object(
-        db,
+        submission_review_state,
         "query_raw_with_schema",
         new_callable=AsyncMock,
         return_value=[
-            {
-                "activeVersionId": None,
-                "isDeleted": False,
-                "submissionStatus": version.submissionStatus,
-            }
+            submission_review_state.LockedReviewTarget(
+                active_version_id=None,
+                is_deleted=False,
+                submission_status=version.submissionStatus,
+            )
         ],
     )
     mocker.patch("prisma.models.AgentGraph.prisma").return_value.update = AsyncMock()
@@ -2250,10 +2251,11 @@ async def test_reject_completes_when_the_reactivated_version_fails_to_load(
 
 def _approved_version_of_listing_live_at(review_mocks, active_version_id: str):
     review_mocks.locked_review.return_value = [
-        {
-            "activeVersionId": active_version_id,
-            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-        }
+        submission_review_state.LockedReviewTarget(
+            active_version_id=active_version_id,
+            is_deleted=False,
+            submission_status=prisma.enums.SubmissionStatus.APPROVED,
+        )
     ]
     listing = review_mocks.version.StoreListing.model_copy(
         update={"activeVersionId": active_version_id, "hasApprovedVersion": True}
