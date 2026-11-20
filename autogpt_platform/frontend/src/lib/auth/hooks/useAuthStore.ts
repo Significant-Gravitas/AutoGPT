@@ -21,6 +21,7 @@ import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notificati
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
+import { forgetConnectAttempt } from "../connect-attempt";
 import { reloadForNewDeployment } from "../deployment-reload";
 import {
   broadcastLogout,
@@ -595,6 +596,9 @@ useAuthStore.subscribe((state, previousState) => {
   if (state.user && state.user.id !== previousState.user?.id) {
     claimOnboardingHandoff(state.user.id);
     forgetCallTickets(state.user.id);
+    // A Google or Microsoft sign-in this tab started has finished, so /login
+    // mustn't offer it without connecting after a later sign-out.
+    forgetConnectAttempt();
   }
 });
 

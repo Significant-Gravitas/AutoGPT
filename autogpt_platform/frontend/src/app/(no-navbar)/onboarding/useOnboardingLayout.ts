@@ -3,6 +3,7 @@ import { environment } from "@/services/environment";
 import { useFlagResolutionStarted } from "@/services/feature-flags/flag-resolution";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import { useEffect, useState } from "react";
+import { useSignInConnection } from "./steps/AccessStep/useSignInConnection";
 import { useSignInProvider } from "./steps/AccessStep/useSignInProvider";
 import { buildStepLayout, resolveStepOrder, type Step } from "./store";
 import { useFrozenPerUser } from "./useFrozenPerUser";
@@ -27,6 +28,7 @@ export function useOnboardingLayout({
   const payment = usePlatformPayment();
   const stepOrder = useFlagStatus(Flag.ONBOARDING_STEP_ORDER);
   const signIn = useSignInProvider(userID);
+  const connection = useSignInConnection(userID, signIn.provider);
   const interview = useFlagStatus(Flag.ONBOARDING_INTERVIEW);
   const hasWaitedForInterview = useHasWaited(
     INTERVIEW_FLAG_WAIT_MS,
@@ -45,10 +47,11 @@ export function useOnboardingLayout({
   );
   const placement = useFrozenPerUser(
     userID,
-    stepOrder.ready && signIn.isReady && !isUserLoading,
+    stepOrder.ready && signIn.isReady && connection.isReady && !isUserLoading,
     () => ({
       requestedOrder: stepOrder.enabled,
-      hasAccess: signIn.provider !== null,
+      // A sign-in that already connected everything needs no access step.
+      hasAccess: signIn.provider !== null && !connection.isConnected,
     }),
   );
   // The interview flag's answer, or, once INTERVIEW_FLAG_WAIT_MS has run out
