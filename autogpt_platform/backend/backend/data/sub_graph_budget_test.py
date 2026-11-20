@@ -25,6 +25,7 @@ from backend.data.graph import (
     foreign_sub_graph_refs,
     get_graph,
     get_graph_all_versions,
+    get_graph_as_admin,
     get_sub_graphs_leaving_out_too_large,
 )
 from backend.data.sub_graph_budget import get_sub_graph_sizes
@@ -207,6 +208,34 @@ async def test_a_version_list_bounds_each_version_on_its_own(
         [second_sub.id],
         [first_sub.id],
     ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("newest_is_large", [True, False])
+async def test_an_unversioned_read_bounds_the_version_it_returns(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch, newest_is_large: bool
+):
+    async with _saved(_values(2), _values(6)) as (small, large):
+        active_sub, newest_sub = (small, large) if newest_is_large else (large, small)
+        async with _saved(_runs(active_sub)) as (workflow,):
+            newest = _runs(newest_sub)
+            newest.id, newest.is_active = workflow.id, False
+            await create_graph(newest, DEFAULT_USER_ID)
+            monkeypatch.setattr(sub_graph_budget, "MAX_SUB_GRAPH_ROWS", 5)
+
+            for read in (
+                lambda: get_graph(
+                    workflow.id, None, user_id=DEFAULT_USER_ID, include_subgraphs=True
+                ),
+                lambda: get_graph_as_admin(workflow.id, for_export=True),
+            ):
+                if newest_is_large:
+                    loaded = await read()
+                    assert loaded and loaded.version == 1
+                    assert [g.id for g in loaded.sub_graphs] == [small.id]
+                else:
+                    with pytest.raises(SubGraphsTooLargeError):
+                        await read()
 
 
 @pytest.mark.asyncio(loop_scope="session")
