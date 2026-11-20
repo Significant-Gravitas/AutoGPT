@@ -17,6 +17,7 @@ import pytest
 from backend.api.features.home import service as home_service
 from backend.api.features.library import _get_many, _schedule_info
 from backend.api.features.library import db as library_db
+from backend.api.features.library.model import ScheduleInfo
 from backend.api.model import CreateGraph
 from backend.data.user import get_or_create_user
 from backend.executor.scheduler import GraphExecutionJobInfo
@@ -108,6 +109,9 @@ async def test_library_and_home_reads_do_not_wait_on_the_scheduler(
     assert (single.id, single.graph_id) == (agent.id, graph.id)
     assert single.is_scheduled is scheduled
     assert single.next_scheduled_run == (next_run if scheduled else None)
+    # Without an answer the schedule is unknown, which the page must not show
+    # as "not scheduled".
+    assert single.schedule_info_unavailable is not scheduled
 
     listing, elapsed = await _timed(
         library_db.list_library_agents(user_id=user.id, page_size=50)
@@ -115,6 +119,7 @@ async def test_library_and_home_reads_do_not_wait_on_the_scheduler(
     assert elapsed < _PROMPT_S
     [listed] = [a for a in listing.agents if a.id == agent.id]
     assert listed.is_scheduled is scheduled
+    assert listed.schedule_info_unavailable is not scheduled
 
     batch, elapsed = await _timed(
         _get_many.get_library_agents_by_ids([agent.id, "missing-id"], user.id)
@@ -127,6 +132,49 @@ async def test_library_and_home_reads_do_not_wait_on_the_scheduler(
     assert elapsed < _PROMPT_S
     upcoming_ids = [task.id for task in home.upcoming_tasks]
     assert upcoming_ids == ([schedule.id] if scheduled else [])
+    assert home.schedules_unavailable is not scheduled
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode, schedules, expected",
+    [
+        ("healthy", True, ScheduleInfo(next_runs={"graph-1": "2030-01-01T09:00:00"})),
+        # A scheduler that answers with no schedules: known to be none.
+        ("healthy", False, ScheduleInfo()),
+        ("hangs", True, ScheduleInfo(available=False)),
+        ("errors", True, ScheduleInfo(available=False)),
+    ],
+)
+async def test_schedule_info_is_unknown_only_when_the_scheduler_did_not_answer(
+    monkeypatch: pytest.MonkeyPatch,
+    mode: SchedulerMode,
+    schedules: bool,
+    expected: ScheduleInfo,
+):
+    schedule = GraphExecutionJobInfo(
+        id="schedule-1",
+        name="Daily",
+        next_run_time="2030-01-01T09:00:00",
+        user_id="user-1",
+        graph_id="graph-1",
+        graph_version=1,
+        cron="0 9 * * *",
+        input_data={},
+    )
+    scheduler = _SchedulerStub(mode, [schedule] if schedules else [])
+    monkeypatch.setattr(_schedule_info, "get_scheduler_client", lambda: scheduler)
+    monkeypatch.setattr(
+        _schedule_info.settings.config,
+        "schedule_read_timeout_seconds",
+        _READ_TIMEOUT_S,
+    )
+
+    info = await asyncio.wait_for(
+        _schedule_info._fetch_schedule_info("user-1"), timeout=30
+    )
+
+    assert info == expected
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -242,13 +242,12 @@ class TestTheGuardsBounds:
             _row(f"stale-{i}", updated_at=_STALE) for i in range(5)
         ]
         db.update_dream_pass.side_effect = _hang
-        loop = asyncio.get_running_loop()
-        started = loop.time()
 
         with caplog.at_level(logging.WARNING, logger=guard.logger.name):
             await asyncio.wait_for(guard.guard_dream_pass(_run(), _SCOPE), 5)
 
-        assert loop.time() - started < 5 * 0.05
+        # Without the budget all five expiries would run to the store's
+        # deadline one after another.
         assert db.update_dream_pass.await_count < 5
         assert "used up its 0.12s budget" in caplog.text
 

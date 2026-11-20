@@ -40,6 +40,7 @@ export function typeBadgeLabel(type: CredentialType): string {
 
 const PROVIDER_DISPLAY_NAME_OVERRIDES: Record<string, string> = {
   aiml_api: "AI/ML API",
+  anysearch: "AnySearch",
   github: "GitHub",
   google: "Google",
   google_maps: "Google Maps",

@@ -155,6 +155,22 @@ def test_a_run_refused_for_want_of_a_worker_waits_in_the_delay_queue(manager):
     assert channel.basic_nack.call_args.kwargs["requeue"] is False
 
 
+def test_a_duplicate_of_a_run_already_running_here_waits_in_the_delay_queue(
+    manager,
+):
+    """An admin requeue of a run whose message wasn't lost delivers it twice.
+    The duplicate is kept, as it may be the resume of a run finishing here,
+    but held in the delay queue rather than put straight back, which would
+    lap the queue for as long as the run lasts."""
+    _deliver(manager, user="alice", run="a1")
+    _deliver(manager, user="alice", run="a1")
+
+    assert set(manager.active_graph_runs) == {"a1"}
+    (published,) = manager.run_client.publish_message.call_args_list
+    assert published.kwargs["routing_key"] == GRAPH_EXECUTION_DELAY_ROUTING_KEY
+    assert "a1" in published.kwargs["message"]
+
+
 def test_a_run_over_the_per_graph_limit_waits_in_the_delay_queue(manager):
     manager_module.get_db_client().get_graph_executions_count.return_value = 10**6
 

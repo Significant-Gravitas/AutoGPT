@@ -339,8 +339,8 @@ async def set_active_version(
     owned_by_caller(new_active_graph, auth, f"Graph #{graph_id}")
     organization_ids = await _writable_organizations(graph_id, auth)
 
-    # Not `get_graph(version=None)`, which returns the newest version, a draft
-    # included.
+    # Not `get_graph(version=None)`, which falls back to the newest version, a
+    # draft, when none is active.
     versions = await graph_db.get_graph_all_versions(
         graph_id, user_id=auth.user_id, organization_id=auth.organization_id
     )

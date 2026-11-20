@@ -28,7 +28,7 @@ from backend.copilot.sdk.file_ref import text_outside_file_refs
 from backend.data.model import APIKeyCredentials
 
 from ._test_data import make_session
-from .bash_exec import _KILL_TREE_SCRIPT, BashExecTool
+from .bash_exec import _KILL_TREE_SCRIPT, _SHELL_KILLED_MESSAGE, BashExecTool
 from .e2b_sandbox import SandboxOwner
 from .models import BashExecResponse, ErrorResponse
 from .sandbox import MAX_OUTPUT_SIZE
@@ -486,6 +486,90 @@ class TestBashExecE2BTokenInjection:
         assert "GH_TOKEN" not in call_kwargs["envs"]
         assert "GIT_AUTHOR_NAME" not in call_kwargs["envs"]
         assert isinstance(result, BashExecResponse)
+
+
+class TestBashExecShellKilledBySignal:
+    """A `pkill -f` matching the command's own `bash -c` argv kills that shell,
+    so nothing after it runs; the message has to say so."""
+
+    @pytest.mark.parametrize(
+        "exit_code, message",
+        [
+            (-1, _SHELL_KILLED_MESSAGE),
+            # 128+N is the shell reporting a step a signal killed; it lived on.
+            (143, "Command executed with status code 143"),
+        ],
+        ids=["signal", "128+N"],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_on_e2b(self, exit_code: int, message: str):
+        result = await _make_tool()._execute_on_e2b(
+            sandbox=_make_sandbox(exit_code=exit_code),
+            command='pkill -f "npm install"; npm install',
+            timeout=10,
+            session_id="session-under-test",
+            user_id=None,
+        )
+
+        assert isinstance(result, BashExecResponse)
+        assert result.message == message
+        assert result.exit_code == exit_code
+        assert result.timed_out is False
+
+    @pytest.mark.parametrize(
+        "exit_code",
+        [
+            # In its own PID namespace the command cannot signal bwrap, so a
+            # negative code is a signal from outside the sandbox.
+            -15,
+            # bwrap reports the shell's signal as 128+N, as `exit 143` does.
+            143,
+        ],
+        ids=["bwrap-signalled", "self-kill"],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_in_bubblewrap_keeps_the_status_code(self, tmp_path, exit_code: int):
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_current_sandbox",
+                return_value=None,
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.has_full_sandbox", return_value=True
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_workspace_dir",
+                return_value=str(tmp_path),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.run_sandboxed",
+                new=AsyncMock(return_value=("", "", exit_code, False)),
+            ),
+        ):
+            result = await _make_tool()._execute(
+                user_id=_USER,
+                session=make_session(user_id=_USER),
+                command='pkill -f "npm install"; npm install',
+                timeout=10,
+            )
+
+        assert isinstance(result, BashExecResponse)
+        assert result.message == f"Command executed with status code {exit_code}"
+        assert result.exit_code == exit_code
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_on_local_pc_minus_one_is_not_envd_s_signal(self):
+        # The companion reports Python's returncode: -N for signal N, and -1
+        # for SIGHUP or no return code at all, never envd's "any signal".
+        result = await _make_tool()._execute_on_local_pc(
+            sandbox=_make_local_pc_sandbox(exit_code=-1),
+            command='pkill -f "npm install"; npm install',
+            timeout=10,
+            session_id="session-under-test",
+        )
+
+        assert isinstance(result, BashExecResponse)
+        assert result.message == "Command executed with status code -1"
 
 
 class TestBashExecSdkToolResultRedirect:
@@ -1764,6 +1848,45 @@ class TestBashExecTimeoutOnARealShell:
         assert (result.stdout, result.stderr) == ("out\n", "err\n")
         assert (result.exit_code, result.timed_out) == (3, False)
 
+    @pytest.mark.parametrize(
+        "background, timed_out, message",
+        [
+            ("", False, _SHELL_KILLED_MESSAGE),
+            # sleep keeps the output open, so the call runs to its timeout,
+            # where no exit code arrives to tell of the self-kill.
+            (
+                "sleep {length} & ",
+                True,
+                "Timed out after 1s; it was killed, with every process it started.",
+            ),
+        ],
+        ids=["ends", "times-out"],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_command_that_kills_its_own_shell(
+        self, tmp_path, background: str, timed_out: bool, message: str
+    ):
+        length = f"30.{time.time_ns() % 10**9:09d}"
+        after = tmp_path / "after"
+        start = background.format(length=length)
+        try:
+            result = await _make_tool()._execute_on_e2b(
+                sandbox=_local_box(),
+                command=f"{start}pkill -f 'zz_self_{length}'; echo > {after}",
+                timeout=1 if timed_out else 10,
+                session_id=None,
+                user_id=None,
+            )
+
+            assert isinstance(result, BashExecResponse)
+            assert (result.message, result.timed_out) == (message, timed_out)
+            assert result.exit_code == -1
+            assert not after.exists()
+            assert _sleeping(length) == []
+        finally:
+            for pid in _sleeping(length):
+                os.kill(pid, signal.SIGKILL)
+
 
 def _local_box() -> AsyncSandbox:
     return cast(AsyncSandbox, SimpleNamespace(commands=_LocalCommands()))
@@ -1834,6 +1957,8 @@ class _LocalHandle:
             for pipe in self._callbacks:
                 pipe.close()
         exit_code = await asyncio.to_thread(self._shell.wait)
+        if exit_code < 0:  # envd sends Go's ExitCode(): -1 for any signal.
+            exit_code = -1
         if exit_code:
             raise CommandExitException(
                 stdout="", stderr="", exit_code=exit_code, error=None

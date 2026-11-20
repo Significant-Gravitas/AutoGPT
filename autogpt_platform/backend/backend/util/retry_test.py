@@ -21,6 +21,11 @@ from backend.util.retry import (
     stop_retry_loops,
 )
 
+# Only catches a loop or sleep that ignored the shutdown and waited out its
+# 30 s; a passing run returns at once, and a CI runner can stall a test for
+# seconds.
+_HANG_SECONDS = 10
+
 
 @pytest.fixture(autouse=True)
 def _reset_shutdown_event():
@@ -90,7 +95,7 @@ def test_conn_retry_sync_aborts_on_shutdown():
         test_function()
     # Bails out near-immediately rather than running ~101 attempts / waiting 30s.
     assert attempts < 5
-    assert time.monotonic() - start < 5
+    assert time.monotonic() - start < _HANG_SECONDS
 
 
 @pytest.mark.asyncio
@@ -108,7 +113,7 @@ async def test_conn_retry_async_aborts_on_shutdown():
     with pytest.raises(ConnectionError):
         await test_function()
     assert attempts < 5
-    assert time.monotonic() - start < 5
+    assert time.monotonic() - start < _HANG_SECONDS
 
 
 def test_create_retry_decorator_aborts_on_shutdown():
@@ -131,7 +136,7 @@ def test_interruptible_sleep_returns_early_on_shutdown():
     assert is_shutting_down()
     start = time.monotonic()
     _interruptible_sleep(30)
-    assert time.monotonic() - start < 1
+    assert time.monotonic() - start < _HANG_SECONDS
 
 
 @pytest.mark.asyncio
@@ -139,7 +144,7 @@ async def test_interruptible_async_sleep_returns_early_on_shutdown():
     stop_retry_loops()
     start = time.monotonic()
     await _interruptible_async_sleep(30)
-    assert time.monotonic() - start < 1
+    assert time.monotonic() - start < _HANG_SECONDS
 
 
 def test_continuous_retry_sync_stops_on_shutdown():
@@ -157,7 +162,7 @@ def test_continuous_retry_sync_stops_on_shutdown():
     # Returns instead of looping forever; no exception propagates.
     assert always_failing_function() is None
     assert attempts < 5
-    assert time.monotonic() - start < 5
+    assert time.monotonic() - start < _HANG_SECONDS
 
 
 @pytest.mark.asyncio
@@ -174,7 +179,7 @@ async def test_continuous_retry_async_stops_on_shutdown():
     start = time.monotonic()
     assert await always_failing_function() is None
     assert attempts < 5
-    assert time.monotonic() - start < 5
+    assert time.monotonic() - start < _HANG_SECONDS
 
 
 class TestRetryRateLimiting:

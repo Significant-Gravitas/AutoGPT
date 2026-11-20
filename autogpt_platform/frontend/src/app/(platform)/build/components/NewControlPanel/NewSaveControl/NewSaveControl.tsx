@@ -37,12 +37,13 @@ export const NewSaveControl = () => {
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <ControlPanelButton
+              aria-label="Save"
               data-id="save-control-popover-trigger"
               data-testid="save-control-save-button"
               selected={saveControlOpen}
               className="rounded-none"
             >
-              <Icon icon={FloppyDiskIcon} className="size-5" />
+              <Icon icon={FloppyDiskIcon} className="size-5" aria-hidden />
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>
