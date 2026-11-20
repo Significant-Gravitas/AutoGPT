@@ -39,6 +39,7 @@ from tenacity.stop import stop_base
 import backend.util.exceptions as exceptions
 from backend.api.utils.validation_errors import describe_validation_error
 from backend.data import redis_client
+from backend.data.db_errors import DatabaseConnectionError
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import tracing
 from backend.util.json import to_dict
@@ -467,6 +468,10 @@ class AppService(BaseAppService, ABC):
             exceptions.ConflictError, cls._handle_internal_http_error(409)
         )
         app.add_exception_handler(DataError, cls._handle_internal_http_error(400))
+        # Not the query's fault: the database dropped, refused or timed it out.
+        app.add_exception_handler(
+            DatabaseConnectionError, cls._handle_internal_http_error(503)
+        )
         app.add_exception_handler(
             UniqueViolationError, cls._handle_internal_http_error(400)
         )
@@ -1086,6 +1091,7 @@ RETRYABLE_SERVICE_ERRORS: tuple[type[BaseException], ...] = (
     HTTPServerError,
     MissingRouteError,
     RequestHTTPServerError,
+    DatabaseConnectionError,
     exceptions.DatabaseError,
     exceptions.ExpertHireUnavailableError,
     exceptions.RedisError,
