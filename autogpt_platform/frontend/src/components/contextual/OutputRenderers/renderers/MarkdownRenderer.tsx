@@ -16,7 +16,7 @@ import {
 } from "../types";
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
-import { escapeCurrencyAmounts } from "@/lib/markdown-math";
+import { escapeLiteralDollars } from "@/lib/markdown-math";
 import { YouTubeEmbed } from "@/components/molecules/YouTubeEmbed/YouTubeEmbed";
 import {
   getYouTubeVideoId,
@@ -418,7 +418,7 @@ function renderMarkdown(
   value: unknown,
   _metadata?: OutputMetadata,
 ): React.ReactNode {
-  const markdownContent = escapeCurrencyAmounts(String(value));
+  const markdownContent = escapeLiteralDollars(String(value));
 
   return (
     <div className="markdown-output">

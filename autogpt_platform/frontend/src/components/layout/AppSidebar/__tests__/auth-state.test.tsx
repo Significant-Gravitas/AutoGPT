@@ -1,4 +1,4 @@
-import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getGetV2ListSessionGroupsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import {
   getCurrentUser,
@@ -34,16 +34,22 @@ const user: User = {
   user_metadata: {},
 };
 const sessionsRequest = vi.fn(() => ({
-  sessions: [
+  groups: [
     {
-      id: "session-1",
-      title: "My real conversation",
-      is_processing: false,
-      created_at: "2026-06-30T00:00:00Z",
-      updated_at: "2026-06-30T00:00:00Z",
+      expert_id: null,
+      total: 1,
+      sessions: [
+        {
+          id: "session-1",
+          title: "My real conversation",
+          is_processing: false,
+          created_at: "2026-06-30T00:00:00Z",
+          updated_at: "2026-06-30T00:00:00Z",
+        },
+      ],
     },
   ],
-  total: 1,
+  pinned: [],
 }));
 
 function deferred<T>() {
@@ -81,7 +87,7 @@ beforeEach(() => {
   vi.mocked(getCurrentUser).mockResolvedValue({ user: null });
   vi.mocked(validateSession).mockResolvedValue({ user: null, isValid: false });
   vi.mocked(serverLogout).mockResolvedValue({ success: true });
-  server.use(getGetV2ListSessionsMockHandler200(sessionsRequest));
+  server.use(getGetV2ListSessionGroupsMockHandler200(sessionsRequest));
 });
 
 afterEach(() => {

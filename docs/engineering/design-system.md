@@ -4,7 +4,7 @@ The rules for styling in `autogpt_platform/frontend`, and the lint rule that enf
 
 ## How the rules are enforced
 
-`pnpm lint` runs oxlint with `.oxlintrc.json`, which loads two local plugins: `scripts/eslint-rules/plugin.mts` (`autogpt/*`, the React Compiler rules) and `scripts/eslint-rules/design-system.mts` (`design-system/*`, the rules on this page). The `design-system/*` rules apply to `src/**`. They don't apply to tests, `src/tests`, `src/playwright`, `src/mocks` or the generated API client. Stories skip four styling rules (`no-raw-colors`, `no-arbitrary-values`, `no-restyle`, `no-inline-styles`) but not the colour-system rules (`no-alias-colours`, `no-palette-colours`, `no-hex-colours`). CI runs `pnpm lint` in the frontend `lint` job, so a violation fails the pull request.
+`pnpm lint` runs oxlint with `.oxlintrc.json`, which loads two local plugins: `scripts/eslint-rules/plugin.mts` (`autogpt/*`, the React Compiler rules) and `scripts/eslint-rules/design-system.mts` (`design-system/*`, the rules on this page). The `design-system/*` rules apply to `src/**`. They don't apply to tests, `src/tests`, `src/playwright`, `src/mocks` or the generated API client. Stories skip four styling rules (`no-raw-colors`, `no-arbitrary-values`, `no-restyle`, `no-inline-styles`) but not the colour-system rules (`no-shadcn-alias-colours`, `no-raw-palette-classes`, `no-hex-colours`). CI runs `pnpm lint` in the frontend `lint` job, so a violation fails the pull request.
 
 Six of the rules are [`@shadcn/lint`](https://github.com/shadcn-ui/lint) rules, wrapped by `design-system.mts`. The rest are our own.
 
@@ -39,28 +39,31 @@ The app has one colour system: the role tokens. Their values live in one place, 
 - Text: `foreground-base`, `foreground-strong`, `foreground-emphasis`, `foreground-body`, `foreground-secondary`, `foreground-tertiary`, `foreground-subtle`, `foreground-disabled`, `placeholder`
 - Borders: `separator`, `border-base`, `border-strong`, `focus`
 - Action and brand: `action`, `action-hover`, `action-foreground`, `brand`, `brand-hover`, `accent-surface`, `accent-strong`
-- Status: `error`, `error-hover`, `error-foreground`, `error-surface`, `warning`, `warning-foreground`, `warning-surface`, `warning-border`, `success`, `success-foreground`, `success-surface`, `info`, `info-foreground`, `info-surface`
+- Status: `error`, `error-hover`, `error-foreground`, `error-surface`, `warning`, `warning-foreground`, `warning-surface`, `warning-border`, `success`, `success-foreground`, `success-surface`, `info`, `info-foreground`, `info-surface`, and `error-inverse` and `success-inverse` for status text on the always-dark toast, terminal and tooltip
 - Accents, hues that are not a status (categories, usage meters, data types, badges): `orange`, `orange-foreground`, `yellow`, `yellow-foreground`, `sky`, `sky-foreground`, `indigo`, `pink`, `pink-foreground`. A pale tint or border of a hue is the hue at an opacity: `bg-orange/10`, `bg-pink/10`, `ring-sky/30`.
 - Builder: `builder-canvas`, `builder-grid`, `node-surface`, `node-border`, `node-selected`, `edge`, `handle`
 
 `src/components/styles/color-roles.ts` lists every role (the Tokens/Colors story draws it). To add one, write its triplet in `theme.css`, register it in `globals.css`'s `@theme` and list it there; add one only when real, repeated uses need a colour no role has.
 
-Three rules keep the other colour systems out, in every string (`className`, `cn()`/`cva()`, style objects, template literals), stories included:
+The roles are the only colour system. Tailwind's palette is reset (`--color-*: initial` at the top of `theme.css`) and `tailwind.config.ts` has no colours, so `bg-red-500`, `text-zinc-600` or `bg-white` generate nothing. Four rules keep the other colour systems out of the source, in every string (`className`, `cn()`/`cva()`, style objects, template literals), stories included:
 
-- **Rule `design-system/no-alias-colours`:** the shadcn names (`bg-background`, `text-muted-foreground`, `border-border`, `ring-ring`, `bg-accent`, `bg-sidebar`, …). The error names the role each one aliased, which renders the same colour. `theme.css` keeps seven of them (`background`, `foreground`, `muted`, `muted-foreground`, `border`, `primary`, `primary-foreground`) for streamdown's prebuilt markup, which Tailwind scans in `node_modules`; they are not for app code.
-- **Rule `design-system/no-palette-colours`:** the Tailwind palette (`bg-zinc-200`, `text-orange-600`, `bg-white`, `shadow-black/10`). The error names the role `scripts/ds/palette-map.json` maps the class to.
-- **Rule `design-system/no-hex-colours`:** hex colours (`"#fff"`, `bg-[#123456]`).
-- `design-system/no-raw-colors` still fails named colours in SVG attributes (`fill="white"`), and `design-system/no-arbitrary-values` arbitrary colours such as `text-[rgb(…)]`.
+- **Rule `design-system/no-shadcn-alias-colours`:** the shadcn names (`bg-background`, `text-muted-foreground`, `border-border`, `ring-ring`, `bg-accent`, `bg-sidebar`, …). The error names the role each one aliased, which renders the same colour. `theme.css` keeps seven of them (`background`, `foreground`, `muted`, `muted-foreground`, `border`, `primary`, `primary-foreground`) for streamdown's prebuilt markup, which Tailwind scans in `node_modules`; they are not for app code.
+- **Rule `design-system/no-raw-palette-classes`:** the Tailwind palette (`bg-zinc-200`, `text-orange-600`, `bg-white`, `shadow-black/10`). The error names the role `scripts/ds/palette-map.json` maps the class to.
+- **Rule `design-system/no-hex-colours`:** hex colours in any string (`"#fff"`, `border:1px solid #E4E4E7`).
+- **Rule `design-system/no-arbitrary-colour`:** a colour class whose arbitrary value is a colour (`bg-[#123456]`, `text-[rgb(131,131,140)]`, `border-[color:hsl(…)]`, `[color:#fff]`). The error names the role with the same colour when there is one. A role read through `var()` is not one.
+- `design-system/no-raw-colors` still fails named colours in SVG attributes (`fill="white"`).
 
-Artwork, logos, chart series (recharts writes them as SVG attributes, where CSS variables do not resolve), user-picked colour palettes and markup that never reaches the app's stylesheet keep their colours through `ds-colour-exempt.json`: a file glob, optionally the classes or hex values allowed in it, and a reason. It is the only way: a suppression comment for these three rules fails `scripts/__tests__/colour-exempt.test.ts`, which also checks every entry still matches a file and every allowed value is still used, and that no stylesheet other than `theme.css` (and exempt ones) writes a hex colour.
+Artwork, logos, chart series (recharts writes them as SVG attributes, where CSS variables do not resolve), user-picked colour palettes and markup that never reaches the app's stylesheet keep their colours through `ds-colour-exempt.json`: a file glob, optionally the classes or hex values allowed in it, and a reason. It is the only way: a suppression comment for these rules fails `scripts/__tests__/colour-exempt.test.ts`, which also checks every entry still matches a file and every allowed value is still used, and that no stylesheet other than `theme.css` (and exempt ones) writes a hex colour.
 
-The codemods that did the migration stay for branches that still use the old names: `npx tsx scripts/ds/alias-to-role.ts --write <dir>` (the shadcn names; no pixel moves, `scripts/check-token-equivalence.ts` proves it against a base checkout) and `npx tsx scripts/ds/palette-to-role.ts --write <dir>` (the palette, by `palette-map.json`, whose rows say whether the colour stays the same, shifts a shade, or changes hue). The palette itself (`tailwind.v3-preset.ts`) is still compiled for streamdown and the exempt files.
+The codemods that did the migration stay for branches that still use the old names: `npx tsx scripts/ds/alias-to-role.ts --write <dir>` (the shadcn names; no pixel moves, `scripts/check-token-equivalence.ts` proves it against a base checkout) and `npx tsx scripts/ds/palette-to-role.ts --write <dir>` (the palette, by `palette-map.json`, whose rows say whether the colour stays the same, shifts a shade, or changes hue).  The palette itself is gone: the exempt user-picked palettes write their hex as arbitrary values (`bg-[#fde68a]`), and the few palette classes streamdown's prebuilt markup writes (its mermaid error box and image hover veil) are drawn by a block at the end of `theme.css`, inside streamdown's markup only.
 
 `src/components/__tests__/design-system-contract.test.ts` checks that:
 - every role on `theme.css`'s `:root` is registered in `globals.css`'s `@theme`, and the other way round, and `color-roles.ts` lists them all;
 - no shadcn name is left but streamdown's, each aliasing a role;
 - `.dark` only redefines names that `:root` declares;
-- the app's palette values (`APP_COLORS` in `tailwind.v3-preset.ts`) get no new colours.
+- there is no raw palette (no `tailwind.v3-preset.ts`, no `--color-<hue>-<step>`).
+
+`src/components/styles/__tests__/roles.test.ts` checks that every role has its value in the one `:root` block of `theme.css` and a `@theme inline` entry in `globals.css`, that compiling the stylesheet gives every role a class, and that the palette is reset before any colour is registered, so a palette class compiles to nothing.
 
 ## Dark mode
 

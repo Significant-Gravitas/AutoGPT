@@ -7,7 +7,12 @@ import prisma.enums
 import prisma.models
 import pydantic
 
-from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
+from backend.data.graph import (
+    NODE_INPUT_MASK_PREFIX,
+    GraphModel,
+    GraphSettings,
+    GraphTriggerInfo,
+)
 from backend.data.includes import MAX_NODE_INPUT_OUTPUT_FETCH
 from backend.data.model import (
     CredentialsMetaInput,
@@ -27,6 +32,76 @@ if TYPE_CHECKING:
     from backend.data.integrations import WebhookWithoutSecrets
 
 logger = logging.getLogger(__name__)
+
+
+def node_input_mask_key(node_id: str) -> str:
+    """Per-node key under which a triggered preset stores that node's input mask
+    (the trigger config), nested alongside the regular graph inputs.
+
+    Shared by preset setup/update (``triggers.py``), webhook execution
+    (``_execute_webhook_preset_trigger``), and version migration
+    (``migrate_webhook_presets_to_new_version``) so all sites agree on the
+    format; the data migration mirrors it in SQL. Lives here (not in
+    ``triggers.py``) so ``db.py`` can use it without an import cycle.
+
+    Keyed on the node id's first UUID segment, which is collision-free only
+    because a graph has at most one trigger node.
+    """
+    return f"{NODE_INPUT_MASK_PREFIX}{node_id.split('-')[0]}"
+
+
+def split_trigger_inputs(
+    inputs: GraphInput, trigger_node_id: str
+) -> tuple[GraphInput, Any]:
+    """Split a triggered preset's inputs into ``(graph_inputs, trigger_config)``.
+
+    A legacy flat preset the boot backfill has not converted yet has no mask
+    key: all of its inputs are trigger config, as they were before the mask.
+    """
+    graph_inputs = dict(inputs)
+    mask_key = node_input_mask_key(trigger_node_id)
+    if mask_key not in graph_inputs:
+        return {}, graph_inputs
+    return graph_inputs, graph_inputs.pop(mask_key)
+
+
+def split_stored_trigger_inputs(
+    inputs: GraphInput, attached: bool
+) -> tuple[GraphInput, GraphInput | None]:
+    """``(graph_inputs, trigger_config)`` for a reader without the preset's graph;
+    ``None`` for a preset with no trigger. A preset ``attached`` to a webhook
+    with no mask key is a legacy flat one: all of its inputs are trigger config.
+    """
+    graph_inputs = dict(inputs)
+    if key := stored_trigger_mask_key(inputs):
+        return graph_inputs, graph_inputs.pop(key)
+    if attached:
+        return {}, graph_inputs
+    return graph_inputs, None
+
+
+def stored_trigger_mask_key(inputs: GraphInput) -> str | None:
+    """The key a triggered preset's trigger config is stored under, if any."""
+    return next(
+        (key for key, value in inputs.items() if is_trigger_config_entry(key, value)),
+        None,
+    )
+
+
+def preset_trigger_configs(inputs: GraphInput) -> list[GraphInput]:
+    """Every candidate trigger config of a triggered preset, for a reader without
+    its graph: each object under a mask-prefixed key, since a graph input may use
+    the prefix too. A legacy flat preset is all trigger config.
+    """
+    if not any(k.startswith(NODE_INPUT_MASK_PREFIX) for k in inputs):
+        return [inputs]
+    return [v for k, v in inputs.items() if is_trigger_config_entry(k, v)]
+
+
+def is_trigger_config_entry(key: str, value: object) -> bool:
+    """Whether a stored input reads as a trigger config; trigger setup and
+    reconfigure refuse a graph input that does, so a preset holds one."""
+    return key.startswith(NODE_INPUT_MASK_PREFIX) and isinstance(value, dict)
 
 
 class LibraryAgentStatus(str, Enum):
@@ -190,6 +265,16 @@ class RecentExecution(pydantic.BaseModel):
     activity_summary: str | None = None
 
 
+class ScheduleInfo(pydantic.BaseModel):
+    """Each graph's earliest next run, and whether the scheduler answered.
+
+    ``available=False`` means the schedules are unknown, not absent.
+    """
+
+    next_runs: dict[str, str] = pydantic.Field(default_factory=dict)
+    available: bool = True
+
+
 def _parse_settings(settings: dict | str | None) -> GraphSettings:
     """Parse settings from database, handling both dict and string formats."""
     if settings is None:
@@ -271,6 +356,13 @@ class LibraryAgent(pydantic.BaseModel):
         default=None,
         description="ISO 8601 timestamp of the next scheduled run, if any",
     )
+    schedule_info_unavailable: bool = pydantic.Field(
+        default=False,
+        description=(
+            "The scheduler didn't answer, so is_scheduled and next_scheduled_run "
+            "are unknown rather than false"
+        ),
+    )
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
     organization_id: str | None = None
     team_id: str | None = None
@@ -282,7 +374,7 @@ class LibraryAgent(pydantic.BaseModel):
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
         store_listing: Optional[prisma.models.StoreListing] = None,
         execution_count_override: Optional[int] = None,
-        schedule_info: Optional[dict[str, str]] = None,
+        schedule_info: Optional[ScheduleInfo] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -290,6 +382,7 @@ class LibraryAgent(pydantic.BaseModel):
         """
         if not agent.AgentGraph:
             raise ValueError("Associated Agent record is required.")
+        next_runs = schedule_info.next_runs if schedule_info else {}
 
         graph = GraphModel.from_db(agent.AgentGraph, sub_graphs=sub_graphs)
         if agent.AgentGraph.userId != agent.userId:
@@ -443,9 +536,10 @@ class LibraryAgent(pydantic.BaseModel):
             team_id=agent.teamId,
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
-            is_scheduled=bool(schedule_info and agent.agentGraphId in schedule_info),
-            next_scheduled_run=(
-                schedule_info.get(agent.agentGraphId) if schedule_info else None
+            is_scheduled=agent.agentGraphId in next_runs,
+            next_scheduled_run=next_runs.get(agent.agentGraphId),
+            schedule_info_unavailable=bool(
+                schedule_info and not schedule_info.available
             ),
             settings=_parse_settings(agent.settings),
             marketplace_listing=marketplace_listing_info,
@@ -563,6 +657,9 @@ class TriggeredPresetSetupRequest(pydantic.BaseModel):
     graph_version: int
 
     trigger_config: dict[str, Any]
+    constant_inputs: dict[str, Any] = pydantic.Field(
+        default_factory=dict, description="Regular graph input values"
+    )
     agent_credentials: dict[str, CredentialsMetaInput] = pydantic.Field(
         default_factory=dict
     )

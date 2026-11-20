@@ -31,6 +31,8 @@ from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 class CreateCampaignBlock(Block):
     """Create a campaign in SmartLead"""
 
+    refuses_platform_credentials = True
+
     class Input(BlockSchemaInput):
         name: str = SchemaField(
             description="The name of the campaign",
@@ -114,6 +116,8 @@ class CreateCampaignBlock(Block):
 
 class AddLeadToCampaignBlock(Block):
     """Add a lead to a campaign in SmartLead"""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         campaign_id: int = SchemaField(
@@ -260,6 +264,8 @@ class AddLeadToCampaignBlock(Block):
 
 class SaveCampaignSequencesBlock(Block):
     """Save sequences within a campaign"""
+
+    refuses_platform_credentials = True
 
     class Input(BlockSchemaInput):
         campaign_id: int = SchemaField(

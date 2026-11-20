@@ -1,18 +1,17 @@
 """Durable subtask handoffs; creation and wake enqueueing are transactional."""
 
-from datetime import datetime, timedelta
+import json
+from datetime import datetime
 from typing import Any, Literal
 
 from prisma import Prisma
 from prisma.models import ChatMessage, ChatSession
-from prisma.types import ChatMessageWhereInput
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
 from backend.copilot.background_task import (
     BACKGROUND_TIMEOUT_MESSAGE,
-    DELIVERY_SECONDS,
-    FOLLOWUP_SECONDS,
+    BackgroundChildResult,
     BackgroundOutcome,
     BackgroundSessionState,
     BackgroundTask,
@@ -23,7 +22,6 @@ from backend.copilot.model import (
     invalidate_session_cache,
 )
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
-from backend.copilot.tree import TurnEnvelope
 from backend.data import db
 from backend.util.json import SafeJson
 
@@ -44,7 +42,6 @@ class _TaskState(BaseModel):
     outcome: BackgroundOutcome | None = None
     child_session_id: str
     parent_session_id: str
-    deadline: datetime
     followup_state: str
 
 
@@ -52,27 +49,25 @@ async def get_session_background_state(
     session_id: str, user_id: str
 ) -> BackgroundSessionState:
     """What a chat shows about background work without reading its transcript:
-    a child's recorded outcome, and until when a parent may still get a
-    follow-up or its terminal notice."""
+    a child's recorded outcome, and whether a parent still has a continuation
+    to come."""
     rows = await db.query_raw_with_schema(
-        """SELECT outcome, "childSessionId", "parentSessionId", deadline, "followupState"
+        """SELECT outcome, "childSessionId", "parentSessionId", "followupState"
         FROM {schema_prefix}"ChatBackgroundTask"
         WHERE "userId"=$2 AND ("childSessionId"=$1 OR "parentSessionId"=$1)""",
         session_id,
         user_id,
         model=_TaskState,
     )
-    pending = [
-        row.deadline + timedelta(seconds=DELIVERY_SECONDS + FOLLOWUP_SECONDS)
-        for row in rows
-        if row.parent_session_id == session_id
-        and row.followup_state in ("waiting", "queued")
-    ]
     return BackgroundSessionState(
         outcome=next(
             (row.outcome for row in rows if row.child_session_id == session_id), None
         ),
-        pending_until=max(pending) if pending else None,
+        pending=any(
+            row.parent_session_id == session_id
+            and row.followup_state in ("waiting", "queued")
+            for row in rows
+        ),
     )
 
 
@@ -151,10 +146,12 @@ async def finish_background_turn(
     *,
     turn_held: bool = False,
 ) -> None:
-    """Record how the turn ended. A worker that still holds the session's turn
-    passes ``turn_held``: every row after the launch is then this execution's,
-    a clarification it drained mid-turn included; recovery, which may run after
-    the chat moved on, stops at the next user row."""
+    """Record how a child or continuation turn ended, and for a child which
+    row holds its answer; the answer itself stays in the child's chat. Every
+    row after the launch is the turn's, a clarification it drained mid-turn
+    included, when the worker still holds the turn (``turn_held``) or when
+    the chat records no later turn; otherwise recovery stops at the next user
+    row, since a later turn's rows cannot be told from drained ones."""
     tasks = await db.query_raw_with_schema(
         """SELECT * FROM {schema_prefix}"ChatBackgroundTask"
         WHERE "userId"=$1 AND "childSessionId"=$2 AND "childTurnId"=$3""",
@@ -178,41 +175,105 @@ async def finish_background_turn(
                     changed = await _finish_followup(tx, followup, error)
                 if changed and error:
                     await invalidate_session_cache(session_id)
+        await _complete_child_whose_work_is_back(user_id, session_id, error)
         return
     task = tasks[0]
-    outcome: BackgroundOutcome = (
-        "completed"
-        if error is None
-        else (
-            "timed_out"
-            if error == BACKGROUND_TIMEOUT_MESSAGE
-            else "cancelled" if error == CANCELLED_MESSAGE else "failed"
-        )
+    outcome = _outcome_of(error)
+    if outcome == "completed" and await has_open_handoffs(user_id, session_id):
+        # The child handed work off itself: its result is whole only once that
+        # work has come back to it, so its record waits for its last
+        # continuation to end (``_complete_child_whose_work_is_back``).
+        return
+    await complete_background_task(
+        task.id,
+        user_id,
+        outcome,
+        result_sequence=await _answer_sequence(task.child_turn_id, turn_held),
     )
-    messages = await db.query_raw_with_schema(
-        """SELECT message.* FROM {schema_prefix}"ChatMessage" message
+
+
+def _outcome_of(error: str | None) -> BackgroundOutcome:
+    """How a turn ended, from the error it ended with, if any."""
+    if error is None:
+        return "completed"
+    if error == BACKGROUND_TIMEOUT_MESSAGE:
+        return "timed_out"
+    return "cancelled" if error == CANCELLED_MESSAGE else "failed"
+
+
+async def has_open_handoffs(user_id: str, session_id: str) -> bool:
+    """Whether the chat has background work of its own still out: a handoff
+    whose wake has not run yet."""
+    rows = await db.query_raw_with_schema(
+        """SELECT 1 FROM {schema_prefix}"ChatBackgroundTask"
+        WHERE "userId"=$1 AND "parentSessionId"=$2
+          AND "followupState" IN ('waiting','queued') LIMIT 1""",
+        user_id,
+        session_id,
+    )
+    return bool(rows)
+
+
+async def _complete_child_whose_work_is_back(
+    user_id: str, session_id: str, error: str | None
+) -> None:
+    """Complete the record of a background child whose own turn ended with
+    work of its own still out, once the last of that work has come back to
+    it: its answer is then the latest row of its chat, its continuations'
+    included, and it ends the way that last continuation ended."""
+    if await has_open_handoffs(user_id, session_id):
+        return
+    tasks = await db.query_raw_with_schema(
+        """SELECT * FROM {schema_prefix}"ChatBackgroundTask"
+        WHERE "userId"=$1 AND "childSessionId"=$2
+          AND outcome IS NULL AND "startedAt" IS NOT NULL""",
+        user_id,
+        session_id,
+        model=BackgroundTask,
+    )
+    for task in tasks:
+        await complete_background_task(
+            task.id,
+            user_id,
+            _outcome_of(error),
+            result_sequence=await _answer_sequence(task.child_turn_id, True),
+        )
+
+
+async def _answer_sequence(child_turn_id: str, turn_held: bool) -> int | None:
+    """The last assistant row of the child's turn, which begins at its launch
+    row. The turn owns every later row while the worker holds it, and while
+    the chat still records it as the active turn (admission clears that
+    identity and dispatch records the next one, so a later turn, started or
+    finished, always shows); otherwise it ends at the next user row. One
+    statement reads the chat and its rows in one snapshot, so a turn admitted
+    between two reads cannot slip its answer past the check."""
+    rows = await db.query_raw_with_schema(
+        """SELECT message.sequence FROM {schema_prefix}"ChatMessage" message
         JOIN {schema_prefix}"ChatMessage" launch ON launch.id=$1
             AND message."sessionId"=launch."sessionId"
+        JOIN {schema_prefix}"ChatSession" chat ON chat.id=launch."sessionId"
         WHERE message.role='assistant' AND message.sequence>launch.sequence
-          AND ($2::boolean OR NOT EXISTS (
+          AND ($2::boolean OR chat.metadata->>'_active_turn_id'=$1 OR NOT EXISTS (
             SELECT 1 FROM {schema_prefix}"ChatMessage" next
             WHERE next."sessionId"=launch."sessionId" AND next.role='user'
               AND next.sequence>launch.sequence AND next.sequence<message.sequence
           )) ORDER BY message.sequence DESC LIMIT 1""",
-        task.child_turn_id,
+        child_turn_id,
         turn_held,
-        model=ChatMessage,
     )
-    result = (messages[0].content or "") if messages else ""
-    await complete_background_task(task.id, user_id, outcome, result[:24000])
+    return int(rows[0]["sequence"]) if rows else None
 
 
 async def complete_background_task(
-    task_id: str, user_id: str, outcome: BackgroundOutcome, result: str = ""
+    task_id: str,
+    user_id: str,
+    outcome: BackgroundOutcome,
+    result_sequence: int | None = None,
 ) -> None:
     await db.execute_raw_with_schema(
         '''WITH finished AS (UPDATE {schema_prefix}"ChatBackgroundTask"
-        SET outcome=$3, result=$4, "updatedAt"=CURRENT_TIMESTAMP
+        SET outcome=$3, "resultSequence"=$4::int, "updatedAt"=CURRENT_TIMESTAMP
         WHERE id=$1 AND "userId"=$2 AND outcome IS NULL RETURNING "childTurnId", outcome)
         UPDATE {schema_prefix}"ChatMessage" message SET metadata=
             COALESCE(metadata,'{{}}'::jsonb) || jsonb_build_object('background_task_outcome',finished.outcome)
@@ -220,7 +281,7 @@ async def complete_background_task(
         task_id,
         user_id,
         outcome,
-        result,
+        result_sequence,
     )
 
 
@@ -300,32 +361,6 @@ async def suppress_background_followup(task_id: str, user_id: str) -> None:
     await _close(db.prisma, task_id, user_id)
 
 
-async def get_background_followup_envelope(
-    task_id: str, user_id: str
-) -> TurnEnvelope | None:
-    task = await get_background_task(task_id, user_id)
-    if task is None or task.followup_state != "queued":
-        return None
-    parent = await ChatSession.prisma().find_unique(
-        where={"id": task.parent_session_id}
-    )
-    if parent is None or not _matches(parent, task):
-        return None
-    where: ChatMessageWhereInput = {
-        "id": task.wake_id,
-        "sessionId": parent.id,
-        "role": "user",
-    }
-    # Admission marks the session running before dispatch records its turn ID.
-    # Read bounds by wake ID; cancellation separately fences the active turn.
-    message = await ChatMessage.prisma().find_first(where=where)
-    if message is None:
-        return None
-    return TurnEnvelope.model_validate(
-        _parse_json_field(message.metadata, default={}).get("envelope")
-    )
-
-
 async def release_deleted_background_turn(
     task_id: str, user_id: str, session_id: str, turn_id: str
 ) -> bool:
@@ -346,29 +381,117 @@ async def release_deleted_background_turn(
     )
 
 
-async def release_expired_background_turn(
-    task_id: str,
-    user_id: str,
-    session_id: str,
-    turn_id: str,
-    deadline: datetime,
-) -> None:
-    task = await get_background_task(task_id, user_id)
-    if task is None or (session_id, turn_id) not in (
+async def release_abandoned_background_turn(
+    task: BackgroundTask, session_id: str, turn_id: str, before: datetime
+) -> bool:
+    """Release a chat still ``running`` one of the task's own turns with no
+    live worker: the orphan rule the chat routes apply, fenced to that turn
+    and to a row untouched since ``before``."""
+    if (session_id, turn_id) not in (
         (task.child_session_id, task.child_turn_id),
         (task.parent_session_id, task.wake_id),
     ):
-        return
-    await db.execute_raw_with_schema(
-        """UPDATE {schema_prefix}"ChatSession" session SET "chatStatus"='idle'
-        WHERE session.id=$1 AND "userId"=$2 AND "chatStatus"='running'
-          AND "updatedAt" < $4::timestamptz
-          AND session.metadata->>'_active_turn_id'=$3""",
-        session_id,
-        user_id,
-        turn_id,
-        deadline,
+        return False
+    return bool(
+        await db.execute_raw_with_schema(
+            """UPDATE {schema_prefix}"ChatSession" session SET "chatStatus"='idle'
+            WHERE session.id=$1 AND "userId"=$2 AND "chatStatus"='running'
+              AND "updatedAt" < $4::timestamptz
+              AND session.metadata->>'_active_turn_id'=$3""",
+            session_id,
+            task.user_id,
+            turn_id,
+            before,
+        )
     )
+
+
+async def background_child_result(
+    session_id: str, user_id: str
+) -> BackgroundChildResult | None:
+    """A background child's recorded state. None for a chat that is not a
+    background child; an outcome of None while the child's turn has not been
+    recorded; otherwise the answer and tool calls of that turn, read up to the
+    row recorded when it ended, so a later turn in the chat is never mistaken
+    for it, and the window the turn's files were written in."""
+    tasks = await db.query_raw_with_schema(
+        """SELECT * FROM {schema_prefix}"ChatBackgroundTask"
+        WHERE "userId"=$1 AND "childSessionId"=$2""",
+        user_id,
+        session_id,
+        model=BackgroundTask,
+    )
+    task = tasks[0] if tasks else None
+    if task is None:
+        return None
+    if task.outcome is None:
+        return BackgroundChildResult()
+    if task.result_sequence is None:
+        # Ended without an answer row: the turn's window still bounds its
+        # files, from its launch to the next user row after it.
+        windows = await db.query_raw_with_schema(
+            """SELECT launch."createdAt" AS "writtenFrom", (
+                SELECT min(next."createdAt") FROM {schema_prefix}"ChatMessage" next
+                WHERE next."sessionId"=$1 AND next.role='user'
+                  AND next.sequence>launch.sequence
+              ) AS "writtenUntil"
+            FROM {schema_prefix}"ChatMessage" launch WHERE launch.id=$2""",
+            session_id,
+            task.child_turn_id,
+            model=_TurnWindow,
+        )
+        window = windows[0] if windows else None
+        return BackgroundChildResult(
+            outcome=task.outcome,
+            written_from=window.written_from if window else None,
+            written_until=window.written_until if window else None,
+        )
+    rows = await db.query_raw_with_schema(
+        """SELECT message.content, message."toolCalls",
+          launch."createdAt" AS "writtenFrom", (
+            SELECT min(next."createdAt") FROM {schema_prefix}"ChatMessage" next
+            WHERE next."sessionId"=$1 AND next.role='user' AND next.sequence>$3
+          ) AS "writtenUntil"
+        FROM {schema_prefix}"ChatMessage" message
+        JOIN {schema_prefix}"ChatMessage" launch ON launch.id=$2
+        WHERE message."sessionId"=$1 AND message.role='assistant'
+          AND message.sequence>launch.sequence AND message.sequence<=$3
+        ORDER BY message.sequence""",
+        session_id,
+        task.child_turn_id,
+        task.result_sequence,
+        model=_RecordedRow,
+    )
+    return BackgroundChildResult(
+        outcome=task.outcome,
+        response_text=(rows[-1].content or "") if rows else "",
+        tool_calls=[call for row in rows for call in _tool_calls_of(row.tool_calls)],
+        written_from=rows[0].written_from if rows else None,
+        written_until=rows[0].written_until if rows else None,
+    )
+
+
+class _TurnWindow(BaseModel):
+    """The recorded turn's window: from its launch row to the next user row
+    after its answer, if any."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+    written_from: datetime
+    written_until: datetime | None = None
+
+
+class _RecordedRow(_TurnWindow):
+    """An assistant row of the recorded turn, with the turn's window."""
+
+    content: str | None = None
+    tool_calls: Any = None
+
+
+def _tool_calls_of(raw: Any) -> list[dict[str, Any]]:
+    """The tool calls a persisted assistant row carries, however the driver
+    returned the JSON column."""
+    calls = json.loads(raw) if isinstance(raw, str) else raw
+    return [call for call in (calls or []) if isinstance(call, dict)]
 
 
 async def cancel_queued_background_followup(user_id: str, session_id: str) -> bool:

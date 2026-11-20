@@ -2,7 +2,7 @@ import { useNowSecond } from "@/hooks/useNowSecond";
 import { SHOW_TIME_AFTER_SECONDS } from "../../JobStatsBar/constants";
 import { formatElapsed } from "../../JobStatsBar/formatElapsed";
 import { getElapsedSeconds } from "../../JobStatsBar/useElapsedTimer";
-import { DrawnLineLoader } from "../../DrawnLineLoader/DrawnLineLoader";
+import { StoneStackLoader } from "../../StoneStackLoader/StoneStackLoader";
 import { SwapText } from "../../ToolChain/SwapText";
 
 interface Props {
@@ -22,6 +22,12 @@ interface Props {
    * here: they describe plumbing, not anything the user needs to know.
    */
   statusMessage?: string | null;
+  /**
+   * The material colour of whoever is thinking (Otto's lavender, an expert's
+   * own). Leave it out for a wait nobody is thinking through, such as an
+   * upload or a reconnect: the loader then stays the grey of the label.
+   */
+  color?: string | null;
 }
 
 export function ThinkingIndicator({
@@ -29,6 +35,7 @@ export function ThinkingIndicator({
   startedAtMs,
   elapsedSeconds = 0,
   statusMessage,
+  color,
 }: Props) {
   const hasClock = startedAtMs !== null && startedAtMs !== undefined;
   const nowMs = useNowSecond(active && hasClock);
@@ -43,7 +50,7 @@ export function ThinkingIndicator({
       role="status"
       aria-live="polite"
     >
-      <DrawnLineLoader className="text-foreground-secondary" size={16} />
+      <StoneStackLoader size={16} color={color} />
       <SwapText
         text={statusMessage ?? "Thinking…"}
         shimmer

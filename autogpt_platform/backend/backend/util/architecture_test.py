@@ -18,44 +18,8 @@ import pytest
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
-# ---------------------------------------------------------------------------
-# Rule: no process-wide @cached(...) around event-loop-bound async clients
-# ---------------------------------------------------------------------------
-#
-# Motivation: `backend.util.cache.cached` stores its result in a process-wide
-# dict for ttl_seconds. Async clients (AsyncOpenAI, httpx.AsyncClient,
-# AsyncRabbitMQ, ...) wrap connection pools whose internal
-# asyncio primitives lazily bind to the first event loop that uses them. The
-# executor runs two long-lived loops on separate threads; once the cache is
-# populated from loop A, any subsequent call from loop B raises
-# `RuntimeError: ... bound to a different event loop`, surfaced as an opaque
-# `APIConnectionError: Connection error.` and poisons the cache for a full
-# TTL window.
-#
-# Use `per_loop_cached` (keyed on id(running loop)) or construct per-call.
-
-LOOP_BOUND_TYPES = frozenset(
-    {
-        "AsyncOpenAI",
-        "AsyncClient",  # httpx, openai internal
-        "AsyncRabbitMQ",
-        "AsyncRedisExecutionEventBus",
-    }
-)
-
-# Pre-existing offenders tracked for future cleanup. Exclude from this test
-# so the rule can still catch NEW violations without blocking unrelated PRs.
-_KNOWN_OFFENDERS = frozenset(
-    {
-        "util/clients.py get_openai_client",
-        # Inner helper extracted from ``get_openai_client`` so the local-
-        # transport branch shares one cached client across both
-        # ``prefer_openrouter`` arms (no semantic change vs the parent
-        # offender — same loop-binding caveat applies, will be migrated
-        # together when ``get_openai_client`` is moved to ``per_loop_cached``).
-        "util/clients.py _get_local_openai_client",
-    }
-)
+# Async clients shared by the whole process (AsyncOpenAI, httpx.AsyncClient,
+# ...) are rejected by architecture_loop_bound_clients_test.py.
 
 
 def _decorator_name(node: ast.expr) -> str | None:
@@ -211,7 +175,6 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "api/features/onboarding_dump/transcription_test.py asyncio.sleep": 2,
     "api/features/orgs/routes_test.py asyncio.sleep": 1,
     "blocks/desktop/desktop_api_test.py asyncio.sleep": 1,
-    "blocks/exa/cost_tracking_test.py asyncio.sleep": 4,
     "blocks/rss_test.py asyncio.sleep": 2,
     "blocks/time_blocks_test.py asyncio.sleep": 2,
     "copilot/baseline/reasoning_test.py time.monotonic": 1,
@@ -240,7 +203,6 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "integrations/oauth/todoist_test.py time.time": 1,
     "monitoring/auth_identity_monitor_test.py time.monotonic": 1,
     "notifications/checkout_backfill_test.py asyncio.sleep": 6,
-    "notifications/consumer_test.py asyncio.sleep": 5,
     "notifications/mailerlite_backfill_test.py asyncio.sleep": 1,
     "notifications/mailerlite_field_backfill_test.py asyncio.sleep": 1,
     "notifications/role_backfill_test.py asyncio.sleep": 1,
@@ -812,17 +774,13 @@ def _enclosing_functions(tree: ast.Module) -> dict[ast.AST, str]:
 
 
 def test_known_offenders_use_posix_separators():
-    """_KNOWN_OFFENDERS must use forward slashes since the comparison key
-    is built from pathlib.Path.relative_to() which uses OS-native separators.
-    On Windows this would be backslashes, causing false positives.
+    """Known-offender entries must use forward slashes since the comparison
+    key is built from pathlib.Path.relative_to() which uses OS-native
+    separators. On Windows this would be backslashes, causing false positives.
 
     Ensure the key construction normalises to forward slashes.
     """
-    for entry in (
-        _KNOWN_OFFENDERS
-        | _DATACLASS_KNOWN_OFFENDERS
-        | set(_GLOBAL_CLOCK_PATCH_OFFENDERS)
-    ):
+    for entry in _DATACLASS_KNOWN_OFFENDERS | set(_GLOBAL_CLOCK_PATCH_OFFENDERS):
         path_part = entry.split()[0]
         assert "\\" not in path_part, (
             f"known-offenders entry uses backslash: {entry!r}. "
@@ -830,38 +788,153 @@ def test_known_offenders_use_posix_separators():
         )
 
 
-def test_no_process_cached_loop_bound_clients():
+# ---------------------------------------------------------------------------
+# Rule: a pattern that isn't a literal is compiled through compile_user_regex
+# ---------------------------------------------------------------------------
+#
+# Motivation: compile_user_regex bounds what a pattern compiles to and skips the
+# module cache, and a block never hands `re` its input as a pattern (re.escape of
+# an input is fine). Input copied to a local first is followed within one module.
+
+_REGEX_FUNCTIONS = frozenset(
+    {
+        "compile",
+        "search",
+        "match",
+        "fullmatch",
+        "finditer",
+        "findall",
+        "sub",
+        "subn",
+        "split",
+        "splititer",
+    }
+)
+_USER_REGEX_MODULE = "util/user_regex.py"
+
+
+def test_patterns_from_input_go_through_compile_user_regex():
     offenders: list[str] = []
     for py in _iter_backend_py_files():
-        try:
-            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
-        except SyntaxError:
+        rel = py.relative_to(BACKEND_ROOT)
+        if _is_test_file(rel) or rel.as_posix() == _USER_REGEX_MODULE:
             continue
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            decorators = {_decorator_name(d) for d in node.decorator_list}
-            if "cached" not in decorators:
-                continue
-            bound = _annotation_names(node.returns) & LOOP_BOUND_TYPES
-            if bound:
-                rel = py.relative_to(BACKEND_ROOT)
-                key = f"{rel.as_posix()} {node.name}"
-                if key in _KNOWN_OFFENDERS:
-                    continue
-                offenders.append(
-                    f"{rel}:{node.lineno} {node.name}() -> {sorted(bound)}"
-                )
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        for lineno, reason in _unchecked_pattern_calls(tree, rel.parts[0] == "blocks"):
+            offenders.append(f"  backend/{rel}:{lineno} {reason}")
 
     assert not offenders, (
-        "Process-wide @cached(...) must not wrap functions returning event-"
-        "loop-bound async clients. These objects lazily bind their connection "
-        "pool to the first event loop that uses them; caching them across "
-        "loops poisons the cache and surfaces as opaque connection errors.\n\n"
-        "Offenders:\n  " + "\n  ".join(offenders) + "\n\n"
-        "Fix: construct the client per-call, or introduce a per-loop factory "
-        "keyed on id(asyncio.get_running_loop()). See "
-        "backend/util/clients.py::get_openai_client for context."
+        "Compile a pattern that isn't a string literal with "
+        "`backend.util.user_regex.compile_user_regex`:\n" + "\n".join(sorted(offenders))
+    )
+
+
+@pytest.mark.parametrize(
+    "source, in_block, flagged",
+    [
+        ("import regex\nregex.search(pattern, text)", False, True),
+        ("import regex as rx\nrx.compile(pattern)", False, True),
+        ("from regex import finditer\nfinditer(pattern, text)", False, True),
+        ("import regex\nregex.search(r'\\d+', text)", False, False),
+        ("import re\nre.search(input_data.pattern, text)", True, True),
+        ("import re\nre.compile(rf'{input_data.prefix}\\d')", True, True),
+        ("import re\nre.search(re.escape(input_data.word), text)", True, False),
+        ("import re\nre.search(input_data.pattern, text)", False, False),
+        ("import re\np = input_data.pattern\nre.search(p, text)", True, True),
+        ("import re\np: str = input_data.pattern\nre.search(p, text)", True, True),
+        ("import re\nif x:\n    q = input_data.p\np = q\nre.search(p, t)", True, True),
+        ("import re, html\nre.search(html.escape(input_data.p), t)", True, True),
+        ("import re\nre.search(pattern=input_data.pattern, string=t)", True, True),
+        ("import regex\nregex.compile(pattern=pattern)", False, True),
+        ("from regex import compile as c\nc(pattern)", False, True),
+    ],
+)
+def test_unchecked_pattern_calls_reads_each_form(
+    source: str, in_block: bool, flagged: bool
+):
+    assert bool(_unchecked_pattern_calls(ast.parse(source), in_block)) is flagged
+
+
+def _is_test_file(rel: pathlib.PurePath) -> bool:
+    return (
+        "test" in rel.parts[:-1]
+        or rel.name.endswith("_test.py")
+        or rel.name.startswith("test_")
+        or rel.name == "conftest.py"
+    )
+
+
+def _unchecked_pattern_calls(tree: ast.Module, in_block: bool) -> list[tuple[int, str]]:
+    modules: dict[str, str] = {}
+    functions: dict[str, tuple[str, str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in ("re", "regex"):
+                    modules[alias.asname or alias.name] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module in ("re", "regex"):
+            for alias in node.names:
+                if alias.name in _REGEX_FUNCTIONS:
+                    functions[alias.asname or alias.name] = (node.module, alias.name)
+    inputs = _names_holding_input(tree)
+
+    offenses: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            module, name = modules.get(func.value.id), func.attr
+        elif isinstance(func, ast.Name) and func.id in functions:
+            module, name = functions[func.id]
+        else:
+            continue
+        pattern = _argument(node, 0, "pattern")
+        if module is None or name not in _REGEX_FUNCTIONS or pattern is None:
+            continue
+        if module == "regex" and not (
+            isinstance(pattern, ast.Constant) and isinstance(pattern.value, str)
+        ):
+            offenses.append((node.lineno, f"passes `regex.{name}` a non-literal"))
+        elif module == "re" and in_block and _reads_input_unescaped(pattern, inputs):
+            offenses.append((node.lineno, f"passes `re.{name}` the block's input"))
+    return offenses
+
+
+def _names_holding_input(tree: ast.Module) -> set[str]:
+    names = {"input_data"}
+    assigns = [
+        (node.targets if isinstance(node, ast.Assign) else [node.target], node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None
+    ]
+    # ast.walk reaches a nested assignment after the shallower ones that read it.
+    while True:
+        added = {
+            target.id
+            for targets, value in assigns
+            if _reads_input_unescaped(value, names)
+            for target in targets
+            if isinstance(target, ast.Name)
+        } - names
+        if not added:
+            return names
+        names |= added
+
+
+def _reads_input_unescaped(node: ast.AST, inputs: set[str]) -> bool:
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "escape"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "re"
+    ):
+        return False
+    if isinstance(node, ast.Name) and node.id in inputs:
+        return True
+    return any(
+        _reads_input_unescaped(child, inputs) for child in ast.iter_child_nodes(node)
     )
 
 
@@ -957,9 +1030,17 @@ def test_only_cli_io_writes_to_the_cli_stdin():
 # `commands.run` goes through `run_sandbox_command`, or, like bash_exec,
 # follows a background handle with callbacks that stop at a limit; a code
 # interpreter sandbox is created or connected as `OutputLimitedCodeSandbox`.
+# A Local PC's files are read with `files.read_capped`, which asks its
+# companion for no more than the limit. Its commands run in one request whose
+# reply the companion cuts to a bounded prefix and the relay refuses past its
+# envelope limit; local_pc_file_tools.py holds only such commands.
 
 _SANDBOX_COMMAND_RUNNERS = frozenset(
-    {"util/sandbox_output.py", "copilot/tools/bash_exec.py"}
+    {
+        "util/sandbox_output.py",
+        "copilot/tools/bash_exec.py",
+        "copilot/sdk/local_pc_file_tools.py",
+    }
 )
 
 
@@ -1358,3 +1439,70 @@ def _calls_by_function(tree: ast.Module):
             yield from walk(child, function)
 
     yield from walk(tree, "<module>")
+
+
+# ---------------------------------------------------------------------------
+# Rule: no csv.Sniffer
+# ---------------------------------------------------------------------------
+#
+# Motivation: csv.Sniffer guesses a dialect with regular expressions that,
+# before CPython 3.13.15 (gh-109638, gh-98820), backtrack catastrophically on
+# quote-heavy text, and the Python the backend image installs has neither fix.
+# `re` holds the GIL while it matches, so a few KB of crafted CSV parsed for
+# AutoPilot stopped the whole process, worker thread or not. Guess a delimiter
+# by parsing the first rows with csv.reader instead
+# (backend.util.csv_delimiter.guess_delimiter).
+
+
+def test_no_csv_sniffer():
+    offenders: list[str] = []
+    for py in _iter_backend_py_files():
+        rel = py.relative_to(BACKEND_ROOT)
+        if _is_test_file(rel):
+            continue
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        offenders += [
+            f"  backend/{rel.as_posix()}:{line}" for line in _csv_sniffer_uses(tree)
+        ]
+    assert not offenders, (
+        "Don't use csv.Sniffer: its regular expressions can take hours on a few "
+        "KB of crafted text while holding the GIL. Guess a delimiter by parsing "
+        "the first rows with csv.reader (see backend.util.csv_delimiter):\n"
+        + "\n".join(sorted(offenders))
+    )
+
+
+@pytest.mark.parametrize(
+    "source, flagged",
+    [
+        ("import csv\ncsv.Sniffer().sniff(sample)", True),
+        ("import csv as c\nc.Sniffer()", True),
+        ("from csv import Sniffer\nSniffer().sniff(sample)", True),
+        ("from csv import Sniffer as S\nS()", True),
+        ("import csv\ncsv.reader(io.StringIO(text))", False),
+        ("class Sniffer:\n    pass\n\n\nSniffer()", False),
+    ],
+)
+def test_csv_sniffer_scan_reads_each_form(source: str, flagged: bool):
+    assert bool(_csv_sniffer_uses(ast.parse(source))) is flagged
+
+
+def _csv_sniffer_uses(tree: ast.Module) -> list[int]:
+    """Lines that reach csv.Sniffer: an attribute of a name bound to the csv
+    module, or an import of Sniffer from csv."""
+    csv_names: set[str] = set()
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            csv_names.update(a.asname or a.name for a in node.names if a.name == "csv")
+        elif isinstance(node, ast.ImportFrom) and node.module == "csv":
+            lines += [node.lineno for a in node.names if a.name == "Sniffer"]
+    lines += [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and node.attr == "Sniffer"
+        and isinstance(node.value, ast.Name)
+        and node.value.id in csv_names
+    ]
+    return sorted(lines)

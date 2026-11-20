@@ -11,10 +11,16 @@ import { useEffect } from "react";
 // signs in. A dropped session and the same person signing back in keep it.
 // resetQueries, not clear(): clear() leaves mounted observers pending for
 // good, while a reset refetches what is on screen for the new account (as
-// OrgTeamProvider does on an organization switch).
+// OrgTeamProvider does on an organization switch). The last account's
+// mutations go too: useMutationState and useIsMutating read them, and one
+// paused while offline would otherwise resume under the next account.
 export function useClearOnAccountChange(queryClient: QueryClient) {
   useEffect(
-    () => onAccountChange(() => void queryClient.resetQueries()),
+    () =>
+      onAccountChange(() => {
+        queryClient.getMutationCache().clear();
+        void queryClient.resetQueries();
+      }),
     [queryClient],
   );
 }

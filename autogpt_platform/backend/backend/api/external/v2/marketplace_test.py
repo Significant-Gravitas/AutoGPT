@@ -15,6 +15,9 @@ from prisma.enums import APIKeyPermission, SubmissionStatus
 from backend.api.features.library.exceptions import (
     LibraryAgentInAnotherOrganizationError,
 )
+from backend.api.features.store.submission_deletion_test_helpers import (
+    mock_submission_deletion,
+)
 
 from .errors import add_v2_exception_handlers
 from .marketplace import (
@@ -69,6 +72,42 @@ def test_an_overlong_creator_search_is_refused(
 
     assert response.status_code == 422
     creators.assert_not_awaited()
+
+
+def test_the_owner_reads_their_profile_before_any_workflow_is_listed(
+    client: fastapi.testclient.TestClient, mocker: pytest_mock.MockFixture
+) -> None:
+    mocker.patch(
+        "backend.api.external.v2.marketplace.store_db.get_user_profile",
+        new_callable=AsyncMock,
+        return_value=Mock(username="owner"),
+    )
+    creator_view = mocker.patch("prisma.models.Creator.prisma").return_value
+    creator_view.find_unique = AsyncMock(
+        return_value=prisma.models.Creator(
+            username="owner",
+            name="Owner",
+            avatar_url=None,
+            description="",
+            top_categories=[],
+            links=[],
+            num_agents=0,
+            agent_rating=0.0,
+            agent_runs=0,
+            is_featured=False,
+        )
+    )
+    mocker.patch(
+        "backend.api.features.store.db._is_creator_account_closed",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+
+    response = client.get("/marketplace/profile")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["username"] == "owner"
+    assert response.json()["num_agents"] == 0
 
 
 async def test_adding_a_listing_lands_in_the_credentials_organization(
@@ -173,17 +212,8 @@ def test_a_submission_that_cannot_be_deleted_says_why(
     status: SubmissionStatus,
     expected: int,
 ):
-    version = Mock(
-        id="slv-1",
-        storeListingId="sl-1",
-        submissionStatus=status,
-        StoreListing=Mock(owningOrgId=owning_org_id, owningUserId="user-1"),
-    )
-    client = AsyncMock()
-    client.find_unique.return_value = version
-    client.count.return_value = 1
-    mocker.patch.object(
-        prisma.models.StoreListingVersion, "prisma", return_value=client
+    mock_submission_deletion(
+        mocker, owning_user_id="user-1", owning_org_id=owning_org_id, status=status
     )
     app = fastapi.FastAPI()
     app.include_router(v2_router)

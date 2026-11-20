@@ -8,7 +8,6 @@ from typing import (
     Annotated,
     Any,
     AsyncGenerator,
-    Generator,
     Generic,
     Literal,
     Mapping,
@@ -64,7 +63,7 @@ from backend.util.exceptions import (
     NotFoundError,
     get_execution_failure_reason,
 )
-from backend.util.json import SafeJson
+from backend.util.json import SafeJson, sanitize_json
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Config
@@ -122,6 +121,9 @@ class ExecutionContext(BaseModel):
     # Execution hierarchy
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
+    # The workflows of the runs this run is nested in, outermost first; empty
+    # for a top-level run.
+    ancestor_graph_ids: list[str] = Field(default_factory=list)
 
     # File workspace (UserWorkspace — NOT the Team concept)
     workspace_id: Optional[str] = None
@@ -471,7 +473,7 @@ class GraphExecution(GraphExecutionMeta):
         }
 
         outputs: CompletedBlockOutput = reconstruct_run_outputs(
-            (exec.queue_time, exec.add_time, exec.input_data)
+            (exec.queue_time, exec.add_time, exec.input_data, exec.output_data)
             for exec in complete_node_executions
             if (block := get_block(exec.block_id))
             and block.block_type == BlockType.OUTPUT
@@ -746,6 +748,7 @@ async def get_graph_executions_count(
     started_time_lte: Optional[datetime] = None,
     updated_time_gte: Optional[datetime] = None,
     updated_time_lte: Optional[datetime] = None,
+    ended_time_gte: Optional[datetime] = None,
 ) -> int:
     """
     Get count of graph executions with optional filters.
@@ -760,6 +763,7 @@ async def get_graph_executions_count(
         started_time_lte: Optional maximum start time (when execution started running)
         updated_time_gte: Optional minimum update time
         updated_time_lte: Optional maximum update time
+        ended_time_gte: Optional minimum end time (terminal status reached)
 
     Returns:
         Count of matching graph executions
@@ -791,6 +795,9 @@ async def get_graph_executions_count(
             "gte": updated_time_gte or datetime.min.replace(tzinfo=timezone.utc),
             "lte": updated_time_lte or datetime.max.replace(tzinfo=timezone.utc),
         }
+
+    if ended_time_gte:
+        where_filter["endedAt"] = {"gte": ended_time_gte}
 
     if statuses:
         where_filter["OR"] = [{"executionStatus": status} for status in statuses]
@@ -1104,6 +1111,25 @@ def check_node_input_counts(
             )
 
 
+# Correlated on purpose: Prisma's `"Input": {"none": ...}` filter becomes an uncorrelated
+# NOT IN over every input row with that pin name, on every graph run, and times out.
+WAITING_NODE_EXEC_QUERY = """
+SELECT e.id
+FROM {schema_prefix}"AgentNodeExecution" e
+WHERE e."agentGraphExecutionId" = $1
+  AND e."agentNodeId" = $2
+  AND e."executionStatus" = 'INCOMPLETE'
+  AND ($4::text IS NULL OR e.id = $4::text)
+  AND NOT EXISTS (
+    SELECT 1
+    FROM {schema_prefix}"AgentNodeExecutionInputOutput" i
+    WHERE i."referencedByInputExecId" = e.id AND i.name = $3
+  )
+ORDER BY e."addedTime" ASC
+LIMIT 1
+"""
+
+
 async def upsert_execution_input(
     node_id: str,
     graph_exec_id: str,
@@ -1126,24 +1152,20 @@ async def upsert_execution_input(
         str: The id of the created or existing AgentNodeExecution.
         dict[str, Any]: Node input data; key is the input name, value is the input data.
     """
-    existing_exec_query_filter: AgentNodeExecutionWhereInput = {
-        "agentGraphExecutionId": graph_exec_id,
-        "agentNodeId": node_id,
-        "executionStatus": ExecutionStatus.INCOMPLETE,
-        "Input": {
-            "none": {
-                "name": input_name,
-                "time": {"gte": datetime.now(tz=timezone.utc) - timedelta(days=1)},
-            }
-        },
-    }
-    if node_exec_id:
-        existing_exec_query_filter["id"] = node_exec_id
-
-    existing_execution = await AgentNodeExecution.prisma().find_first(
-        where=existing_exec_query_filter,
-        order={"addedTime": "asc"},
-        include={"Input": True, "GraphExecution": True},
+    waiting = await query_raw_with_schema(
+        WAITING_NODE_EXEC_QUERY,
+        graph_exec_id,
+        node_id,
+        input_name,
+        node_exec_id or None,
+    )
+    existing_execution = (
+        await AgentNodeExecution.prisma().find_unique(
+            where={"id": waiting[0]["id"]},
+            include={"Input": True, "GraphExecution": True},
+        )
+        if waiting
+        else None
     )
     json_input_data = SafeJson(input_data)
 
@@ -1427,6 +1449,102 @@ async def update_node_execution_status(
     raise ValueError(f"Execution {node_exec_id} not found.")
 
 
+# How many moderation writes run at once: enough to mask a big run quickly,
+# few enough to leave the database manager's connection pool to other callers.
+MODERATION_WRITES_IN_FLIGHT = 10
+
+
+async def mark_node_executions_moderated(
+    graph_exec_id: str,
+    stats_patches: dict[str, dict[str, Any]],
+    from_statuses: list[ExecutionStatus],
+) -> list[NodeExecutionResult]:
+    """Moderation only: set node executions to FAILED and merge each entry of
+    `stats_patches` (node_exec_id -> error / cleared_inputs / cleared_outputs)
+    into that row's existing stats.
+
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+
+    Output moderation fails nodes that already COMPLETED, which
+    VALID_STATUS_TRANSITIONS rejects on purpose, so this skips that map and
+    only writes rows of this run still in `from_statuses`. Don't use it for
+    anything else.
+
+    Returns this run's FAILED rows that carry their patch, re-read so they show
+    the masked data. That includes rows an earlier delivery of the same call
+    wrote, since the RPC client retries. Rows that don't carry their patch are
+    logged at error level: their content stays visible.
+    """
+    statuses = [s.value for s in from_statuses]
+    rows = await AgentNodeExecution.prisma().find_many(
+        where={
+            "id": {"in": list(stats_patches)},
+            "agentGraphExecutionId": graph_exec_id,
+            "executionStatus": {"in": statuses},
+        }
+    )
+    now = datetime.now(tz=timezone.utc)
+    for start in range(0, len(rows), MODERATION_WRITES_IN_FLIGHT):
+        await asyncio.gather(
+            *(
+                AgentNodeExecution.prisma().update_many(
+                    where={"id": row.id, "executionStatus": {"in": statuses}},
+                    data={
+                        "executionStatus": ExecutionStatus.FAILED,
+                        "endedTime": now,
+                        "stats": SafeJson(
+                            _moderated_stats(row.id, row.stats, stats_patches[row.id])
+                        ),
+                    },
+                )
+                for row in rows[start : start + MODERATION_WRITES_IN_FLIGHT]
+            )
+        )
+
+    failed = await AgentNodeExecution.prisma().find_many(
+        where={
+            "id": {"in": list(stats_patches)},
+            "agentGraphExecutionId": graph_exec_id,
+            "executionStatus": ExecutionStatus.FAILED,
+        },
+        include=EXECUTION_RESULT_INCLUDE,
+        order=EXECUTION_RESULT_ORDER,
+    )
+    masked = [row for row in failed if _has_patch(row.stats, stats_patches[row.id])]
+    if missed := set(stats_patches) - {row.id for row in masked}:
+        logger.error(
+            f"Graph execution #{graph_exec_id}: moderation could not clear "
+            f"{len(missed)} of {len(stats_patches)} node executions "
+            f"(not in {statuses}, or not in this run): {sorted(missed)}"
+        )
+    return [NodeExecutionResult.from_db(row) for row in masked]
+
+
+def _moderated_stats(
+    node_exec_id: str, existing: Any, patch: dict[str, Any]
+) -> dict[str, Any]:
+    """`patch` merged into a row's existing stats, or `patch` alone when the
+    merge doesn't validate: `NodeExecutionResult.from_db` drops stats it can't
+    validate, the moderation fields with them, which would unmask the row."""
+    merged = {**(existing if isinstance(existing, dict) else {}), **patch}
+    try:
+        NodeExecutionStats.model_validate(merged)
+    except (ValueError, ValidationError) as e:
+        logger.warning(
+            f"Node execution #{node_exec_id}: its stats don't validate, so "
+            f"moderation replaces them with its own fields and the rest is lost: {e}"
+        )
+        return patch
+    return merged
+
+
+def _has_patch(stats: Any, patch: dict[str, Any]) -> bool:
+    """Whether stored `stats` hold every field of `patch`, as stored: `SafeJson`
+    strips control characters."""
+    stored = stats if isinstance(stats, dict) else {}
+    return all(stored.get(key) == value for key, value in sanitize_json(patch).items())
+
+
 def _get_update_status_data(
     status: ExecutionStatus,
     execution_data: BlockInput | None = None,
@@ -1616,6 +1734,9 @@ class NodeExecutionEntry(BaseModel):
     queued_by: Optional[Literal["graph_start", "node_output"]] = Field(
         default=None, exclude=True
     )
+    # The node is queued only to fail on an input it can't use, so it isn't
+    # billed. In-memory only; a restart derives it again from the inputs.
+    input_error: Optional[str] = Field(default=None, exclude=True)
 
 
 class ExecutionQueue(Generic[T]):
@@ -1743,20 +1864,6 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
         super().publish_event(event, exec_channel(user_id, graph_id, graph_exec_id))
         super().publish_event(event, graph_all_channel(user_id, graph_id))
 
-    def listen(
-        self, user_id: str, graph_id: str, graph_exec_id: str
-    ) -> Generator[ExecutionEvent, None, None]:
-        """Stream events for a specific graph execution."""
-        for event in self.listen_events(exec_channel(user_id, graph_id, graph_exec_id)):
-            yield event
-
-    def listen_graph(
-        self, user_id: str, graph_id: str
-    ) -> Generator[ExecutionEvent, None, None]:
-        """Stream every event for every execution of ``graph_id``."""
-        for event in self.listen_events(graph_all_channel(user_id, graph_id)):
-            yield event
-
 
 class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     Model = ExecutionEvent  # type: ignore
@@ -1809,7 +1916,8 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     async def listen(
         self, user_id: str, graph_id: str, graph_exec_id: str
     ) -> AsyncGenerator[ExecutionEvent, None]:
-        """Stream events for a specific graph execution."""
+        """Stream events for a specific graph execution. Raises
+        ``EventStreamLostError`` on loss; ``listen_with_resync`` survives one."""
         async for event in self.listen_events(
             exec_channel(user_id, graph_id, graph_exec_id)
         ):
@@ -1818,7 +1926,8 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     async def listen_graph(
         self, user_id: str, graph_id: str
     ) -> AsyncGenerator[ExecutionEvent, None]:
-        """Stream every event for every execution of ``graph_id``."""
+        """Stream every event for every execution of ``graph_id``. Raises
+        ``EventStreamLostError`` on loss; ``listen_with_resync`` survives one."""
         async for event in self.listen_events(graph_all_channel(user_id, graph_id)):
             yield event
 

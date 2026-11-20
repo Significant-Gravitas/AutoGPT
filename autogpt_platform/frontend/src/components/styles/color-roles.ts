@@ -49,7 +49,8 @@ export const COLOR_ROLE_GROUPS = [
   },
   {
     name: "Status",
-    description: "Error, warning, success and info.",
+    description:
+      "Error, warning, success and info, and the error and success text for the always-dark toast, terminal and tooltip.",
     roles: [
       "error",
       "error-hover",
@@ -65,6 +66,8 @@ export const COLOR_ROLE_GROUPS = [
       "info",
       "info-foreground",
       "info-surface",
+      "error-inverse",
+      "success-inverse",
     ],
   },
   {

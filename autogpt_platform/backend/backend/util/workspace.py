@@ -9,8 +9,10 @@ import asyncio
 import logging
 import mimetypes
 import posixpath
+import re
 import uuid
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
+from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
 from prisma.errors import UniqueViolationError
@@ -262,6 +264,7 @@ class WorkspaceManager:
         overwrite: bool = False,
         metadata: Optional[dict] = None,
         scanned_checksums: Collection[str] = (),
+        rename_on_conflict: bool = False,
     ) -> WorkspaceFile:
         """
         Write file to workspace.
@@ -281,6 +284,8 @@ class WorkspaceManager:
             scanned_checksums: SHA-256s of bytes the server has already
                 scanned clean; content hashing to one of them is not scanned
                 again. Never pass hashes a client supplied.
+            rename_on_conflict: When the path is taken, store beside it as
+                ``name (n).ext`` instead of failing or replacing the file.
 
         Returns:
             Created WorkspaceFile instance
@@ -313,6 +318,11 @@ class WorkspaceManager:
         # Resolve path with session prefix
         path = self._resolve_path(path)
         self._authorize_path(path, write=True)
+        requested_path = path
+        if rename_on_conflict:
+            path = await self._free_path(requested_path)
+            if path != requested_path:
+                filename = posixpath.basename(path)
         is_internal = is_internal_workspace_file(
             name=filename, path=path, metadata=metadata
         )
@@ -320,13 +330,28 @@ class WorkspaceManager:
         # Both refusals come before virus scanning, so a cheap check isn't
         # blocked by a potentially slow or unavailable scanner. The quota one
         # is early only: the row's own transaction holds it against concurrent
-        # writes. An overwrite does not count the file it replaces.
+        # writes. An overwrite does not count the file it replaces. The file
+        # at the path is read beside the quota; a failed read is raised in the
+        # order the reads ran when the path was read after the quota.
         db = workspace_db()
-        storage_limit, current_usage = await asyncio.gather(
+        storage_limit, current_usage, existing = await asyncio.gather(
             get_workspace_storage_limit_bytes(self.user_id),
             db.get_workspace_total_size(self.workspace_id),
+            # A renamed write replaces nothing, even a file that took its free
+            # name since.
+            (
+                _no_file()
+                if rename_on_conflict
+                else db.get_workspace_file_by_path(self.workspace_id, path)
+            ),
+            return_exceptions=True,
         )
-        existing = await db.get_workspace_file_by_path(self.workspace_id, path)
+        if isinstance(storage_limit, BaseException):
+            raise storage_limit
+        if isinstance(current_usage, BaseException):
+            raise current_usage
+        if isinstance(existing, BaseException):
+            raise existing
         if existing is not None and not overwrite:
             raise ValueError(f"File already exists at path: {path}")
         if existing is not None:
@@ -362,17 +387,20 @@ class WorkspaceManager:
         # Create database record - handle race condition where another request
         # created a file at the same path between our check and create
         async def _persist_db_record(
+            path: str,
+            name: str,
             replacing: WorkspaceFile | None,
-            retries: int = 2 if overwrite else 0,
+            retries: int = 2 if overwrite or rename_on_conflict else 0,
         ) -> tuple[WorkspaceFile, WorkspaceFile | None]:
-            """Create DB record in place of ``replacing``, retrying against
-            the file then at the path on conflict if overwrite=True; returns
-            the record and the file it replaced."""
+            """Create DB record at ``path`` in place of ``replacing``. On
+            conflict, retry at the next free name when renaming, else against
+            the file then at the path if overwrite=True. Returns the record
+            and the file it replaced."""
             try:
                 file = await db.create_workspace_file(
                     workspace_id=self.workspace_id,
                     file_id=file_id,
-                    name=filename,
+                    name=name,
                     path=path,
                     storage_path=storage_path,
                     mime_type=mime_type,
@@ -384,11 +412,17 @@ class WorkspaceManager:
                     replacing_file_id=replacing.id if replacing else None,
                 )
             except UniqueViolationError:
+                if retries > 0 and rename_on_conflict:
+                    # Another write took the free name after we looked.
+                    free = await self._free_path(requested_path)
+                    return await _persist_db_record(
+                        free, posixpath.basename(free), None, retries - 1
+                    )
                 if retries > 0:
                     current = await db.get_workspace_file_by_path(
                         self.workspace_id, path
                     )
-                    return await _persist_db_record(current, retries - 1)
+                    return await _persist_db_record(path, name, current, retries - 1)
                 if overwrite:
                     raise ValueError(
                         f"Unable to overwrite file at path: {path} "
@@ -426,7 +460,7 @@ class WorkspaceManager:
                 replaced_storage_path = publication.replaced_storage_path
                 replaced_file_id = publication.replaced_file_id
             else:
-                file, replaced = await _persist_db_record(existing)
+                file, replaced = await _persist_db_record(path, filename, existing)
                 if replaced is not None:
                     replaced_storage_path = replaced.storage_path
                     replaced_file_id = replaced.id
@@ -447,6 +481,7 @@ class WorkspaceManager:
                 logger.warning("Failed to clean up replaced blob", exc_info=True)
 
         if replaced_file_id and replaced_file_id != file.id:
+            file = file.model_copy(update={"replaced_file_id": replaced_file_id})
             try:
                 from backend.api.features.workspace.embeddings import (
                     delete_workspace_file_embedding,
@@ -459,8 +494,8 @@ class WorkspaceManager:
                 logger.warning("Failed to clean up replaced embedding", exc_info=True)
 
         logger.info(
-            f"Wrote file {file.id} ({filename}) to workspace {self.workspace_id} "
-            f"at path {path}, size={len(content)} bytes"
+            f"Wrote file {file.id} ({file.name}) to workspace {self.workspace_id} "
+            f"at path {file.path}, size={len(content)} bytes"
         )
 
         # Fire-and-forget: index this file in the hybrid-search store so
@@ -483,6 +518,24 @@ class WorkspaceManager:
 
         return file
 
+    async def _free_path(self, path: str) -> str:
+        """``path`` if no live file holds it, else the next ``name (n).ext``
+        beside it."""
+        db = workspace_db()
+        if await db.get_workspace_file_by_path(self.workspace_id, path) is None:
+            return path
+        stem, ext = posixpath.splitext(path)
+        prefix = f"{stem} ("
+        numbered = re.compile(re.escape(prefix) + r"(\d+)\)" + re.escape(ext))
+        taken = [
+            int(match.group(1))
+            for file in await db.list_workspace_files(
+                self.workspace_id, path_prefix=prefix
+            )
+            if (match := numbered.fullmatch(file.path))
+        ]
+        return f"{prefix}{max(taken, default=0) + 1}){ext}"
+
     async def _was_retired(self, file_id: str) -> bool:
         """Whether the replaced file is gone: one renamed away before the
         insert is still live, and keeps its blob. Unknown counts as live."""
@@ -501,6 +554,7 @@ class WorkspaceManager:
         scanned_checksums: Collection[str] = (),
         *,
         config: Config | None = None,
+        on_change: Callable[[], None] | None = None,
     ) -> WorkspaceFile:
         """Write a skill package as one change: ``root`` is its SKILL.md,
         ``files`` the other files that changed, and ``removed_paths`` the
@@ -509,6 +563,9 @@ class WorkspaceManager:
         Every blob is checked, scanned and stored before one transaction
         swaps the rows, so a failure anywhere leaves the previous package
         exactly as it was, rather than new files beside an old SKILL.md.
+
+        ``on_change`` marks a confirmed or uncertain publication, including a
+        lost reply. Staging failures and explicit refusals leave live rows alone.
         """
         package = [
             item.model_copy(update={"path": self._resolve_path(item.path)})
@@ -539,13 +596,23 @@ class WorkspaceManager:
                 storage_limit_bytes=storage_limit,
                 **stored[0].model_dump(),
             )
-            publication = await workspace_skill_db().publish_workspace_skill_file(write)
+            publication: WorkspaceSkillPublication | None = None
+            try:
+                publication = await workspace_skill_db().publish_workspace_skill_file(
+                    write
+                )
+            finally:
+                if on_change is not None and (
+                    publication is None or publication.status == "stored"
+                ):
+                    on_change()
         except BaseException:
             # Cancellation included: a save stopped part-way must not leave
             # blobs no row points at. Shielded so a second cancel cannot
             # interrupt the cleanup itself.
             await asyncio.shield(self._discard_unpublished(storage, stored))
             raise
+        assert publication is not None
         refusal = publication_refusal(publication, write)
         if refusal is not None:
             await asyncio.shield(self._discard_unpublished(storage, stored))
@@ -706,6 +773,8 @@ class WorkspaceManager:
         allowed_path_prefixes: Optional[list[str]] = None,
         include_user_files: bool = False,
         include_internal: bool = True,
+        created_after: Optional[datetime] = None,
+        created_before: Optional[datetime] = None,
     ) -> list[WorkspaceFile]:
         """
         List files in workspace.
@@ -743,6 +812,9 @@ class WorkspaceManager:
                 (see :meth:`_include_user_files`).
             include_internal: Whether to list Otto's own working files. Lists
                 the user sees pass ``False``.
+            created_after: Only files written at or after this instant.
+            created_before: Only files written before this instant. Both
+                apply in the query, ahead of ``limit``.
 
         Returns:
             List of WorkspaceFile instances
@@ -771,6 +843,8 @@ class WorkspaceManager:
             allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
             include_user_files=self._include_user_files(include_user_files),
             include_internal=include_internal,
+            created_after=created_after,
+            created_before=created_before,
         )
 
     async def delete_file(self, file_id: str) -> bool:
@@ -925,3 +999,7 @@ class WorkspaceManager:
             allowed_path_prefixes=self._allowed_prefixes(allowed_path_prefixes),
             include_user_files=self._include_user_files(include_user_files),
         )
+
+
+async def _no_file() -> WorkspaceFile | None:
+    return None

@@ -22,23 +22,38 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
-from backend.api.utils.validation_errors import bounded_validation_errors
+from backend.api.utils.validation_errors import (
+    bounded_validation_errors,
+    loggable_validation_errors,
+)
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
+from backend.util.clients import SCHEDULER_SUSTAINED_OUTAGE_SECONDS
 from backend.util.exceptions import (
     ConflictError,
     MissingConfigError,
     NotAuthorizedError,
     NotFoundError,
     PreconditionFailed,
+    SchedulerUnavailableError,
 )
 from backend.util.url_redaction import redact_url
 
 logger = logging.getLogger(__name__)
 
+# A deploy leaves no scheduler for about 1-2.5 min; a retry this soon is cheap
+# and lands shortly after it is back.
+SCHEDULER_RETRY_AFTER_SECONDS = 15
+SCHEDULER_UNAVAILABLE_DETAIL = (
+    "Schedules are temporarily unavailable. Try again in a moment."
+)
+
 
 def add_exception_handlers(
-    app: fastapi.FastAPI, *, server_error_detail: bool = True
+    app: fastapi.FastAPI,
+    *,
+    server_error_detail: bool = True,
+    expose_missing_config_detail: bool | None = None,
 ) -> None:
     """
     Register standard exception handlers on the given FastAPI app.
@@ -46,12 +61,25 @@ def add_exception_handlers(
     Mounted sub-apps do NOT inherit exception handlers from the parent app,
     so each app instance must register its own handlers.
 
-    ``server_error_detail=False`` keeps the exception text out of 5xx bodies,
-    for an app third parties call: it can name internal services and queries.
+    ``server_error_detail=False`` keeps the exception text out of 5xx bodies:
+    it can name internal services, queries and file paths. 4xx bodies still say
+    what was wrong. A ``MissingConfigError`` (503) follows
+    ``server_error_detail`` unless ``expose_missing_config_detail`` says
+    otherwise. Its messages are written to be read (a setting a self-hoster
+    hasn't filled in, or "Your expert workspace is still being set up"), so the
+    REST app shows them; the external APIs keep them hidden.
     """
 
-    def _handle_error(status_code: int = 500, log_error: bool = True):
-        return _error_handler(status_code, log_error, server_error_detail)
+    if expose_missing_config_detail is None:
+        expose_missing_config_detail = server_error_detail
+
+    def _handle_error(
+        status_code: int = 500,
+        log_error: bool = True,
+        expose_detail: bool | None = None,
+    ):
+        detail = server_error_detail if expose_detail is None else expose_detail
+        return _error_handler(status_code, log_error, detail)
 
     for exception, handler in {
         # It's the client's problem: HTTP 4XX
@@ -75,7 +103,11 @@ def add_exception_handlers(
         GraphActivationError: _handle_error(status.HTTP_400_BAD_REQUEST),
         ValueError: _handle_error(status.HTTP_400_BAD_REQUEST),
         # It's the backend's problem: HTTP 5XX
-        MissingConfigError: _handle_error(status.HTTP_503_SERVICE_UNAVAILABLE),
+        MissingConfigError: _handle_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            expose_detail=expose_missing_config_detail,
+        ),
+        SchedulerUnavailableError: _handle_scheduler_unavailable,
         PrismaError: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),
         Exception: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),
     }.items():
@@ -123,20 +155,54 @@ def _error_handler(status_code: int, log_error: bool, server_error_detail: bool)
     return handler
 
 
+def _handle_scheduler_unavailable(
+    request: fastapi.Request, exc: Exception
+) -> fastapi.responses.Response:
+    assert isinstance(exc, SchedulerUnavailableError)
+    # A deploy's gap is expected, so a warning, which Sentry doesn't file. An
+    # outage longer than any deploy is an error, which it does. The length
+    # comes with the exception: this sync handler runs in a worker thread.
+    logger.log(
+        (
+            logging.ERROR
+            if exc.outage_seconds >= SCHEDULER_SUSTAINED_OUTAGE_SECONDS
+            else logging.WARNING
+        ),
+        "%s %s answered 503; the scheduler has been out for %.0fs: %s",
+        request.method,
+        redact_url(request.url.path),
+        exc.outage_seconds,
+        exc,
+    )
+    return fastapi.responses.JSONResponse(
+        content={
+            "message": f"Failed to process {request.method} {request.url.path}",
+            "detail": SCHEDULER_UNAVAILABLE_DETAIL,
+            "hint": f"Retry in {SCHEDULER_RETRY_AFTER_SECONDS} seconds.",
+        },
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        headers={"Retry-After": str(SCHEDULER_RETRY_AFTER_SECONDS)},
+    )
+
+
 async def _handle_validation_error(
     request: fastapi.Request, exc: Exception
 ) -> fastapi.responses.Response:
     errors: Sequence | str
+    logged: Sequence | str
     if isinstance(exc, (RequestValidationError, pydantic.ValidationError)):
+        # The client sent the data the response quotes back; the log keeps out
+        # what it said, such as a mapping's keys.
         errors = bounded_validation_errors(exc)
+        logged = loggable_validation_errors(exc)
     else:
-        errors = str(exc)
+        errors = logged = str(exc)
 
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
         redact_url(request.url.path),
-        errors,
+        logged,
     )
 
     response_content = {

@@ -1,4 +1,4 @@
-import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getGetV2ListSessionGroupsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import {
   SidebarProvider,
   SidebarTrigger,
@@ -78,18 +78,24 @@ function openSheet() {
 
 beforeEach(() => {
   server.use(
-    getGetV2ListSessionsMockHandler200({
-      sessions: [
+    getGetV2ListSessionGroupsMockHandler200({
+      groups: [
         {
-          id: "session-1",
-          title: "Plan the launch",
-          is_processing: false,
-          is_pinned: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          expert_id: null,
+          total: 1,
+          sessions: [
+            {
+              id: "session-1",
+              title: "Plan the launch",
+              is_processing: false,
+              is_pinned: false,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          ],
         },
       ],
-      total: 1,
+      pinned: [],
     }),
   );
 });

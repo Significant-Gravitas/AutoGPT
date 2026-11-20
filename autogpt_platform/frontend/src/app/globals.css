@@ -33,9 +33,9 @@
    onto `:root`, so a role's entry can share the name of its RGB triplet in
    tokens/theme.css and read it: `bg-surface` is
    `rgb(var(--color-surface) / 1)` and `bg-surface/50` is
-   `rgb(var(--color-surface) / 0.5)`. These roles are the only colour names
-   app code uses; the raw palette in tailwind.v3-preset.ts is failed by
-   design-system/no-palette-colours. */
+   `rgb(var(--color-surface) / 0.5)`. These roles are the only colours:
+   tokens/theme.css resets Tailwind's palette, so a palette class generates
+   nothing, and design-system/no-raw-palette-classes fails it. */
 @theme inline reference {
   /* Roles, the triplets in tokens/theme.css */
   --color-canvas: rgb(var(--color-canvas) / 1);
@@ -79,6 +79,8 @@
   --color-info: rgb(var(--color-info) / 1);
   --color-info-foreground: rgb(var(--color-info-foreground) / 1);
   --color-info-surface: rgb(var(--color-info-surface) / 1);
+  --color-error-inverse: rgb(var(--color-error-inverse) / 1);
+  --color-success-inverse: rgb(var(--color-success-inverse) / 1);
   --color-orange: rgb(var(--color-orange) / 1);
   --color-orange-foreground: rgb(var(--color-orange-foreground) / 1);
   --color-yellow: rgb(var(--color-yellow) / 1);
@@ -359,7 +361,7 @@
   }
 }
 @utility scrollbar-track-* {
-  --scrollbar-track: --value(--color-*, [color]) !important;
+  --scrollbar-track: --value(--color-*, [color], "transparent") !important;
   --scrollbar-track: --alpha(
     --value(--color-*, [color]) / --modifier(integer) %
   ) !important;
@@ -371,7 +373,7 @@
   --scrollbar-track-radius: --value(--radius-*, [length]);
 }
 @utility scrollbar-thumb-* {
-  --scrollbar-thumb: --value(--color-*, [color]) !important;
+  --scrollbar-thumb: --value(--color-*, [color], "transparent") !important;
   --scrollbar-thumb: --alpha(
     --value(--color-*, [color]) / --modifier(integer) %
   ) !important;
@@ -383,7 +385,7 @@
   --scrollbar-thumb-radius: --value(--radius-*, [length]);
 }
 @utility scrollbar-corner-* {
-  --scrollbar-corner: --value(--color-*, [color]) !important;
+  --scrollbar-corner: --value(--color-*, [color], "transparent") !important;
   --scrollbar-corner: --alpha(
     --value(--color-*, [color]) / --modifier(integer) %
   ) !important;

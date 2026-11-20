@@ -48,6 +48,19 @@ def mock_prisma():
         yield mock_client
 
 
+@pytest.fixture(autouse=True)
+def mock_input_output_prisma():
+    """migrate_webhook_presets_to_new_version re-keys the trigger mask via
+    AgentNodeExecutionInputOutput.update_many; mock it so these DB-less tests
+    don't hit a real (unconnected) client. Re-key assertions live in
+    db_test.py::test_migrate_webhook_presets_rekeys_input_mask."""
+    with patch("prisma.models.AgentNodeExecutionInputOutput.prisma") as mock:
+        io_client = AsyncMock()
+        io_client.update_many = AsyncMock(return_value=0)
+        mock.return_value = io_client
+        yield io_client
+
+
 def _make_graph(
     *,
     block_id: str = "trigger-block-a",
@@ -463,6 +476,10 @@ async def test_v1_update_graph_migrates_when_webhook_node_present(mocker):
         graph_routes, "before_graph_activate", side_effect=lambda g, user_id: g
     )
     mocker.patch.object(graph_routes, "on_graph_deactivate", return_value=None)
+    # The role check reads the database; graphs/routes_test.py covers it.
+    mocker.patch.object(
+        graph_routes, "require_role_where_resource_lives", return_value=None
+    )
 
     response = await graph_routes.update_graph(
         graph_id=new_graph.id,
@@ -523,6 +540,10 @@ async def test_v1_update_graph_skips_when_no_webhook_node(mocker):
         graph_routes, "before_graph_activate", side_effect=lambda g, user_id: g
     )
     mocker.patch.object(graph_routes, "on_graph_deactivate", return_value=None)
+    # The role check reads the database; graphs/routes_test.py covers it.
+    mocker.patch.object(
+        graph_routes, "require_role_where_resource_lives", return_value=None
+    )
 
     response = await graph_routes.update_graph(
         graph_id=new_graph.id,
@@ -569,6 +590,10 @@ async def test_v1_set_graph_active_version_migrates_when_webhook_node_present(
         graph_routes, "before_graph_activate", side_effect=lambda g, user_id: g
     )
     mocker.patch.object(graph_routes, "on_graph_deactivate", return_value=None)
+    # The role check reads the database; graphs/routes_test.py covers it.
+    mocker.patch.object(
+        graph_routes, "require_role_where_resource_lives", return_value=None
+    )
 
     body = graph_routes.SetGraphActiveVersion(active_graph_version=target_graph.version)
 
@@ -613,6 +638,10 @@ async def test_v1_set_graph_active_version_skips_when_no_webhook_node(mocker):
         graph_routes, "before_graph_activate", side_effect=lambda g, user_id: g
     )
     mocker.patch.object(graph_routes, "on_graph_deactivate", return_value=None)
+    # The role check reads the database; graphs/routes_test.py covers it.
+    mocker.patch.object(
+        graph_routes, "require_role_where_resource_lives", return_value=None
+    )
 
     body = graph_routes.SetGraphActiveVersion(active_graph_version=target_graph.version)
 
