@@ -15,6 +15,7 @@ payload; Postmark receives those bodies rather than a hosted template ID.
 | Verdict | Approved; changes requested with/without notes | State eyebrow; reviewer feedback preserved and escaped; one marketplace action |
 | Ops | Refund request, refund processed | Internal amount band and compact Otto; admin action; no unsubscribe |
 | Auth | Verify email, set/reset password, confirm new email | Compact layout without hero; action button and complete fallback URL; HTML and text; original subjects and origin validation |
+| Sign-in | Sign-in code, new sign-in method | Compact auth layout without a button or link: the code sits in its own panel and is typed into the page that asked for it; neither the subject nor the preheader shows it. Questions and replies go to the shared inbox |
 
 Organization invitations have no email sender yet. SMTP/Gmail workflow blocks
 send user-authored content and are not platform transactional notices. The

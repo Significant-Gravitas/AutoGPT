@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mobile app: connections mock</title>
+<style>
+  :root {
+    --bg: #0B0B0D; --surface: #16161A; --raised: #1F1F25; --pressed: #2A2A32;
+    --border: #2A2A32; --border-base: #33333C; --border-strong: #44444F;
+    --text: #F4F4F5; --text2: #A1A1AA; --text3: #71717A;
+    --brand: #7733F5; --brand-soft: #2A1A52; --accent: #C4A8FF;
+    --action: #F4F4F5; --on-action: #141414; --success: #4ADE80; --error: #F87171;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #050506; color: var(--text); font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, sans-serif; padding: 32px 40px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--text2); margin: 0 0 28px; font-size: 14px; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .screen { width: 300px; }
+  .caption { font-size: 13px; color: var(--text2); margin: 10px 4px 0; min-height: 54px; }
+  .caption b { color: var(--text); display: block; margin-bottom: 2px; font-size: 14px; }
+  .phone { width: 300px; height: 630px; border-radius: 40px; background: var(--bg); border: 1px solid #26262c; overflow: hidden; position: relative; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  .status { height: 40px; display: flex; justify-content: space-between; align-items: center; padding: 6px 26px 0; font-size: 13px; font-weight: 600; }
+  .header { height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; }
+  .ib { width: 34px; height: 34px; border-radius: 17px; display: grid; place-items: center; color: var(--text2); font-size: 17px; }
+  .ib.tray { background: var(--surface); border: 1px solid var(--border); }
+  .ident { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
+  .ava { width: 26px; height: 26px; border-radius: 13px; background: var(--brand); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+  .thread { flex: 1; padding: 6px 14px; display: flex; flex-direction: column; justify-content: flex-end; gap: 12px; overflow: hidden; }
+  .thread > * { flex-shrink: 0; }
+  .user { align-self: flex-end; background: var(--raised); border-radius: 18px; padding: 9px 13px; max-width: 80%; font-size: 14.5px; }
+  .otto { font-size: 14.5px; color: var(--text); }
+  .steps { font-size: 13px; color: var(--text3); display: flex; flex-direction: column; gap: 5px; }
+  .steps div::before { content: "✓  "; color: var(--text3); }
+  .steps .live::before { content: "◌  "; color: var(--accent); }
+  .card { background: var(--surface); border: 1px solid var(--border-base); border-radius: 12px; overflow: hidden; }
+  .card-h { padding: 11px 13px 8px; font-size: 13px; color: var(--text2); }
+  .card-h b { color: var(--text); font-size: 14px; display: block; margin-bottom: 2px; }
+  .prov { display: flex; align-items: center; gap: 10px; padding: 10px 13px; border-top: 1px solid var(--border); }
+  .logo { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+  .g { background: #fff; color: #4285F4; } .n { background: #fff; color: #111; } .gh { background: #24292f; color: #fff; }
+  .ow { background: #EB6E4B; color: #fff; } .sl { background: #4A154B; color: #fff; } .li { background: #5E6AD2; color: #fff; }
+  .hs { background: #FF7A59; color: #fff; } .mcp { background: var(--raised); color: var(--accent); border: 1px solid var(--border-base); }
+  .pname { flex: 1; min-width: 0; }
+  .pname div:first-child { font-size: 14px; font-weight: 500; }
+  .pname div:last-child { font-size: 12px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .btn { border-radius: 999px; padding: 6px 13px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .btn.primary { background: var(--action); color: var(--on-action); }
+  .btn.outline { border: 1px solid var(--border-strong); color: var(--text); }
+  .btn.ghost { color: var(--text2); padding: 6px 4px; }
+  .btn.full { display: block; text-align: center; padding: 12px; font-size: 15px; }
+  .ok { color: var(--success); font-size: 13px; font-weight: 600; }
+  .card-f { padding: 9px 13px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text3); }
+  .composer { margin: 8px 10px 22px; background: var(--surface); border: 1px solid var(--border-base); border-radius: 22px; padding: 10px 12px; }
+  .composer .ph { color: var(--text3); font-size: 15px; margin-bottom: 10px; }
+  .composer .bar { display: flex; align-items: center; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border-base); border-radius: 999px; padding: 3px 9px 3px 4px; font-size: 12px; color: var(--text2); }
+  .chip .mini { width: 18px; height: 18px; border-radius: 5px; font-size: 9px; display: grid; place-items: center; font-weight: 700; }
+  .stack { display: flex; }
+  .stack .mini { width: 20px; height: 20px; border-radius: 10px; border: 2px solid var(--surface); margin-left: -6px; font-size: 9px; display: grid; place-items: center; font-weight: 700; }
+  .stack .mini:first-child { margin-left: 0; }
+  .spacer { flex: 1; }
+  .round { width: 32px; height: 32px; border-radius: 16px; display: grid; place-items: center; font-size: 15px; }
+  .round.tray { border: 1px solid var(--border-base); color: var(--text2); }
+  .round.send { background: var(--action); color: var(--on-action); }
+  .dim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+  .alert { position: absolute; left: 34px; right: 34px; top: 220px; background: rgba(44,44,48,.97); border-radius: 14px; text-align: center; overflow: hidden; backdrop-filter: blur(20px); }
+  .alert .t { padding: 18px 16px 4px; font-weight: 600; font-size: 15px; }
+  .alert .m { padding: 0 16px 16px; font-size: 13px; color: #d4d4d8; }
+  .alert .b { display: flex; border-top: 1px solid #3f3f46; }
+  .alert .b div { flex: 1; padding: 11px; color: #0A84FF; font-size: 15px; }
+  .alert .b div + div { border-left: 1px solid #3f3f46; font-weight: 600; }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--surface); border-radius: 18px 18px 0 0; padding: 8px 16px 26px; border-top: 1px solid var(--border-base); }
+  .handle { width: 36px; height: 4px; border-radius: 2px; background: var(--border-strong); margin: 0 auto 14px; }
+  .sheet h3 { margin: 0 0 4px; font-size: 18px; display: flex; align-items: center; gap: 10px; }
+  .sheet p { margin: 0 0 14px; color: var(--text2); font-size: 13.5px; }
+  .field { background: var(--bg); border: 1px solid var(--border-base); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+  .field label { display: block; font-size: 11.5px; color: var(--text3); margin-bottom: 2px; }
+  .field div { font-size: 15px; letter-spacing: .5px; }
+  .link { color: var(--accent); font-size: 13px; }
+  .kb { position: absolute; left: 0; right: 0; bottom: 0; height: 0; }
+  .browser { flex: 1; background: #fff; color: #202124; margin: 0; display: flex; flex-direction: column; }
+  .bbar { background: #f1f1f3; color: #3c3c43; font-size: 12px; padding: 8px 12px; display: flex; justify-content: space-between; border-bottom: 1px solid #ddd; }
+  .gpage { padding: 26px 22px; font-family: Roboto, Arial, sans-serif; }
+  .gpage .gl { color: #4285F4; font-weight: 700; font-size: 20px; margin-bottom: 18px; }
+  .gpage h4 { margin: 0 0 6px; font-size: 19px; font-weight: 400; }
+  .gpage .acc { border: 1px solid #dadce0; border-radius: 16px; padding: 4px 10px; display: inline-block; font-size: 12px; margin: 6px 0 16px; }
+  .gpage li { font-size: 13px; margin-bottom: 8px; color: #3c4043; }
+  .gpage .gb { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  .gpage .gb span { padding: 8px 16px; border-radius: 4px; font-size: 13px; }
+  .panel { flex: 1; padding: 4px 16px; overflow: hidden; }
+  .tabs { display: flex; gap: 6px; margin: 4px 0 14px; }
+  .tab { padding: 6px 12px; border-radius: 999px; font-size: 13px; color: var(--text2); border: 1px solid var(--border); }
+  .tab.on { background: var(--raised); color: var(--text); border-color: var(--border-base); }
+  .sec { font-size: 12px; color: var(--text3); text-transform: uppercase; letter-spacing: .6px; margin: 14px 0 6px; }
+  .list { background: var(--surface); border: 1px solid var(--border-base); border-radius: 12px; overflow: hidden; }
+  .list .prov:first-child { border-top: none; }
+  .search { background: var(--bg); border: 1px solid var(--border-base); border-radius: 12px; padding: 9px 12px; color: var(--text3); font-size: 14px; margin-bottom: 12px; }
+  .badge { font-size: 11.5px; color: var(--success); }
+  .menu { position: absolute; left: 12px; bottom: 88px; width: 220px; background: var(--raised); border: 1px solid var(--border-base); border-radius: 14px; padding: 6px; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+  .menu div { padding: 9px 10px; border-radius: 9px; font-size: 14px; display: flex; gap: 10px; align-items: center; }
+  .menu div.on { background: var(--pressed); }
+  .menu span.i { width: 20px; text-align: center; color: var(--text2); }
+  .flow { margin-top: 44px; max-width: 1330px; }
+  .flow h2 { font-size: 18px; margin: 0 0 12px; }
+  .lanes { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 12.5px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .lanes col.actor { width: 110px; }
+  .lanes th, .lanes td { overflow-wrap: anywhere; padding: 9px 10px; border-bottom: 1px solid var(--border); border-left: 1px solid var(--border); color: var(--text2); text-align: left; vertical-align: top; font-weight: 400; }
+  .lanes th { color: var(--text); font-weight: 600; background: var(--surface); }
+  .lanes tr > :first-child { border-left: none; }
+  .lanes .new { color: var(--accent); background: rgba(119,51,245,.08); }
+  .lanes .app { color: var(--text); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .legend { font-size: 12.5px; color: var(--text3); margin-top: 8px; }
+  .legend span { color: var(--accent); }
+</style>
+</head>
+<body>
+<h1>Mobile app: connecting services in chat</h1>
+<p class="sub">Mock, dark theme, built on the app's own tokens (<code>autogpt_platform/mobile-app/src/lib/theme.ts</code>). Eight screens: the in-chat card, the sign-in hand-off (two screens), the resumed chat, the key sheet, the chat's Connections tab, adding a connection by hand, and a later composer option.</p>
+
+<div class="row">
+
+  <!-- 1. Card in chat -->
+  <div class="screen">
+    <div class="phone">
+      <div class="status"><span>9:41</span><span>●●● 􀙇 ▮</span></div>
+      <div class="header"><div class="ib tray">☰</div><div class="ident"><div class="ava">O</div>Otto</div><div style="display:flex;gap:6px"><div class="ib tray">⧉</div><div class="ib tray">✎</div></div></div>
+      <div class="thread">
+        <div class="user">Send a summary of my unread emails to #team every morning</div>
+                <div class="otto">I can set this up. I need access to two services first.</div>
+        <div class="card">
+          <div class="card-h"><b>Connect to continue</b>Otto picks up where it stopped once these are connected.</div>
+          <div class="prov"><div class="logo g">G</div><div class="pname"><div>Gmail</div><div>Read your email</div></div><div class="btn primary">Sign in</div></div>
+          <div class="prov"><div class="logo sl">#</div><div class="pname"><div>Slack</div><div>Post messages · you@…</div></div><div class="ok">✓ Connected</div></div>
+          <div class="prov"><div class="logo ow">OW</div><div class="pname"><div>OpenWeather</div><div>API key</div></div><div class="btn outline">Add key</div></div>
+        </div>
+      </div>
+      <div class="composer"><div class="ph">Message Otto</div><div class="bar"><div class="round tray">+</div><div class="spacer"></div><div class="round tray">🎙</div></div></div>
+    </div>
+    <div class="caption"><b>1 · Card in the chat</b>Rendered from any <code>setup_requirements</code> tool output. One row per missing service; label follows the row's type.</div>
+  </div>
+
+  <!-- 2. iOS hand-off -->
+  <div class="screen">
+    <div class="phone">
+      <div class="status"><span>9:41</span><span>●●● 􀙇 ▮</span></div>
+      <div class="header"><div class="ib tray">☰</div><div class="ident"><div class="ava">O</div>Otto</div><div style="display:flex;gap:6px"><div class="ib tray">⧉</div><div class="ib tray">✎</div></div></div>
+      <div class="thread">
+        <div class="user">Send a summary of my unread emails to #team every morning</div>
+        <div class="otto">I can set this up. I need access to two services first.</div>
+        <div class="card"><div class="card-h"><b>Connect to continue</b></div>
+          <div class="prov"><div class="logo g">G</div><div class="pname"><div>Gmail</div><div>Read your email</div></div><div class="btn primary" style="opacity:.6">Signing in…</div></div>
+        </div>
+      </div>
+      <div class="dim"></div>
+      <div class="alert">
+        <div class="t">“AutoGPT” Wants to Use “agpt.co” to Sign In</div>
+        <div class="m">This allows the app and website to share information about you.</div>
+        <div class="b"><div>Cancel</div><div>Continue</div></div>
+      </div>
+    </div>
+    <div class="caption"><b>2 · System sign-in sheet (iOS)</b>iOS shows this prompt before any OAuth sign-in. We can't change the wording. The domain is our callback host, not Google.</div>
+  </div>
+
+  <!-- 2b. Browser -->
+  <div class="screen">
+    <div class="phone">
+      <div class="status" style="background:#f1f1f3;color:#111"><span>9:41</span><span>●●● ▮</span></div>
+      <div class="bbar"><span style="color:#0A84FF">Cancel</span><span>🔒 accounts.google.com</span><span>  </span></div>
+      <div class="browser">
+        <div class="gpage">
+          <div class="gl">Google</div>
+          <h4>AutoGPT wants to access your Google Account</h4>
+          <div class="acc">you@example.com ▾</div>
+          <ul style="padding-left:18px;margin:0"><li>Read, compose and send emails from your Gmail account</li><li>See your primary Google Account email address</li></ul>
+          <div class="gb"><span style="color:#1a73e8">Cancel</span><span style="background:#1a73e8;color:#fff">Continue</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="caption"><b>3 · Provider consent in the system browser</b><code>ASWebAuthenticationSession</code> / Chrome Custom Tabs, never a WebView (Google blocks those). Shares Safari's Google login.</div>
+  </div>
+
+  <!-- 3. Resumed -->
+  <div class="screen">
+    <div class="phone">
+      <div class="status"><span>9:41</span><span>●●● 􀙇 ▮</span></div>
+      <div class="header"><div class="ib tray">☰</div><div class="ident"><div class="ava">O</div>Otto</div><div style="display:flex;gap:6px"><div class="ib tray">⧉</div><div class="ib tray">✎</div></div></div>
+      <div class="thread">
+        <div class="otto">I can set this up. I need access to two services first.</div>
+        <div class="card">
+          <div class="card-h"><b>Connect to continue</b></div>
+          <div class="prov"><div class="logo g">G</div><div class="pname"><div>Gmail</div><div>you@example.com</div></div><div class="ok">✓ Connected</div></div>
+          <div class="prov"><div class="logo sl">#</div><div class="pname"><div>Slack</div><div>you@…</div></div><div class="ok">✓ Connected</div></div>
+          <div class="prov"><div class="logo ow">OW</div><div class="pname"><div>OpenWeather</div><div>My key</div></div><div class="ok">✓ Connected</div></div>
+          <div class="card-f">Connected. Continuing…</div>
+        </div>
+        <div class="user" style="opacity:.75">I've connected my account. Please continue.</div>
+        <div class="steps"><div>Read your unread emails</div><div class="live">Writing the summary</div></div>
+      </div>
+      <div class="composer"><div class="ph">Message Otto</div><div class="bar"><div class="round tray">+</div><div class="spacer"></div><div class="round tray">🎙</div></div></div>
+    </div>
+    <div class="caption"><b>4 · Back in the chat, Otto carries on</b>App swaps the code, saves the account choice, then sends the same follow-up line the web sends, once.</div>
+  </div>
+
+  <!-- 4. API key sheet -->
+  <div class="screen">
+    <div class="phone">
+      <div class="status"><span>9:41</span><span>●●● 􀙇 ▮</span></div>
+      <div class="header"><div class="ib tray">☰</div><div class="ident"><div class="ava">O</div>Otto</div><div style="display:flex;gap:6px"><div class="ib tray">⧉</div><div class="ib tray">✎</div></div></div>
+      <div class="thread"><div class="otto">I can set this up. I need access to two services first.</div></div>
+      <div class="dim"></div>
+      <div class="sheet" style="bottom:0">
+        <div class="handle"></div>
+        <h3><div class="logo ow">OW</div>OpenWeather</h3>
+        <p>Paste your API key. It's stored encrypted and never shown in the chat.</p>
+        <div class="field"><label>API key</label><div>••••••••••••••••3f9a</div></div>
+        <div class="field"><label>Name (optional)</label><div style="color:var(--text3);letter-spacing:0">OpenWeather key</div></div>
+        <div style="margin:2px 0 16px"><span class="link">Where do I find my key? ↗</span></div>
+        <div class="btn primary full">Save</div>
+      </div>
+    </div>
+    <div class="caption"><b>5 · Key, password or host sheet</b>Same sheet for <code>api_key</code>, <code>user_password</code> and <code>host_scoped</code>; fields switch by type. Secure entry, no autocorrect.</div>
+  </div>
+
+  <!-- 5. Connections tab -->
+  <div class="screen">
+    <div class="phone">
+      <div class="status"><span>9:41</span><span>●●● 􀙇 ▮</span></div>
+      <div class="header"><div class="ib">‹</div><div class="ident">Maya · Inbox expert</div><div class="ib">⤴</div></div>
+      <div class="panel">
+        <div class="tabs"><div class="tab">Activity</div><div class="tab">Library</div><div class="tab on">Connections</div></div>
+        <div class="sec">Maya can use</div>
+        <div class="list">
+          <div class="prov"><div class="logo g">G</div><div class="pname"><div>Gmail</div><div>you@example.com</div></div><div class="btn ghost">Remove</div></div>
+          <div class="prov"><div class="logo sl">#</div><div class="pname"><div>Slack</div><div>AutoGPT workspace</div></div><div class="btn ghost">Remove</div></div>
+          <div class="prov"><div class="logo n">N</div><div class="pname"><div>Notion</div><div>Needs reconnecting</div></div><div class="btn outline">Reconnect</div></div>
+        </div>
+        <div class="sec">Her workflows also need</div>
+        <div class="list">
+          <div class="prov"><div class="logo hs">H</div><div class="pname"><div>HubSpot</div><div>Weekly pipeline report</div></div><div class="btn primary">Sign in</div></div>
+        </div>
+        <div style="margin-top:16px" class="btn outline full">+ Add connection</div>
+      </div>
+    </div>
+    <div class="caption"><b>6 · Connections in the chat panel</b>New tab beside Activity and Library for experts. In an Otto chat, the same list sits under the chat's files and shows all your connections.</div>
+  </div>
+
+  <!-- 6. Add connection -->
+  <div class="screen">
+    <div class="phone">
+      <div class="status"><span>9:41</span><span>●●● 􀙇 ▮</span></div>
+      <div class="header"><div class="ib">‹</div><div class="ident">Maya · Inbox expert</div><div class="ib">⤴</div></div>
+      <div class="panel"></div>
+      <div class="dim"></div>
+      <div class="sheet" style="height:520px">
+        <div class="handle"></div>
+        <h3>Add connection</h3>
+        <div class="search">⌕  Search services</div>
+        <div class="sec" style="margin-top:4px">Already connected</div>
+        <div class="list">
+          <div class="prov"><div class="logo gh">GH</div><div class="pname"><div>GitHub</div><div>octocat</div></div><div class="btn outline">Allow</div></div>
+          <div class="prov"><div class="logo li">L</div><div class="pname"><div>Linear</div><div>AutoGPT</div></div><div class="btn outline">Allow</div></div>
+        </div>
+        <div class="sec">New</div>
+        <div class="list">
+          <div class="prov"><div class="logo g">G</div><div class="pname"><div>Google Calendar</div><div>Sign in with Google</div></div><div class="btn primary">Sign in</div></div>
+          <div class="prov"><div class="logo mcp">⌁</div><div class="pname"><div>MCP server</div><div>Any server by URL</div></div><div class="btn outline">Add</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="caption"><b>7 · Adding one by hand</b>"Allow" grants an account you already have to this expert, with no sign-in. "Sign in" runs screens 2–3, then grants it.</div>
+  </div>
+
+  <!-- 7. Composer menu -->
+  <div class="screen">
+    <div class="phone">
+      <div class="status"><span>9:41</span><span>●●● 􀙇 ▮</span></div>
+      <div class="header"><div class="ib tray">☰</div><div class="ident"><div class="ava">O</div>Otto</div><div style="display:flex;gap:6px"><div class="ib tray">⧉</div><div class="ib tray">✎</div></div></div>
+      <div class="thread"><div class="otto" style="color:var(--text3)">New chat</div></div>
+      <div class="dim" style="background:rgba(0,0,0,.25)"></div>
+      <div class="menu">
+        <div><span class="i">🖼</span>Photos</div>
+        <div><span class="i">📎</span>Files</div>
+        <div class="on"><span class="i">⌁</span>Use a connection</div>
+        <div><span class="i">＋</span>Connect a service</div>
+      </div>
+      <div class="composer" style="position:relative;z-index:2">
+        <div style="margin-bottom:8px"><span class="chip"><span class="mini g" style="background:#fff">G</span>Gmail · work</span></div>
+        <div style="font-size:15px;margin-bottom:10px">Draft replies to anything from Acme</div>
+        <div class="bar"><div class="round tray">+</div><div class="stack"><div class="mini g" style="background:#fff;color:#4285F4">G</div><div class="mini sl" style="background:#4A154B">#</div><div class="mini gh" style="background:#24292f">GH</div></div><div class="spacer"></div><div class="round send">↑</div></div>
+      </div>
+    </div>
+    <div class="caption"><b>8 · Pick an account for a message (later)</b>Mirrors the web's @-mention: a chip sends <code>credential://provider/id</code> with the text. Logo stack shows what the chat can use.</div>
+  </div>
+
+</div>
+
+<div class="flow">
+  <h2>Sign-in flow (screens 1 → 4)</h2>
+  <table class="lanes">
+    <caption class="sr-only">Who does what at each step of a sign-in started from the app</caption>
+    <colgroup><col class="actor"><col span="6"></colgroup>
+    <thead>
+      <tr><th scope="col">Step</th><th scope="col">1</th><th scope="col">2</th><th scope="col">3</th><th scope="col">4</th><th scope="col">5</th><th scope="col">6</th></tr>
+    </thead>
+    <tbody>
+      <tr><th scope="row">App (new)</th><td class="app">Tap Sign in → <code>GET /integrations/{p}/login?scopes&amp;client=native</code></td><td class="app">Save pending flow (provider, chat, state) to SecureStore</td><td class="app"><code>openAuthSessionAsync(login_url, "autogpt-app://integrations/oauth")</code></td><td></td><td class="app">Gets <code>autogpt-app://…?code&amp;state</code> → <code>POST /integrations/{p}/callback</code> with JWT</td><td class="app">Grant to expert (if any) → <code>PUT credential-selection</code> → send follow-up line</td></tr>
+      <tr><th scope="row">Backend</th><td class="new">Starts the state with <code>native.</code></td><td></td><td></td><td></td><td>Checks state, PKCE, swaps code, saves account (no change)</td><td></td></tr>
+      <tr><th scope="row">Web callback</th><td></td><td></td><td></td><td class="new">Native state → 302 to app scheme instead of <code>postMessage</code> + close</td><td></td><td></td></tr>
+      <tr><th scope="row">Provider</th><td></td><td></td><td>Consent page</td><td>Redirects to <code>agpt.co/auth/integrations/oauth_callback</code> (already registered)</td><td></td><td></td></tr>
+    </tbody>
+  </table>
+  <div class="legend"><span>Purple</span> = new server work. Every step in the App row is new app work. Everything else exists today.</div>
+</div>
+</body>
+</html>

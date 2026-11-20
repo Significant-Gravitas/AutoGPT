@@ -1,10 +1,12 @@
 import logging
+import re
 from typing import TYPE_CHECKING, Optional, cast
 
 from pydantic import JsonValue
 
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.settings import Config
+from backend.util.url_redaction import mask_credential
 
 from . import get_webhook_manager, supports_webhooks
 
@@ -20,6 +22,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 app_config = Config()
 credentials_manager = IntegrationCredentialsManager()
+# An event type as providers name them (push, order.SHIPPED,
+# customer.subscription.updated), or a channel's wildcard: at most 64 word
+# characters, dots, colons, slashes, dashes and stars.
+_EVENT_TYPE_SHAPE = re.compile(r"[\w.:/*-]{1,64}")
+
+
+def loggable_event_type(event_type: str, webhook_id: str) -> str:
+    """An event type of ``webhook_id``'s as the logs show it. Most come from the
+    delivery, such as a Slant3D order's status, so the webhook's own ID is shown
+    in one by its prefix, as everywhere, and text not shaped like an event type
+    is shown as ``[unlisted]``. The event and its trigger matching keep the type
+    itself."""
+    if webhook_id:
+        event_type = event_type.replace(webhook_id, mask_credential(webhook_id))
+    return event_type if _EVENT_TYPE_SHAPE.fullmatch(event_type) else "[unlisted]"
 
 
 # TODO: add test to assert this matches the actual API route
@@ -63,8 +80,12 @@ async def setup_webhook_for_block(
             "for which we do not have a WebhooksManager"
         )
 
+    # A trigger's inputs can hold a secret of the user's, so only their names,
+    # and only those the block declares: a stored config can carry any key.
     logger.debug(
-        f"Setting up webhook for block #{trigger_block.id} with config {trigger_config}"
+        "Setting up webhook for block #%s with inputs %s",
+        trigger_block.id,
+        sorted(trigger_block.input_schema.get_fields().intersection(trigger_config)),
     )
 
     # Check & parse the event filter input, if any
@@ -100,8 +121,10 @@ async def setup_webhook_for_block(
                 f"Cannot auto-setup {provider.value} webhook without resource: "
                 f"missing input for '{missing_key}'"
             )
+        # The resource is built from the trigger's inputs, which can hold
+        # anything the user typed, so only its format is logged.
         logger.debug(
-            f"Constructed resource string {resource} from input {trigger_config}"
+            "Constructed resource string from %s", trigger_base_config.resource_format
         )
 
         creds_field_name = next(
@@ -155,7 +178,14 @@ async def setup_webhook_for_block(
             organization_id=organization_id,
             team_id=team_id,
         )
-    logger.debug(f"Acquired webhook: {webhook}")
+    # A webhook's ID is the credential in its ingress URL and its secret signs
+    # deliveries, so it is logged by its masked ID and kind.
+    logger.debug(
+        "Acquired webhook #%s (%s %s)",
+        mask_credential(webhook.id),
+        webhook.provider.value,
+        webhook.webhook_type,
+    )
     return webhook, None
 
 

@@ -421,7 +421,7 @@
       "id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
       "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
       "input_default": {
-        "model": "gpt-5-2025-08-07",
+        "model": "gpt-6.1-sol",
         "retry": 3,
         "prompt": "You are a skilled newsletter writer for a popular newsletter, which covers the topic: \"{{topic | safe}}\" \nToday's date is \"{{today | safe}}\"\nYour newsletter gets sent out on the following repeat rate: \"{{recency | safe}}\"\n\nCreate a newsletter using the provided research in the following writing style: {{style | safe}}\n\nFollow the Morning Coffee style: conversational tone, clever headlines, and a mix of serious insights with light-hearted comments. \n\nInclude 3-5 main stories and 2-3 shorter snippets or fun facts. Use emojis sparingly for emphasis. End with a thought-provoking question if appropriate.\nInclude dates for every story (only based on the research below, never assume dates, if not present just omit the date). You don't need to write a formal date, you can say things like \"On Monday\" or \"Yesterday\" when accurate and to do so.\n\nHere is the research for today's letter:\n<research>\n{{research | safe}}\n</research>\n\nDo not cover stories not present in the research or make any assumptions. Base your newsletter on this research.\n\nOutput this edition of the newsletter in the following format: \n\n<title>\nThe title of this edition of the newsletter\n</title>\n\n<body>\nThe content of this edition of the newsletter to be sent out to it's readers (formatted in markdown, no additional commentary, will be auto-sent as-is\n</body>",
         "sys_prompt": "You are a skilled newsletter writer for Morning Coffee. \n\nCreate an engaging, witty, and informative newsletter using the provided summarized news articles. \n\nFollow the Morning Coffee style: conversational tone, clever headlines, and a mix of serious insights with light-hearted comments. Include 3-5 main stories and 2-3 shorter snippets or fun facts. Use emojis sparingly for emphasis. End with a thought-provoking question or call-to-action.",
@@ -578,7 +578,7 @@
       "id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
       "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
       "input_default": {
-        "model": "gpt-5-2025-08-07",
+        "model": "gpt-6.1-sol",
         "retry": 3,
         "prompt": "Your task is to return a question that will best find me what I'm looking for. \n\nI am interested in the latest news on the following topic:\n\"{{topic | safe}}\"\n\nWithin the following recency range:\n{{recency | safe}}\n\nThe question you generated should be formatted such as: \"Which AI models launched in the past 24 hours?\" for example. This would be for an input like \"New AI Models\" for the topic and \"1 day\" for the recency.\nBe sure to clearly constrain the search range with the recency.\n\ntodays date is {{today | safe}}\n\nReturn only the question. No other text or commentary. ",
         "ollama_host": "localhost:11434",
@@ -1054,7 +1054,7 @@
       "id": "0a54faab-7d56-4826-8408-f1b00042fccd",
       "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
       "input_default": {
-        "model": "gpt-5-2025-08-07",
+        "model": "gpt-6.1-sol",
         "retry": 3,
         "prompt": "Extract and list the individual stories mentioned in the following newsletter which you believe would benefit from an accompanying picture.\nWhen making this decision, consider which stories are likely to have the best pictures available online. Do not just select every story. Consider how many images would be appropriate for a newsletter.\nFor each story you choose, output a clear, descriptive title that would make sense as a search query \u2014 not necessarily the original headline.  \n\nOutput the results in XML format as follows:\n\n<stories>\n  <story>Man lands on the moon</story>\n  <story>NASA announces next Mars mission</story>\n</stories>\n\nHere is the newsletter content:\n<newsletter>\n{{newsletter | safe}}\n</newsletter>",
         "ollama_host": "localhost:11434",
@@ -1147,7 +1147,7 @@
       "id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
       "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
       "input_default": {
-        "model": "gpt-5-2025-08-07",
+        "model": "gpt-6.1-sol",
         "retry": 3,
         "prompt": "You are given a newsletter. Each story includes an associated image URL. While not every image needs to be used (as too many may overcrowd the layout), it might also make sense to include them all\u2014use your judgment.\n\nYour task is to reproduce the newsletter **verbatim** in markdown format, inserting the image URLs where they fit best. \n\nDo not alter or reword the newsletter text in any way\u2014this is absolutely critical. Simply return the unedited newsletter text with the image URLs appropriately placed. Include no extra commentary, explanation, or decoration\u2014only the final markdown output.\n\n\nHere is the newsletter and the URLs:\n\n<newsletter>\n{{newsletter | safe}}\n</newsletter>\n\n<image_urls>\n{{image_urls | safe}}\n</image_urls>\n\nNow, respond with the final newsletter text with no additional commentary, explanation, or decoration. ",
         "ollama_host": "localhost:11434",
@@ -2123,7 +2123,7 @@
           "id": "87e23432-e584-4418-ad9a-a42dafd72f28",
           "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
           "input_default": {
-            "model": "claude-sonnet-4-20250514",
+            "model": "claude-sonnet-4-6",
             "retry": 3,
             "prompt": "Make this into a high-quality html email report. \n\nThe user made the following design style request:\n```\n{{design | safe}}\n```\nDo not mention or reference this style design request in the rendered html report.\n\n\nHere is the report. do not change any of it's written content, your job is just to present it exactly as written:\n```\n{{report | safe}}\n```\n\nDo not include any functional buttons, animations, or any elements that would be non functional or out of place in a static offline report.\n\nRespond with just the html, no additional commentary or decoration. No code blocks, just the html.\n",
             "sys_prompt": "",
@@ -2652,7 +2652,7 @@
           "id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
           "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
           "input_default": {
-            "model": "gpt-5-mini-2025-08-07",
+            "model": "gpt-6.1-terra",
             "retry": 3,
             "prompt": "Extract the most relevant image URL(s) that represent the following query from the text below. \nDo not return more than {{max_results}} images under any circumstances.\n\n<query>\n{{query | safe}}\n</query>\n\n<raw_text>\n{{results | safe}}\n</raw_text>\n\nRespond using the following XML structure:\n- Wrap all images in a single <images> tag (even if there is only one image).\n- For each image, include:\n  - The full image URL inside <url> ... </url>\n  - A short image description inside <image_description> ... </image_description>\n- Wrap each image\u2019s data in an <image> ... </image> block.\n\nExample:\n<images>\n  <image>\n    <url>https://example.com/image1.png</url>\n    <image_description>The image depicts a sunrise over the mountains.</image_description>\n  </image>\n  <image>\n    <url>https://example.com/image2.jpg</url>\n    <image_description>A close-up of a person hiking on a rocky trail.</image_description>\n  </image>\n</images>\n\nTry to return up to {{max_results}} relevant images, but exclude any that are not relevant.\n",
             "sys_prompt": "",

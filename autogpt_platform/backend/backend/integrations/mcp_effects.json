@@ -637,5 +637,17 @@
       "tools_run",
       "video_generate"
     ]
+  },
+  "mcp_anysearch": {
+    "source": "https://github.com/anysearch-ai/anysearch-mcp-server/blob/main/README.md",
+    "read": [
+      "batch_search",
+      "extract",
+      "get_sub_domains",
+      "search"
+    ],
+    "external": [
+      "score"
+    ]
   }
 }

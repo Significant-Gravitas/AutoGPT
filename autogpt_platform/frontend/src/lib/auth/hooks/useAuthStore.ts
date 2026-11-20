@@ -1,7 +1,10 @@
 "use client";
 
 import type BackendAPI from "@/lib/autogpt-server-api/client";
-import { setAnalyticsIdentitySignedIn } from "@/services/analytics/anonymous-id";
+import {
+  isAnonymousIDSpentFor,
+  setAnalyticsIdentitySignedIn,
+} from "@/services/analytics/anonymous-id";
 import { resetAnalyticsIdentity } from "@/services/analytics/reset-identity";
 import {
   clearImpersonationEverywhere,
@@ -20,6 +23,7 @@ import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notificati
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
+import { forgetConnectAttempt } from "../connect-attempt";
 import { reloadForNewDeployment } from "../deployment-reload";
 import {
   broadcastLogout,
@@ -202,7 +206,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
                 // the visitor known to be signed out; after an error the
                 // session stays unknown, so an older account can't take the
                 // marketing site's visitor id (anonymous-id.ts).
-                if (!result.hasLoadedUser) setAnalyticsIdentitySignedIn(false);
+                if (!result.hasLoadedUser) reportAnalyticsSession(null);
                 if (!validationResult.isValid) {
                   // No session at startup: a target left from the last one
                   // goes, and a protected page sends the user to sign in (the
@@ -576,20 +580,24 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 });
 
 useAuthStore.subscribe((state, previousState) => {
-  // Signing out is reported here; the signed-out state on load once
-  // initialize() is done.
-  if (state.user) setAnalyticsIdentitySignedIn(true);
-  else if (previousState.user) setAnalyticsIdentitySignedIn(false);
   if (previousState.user && previousState.user.id !== state.user?.id) {
     resetAnalyticsIdentity();
     clearCopilotCompletedSessions();
   }
+  // Signing out is reported here; the signed-out state on load once
+  // initialize() is done. After the reset above, which already rotated the id.
+  if (state.user) reportAnalyticsSession(state.user.id);
+  else if (previousState.user) reportAnalyticsSession(null);
   // Whoever signs in claims the onboarding handoff: a different account
   // than this tab last had starts without it, however the last session
   // ended. Not on a sign-out itself: a failed refresh also drops the user,
   // and a brand-new one must keep their walkthrough.
-  if (state.user && state.user.id !== previousState.user?.id)
+  if (state.user && state.user.id !== previousState.user?.id) {
     claimOnboardingHandoff(state.user.id);
+    // A Google or Microsoft sign-in this tab started has finished, so /login
+    // mustn't offer it without connecting after a later sign-out.
+    forgetConnectAttempt();
+  }
 });
 
 // Headers are built only for the user this store has signed in, so keep the
@@ -597,6 +605,16 @@ useAuthStore.subscribe((state, previousState) => {
 useAuthStore.subscribe((state, previousState) => {
   if (state.user !== previousState.user) setImpersonationViewer(state.user);
 });
+
+// Tell the anonymous id who is signed in (null: nobody). If an earlier page
+// merged it into another account, rotate it before this visitor uses it,
+// keeping this page's landing for them.
+function reportAnalyticsSession(userID: string | null): void {
+  setAnalyticsIdentitySignedIn(userID);
+  if (isAnonymousIDSpentFor(userID)) {
+    resetAnalyticsIdentity({ keepLanding: true });
+  }
+}
 
 // Loaded lazily: the copilot store pulls in React hooks the auth store
 // otherwise has no reason to load.

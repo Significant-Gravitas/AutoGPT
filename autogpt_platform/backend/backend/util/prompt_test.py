@@ -223,6 +223,15 @@ class TestMsgTokens:
 class TestEstimateTokenCount:
     """Test the estimate_token_count function with conversations containing tool calls."""
 
+    def test_text_that_spells_a_special_token_is_counted(self):
+        """tiktoken raises on special-token text by default; users and tool
+        output can write it, so it counts as plain text."""
+        plain = [{"role": "user", "content": "say please"}]
+        spelled = [{"role": "user", "content": "say <|endoftext|> please"}]
+
+        assert estimate_token_count(spelled) > estimate_token_count(plain)
+        assert estimate_token_count_str("<|endoftext|>") > 1
+
     def test_conversation_with_tool_calls(self):
         """Test token counting for a complete conversation with tool calls."""
         conversation = [
@@ -412,6 +421,11 @@ class TestTruncateMiddleTokens:
         result = _truncate_middle_tokens(short_text, enc, max_tok=100)
 
         assert result == short_text
+
+    def test_truncates_text_that_spells_a_special_token(self, enc):
+        result = _truncate_middle_tokens("<|endoftext|> " * 200, enc, max_tok=20)
+
+        assert "…" in result
 
 
 class TestEnsureToolPairsIntact:

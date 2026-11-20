@@ -3,6 +3,11 @@
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { GraphExecution, GraphID } from "@/lib/autogpt-server-api/types";
 import * as Sentry from "@sentry/nextjs";
+import {
+  hashKey,
+  type QueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 
 type ExecutionEventHandler = (execution: GraphExecution) => void;
@@ -26,6 +31,13 @@ interface UseExecutionEventsOptions {
    */
   throttleMs?: number;
   onExecutionUpdate?: ExecutionEventHandler;
+  /**
+   * Called whenever live state should be re-read, because updates may have
+   * been missed: after the socket reconnects, once the server has these
+   * subscriptions again, and after a subscribe that failed settles on a
+   * retry, on any connection, the first included. Refetch here.
+   */
+  onReconnect?: () => void;
 }
 
 /**
@@ -38,6 +50,7 @@ interface UseExecutionEventsOptions {
  * @param options.enabled - Whether the subscription is enabled (default: true)
  * @param options.throttleMs - Deliver at most one update per this many ms
  * @param options.onExecutionUpdate - Callback invoked when an execution is updated
+ * @param options.onReconnect - Callback invoked after a reconnect, to refetch
  */
 export function useExecutionEvents({
   graphId,
@@ -45,13 +58,16 @@ export function useExecutionEvents({
   enabled = true,
   throttleMs,
   onExecutionUpdate,
+  onReconnect,
 }: UseExecutionEventsOptions) {
   const api = useBackendAPI();
   const onExecutionUpdateRef = useRef(onExecutionUpdate);
+  const onReconnectRef = useRef(onReconnect);
 
   useEffect(() => {
     onExecutionUpdateRef.current = onExecutionUpdate;
-  }, [onExecutionUpdate]);
+    onReconnectRef.current = onReconnect;
+  }, [onExecutionUpdate, onReconnect]);
 
   // Keyed on the IDs' content, so an equal array built on every render of
   // the caller does not tear the subscription down and send it again.
@@ -100,6 +116,12 @@ export function useExecutionEvents({
       subscribedIds.clear();
     });
 
+    // Keyed to the reconnect, not to this effect: a new ID list subscribes
+    // again without asking for a refetch.
+    const reconnectHandler = api.onWebSocketReconnect(() => {
+      onReconnectRef.current?.();
+    });
+
     const messageHandler = api.onWebSocketMessage(
       "graph_execution_event",
       handleExecutionEvent,
@@ -110,6 +132,7 @@ export function useExecutionEvents({
     return () => {
       connectHandler();
       disconnectHandler();
+      reconnectHandler();
       messageHandler();
       throttle.flush();
       // Note: Backend automatically cleans up subscriptions on websocket disconnect
@@ -117,6 +140,31 @@ export function useExecutionEvents({
       subscribedIds.clear();
     };
   }, [api, idsKey, enabled, throttleMs]);
+}
+
+// Per client, the queries asked to refetch in the current task.
+const refetchingNow = new WeakMap<QueryClient, Set<string>>();
+
+/**
+ * Refetches `queryKey` from an `onReconnect`. Every view runs its handler in
+ * the same task, so for a query several views share only the first refetches;
+ * another call would cancel that request and start its own.
+ */
+export function refetchAfterReconnect(
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+) {
+  const hashes = refetchingNow.get(queryClient) ?? new Set<string>();
+  refetchingNow.set(queryClient, hashes);
+  const hash = hashKey(queryKey);
+  if (hashes.has(hash)) return;
+  hashes.add(hash);
+  queueMicrotask(() => hashes.delete(hash));
+  // A fetch already under way may have read before the reconnect, and with
+  // nothing cached yet invalidating would wait for it instead of reading again.
+  void queryClient
+    .cancelQueries({ queryKey })
+    .then(() => queryClient.invalidateQueries({ queryKey }));
 }
 
 function createThrottle<T>(fn: (value: T) => void, waitMs?: number) {

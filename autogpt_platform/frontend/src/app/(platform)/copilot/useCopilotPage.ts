@@ -37,6 +37,7 @@ import {
   takeHeldFollowUps,
 } from "./helpers/heldFollowUps";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
+import { startReplyTiming } from "./helpers/replyTiming";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import { useCopilotUIStore } from "./store";
@@ -51,6 +52,7 @@ import { useCopilotStream } from "./useCopilotStream";
 import { useExpertKickoff } from "./useExpertKickoff";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
+import { useReplyTiming } from "./useReplyTiming";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useSettleGate } from "./useSettleGate";
@@ -223,6 +225,7 @@ function useCopilotPageSession() {
     sessionId,
     setSessionId,
     sessionExpertId,
+    activeExpertId,
     isAdoptingExpertSession,
     hydratedMessages,
     rawSessionMessages,
@@ -470,6 +473,17 @@ function useCopilotPageChat(
 
   useCopilotNotifications(sessionId);
 
+  const { sendMessage: sendTimedMessage } = useReplyTiming({
+    sessionId,
+    messages: displayMessages,
+    status,
+    isSettled: isLocalStreamSettled,
+    isQueued: sessionChatStatus === "queued",
+    isUserStopping,
+    streamClient: runtimeStream ? "stream-runtime" : "ai-sdk",
+    sendMessage,
+  });
+
   const {
     onSend: sendNewMessage,
     isUploadingFiles,
@@ -477,7 +491,7 @@ function useCopilotPageChat(
     setPendingFileParts,
   } = useSendMessage({
     sessionId,
-    sendMessage,
+    sendMessage: sendTimedMessage,
     createSession,
     isUserStoppingRef,
   });
@@ -496,6 +510,11 @@ function useCopilotPageChat(
       (files?.length ?? 0) > 0 || (workspaceFiles?.length ?? 0) > 0;
     if (!trimmed && !hasAttachments) return;
     if (isExpertSendLocked) return;
+
+    const timing = startReplyTiming({
+      isNewChat: !sessionId,
+      isExpert: Boolean(session.activeExpertId),
+    });
 
     // Sending anything retires the greeting for good: flag it done on
     // the server (kept in the DB, just never shown again) and cache the
@@ -567,12 +586,22 @@ function useCopilotPageChat(
       // Resolve once dispatched, not when the whole answer has streamed:
       // the composer's enqueue path is waiting on this, and holding it for
       // the entire turn would lock Enter and the queue button again.
-      void sendNewMessage(message, files, workspaceFiles, metadata).catch(
-        (err: unknown) => recoverFailedDeferredSend(trimmed, [], err),
-      );
+      void sendNewMessage(
+        message,
+        files,
+        workspaceFiles,
+        metadata,
+        timing,
+      ).catch((err: unknown) => recoverFailedDeferredSend(trimmed, [], err));
       return;
     }
-    return await sendNewMessage(message, files, workspaceFiles, metadata);
+    return await sendNewMessage(
+      message,
+      files,
+      workspaceFiles,
+      metadata,
+      timing,
+    );
   }
   // One function for the host's lifetime that runs the latest `sendOrQueue`,
   // so the chat actions and the composer keep their props across flushes.
@@ -585,6 +614,20 @@ function useCopilotPageChat(
   const onStartTask = useStableCallback((message: string) =>
     sendOrQueue(message),
   );
+
+  // Only the runtime's sends go unconfirmed; one sent again starts a turn.
+  function resendUnconfirmed() {
+    if (!runtimeStream?.resendUnconfirmed()) {
+      toast({
+        title: "Message not sent again",
+        description:
+          "Another message is still sending, or this one arrived after all.",
+      });
+      return;
+    }
+    isInflightRef.current = true;
+    markUnsettled();
+  }
 
   useWorkflowImportAutoSubmit({
     onSend: sendOrQueue,
@@ -607,6 +650,7 @@ function useCopilotPageChat(
     onAdoptSession: setSessionId,
     async onKickoff(id, attemptToken) {
       const kickoffMessage = buildKickoffMessage(id, attemptToken);
+      // Untimed: nobody pressed send, the page opened an expert's first day.
       await sendNewMessage(
         kickoffMessage.text,
         undefined,
@@ -645,6 +689,7 @@ function useCopilotPageChat(
     createSession,
     onSend,
     onStartTask,
+    onResendUnconfirmed: runtimeStream ? resendUnconfirmed : undefined,
     // onEnqueue delegates to onSend, which internally routes to the queue
     // endpoint when isInflightRef.current is true.
     onEnqueue: onSend,
