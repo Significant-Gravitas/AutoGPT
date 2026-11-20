@@ -337,14 +337,21 @@ def _coerce_usd(stats: NodeExecutionStats | None) -> float:
 
 def _with_schema_defaults(block: Block, input_data: BlockInput) -> BlockInput:
     """The input `Block._execute` runs on: `None` values dropped, schema defaults
-    filled in. Cost filters are matched against this, with each credentials
-    input marked by whether the platform pays for its key."""
+    filled in, and a model the catalog has switched off replaced by its
+    fallback from its shutdown date. Cost filters are matched against this,
+    with each credentials input marked by whether the platform pays for its
+    key. The shutdown date is read when this is called, so a settlement
+    prices the model as of the day it settles: a node still running at
+    00:00 UTC on a model's shutdown date ran the model itself, but settles at
+    its fallback's rates."""
     defaults = {
         name: field.get_default(call_default_factory=True)
         for name, field in block.input_schema.model_fields.items()
         if not field.is_required()
     }
-    merged = {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
+    merged = block.with_retired_models_replaced(
+        {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
+    )
     for field_name in block.input_schema.get_credentials_fields():
         if isinstance(credentials := merged.get(field_name), dict):
             merged[field_name] = {

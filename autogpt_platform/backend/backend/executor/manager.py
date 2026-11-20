@@ -849,7 +849,7 @@ async def execute_node(
             await track_dry_run_block_cost(
                 node_block.execution_stats,
                 user_id=user_id,
-                model=input_data.get("model"),
+                model=node_block.with_retired_models_replaced(input_data).get("model"),
             )
 
 

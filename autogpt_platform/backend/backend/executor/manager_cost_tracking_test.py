@@ -1,11 +1,14 @@
 """Unit tests for resolve_tracking and log_system_credential_cost."""
 
 import asyncio
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
+from backend.data.llm_registry import llm_models
 from backend.data.model import NodeExecutionStats, platform_funded_managed_id
 from backend.executor.cost_tracking import (
     drain_pending_cost_logs,
@@ -183,6 +186,7 @@ def _make_db_client() -> MagicMock:
 def _make_block(has_credentials: bool = True) -> MagicMock:
     block = MagicMock()
     block.name = "TestBlock"
+    block.with_retired_models_replaced.side_effect = lambda input_data: input_data
     input_schema = MagicMock()
     if has_credentials:
         input_schema.get_credentials_fields.return_value = {"credentials": MagicMock()}
@@ -707,3 +711,35 @@ class TestDrainPendingCostLogs:
 
         await drain_pending_cost_logs(timeout=2.0)
         assert finished == [1], "drain_pending_cost_logs should have awaited the task"
+
+
+class TestCostLogNamesTheModelThatRan:
+    @pytest.mark.asyncio
+    async def test_a_switched_off_model_is_logged_as_its_fallback(self, monkeypatch):
+        """From 11 Dec a node saved on gpt-5 runs gpt-6.1-sol, so the platform
+        cost log, which admin reports group by model, names gpt-6.1-sol."""
+        monkeypatch.setattr(llm_models, "_today", lambda: date(2026, 12, 11))
+        db_client = _make_db_client()
+        with (
+            patch(
+                "backend.executor.cost_tracking.is_system_credential", return_value=True
+            ),
+            patch(
+                "backend.executor.cost_tracking.block_usage_cost",
+                return_value=(450, None),
+            ),
+        ):
+            node_exec = _make_node_exec(
+                inputs={
+                    "credentials": {"id": "sys-cred-1", "provider": "openai"},
+                    "model": "gpt-5-2025-08-07",
+                }
+            )
+            stats = NodeExecutionStats(input_token_count=500, output_token_count=200)
+            await log_system_credential_cost(
+                node_exec, AITextGeneratorBlock(), stats, db_client
+            )
+            await asyncio.sleep(0)
+
+        db_client.log_platform_cost.assert_awaited_once()
+        assert db_client.log_platform_cost.call_args[0][0].model == "gpt-6.1-sol"

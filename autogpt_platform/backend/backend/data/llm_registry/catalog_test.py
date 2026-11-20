@@ -8,14 +8,22 @@ never the test.
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
-from backend.blocks.llm import MODEL_METADATA, AITextGeneratorBlock, LLMModel
+from backend.blocks.llm import (
+    LEGACY_MODEL_MAPPINGS,
+    MODEL_METADATA,
+    AITextGeneratorBlock,
+    LLMModel,
+)
 from backend.data.block_cost_config import BLOCK_COSTS, MODEL_COST, TOKEN_COST
+from backend.data.llm_registry import llm_models
 from backend.data.llm_registry.catalog import get_catalog
 from backend.data.llm_registry.catalog_model import CATALOG_SCHEMA_VERSION
+from backend.data.llm_registry.llm_models import retired_model_fallback
 
 CATALOG = get_catalog()
 
@@ -43,13 +51,117 @@ def test_provider_and_creator_references_resolve():
 
 
 def test_fallback_references_resolve():
-    slugs = {m.slug for m in CATALOG.models}
+    by_slug = {m.slug: m for m in CATALOG.models}
     for m in CATALOG.models:
         if m.fallback_model_slug:
             assert (
-                m.fallback_model_slug in slugs
+                m.fallback_model_slug in by_slug
             ), f"{m.slug}: fallback {m.fallback_model_slug} is not in the catalog"
             assert m.fallback_model_slug != m.slug, f"{m.slug}: fallback is itself"
+            # The retire CLI refuses a disabled replacement, and a chain of
+            # fallbacks would move graphs twice.
+            assert by_slug[
+                m.fallback_model_slug
+            ].is_enabled, f"{m.slug}: fallback {m.fallback_model_slug} is disabled"
+
+
+# Models their provider has shut down, or shuts down by 2026-12-11, and the
+# model a block given one runs instead: read 2026-11-19 from OpenAI's
+# https://developers.openai.com/api/docs/deprecations and Anthropic's
+# https://platform.claude.com/docs/en/about-claude/model-deprecations. A model
+# still served goes to the replacement its provider lists, from its shutdown
+# date, which the catalog holds as ``shutdown_at``. One already shut down moves
+# unasked at boot, so it goes to the current model at its price instead (o1's
+# listed gpt-5.6-sol costs less than o1 did).
+PROVIDER_SHUTDOWNS: dict[str, str] = {
+    "gpt-5-chat-latest": "gpt-6.1-sol",
+    "gpt-5.1-codex": "gpt-6.1-sol",
+    "gpt-5.3-chat-latest": "gpt-6.1-sol",
+    "o1": "gpt-5.6-sol",
+    "o1-mini": "gpt-6.1-terra",
+    "o3-mini": "gpt-6.1-terra",
+    "o4-mini": "gpt-6.1-terra",
+    "gpt-4.1-nano": "gpt-6-luna",
+    "claude-sonnet-4-5-20250929": "claude-sonnet-5-5",
+    "gpt-5-2025-08-07": "gpt-6.1-sol",
+    "gpt-5-pro": "gpt-6.1-sol",
+    "o3-2025-04-16": "gpt-6.1-sol",
+    "o3-pro": "gpt-6.1-sol",
+    "gpt-5-mini-2025-08-07": "gpt-6.1-terra",
+    "gpt-5-nano-2025-08-07": "gpt-6-luna",
+}
+# Still served when switched off: these run as themselves until shutdown_at.
+STILL_SERVED = frozenset(
+    {
+        "claude-sonnet-4-5-20250929",
+        "gpt-5-2025-08-07",
+        "gpt-5-pro",
+        "o3-2025-04-16",
+        "o3-pro",
+        "gpt-5-mini-2025-08-07",
+        "gpt-5-nano-2025-08-07",
+    }
+)
+
+
+@pytest.mark.parametrize("slug", sorted(PROVIDER_SHUTDOWNS))
+def test_models_their_provider_shuts_down_are_switched_off(
+    slug: str, monkeypatch: pytest.MonkeyPatch
+):
+    """Off in the block picker and refused by the copilot, with the model a
+    block given it runs instead, from its shutdown date if it is still served,
+    and its graphs go to as the retire CLI's default target."""
+    by_slug = {m.slug: m for m in CATALOG.models}
+    replacement = PROVIDER_SHUTDOWNS[slug]
+    shutdown_at = by_slug[slug].shutdown_at
+
+    assert not by_slug[slug].is_enabled
+    assert by_slug[slug].fallback_model_slug == replacement
+    assert by_slug[replacement].is_enabled
+    assert replacement not in PROVIDER_SHUTDOWNS
+    assert (shutdown_at is not None) == (slug in STILL_SERVED)
+    if shutdown_at is not None:
+        monkeypatch.setattr(
+            llm_models, "_today", lambda: shutdown_at - timedelta(days=1)
+        )
+        assert retired_model_fallback(slug) is None
+        monkeypatch.setattr(llm_models, "_today", lambda: shutdown_at)
+    assert retired_model_fallback(slug) == LLMModel(replacement)
+
+
+def test_only_a_switched_off_model_has_a_shutdown_date():
+    """A date on a model the catalog serves would mean nothing: the fallback
+    only applies to a switched-off model."""
+    dated_but_served = [
+        m.slug for m in CATALOG.models if m.shutdown_at is not None and m.is_enabled
+    ]
+    assert not dated_but_served
+
+
+def test_legacy_mappings_agree_with_the_catalog_fallback():
+    """A model both in ``LEGACY_MODEL_MAPPINGS`` and in the catalog moves at
+    boot to the model a block given it runs: its catalog fallback. Two
+    sources for one target would let them drift apart."""
+    by_slug = {m.slug: m for m in CATALOG.models}
+    disagree = {
+        legacy: (target.value, by_slug[legacy].fallback_model_slug)
+        for legacy, target in LEGACY_MODEL_MAPPINGS.items()
+        if legacy in by_slug and by_slug[legacy].fallback_model_slug != target.value
+    }
+    assert not disagree
+
+
+def test_legacy_mappings_never_move_graphs_onto_a_shut_down_model():
+    """The boot pass rewrites each LEGACY_MODEL_MAPPINGS key to its target, so
+    a target that is off, or that its provider shuts down, strands the graph
+    again."""
+    by_slug = {m.slug: m for m in CATALOG.models}
+    stranded = {
+        legacy: target.value
+        for legacy, target in LEGACY_MODEL_MAPPINGS.items()
+        if not by_slug[target.value].is_enabled or target.value in PROVIDER_SHUTDOWNS
+    }
+    assert not stranded
 
 
 def _resolve_cell(by_slug: dict, value: str):
