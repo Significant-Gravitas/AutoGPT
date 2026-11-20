@@ -13,6 +13,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import {
+  findCancelConfirmation,
   deferredTrialResponse,
   setTrialUser,
   trialResponse,
@@ -45,9 +46,7 @@ afterEach(() => {
 
 async function openCanceledPopup() {
   fireEvent.click(await screen.findByRole("button", { name: "Cancel trial" }));
-  const confirm = await screen.findByRole("dialog", {
-    name: "Cancel your trial?",
-  });
+  const confirm = await findCancelConfirmation();
   fireEvent.click(
     within(confirm).getByRole("button", { name: "Cancel trial" }),
   );

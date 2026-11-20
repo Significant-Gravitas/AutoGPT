@@ -15,6 +15,7 @@ from typing import Any
 import prisma.errors
 import prisma.models
 import prisma.types
+from prisma import Prisma
 from pydantic import BaseModel, Field
 
 from backend.data.skill_content_approvals import (
@@ -286,8 +287,9 @@ async def publish_version_if_current(
 # ---------------------------------------------------------------------------
 
 
-async def next_version_number(head_id: str) -> int:
-    latest = await prisma.models.SkillVersion.prisma().find_first(
+async def next_version_number(head_id: str, *, client: Prisma | None) -> int:
+    """Inside a transaction, pass the transaction as *client*."""
+    latest = await prisma.models.SkillVersion.prisma(client).find_first(
         where={"headId": head_id}, order={"version": "desc"}
     )
     return (latest.version if latest else 0) + 1
@@ -318,7 +320,7 @@ async def create_version(
 ) -> SkillVersionRecord:
     """Append an immutable version row (numbers are monotonic per head)."""
     for _ in range(3):
-        number = await next_version_number(head.id)
+        number = await next_version_number(head.id, client=None)
         try:
             row = await prisma.models.SkillVersion.prisma().create(
                 data={

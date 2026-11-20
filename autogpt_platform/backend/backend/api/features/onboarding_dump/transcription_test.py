@@ -6,6 +6,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import transcription
+from backend.api.features.onboarding_dump.models import MAX_DURATION_SECS
 
 
 @pytest.mark.parametrize(
@@ -250,12 +251,36 @@ async def test_split_stops_at_the_first_empty_segment(mocker: MockerFixture):
         transcription, "_read_file", new=MagicMock(side_effect=[real, b"OggS-header"])
     )
 
-    segments = await transcription.split_audio(
-        b"opus", "dump.webm", transcription.SEGMENT_SECONDS * 10_000
-    )
+    segments = await transcription.split_audio(b"opus", "dump.webm", MAX_DURATION_SECS)
 
     assert segments == [real]
     assert run.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "probed, hint",
+    [
+        (MAX_DURATION_SECS + 1, 60.0),
+        (MAX_DURATION_SECS + 1, None),
+        (None, MAX_DURATION_SECS + 1),
+    ],
+    ids=["probed-over-small-hint", "probed-over-no-hint", "hint-over"],
+)
+async def test_split_refuses_a_duration_past_the_ceiling(
+    mocker: MockerFixture, probed: float | None, hint: float | None
+):
+    mocker.patch.object(transcription.shutil, "which", return_value="ffmpeg")
+    mocker.patch.object(
+        transcription, "_probe_duration", new=AsyncMock(return_value=probed)
+    )
+    run = mocker.patch.object(transcription, "_run_ffmpeg", new=AsyncMock())
+    mocker.patch.object(transcription, "_write_file", new=MagicMock())
+
+    with pytest.raises(transcription.TranscriptionFailedError, match="longer than"):
+        await transcription.split_audio(b"opus", "dump.webm", hint)
+
+    run.assert_not_awaited()
 
 
 @pytest.mark.asyncio

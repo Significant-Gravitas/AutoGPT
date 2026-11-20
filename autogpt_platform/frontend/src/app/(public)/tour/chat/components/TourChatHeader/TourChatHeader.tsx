@@ -25,8 +25,7 @@ export function TourChatHeader({ scenarioLabel, scenarioIcon }: Props) {
         <span className="contents text-brand">
           <Icon icon={scenarioIcon} className="size-4 shrink-0" />
         </span>
-        {/* oxlint-disable-next-line design-system/no-raw-colors -- the scenario title's purple-to-indigo gradient, no indigo role */}
-        <p className="truncate bg-gradient-to-r from-brand-hover to-indigo-500 bg-clip-text font-sans text-body font-medium text-transparent">
+        <p className="truncate bg-gradient-to-r from-brand-hover to-indigo bg-clip-text font-sans text-body font-medium text-transparent">
           {scenarioLabel}
         </p>
       </div>

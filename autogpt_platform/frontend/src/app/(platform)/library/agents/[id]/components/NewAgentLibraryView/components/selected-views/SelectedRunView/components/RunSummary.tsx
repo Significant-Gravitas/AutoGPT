@@ -22,14 +22,14 @@ export function RunSummary({ run }: Props) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm leading-relaxed text-foreground-body">
+      <p className="text-body leading-relaxed text-foreground-body">
         {run.stats.activity_status}
       </p>
 
       {typeof correctnessScore === "number" && (
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-foreground-secondary">
+            <span className="text-body font-medium text-foreground-secondary">
               Success Estimate:
             </span>
             <div className="flex items-center gap-2">
@@ -39,11 +39,9 @@ export function RunSummary({ run }: Props) {
                     correctnessScore >= 0.8
                       ? "bg-success"
                       : correctnessScore >= 0.6
-                        ? // oxlint-disable-next-line design-system/no-raw-colors -- yellow-500 #F5C000 has no role; the score bar's gold step is deferred (see PR)
-                          "bg-yellow-500"
+                        ? "bg-yellow"
                         : correctnessScore >= 0.4
-                          ? // oxlint-disable-next-line design-system/no-raw-colors -- orange-500 #FE8700 has no role; the score bar's orange step is deferred (see PR)
-                            "bg-orange-500"
+                          ? "bg-orange"
                           : "bg-error"
                   }`}
                   style={
@@ -53,7 +51,7 @@ export function RunSummary({ run }: Props) {
                   }
                 />
               </div>
-              <span className="text-sm font-medium">
+              <span className="text-body font-medium">
                 {Math.round(correctnessScore * 100)}%
               </span>
             </div>

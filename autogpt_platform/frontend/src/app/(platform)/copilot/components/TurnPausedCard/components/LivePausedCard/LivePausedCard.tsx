@@ -39,7 +39,7 @@ export function LivePausedCard({ onStop, ...args }: Props) {
           <Text tone="primary" variant="body-medium">
             {card.title}
           </Text>
-          <Text tone="muted" variant="small" className="mt-1 !leading-5">
+          <Text tone="muted" variant="small-loose" className="mt-1">
             {card.body}
           </Text>
         </div>

@@ -132,8 +132,8 @@ export function MobileSubmissionItem({
                 <UIIcon
                   icon={LinkSquare01Icon}
                   size={14}
-                  // oxlint-disable-next-line design-system/no-restyle -- the link glyph is quieter than the name it sits beside
-                  className="shrink-0 text-foreground-tertiary"
+                  tone="muted"
+                  className="shrink-0"
                   aria-hidden
                 />
               </Link>
@@ -213,8 +213,8 @@ export function MobileSubmissionItem({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => setConfirmDeleteOpen(true)}
-                  // oxlint-disable-next-line design-system/no-raw-colors, design-system/no-restyle -- rose delete text kept until the rose -> error hue change is approved
-                  className="text-rose-600 focus:text-rose-700"
+                  // oxlint-disable-next-line design-system/no-restyle -- the menu item has no destructive variant (deferred)
+                  className="text-error-hover focus:text-error-foreground"
                 >
                   <span className="flex items-center gap-2">
                     <UIIcon icon={Delete02Icon} size={14} />
@@ -234,21 +234,21 @@ export function MobileSubmissionItem({
           <UIIcon icon={visual.Icon} size={10} />
           {visual.label}
         </span>
-        <span className="text-xs whitespace-nowrap text-foreground-tertiary">
+        <span className="text-caption whitespace-nowrap text-foreground-tertiary">
           {formatSubmittedAt(submission.submitted_at)}
         </span>
-        <span aria-hidden className="text-xs text-foreground-disabled">
+        <span aria-hidden className="text-caption text-foreground-disabled">
           ·
         </span>
-        <span className="text-xs whitespace-nowrap text-foreground-tertiary tabular-nums">
+        <span className="text-caption whitespace-nowrap text-foreground-tertiary tabular-nums">
           {formatRuns(submission.run_count ?? 0)} runs
         </span>
         {hasRating ? (
           <>
-            <span aria-hidden className="text-xs text-foreground-disabled">
+            <span aria-hidden className="text-caption text-foreground-disabled">
               ·
             </span>
-            <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap text-foreground-tertiary tabular-nums">
+            <span className="inline-flex items-center gap-1 text-caption whitespace-nowrap text-foreground-tertiary tabular-nums">
               {submission.review_avg_rating!.toFixed(1)}
               {/* oxlint-disable-next-line design-system/no-restyle -- the star is amber beside grey run counts */}
               <UIIcon icon={StarIcon} size={10} className="text-warning" />

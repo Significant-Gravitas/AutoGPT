@@ -32,16 +32,13 @@ function NavItemContent({
 
   return (
     <>
-      <UIIcon icon={Icon} size={16} className="text-foreground-base" />
+      <UIIcon icon={Icon} size={16} tone="base" />
       <Text
         variant="body"
         as="span"
-        className={cn(
-          "flex-1",
-          isActive
-            ? "font-medium text-foreground-base"
-            : "font-normal text-foreground-body",
-        )}
+        tone={isActive ? "base" : "body"}
+        weight={isActive ? "medium" : "normal"}
+        className="flex-1"
       >
         {label}
       </Text>

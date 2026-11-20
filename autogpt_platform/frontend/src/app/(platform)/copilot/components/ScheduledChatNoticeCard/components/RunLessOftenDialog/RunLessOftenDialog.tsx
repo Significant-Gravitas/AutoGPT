@@ -116,7 +116,7 @@ function CadenceChoices({ cadence, selected, onSelect }: ChoicesProps) {
           <label
             key={option.cron}
             className={cn(
-              "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm text-foreground-strong",
+              "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-body text-foreground-strong",
               selected === option.cron
                 ? "border-action-hover bg-surface-muted"
                 : "border-border-base hover:bg-surface-muted",

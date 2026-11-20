@@ -23,8 +23,6 @@ export function LlmMenuItem({
   onClick,
   isActive,
 }: Props) {
-  const hasIcon = Boolean(icon);
-
   return (
     <button
       type="button"
@@ -40,22 +38,16 @@ export function LlmMenuItem({
         </div>
         <div className="flex items-center gap-2">
           {isActive && (
-            <Icon icon={Tick02Icon} className="h-4 w-4 text-success" />
+            <Icon icon={Tick02Icon} tone="success" className="h-4 w-4" />
           )}
           {rightSlot}
           {showChevron && (
-            <Icon
-              icon={ArrowRight01Icon}
-              className="h-4 w-4 text-foreground-strong"
-            />
+            <Icon icon={ArrowRight01Icon} tone="primary" className="h-4 w-4" />
           )}
         </div>
       </div>
       {subtitle && (
-        <Text
-          variant="small"
-          className={cn("mb-1 text-foreground-tertiary", hasIcon && "pl-0")}
-        >
+        <Text variant="small" tone="muted" className="mb-1">
           {subtitle}
         </Text>
       )}

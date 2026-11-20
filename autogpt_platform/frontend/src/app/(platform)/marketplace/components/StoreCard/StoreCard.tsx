@@ -88,7 +88,7 @@ export function StoreCard({
 
       <div className="mt-4 flex w-full flex-1 flex-col">
         <h3
-          className="line-clamp-1 font-sans text-lg font-semibold tracking-title text-foreground-strong"
+          className="line-clamp-1 font-sans text-lead font-semibold tracking-title text-foreground-strong"
           title={agentName}
         >
           {agentName}
@@ -109,13 +109,13 @@ export function StoreCard({
             </span>
           </div>
         )}
-        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-foreground-secondary">
+        <p className="mt-3 line-clamp-3 text-body leading-relaxed text-foreground-secondary">
           {description}
         </p>
       </div>
 
       <div className="mt-auto flex w-full items-center pt-3">
-        <span className="flex items-center gap-2 text-xs text-foreground-tertiary">
+        <span className="flex items-center gap-2 text-caption text-foreground-tertiary">
           {runs === 0 ? "No runs" : `${runs.toLocaleString()} runs`}
           {rating >= 1 && (
             <span

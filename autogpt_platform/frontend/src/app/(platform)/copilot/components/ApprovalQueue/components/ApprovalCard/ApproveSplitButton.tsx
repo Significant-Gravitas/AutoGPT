@@ -90,7 +90,7 @@ export function ApproveSplitButton({
             );
           })}
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-xs font-normal text-foreground-tertiary">
+          <DropdownMenuLabel className="text-caption font-normal text-foreground-tertiary">
             Applies to
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup
@@ -103,7 +103,7 @@ export function ApproveSplitButton({
                 value={option}
                 // Picking a scope keeps the menu open so the action can follow.
                 onSelect={(event) => event.preventDefault()}
-                className="text-sm text-foreground-strong"
+                className="text-body text-foreground-strong"
               >
                 {scopeLabel(option, who)}
               </DropdownMenuRadioItem>

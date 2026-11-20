@@ -88,7 +88,7 @@ function TrialUsage() {
         <Text variant="body-medium" tone="body">
           Trial allowance
         </Text>
-        <Text variant="body" tone="muted" className="tabular-nums">
+        <Text variant="body" tone="muted" tabular>
           {formatTrialPercent(percent)} used
         </Text>
       </div>
@@ -101,8 +101,7 @@ function TrialUsage() {
         aria-valuenow={percent}
         className={cn(
           "bg-surface-active [&>div]:rounded-full",
-          // oxlint-disable-next-line design-system/no-raw-colors -- orange/yellow hue kept; warning-foreground would be a hue change (deferred visual change)
-          percent >= 80 ? "[&>div]:bg-orange-500" : "[&>div]:bg-info",
+          percent >= 80 ? "[&>div]:bg-orange" : "[&>div]:bg-info",
         )}
       />
       <Text variant="small" tone="muted">
@@ -149,9 +148,10 @@ function UsageUnavailable({ onRetry }: { onRetry: () => void }) {
       </Text>
       <Button
         variant="ghost"
-        size="small"
+        size="xs"
+        shape="pill"
         onClick={onRetry}
-        className="h-auto px-2 py-1 text-xs"
+        className="min-w-20"
       >
         Retry
       </Button>

@@ -56,7 +56,8 @@ export function PublishSkillButton({ skillName }: Props) {
               <Icon
                 icon={CheckmarkCircle02Icon}
                 size={18}
-                className="mt-0.5 text-success"
+                tone="success"
+                className="mt-0.5"
               />
               <Text variant="body">
                 Submitted for review. Your skill appears in the marketplace once

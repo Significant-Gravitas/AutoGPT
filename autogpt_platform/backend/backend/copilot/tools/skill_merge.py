@@ -17,6 +17,8 @@ from pydantic import BaseModel
 
 from backend.data.skill_package import MergedText, merge_text
 
+from .skill_frontmatter import dump_skill_frontmatter, load_skill_frontmatter
+
 # The closing fence's newline is required so the text goes back together
 # byte for byte; a file without one merges as plain text.
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.DOTALL)
@@ -90,14 +92,14 @@ def _merge_frontmatter(base: str, ours: str, theirs: str) -> MergedText:
         return MergedText(text=theirs, conflicted=conflicted)
     if _same_mapping(merged, o):
         return MergedText(text=ours, conflicted=conflicted)
-    rendered = yaml.safe_dump(merged, sort_keys=False).strip()
+    rendered = dump_skill_frontmatter(merged)
     return MergedText(text=rendered, conflicted=conflicted)
 
 
 def _mapping(text: str) -> dict[str, Any] | None:
     try:
-        loaded = yaml.safe_load(text)
-    except yaml.YAMLError:
+        loaded = load_skill_frontmatter(text)
+    except (yaml.YAMLError, ValueError):
         return None
     if not isinstance(loaded, dict):
         return None

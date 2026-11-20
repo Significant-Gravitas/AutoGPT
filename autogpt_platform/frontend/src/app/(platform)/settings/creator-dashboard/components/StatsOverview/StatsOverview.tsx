@@ -53,8 +53,7 @@ export function StatsOverview({ stats, index = 0 }: Props) {
       label: "Total runs",
       value: formatRuns(stats.totalRuns),
       Icon: PlayIcon,
-      // oxlint-disable-next-line design-system/no-raw-colors -- sky tile kept until the cyan -> info hue change is approved
-      iconClass: "bg-sky-50 text-sky-700 ring-sky-200",
+      iconClass: "bg-info-surface text-sky-foreground ring-sky/30",
     },
   ];
 

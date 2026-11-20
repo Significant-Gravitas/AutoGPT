@@ -231,7 +231,7 @@ async def test_baseline_still_refuses_a_deferred_tool_named_directly():
         disabled_tools=frozenset(),
     )
     assert result.success is False
-    assert "not available in this session" in result.output
+    assert f'run_capability(id=\\"tool:{INNER}\\"' in result.output
 
 
 # ------------------------------------------------------------ the SDK engine

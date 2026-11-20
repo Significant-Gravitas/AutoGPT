@@ -169,6 +169,55 @@
       "stripe_api_write"
     ]
   },
+  "mcp_supabase": {
+    "source": "https://supabase.com/docs/guides/getting-started/mcp",
+    "read": [
+      "generate_typescript_types",
+      "get_advisors",
+      "get_cost",
+      "get_edge_function",
+      "get_notebook",
+      "get_organization",
+      "get_project",
+      "get_project_url",
+      "get_publishable_keys",
+      "get_storage_config",
+      "list_branches",
+      "list_edge_functions",
+      "list_extensions",
+      "list_migrations",
+      "list_notebooks",
+      "list_organizations",
+      "list_projects",
+      "list_storage_buckets",
+      "list_tables",
+      "query_logs",
+      "search_docs"
+    ],
+    "external": [
+      "apply_migration",
+      "confirm_cost",
+      "create_branch",
+      "create_edge_function_secret",
+      "create_notebook",
+      "create_project",
+      "deploy_edge_function",
+      "execute_sql",
+      "pause_project",
+      "rebase_branch",
+      "restore_project",
+      "run_notebook",
+      "submit_feedback",
+      "update_storage_config"
+    ],
+    "irreversible": [
+      "delete_branch",
+      "delete_feedback",
+      "delete_notebook",
+      "merge_branch",
+      "reset_branch"
+    ]
+  },
   "mcp_todoist": {
     "source": "https://github.com/Doist/todoist-mcp/blob/main/src/utils/tool-names.ts",
     "read": [
@@ -532,6 +581,24 @@
       "create_base"
     ]
   },
+  "mcp_companyenrich": {
+    "source": "https://docs.companyenrich.com/docs/mcp-server",
+    "read": [
+      "get_current_user"
+    ],
+    "external": [
+      "enrich_company",
+      "enrich_company_by_properties",
+      "enrich_person_email",
+      "find_similar_companies",
+      "get_company_by_id",
+      "get_company_workforce",
+      "get_person_by_id",
+      "lookup_person_by_email",
+      "search_companies",
+      "search_people"
+    ]
+  },
   "mcp_cloudflare": {
     "source": "https://github.com/cloudflare/mcp/blob/main/README.md",
     "read": [
@@ -541,6 +608,46 @@
     ],
     "external": [
       "execute"
+    ]
+  },
+  "mcp_aimlapi": {
+    "source": "https://docs.aimlapi.com/quickstart/mcp",
+    "read": [
+      "account_balance",
+      "account_usage",
+      "job_result",
+      "job_status",
+      "model_get",
+      "models_compare",
+      "models_find_best",
+      "models_list",
+      "models_search",
+      "ping",
+      "tools_inspect",
+      "tools_run_status",
+      "tools_search"
+    ],
+    "external": [
+      "audio_generate",
+      "embeddings_create",
+      "image_generate",
+      "jev_model_search",
+      "jev_tool_search",
+      "llm_chat",
+      "tools_run",
+      "video_generate"
+    ]
+  },
+  "mcp_anysearch": {
+    "source": "https://github.com/anysearch-ai/anysearch-mcp-server/blob/main/README.md",
+    "read": [
+      "batch_search",
+      "extract",
+      "get_sub_domains",
+      "search"
+    ],
+    "external": [
+      "score"
     ]
   }
 }
