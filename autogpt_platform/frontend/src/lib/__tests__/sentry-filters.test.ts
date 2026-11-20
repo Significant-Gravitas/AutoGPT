@@ -223,6 +223,18 @@ describe("Sentry filter for handled network failures", () => {
     expect(await sentAndKept()).toBe(true);
   });
 
+  it("still reports a fetch failure Next logs for an error boundary", async () => {
+    const error = new TypeError("Failed to fetch");
+    // Next's production onCaughtError logs the bare error first, so Sentry
+    // then skips the boundary's own report of the same error.
+    console.error(error);
+    Sentry.captureException(error, {
+      tags: { errorBoundary: "true", context: "error-page" },
+    });
+
+    expect(await sentAndKept()).toBe(true);
+  });
+
   it("still reports a fetch failure that reaches the error page", async () => {
     const { default: ErrorPage } = await import("@/app/error");
     render(
