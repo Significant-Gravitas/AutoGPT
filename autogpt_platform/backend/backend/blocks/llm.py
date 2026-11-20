@@ -327,9 +327,14 @@ async def llm_call(
     the provider and was then cancelled, which never gets a reply to read
     usage from: see ``abandoned_call_stats``. Blocks pass their
     ``merge_stats``; ``None`` is for callers with no node to bill.
+
+    ``timeout_seconds`` can only shorten the request: the provider layer
+    still stops at ``LLM_REQUEST_TIMEOUT_SECONDS``.
     """
     timeout = (
-        LLM_REQUEST_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+        LLM_REQUEST_TIMEOUT_SECONDS
+        if timeout_seconds is None
+        else min(timeout_seconds, LLM_REQUEST_TIMEOUT_SECONDS)
     )
     sent_input_tokens: list[int] = []
     started = _now()

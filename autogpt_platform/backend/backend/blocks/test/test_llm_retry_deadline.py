@@ -202,3 +202,33 @@ async def test_floor_stops_retrying_and_says_the_budget_ran_out(
         "without a valid response."
     )
     assert block.execution_stats.provider_cost == 0.25
+
+
+@pytest.mark.asyncio
+async def test_an_override_cannot_lengthen_the_request(monkeypatch, spend_alerts):
+    """The provider layer stops at the request budget whatever ``llm_call`` is
+    asked for, so the wait and the reported timeout stop there too."""
+    monkeypatch.setattr(llm, "LLM_REQUEST_TIMEOUT_SECONDS", _BUDGET)
+    clock = {"t": float(int(time.monotonic()))}
+    monkeypatch.setattr(llm, "_now", lambda: clock["t"])
+
+    async def cut_off_at_the_budget(**kwargs) -> llm.LLMResponse:
+        clock["t"] += _BUDGET
+        raise TimeoutError()
+
+    monkeypatch.setattr(llm, "_llm_call", cut_off_at_the_budget)
+
+    with pytest.raises(TimeoutError, match=f"exceeded {_BUDGET}s"):
+        await llm.llm_call(
+            credentials=llm.TEST_CREDENTIALS,
+            llm_model=llm.DEFAULT_LLM_MODEL,
+            prompt=[{"role": "user", "content": "Hello"}],
+            max_tokens=None,
+            on_abandoned=None,
+            timeout_seconds=_BUDGET * 3,
+        )
+
+    assert len(spend_alerts) == 1
+    assert vars(spend_alerts[0])["json_fields"]["configured_timeout_seconds"] == (
+        _BUDGET
+    )
