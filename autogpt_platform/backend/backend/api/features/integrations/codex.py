@@ -227,8 +227,9 @@ async def _acquire_codex_lease(
         if isinstance(error, (CodexAuthError, ValueError)):
             # With the row present, a ValueError came from the refresh request,
             # e.g. the URL guard blocking the token host; its message names the
-            # host/IP. A CodexAuthError left here is a 429 or 5xx after retries:
-            # ChatGPT is busy or down, and reconnecting won't help.
+            # host/IP. A CodexAuthError left here is any other status, e.g. a 429
+            # or 5xx after retries: ChatGPT is busy or down, and reconnecting
+            # won't help.
             _log_acquisition_failure(error)
             raise _codex_unavailable() from None
         # Neither an outage nor a refused grant, so most likely a bug: keep the
@@ -254,12 +255,15 @@ async def _credential_still_stored(user_id: str, credential_id: str) -> bool:
 
 
 def _needs_reconnect(error: Exception) -> bool:
-    """Whether ChatGPT refused the refresh for good, rather than for now."""
+    """Whether ChatGPT refused the refresh for good, rather than for now.
+
+    An OAuth token endpoint refuses a grant with 400 or 401. Other statuses
+    (a 403 from a firewall, 408, 429, 5xx) say nothing about the grant, and a
+    CodexAuthError without a status means there is nothing usable to refresh.
+    """
     if isinstance(error, CredentialsNeedReconnectError):
         return True
-    if not isinstance(error, CodexAuthError):
-        return False
-    return error.status is None or (error.status != 429 and error.status < 500)
+    return isinstance(error, CodexAuthError) and error.status in (None, 400, 401)
 
 
 def _codex_unavailable() -> HTTPException:

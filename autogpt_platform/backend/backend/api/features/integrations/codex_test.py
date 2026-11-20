@@ -965,7 +965,7 @@ def test_codex_status_routes_report_infra_failure_as_unavailable(route, infra_er
 
 
 @pytest.mark.parametrize("route", ["account", "rate-limits"])
-@pytest.mark.parametrize("http_status", [429, 500, 503])
+@pytest.mark.parametrize("http_status", [403, 408, 429, 500, 503])
 def test_codex_status_routes_report_busy_chatgpt_as_unavailable(route, http_status):
     # A refresh ChatGPT turned away for now must not tell the user to reconnect.
     with (
