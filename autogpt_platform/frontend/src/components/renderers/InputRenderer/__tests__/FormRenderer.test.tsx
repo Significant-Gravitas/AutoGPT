@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { BlockUIType } from "@/app/(platform)/build/components/types";
 import { render } from "@/tests/integrations/test-utils";
+import { expectTypingKept } from "@/tests/integrations/typing";
 
 import { FormRenderer } from "../FormRenderer";
 import { SelectWidget } from "../base/standard/widgets/SelectInput/SelectWidget";
@@ -94,7 +95,7 @@ vi.mock("@/components/molecules/MultiSelect/MultiSelect", () => ({
 }));
 
 describe("FormRenderer", () => {
-  it("accepts integers beyond 2^53 held as digit strings", async () => {
+  it("keeps integers beyond 2^53 as typed and stores every digit", async () => {
     const handleChange = vi.fn();
     const jsonSchema: RJSFSchema = {
       type: "object",
@@ -112,10 +113,7 @@ describe("FormRenderer", () => {
         jsonSchema={jsonSchema}
         handleChange={handleChange}
         uiSchema={{}}
-        initialValues={{
-          count: "9007199254740993",
-          limit: "-9007199254740993",
-        }}
+        initialValues={{ limit: "-9007199254740993" }}
         formContext={{
           nodeId: "node-1",
           uiType: BlockUIType.STANDARD,
@@ -125,11 +123,12 @@ describe("FormRenderer", () => {
       />,
     );
 
-    const [count, limit] = screen.getAllByRole("spinbutton");
-    expect(count).toHaveProperty("value", "9007199254740993");
-    expect(limit).toHaveProperty("value", "-9007199254740993");
+    const [count, limit] = screen.getAllByRole(
+      "spinbutton",
+    ) as HTMLInputElement[];
+    expect(limit.value).toBe("-9007199254740993");
 
-    fireEvent.change(count, { target: { value: "9223372036854775807" } });
+    await expectTypingKept(count, "9223372036854775807");
 
     await waitFor(() => {
       const lastCall = handleChange.mock.calls.at(-1)?.[0];

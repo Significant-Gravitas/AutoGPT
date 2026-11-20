@@ -96,7 +96,7 @@ describe("isFormValid", () => {
     expect(isFormValid(schema, {})).toBe(false);
   });
 
-  it("accepts an integer beyond 2^53 held as a digit string", () => {
+  it("accepts an integer beyond 2^53 held as a digit string, unchanged", () => {
     const schema: RJSFSchema = {
       type: "object",
       required: ["n"],
@@ -105,12 +105,13 @@ describe("isFormValid", () => {
         maybe: { anyOf: [{ type: "integer" }, { type: "null" }] },
       },
     };
-    expect(
-      isFormValid(schema, {
-        n: "9007199254740993",
-        maybe: "-9223372036854775807",
-      }),
-    ).toBe(true);
+    const formData = { n: "9007199254740993", maybe: "-9223372036854775807" };
+
+    expect(isFormValid(schema, formData)).toBe(true);
+    expect(formData).toEqual({
+      n: "9007199254740993",
+      maybe: "-9223372036854775807",
+    });
   });
 
   it("still rejects non-digit strings for integer fields", () => {

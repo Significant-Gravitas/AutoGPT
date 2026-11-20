@@ -1,9 +1,11 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { WidgetProps } from "@rjsf/utils";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { BlockUIType } from "@/app/(platform)/build/components/types";
 import { render } from "@/tests/integrations/test-utils";
+import { expectTypingKept } from "@/tests/integrations/typing";
 
 import TextWidget from "../TextWidget";
 
@@ -37,6 +39,26 @@ function makeProps(overrides: Partial<WidgetProps> = {}): WidgetProps {
       ...(overrides.registry ?? {}),
     },
   } as unknown as WidgetProps;
+}
+
+function ControlledIntegerWidget({
+  onChange,
+}: {
+  onChange: (value: unknown) => void;
+}) {
+  const [value, setValue] = useState<unknown>();
+  return (
+    <TextWidget
+      {...makeProps({
+        schema: { type: "integer" },
+        value,
+        onChange: (next: unknown) => {
+          setValue(next);
+          onChange(next);
+        },
+      })}
+    />
+  );
 }
 
 describe("TextWidget", () => {
@@ -124,19 +146,15 @@ describe("TextWidget", () => {
     });
 
     it.each(["9007199254740993", "-9007199254740993", "9223372036854775807"])(
-      "keeps %s as its exact digit string",
-      (value) => {
+      "keeps %s as typed and stores every digit",
+      async (value) => {
         const onChange = vi.fn();
-        const props = makeProps({
-          schema: { type: "integer" },
-          onChange,
-        });
+        render(<ControlledIntegerWidget onChange={onChange} />);
 
-        render(<TextWidget {...props} />);
-
-        fireEvent.change(screen.getByRole("spinbutton"), {
-          target: { value },
-        });
+        await expectTypingKept(
+          screen.getByRole("spinbutton") as HTMLInputElement,
+          value,
+        );
 
         expect(onChange).toHaveBeenLastCalledWith(value);
       },

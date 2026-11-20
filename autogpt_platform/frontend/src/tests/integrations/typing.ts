@@ -17,14 +17,21 @@ type TextField = HTMLInputElement | HTMLTextAreaElement;
  * cancels every Japanese, Chinese or Korean composition and throws the caret
  * to the end. Use this in the test of any field that transforms or round-trips
  * its value.
+ *
+ * A number input has no caret and no IME, so only its text is checked.
  */
 export async function expectTypingKept(
   field: TextField,
   text: string,
   at = field.value.length,
 ) {
-  const user = userEvent.setup();
   const expected = field.value.slice(0, at) + text + field.value.slice(at);
+  if (field.type === "number") {
+    typeIntoNumberInput(field, text, at);
+    expect(field.value).toBe(expected);
+    return;
+  }
+  const user = userEvent.setup();
   fireEvent.compositionStart(field);
   await user.type(field, escapeKeyDescriptors(text), {
     initialSelectionStart: at,
@@ -33,6 +40,19 @@ export async function expectTypingKept(
   fireEvent.compositionEnd(field);
   expect(field.value).toBe(expected);
   expect(field.selectionStart).toBe(at + text.length);
+}
+
+// user-event writes a number input's text as `String(Number(text))`, which
+// rounds integers past 2^53, so each keystroke is sent as a change event with
+// the text typed so far.
+function typeIntoNumberInput(field: TextField, text: string, at: number) {
+  const before = field.value.slice(0, at);
+  const after = field.value.slice(at);
+  for (let end = 1; end <= text.length; end++) {
+    fireEvent.change(field, {
+      target: { value: before + text.slice(0, end) + after },
+    });
+  }
 }
 
 // user-event reads `{Enter}` and `[KeyA]` as key names; doubled, they type

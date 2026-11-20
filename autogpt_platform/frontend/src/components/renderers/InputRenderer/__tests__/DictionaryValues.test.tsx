@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { BlockUIType } from "@/app/(platform)/build/components/types";
 import { render } from "@/tests/integrations/test-utils";
+import { expectTypingKept } from "@/tests/integrations/typing";
 
 import { FormRenderer } from "../FormRenderer";
 
@@ -183,11 +184,10 @@ describe("Dictionary input preservation", () => {
   });
 });
 
-describe("Integer values beyond 2^53", () => {
+describe("Integer dictionary values beyond 2^53", () => {
   const intSchema: RJSFSchema = {
     type: "object",
     properties: {
-      count: { title: "Count", type: "integer" },
       ids: {
         title: "Ids",
         type: "object",
@@ -196,10 +196,10 @@ describe("Integer values beyond 2^53", () => {
     },
   };
 
-  type IntData = { count?: unknown; ids: Record<string, unknown> };
+  type IntData = { ids: Record<string, unknown> };
 
   function IntForm() {
-    const [data, setData] = useState<IntData>({ count: 1, ids: { id: 1 } });
+    const [data, setData] = useState<IntData>({ ids: { id: -9 } });
     return (
       <>
         <FormRenderer
@@ -221,31 +221,22 @@ describe("Integer values beyond 2^53", () => {
     );
   }
 
-  it("stores a field and a dictionary value with every digit", async () => {
-    render(<IntForm />);
+  it.each([
+    ["223372036854775807", '{"ids":{"id":"-9223372036854775807"}}'],
+    ["2", '{"ids":{"id":-92}}'],
+  ])(
+    "stores -9%s typed into a dictionary value exactly",
+    async (text, stored) => {
+      render(<IntForm />);
 
-    const [count, id] = screen.getAllByRole("spinbutton");
-    fireEvent.change(count, { target: { value: "9007199254740993" } });
-    fireEvent.change(id, { target: { value: "-9223372036854775807" } });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stored data").textContent).toBe(
-        '{"count":"9007199254740993","ids":{"id":"-9223372036854775807"}}',
+      await expectTypingKept(
+        screen.getByRole("spinbutton") as HTMLInputElement,
+        text,
       );
-    });
-  });
 
-  it("still stores a safe integer as a number", async () => {
-    render(<IntForm />);
-
-    fireEvent.change(screen.getAllByRole("spinbutton")[0], {
-      target: { value: "42" },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Stored data").textContent).toBe(
-        '{"count":42,"ids":{"id":1}}',
-      );
-    });
-  });
+      await waitFor(() => {
+        expect(screen.getByLabelText("Stored data").textContent).toBe(stored);
+      });
+    },
+  );
 });
