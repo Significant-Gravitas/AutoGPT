@@ -11,6 +11,7 @@ import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
+from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from mcp.shared.auth import ProtectedResourceMetadata
 
@@ -666,32 +667,48 @@ async def mcp_protected_resource_metadata() -> ProtectedResourceMetadata:
     return protected_resource_metadata()
 
 
-HEALTH_DB_TIMEOUT_SECONDS = 2.0
-
-
+# The process alone. Liveness probes and the load balancer call this, so a
+# database outage must not fail it; /health/ready checks the database.
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
-    unhealthy = fastapi.responses.JSONResponse(
-        {"status": "unhealthy", "detail": "database unavailable"},
-        status_code=503,
-    )
     if not backend.data.db.is_connected():
-        return unhealthy
+        raise UnhealthyServiceError("Database is not connected")
+    return {"status": "healthy"}
+
+
+HEALTH_READY_DB_TIMEOUT_SECONDS = 2.0
+
+
+@app.get(
+    path="/health/ready",
+    tags=["health"],
+    dependencies=[],
+    include_in_schema=False,
+)
+async def health_ready():
+    """Whether this process can query the database now, for a readiness probe
+    that should take the pod out of service while it can't."""
+    if backend.data.db.is_connected() and await _database_answers():
+        return {"status": "healthy"}
+    # The cause is logged, not returned: it can name the database host and port.
+    return JSONResponse(
+        {"status": "unhealthy", "detail": "database unavailable"}, status_code=503
+    )
+
+
+async def _database_answers() -> bool:
     try:
-        result = await asyncio.wait_for(
+        rows = await asyncio.wait_for(
             backend.data.db.query_raw_with_schema("SELECT 1 as health_check"),
-            timeout=HEALTH_DB_TIMEOUT_SECONDS,
+            timeout=HEALTH_READY_DB_TIMEOUT_SECONDS,
         )
-        if not result or result[0].get("health_check") != 1:
-            return unhealthy
-    except Exception:
-        return unhealthy
-    return {"status": "healthy"}
-
-
-@app.get(path="/health/live", tags=["health"], dependencies=[])
-async def health_live():
-    return {"status": "healthy"}
+    except Exception as e:
+        logger.warning(f"Readiness check: the database probe failed: {e!r}")
+        return False
+    if rows and rows[0].get("health_check") == 1:
+        return True
+    logger.warning(f"Readiness check: the database probe returned {rows!r}")
+    return False
 
 
 # After the last route: a route added below this wouldn't check its token first.

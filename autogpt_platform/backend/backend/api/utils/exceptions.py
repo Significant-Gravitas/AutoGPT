@@ -88,7 +88,10 @@ def add_exception_handlers(
         GraphActivationError: _handle_error(status.HTTP_400_BAD_REQUEST),
         ValueError: _handle_error(status.HTTP_400_BAD_REQUEST),
         # It's the backend's problem: HTTP 5XX
-        UnhealthyServiceError: _handle_error(status.HTTP_503_SERVICE_UNAVAILABLE),
+        # A health check's failure, which logs itself when raised.
+        UnhealthyServiceError: _handle_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE, log_error=False
+        ),
         MissingConfigError: _handle_error(status.HTTP_503_SERVICE_UNAVAILABLE),
         SchedulerUnavailableError: _handle_scheduler_unavailable,
         PrismaError: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),

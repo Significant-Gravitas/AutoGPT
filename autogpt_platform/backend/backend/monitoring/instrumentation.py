@@ -213,8 +213,7 @@ def instrument_fastapi(
         should_ignore_untemplated=True,
         should_respect_env_var=True,
         should_instrument_requests_inprogress=True,
-        excluded_handlers=excluded_handlers
-        or ["/health", "/health/live", "/readiness"],
+        excluded_handlers=excluded_handlers or ["/health", "/readiness"],
         env_var_name=METRICS_ENV_VAR,
         inprogress_name=f"autogpt_{service_subsystem}_http_requests_inprogress",
         inprogress_labels=True,

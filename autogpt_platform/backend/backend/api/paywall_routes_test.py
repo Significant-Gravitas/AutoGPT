@@ -362,7 +362,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/store/skills/{slug}",
     "GET /api/store/skills/{slug}/files/{path:path}",
     "GET /health",
-    "GET /health/live",
+    "GET /health/ready",
 }
 
 # One closed route per router, as the client calls it.

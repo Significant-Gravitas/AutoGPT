@@ -1,9 +1,13 @@
 """What an error response tells the caller."""
 
+import contextlib
+import logging
+
 import fastapi
 import fastapi.testclient
 import pytest
 
+from backend.api.utils import exceptions
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.util.service import UnhealthyServiceError
 
@@ -41,16 +45,19 @@ def test_a_client_error_still_says_what_was_wrong() -> None:
     assert response.json()["detail"] == "limit must be positive"
 
 
-def test_unhealthy_service_error_is_503_not_400() -> None:
+def test_a_failed_health_check_is_a_503_logged_once(caplog) -> None:
+    """A 503, not the 400 every ``ValueError`` gets; and the error, which logs
+    itself when raised, is not logged again by the handler."""
     app = fastapi.FastAPI()
 
-    @app.get("/health_check")
-    async def health_check() -> None:
+    @app.get("/health")
+    async def health() -> None:
         raise UnhealthyServiceError("Database is not connected", log=False)
 
     add_exception_handlers(app)
-    response = fastapi.testclient.TestClient(app, raise_server_exceptions=False).get(
-        "/health_check"
-    )
+    client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
+    with contextlib.closing(client), caplog.at_level(logging.WARNING):
+        response = client.get("/health")
 
     assert response.status_code == 503
+    assert [r for r in caplog.records if r.name == exceptions.logger.name] == []

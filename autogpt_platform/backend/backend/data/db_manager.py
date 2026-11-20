@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import time
 from collections.abc import Callable
@@ -374,10 +373,7 @@ class DatabaseManager(AppService):
         try:
             # Test actual database connectivity by executing a simple query
             # This will fail if Prisma query engine is not responding
-            result = await asyncio.wait_for(
-                db.query_raw_with_schema("SELECT 1 as health_check"),
-                timeout=2.0,
-            )
+            result = await db.query_raw_with_schema("SELECT 1 as health_check")
             if not result or result[0].get("health_check") != 1:
                 raise UnhealthyServiceError("Database query test failed")
         except Exception as e:

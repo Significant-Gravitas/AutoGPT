@@ -197,7 +197,9 @@ async def test_service_creation(server):
         assert await client.subtract_async(10, 4) == 6
 
 
-def test_unhealthy_service_error_from_health_check_is_503():
+def test_a_failed_health_check_is_a_503_logged_once(caplog):
+    """A 503, not the 400 every ``ValueError`` gets; and the error, which logs
+    itself when raised, is not logged again by the handler."""
     app = FastAPI()
     AppService._register_exception_handlers(app)
 
@@ -205,10 +207,13 @@ def test_unhealthy_service_error_from_health_check_is_503():
     async def health_check():
         raise UnhealthyServiceError("Database is not connected", log=False)
 
-    response = TestClient(app, raise_server_exceptions=False).get("/health_check")
+    with contextlib.closing(TestClient(app, raise_server_exceptions=False)) as raw:
+        with caplog.at_level(logging.WARNING, logger=service_module.logger.name):
+            response = raw.get("/health_check")
 
     assert response.status_code == 503
     assert response.json()["type"] == "UnhealthyServiceError"
+    assert [r for r in caplog.records if r.name == service_module.logger.name] == []
 
 
 def test_expert_lookup_errors_preserve_rpc_status_and_type():
