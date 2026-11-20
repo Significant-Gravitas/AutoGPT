@@ -7,7 +7,9 @@ go out again, and ``PreparedBody.for_send`` gives each send its body."""
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import io
+import threading
 from collections.abc import AsyncIterable, Awaitable, Callable, Mapping, Sequence
 from enum import Enum
 from typing import IO, Any
@@ -90,7 +92,8 @@ async def prepare_body(
     blocked URL reads nothing, and a file is read off the event loop. The
     parts held in memory come to at most ``MAX_BUFFERED_BODY_BYTES``, and
     reading them may take at most ``timeout`` seconds, what one send may
-    take, so it can't outlast what the request itself could.
+    take. Each send then gets its whole ``timeout`` again, as on dev, so a
+    request may spend up to two of them reading its body and sending it.
     """
     if files is not None and not (data is None or isinstance(data, dict)):
         raise ValueError("When uploading files, 'data' must be a dict of form fields.")
@@ -230,7 +233,9 @@ def _kind(value: Any, *, in_form: bool) -> _Kind:
     if isinstance(value, io.IOBase):
         return _Kind.READ
     if isinstance(value, Payload):
-        # aiohttp's own payload, which its first send uses up.
+        # aiohttp's own payload. A file's or a stream's is used up by its
+        # first send, while bytes, text or JSON would replay; nothing here
+        # tells them apart, so all of them are refused.
         return _Kind.REFUSE
     if isinstance(value, AsyncIterable):
         # In a form aiohttp sends one as a part without a filename, where the
@@ -292,9 +297,9 @@ _INSTEAD = {
 
 def _cannot_resend(value: Any, what: str) -> TypeError:
     return TypeError(
-        f"A {type(value).__name__} {what} can't be sent again on a retry or a "
-        f"redirect. Pass {_INSTEAD[what]} instead, or send it once, with "
-        "retry_max_attempts=1 and allow_redirects=False."
+        f"A {type(value).__name__} {what} can't be sent again by this client, "
+        f"on a retry or a redirect. Pass {_INSTEAD[what]} instead, or send it "
+        "once, with retry_max_attempts=1 and allow_redirects=False."
     )
 
 
@@ -334,20 +339,47 @@ async def _held(part: _Part, room: int) -> tuple[_InMemory, int]:
     nothing is copied, and its size; refused past *room*."""
     if part.kind is _Kind.GATHER:
         return await _gather_up_to(part.value, room)
-    # In a worker thread, so a slow file holds a thread instead of the event
-    # loop.
-    held, size = await asyncio.to_thread(_read_up_to, part.value, room)
+    held, size = await _read_in_own_thread(part.value, room)
     # Under the file's own name, from which aiohttp takes a filename and a
     # Content-Type.
     held.name = guess_filename(part.value)
     return held, size
 
 
-def _read_up_to(stream: IO[Any], room: int) -> tuple[_InMemory, int]:
+async def _read_in_own_thread(stream: IO[Any], room: int) -> tuple[_InMemory, int]:
+    """``_read_up_to`` in a daemon thread of its own, so a slow file holds that
+    thread, not the event loop. A stalled read can't be interrupted: in the
+    default executor it would keep one of its few workers for good, which
+    DNS lookups and file I/O need, and which ``asyncio.run`` and interpreter
+    exit wait for. A daemon thread holds none of those, and once this call
+    is cancelled it stops at its next chunk instead of reading on."""
+    stop = threading.Event()
+    outcome: concurrent.futures.Future[tuple[_InMemory, int]] = (
+        concurrent.futures.Future()
+    )
+
+    def read() -> None:
+        if not outcome.set_running_or_notify_cancel():
+            return
+        try:
+            outcome.set_result(_read_up_to(stream, room, stop))
+        except BaseException as error:
+            outcome.set_exception(error)
+
+    threading.Thread(target=read, daemon=True, name="request-body-read").start()
+    try:
+        return await asyncio.wrap_future(outcome)
+    finally:
+        stop.set()
+
+
+def _read_up_to(
+    stream: IO[Any], room: int, stop: threading.Event | None = None
+) -> tuple[_InMemory, int]:
     chunk = stream.read(_READ_CHUNK_SIZE)
     held = _in_memory_for(chunk)
     size = 0
-    while chunk:
+    while chunk and (stop is None or not stop.is_set()):
         size += len(chunk)
         if size > room:
             raise RequestBodyTooLargeError(MAX_BUFFERED_BODY_BYTES)

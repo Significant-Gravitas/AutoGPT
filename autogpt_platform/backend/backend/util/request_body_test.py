@@ -7,6 +7,7 @@ import io
 import os
 import tempfile
 import threading
+import time
 import tracemalloc
 from io import BytesIO
 from typing import Any, AsyncIterator, BinaryIO, Callable, ContextManager, Iterator
@@ -751,6 +752,75 @@ async def test_a_file_that_stalls_fails_within_the_requests_timeout():
     assert served == []
 
 
+@pytest.mark.asyncio
+async def test_stalled_file_reads_leave_the_default_executor_free():
+    """A read that stalls can't be interrupted, so it must not hold one of the
+    event loop's few default-executor workers: DNS lookups and file I/O wait
+    behind them."""
+    app, served = scripted(200)
+    runner, base = await serve(app)
+    streams = [_StalledStream() for _ in range(48)]
+
+    try:
+        outcomes = await asyncio.gather(
+            *(
+                local_requests().post(
+                    base, data=stream, timeout=ClientTimeout(total=0.05)
+                )
+                for stream in streams
+            ),
+            return_exceptions=True,
+        )
+        assert all(isinstance(outcome, RequestBodyTimeoutError) for outcome in outcomes)
+        assert await asyncio.wait_for(asyncio.to_thread(int, "7"), 2) == 7
+    finally:
+        for stream in streams:
+            stream.let_go.set()
+        await runner.cleanup()
+
+    assert served == []
+
+
+class _EndlessStream(io.RawIOBase):
+    """A file that never ends, counting its reads."""
+
+    def __init__(self):
+        self.reads = 0
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer) -> int:
+        self.reads += 1
+        time.sleep(0.001)
+        return len(buffer)
+
+
+@pytest.mark.asyncio
+async def test_a_read_that_timed_out_does_not_read_on():
+    """Nothing is waiting for what an abandoned read gathers, so it stops at
+    its next chunk instead of filling memory up to the limit."""
+    stream = _EndlessStream()
+    app, served = scripted(200)
+    runner, base = await serve(app)
+
+    try:
+        with pytest.raises(RequestBodyTimeoutError):
+            await asyncio.wait_for(
+                local_requests().post(
+                    base, data=stream, timeout=ClientTimeout(total=0.1)
+                ),
+                ENDS_WITHIN_SECONDS,
+            )
+        reads_at_timeout = stream.reads
+        await asyncio.sleep(0.3)
+    finally:
+        await runner.cleanup()
+
+    assert stream.reads - reads_at_timeout <= 1
+    assert served == []
+
+
 # --- How a body is read into memory ---
 
 
@@ -959,3 +1029,119 @@ async def test_a_body_with_no_way_to_be_sent_again_is_refused_when_it_might_be(
 
     assert response.status == 200
     assert received == [_expected(send, _PAYLOAD)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("send", ["files", "data", "form-dict", "async-iterable"])
+async def test_a_body_of_exactly_the_limit_is_held_and_sent(
+    send: str, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(request_body, "MAX_BUFFERED_BODY_BYTES", len(_PAYLOAD))
+    app, received = _receiving(200)
+    runner, base = await serve(app)
+
+    try:
+        with _sent_once(send, _PAYLOAD) as body:
+            response = await asyncio.wait_for(
+                local_requests().post(base, **body), ENDS_WITHIN_SECONDS
+            )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert received == [
+        _PAYLOAD if send == "async-iterable" else _expected(send, _PAYLOAD)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_an_async_iterable_body_is_not_run_before_the_url_checks_pass():
+    started: list[bool] = []
+
+    async def chunks() -> AsyncIterator[bytes]:
+        started.append(True)
+        yield _PAYLOAD
+
+    with pytest.raises(ValueError, match="blocked or private IP"):
+        await asyncio.wait_for(
+            Requests().post("http://127.0.0.1:1/", data=chunks()), ENDS_WITHIN_SECONDS
+        )
+
+    assert started == []
+
+
+class _FailsWithItsOwnTimeout(io.RawIOBase):
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer) -> int:
+        raise TimeoutError("the socket under this file timed out")
+
+
+@pytest.mark.asyncio
+async def test_a_timeout_of_the_streams_own_is_not_reported_as_the_requests():
+    with pytest.raises(TimeoutError, match="the socket under this file") as raised:
+        await asyncio.wait_for(
+            local_requests().post(
+                "http://127.0.0.1:1/",
+                data=_FailsWithItsOwnTimeout(),
+                timeout=ClientTimeout(total=30),
+            ),
+            ENDS_WITHIN_SECONDS,
+        )
+
+    assert not isinstance(raised.value, RequestBodyTimeoutError)
+
+
+@pytest.mark.asyncio
+async def test_a_tuple_of_form_fields_goes_as_a_form():
+    app, received = _receiving(200)
+    runner, base = await serve(app)
+
+    try:
+        response = await asyncio.wait_for(
+            local_requests().post(base, data=(("a", "1"), ("b", "2"))),
+            ENDS_WITHIN_SECONDS,
+        )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert received == [b"a=1&b=2"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "fields",
+    [[("a", "b", "c")], ["ab"], [("only-a-name",)]],
+    ids=["three-items", "a-string", "one-item"],
+)
+async def test_a_list_item_that_is_not_a_pair_is_refused_before_anything_is_sent(
+    fields: list,
+):
+    app, served = scripted(200)
+    runner, base = await serve(app)
+
+    try:
+        with pytest.raises(TypeError, match=r"not a \(name, value\) pair"):
+            await asyncio.wait_for(
+                local_requests().post(base, data=fields), ENDS_WITHIN_SECONDS
+            )
+    finally:
+        await runner.cleanup()
+
+    assert served == []
+
+
+@contextlib.contextmanager
+def _upload_without_a_content_type() -> Iterator[dict]:
+    yield {"files": [("file", ("part.bin", BytesIO(_PAYLOAD), ""))]}
+
+
+@pytest.mark.asyncio
+@_HOW
+async def test_an_upload_with_no_content_type_goes_as_octet_stream(how: str):
+    sends, once = await _carried_twice_and_once(how, _upload_without_a_content_type)
+
+    assert sends == [once, once]
+    assert once == [("file", "part.bin", "application/octet-stream", _PAYLOAD)]
