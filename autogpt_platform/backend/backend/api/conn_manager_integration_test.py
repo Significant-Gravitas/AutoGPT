@@ -451,3 +451,135 @@ async def test_one_socket_holds_one_connection_per_shard(monkeypatch) -> None:
     finally:
         await cm.disconnect_socket(ws, user_id=user_id)
         redis_client.disconnect()
+
+
+# Only a step that never comes keeps a wait going this long.
+_HANG_SECONDS = 10.0
+
+
+def _client_not_reading(ws: AsyncMock) -> tuple[asyncio.Event, asyncio.Event, list]:
+    """Make ``ws``'s sends wait as uvicorn's do while a client isn't reading.
+    Returns the event that lets them through, one set once a send waits, and
+    what got through."""
+    reading, waited_on = asyncio.Event(), asyncio.Event()
+    sent: list[str] = []
+
+    async def send_text(message: str) -> None:
+        waited_on.set()
+        await reading.wait()
+        sent.append(message)
+
+    ws.send_text = AsyncMock(side_effect=send_text)
+    return reading, waited_on, sent
+
+
+def _marker(message: str) -> str:
+    data = json.loads(message)["data"]
+    return data["inputs"]["x"] if "inputs" in data else data["input_data"]["in"]
+
+
+@pytest.mark.asyncio
+async def test_a_subscribe_is_confirmed_while_the_client_is_not_reading(
+    monkeypatch,
+) -> None:
+    """#16916: the socket's send waits on a client that stopped reading, and a
+    subscribe on the same shard stream is still confirmed; once the client
+    reads again, every event arrives in the order Redis sent it."""
+    user_id = f"user-conn-int-6-{uuid4().hex[:8]}"
+    graph_id = f"graph-{uuid4().hex[:8]}"
+    exec_id = f"exec-{uuid4().hex[:8]}"
+
+    async def _fake_meta(*, user_id: str, execution_id: str):
+        return _meta(user_id, graph_id, execution_id)
+
+    monkeypatch.setattr(
+        "backend.api.conn_manager.execution_db",
+        lambda: MagicMock(get_graph_execution_meta=_fake_meta),
+    )
+    cm = ConnectionManager()
+    ws: AsyncMock = AsyncMock(spec=WebSocket)
+    reading, waited_on, sent = _client_not_reading(ws)
+    redis_client.get_redis.cache_clear()
+    cluster = redis_client.get_redis()
+    runs = event_bus_channel(graph_all_channel(user_id, graph_id))
+    run = event_bus_channel(exec_channel(user_id, graph_id, exec_id))
+    # One graph's channels share a hash tag, so one shard stream carries both.
+    assert redis_client.resolve_shard_for_channel(
+        runs
+    ) == redis_client.resolve_shard_for_channel(run)
+
+    def publish(channel: str, marker: str) -> None:
+        event = _graph_event_payload if channel == runs else _node_event_payload
+        payload = event(
+            user_id=user_id, graph_id=graph_id, graph_exec_id=exec_id, marker=marker
+        )
+        cluster.spublish(channel, payload.decode())
+
+    try:
+        await cm.subscribe_graph_execs(user_id=user_id, graph_id=graph_id, websocket=ws)
+        publish(runs, "first")
+        async with asyncio.timeout(_HANG_SECONDS):
+            await waited_on.wait()
+            await cm.subscribe_graph_exec(
+                user_id=user_id, graph_exec_id=exec_id, websocket=ws
+            )
+        assert sent == []
+
+        publish(run, "second")
+        publish(runs, "third")
+        reading.set()
+        assert await _wait_until(lambda: len(sent) == 3, timeout=_HANG_SECONDS)
+        assert [_marker(m) for m in sent] == ["first", "second", "third"]
+    finally:
+        reading.set()
+        await cm.disconnect_socket(ws, user_id=user_id)
+        redis_client.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_a_client_too_far_behind_is_closed_so_it_resyncs(monkeypatch) -> None:
+    """The shard stream reads on while the client doesn't, so the outbox's
+    bound, not Redis's buffer, decides when the client has fallen too far
+    behind: then the socket is closed with 1011 and the client resyncs."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 5)
+    user_id = f"user-conn-int-7-{uuid4().hex[:8]}"
+    graph_id = f"graph-{uuid4().hex[:8]}"
+    cm = ConnectionManager()
+    ws: AsyncMock = AsyncMock(spec=WebSocket)
+    reading, waited_on, sent = _client_not_reading(ws)
+    redis_client.get_redis.cache_clear()
+    cluster = redis_client.get_redis()
+    runs = event_bus_channel(graph_all_channel(user_id, graph_id))
+
+    def publish(marker: str) -> None:
+        payload = _graph_event_payload(
+            user_id=user_id, graph_id=graph_id, graph_exec_id="e", marker=marker
+        )
+        cluster.spublish(runs, payload.decode())
+
+    try:
+        await cm.subscribe_graph_execs(user_id=user_id, graph_id=graph_id, websocket=ws)
+        publish("m0")
+        async with asyncio.timeout(_HANG_SECONDS):
+            await waited_on.wait()
+        # One waits on the client, four more fill the bound, one is past it.
+        for i in range(1, 6):
+            publish(f"m{i}")
+        assert await _wait_until(
+            lambda: ws.close.await_count == 1, timeout=_HANG_SECONDS
+        )
+        ws.close.assert_awaited_once_with(code=1011, reason="Client fell behind")
+        outbox = cm._outboxes[ws]
+        sender = outbox._sender
+        assert sender is not None
+        async with asyncio.timeout(_HANG_SECONDS):
+            await asyncio.wait([sender])
+        assert sender.cancelled()
+        reading.set()
+        # Only a sender sends, and none started after the close.
+        assert outbox._sender is sender
+        assert sent == []
+    finally:
+        reading.set()
+        await cm.disconnect_socket(ws, user_id=user_id)
+        redis_client.disconnect()

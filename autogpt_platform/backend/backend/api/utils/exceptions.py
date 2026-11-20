@@ -22,19 +22,31 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
-from backend.api.utils.validation_errors import bounded_validation_errors
+from backend.api.utils.validation_errors import (
+    bounded_validation_errors,
+    loggable_validation_errors,
+)
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
+from backend.util.clients import SCHEDULER_SUSTAINED_OUTAGE_SECONDS
 from backend.util.exceptions import (
     ConflictError,
     MissingConfigError,
     NotAuthorizedError,
     NotFoundError,
     PreconditionFailed,
+    SchedulerUnavailableError,
 )
 from backend.util.url_redaction import redact_url
 
 logger = logging.getLogger(__name__)
+
+# A deploy leaves no scheduler for about 1-2.5 min; a retry this soon is cheap
+# and lands shortly after it is back.
+SCHEDULER_RETRY_AFTER_SECONDS = 15
+SCHEDULER_UNAVAILABLE_DETAIL = (
+    "Schedules are temporarily unavailable. Try again in a moment."
+)
 
 
 def add_exception_handlers(
@@ -76,6 +88,7 @@ def add_exception_handlers(
         ValueError: _handle_error(status.HTTP_400_BAD_REQUEST),
         # It's the backend's problem: HTTP 5XX
         MissingConfigError: _handle_error(status.HTTP_503_SERVICE_UNAVAILABLE),
+        SchedulerUnavailableError: _handle_scheduler_unavailable,
         PrismaError: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),
         Exception: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),
     }.items():
@@ -123,20 +136,54 @@ def _error_handler(status_code: int, log_error: bool, server_error_detail: bool)
     return handler
 
 
+def _handle_scheduler_unavailable(
+    request: fastapi.Request, exc: Exception
+) -> fastapi.responses.Response:
+    assert isinstance(exc, SchedulerUnavailableError)
+    # A deploy's gap is expected, so a warning, which Sentry doesn't file. An
+    # outage longer than any deploy is an error, which it does. The length
+    # comes with the exception: this sync handler runs in a worker thread.
+    logger.log(
+        (
+            logging.ERROR
+            if exc.outage_seconds >= SCHEDULER_SUSTAINED_OUTAGE_SECONDS
+            else logging.WARNING
+        ),
+        "%s %s answered 503; the scheduler has been out for %.0fs: %s",
+        request.method,
+        redact_url(request.url.path),
+        exc.outage_seconds,
+        exc,
+    )
+    return fastapi.responses.JSONResponse(
+        content={
+            "message": f"Failed to process {request.method} {request.url.path}",
+            "detail": SCHEDULER_UNAVAILABLE_DETAIL,
+            "hint": f"Retry in {SCHEDULER_RETRY_AFTER_SECONDS} seconds.",
+        },
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        headers={"Retry-After": str(SCHEDULER_RETRY_AFTER_SECONDS)},
+    )
+
+
 async def _handle_validation_error(
     request: fastapi.Request, exc: Exception
 ) -> fastapi.responses.Response:
     errors: Sequence | str
+    logged: Sequence | str
     if isinstance(exc, (RequestValidationError, pydantic.ValidationError)):
+        # The client sent the data the response quotes back; the log keeps out
+        # what it said, such as a mapping's keys.
         errors = bounded_validation_errors(exc)
+        logged = loggable_validation_errors(exc)
     else:
-        errors = str(exc)
+        errors = logged = str(exc)
 
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
         redact_url(request.url.path),
-        errors,
+        logged,
     )
 
     response_content = {

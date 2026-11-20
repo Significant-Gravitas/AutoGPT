@@ -1,5 +1,5 @@
 {
-  "description": "One answer streamed a word at a time over about five seconds, so a journey can lose the connection mid-reply. copilot-reconnect-journey.spec.ts follows it.",
+  "description": "One answer streamed a word at a time. It stops after its first ten words until copilot-reconnect-journey.spec.ts, which follows it, has cut the connection and released the run, then streams the rest over about three seconds.",
   "title": "Slow answer",
   "turns": [
     {
@@ -9,7 +9,7 @@
         "output_tokens": 48,
         "cache_read_input_tokens": 24000
       },
-      "stream": { "chunk_words": 1, "delay_ms": 120 }
+      "stream": { "chunk_words": 1, "delay_ms": 120, "hold_after_words": 10 }
     }
   ]
 }
