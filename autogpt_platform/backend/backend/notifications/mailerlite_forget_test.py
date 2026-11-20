@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.notifications import mailerlite
+from backend.util.request import DEFAULT_RETRY_MAX_ATTEMPTS
 
 EMAIL = "sam@example.com"
 
@@ -84,12 +85,14 @@ async def test_forgetting_needs_a_token(monkeypatch):
         await mailerlite.forget_subscriber(EMAIL)
 
 
-def test_only_the_erasure_bounds_its_retries():
-    """An outage answering 5xx fails the erasure step instead of retrying
-    forever, while the shared client still waits out rate limits for the
-    backfills and the audience consumer."""
+def test_the_erasure_gives_up_sooner_than_the_shared_client():
+    """An outage answering 5xx fails the erasure step in seconds, while the
+    shared client still waits out rate limits for the backfills and the
+    audience consumer. Both stop."""
     assert mailerlite._erasure_client().retry_max_attempts == 3
-    assert mailerlite._client().retry_max_attempts is None
+    shared = mailerlite._client().retry_max_attempts
+    assert shared == mailerlite.RATE_LIMIT_RETRY_ATTEMPTS
+    assert shared > DEFAULT_RETRY_MAX_ATTEMPTS
 
 
 @pytest.mark.asyncio

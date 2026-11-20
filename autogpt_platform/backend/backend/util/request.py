@@ -16,6 +16,7 @@ from aiohttp import FormData, abc
 from tenacity import (
     RetryCallState,
     retry,
+    retry_if_exception,
     retry_if_result,
     stop_after_attempt,
     wait_exponential_jitter,
@@ -64,6 +65,14 @@ RESPONSE_READ_CHUNK_SIZE = 64 * 1024
 
 # Retry status codes for which we will automatically retry the request
 THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
+
+# The attempts a ``raise_for_status=False`` client gets when it names no
+# ``retry_max_attempts``. Three attempts wait 3-5 s in all (1 s, then 2 s, each
+# plus up to 1 s of jitter): enough to ride out a short burst of 429s or a
+# deploy's 502s, short enough that a block against a host that is down fails
+# in seconds instead of holding its node, and the cap most callers that name
+# one already chose. Each retry re-sends the request, POSTs included.
+DEFAULT_RETRY_MAX_ATTEMPTS = 3
 
 # Statuses meaning the request was not authenticated or not authorised. Both
 # warrant asking the user to (re)connect, so they gate the setup-card paths.
@@ -594,11 +603,65 @@ def _return_last_result(retry_state: RetryCallState) -> "Response":
     return retry_state.outcome.result()
 
 
+def _is_throttled(response: Response) -> bool:
+    return response.status in THROTTLE_RETRY_STATUS_CODES
+
+
+def _is_throttle_error(error: BaseException) -> bool:
+    """Whether *error* is ``raise_for_status``'s error for a throttle status."""
+    return (
+        isinstance(error, (HTTPClientError, HTTPServerError))
+        and error.status_code in THROTTLE_RETRY_STATUS_CODES
+    )
+
+
+_Uploads = list[tuple[str, tuple[str, BytesIO, str]]]
+
+
+def _rewindable(files: _Uploads | None) -> _Uploads | None:
+    """The uploads, each on a handle that every attempt can seek back.
+
+    A stream that can't seek is read into memory once, here: a retry has to
+    send the file again, and a stream can't be read twice. Every caller passes
+    a ``BytesIO``, which is used as it is.
+    """
+    if files is None:
+        return None
+    return [
+        (field, (name, fh if fh.seekable() else BytesIO(fh.read()), content_type))
+        for field, (name, fh, content_type) in files
+    ]
+
+
 class Requests:
     """
     A wrapper around an aiohttp ClientSession that validates URLs before
     making requests, preventing SSRF by blocking private networks and
     other disallowed address spaces.
+
+    A response with a status in ``THROTTLE_RETRY_STATUS_CODES`` is retried,
+    with jittered exponential backoff of at most ``retry_max_wait`` seconds
+    between attempts. How many attempts a request gets, and what the caller
+    gets when the last one still has a throttle status:
+
+    ====================  ======================  ==============================
+    ``raise_for_status``  ``retry_max_attempts``  Attempts, then
+    ====================  ======================  ==============================
+    ``False``             ``None``                ``DEFAULT_RETRY_MAX_ATTEMPTS``,
+                                                  then the last response
+    ``False``             ``n``                   ``n``, then the last response
+    ``True`` (default)    ``None``                1, then ``HTTPClientError``
+                                                  or ``HTTPServerError``
+    ``True``              ``n``                   ``n``, then the last attempt's
+                                                  ``HTTPClientError`` or
+                                                  ``HTTPServerError``
+    ====================  ======================  ==============================
+
+    Any other status ends the request at once: it is raised with
+    ``raise_for_status`` and returned without it. A connection error or a
+    timeout is never retried. Each attempt follows the redirects afresh, and
+    sends every upload whole, from where its handle stood when the request
+    began.
     """
 
     def __init__(
@@ -631,6 +694,12 @@ class Requests:
             raise ValueError("retry_max_attempts must be None or >= 1")
         self.retry_max_attempts = retry_max_attempts
 
+    def _max_attempts(self) -> int:
+        """The attempts one request gets; the class docstring has the table."""
+        if self.retry_max_attempts is not None:
+            return self.retry_max_attempts
+        return 1 if self.raise_for_status else DEFAULT_RETRY_MAX_ATTEMPTS
+
     async def request(
         self,
         method: str,
@@ -651,19 +720,24 @@ class Requests:
         ``max_body_bytes`` caps how much of a response body is read, counted
         after decompression; a longer body comes back cut to that many bytes
         plus one, so the caller can tell it was cut.
+
+        A throttle status is retried as the class docstring sets out.
         """
-        retry_kwargs: dict[str, Any] = {
-            "wait": wait_exponential_jitter(max=self.retry_max_wait),
-            "retry": retry_if_result(lambda r: r.status in THROTTLE_RETRY_STATUS_CODES),
-            "reraise": True,
-        }
+        files = _rewindable(files)
+        starts = [fh.tell() for _, (_, fh, _) in files or []]
 
-        if self.retry_max_attempts is not None:
-            retry_kwargs["stop"] = stop_after_attempt(self.retry_max_attempts)
-            retry_kwargs["retry_error_callback"] = _return_last_result
-
-        @retry(**retry_kwargs)
+        @retry(
+            stop=stop_after_attempt(self._max_attempts()),
+            wait=wait_exponential_jitter(max=self.retry_max_wait),
+            retry=retry_if_result(_is_throttled)
+            | retry_if_exception(_is_throttle_error),
+            retry_error_callback=_return_last_result,
+        )
         async def _make_request() -> Response:
+            # A retry finds each upload where the attempt before left it: at
+            # its end, which would send an empty part.
+            for (_, (_, fh, _)), start in zip(files or [], starts):
+                fh.seek(start)
             return await self._request(
                 method=method,
                 url=url,
@@ -841,7 +915,10 @@ class Requests:
                         redirect_kwargs.pop("auth", None)
                         redirect_kwargs.pop("cookies", None)
 
-                    return await self.request(
+                    # Part of this attempt: ``request`` retries the whole
+                    # chain, so retrying each hop as well would multiply the
+                    # attempts by every hop.
+                    return await self._request(
                         method,
                         redirect_url.geturl(),
                         headers=new_headers,
