@@ -14,7 +14,8 @@ from urllib.parse import ParseResult, urlparse
 import idna
 import pytest
 import pytest_mock
-from aiohttp import BodyPartReader, ClientConnectorError, web
+from aiohttp import BodyPartReader, ClientConnectorError, ClientSession, web
+from aiohttp.payload import BufferedReaderPayload
 
 from backend.util import request as request_module
 from backend.util.request import (
@@ -1561,9 +1562,15 @@ async def test_an_async_iterable_body_retried_after_a_throttle_status_is_sent_wh
 
 
 @pytest.mark.asyncio
-async def test_a_stream_redirected_with_a_307_reaches_the_next_hop_whole():
+@pytest.mark.parametrize(
+    "open_body", [_bytesio, _pipe], ids=["bytesio", "stream-that-cannot-seek"]
+)
+async def test_a_stream_redirected_with_a_307_reaches_the_next_hop_whole(
+    open_body: Callable[[bytes], BinaryIO],
+):
     """A 307 repeats the request, body and all, so the hop must not find the
-    stream where the first send left it: at its end."""
+    stream where the first send left it: at its end. A one-attempt client
+    follows redirects too, so it keeps the body for the hop."""
     received: dict[str, bytes] = {}
 
     async def moved(request: web.Request) -> web.Response:
@@ -1580,10 +1587,10 @@ async def test_a_stream_redirected_with_a_307_reaches_the_next_hop_whole():
     runner, base = await _serve(app)
 
     try:
-        response = await asyncio.wait_for(
-            _local_requests().post(base, data=BytesIO(_PAYLOAD)),
-            _ENDS_WITHIN_SECONDS,
-        )
+        with open_body(_PAYLOAD) as body:
+            response = await asyncio.wait_for(
+                _local_requests().post(base, data=body), _ENDS_WITHIN_SECONDS
+            )
     finally:
         await runner.cleanup()
 
@@ -1625,44 +1632,52 @@ async def test_a_body_that_cannot_be_read_twice_is_refused_past_the_limit(
     assert served == []
 
 
-class _StreamWaitingOnTheLoop(io.RawIOBase):
-    """A stream that can't seek, whose bytes arrive only once the event loop
-    runs again. Read on the loop's own thread, it waits out its timeout."""
+class _OneWayStream(io.RawIOBase):
+    """A stream that can't seek, like a pipe or a socket. It counts its reads,
+    and notes one made on the event loop's own thread, where a blocking read
+    would hold up every other request."""
 
-    def __init__(self, payload: bytes, arrived: threading.Event):
+    def __init__(self, payload: bytes):
         self._rest = payload
-        self._arrived = arrived
-        self.waited_out = False
+        self._loop_thread = threading.get_ident()
+        self.reads = 0
+        self.read_on_the_loop = False
 
     def readable(self) -> bool:
         return True
 
     def readinto(self, buffer) -> int:
-        if self._rest and not self._arrived.wait(timeout=5):
-            self.waited_out = True
+        self.reads += 1
+        if threading.get_ident() == self._loop_thread:
+            self.read_on_the_loop = True
         size = min(len(buffer), len(self._rest))
         buffer[:size] = self._rest[:size]
         self._rest = self._rest[size:]
         return size
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("send", ["files", "data"])
-async def test_a_stream_that_cannot_seek_is_read_off_the_event_loop(send: str):
-    arrived = threading.Event()
-    stream = _StreamWaitingOnTheLoop(_PAYLOAD, arrived)
+def _receiving(*statuses: int) -> tuple[web.Application, list[bytes]]:
+    """An app taking POSTs to ``/``, answering *statuses* in turn (the last
+    for good), and the body of each request: the file part of an upload."""
     received: list[bytes] = []
 
     async def receive(request: web.Request) -> web.Response:
         received.append(await _body_of(request))
-        return web.Response(text="stored")
+        return web.Response(status=statuses[min(len(received), len(statuses)) - 1])
 
     app = web.Application()
     app.router.add_post("/", receive)
+    return app, received
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("send", ["files", "data"])
+async def test_a_stream_that_cannot_seek_is_read_off_the_event_loop(send: str):
+    stream = _OneWayStream(_PAYLOAD)
+    app, received = _receiving(200)
     runner, base = await _serve(app)
 
     try:
-        asyncio.get_running_loop().call_soon(arrived.set)
         response = await asyncio.wait_for(
             _local_requests().post(base, **_sent_as(send, stream)),
             _ENDS_WITHIN_SECONDS,
@@ -1670,6 +1685,108 @@ async def test_a_stream_that_cannot_seek_is_read_off_the_event_loop(send: str):
     finally:
         await runner.cleanup()
 
-    assert not stream.waited_out
+    assert not stream.read_on_the_loop
+    assert response.status == 200
+    assert received == [_PAYLOAD]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("send", ["files", "data"])
+async def test_a_blocked_url_is_refused_before_the_body_is_read(send: str):
+    stream = _OneWayStream(_PAYLOAD)
+
+    with pytest.raises(ValueError, match="blocked or private IP"):
+        await asyncio.wait_for(
+            Requests().post("http://127.0.0.1:1/", **_sent_as(send, stream)),
+            _ENDS_WITHIN_SECONDS,
+        )
+
+    assert stream.reads == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("send", ["files", "data"])
+async def test_a_request_that_sends_once_streams_its_body_unbuffered(
+    send: str, monkeypatch: pytest.MonkeyPatch
+):
+    """One attempt and no redirects: nothing is sent twice, so nothing is held
+    in memory, and a body past the buffer limit still goes out whole."""
+    monkeypatch.setattr(request_module, "MAX_BUFFERED_BODY_BYTES", 1024)
+    app, received = _receiving(200)
+    runner, base = await _serve(app)
+
+    try:
+        with _pipe(_PAYLOAD) as stream:
+            response = await asyncio.wait_for(
+                _local_requests().post(
+                    base, allow_redirects=False, **_sent_as(send, stream)
+                ),
+                _ENDS_WITHIN_SECONDS,
+            )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert received == [_PAYLOAD]
+
+
+@pytest.mark.asyncio
+@_RETRYING_CLIENTS
+async def test_a_stream_reader_body_retried_after_a_throttle_status_is_sent_whole(
+    client_kwargs: dict,
+):
+    """A download's ``StreamReader``, sent on as the body of another request."""
+    app, received = _receiving(429, 200)
+
+    async def source(request: web.Request) -> web.Response:
+        return web.Response(body=_PAYLOAD)
+
+    app.router.add_get("/source", source)
+    runner, base = await _serve(app)
+
+    try:
+        async with ClientSession() as session:
+            async with session.get(f"{base}/source") as download:
+                response = await asyncio.wait_for(
+                    _local_requests(retry_max_wait=0, **client_kwargs).post(
+                        base, data=download.content
+                    ),
+                    _ENDS_WITHIN_SECONDS,
+                )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert received == [_PAYLOAD, _PAYLOAD]
+
+
+@pytest.mark.asyncio
+async def test_a_body_with_no_way_to_be_sent_again_is_refused_when_it_might_be():
+    """An aiohttp payload over a pipe is used up by its first send. A request
+    that might send it again refuses it before sending anything; one that
+    sends once streams it."""
+    app, received = _receiving(200)
+    runner, base = await _serve(app)
+
+    try:
+        with _pipe(_PAYLOAD) as stream:
+            with pytest.raises(
+                TypeError, match="BufferedReaderPayload body can't be sent again"
+            ):
+                await asyncio.wait_for(
+                    _local_requests().post(base, data=BufferedReaderPayload(stream)),
+                    _ENDS_WITHIN_SECONDS,
+                )
+            assert received == []
+
+            response = await asyncio.wait_for(
+                _local_requests().post(
+                    base, data=BufferedReaderPayload(stream), allow_redirects=False
+                ),
+                _ENDS_WITHIN_SECONDS,
+            )
+    finally:
+        await runner.cleanup()
+
     assert response.status == 200
     assert received == [_PAYLOAD]
