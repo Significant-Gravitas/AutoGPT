@@ -112,10 +112,14 @@ class Slant3DBlockBase(Block):
                 json={"name": path.name, "platformId": platform_id},
             )
             data = upload["data"]
+            # Sent once: a presigned URL is signed for its own host and path,
+            # so no redirect could take the upload elsewhere, and a request
+            # that sends once streams the file instead of holding it in memory.
             await Requests(retry_max_attempts=1).put(
                 data["presignedUrl"],
                 data=content,
                 headers={"Content-Type": "application/octet-stream"},
+                allow_redirects=False,
             )
             confirmed = await self._make_request(
                 "POST",

@@ -242,6 +242,7 @@ async def test_upload_confirms_exact_placeholder_without_forwarding_api_key(
         "https://upload.example.com/object",
         data=ANY,
         headers={"Content-Type": "application/octet-stream"},
+        allow_redirects=False,
     )
     assert uploaded == [b"STL bytes"]
     assert api.await_args_list[0].kwargs["json"] == {
