@@ -1,5 +1,6 @@
 "use client";
 
+import { getV2ListUserOrganizations } from "@/app/api/__generated__/endpoints/orgs/orgs";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import {
   selectIsSessionUnknown,
@@ -51,30 +52,21 @@ export default function OrgTeamProvider({ children }: Props) {
 
     async function loadOrgs() {
       try {
-        const res = await fetch("/api/proxy/api/orgs", {
-          headers: { "Content-Type": "application/json" },
-        });
-        if (!res.ok) {
+        const response = await getV2ListUserOrganizations();
+        if (response.status !== 200) {
           setLoaded(true);
           return;
         }
-        const data = await res.json();
-        const orgs = data.data || data;
+        const orgs = response.data;
         setOrgs(orgs);
 
         // No active org, or one this user isn't in (left by an earlier session
-        // on this browser): fall back to the personal org, which clears the
-        // team. Only a list fetched successfully says so.
-        const isActiveOrg = (o: { id: string }) => o.id === activeOrgID;
-        if (orgs.length > 0 && !orgs.some(isActiveOrg)) {
-          const personal = orgs.find(
-            (o: { isPersonal: boolean }) => o.isPersonal,
-          );
-          if (personal) {
-            setActiveOrg(personal.id);
-          } else {
-            setActiveOrg(orgs[0].id);
-          }
+        // on this browser): fall back to the personal org, else the first,
+        // which clears the team. Only a list fetched successfully says so, and
+        // an empty one has no org to fall back to.
+        const fallbackID = (orgs.find((o) => o.is_personal) ?? orgs.at(0))?.id;
+        if (fallbackID && !orgs.some((o) => o.id === activeOrgID)) {
+          setActiveOrg(fallbackID);
         }
 
         setLoaded(true);
