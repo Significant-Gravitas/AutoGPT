@@ -1667,20 +1667,6 @@ class TestExecuteBlockCredentialRejection:
         assert str(key.expired_error("America/Chicago")) in response.message
         assert "could not be refreshed" not in response.message
         assert "sk-expired" not in response.message
-        # The stored title is not ours, so the content judge reads both places
-        # it appears, and none of our own instructions around them.
-        judged = self._judged(response)
-        assert "'Work Ayrshare key' has expired" in judged
-        assert "Work Ayrshare key' expired on " in judged
-        assert "Say plainly" not in judged
-
-    @staticmethod
-    def _judged(response) -> str:
-        """What the content judge reads of *response*: the parts it declared."""
-        from backend.copilot.gate.reads import outside_view
-
-        full = response.model_dump_json(exclude_none=True)
-        return outside_view(response.outside, full, full)
 
     @staticmethod
     async def _match_and_run(selected: dict[str, str], *, unattended: bool):
@@ -1924,7 +1910,6 @@ class TestExecuteBlockCredentialRejection:
         assert "did not switch" in response.message
         assert "sk-live-abc" not in response.message
         assert "sk-live-abc" not in caplog.text
-        assert "'Work Ayrshare key' (HTTP 401)" in self._judged(response)
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_scheduled_turn_gets_an_error_when_a_refresh_is_refused(

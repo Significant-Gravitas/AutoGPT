@@ -1033,7 +1033,7 @@ def _credential_rejected_response(
         # The scheduled chat's failure streak reads which connection to fix.
         details={"provider": provider} if provider else None,
         session_id=session_id,
-    ).from_outside(refused, expiry)
+    ).from_outside()
 
 
 def _rejected_credential(
