@@ -1,10 +1,11 @@
 import asyncio
 import codecs
+import io
 import ipaddress
 import re
 import socket
 import ssl
-from collections.abc import Iterable
+from collections.abc import AsyncIterable, Iterable, Sequence
 from io import BytesIO
 from typing import Any, Callable, Optional
 from urllib.parse import ParseResult as URL
@@ -616,10 +617,12 @@ def _is_throttle_error(error: BaseException) -> bool:
 
 
 _Uploads = list[tuple[str, tuple[str, BytesIO, str]]]
+# Each stream in a request's body, and the position its bytes start at.
+_BodyStarts = Sequence[tuple[io.IOBase, int]]
 
 
-def _rewindable(files: _Uploads | None) -> _Uploads | None:
-    """The uploads, each on a handle that every attempt can seek back.
+def _replayable_uploads(files: _Uploads | None) -> _Uploads | None:
+    """The uploads, each on a handle that every send can seek back.
 
     A stream that can't seek is read into memory once, here: a retry has to
     send the file again, and a stream can't be read twice. Every caller passes
@@ -631,6 +634,30 @@ def _rewindable(files: _Uploads | None) -> _Uploads | None:
         (field, (name, fh if fh.seekable() else BytesIO(fh.read()), content_type))
         for field, (name, fh, content_type) in files
     ]
+
+
+async def _replayable_data(data: Any) -> Any:
+    """``data`` as a body that every send can repeat.
+
+    aiohttp reads a stream or an async iterable from wherever the send before
+    left it. One that can't seek back is read into memory once, here, as an
+    upload is; a seekable stream is sent as it is, and rewound before each
+    send. The one caller that sends a stream, Slant3D's upload, passes a
+    seekable file.
+    """
+    if isinstance(data, io.IOBase) and not data.seekable():
+        return data.read()
+    if isinstance(data, AsyncIterable):
+        return b"".join([chunk async for chunk in data])
+    return data
+
+
+def _body_starts(files: _Uploads | None, data: Any) -> list[tuple[io.IOBase, int]]:
+    """Each stream in the body, and the position its bytes start at."""
+    streams: list[io.IOBase] = [fh for _, (_, fh, _) in files or []]
+    if isinstance(data, io.IOBase):
+        streams.append(data)
+    return [(stream, stream.tell()) for stream in streams]
 
 
 class Requests:
@@ -659,9 +686,12 @@ class Requests:
 
     Any other status ends the request at once: it is raised with
     ``raise_for_status`` and returned without it. A connection error or a
-    timeout is never retried. Each attempt follows the redirects afresh, and
-    sends every upload whole, from where its handle stood when the request
-    began.
+    timeout is never retried. Each attempt follows the redirects afresh.
+
+    Every send, each attempt and each redirect hop, sends the body whole: each
+    upload, and a stream in ``data``, from where it stood when the request
+    began. A stream that can't seek, and an async iterable, are read into
+    memory once, before the first send.
     """
 
     def __init__(
@@ -723,8 +753,9 @@ class Requests:
 
         A throttle status is retried as the class docstring sets out.
         """
-        files = _rewindable(files)
-        starts = [fh.tell() for _, (_, fh, _) in files or []]
+        files = _replayable_uploads(files)
+        data = await _replayable_data(data)
+        body_starts = _body_starts(files, data)
 
         @retry(
             stop=stop_after_attempt(self._max_attempts()),
@@ -734,10 +765,6 @@ class Requests:
             retry_error_callback=_return_last_result,
         )
         async def _make_request() -> Response:
-            # A retry finds each upload where the attempt before left it: at
-            # its end, which would send an empty part.
-            for (_, (_, fh, _)), start in zip(files or [], starts):
-                fh.seek(start)
             return await self._request(
                 method=method,
                 url=url,
@@ -749,6 +776,7 @@ class Requests:
                 max_redirects=max_redirects,
                 drop_headers=drop_headers,
                 max_body_bytes=max_body_bytes,
+                body_starts=body_starts,
                 **kwargs,
             )
 
@@ -767,8 +795,14 @@ class Requests:
         max_redirects: int = 10,
         drop_headers: frozenset[str] = frozenset(),
         max_body_bytes: int | None = None,
+        body_starts: _BodyStarts = (),
         **kwargs,
     ) -> Response:
+        # The send before this one, an attempt or the hop that redirected
+        # here, read the body's streams to their end.
+        for stream, start in body_starts:
+            stream.seek(start)
+
         # Convert auth tuple to aiohttp.BasicAuth if necessary
         if "auth" in kwargs and isinstance(kwargs["auth"], tuple):
             kwargs["auth"] = aiohttp.BasicAuth(*kwargs["auth"])
@@ -930,6 +964,7 @@ class Requests:
                         drop_headers=drop_headers
                         | {k.lower() for k in req_headers.keys() - new_headers.keys()},
                         max_body_bytes=max_body_bytes,
+                        body_starts=body_starts,
                         **redirect_kwargs,
                     )
 

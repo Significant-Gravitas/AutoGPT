@@ -1,6 +1,7 @@
 import asyncio
 import codecs
 import os
+import select
 from io import BytesIO
 from typing import BinaryIO, Callable
 from unittest.mock import MagicMock
@@ -1384,6 +1385,9 @@ async def test_a_redirected_request_counts_its_attempts_once_not_per_hop():
     assert served == ["origin", "moved"] * DEFAULT_RETRY_MAX_ATTEMPTS
 
 
+# Under one 4 KiB page: a pipe can be that small (pipe-user-pages-soft), and
+# the pipe case writes the whole payload before anything reads it.
+_PAYLOAD = b"#1=CARTESIAN_POINT('',(0.,0.,0.));\n" * 100
 _STEP_HEADER = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n"
 
 
@@ -1392,7 +1396,7 @@ def _bytesio(payload: bytes) -> BinaryIO:
 
 
 def _bytesio_past_what_was_read(payload: bytes) -> BinaryIO:
-    """A handle the caller already read a header from: the upload is the rest."""
+    """A handle the caller already read a header from: the body is the rest."""
     handle = BytesIO(_STEP_HEADER + payload)
     handle.seek(len(_STEP_HEADER))
     return handle
@@ -1400,44 +1404,134 @@ def _bytesio_past_what_was_read(payload: bytes) -> BinaryIO:
 
 def _pipe(payload: bytes) -> BinaryIO:
     """A stream that can't seek, as a pipe or a socket can't."""
+    # A pipe takes a write of up to PIPE_BUF bytes whole, so this can't block
+    # waiting for a reader.
+    assert len(payload) <= select.PIPE_BUF
     read_end, write_end = os.pipe()
-    os.write(write_end, payload)  # well inside the pipe's buffer
-    os.close(write_end)
+    try:
+        os.write(write_end, payload)
+    finally:
+        os.close(write_end)
     return open(read_end, "rb")
 
 
+async def _body_of(request: web.Request) -> bytes:
+    """The file part of a multipart request, or else the whole raw body."""
+    if not request.content_type.startswith("multipart/"):
+        return await request.read()
+    part = await (await request.multipart()).next()
+    assert isinstance(part, BodyPartReader)
+    return await part.read()
+
+
+def _sent_as(send: str, body: BinaryIO) -> dict:
+    if send == "files":
+        return {"files": [("file", ("part.step", body, "model/step"))]}
+    return {"data": body}
+
+
+_RETRYING_CLIENTS = pytest.mark.parametrize(
+    "client_kwargs",
+    [{"retry_max_attempts": 3}, {"raise_for_status": False}],
+    ids=["raise_for_status-with-a-cap", "status-checked-by-the-caller"],
+)
+
+
 @pytest.mark.asyncio
+@_RETRYING_CLIENTS
 @pytest.mark.parametrize(
-    "open_upload",
+    "open_body",
     [_bytesio, _bytesio_past_what_was_read, _pipe],
     ids=["bytesio", "bytesio-past-what-was-read", "stream-that-cannot-seek"],
 )
-async def test_an_upload_retried_after_a_throttle_status_is_sent_whole_each_time(
-    open_upload: Callable[[bytes], BinaryIO],
+@pytest.mark.parametrize("send", ["files", "data"])
+async def test_a_body_retried_after_a_throttle_status_is_sent_whole_each_time(
+    send: str, open_body: Callable[[bytes], BinaryIO], client_kwargs: dict
 ):
-    payload = b"#1=CARTESIAN_POINT('',(0.,0.,0.));\n" * 400
     received: list[bytes] = []
 
-    async def upload(request: web.Request) -> web.Response:
-        part = await (await request.multipart()).next()
-        assert isinstance(part, BodyPartReader)
-        received.append(await part.read())
+    async def receive(request: web.Request) -> web.Response:
+        received.append(await _body_of(request))
         return web.Response(status=429 if len(received) == 1 else 200)
 
     app = web.Application()
-    app.router.add_post("/", upload)
+    app.router.add_post("/", receive)
     runner, base = await _serve(app)
 
     try:
-        with open_upload(payload) as handle:
+        with open_body(_PAYLOAD) as body:
             response = await asyncio.wait_for(
-                _local_requests(
-                    raise_for_status=False, retry_max_attempts=3, retry_max_wait=0
-                ).post(base, files=[("file", ("part.step", handle, "model/step"))]),
+                _local_requests(retry_max_wait=0, **client_kwargs).post(
+                    base, **_sent_as(send, body)
+                ),
                 _ENDS_WITHIN_SECONDS,
             )
     finally:
         await runner.cleanup()
 
     assert response.status == 200
-    assert received == [payload, payload]
+    assert received == [_PAYLOAD, _PAYLOAD]
+
+
+@pytest.mark.asyncio
+@_RETRYING_CLIENTS
+async def test_an_async_iterable_body_retried_after_a_throttle_status_is_sent_whole(
+    client_kwargs: dict,
+):
+    async def chunks():
+        for line in _PAYLOAD.splitlines(keepends=True):
+            yield line
+
+    received: list[bytes] = []
+
+    async def receive(request: web.Request) -> web.Response:
+        received.append(await request.read())
+        return web.Response(status=429 if len(received) == 1 else 200)
+
+    app = web.Application()
+    app.router.add_post("/", receive)
+    runner, base = await _serve(app)
+
+    try:
+        response = await asyncio.wait_for(
+            _local_requests(retry_max_wait=0, **client_kwargs).post(
+                base, data=chunks()
+            ),
+            _ENDS_WITHIN_SECONDS,
+        )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert received == [_PAYLOAD, _PAYLOAD]
+
+
+@pytest.mark.asyncio
+async def test_a_stream_redirected_with_a_307_reaches_the_next_hop_whole():
+    """A 307 repeats the request, body and all, so the hop must not find the
+    stream where the first send left it: at its end."""
+    received: dict[str, bytes] = {}
+
+    async def moved(request: web.Request) -> web.Response:
+        received[request.path] = await request.read()
+        raise web.HTTPTemporaryRedirect("/final")
+
+    async def final(request: web.Request) -> web.Response:
+        received[request.path] = await request.read()
+        return web.Response(text="stored")
+
+    app = web.Application()
+    app.router.add_post("/", moved)
+    app.router.add_post("/final", final)
+    runner, base = await _serve(app)
+
+    try:
+        response = await asyncio.wait_for(
+            _local_requests().post(base, data=BytesIO(_PAYLOAD)),
+            _ENDS_WITHIN_SECONDS,
+        )
+    finally:
+        await runner.cleanup()
+
+    assert response.status == 200
+    assert received == {"/": _PAYLOAD, "/final": _PAYLOAD}
