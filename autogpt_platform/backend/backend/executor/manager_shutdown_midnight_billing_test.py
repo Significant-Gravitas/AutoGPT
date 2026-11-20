@@ -26,7 +26,7 @@ import pytest
 from pydantic import SecretStr
 
 from backend.blocks.llm import AITextGeneratorBlock, LLMModel
-from backend.data.block_cost_config import TOKEN_COST
+from backend.data.block_cost_config import MODEL_COST, TOKEN_COST
 from backend.data.execution import ExecutionContext, ExecutionStatus, NodeExecutionEntry
 from backend.data.graph import Node
 from backend.data.llm_registry import llm_models
@@ -225,6 +225,7 @@ async def _run_node(
     *,
     starts: datetime,
     settles: datetime,
+    prompt: str = "Say hello.",
     stopped_mid_call: bool = False,
     rerun_after_its_pod_died: bool = False,
 ) -> _Node:
@@ -235,7 +236,6 @@ async def _run_node(
     price again (`billing.redispatch_reconcile_baseline`)."""
     run = _Node(_Clock(starts), settles, replies=not stopped_mid_call)
     node = Node(id="node-1", block_id=AITextGeneratorBlock().id)
-    prompt = "Write a long story about a lighthouse. " * 2000
     node_exec = _node_exec(saved, credentials, prompt)
     processor = ExecutionProcessor()
     processor.creds_manager = MagicMock()
@@ -297,6 +297,7 @@ async def test_a_node_is_billed_for_the_model_it_started_on(
     assert sum(run.spent) == _price_of_a_reply(runs)
     [logged] = run.cost_log
     assert logged.model == runs.value
+    assert logged.metadata is not None
     assert logged.metadata["credit_cost"] == _price_of_a_reply(runs)
     assert run.recorded[-1]["resolved_model"] == runs.value
 
@@ -331,6 +332,7 @@ async def test_a_stop_after_midnight_bills_the_cut_off_request_at_the_started_mo
         openai_credentials,
         starts=_utc(2026, 12, 10, 23, 59, 50),
         settles=_utc(2026, 12, 11, 0, 0, 10),
+        prompt="Write a long story about a lighthouse. " * 15_000,
         stopped_mid_call=True,
     )
 
@@ -339,11 +341,14 @@ async def test_a_stop_after_midnight_bills_the_cut_off_request_at_the_started_mo
     [settlement] = run.reconcile.await_args_list
     assert settlement.kwargs["bill_stop_estimate"] is True
     estimate = settlement.kwargs["stats"].abandoned_input_token_count
-    assert estimate > 10_000
+    assert estimate > 100_000
 
     def billed_at(model: LLMModel) -> int:
         return math.ceil(estimate * TOKEN_COST[model].input / 1_000_000)
 
-    assert billed_at(LLMModel.GPT5_MINI) != billed_at(LLMModel.GPT6_1_TERRA)
-    assert sum(run.spent) == billed_at(LLMModel.GPT5_MINI)
+    # The pre-flight charge, then the rest of the estimate's price: a
+    # settlement that charged nothing, or priced the fallback, can't pass.
+    pre_flight = MODEL_COST[LLMModel.GPT5_MINI]
+    assert pre_flight < billed_at(LLMModel.GPT5_MINI) < billed_at(LLMModel.GPT6_1_TERRA)
+    assert run.spent == [pre_flight, billed_at(LLMModel.GPT5_MINI) - pre_flight]
     assert run.recorded[-1]["resolved_model"] == LLMModel.GPT5_MINI.value
