@@ -45,10 +45,10 @@ async def test_a_write_cancelled_mid_flight_finishes_and_is_audited(
     release = threading.Event()
     real_write = handlers_module.write_jail_file
 
-    def slow_write(path, root, data) -> None:
+    def slow_write(path, root, data, **how) -> None:
         started.set()
         release.wait(30)
-        real_write(path, root, data)
+        real_write(path, root, data, **how)
 
     monkeypatch.setattr(handlers_module, "write_jail_file", slow_write)
     target = tmp_path / "notes.txt"
