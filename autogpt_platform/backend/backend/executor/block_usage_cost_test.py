@@ -2,6 +2,7 @@
 
 import ast
 import math
+from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
@@ -24,6 +25,7 @@ from backend.data.block_cost_config import (
     TOKEN_COST,
     TokenRate,
 )
+from backend.data.llm_registry import llm_models
 from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
 from backend.executor.utils import block_usage_cost
@@ -379,10 +381,23 @@ def test_llm_block_price_includes_schema_defaults(schema_default_input: dict):
     )
 
 
-def test_a_switched_off_model_is_charged_as_the_fallback_it_runs():
+@pytest.mark.parametrize(
+    ("day", "runs"),
+    [
+        # Still served the day before its shutdown date: its own price.
+        (date(2026, 12, 10), LLMModel.GPT5_PRO),
+        # From that day on it runs, and is priced as, its fallback.
+        (date(2026, 12, 11), LLMModel.GPT6_1_SOL),
+    ],
+    ids=["before-shutdown", "on-the-day"],
+)
+def test_a_switched_off_model_is_charged_as_the_model_it_runs(
+    day: date, runs: LLMModel, monkeypatch: pytest.MonkeyPatch
+):
     """A block given a model the catalog has switched off runs the model's
-    catalog fallback (`Block.with_retired_models_replaced`), and is charged
-    for it: gpt-5-pro runs, and is priced, as gpt-6.1-sol."""
+    catalog fallback from its shutdown date (`Block.with_retired_models_replaced`),
+    and is charged for the model it runs: gpt-5-pro, then gpt-6.1-sol."""
+    monkeypatch.setattr(llm_models, "_today", lambda: day)
     block = AITextGeneratorBlock()
     credentials = {
         "id": openai_credentials.id,
@@ -390,18 +405,15 @@ def test_a_switched_off_model_is_charged_as_the_fallback_it_runs():
         "type": openai_credentials.type,
     }
     stored = {"model": LLMModel.GPT5_PRO.value, "credentials": credentials}
-    runs = {"model": LLMModel.GPT6_1_SOL.value, "credentials": credentials}
+    priced_as = {"model": runs.value, "credentials": credentials}
     stats = NodeExecutionStats(input_token_count=1_000_000, output_token_count=0)
 
     cost, matched = block_usage_cost(block, stored, stats=stats)
 
-    assert matched["model"] == LLMModel.GPT6_1_SOL
-    assert cost == math.ceil(TOKEN_COST[LLMModel.GPT6_1_SOL].input)
-    assert cost < math.ceil(TOKEN_COST[LLMModel.GPT5_PRO].input)
-    assert block_usage_cost(block, stored) == block_usage_cost(block, runs)
-    assert executor_utils._with_schema_defaults(block, stored)["model"] == (
-        LLMModel.GPT6_1_SOL
-    )
+    assert matched["model"] == runs
+    assert cost == math.ceil(TOKEN_COST[runs].input)
+    assert block_usage_cost(block, stored) == block_usage_cost(block, priced_as)
+    assert executor_utils._with_schema_defaults(block, stored)["model"] == runs
 
 
 def test_ayrshare_price_tier_follows_the_is_video_default():

@@ -1025,9 +1025,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 
     def with_retired_models_replaced(self, input_data: BlockInput) -> BlockInput:
         """*input_data* with each LLM model the catalog has switched off, and
-        names a fallback for, replaced by that fallback: the model this block
-        runs and is billed for instead. Returns *input_data* itself when no
-        value changes."""
+        names a fallback for, replaced by that fallback once the model's
+        shutdown date, if it has one, has come: the model this block runs and
+        is billed for instead. Returns *input_data* itself when no value
+        changes."""
         replaced = {
             name: fallback.value
             for name, field in self.input_schema.model_fields.items()

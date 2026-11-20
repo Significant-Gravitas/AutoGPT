@@ -15,8 +15,9 @@ Preset rows that name the model are counted and left alone. A preset stores
 a node override (the row named with the node's ``graph.NODE_INPUT_MASK_PREFIX``
 key) only for its trigger node, and no trigger block has a ``model`` input, so
 today none overrides an LLM block; the rest are workflow input values. An LLM
-block given a switched-off model runs its catalog fallback instead
-(``Block._execute``), so those values keep working.
+block given a switched-off model runs its catalog fallback instead, from the
+model's ``shutdown_at`` when it has one (``Block._execute``), so those values
+keep working. Retiring a model with a date is cleanup, any time after it.
 
 CLI::
 
@@ -50,7 +51,7 @@ import backend.data.db
 from backend.data.db import get_database_schema, query_raw_with_schema, transaction
 from backend.data.graph import NODE_INPUT_MASK_PREFIX, find_llm_model_fields
 from backend.data.llm_registry.catalog import get_catalog
-from backend.data.llm_registry.llm_models import retired_model_fallback
+from backend.data.llm_registry.llm_models import scheduled_model_fallback
 from backend.data.llm_registry.registry import get_model, load_catalog
 
 logger = logging.getLogger(__name__)
@@ -479,14 +480,18 @@ def _print_left_alone(slug: str, usage: ModelUsage) -> None:
             "(most often a workflow input's value) and are left alone."
         )
     if usage.preset_overrides or usage.other_preset_inputs:
-        fallback = retired_model_fallback(slug)
-        print(
-            f"An LLM block given '{slug}' runs '{fallback.value}', its catalog "
-            "fallback, instead."
-            if fallback
-            else f"An LLM block given '{slug}' runs it as it is: the catalog "
-            "names no enabled fallback of the same provider for it."
-        )
+        if (scheduled := scheduled_model_fallback(slug)) is None:
+            print(
+                f"An LLM block given '{slug}' runs it as it is: the catalog "
+                "names no enabled fallback of the same provider for it."
+            )
+        else:
+            fallback, shutdown_at = scheduled
+            when = f"from {shutdown_at.isoformat()}" if shutdown_at else "instead"
+            print(
+                f"An LLM block given '{slug}' runs '{fallback.value}', its "
+                f"catalog fallback, {when}."
+            )
 
 
 if __name__ == "__main__":

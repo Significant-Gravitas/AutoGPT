@@ -115,8 +115,8 @@ def _model_cost_from_catalog() -> dict[LLMModel, int]:
     a model from being SERVED to new work, but stored graphs that still
     reference it keep executing — and an execution that happens must be
     billed. Filtering here would make killed-model usage free. (A killed
-    model with a fallback runs, and is billed, as the fallback:
-    ``block_usage_cost``.)"""
+    model with a fallback runs, and is billed, as the fallback from its
+    shutdown date: ``block_usage_cost``.)"""
     members = _enum_members_by_value()
     costs: dict[LLMModel, int] = {}
     for model in get_catalog().models:

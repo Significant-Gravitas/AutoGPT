@@ -1,14 +1,17 @@
 """A workflow on a model the catalog has switched off runs, and pays for, the
-model's catalog fallback.
+model's catalog fallback from the model's shutdown date, and the model itself
+until then.
 
 Run the way a user's run goes, like ``agent_run_billing_test``: the graph is
 saved and started through the API's handlers, and an executor pod runs it
-against a fake Anthropic endpoint on localhost. Sonnet 4.5 is switched off,
-with Sonnet 5.5 as its fallback. The model reaches the block from the node's
-saved input, or from a workflow input wired into its ``model`` pin, a value no
-pass over stored graphs rewrites.
+against a fake Anthropic endpoint on localhost, on a day the pod's own script
+sets. Sonnet 4.5 is switched off, with Sonnet 5.5 as its fallback from
+2026-11-30, the day Anthropic retires it. The model reaches the block from the
+node's saved input, or from a workflow input wired into its ``model`` pin, a
+value no pass over stored graphs rewrites.
 """
 
+from datetime import date
 from typing import Literal
 from uuid import uuid4
 
@@ -25,6 +28,7 @@ from backend.integrations import credentials_store
 from backend.util.test import SpinTestServer
 
 from .agent_run_billing_test import (
+    EXECUTOR_POD,
     PLATFORM_ANTHROPIC_KEY,
     _run_on_an_executor_pod,
     _start_run,
@@ -33,14 +37,37 @@ from .provider import INPUT_TOKENS_PER_REPLY, FakeAnthropic
 
 SWITCHED_OFF = LLMModel.CLAUDE_4_5_SONNET
 FALLBACK = LLMModel.CLAUDE_5_5_SONNET
+SHUTDOWN = date(2026, 11, 30)
+
+
+def _executor_pod_on(day: date) -> str:
+    """The executor pod's script, with the day a shutdown date is read
+    against set to *day*."""
+    return (
+        "import datetime\n"
+        "import backend.data.llm_registry.llm_models as llm_models\n"
+        f"llm_models._today = lambda: datetime.date({day.year}, {day.month}, {day.day})\n"
+        + EXECUTOR_POD
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("model_from", ["saved-input", "workflow-input"])
+@pytest.mark.parametrize(
+    ("model_from", "day", "runs"),
+    [
+        ("saved-input", SHUTDOWN, FALLBACK),
+        ("workflow-input", SHUTDOWN, FALLBACK),
+        # Still served the day before: the workflow runs Sonnet 4.5, as before.
+        ("saved-input", date(2026, 11, 29), SWITCHED_OFF),
+    ],
+    ids=["saved-input", "workflow-input", "saved-input-before-shutdown"],
+)
 async def test_a_workflow_on_a_switched_off_model_runs_and_pays_for_its_fallback(
     server: SpinTestServer,
     monkeypatch: pytest.MonkeyPatch,
     model_from: Literal["saved-input", "workflow-input"],
+    day: date,
+    runs: LLMModel,
 ):
     monkeypatch.setattr(
         credentials_store.settings.secrets, "anthropic_api_key", PLATFORM_ANTHROPIC_KEY
@@ -70,14 +97,16 @@ async def test_a_workflow_on_a_switched_off_model_runs_and_pays_for_its_fallback
                 else None
             ),
         )
-        await _run_on_an_executor_pod(run_entry, model.url)
+        await _run_on_an_executor_pod(run_entry, model.url, _executor_pod_on(day))
 
     paid = balance_before - await wallet.get_credits(user.id)
 
-    # Sonnet 5.5 answered the one call, and the wallet paid Sonnet 5.5's price
-    # for it: 300 credits today, where Sonnet 4.5's is 450.
-    assert model.models == [FALLBACK.value]
-    assert paid == _price_of_one_reply(FALLBACK) < _price_of_one_reply(SWITCHED_OFF)
+    # The model that runs answered the one call, and the wallet paid its price
+    # for it: from the shutdown date Sonnet 5.5's 300 credits, before it
+    # Sonnet 4.5's 450.
+    assert model.models == [runs.value]
+    assert paid == _price_of_one_reply(runs)
+    assert _price_of_one_reply(FALLBACK) < _price_of_one_reply(SWITCHED_OFF)
 
 
 def _price_of_one_reply(model: LLMModel) -> int:

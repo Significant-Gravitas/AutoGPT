@@ -12,7 +12,7 @@ anything per-install (retirement records live in the DB, see
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -137,6 +137,10 @@ class CatalogModel(BaseModel):
     # fallback is enabled and from the same provider; it also pre-fills the
     # retirement CLI's replacement.
     fallback_model_slug: str | None = Field(default=None, pattern=_SLUG_PATTERN)
+    # The day (UTC) the provider stops serving a switched-off model. Until
+    # then a block given it runs the model itself; from that day on, the
+    # fallback. Without a date the fallback applies at once.
+    shutdown_at: date | None = None
     supports_tools: bool = False
     supports_json_output: bool = False
     supports_reasoning: bool = False

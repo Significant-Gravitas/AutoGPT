@@ -338,7 +338,7 @@ def _coerce_usd(stats: NodeExecutionStats | None) -> float:
 def _with_schema_defaults(block: Block, input_data: BlockInput) -> BlockInput:
     """The input `Block._execute` runs on: `None` values dropped, schema defaults
     filled in, and a model the catalog has switched off replaced by its
-    fallback, so a run is billed for the model it runs. Cost filters are
+    fallback from its shutdown date, so a run is billed for the model it runs. Cost filters are
     matched against this, with each credentials input marked by whether the
     platform pays for its key."""
     defaults = {

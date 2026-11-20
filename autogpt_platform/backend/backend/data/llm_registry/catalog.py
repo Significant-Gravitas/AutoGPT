@@ -17,7 +17,7 @@ the model database (data-as-code); splitting it would scatter the one
 place model facts live.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from backend.data.llm_registry.catalog_model import (
     CATALOG_SCHEMA_VERSION,
@@ -291,6 +291,7 @@ def _build_catalog() -> CatalogPayload:
                 # claude-sonnet-5-5.
                 is_enabled=False,
                 fallback_model_slug="claude-sonnet-5-5",
+                shutdown_at=date(2026, 11, 30),
                 cost=CatalogModelCost(
                     run_credits=9,
                     input_credits_per_1m=450.0,
@@ -1885,6 +1886,7 @@ def _build_catalog() -> CatalogPayload:
                 # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-sol.
                 is_enabled=False,
                 fallback_model_slug="gpt-6.1-sol",
+                shutdown_at=date(2026, 12, 11),
                 # OpenAI list price $1.25/$10 per Mtok, cached input $0.125;
                 # GPT-5 bills nothing for writing the cache.
                 cost=CatalogModelCost(
@@ -1927,6 +1929,7 @@ def _build_catalog() -> CatalogPayload:
                 # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-terra.
                 is_enabled=False,
                 fallback_model_slug="gpt-6.1-terra",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=38.0,
@@ -1944,6 +1947,7 @@ def _build_catalog() -> CatalogPayload:
                 # OpenAI shuts it down 2026-12-11; listed replacement gpt-6-luna.
                 is_enabled=False,
                 fallback_model_slug="gpt-6-luna",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=1, input_credits_per_1m=8.0, output_credits_per_1m=60.0
                 ),
@@ -2007,6 +2011,7 @@ def _build_catalog() -> CatalogPayload:
                 # in pro reasoning mode, which no block requests.
                 is_enabled=False,
                 fallback_model_slug="gpt-6.1-sol",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=30,
                     input_credits_per_1m=3000.0,
@@ -2391,6 +2396,7 @@ def _build_catalog() -> CatalogPayload:
                 # in pro reasoning mode, which no block requests.
                 is_enabled=False,
                 fallback_model_slug="gpt-6.1-sol",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=60,
                     input_credits_per_1m=2250.0,
@@ -2427,6 +2433,7 @@ def _build_catalog() -> CatalogPayload:
                 # OpenAI shuts it down 2026-12-11; listed replacement gpt-6.1-sol.
                 is_enabled=False,
                 fallback_model_slug="gpt-6.1-sol",
+                shutdown_at=date(2026, 12, 11),
                 cost=CatalogModelCost(
                     run_credits=4,
                     input_credits_per_1m=300.0,

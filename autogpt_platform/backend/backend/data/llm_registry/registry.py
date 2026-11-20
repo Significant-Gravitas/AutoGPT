@@ -67,7 +67,8 @@ class RegistryModel(BaseModel):
     # is_enabled is the kill switch for SERVING NEW WORK: copilot refuses the
     # model and it leaves picker metadata. Existing agent graphs keep
     # executing (and billing): on the model's fallback_model_slug when that is
-    # an enabled model of the same provider, otherwise on the model itself.
+    # an enabled model of the same provider, from its shutdown_at when set;
+    # otherwise, and until then, on the model itself.
     # Rewriting users' stored graphs is a deliberate separate act (the
     # retire CLI), never a flag side-effect.
     is_enabled: bool

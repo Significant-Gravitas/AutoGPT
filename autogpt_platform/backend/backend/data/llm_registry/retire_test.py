@@ -417,9 +417,11 @@ async def test_retire_counts_preset_values_and_leaves_them_alone(
     retirement_env, mocker, capsys
 ):
     """The CLI moves the LLM node and leaves every preset row as it is: a
-    preset's override of that node, a Codex node's override and a workflow
-    input's value. The dry run counts each kind; an LLM block given one runs
-    the model's catalog fallback instead (``Block._execute``)."""
+    preset's override of that node, a Codex node's override, a workflow
+    input's value, and a workflow input holding an object with a ``model``
+    key (named after no node, so no override). The dry run counts each kind;
+    an LLM block given one runs the model's catalog fallback instead
+    (``Block._execute``)."""
     from backend.data.llm_registry.retire import _build_parser, _run_cli
 
     source, replacement = "gpt-5.1-codex", "gpt-6.1-sol"
@@ -430,6 +432,7 @@ async def test_retire_counts_preset_values_and_leaves_them_alone(
         {
             _override_key(llm_node): {"model": source, "sys_prompt": "be brief"},
             "model_choice": source,
+            "settings": {"model": source},
         },
     )
     codex_rows = await _seed_preset(
@@ -438,6 +441,7 @@ async def test_retire_counts_preset_values_and_leaves_them_alone(
     untouched = {
         llm_rows[_override_key(llm_node)]: {"model": source, "sys_prompt": "be brief"},
         llm_rows["model_choice"]: source,
+        llm_rows["settings"]: {"model": source},
         codex_rows[_override_key(codex_node)]: {"model": source},
     }
 
@@ -446,7 +450,7 @@ async def test_retire_counts_preset_values_and_leaves_them_alone(
         "nodes": 1,
         "other_block_nodes": 1,
         "preset_overrides": 1,
-        "other_preset_inputs": 2,
+        "other_preset_inputs": 3,
     }
     mocker.patch("backend.data.db.connect", new=AsyncMock())
     args = _build_parser().parse_args([source, "--replacement", replacement])
@@ -454,7 +458,7 @@ async def test_retire_counts_preset_values_and_leaves_them_alone(
     dry_run = capsys.readouterr().out
     assert "would migrate 1 node(s)" in dry_run
     assert "1 preset override(s) of an LLM node name 'gpt-5.1-codex'" in dry_run
-    assert "2 other preset input(s) name 'gpt-5.1-codex'" in dry_run
+    assert "3 other preset input(s) name 'gpt-5.1-codex'" in dry_run
     assert (
         "An LLM block given 'gpt-5.1-codex' runs 'gpt-6.1-sol', its catalog "
         "fallback, instead." in dry_run
@@ -471,6 +475,29 @@ async def test_retire_counts_preset_values_and_leaves_them_alone(
     assert await _node_model(llm_node) == replacement
     assert await _node_model(codex_node) == source
     assert {row: await _preset_input(row) for row in untouched} == untouched
+
+
+async def test_the_left_alone_note_names_the_fallback_and_its_date(capsys):
+    """A model still served runs as itself until its shutdown date, so the
+    note names the fallback and the day it starts; with no date, the fallback
+    runs at once."""
+    from backend.data.llm_registry.retire import ModelUsage, _print_left_alone
+
+    usage = ModelUsage(
+        nodes=0, other_block_nodes=0, preset_overrides=1, other_preset_inputs=0
+    )
+    _print_left_alone("gpt-5-2025-08-07", usage)
+    _print_left_alone("o3-mini", usage)
+    note = capsys.readouterr().out
+
+    assert (
+        "An LLM block given 'gpt-5-2025-08-07' runs 'gpt-6.1-sol', its catalog "
+        "fallback, from 2026-12-11." in note
+    )
+    assert (
+        "An LLM block given 'o3-mini' runs 'gpt-6.1-terra', its catalog "
+        "fallback, instead." in note
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
