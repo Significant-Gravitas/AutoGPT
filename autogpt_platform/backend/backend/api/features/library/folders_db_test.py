@@ -255,3 +255,36 @@ async def test_repeated_move_reports_no_moves(server: SpinTestServer):
     second = await bulk_move_agents_to_folder([agent.id], folder, user)
     assert second == []
     assert await _folder_of(agent.id) == folder
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_batch_reports_only_the_agents_it_moved(server: SpinTestServer):
+    user = await _user()
+    folder = await _folder(user)
+    already_there = await _agent(user)
+    await LibraryAgent.prisma().update_many(
+        where={"id": already_there.id}, data={"folderId": folder}
+    )
+    to_move = await _agent(user)
+
+    moved = await bulk_move_agents_to_folder(
+        [already_there.id, to_move.id], folder, user
+    )
+
+    assert [a.id for a in moved] == [to_move.id]
+    assert await _folder_of(already_there.id) == folder
+    assert await _folder_of(to_move.id) == folder
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_agent_named_twice_moves_once(server: SpinTestServer):
+    user = await _user()
+    folder = await _folder(user)
+    agent = await _agent(user)
+
+    moved = await bulk_move_agents_to_folder(
+        [agent.id, agent.agentGraphId], folder, user
+    )
+
+    assert [a.id for a in moved] == [agent.id]
+    assert await _folder_of(agent.id) == folder
