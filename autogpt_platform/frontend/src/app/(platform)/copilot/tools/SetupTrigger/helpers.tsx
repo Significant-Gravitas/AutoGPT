@@ -2,9 +2,10 @@ import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse
 import type { NeedLoginResponse } from "@/app/api/__generated__/models/needLoginResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
-import { WarningDiamondIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
+import { AlertDiamondIcon, WebhookIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 /** Success output of the `setup_agent_webhook_trigger` tool. Duck-typed: it's a
  *  copilot tool result, not a REST response model. */
@@ -29,6 +30,10 @@ export interface TriggerConfigRequiredOutput {
   message: string;
   missing_config: string[];
   config_schema: Record<string, unknown>;
+  // Required regular graph inputs (for agents with input nodes alongside the
+  // trigger). The LLM collects these and re-calls with `constant_inputs`.
+  missing_inputs?: string[];
+  input_schema?: Record<string, unknown> | null;
 }
 
 export type SetupTriggerToolOutput =
@@ -144,14 +149,10 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return (
-    <WebhooksLogoIcon size={14} weight="regular" className="text-neutral-400" />
-  );
+  return <Icon icon={WebhookIcon} size={14} tone="subtle" />;
 }

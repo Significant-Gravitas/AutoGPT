@@ -1,13 +1,13 @@
+import asyncio
 import logging
 import queue
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import (
     Annotated,
     Any,
     AsyncGenerator,
-    Generator,
     Generic,
     Literal,
     Mapping,
@@ -18,13 +18,15 @@ from typing import (
 )
 
 from prisma import Json
-from prisma.enums import AgentExecutionStatus, SharedVia
+from prisma.enums import AgentExecutionStatus, ResourceVisibility, SharedVia
 from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
     AgentGraphExecution,
+    AgentNode,
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
+    Expert,
     LibraryAgent,
     SharedExecutionFile,
     UserWorkspace,
@@ -46,10 +48,22 @@ from pydantic.fields import Field
 
 from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
+from backend.data.expert_run_output import reconstruct_run_outputs
+from backend.data.sharing.execution_shares import (
+    live_execution_share,
+    soft_delete_and_unshare_execution,
+)
 from backend.data.tenancy import get_user_team_ids, visibility_filter
+from backend.notifications.scoring import score_completed_run
 from backend.util import type as type_utils
-from backend.util.exceptions import DatabaseError, NotFoundError
-from backend.util.json import SafeJson
+from backend.util.exceptions import (
+    DatabaseError,
+    ExecutionFailureReason,
+    InvalidInputError,
+    NotFoundError,
+    get_execution_failure_reason,
+)
+from backend.util.json import SafeJson, sanitize_json
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
 from backend.util.settings import Config
@@ -60,6 +74,7 @@ from .db import BaseDbModel, query_raw_with_schema
 from .event_bus import AsyncRedisEventBus, RedisEventBus
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
+    EXECUTION_RESULT_INCLUDE_WITHOUT_NODE,
     EXECUTION_RESULT_ORDER,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     MAX_NODE_INPUT_OUTPUT_FETCH,
@@ -106,6 +121,9 @@ class ExecutionContext(BaseModel):
     # Execution hierarchy
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
+    # The workflows of the runs this run is nested in, outermost first; empty
+    # for a top-level run.
+    ancestor_graph_ids: list[str] = Field(default_factory=list)
 
     # File workspace (UserWorkspace — NOT the Team concept)
     workspace_id: Optional[str] = None
@@ -114,6 +132,20 @@ class ExecutionContext(BaseModel):
     # Org/team tenancy context
     organization_id: Optional[str] = None
     team_id: Optional[str] = None
+    # Set when the run is queued, never after: its charges go to its user's own
+    # wallet, as its org was their personal org. False bills organization_id.
+    bills_own_wallet: bool = False
+
+    # Expert attribution: carried at runtime so billing can meter per-expert
+    # spend and the executor can post run results into the expert's thread.
+    expert_id: Optional[str] = None
+
+    # The chat that started this run, whose approval gate answers its review
+    # pauses; None for any run no chat started.
+    approval_chat_id: Optional[str] = None
+    # The workflow's own sensitive_action_safe_mode, before a chat forced the
+    # pause on; None on a context that predates it.
+    graph_sensitive_action_safe_mode: Optional[bool] = None
 
 
 # -------------------------- Models -------------------------- #
@@ -135,6 +167,29 @@ class BlockErrorStats(BaseModel):
 
 
 ExecutionStatus = AgentExecutionStatus
+
+
+class ExecutionTrigger(StrEnum):
+    """How a graph execution was started. Persisted on the execution row.
+
+    ``manual``   a person clicked run (UI surface in triggerRef) or ran a preset
+    ``api``      external API key (key id in triggerRef)
+    ``schedule`` a cron/one-shot schedule fired (schedule id in triggerRef)
+    ``webhook``  an integration webhook fired (webhook id in triggerRef)
+    ``copilot``  the copilot run_agent tool (chat session id in triggerRef)
+    ``subgraph`` nested run started by an AgentExecutorBlock (parent exec id)
+    ``admin``    reserved for future admin-initiated executions
+    """
+
+    MANUAL = "manual"
+    API = "api"
+    SCHEDULE = "schedule"
+    WEBHOOK = "webhook"
+    COPILOT = "copilot"
+    SUBGRAPH = "subgraph"
+    ADMIN = "admin"
+
+
 NodeInputMask = Mapping[str, JsonValue]
 NodesInputMasks = Mapping[str, NodeInputMask]
 
@@ -168,6 +223,7 @@ VALID_STATUS_TRANSITIONS = {
     ],
     ExecutionStatus.REVIEW: [
         ExecutionStatus.RUNNING,
+        ExecutionStatus.INCOMPLETE,  # Parked for spend approval, never published
     ],
 }
 
@@ -198,6 +254,19 @@ class GraphExecutionMeta(BaseDbModel):
     # paths where the caller doesn't re-supply them.
     organization_id: Optional[str] = None
     team_id: Optional[str] = None
+
+    # Expert attribution, surfaced from the DB row for the same
+    # resume/requeue recovery reason as org/team above.
+    expert_id: Optional[str] = None
+
+    # How the run was started (ExecutionTrigger value) and by what. Null on
+    # rows created before the columns existed.
+    trigger_source: Optional[str] = None
+    trigger_ref: Optional[str] = None
+    # What started this run, when it was not a person: the scheduler job or
+    # the webhook that fired. Soft references; either may be gone by now.
+    schedule_id: Optional[str] = None
+    webhook_id: Optional[str] = None
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -237,6 +306,10 @@ class GraphExecutionMeta(BaseDbModel):
             default=None,
             description="Error message if any",
         )
+        failure_reason: ExecutionFailureReason | None = Field(
+            default=None,
+            description="Structured reason for a terminal execution failure",
+        )
         activity_status: str | None = Field(
             default=None,
             description="AI-generated summary of what the agent did",
@@ -256,6 +329,7 @@ class GraphExecutionMeta(BaseDbModel):
                 node_count=self.node_exec_count,
                 node_error_count=self.node_error_count,
                 error=self.error,
+                failure_reason=self.failure_reason,
                 activity_status=self.activity_status,
                 correctness_score=self.correctness_score,
             )
@@ -272,6 +346,7 @@ class GraphExecutionMeta(BaseDbModel):
     def from_db(_graph_exec: AgentGraphExecution):
         start_time = _graph_exec.startedAt
         end_time = _graph_exec.endedAt
+        execution_status = ExecutionStatus(_graph_exec.executionStatus)
 
         try:
             stats = GraphExecutionStats.model_validate(_graph_exec.stats)
@@ -282,6 +357,19 @@ class GraphExecutionMeta(BaseDbModel):
                     f"{_graph_exec.stats}: {e}"
                 )
             stats = None
+
+        failure_reason = stats.failure_reason if stats else None
+        if (
+            stats
+            and failure_reason is None
+            and execution_status == ExecutionStatus.FAILED
+        ):
+            # Historical error text may include provider-controlled content, so
+            # this compatibility path accepts only the anchored full-message forms.
+            failure_reason = get_execution_failure_reason(
+                stats.error,
+                allow_legacy_text=True,
+            )
 
         return GraphExecutionMeta(
             id=_graph_exec.id,
@@ -301,7 +389,7 @@ class GraphExecutionMeta(BaseDbModel):
                 dict[str, BlockInput] | None, _graph_exec.nodesInputMasks
             ),
             preset_id=_graph_exec.agentPresetId,
-            status=ExecutionStatus(_graph_exec.executionStatus),
+            status=execution_status,
             started_at=start_time,
             ended_at=end_time,
             stats=(
@@ -318,6 +406,7 @@ class GraphExecutionMeta(BaseDbModel):
                         if isinstance(stats.error, Exception)
                         else stats.error
                     ),
+                    failure_reason=failure_reason,
                     activity_status=stats.activity_status,
                     correctness_score=stats.correctness_score,
                 )
@@ -329,6 +418,11 @@ class GraphExecutionMeta(BaseDbModel):
             is_dry_run=stats.is_dry_run if stats else False,
             organization_id=_graph_exec.organizationId,
             team_id=_graph_exec.teamId,
+            expert_id=_graph_exec.expertId,
+            trigger_source=_graph_exec.triggerSource,
+            trigger_ref=_graph_exec.triggerRef,
+            schedule_id=_graph_exec.scheduleId,
+            webhook_id=_graph_exec.webhookId,
         )
 
 
@@ -345,7 +439,7 @@ class GraphExecution(GraphExecutionMeta):
 
         complete_node_executions = sorted(
             [
-                NodeExecutionResult.from_db(ne, _graph_exec.userId)
+                NodeExecutionResult.from_db(ne, graph_execution=_graph_exec)
                 for ne in _graph_exec.NodeExecutions
                 if ne.executionStatus != ExecutionStatus.INCOMPLETE
             ],
@@ -378,14 +472,12 @@ class GraphExecution(GraphExecutionMeta):
             },
         }
 
-        outputs: CompletedBlockOutput = defaultdict(list)
-        for exec in complete_node_executions:
-            if (
-                (block := get_block(exec.block_id))
-                and block.block_type == BlockType.OUTPUT
-                and "name" in exec.input_data
-            ):
-                outputs[exec.input_data["name"]].append(exec.input_data.get("value"))
+        outputs: CompletedBlockOutput = reconstruct_run_outputs(
+            (exec.queue_time, exec.add_time, exec.input_data, exec.output_data)
+            for exec in complete_node_executions
+            if (block := get_block(exec.block_id))
+            and block.block_type == BlockType.OUTPUT
+        )
 
         return GraphExecution(
             **{
@@ -410,7 +502,7 @@ class GraphExecutionWithNodes(GraphExecution):
 
         node_executions = sorted(
             [
-                NodeExecutionResult.from_db(ne, _graph_exec.userId)
+                NodeExecutionResult.from_db(ne, graph_execution=_graph_exec)
                 for ne in _graph_exec.NodeExecutions
             ],
             key=lambda ne: (ne.queue_time is None, ne.queue_time or ne.add_time),
@@ -458,7 +550,13 @@ class NodeExecutionResult(BaseModel):
     end_time: datetime | None
 
     @staticmethod
-    def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
+    def from_db(
+        _node_exec: AgentNodeExecution,
+        user_id: Optional[str] = None,
+        graph_execution: AgentGraphExecution | None = None,
+    ):
+        """`graph_execution` is the parent run, for a node execution read
+        without it (`NESTED_EXECUTION_RESULT_INCLUDE`)."""
         try:
             stats = NodeExecutionStats.model_validate(_node_exec.stats or {})
         except (ValueError, ValidationError):
@@ -498,7 +596,7 @@ class NodeExecutionResult(BaseModel):
             for data in outputs:
                 output_data[data.name].append(type_utils.convert(data.data, JsonValue))
 
-        graph_execution: AgentGraphExecution | None = _node_exec.GraphExecution
+        graph_execution = _node_exec.GraphExecution or graph_execution
         if graph_execution:
             user_id = graph_execution.userId
         elif not user_id:
@@ -558,6 +656,9 @@ async def get_graph_executions(
     offset: Optional[int] = None,
     order_by: Literal["createdAt", "startedAt", "updatedAt"] = "createdAt",
     order_direction: Literal["asc", "desc"] = "desc",
+    expert_id: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    deleted: bool = False,
 ) -> list[GraphExecutionMeta]:
     """
     Get graph executions with optional filters and ordering.
@@ -569,26 +670,35 @@ async def get_graph_executions(
         execution_ids: Filter by list of execution IDs (mutually exclusive with graph_exec_id)
         order_by: Field to order by. Defaults to "createdAt"
         order_direction: Sort direction. Defaults to "desc"
+        organization_id: Only executions stored in this org. An exact match,
+            unlike in `get_graph_executions_paginated`, where it also lists the
+            org's executions the user can see
+        deleted: List the executions deleted from history instead of the
+            visible ones
     """
     where_filter: AgentGraphExecutionWhereInput = {
-        "isDeleted": False,
+        "isDeleted": deleted,
     }
     if graph_exec_id:
         where_filter["id"] = graph_exec_id
     elif execution_ids:
         where_filter["id"] = {"in": execution_ids}
 
-    # Scope by user_id and optionally team_id. Don't conflate either with
-    # organizationId — those are separate columns in the schema and a
+    # Scope by user_id and optionally team_id or organization_id. Don't
+    # conflate them: they are separate columns in the schema, and a
     # team_id/user_id value is not a valid organizationId.
     if user_id:
         where_filter["userId"] = user_id
     if team_id:
         where_filter["teamId"] = team_id
+    if organization_id:
+        where_filter["organizationId"] = organization_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
     if graph_version is not None:
         where_filter["agentGraphVersion"] = graph_version
+    if expert_id:
+        where_filter["expertId"] = expert_id
     if created_time_gte or created_time_lte:
         where_filter["createdAt"] = {
             "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
@@ -638,6 +748,7 @@ async def get_graph_executions_count(
     started_time_lte: Optional[datetime] = None,
     updated_time_gte: Optional[datetime] = None,
     updated_time_lte: Optional[datetime] = None,
+    ended_time_gte: Optional[datetime] = None,
 ) -> int:
     """
     Get count of graph executions with optional filters.
@@ -652,6 +763,7 @@ async def get_graph_executions_count(
         started_time_lte: Optional maximum start time (when execution started running)
         updated_time_gte: Optional minimum update time
         updated_time_lte: Optional maximum update time
+        ended_time_gte: Optional minimum end time (terminal status reached)
 
     Returns:
         Count of matching graph executions
@@ -684,6 +796,9 @@ async def get_graph_executions_count(
             "lte": updated_time_lte or datetime.max.replace(tzinfo=timezone.utc),
         }
 
+    if ended_time_gte:
+        where_filter["endedAt"] = {"gte": ended_time_gte}
+
     if statuses:
         where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
@@ -696,6 +811,26 @@ class GraphExecutionsPaginated(BaseModel):
 
     executions: list[GraphExecutionMeta]
     pagination: Pagination
+
+
+def _execution_visibility_filters(
+    user_id: str,
+    organization_id: str,
+    team_ids: list[str],
+) -> list[AgentGraphExecutionWhereInput]:
+    """Keep current PRIVATE expert runs owner-only.
+
+    Non-expert runs retain existing org/team visibility. Future shared expert
+    visibility must add an explicit access policy here before it is exposed.
+    """
+    shared_visibility = cast(
+        AgentGraphExecutionWhereInput,
+        visibility_filter(user_id, organization_id, team_ids),
+    )
+    expert_visibility: AgentGraphExecutionWhereInput = {
+        "OR": [{"expertId": None}, {"userId": user_id}]
+    }
+    return [shared_visibility, expert_visibility]
 
 
 async def get_graph_executions_paginated(
@@ -719,12 +854,9 @@ async def get_graph_executions_paginated(
     }
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
-        where_filter["AND"] = [
-            cast(
-                AgentGraphExecutionWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
+        where_filter["AND"] = _execution_visibility_filters(
+            user_id, organization_id, team_ids
+        )
     else:
         where_filter["userId"] = user_id
 
@@ -738,16 +870,17 @@ async def get_graph_executions_paginated(
     if statuses:
         where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
-    total_count = await AgentGraphExecution.prisma().count(where=where_filter)
-    total_pages = (total_count + page_size - 1) // page_size
-
     offset = (page - 1) * page_size
-    executions = await AgentGraphExecution.prisma().find_many(
-        where=where_filter,
-        order={"createdAt": "desc"},
-        take=page_size,
-        skip=offset,
+    total_count, executions = await asyncio.gather(
+        AgentGraphExecution.prisma().count(where=where_filter),
+        AgentGraphExecution.prisma().find_many(
+            where=where_filter,
+            order={"createdAt": "desc"},
+            take=page_size,
+            skip=offset,
+        ),
     )
+    total_pages = (total_count + page_size - 1) // page_size
 
     return GraphExecutionsPaginated(
         executions=[GraphExecutionMeta.from_db(execution) for execution in executions],
@@ -768,12 +901,7 @@ async def get_graph_execution_meta(
     where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
-        where["AND"] = [
-            cast(
-                AgentGraphExecutionWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
+        where["AND"] = _execution_visibility_filters(user_id, organization_id, team_ids)
     else:
         where["userId"] = user_id
     execution = await AgentGraphExecution.prisma().find_first(where=where)
@@ -816,12 +944,7 @@ async def get_graph_execution(
     where: AgentGraphExecutionWhereInput = {"id": execution_id, "isDeleted": False}
     if organization_id is not None:
         team_ids = await get_user_team_ids(user_id, organization_id)
-        where["AND"] = [
-            cast(
-                AgentGraphExecutionWhereInput,
-                visibility_filter(user_id, organization_id, team_ids),
-            )
-        ]
+        where["AND"] = _execution_visibility_filters(user_id, organization_id, team_ids)
     else:
         where["userId"] = user_id
     execution = await AgentGraphExecution.prisma().find_first(
@@ -876,12 +999,35 @@ async def create_graph_execution(
     is_dry_run: bool = False,
     organization_id: Optional[str] = None,
     team_id: Optional[str] = None,
+    expert_id: Optional[str] = None,
+    trigger_source: Optional[ExecutionTrigger] = None,
+    trigger_ref: Optional[str] = None,
+    schedule_id: Optional[str] = None,
+    webhook_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
     Returns:
         The id of the AgentGraphExecution and the list of ExecutionResult for each node.
     """
+    check_node_input_counts(starting_nodes_input)
+
+    # Defense in depth: attribution must never cross users, even if a
+    # caller forgets its ownership check. Only costs a query on the rare
+    # expert-attributed path.
+    if expert_id:
+        expert = await Expert.prisma().find_first(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+                "visibility": ResourceVisibility.PRIVATE,
+            }
+        )
+        if expert is None:
+            raise ValueError(f"Expert #{expert_id} is unavailable")
+
     result = await AgentGraphExecution.prisma().create(
         data={
             "agentGraphId": graph_id,
@@ -913,6 +1059,11 @@ async def create_graph_execution(
             "userId": user_id,
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
+            **({"expertId": expert_id} if expert_id else {}),
+            **({"triggerSource": trigger_source.value} if trigger_source else {}),
+            **({"triggerRef": trigger_ref} if trigger_ref else {}),
+            **({"scheduleId": schedule_id} if schedule_id else {}),
+            **({"webhookId": webhook_id} if webhook_id else {}),
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
             # Tenancy dual-write fields
             **({"organizationId": organization_id} if organization_id else {}),
@@ -944,6 +1095,41 @@ async def create_graph_execution(
     return GraphExecutionWithNodes.from_db(result)
 
 
+def check_node_input_counts(
+    starting_nodes_input: list[tuple[str, BlockInput]],
+) -> None:
+    """Refuse a run whose starting inputs would outgrow what a read brings back.
+
+    A node's input is one row per name, and the names come from the request, the
+    node's own defaults and the input masks of whatever started the run.
+    """
+    for node_id, node_input in starting_nodes_input:
+        if len(node_input) > MAX_NODE_INPUT_OUTPUT_FETCH:
+            raise InvalidInputError(
+                f"Node #{node_id} takes at most {MAX_NODE_INPUT_OUTPUT_FETCH} "
+                f"inputs; got {len(node_input)}"
+            )
+
+
+# Correlated on purpose: Prisma's `"Input": {"none": ...}` filter becomes an uncorrelated
+# NOT IN over every input row with that pin name, on every graph run, and times out.
+WAITING_NODE_EXEC_QUERY = """
+SELECT e.id
+FROM {schema_prefix}"AgentNodeExecution" e
+WHERE e."agentGraphExecutionId" = $1
+  AND e."agentNodeId" = $2
+  AND e."executionStatus" = 'INCOMPLETE'
+  AND ($4::text IS NULL OR e.id = $4::text)
+  AND NOT EXISTS (
+    SELECT 1
+    FROM {schema_prefix}"AgentNodeExecutionInputOutput" i
+    WHERE i."referencedByInputExecId" = e.id AND i.name = $3
+  )
+ORDER BY e."addedTime" ASC
+LIMIT 1
+"""
+
+
 async def upsert_execution_input(
     node_id: str,
     graph_exec_id: str,
@@ -966,24 +1152,20 @@ async def upsert_execution_input(
         str: The id of the created or existing AgentNodeExecution.
         dict[str, Any]: Node input data; key is the input name, value is the input data.
     """
-    existing_exec_query_filter: AgentNodeExecutionWhereInput = {
-        "agentGraphExecutionId": graph_exec_id,
-        "agentNodeId": node_id,
-        "executionStatus": ExecutionStatus.INCOMPLETE,
-        "Input": {
-            "none": {
-                "name": input_name,
-                "time": {"gte": datetime.now(tz=timezone.utc) - timedelta(days=1)},
-            }
-        },
-    }
-    if node_exec_id:
-        existing_exec_query_filter["id"] = node_exec_id
-
-    existing_execution = await AgentNodeExecution.prisma().find_first(
-        where=existing_exec_query_filter,
-        order={"addedTime": "asc"},
-        include={"Input": True, "GraphExecution": True},
+    waiting = await query_raw_with_schema(
+        WAITING_NODE_EXEC_QUERY,
+        graph_exec_id,
+        node_id,
+        input_name,
+        node_exec_id or None,
+    )
+    existing_execution = (
+        await AgentNodeExecution.prisma().find_unique(
+            where={"id": waiting[0]["id"]},
+            include={"Input": True, "GraphExecution": True},
+        )
+        if waiting
+        else None
     )
     json_input_data = SafeJson(input_data)
 
@@ -1090,8 +1272,16 @@ async def update_graph_execution_stats(
     status: ExecutionStatus | None = None,
     stats: GraphExecutionStats | None = None,
     cascade_running_children: bool = True,
+    update_tenancy: bool = False,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> GraphExecution | None:
     """Update a graph_exec's status and/or stats.
+
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+    Callers are internal executor/scheduler paths (directly or via the
+    DatabaseManager RPC) operating on a `graph_exec_id` they obtained from
+    an ownership-checked fetch.
 
     When `status` transitions the row into a terminal state and
     `cascade_running_children` is True (default), all of its child node
@@ -1105,12 +1295,18 @@ async def update_graph_execution_stats(
     reason to leave child rows untouched (e.g. resume flows or
     speculative writes that will be reconciled separately).
     """
-    if not status and not stats:
+    if not status and not stats and not update_tenancy:
         raise ValueError(
             f"Must provide either status or stats to update for execution {graph_exec_id}"
         )
 
     update_data: AgentGraphExecutionUpdateManyMutationInput = {}
+
+    if update_tenancy:
+        if not organization_id:
+            raise ValueError("organization_id is required when updating tenancy")
+        update_data["organizationId"] = organization_id
+        update_data["teamId"] = team_id
 
     if stats:
         stats_dict = stats.model_dump()
@@ -1139,10 +1335,21 @@ async def update_graph_execution_stats(
                 f"This status can only be set at creation or is not a valid target status."
             )
 
-    await AgentGraphExecution.prisma().update_many(
+    updated = await AgentGraphExecution.prisma().update_many(
         where=where_clause,
         data=update_data,
     )
+    if status is not None and updated == 0:
+        # The row exists but is not in a state this status may be reached
+        # from (VALID_STATUS_TRANSITIONS), e.g. a second terminal write after
+        # the run already finished. Nothing changed, so do not score it,
+        # cascade its children, or hand back a row that suggests it did.
+        return None
+
+    if status in TERMINAL_GRAPH_EXECUTION_STATUSES:
+        # Score the finished run for the Briefing while its stats are fresh.
+        # Never raises — a scoring failure must not fail the run.
+        await score_completed_run(graph_exec_id)
 
     if cascade_running_children and status in TERMINAL_GRAPH_EXECUTION_STATUSES:
         # Sweep any child node_execs that are still RUNNING. Without this,
@@ -1230,9 +1437,112 @@ async def update_node_execution_status(
     if res := await AgentNodeExecution.prisma().find_unique(
         where={"id": node_exec_id}, include=EXECUTION_RESULT_INCLUDE
     ):
+        if res.executionStatus != status:
+            # VALID_STATUS_TRANSITIONS rejected the write. Say so: callers get
+            # the unchanged row back and can't tell the update didn't happen.
+            logger.warning(
+                f"Node execution #{node_exec_id} can't go from "
+                f"{res.executionStatus} to {status}; it stays {res.executionStatus}"
+            )
         return NodeExecutionResult.from_db(res)
 
     raise ValueError(f"Execution {node_exec_id} not found.")
+
+
+# How many moderation writes run at once: enough to mask a big run quickly,
+# few enough to leave the database manager's connection pool to other callers.
+MODERATION_WRITES_IN_FLIGHT = 10
+
+
+async def mark_node_executions_moderated(
+    graph_exec_id: str,
+    stats_patches: dict[str, dict[str, Any]],
+    from_statuses: list[ExecutionStatus],
+) -> list[NodeExecutionResult]:
+    """Moderation only: set node executions to FAILED and merge each entry of
+    `stats_patches` (node_exec_id -> error / cleared_inputs / cleared_outputs)
+    into that row's existing stats.
+
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+
+    Output moderation fails nodes that already COMPLETED, which
+    VALID_STATUS_TRANSITIONS rejects on purpose, so this skips that map and
+    only writes rows of this run still in `from_statuses`. Don't use it for
+    anything else.
+
+    Returns this run's FAILED rows that carry their patch, re-read so they show
+    the masked data. That includes rows an earlier delivery of the same call
+    wrote, since the RPC client retries. Rows that don't carry their patch are
+    logged at error level: their content stays visible.
+    """
+    statuses = [s.value for s in from_statuses]
+    rows = await AgentNodeExecution.prisma().find_many(
+        where={
+            "id": {"in": list(stats_patches)},
+            "agentGraphExecutionId": graph_exec_id,
+            "executionStatus": {"in": statuses},
+        }
+    )
+    now = datetime.now(tz=timezone.utc)
+    for start in range(0, len(rows), MODERATION_WRITES_IN_FLIGHT):
+        await asyncio.gather(
+            *(
+                AgentNodeExecution.prisma().update_many(
+                    where={"id": row.id, "executionStatus": {"in": statuses}},
+                    data={
+                        "executionStatus": ExecutionStatus.FAILED,
+                        "endedTime": now,
+                        "stats": SafeJson(
+                            _moderated_stats(row.id, row.stats, stats_patches[row.id])
+                        ),
+                    },
+                )
+                for row in rows[start : start + MODERATION_WRITES_IN_FLIGHT]
+            )
+        )
+
+    failed = await AgentNodeExecution.prisma().find_many(
+        where={
+            "id": {"in": list(stats_patches)},
+            "agentGraphExecutionId": graph_exec_id,
+            "executionStatus": ExecutionStatus.FAILED,
+        },
+        include=EXECUTION_RESULT_INCLUDE,
+        order=EXECUTION_RESULT_ORDER,
+    )
+    masked = [row for row in failed if _has_patch(row.stats, stats_patches[row.id])]
+    if missed := set(stats_patches) - {row.id for row in masked}:
+        logger.error(
+            f"Graph execution #{graph_exec_id}: moderation could not clear "
+            f"{len(missed)} of {len(stats_patches)} node executions "
+            f"(not in {statuses}, or not in this run): {sorted(missed)}"
+        )
+    return [NodeExecutionResult.from_db(row) for row in masked]
+
+
+def _moderated_stats(
+    node_exec_id: str, existing: Any, patch: dict[str, Any]
+) -> dict[str, Any]:
+    """`patch` merged into a row's existing stats, or `patch` alone when the
+    merge doesn't validate: `NodeExecutionResult.from_db` drops stats it can't
+    validate, the moderation fields with them, which would unmask the row."""
+    merged = {**(existing if isinstance(existing, dict) else {}), **patch}
+    try:
+        NodeExecutionStats.model_validate(merged)
+    except (ValueError, ValidationError) as e:
+        logger.warning(
+            f"Node execution #{node_exec_id}: its stats don't validate, so "
+            f"moderation replaces them with its own fields and the rest is lost: {e}"
+        )
+        return patch
+    return merged
+
+
+def _has_patch(stats: Any, patch: dict[str, Any]) -> bool:
+    """Whether stored `stats` hold every field of `patch`, as stored: `SafeJson`
+    strips control characters."""
+    stored = stats if isinstance(stats, dict) else {}
+    return all(stored.get(key) == value for key, value in sanitize_json(patch).items())
 
 
 def _get_update_status_data(
@@ -1262,10 +1572,11 @@ async def delete_graph_execution(
     graph_exec_id: str, user_id: str, soft_delete: bool = True
 ) -> None:
     if soft_delete:
-        deleted_count = await AgentGraphExecution.prisma().update_many(
-            where={"id": graph_exec_id, "userId": user_id}, data={"isDeleted": True}
+        deleted_count = await soft_delete_and_unshare_execution(
+            execution_id=graph_exec_id, user_id=user_id
         )
     else:
+        # The schema cascades the share's file allowlist and chat links.
         deleted_count = await AgentGraphExecution.prisma().delete_many(
             where={"id": graph_exec_id, "userId": user_id}
         )
@@ -1409,6 +1720,23 @@ class NodeExecutionEntry(BaseModel):
     # reconcile, leaving the delta computed against a different number).
     # Excluded from dumps — in-memory only, scoped to a single live execution.
     pre_flight_charge: Optional[int] = Field(default=None, exclude=True)
+    # The status a REVIEW/RUNNING row had when a resumed or redelivered run
+    # dispatched it again. Its first dispatch was already charged, so this
+    # one must not be (#15272), and the status says what is still billed:
+    # see `billing.redispatch_reconcile_baseline`. Also exclude=True.
+    redispatched_from: Optional[ExecutionStatus] = Field(default=None, exclude=True)
+    # When the node was queued and by what: ``graph_start`` for a node queued
+    # before this executor picked the run up (an entry node, or one left
+    # queued by an interrupted run), ``node_output`` for one queued by an
+    # upstream node's output during the run. In-memory only, for the node's
+    # queue wait on its Sentry transaction.
+    queued_at: Optional[datetime] = Field(default=None, exclude=True)
+    queued_by: Optional[Literal["graph_start", "node_output"]] = Field(
+        default=None, exclude=True
+    )
+    # The node is queued only to fail on an input it can't use, so it isn't
+    # billed. In-memory only; a restart derives it again from the inputs.
+    input_error: Optional[str] = Field(default=None, exclude=True)
 
 
 class ExecutionQueue(Generic[T]):
@@ -1536,20 +1864,6 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
         super().publish_event(event, exec_channel(user_id, graph_id, graph_exec_id))
         super().publish_event(event, graph_all_channel(user_id, graph_id))
 
-    def listen(
-        self, user_id: str, graph_id: str, graph_exec_id: str
-    ) -> Generator[ExecutionEvent, None, None]:
-        """Stream events for a specific graph execution."""
-        for event in self.listen_events(exec_channel(user_id, graph_id, graph_exec_id)):
-            yield event
-
-    def listen_graph(
-        self, user_id: str, graph_id: str
-    ) -> Generator[ExecutionEvent, None, None]:
-        """Stream every event for every execution of ``graph_id``."""
-        for event in self.listen_events(graph_all_channel(user_id, graph_id)):
-            yield event
-
 
 class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     Model = ExecutionEvent  # type: ignore
@@ -1602,7 +1916,8 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     async def listen(
         self, user_id: str, graph_id: str, graph_exec_id: str
     ) -> AsyncGenerator[ExecutionEvent, None]:
-        """Stream events for a specific graph execution."""
+        """Stream events for a specific graph execution. Raises
+        ``EventStreamLostError`` on loss; ``listen_with_resync`` survives one."""
         async for event in self.listen_events(
             exec_channel(user_id, graph_id, graph_exec_id)
         ):
@@ -1611,7 +1926,8 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     async def listen_graph(
         self, user_id: str, graph_id: str
     ) -> AsyncGenerator[ExecutionEvent, None]:
-        """Stream every event for every execution of ``graph_id``."""
+        """Stream every event for every execution of ``graph_id``. Raises
+        ``EventStreamLostError`` on loss; ``listen_with_resync`` survives one."""
         async for event in self.listen_events(graph_all_channel(user_id, graph_id)):
             yield event
 
@@ -1739,70 +2055,36 @@ async def update_graph_execution_share_status(
 async def get_graph_execution_by_share_token(
     share_token: str,
 ) -> SharedExecutionResponse | None:
-    """Get a shared execution with limited public-safe data."""
+    """Get a shared execution with limited public-safe data.
+
+    Outputs are built exactly as the owner sees them (``GraphExecution.from_db``):
+    moderation-cleared values, no INCOMPLETE node executions, queue-time order,
+    and Output blocks whose value only lives in their ``Input`` rows.
+    """
     execution = await AgentGraphExecution.prisma().find_first(
-        where={
-            "shareToken": share_token,
-            "isShared": True,
-            "isDeleted": False,
-        },
+        where=live_execution_share(share_token),
         include={
             "AgentGraph": True,
-            "NodeExecutions": {
-                "include": {
-                    "Output": True,
-                    "Node": {
-                        "include": {
-                            "AgentBlock": True,
-                        }
-                    },
-                },
-            },
+            # The owner's filter and cap; the nodes are read once below.
+            **graph_execution_include(
+                [*get_io_block_ids(), *get_webhook_block_ids()],
+                node_execution_include=EXECUTION_RESULT_INCLUDE_WITHOUT_NODE,
+            ),
         },
     )
 
     if not execution:
         return None
 
-    # Extract outputs from OUTPUT blocks only (consistent with GraphExecution.from_db)
-    outputs: CompletedBlockOutput = defaultdict(list)
-    if execution.NodeExecutions:
-        for node_exec in execution.NodeExecutions:
-            if node_exec.Node and node_exec.Node.agentBlockId:
-                # Get the block definition to check its type
-                block = get_block(node_exec.Node.agentBlockId)
-
-                if block and block.block_type == BlockType.OUTPUT:
-                    # For OUTPUT blocks, the data is stored in executionData or Input
-                    # The executionData contains the structured input with 'name' and 'value' fields
-                    if hasattr(node_exec, "executionData") and node_exec.executionData:
-                        exec_data = type_utils.convert(
-                            node_exec.executionData, BlockInput
-                        )
-                        if "name" in exec_data:
-                            name = exec_data["name"]
-                            value = exec_data.get("value")
-                            outputs[name].append(value)
-                    elif node_exec.Input:
-                        # Build input_data from Input relation
-                        input_data = {}
-                        for data in node_exec.Input:
-                            if data.name and data.data is not None:
-                                input_data[data.name] = type_utils.convert(
-                                    data.data, JsonValue
-                                )
-
-                        if "name" in input_data:
-                            name = input_data["name"]
-                            value = input_data.get("value")
-                            outputs[name].append(value)
+    await attach_nodes_to_executions(execution.NodeExecutions or [])
+    outputs = GraphExecution.from_db(execution).outputs
 
     return SharedExecutionResponse(
         id=execution.id,
         graph_name=(
             execution.AgentGraph.name
             if (execution.AgentGraph and execution.AgentGraph.name)
-            else "Untitled Agent"
+            else "Untitled Workflow"
         ),
         graph_description=(
             execution.AgentGraph.description if execution.AgentGraph else None
@@ -1811,6 +2093,26 @@ async def get_graph_execution_by_share_token(
         created_at=execution.createdAt,
         outputs=outputs,
     )
+
+
+async def attach_nodes_to_executions(
+    executions: list[AgentNodeExecution], tx: Any | None = None
+) -> None:
+    """Give each execution its node, read once per node rather than per row.
+
+    Rows that already carry their node keep it, so a caller whose include
+    brought the node along is left alone.
+    """
+    missing = [node_exec for node_exec in executions if node_exec.Node is None]
+    node_ids = list({node_exec.agentNodeId for node_exec in missing})
+    if not node_ids:
+        return
+    nodes = {
+        node.id: node
+        for node in await AgentNode.prisma(tx).find_many(where={"id": {"in": node_ids}})
+    }
+    for node_exec in missing:
+        node_exec.Node = nodes.get(node_exec.agentNodeId)
 
 
 async def create_shared_execution_files(
@@ -1883,14 +2185,20 @@ async def get_shared_execution_file(
 ) -> str | None:
     """Look up a file ID in the shared execution file allowlist.
 
-    Returns the execution ID if the file is in the allowlist, None otherwise.
+    Returns the execution ID if the file is in the allowlist and the run's
+    share is still live (see :func:`live_execution_share`), None otherwise.
     Uses a single query and returns a uniform None for all failure modes
     to prevent timing-based enumeration attacks.
+
+    The run must still be shared under this same token and not deleted: an
+    allowlist row that outlived an unshare, a re-share or a delete (a write
+    that failed halfway, or two that raced) authorises nothing.
     """
     record = await SharedExecutionFile.prisma().find_first(
         where={
             "shareToken": share_token,
             "fileId": file_id,
+            "Execution": {"is": live_execution_share(share_token)},
         }
     )
     return record.executionId if record else None

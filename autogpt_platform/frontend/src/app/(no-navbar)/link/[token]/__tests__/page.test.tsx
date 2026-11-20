@@ -22,6 +22,14 @@ const mockUseSearchParams = vi.hoisted(() => vi.fn());
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockLogOut = vi.hoisted(() => vi.fn());
 
+const mockToast = vi.hoisted(() => vi.fn());
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/molecules/Toast/use-toast")
+  >()),
+  useToast: () => ({ toast: mockToast, dismiss: vi.fn() }),
+}));
+
 vi.mock("next/navigation", () => ({
   useParams: mockUseParams,
   usePathname: () => "/link/token-123",
@@ -122,6 +130,38 @@ describe("PlatformLinkPage", () => {
     expect(infoHandler).not.toHaveBeenCalled();
   });
 
+  test("keeps the Telegram identity through sign-in and sign-up", () => {
+    // A Telegram group link only confirms with the identity Telegram signed
+    // onto the button, so a signed-out admin must come back with it.
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isLoggedIn: false,
+      isUserLoading: false,
+      logOut: mockLogOut,
+    });
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams({
+        platform: "TELEGRAM",
+        id: "424242",
+        first_name: "Bently",
+        auth_date: "1750000000",
+        hash: "abc123",
+      }),
+    );
+
+    render(<PlatformLinkPage />);
+
+    const next = encodeURIComponent(
+      "/link/token-123?id=424242&first_name=Bently&auth_date=1750000000&hash=abc123",
+    );
+    expect(
+      screen.getByRole("link", { name: /^sign in$/i }).getAttribute("href"),
+    ).toBe(`/login?next=${next}`);
+    expect(
+      screen.getByRole("link", { name: /^sign up$/i }).getAttribute("href"),
+    ).toBe(`/signup?next=${next}`);
+  });
+
   test("loads server link details and confirms the server link", async () => {
     server.use(
       getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
@@ -157,6 +197,98 @@ describe("PlatformLinkPage", () => {
       await screen.findByRole("heading", { name: /autogpt is ready/i }),
     ).toBeDefined();
     expect(screen.getByText(/builders guild/i)).toBeDefined();
+  });
+
+  test("offers a way back into the chat client when confirm returns one", async () => {
+    setRoute("token-123", "slack");
+    server.use(
+      getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
+        platform: "SLACK",
+        link_type: LinkType.USER,
+        server_name: null,
+      }),
+      getPostPlatformLinkingConfirmAUserLinkTokenUserMustBeAuthenticatedMockHandler200(
+        {
+          success: true,
+          link_type: LinkType.USER,
+          platform: "SLACK",
+          platform_user_id: "U1",
+          return_url: "https://slack.com/app_redirect?app=A1&team=T1",
+        },
+      ),
+    );
+
+    render(<PlatformLinkPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /connect my slack dms/i }),
+    );
+
+    const back = await screen.findByRole("link", { name: /return to slack/i });
+    expect(back.getAttribute("href")).toBe(
+      "https://slack.com/app_redirect?app=A1&team=T1",
+    );
+    expect(screen.getByText(/try it now/i)).toBeDefined();
+  });
+
+  test("keeps the DM-only hint off a server link", async () => {
+    setRoute("token-123", "slack");
+    server.use(
+      getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
+        platform: "SLACK",
+        link_type: LinkType.SERVER,
+        server_name: "Acme",
+        server_noun: "workspace",
+      }),
+      getPostPlatformLinkingConfirmAServerLinkTokenUserMustBeAuthenticatedMockHandler200(
+        {
+          success: true,
+          link_type: LinkType.SERVER,
+          platform: "SLACK",
+          platform_server_id: "T1",
+          server_name: "Acme",
+          return_url: "https://slack.com/app_redirect?app=A1&team=T1",
+        },
+      ),
+    );
+
+    render(<PlatformLinkPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /connect slack to autogpt/i }),
+    );
+
+    await screen.findByRole("link", { name: /return to slack/i });
+    // The whole workspace is linked; telling them to DM the bot is a mixed
+    // message on this path.
+    expect(screen.queryByText(/try it now/i)).toBeNull();
+  });
+
+  test("names the server type the way the platform does", async () => {
+    setRoute("token-123", "slack");
+    server.use(
+      getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
+        platform: "SLACK",
+        link_type: LinkType.SERVER,
+        server_name: "Acme",
+        server_noun: "workspace",
+      }),
+      getPostPlatformLinkingConfirmAServerLinkTokenUserMustBeAuthenticatedMockHandler200(
+        {
+          success: true,
+          link_type: LinkType.SERVER,
+          platform: "SLACK",
+          platform_server_id: "T1",
+          server_name: "Acme",
+        },
+      ),
+    );
+
+    render(<PlatformLinkPage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /connect slack to autogpt/i }),
+    );
+
+    expect(await screen.findByText(/everyone in the workspace/i)).toBeDefined();
   });
 
   test("falls back to a generic title when the server has no name", async () => {
@@ -330,5 +462,29 @@ describe("PlatformLinkPage", () => {
       expect(mockLogOut).toHaveBeenCalledTimes(1);
       expect(window.location.href).toBe("/login?next=%2Flink%2Ftoken-123");
     });
+  });
+
+  test("stays put and says so when the sign-out can't reach the server", async () => {
+    mockLogOut.mockRejectedValue(new TypeError("Failed to fetch"));
+    const before = window.location.href;
+    server.use(
+      getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
+        platform: "DISCORD",
+        link_type: LinkType.SERVER,
+        server_name: "Builders Guild",
+      }),
+    );
+
+    render(<PlatformLinkPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /not you/i }));
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Couldn't sign you out" }),
+      ),
+    );
+    expect(mockLogOut).toHaveBeenCalledTimes(1);
+    expect(window.location.href).toBe(before);
   });
 });

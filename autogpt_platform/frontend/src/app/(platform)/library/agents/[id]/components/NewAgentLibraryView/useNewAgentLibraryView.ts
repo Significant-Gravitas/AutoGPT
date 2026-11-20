@@ -9,10 +9,13 @@ import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutio
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { okData } from "@/app/api/helpers";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { useSchedulerOutage } from "@/services/schedules/useSchedulerOutage";
+import { useSchedulerRetryOptions } from "@/services/schedules/useSchedulerQueryOptions";
 import { useParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  activeItemParamFor,
   deriveSelectedTriggerKind,
   parseActiveItemParam,
   retryUnlessClientError,
@@ -108,6 +111,7 @@ export function useNewAgentLibraryView() {
   });
 
   const [sidebarLoading, setSidebarLoading] = useState(true);
+  const [sidebarHasError, setSidebarHasError] = useState(false);
 
   const hasAnyItems = useMemo(
     () =>
@@ -166,15 +170,20 @@ export function useNewAgentLibraryView() {
     });
   }
 
-  const { data: schedules } = useGetV1ListExecutionSchedulesForAGraph(
+  const schedulerRetryOptions = useSchedulerRetryOptions();
+  const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(
     agent?.graph_id || "",
     {
       query: {
         enabled: !!agent?.graph_id,
         select: okData,
+        ...schedulerRetryOptions,
       },
     },
   );
+  const schedules = schedulesQuery.data;
+  // Unknown, not none: a workflow with schedules but no runs yet isn't empty.
+  const schedulesUnavailable = useSchedulerOutage(schedulesQuery);
 
   function handleScheduleDeleted(deletedScheduleId: string) {
     if (activeItem !== deletedScheduleId) {
@@ -219,6 +228,7 @@ export function useNewAgentLibraryView() {
       templatesCount: number;
       triggersCount: number;
       loading?: boolean;
+      hasError?: boolean;
     }) => {
       setSidebarCounts({
         runsCount: counts.runsCount,
@@ -228,6 +238,9 @@ export function useNewAgentLibraryView() {
       });
       if (counts.loading !== undefined) {
         setSidebarLoading(counts.loading);
+      }
+      if (counts.hasError !== undefined) {
+        setSidebarHasError(counts.hasError);
       }
     },
     [],
@@ -239,16 +252,12 @@ export function useNewAgentLibraryView() {
       | { type: "triggers"; item: LibraryAgentPreset }
       | { type: "scheduled"; item: GraphExecutionJobInfo },
   ) {
-    if (!hasAnyItems) {
-      // Manually increment item count to flip hasAnyItems and showSidebarLayout
-      const counts = {
-        runsCount: createEvent.type === "runs" ? 1 : 0,
-        triggersCount: createEvent.type === "triggers" ? 1 : 0,
-        schedulesCount: createEvent.type === "scheduled" ? 1 : 0,
-        templatesCount: 0,
-      };
-      handleCountsChange(counts);
-    }
+    handleSelectRun(
+      createEvent.type === "triggers"
+        ? activeItemParamFor("webhook-trigger", createEvent.item.id)
+        : createEvent.item.id,
+      createEvent.type,
+    );
   }
 
   function onRunInitiated(newRun: GraphExecutionMeta) {
@@ -294,13 +303,18 @@ export function useNewAgentLibraryView() {
     activeTemplate,
     isTemplateLoading,
     error: error || templateError,
-    hasAnyItems,
+    // The sidebar reports its counts after it renders; the page's own read
+    // already has the schedules, so a schedule-only workflow that comes back
+    // from an outage never drops to the first-run screen meanwhile.
+    hasAnyItems: hasAnyItems || (schedules?.length ?? 0) > 0,
+    schedulesUnavailable,
     showSidebarLayout,
     activeItemId,
     selectedTriggerKind,
     retryTriggerLists,
     sidebarLoading,
     activeTab,
+    sidebarHasError,
     setActiveTab: handleSetActiveTab,
     handleClearSelectedRun,
     handleScheduleDeleted,

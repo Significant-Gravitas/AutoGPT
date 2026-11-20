@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 // Renders the right-slot CTAs on every ``/share/...`` viewer:
 //
@@ -46,9 +47,9 @@ export function ShareActions() {
         onClick={handleCopy}
         leftIcon={
           copied ? (
-            <CheckIcon size={14} weight="bold" />
+            <Icon icon={Tick02Icon} size={14} />
           ) : (
-            <CopyIcon size={14} />
+            <Icon icon={Copy01Icon} size={14} />
           )
         }
       >

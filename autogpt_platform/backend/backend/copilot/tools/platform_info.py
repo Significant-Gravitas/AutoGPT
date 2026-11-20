@@ -1,10 +1,13 @@
-"""Platform info tool — on-demand subscription and billing data for AutoPilot."""
+"""Platform info tool — on-demand subscription and billing data for experts."""
 
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import get_user_tier
+from backend.util.platform_payment import is_platform_payment_enabled
 
 from .base import BaseTool
 from .models import ErrorResponse, PlatformInfoResponse, ToolResponseBase
@@ -28,6 +31,10 @@ class PlatformInfoTool(BaseTool):
     @property
     def name(self) -> str:
         return "get_platform_info"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_CREDITS]
 
     @property
     def description(self) -> str:
@@ -81,19 +88,14 @@ class PlatformInfoTool(BaseTool):
                 session_id=session_id,
             )
 
-        # When billing is disabled (self-hosted, beta cohort), skip tier
-        # lookup and report open access — there is no billing page to manage.
-        from backend.util.feature_flag import Flag, is_feature_enabled
-
-        billing_enabled = await is_feature_enabled(
-            Flag.ENABLE_PLATFORM_PAYMENT, user_id
-        )
-        if not billing_enabled:
+        # A deployment without payment has no billing page to manage, so skip
+        # the tier lookup and report open access.
+        if not is_platform_payment_enabled():
             return PlatformInfoResponse(
                 message=(
                     "Billing is not enabled on this deployment. "
                     "You have open access to the platform. "
-                    "You are AutoPilot, running on the AutoGPT platform. "
+                    "You are running on the AutoGPT platform. "
                     "Under the hood you may use models via OpenRouter or Claude SDK, "
                     "but only mention the AutoGPT platform to the user — "
                     "that is the only thing they can manage or change. "
@@ -121,7 +123,7 @@ class PlatformInfoTool(BaseTool):
             message=(
                 f"You are on the {display_name} plan. "
                 "You can manage your billing and subscription at Settings → Billing. "
-                "You are AutoPilot, running on the AutoGPT platform. "
+                "You are running on the AutoGPT platform. "
                 "Under the hood you may use models via OpenRouter or Claude SDK, "
                 "but only mention the AutoGPT platform to the user — "
                 "that is the only thing they can manage or change. "

@@ -3,7 +3,6 @@ import { RJSFSchema } from "@rjsf/utils";
 import { uiSchema } from "../../../FlowEditor/nodes/uiSchema";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { Button } from "@/components/atoms/Button/Button";
-import { ClockIcon, PlayIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import { useRunInputDialog } from "./useRunInputDialog";
@@ -11,6 +10,8 @@ import { CronSchedulerDialog } from "../CronSchedulerDialog/CronSchedulerDialog"
 import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
 import { useEffect } from "react";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
+import { Clock01Icon, PlayIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const RunInputDialog = ({
   isOpen,
@@ -60,7 +61,7 @@ export const RunInputDialog = ({
   return (
     <>
       <Dialog
-        title={purpose === "run" ? "Run Agent" : "Schedule Run"}
+        title={purpose === "run" ? "Run Workflow" : "Schedule Run"}
         controlled={{
           isOpen,
           set: setIsOpen,
@@ -77,9 +78,7 @@ export const RunInputDialog = ({
               {hasCredentials() && credentialFields.length > 0 && (
                 <div data-id="run-input-credentials-section">
                   <div className="mb-4">
-                    <Text variant="h4" className="text-gray-900">
-                      Credentials
-                    </Text>
+                    <Text variant="h4">Credentials</Text>
                   </div>
                   <div className="px-2" data-id="run-input-credentials-form">
                     <CredentialsGroupedView
@@ -97,9 +96,7 @@ export const RunInputDialog = ({
               {hasInputs() && (
                 <div data-id="run-input-inputs-section">
                   <div className="mb-4">
-                    <Text variant="h4" className="text-gray-900">
-                      Inputs
-                    </Text>
+                    <Text variant="h4">Inputs</Text>
                   </div>
                   <div data-id="run-input-inputs-form">
                     <FormRenderer
@@ -125,27 +122,39 @@ export const RunInputDialog = ({
                 <Button
                   variant="primary"
                   size="large"
-                  className="group h-fit min-w-0 gap-2 px-10"
+                  className="group h-fit min-w-0 px-10"
                   onClick={handleManualRun}
                   loading={isExecutingGraph}
                   data-id="run-input-manual-run-button"
                 >
                   {!isExecutingGraph && (
-                    <PlayIcon className="size-5 transition-transform group-hover:scale-110" />
+                    <Icon
+                      icon={PlayIcon}
+                      motion="transform"
+                      className="size-5 group-hover:scale-110"
+                    />
                   )}
-                  <span className="font-semibold">Manual Run</span>
+                  <Text variant="body-semibold-tight" as="span" tone="inherit">
+                    Manual Run
+                  </Text>
                 </Button>
               )}
               {purpose === "schedule" && (
                 <Button
                   variant="primary"
                   size="large"
-                  className="group h-fit min-w-0 gap-2 px-10"
+                  className="group h-fit min-w-0 px-10"
                   onClick={() => setOpenCronSchedulerDialog(true)}
                   data-id="run-input-schedule-button"
                 >
-                  <ClockIcon className="size-5 transition-transform group-hover:scale-110" />
-                  <span className="font-semibold">Schedule Run</span>
+                  <Icon
+                    icon={Clock01Icon}
+                    motion="transform"
+                    className="size-5 group-hover:scale-110"
+                  />
+                  <Text variant="body-semibold-tight" as="span" tone="inherit">
+                    Schedule Run
+                  </Text>
                 </Button>
               )}
             </div>

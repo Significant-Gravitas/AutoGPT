@@ -1,3 +1,5 @@
+import type { ProviderTiers } from "@/app/api/__generated__/models/providerTiers";
+
 type ValidationDetailItem = { msg?: unknown };
 
 function readDetail(value: unknown): string | null {
@@ -52,3 +54,34 @@ export function getOAuthErrorMessage(error: unknown): string {
 
   return "Something went wrong. Please try again.";
 }
+
+/**
+ * "5.6 Terra (Balanced) and 5.6 Sol (Advanced)", from the catalog.
+ *
+ * Empty when the server named nothing, so the sentence falls back to the
+ * general one rather than rendering half of a promise.
+ */
+export function chatgptModelsSentence(
+  providers: ProviderTiers[] | undefined,
+): string {
+  const chatgpt = (providers ?? []).find(
+    (provider) => provider.provider_family === "openai",
+  );
+  const named = (chatgpt?.tiers ?? [])
+    .filter((tier) => tier.display_model)
+    .map((tier) => `${tier.display_model} (${tier.label})`);
+  if (named.length === 0) return "";
+  if (named.length === 1) return named[0];
+  return `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}`;
+}
+
+// A server URL sitting next to a secret reads as a login form, so password
+// managers offer the saved site credential for both fields. Each vendor
+// honours its own opt-out attribute, so all of them are set.
+export const noPasswordManager = {
+  autoComplete: "off",
+  "data-1p-ignore": true,
+  "data-lpignore": "true",
+  "data-bwignore": true,
+  "data-form-type": "other",
+} as const;

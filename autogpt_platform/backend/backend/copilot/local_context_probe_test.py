@@ -50,6 +50,9 @@ class TestCompactionTargetForWindow:
     def test_64k_window(self):
         assert compaction_target_for_window(65_536) == 41_536
 
+    def test_ornith_262k_window(self):
+        assert compaction_target_for_window(262_144) == 238_144
+
     def test_tiny_window_clamps_to_floor(self):
         assert compaction_target_for_window(4_096) == 4_096
         assert compaction_target_for_window(1_000) == 4_096

@@ -1,5 +1,6 @@
 """Tests for fire-and-forget Web Push delivery."""
 
+import hashlib
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -7,14 +8,17 @@ import pytest
 from backend.api.model import NotificationPayload
 from backend.data import push_sender
 from backend.data.push_subscription import PushSubscriptionDTO
+from backend.util import secrets_guard
 
 
 @pytest.fixture(autouse=True)
 def clear_debounce():
     """Reset the per-user debounce state between tests."""
     push_sender._user_last_push.clear()
+    push_sender._warn_published_vapid_key_once.cache_clear()
     yield
     push_sender._user_last_push.clear()
+    push_sender._warn_published_vapid_key_once.cache_clear()
 
 
 @pytest.fixture
@@ -151,6 +155,34 @@ class TestSendPushForUser:
         mock_db_client.get_user_push_subscriptions.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_refuses_to_send_with_the_published_vapid_key(
+        self, mocker, mock_db_client, caplog
+    ):
+        published = "pretend-this-was-shipped-in-env-default"
+        mocker.patch.object(
+            secrets_guard,
+            "_RETIRED_VAPID_PRIVATE_KEY_DIGESTS",
+            {
+                hashlib.sha256(
+                    secrets_guard._canonical_vapid_key(published).encode()
+                ).hexdigest()
+            },
+        )
+        mocker.patch.object(push_sender, "_settings", _make_settings(private=published))
+        mock_db_client.get_user_push_subscriptions.return_value = [_make_subscription()]
+        mock_webpush = mocker.patch("backend.data.push_sender.webpush")
+
+        await push_sender.send_push_for_user("user-1", _make_payload())
+        await push_sender.send_push_for_user("user-2", _make_payload())
+
+        mock_db_client.get_user_push_subscriptions.assert_not_awaited()
+        mock_webpush.assert_not_called()
+        # Every notification is refused, but the process says why only once:
+        # startup already warned, and this runs before the per-user debounce.
+        warnings = [r for r in caplog.records if "make init-env" in r.getMessage()]
+        assert len(warnings) == 1
+
+    @pytest.mark.asyncio
     async def test_debounces_rapid_calls(self, mocker, mock_db_client):
         mocker.patch.object(push_sender, "_settings", _make_settings())
 
@@ -196,11 +228,21 @@ class TestSendPushForUser:
         assert "https://fcm.googleapis.com/fcm/send/sub/2" in endpoints_called
 
     @pytest.mark.asyncio
-    async def test_webpush_called_with_correct_args(self, mocker, mock_db_client):
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "https://fcm.googleapis.com/fcm/send/sub/1",
+            "https://jmt17.google.com/fcm/send/sub/1",
+            "https://wns2-par02p.notify.windows.com/w/?token=sub1",
+        ],
+    )
+    async def test_webpush_called_with_correct_args(
+        self, mocker, mock_db_client, endpoint
+    ):
         mocker.patch.object(push_sender, "_settings", _make_settings())
         sub = _make_subscription(
             user_id="user-1",
-            endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
+            endpoint=endpoint,
             p256dh="key-p256dh",
             auth="key-auth",
         )
@@ -212,12 +254,13 @@ class TestSendPushForUser:
         mock_webpush.assert_called_once()
         call_kwargs = mock_webpush.call_args.kwargs
         assert call_kwargs["subscription_info"] == {
-            "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1",
+            "endpoint": endpoint,
             "keys": {"p256dh": "key-p256dh", "auth": "key-auth"},
         }
         assert call_kwargs["vapid_private_key"] == "vapid-private"
         assert call_kwargs["vapid_claims"] == {"sub": "mailto:push@agpt.co"}
         assert isinstance(call_kwargs["data"], str)
+        mock_db_client.delete_push_subscription.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_removes_subscription_on_410_gone(self, mocker, mock_db_client):

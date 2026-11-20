@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const requestPasswordResetMock = vi.fn();
 const resetPasswordMock = vi.fn();
 const redirectMock = vi.fn();
+const requestHeaders = new Headers({ "x-forwarded-for": "203.0.113.7" });
 
 vi.mock("@/lib/auth/auth", () => ({
   auth: {
@@ -21,6 +22,10 @@ vi.mock("@sentry/nextjs", () => ({
     _options: object,
     fn: () => unknown,
   ) => fn(),
+}));
+
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => requestHeaders),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -42,8 +47,9 @@ afterEach(() => {
 });
 
 describe("sendResetEmail", () => {
-  it("requests a reset link that redirects back to the configured origin", async () => {
-    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "https://platform.agpt.test");
+  it("prefers the runtime Better Auth origin for reset links", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "https://runtime.agpt.test");
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "https://build.agpt.test");
     requestPasswordResetMock.mockResolvedValue({ status: true });
 
     const result = await sendResetEmail("user@example.com");
@@ -51,13 +57,31 @@ describe("sendResetEmail", () => {
     expect(requestPasswordResetMock).toHaveBeenCalledWith({
       body: {
         email: "user@example.com",
-        redirectTo: "https://platform.agpt.test/reset-password",
+        redirectTo: "https://runtime.agpt.test/reset-password",
       },
+      headers: requestHeaders,
     });
     expect(result).toBeUndefined();
   });
 
-  it("falls back to localhost when no frontend base URL is configured", async () => {
+  it("falls back to the frontend base URL without a Better Auth URL", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "");
+    vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "https://build.agpt.test");
+    requestPasswordResetMock.mockResolvedValue({ status: true });
+
+    await sendResetEmail("user@example.com");
+
+    expect(requestPasswordResetMock).toHaveBeenCalledWith({
+      body: {
+        email: "user@example.com",
+        redirectTo: "https://build.agpt.test/reset-password",
+      },
+      headers: requestHeaders,
+    });
+  });
+
+  it("falls back to localhost when no public origin is configured", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "");
     vi.stubEnv("NEXT_PUBLIC_FRONTEND_BASE_URL", "");
     requestPasswordResetMock.mockResolvedValue({ status: true });
 
@@ -68,6 +92,7 @@ describe("sendResetEmail", () => {
         email: "user@example.com",
         redirectTo: "http://localhost:3000/reset-password",
       },
+      headers: requestHeaders,
     });
   });
 
@@ -100,7 +125,7 @@ describe("changePassword", () => {
     const result = await changePassword("new-secure-password", "token-123");
 
     expect(resetPasswordMock).toHaveBeenCalledWith({
-      body: { newPassword: "new-secure-password", token: "token-123" },
+      body: { newPassword: "new-secure-password", token: "token-123" }, // pragma: allowlist secret
     });
     expect(redirectMock).toHaveBeenCalledWith("/login");
     expect(result).toBeUndefined();

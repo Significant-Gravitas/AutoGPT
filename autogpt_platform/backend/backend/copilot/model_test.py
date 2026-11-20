@@ -1,4 +1,7 @@
+import asyncio
+from contextlib import asynccontextmanager
 from typing import cast
+from unittest.mock import MagicMock
 
 import pytest
 from openai.types.chat import (
@@ -11,20 +14,34 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
+from prisma.models import Expert
 from pytest_mock import MockerFixture
 
-from backend.util.exceptions import NotFoundError
+from backend.copilot import model as chat_model
+from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
+from backend.copilot.continuation import KEEP_GOING_NOTE
+from backend.data.redis_client import get_redis_async
+from backend.util.exceptions import NotFoundError, RedisError
 
+from .db import add_chat_messages_batch
 from .model import (
     ChatMessage,
     ChatSession,
+    ChatSessionMetadata,
+    LocalExecutionTargetMetadata,
+    PublicChatSessionMetadata,
     Usage,
+    _get_session_from_db,
     _save_session_to_db,
     append_and_save_message,
+    create_chat_session,
+    delete_chat_session,
     get_chat_session,
     get_or_create_builder_session,
+    invalidate_session_cache,
     is_message_duplicate,
     maybe_append_user_message,
+    update_session_llm_route,
     upsert_chat_session,
 )
 
@@ -50,6 +67,153 @@ messages = [
         tool_call_id="t123",
     ),
 ]
+
+
+def test_legacy_session_metadata_defaults_to_cloud_execution() -> None:
+    metadata = ChatSessionMetadata.model_validate({"dry_run": False})
+    assert metadata.execution_target.kind == "cloud"
+
+
+def test_chat_session_new_preserves_generated_id_and_local_binding() -> None:
+    binding = LocalExecutionTargetMetadata(
+        machine_id="machine-1",
+        directory_ref="directory-1",
+        allowed_root="/workspace",
+        root_fingerprint="a" * 64,
+        root_grant="grant-1",
+        revision=1,
+    )
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        session_id="generated-session-id",
+        execution_target=binding,
+    )
+
+    assert session.session_id == "generated-session-id"
+    assert session.metadata.execution_target == binding
+
+
+def test_public_local_session_metadata_redacts_restore_credentials() -> None:
+    metadata = ChatSessionMetadata(
+        llm_auth_provider="codex",
+        llm_credential_id="credential-1",
+        origin="interactive",
+        delegated_by_expert_id="expert-1",
+        delegated_by_session_id="parent-session",
+        execution_target=LocalExecutionTargetMetadata(
+            machine_id="machine-1",
+            directory_ref="directory-1",
+            allowed_root="/workspace",
+            root_fingerprint="a" * 64,
+            root_grant="grant-1",
+            revision=2,
+        ),
+    )
+
+    public = PublicChatSessionMetadata.from_internal(metadata).model_dump()
+
+    assert public["execution_target"] == {
+        "kind": "local",
+        "machine_id": "machine-1",
+        "allowed_root": "/workspace",
+        "revision": 2,
+    }
+    assert public["llm_auth_provider"] == "codex"
+    assert public["llm_credential_id"] == "credential-1"
+    assert public["origin"] == "interactive"
+    assert public["delegated_by_expert_id"] == "expert-1"
+    assert public["delegated_by_session_id"] == "parent-session"
+    serialized = str(public)
+    assert "root_grant" not in serialized
+    assert "root_fingerprint" not in serialized
+    assert "directory_ref" not in serialized
+
+
+@pytest.mark.asyncio
+async def test_update_session_llm_route_propagates_database_failures(
+    mocker: MockerFixture,
+) -> None:
+    @asynccontextmanager
+    async def acquired_lock(_session_id: str):
+        yield True
+
+    db = mocker.MagicMock()
+    db.update_chat_session_llm_route = mocker.AsyncMock(
+        side_effect=RuntimeError("database unavailable")
+    )
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    mocker.patch("backend.copilot.model._get_session_lock", new=acquired_lock)
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await update_session_llm_route("session-1", "user-1", "platform", None)
+
+
+@pytest.mark.asyncio
+async def test_update_session_llm_route_serializes_database_and_cache(
+    mocker: MockerFixture,
+) -> None:
+    lock_held = False
+
+    @asynccontextmanager
+    async def acquired_lock(_session_id: str):
+        nonlocal lock_held
+        lock_held = True
+        try:
+            yield True
+        finally:
+            lock_held = False
+
+    async def update_route(*_args):
+        assert lock_held
+        return True
+
+    cached = ChatSession.new(user_id="user-1", dry_run=False)
+    cached.session_id = "session-1"
+    cached.messages.append(ChatMessage(role="assistant", content="keep me"))
+
+    async def cache_session(session: ChatSession):
+        assert lock_held
+        assert session.messages[-1].content == "keep me"
+
+    db = mocker.MagicMock()
+    db.update_chat_session_llm_route = mocker.AsyncMock(side_effect=update_route)
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    mocker.patch("backend.copilot.model._get_session_lock", new=acquired_lock)
+    mocker.patch(
+        "backend.copilot.model._get_session_from_cache",
+        new=mocker.AsyncMock(return_value=cached),
+    )
+    write_cache = mocker.patch(
+        "backend.copilot.model.cache_chat_session",
+        new=mocker.AsyncMock(side_effect=cache_session),
+    )
+
+    assert await update_session_llm_route(
+        "session-1", "user-1", "codex", "credential-1"
+    )
+    assert cached.metadata.llm_auth_provider == "codex"
+    assert cached.metadata.llm_credential_id == "credential-1"
+    write_cache.assert_awaited_once_with(cached)
+    assert not lock_held
+
+
+@pytest.mark.asyncio
+async def test_update_session_llm_route_fails_before_writing_without_lock(
+    mocker: MockerFixture,
+) -> None:
+    @asynccontextmanager
+    async def unavailable_lock(_session_id: str):
+        yield False
+
+    db = mocker.MagicMock()
+    db.update_chat_session_llm_route = mocker.AsyncMock(return_value=True)
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    mocker.patch("backend.copilot.model._get_session_lock", new=unavailable_lock)
+
+    with pytest.raises(RedisError, match="Could not serialize route update"):
+        await update_session_llm_route("session-1", "user-1", "codex", "credential-1")
+    db.update_chat_session_llm_route.assert_not_awaited()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -99,6 +263,83 @@ async def test_upsert_preserves_pinned_set_concurrently(setup_test_user, test_us
     reloaded = await get_chat_session(s.session_id, test_user_id)
     assert reloaded is not None
     assert reloaded.is_pinned is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_keeps_an_approval_mode_changed_mid_turn(
+    setup_test_user, test_user_id
+):
+    """A turn that started under one mode must not put it back in the cache
+    after the user switched mode while it ran."""
+    from .model import update_session_autopilot_mode
+
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
+    s.messages = messages
+    s = await upsert_chat_session(s)
+    s.metadata.autopilot_mode = "unsupervised"
+
+    assert await update_session_autopilot_mode(s.session_id, test_user_id, "ask_first")
+    await upsert_chat_session(s)
+
+    reloaded = await get_chat_session(s.session_id, test_user_id)
+    assert reloaded is not None
+    assert reloaded.metadata.autopilot_mode == "ask_first"
+    await invalidate_session_cache(s.session_id)
+    from_db = await get_chat_session(s.session_id, test_user_id)
+    assert from_db is not None
+    assert from_db.metadata.autopilot_mode == "ask_first"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_mode_whose_cache_write_failed_is_not_undone_by_a_stale_turn(
+    setup_test_user, test_user_id
+):
+    from unittest.mock import AsyncMock, patch
+
+    from .model import update_session_autopilot_mode
+
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
+    s.messages = messages
+    s = await upsert_chat_session(s)
+    s.metadata.autopilot_mode = "unsupervised"
+
+    with patch(
+        "backend.copilot.model.cache_chat_session",
+        AsyncMock(side_effect=RuntimeError("redis down")),
+    ):
+        assert await update_session_autopilot_mode(
+            s.session_id, test_user_id, "ask_first"
+        )
+    await upsert_chat_session(s)
+
+    reloaded = await get_chat_session(s.session_id, test_user_id)
+    assert reloaded is not None
+    assert reloaded.metadata.autopilot_mode == "ask_first"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_unreadable_stored_mode_leaves_the_cache_empty(
+    setup_test_user, test_user_id
+):
+    from unittest.mock import AsyncMock, patch
+
+    from backend.copilot import db as chat_db_module
+
+    from .model import _get_session_from_cache
+
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
+    s.messages = messages
+    s = await upsert_chat_session(s)
+    await invalidate_session_cache(s.session_id)
+
+    with patch.object(
+        chat_db_module,
+        "get_chat_session_metadata",
+        AsyncMock(side_effect=RuntimeError("db down")),
+    ):
+        await upsert_chat_session(s)
+
+    assert await _get_session_from_cache(s.session_id) is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -160,6 +401,92 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
                 loaded.tool_calls is not None
             ), f"Tool calls missing for {orig.role} message"
             assert len(orig.tool_calls) == len(loaded.tool_calls)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chats_messages_sent_one_at_a_time_are_all_saved(
+    setup_test_user, test_user_id
+):
+    """The first message and every follow-up reach the database, in order."""
+    session = await create_chat_session(test_user_id, dry_run=False)
+    sent = [("user", "first"), ("assistant", "reply"), ("user", "second")]
+    for role, content in sent:
+        appended = await append_and_save_message(
+            session.session_id, ChatMessage(role=role, content=content)
+        )
+        assert appended is not None
+
+    saved = await _get_session_from_db(session.session_id)
+
+    assert saved is not None
+    assert [(m.role, m.content, m.sequence) for m in saved.messages] == [
+        (role, content, sequence) for sequence, (role, content) in enumerate(sent)
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_follow_up_after_a_save_its_session_missed_lands_after_it(
+    setup_test_user, test_user_id
+):
+    """Another writer saves a reply straight to the database, so the cached
+    session the next send reads is one message behind. Its sequence collides
+    with the reply, and the insert lands after it instead."""
+    session = await create_chat_session(test_user_id, dry_run=False)
+    await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="first")
+    )
+    await add_chat_messages_batch(
+        session.session_id,
+        [{"role": "assistant", "content": "reply"}],
+        start_sequence=1,
+    )
+
+    appended = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="second")
+    )
+
+    assert appended is not None
+    saved = await _get_session_from_db(session.session_id)
+    assert saved is not None
+    assert [(m.role, m.content, m.sequence) for m in saved.messages] == [
+        ("user", "first", 0),
+        ("assistant", "reply", 1),
+        ("user", "second", 2),
+    ]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_session_scope_round_trips_through_cache_and_db(
+    setup_test_user, test_user_id
+):
+    """An expert scope must survive both Redis resume and a DB-only reload."""
+    expert = await Expert.prisma().create(
+        data={
+            "ownerUserId": test_user_id,
+            "name": "Memory Isolation Expert",
+            "role": "assistant",
+            "identity": "Keep this expert's memory private.",
+        }
+    )
+    session = ChatSession.new(
+        user_id=test_user_id,
+        dry_run=False,
+        expert_id=expert.id,
+    )
+    session.messages = [ChatMessage(role="user", content="Remember this privately")]
+
+    saved = await upsert_chat_session(session)
+
+    cached = await get_chat_session(saved.session_id, test_user_id)
+    assert cached is not None
+    assert cached.expert_id == expert.id
+
+    redis = await get_redis_async()
+    await redis.delete(f"chat:session:{saved.session_id}")
+
+    loaded = await get_chat_session(saved.session_id, test_user_id)
+    assert loaded is not None
+    assert loaded.expert_id == expert.id
 
 
 # --------------------------------------------------------------------------- #
@@ -667,6 +994,111 @@ async def test_append_and_save_message_returns_none_for_duplicate(
     assert result is None
 
 
+_PAUSE = f"{COPILOT_SYSTEM_PREFIX} Paused: checking in after a long run."
+
+# Keep going was pressed once already, and that continuation wrote only
+# assistant rows, or nothing at all: the earlier note is still in the chat's
+# trailing assistant run.
+_KEPT_GOING_ONCE = pytest.mark.parametrize(
+    "rows_after_the_note",
+    [
+        pytest.param(["Two of three sections done.", _PAUSE], id="assistant-rows"),
+        pytest.param([], id="nothing"),
+    ],
+)
+
+
+def _kept_going_once(rows_after_the_note: list[str]) -> ChatSession:
+    return _make_session_with_messages(
+        ChatMessage(role="user", content="Build the report"),
+        ChatMessage(role="assistant", content=_PAUSE),
+        ChatMessage(role="assistant", content=KEEP_GOING_NOTE),
+        *(ChatMessage(role="assistant", content=row) for row in rows_after_the_note),
+    )
+
+
+def _mock_session_store(mocker: MockerFixture, session: ChatSession) -> None:
+    """The lock is taken, the session comes from cache, and writes succeed."""
+    lock = mocker.AsyncMock()
+    lock.acquire = mocker.AsyncMock(return_value=True)
+    lock.release = mocker.AsyncMock()
+    redis = mocker.MagicMock()
+    redis.lock = mocker.MagicMock(return_value=lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=redis,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model._save_session_to_db", new_callable=mocker.AsyncMock
+    )
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=mocker.MagicMock(
+            get_next_sequence=mocker.AsyncMock(return_value=len(session.messages))
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@_KEPT_GOING_ONCE
+async def test_append_and_save_message_collapses_a_repeated_note_by_default(
+    mocker: MockerFixture, rows_after_the_note: list[str]
+) -> None:
+    session = _kept_going_once(rows_after_the_note)
+    _mock_session_store(mocker, session)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="assistant", content=KEEP_GOING_NOTE)
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@_KEPT_GOING_ONCE
+async def test_append_and_save_message_saves_a_repeated_note_with_content_dedupe_off(
+    mocker: MockerFixture, rows_after_the_note: list[str]
+) -> None:
+    session = _kept_going_once(rows_after_the_note)
+    _mock_session_store(mocker, session)
+
+    result = await append_and_save_message(
+        session.session_id,
+        ChatMessage(role="assistant", content=KEEP_GOING_NOTE),
+        dedupe_content=False,
+    )
+
+    assert result is not None
+    assert result.messages[-1].content == KEEP_GOING_NOTE
+    assert [m.content for m in result.messages].count(KEEP_GOING_NOTE) == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_keeps_the_id_check_with_content_dedupe_off(
+    mocker: MockerFixture,
+) -> None:
+    session = _kept_going_once([])
+    session.messages[-1].id = "click-1"
+    _mock_session_store(mocker, session)
+
+    result = await append_and_save_message(
+        session.session_id,
+        ChatMessage(id="click-1", role="assistant", content=KEEP_GOING_NOTE),
+        dedupe_content=False,
+    )
+
+    assert result is None
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_append_and_save_message_appends_new_message(
     mocker: MockerFixture,
@@ -711,6 +1143,170 @@ async def test_append_and_save_message_appends_new_message(
     result = await append_and_save_message(session.session_id, new_msg)
     assert result is not None
     assert result.messages[-1].content == "second message"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("saved", [1, 2])
+@pytest.mark.parametrize("local", [True, False])
+async def test_a_follow_up_message_is_saved_without_rereading_the_session(
+    mocker: MockerFixture, saved: int, local: bool
+) -> None:
+    """Existing chats keep local atomic saves and the older RPC contract."""
+    session = _make_session_with_messages(
+        *(
+            ChatMessage(role=role, content=f"message {n}", sequence=n)
+            for n, role in zip(range(saved), ["user", "assistant"])
+        )
+    )
+    db = _stub_save_path(mocker, session, next_sequence=saved, local=local)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="second message")
+    )
+
+    assert result is not None
+    db.get_chat_session_metadata.assert_not_awaited()
+    db.create_chat_session.assert_not_awaited()
+    [insert] = db.add_chat_messages_batch.await_args_list
+    if local:
+        db.update_chat_session.assert_not_awaited()
+        fields = insert.kwargs["session_fields"]
+        assert fields.credentials == session.credentials
+        assert fields.successful_agent_runs == session.successful_agent_runs
+    else:
+        db.update_chat_session.assert_awaited_once()
+        assert insert.kwargs["session_fields"] is None
+    assert insert.kwargs["start_sequence"] == saved
+    assert [m["content"] for m in insert.kwargs["messages"]] == ["second message"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("row_exists", [True, False])
+async def test_a_chats_first_message_checks_the_session_row_first(
+    mocker: MockerFixture, row_exists: bool
+) -> None:
+    """With no messages saved yet, the save checks for the session row and
+    creates it if it is missing, before inserting the message."""
+    session = _make_session_with_messages()
+    db = _stub_save_path(mocker, session, next_sequence=0, row_exists=row_exists)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="first message")
+    )
+
+    assert result is not None
+    db.get_chat_session_metadata.assert_awaited_once_with(session.session_id)
+    assert db.create_chat_session.await_count == (0 if row_exists else 1)
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == 0
+    assert [m["content"] for m in insert.kwargs["messages"]] == ["first message"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_follow_up_takes_its_sequence_from_the_session_it_read(
+    mocker: MockerFixture,
+) -> None:
+    """Every message the locked session holds is saved, so the follow-up's
+    sequence comes from them, not from another database read."""
+    session = _make_session_with_messages(
+        ChatMessage(role="user", content="first", sequence=0),
+        ChatMessage(role="assistant", content="reply", sequence=1),
+    )
+    db = _stub_save_path(mocker, session, next_sequence=2)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="second")
+    )
+
+    assert result is not None
+    db.get_next_sequence.assert_not_awaited()
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == 2
+    assert [m["content"] for m in insert.kwargs["messages"]] == ["second"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_session_holding_an_unsaved_message_asks_the_database(
+    mocker: MockerFixture,
+) -> None:
+    """A message not saved yet has no sequence, so the session can't say
+    which comes next: the database does."""
+    session = _make_session_with_messages(
+        ChatMessage(role="user", content="first", sequence=0),
+        ChatMessage(role="assistant", content="streaming", sequence=None),
+    )
+    db = _stub_save_path(mocker, session, next_sequence=2)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="next")
+    )
+
+    assert result is not None
+    db.get_next_sequence.assert_awaited_once_with(session.session_id)
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_new_chats_first_message_starts_at_zero_without_reading_it(
+    mocker: MockerFixture,
+) -> None:
+    """A new chat holds no messages, so its first one is sequence 0. The save
+    still checks for the session row first (a chat's first message does)."""
+    session = _make_session_with_messages()
+    db = _stub_save_path(mocker, session, next_sequence=0)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="first")
+    )
+
+    assert result is not None
+    db.get_next_sequence.assert_not_awaited()
+    db.get_chat_session_metadata.assert_awaited_once_with(session.session_id)
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == 0
+
+
+def _stub_save_path(
+    mocker: MockerFixture,
+    session: ChatSession,
+    *,
+    next_sequence: int,
+    row_exists: bool = True,
+    local: bool = True,
+):
+    """The session lock, cache and database behind ``append_and_save_message``;
+    its ``_save_session_to_db`` runs for real against the returned database."""
+    lock = mocker.AsyncMock()
+    lock.acquire = mocker.AsyncMock(return_value=True)
+    lock.release = mocker.AsyncMock()
+    redis = mocker.MagicMock()
+    redis.lock = mocker.MagicMock(return_value=lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=redis,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+    db = mocker.MagicMock(
+        get_next_sequence=mocker.AsyncMock(return_value=next_sequence),
+        get_chat_session_metadata=mocker.AsyncMock(
+            return_value=mocker.MagicMock() if row_exists else None
+        ),
+        create_chat_session=mocker.AsyncMock(),
+        update_chat_session=mocker.AsyncMock(),
+        add_chat_messages_batch=mocker.AsyncMock(return_value=next_sequence),
+    )
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    mocker.patch("backend.copilot.model.chat_db_is_local", return_value=local)
+    return db
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1006,6 +1602,164 @@ async def test_save_session_to_db_persists_new_messages_when_windowed(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_creates_new_row_with_expert_scope(
+    mocker: MockerFixture,
+) -> None:
+    session = ChatSession.new(
+        user_id="u1",
+        dry_run=False,
+        expert_id="expert-1",
+    )
+    mock_db = mocker.MagicMock()
+    mock_db.get_chat_session_metadata = mocker.AsyncMock(return_value=None)
+    mock_db.create_chat_session = mocker.AsyncMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=0)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(session, existing_message_count=0)
+
+    assert mock_db.create_chat_session.await_args.kwargs["expert_id"] == "expert-1"
+    update = mock_db.update_chat_session.await_args.kwargs
+    assert "organization_id" not in update
+    assert "team_id" not in update
+    assert "update_tenancy" not in update
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_persists_rehomed_tenancy_and_credentials(
+    mocker: MockerFixture,
+) -> None:
+    session = ChatSession.new(
+        user_id="u1",
+        dry_run=False,
+        organization_id="current-personal-org",
+        team_id=None,
+        expert_id="expert-1",
+    )
+    session.credentials = {}
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=1)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session,
+        existing_message_count=1,
+        skip_existence_check=True,
+        persist_tenancy=True,
+    )
+
+    update = mock_db.update_chat_session.await_args.kwargs
+    assert update["credentials"] == {}
+    assert update["organization_id"] == "current-personal-org"
+    assert update["team_id"] is None
+    assert update["update_tenancy"] is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_expert_session_forces_personal_tenancy(
+    mocker: MockerFixture,
+) -> None:
+    mock_experts_db = mocker.MagicMock()
+    mock_experts_db.resolve_private_expert_tenancy = mocker.AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
+    mock_experts_db.get_autopilot_mode = mocker.AsyncMock(return_value=None)
+    mock_chat_db = mocker.MagicMock()
+    mock_chat_db.create_chat_session = mocker.AsyncMock(
+        return_value=mocker.MagicMock(expert_id="expert-1")
+    )
+    mocker.patch("backend.copilot.model.experts_db", return_value=mock_experts_db)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_chat_db)
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+
+    session = await create_chat_session(
+        "owner-1",
+        dry_run=False,
+        organization_id="caller-team-org",
+        team_id="caller-team",
+        expert_id="expert-1",
+    )
+
+    mock_experts_db.resolve_private_expert_tenancy.assert_awaited_once_with(
+        "owner-1", "expert-1"
+    )
+    assert session.organization_id == "personal-org"
+    assert session.team_id == "personal-team"
+    assert session.expert_id == "expert-1"
+    assert mock_chat_db.create_chat_session.await_args.kwargs["organization_id"] == (
+        "personal-org"
+    )
+    assert mock_chat_db.create_chat_session.await_args.kwargs["team_id"] == (
+        "personal-team"
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_expert_session_fails_before_write_when_scope_is_invalid(
+    mocker: MockerFixture,
+) -> None:
+    mock_experts_db = mocker.MagicMock()
+    mock_experts_db.resolve_private_expert_tenancy = mocker.AsyncMock(
+        side_effect=ValueError("expert scope unavailable")
+    )
+    mock_chat_db = mocker.MagicMock()
+    mock_chat_db.create_chat_session = mocker.AsyncMock()
+    mocker.patch("backend.copilot.model.experts_db", return_value=mock_experts_db)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_chat_db)
+    cache = mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+
+    with pytest.raises(ValueError, match="expert scope unavailable"):
+        await create_chat_session(
+            "attacker-1",
+            dry_run=False,
+            organization_id="victim-org",
+            team_id="victim-team",
+            expert_id="victim-expert",
+        )
+
+    mock_chat_db.create_chat_session.assert_not_awaited()
+    cache.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_autopilot_session_keeps_caller_tenancy(
+    mocker: MockerFixture,
+) -> None:
+    mock_experts_db = mocker.MagicMock()
+    mock_experts_db.resolve_private_expert_tenancy = mocker.AsyncMock()
+    mock_chat_db = mocker.MagicMock()
+    mock_chat_db.create_chat_session = mocker.AsyncMock()
+    mocker.patch("backend.copilot.model.experts_db", return_value=mock_experts_db)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_chat_db)
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+
+    session = await create_chat_session(
+        "owner-1",
+        dry_run=False,
+        organization_id="caller-org",
+        team_id="caller-team",
+    )
+
+    mock_experts_db.resolve_private_expert_tenancy.assert_not_awaited()
+    assert session.organization_id == "caller-org"
+    assert session.team_id == "caller-team"
+    assert mock_chat_db.create_chat_session.await_args.kwargs["organization_id"] == (
+        "caller-org"
+    )
+    assert mock_chat_db.create_chat_session.await_args.kwargs["team_id"] == (
+        "caller-team"
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_save_session_to_db_backfills_late_tool_calls(
     mocker: MockerFixture,
 ) -> None:
@@ -1217,6 +1971,120 @@ async def test_get_session_from_db_returns_none_when_missing(
 # ─── get_or_create_builder_session ─────────────────────────────────────
 
 
+def test_expert_kickoff_session_id_is_stable_and_owner_scoped() -> None:
+    from .model import expert_kickoff_session_id
+
+    first = expert_kickoff_session_id("user-a", "expert-a")
+
+    assert first == expert_kickoff_session_id("user-a", "expert-a")
+    assert first != expert_kickoff_session_id("user-b", "expert-a")
+    assert first != expert_kickoff_session_id("user-a", "expert-b")
+    assert first != expert_kickoff_session_id("user-a", "expert-a", "organization-a")
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_expert_kickoff_session_recovers_create_race(
+    mocker: MockerFixture,
+) -> None:
+    from backend.util.exceptions import DatabaseError
+
+    from .model import expert_kickoff_session_id, get_or_create_expert_kickoff_session
+
+    existing = ChatSession.new("user-a", dry_run=False, expert_id="expert-a")
+    existing.session_id = expert_kickoff_session_id("user-a", "expert-a")
+    get_session = mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=[None, existing],
+    )
+    mocker.patch(
+        "backend.copilot.model.get_user_sessions",
+        new_callable=mocker.AsyncMock,
+        return_value=([], 0),
+    )
+    create_session = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=DatabaseError("duplicate session id"),
+    )
+
+    result = await get_or_create_expert_kickoff_session(
+        "user-a",
+        "expert-a",
+        dry_run=False,
+    )
+
+    assert result is existing
+    assert get_session.await_count == 2
+    assert create_session.await_args.kwargs["session_id"] == existing.session_id
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_expert_kickoff_session_reraises_real_db_failure(
+    mocker: MockerFixture,
+) -> None:
+    from backend.util.exceptions import DatabaseError
+
+    from .model import get_or_create_expert_kickoff_session
+
+    mocker.patch(
+        "backend.copilot.model.get_user_sessions",
+        new_callable=mocker.AsyncMock,
+        return_value=([], 0),
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=DatabaseError("database unavailable"),
+    )
+
+    with pytest.raises(DatabaseError, match="database unavailable"):
+        await get_or_create_expert_kickoff_session(
+            "user-a",
+            "expert-a",
+            dry_run=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_expert_kickoff_session_adopts_latest_thread(
+    mocker: MockerFixture,
+) -> None:
+    from .model import get_or_create_expert_kickoff_session
+
+    existing = ChatSession.new("user-a", dry_run=False, expert_id="expert-a")
+    get_sessions = mocker.patch(
+        "backend.copilot.model.get_user_sessions",
+        new_callable=mocker.AsyncMock,
+        return_value=([existing], 1),
+    )
+    get_session = mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+    create_session = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    result = await get_or_create_expert_kickoff_session(
+        "user-a",
+        "expert-a",
+        dry_run=False,
+    )
+
+    assert result is existing
+    assert get_sessions.await_args.kwargs["pinned_first"] is False
+    get_session.assert_awaited_once_with(existing.session_id, "user-a")
+    create_session.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_get_or_create_builder_session_raises_when_graph_not_owned(
     mocker: MockerFixture,
@@ -1319,6 +2187,38 @@ async def test_get_or_create_builder_session_writes_pointer_on_create(
     assert call_kwargs["library_agent_id"] == "lib-1"
     assert call_kwargs["user_id"] == "u1"
     assert call_kwargs["settings"].builder_chat_session_id == "sess-new"
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_builder_session_creates_on_the_picked_mode(
+    mocker: MockerFixture,
+) -> None:
+    """A builder session opened with an explicit mode is created on it."""
+    library_agent = mocker.MagicMock(
+        id="lib-1",
+        settings=mocker.MagicMock(builder_chat_session_id=None),
+    )
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=library_agent),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+    create_mock = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=ChatSession.new(
+            "u1", dry_run=False, builder_graph_id="graph-mine"
+        ),
+    )
+
+    await get_or_create_builder_session("u1", "graph-mine", autopilot_mode="ask_first")
+
+    assert create_mock.call_args.kwargs["autopilot_mode"] == "ask_first"
 
 
 @pytest.mark.asyncio
@@ -1573,3 +2473,656 @@ async def test_backfill_partial_failure_clears_only_successes(
     assert m2.tool_calls_pending_save is True
     assert m3.tool_calls_pending_save is True
     assert mock_db.update_chat_message_tool_calls.await_count == 3
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_backfills_stamps_on_flushed_rows(
+    mocker: MockerFixture,
+) -> None:
+    """An assistant row flushed before end-of-turn stamping gets its
+    model/routingSource back-filled on the next save, flag cleared."""
+    flushed = ChatMessage(
+        role="assistant",
+        content="answer",
+        sequence=7,
+        model="claude-sonnet-4-6",
+        routing_source="env",
+        stamps_pending_save=True,
+    )
+    session = _make_session_with_messages(flushed)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_stamps = mocker.AsyncMock(return_value=True)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    mock_db.update_chat_message_stamps.assert_awaited_once_with(
+        session_id=session.session_id,
+        sequence=7,
+        model="claude-sonnet-4-6",
+        routing_source="env",
+        llm_auth_provider=None,
+        llm_credential_id=None,
+        trace_id=None,
+    )
+    assert flushed.stamps_pending_save is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_persists_the_turn_trace(
+    mocker: MockerFixture,
+) -> None:
+    """The PostHog trace stamped at end of turn reaches the DB
+    both on rows flushed mid-turn (back-fill) and on rows inserted by this
+    save."""
+    flushed = ChatMessage(
+        role="assistant",
+        content="working on it",
+        sequence=7,
+        model="claude-sonnet-4-6",
+        routing_source="env",
+        trace_id="turn-1",
+        stamps_pending_save=True,
+    )
+    unsaved = ChatMessage(
+        role="assistant",
+        content="done",
+        model="claude-sonnet-4-6",
+        routing_source="env",
+        trace_id="turn-1",
+    )
+    session = _make_session_with_messages(flushed, unsaved)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_stamps = mocker.AsyncMock(return_value=True)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    backfill = mock_db.update_chat_message_stamps.await_args
+    assert backfill.kwargs["sequence"] == 7
+    assert backfill.kwargs["trace_id"] == "turn-1"
+    (inserted,) = mock_db.add_chat_messages_batch.await_args.kwargs["messages"]
+    assert inserted["trace_id"] == "turn-1"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_stamp_backfill_failure_keeps_flag(
+    mocker: MockerFixture,
+) -> None:
+    """A failed stamp back-fill keeps the flag set so any later save
+    retries — mirror of the tool_calls failure semantics."""
+    flushed = ChatMessage(
+        role="assistant",
+        content="answer",
+        sequence=7,
+        model="claude-sonnet-4-6",
+        routing_source="catalog",
+        stamps_pending_save=True,
+    )
+    session = _make_session_with_messages(flushed)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_stamps = mocker.AsyncMock(
+        side_effect=RuntimeError("db down")
+    )
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    assert flushed.stamps_pending_save is True
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_recovers_create_race(
+    mocker: MockerFixture,
+) -> None:
+    """Two copies of one create race; the loser adopts the winner's row."""
+    from backend.util.exceptions import DatabaseError
+
+    from .model import get_or_create_client_chat_session
+
+    existing = ChatSession.new("user-a", dry_run=False, session_id="sid-1")
+    get_session = mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=[None, existing],
+    )
+    mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=DatabaseError("duplicate session id"),
+    )
+
+    result = await get_or_create_client_chat_session("user-a", "sid-1", dry_run=False)
+
+    assert result is existing
+    assert get_session.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_reraises_real_db_failure(
+    mocker: MockerFixture,
+) -> None:
+    from backend.util.exceptions import DatabaseError
+
+    from .model import get_or_create_client_chat_session
+
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=DatabaseError("database unavailable"),
+    )
+
+    with pytest.raises(DatabaseError, match="database unavailable"):
+        await get_or_create_client_chat_session("user-a", "sid-1", dry_run=False)
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_never_adopts_a_local_pc_session(
+    mocker: MockerFixture,
+) -> None:
+    """Locality is fixed at creation: a Cloud create naming a Local PC chat's
+    id is a conflict, not a way back into that machine's folder."""
+    from .model import (
+        LocalExecutionTargetMetadata,
+        SessionIdConflictError,
+        get_or_create_client_chat_session,
+    )
+
+    existing = ChatSession.new(
+        "user-a",
+        dry_run=False,
+        session_id="sid-1",
+        execution_target=LocalExecutionTargetMetadata(
+            machine_id="machine-1",
+            directory_ref="directory-1",
+            allowed_root="/workspace",
+            root_fingerprint="a" * 64,
+            root_grant="grant-1",
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+    create_session = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    with pytest.raises(SessionIdConflictError):
+        await get_or_create_client_chat_session("user-a", "sid-1", dry_run=False)
+    create_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_refuses_a_different_expert(
+    mocker: MockerFixture,
+) -> None:
+    from .model import SessionIdConflictError, get_or_create_client_chat_session
+
+    existing = ChatSession.new(
+        "user-a", dry_run=False, session_id="sid-1", expert_id="expert-a"
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+    create_session = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    with pytest.raises(SessionIdConflictError):
+        await get_or_create_client_chat_session(
+            "user-a", "sid-1", dry_run=False, expert_id="expert-b"
+        )
+    create_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "persisted",
+    [
+        {"organization_id": "org-a", "team_id": "team-a"},
+        {"organization_id": "org-b", "team_id": "team-a"},
+        {"organization_id": "org-b", "team_id": "team-b", "builder_graph_id": "g-1"},
+        {"organization_id": "org-b", "team_id": "team-b", "origin": "automation"},
+        {"organization_id": "org-b", "team_id": "team-b", "source_platform": "slack"},
+        {
+            "organization_id": "org-b",
+            "team_id": "team-b",
+            "delegated_by_session_id": "sid-0",
+        },
+        {
+            "organization_id": "org-b",
+            "team_id": "team-b",
+            "handed_off_from_expert_id": "expert-0",
+        },
+        {
+            "organization_id": "org-b",
+            "team_id": "team-b",
+            "delegated_by_expert_id": "expert-0",
+        },
+    ],
+    ids=[
+        "other-organization",
+        "other-team",
+        "builder-bound",
+        "automation",
+        "external-platform",
+        "delegated",
+        "handed-off",
+        "delegated-by-expert",
+    ],
+)
+async def test_get_or_create_client_chat_session_refuses_a_plain_session_out_of_scope(
+    mocker: MockerFixture, persisted: dict[str, str]
+) -> None:
+    from .model import SessionIdConflictError, get_or_create_client_chat_session
+
+    existing = ChatSession.new("user-a", dry_run=False, session_id="sid-1", **persisted)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+
+    with pytest.raises(SessionIdConflictError):
+        await get_or_create_client_chat_session(
+            "user-a",
+            "sid-1",
+            dry_run=False,
+            organization_id="org-b",
+            team_id="team-b",
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_refuses_a_race_winner_out_of_scope(
+    mocker: MockerFixture,
+) -> None:
+    from backend.util.exceptions import DatabaseError
+
+    from .model import SessionIdConflictError, get_or_create_client_chat_session
+
+    winner = ChatSession.new(
+        "user-a", dry_run=False, session_id="sid-1", organization_id="org-a"
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=[None, winner],
+    )
+    mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=DatabaseError("duplicate session id"),
+    )
+
+    with pytest.raises(SessionIdConflictError):
+        await get_or_create_client_chat_session(
+            "user-a", "sid-1", dry_run=False, organization_id="org-b"
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_adopts_an_expert_session_in_its_private_tenancy(
+    mocker: MockerFixture,
+) -> None:
+    """Expert sessions are pinned to the expert's private tenancy at create
+    time, so a replay from a team context still adopts the same session."""
+    from .model import get_or_create_client_chat_session
+
+    existing = ChatSession.new(
+        "user-a",
+        dry_run=False,
+        session_id="sid-1",
+        expert_id="expert-a",
+        organization_id="personal-org",
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+    create_session = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    result = await get_or_create_client_chat_session(
+        "user-a",
+        "sid-1",
+        dry_run=False,
+        organization_id="team-org",
+        team_id="team-a",
+        expert_id="expert-a",
+    )
+
+    assert result is existing
+    create_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_refuses_an_automation_expert_session(
+    mocker: MockerFixture,
+) -> None:
+    from .model import SessionIdConflictError, get_or_create_client_chat_session
+
+    existing = ChatSession.new(
+        "user-a",
+        dry_run=False,
+        session_id="sid-1",
+        expert_id="expert-a",
+        origin="automation",
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+
+    with pytest.raises(SessionIdConflictError):
+        await get_or_create_client_chat_session(
+            "user-a", "sid-1", dry_run=False, expert_id="expert-a"
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_creates_with_the_picked_mode(
+    mocker: MockerFixture,
+) -> None:
+    from .model import get_or_create_client_chat_session
+
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+    create = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=ChatSession.new("user-a", dry_run=False, session_id="sid-1"),
+    )
+
+    await get_or_create_client_chat_session(
+        "user-a", "sid-1", dry_run=False, autopilot_mode="ask_first"
+    )
+
+    assert create.await_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_adoption_keeps_the_stored_mode(
+    mocker: MockerFixture,
+) -> None:
+    """A replay never rewrites the mode the session started on, whatever the
+    replay asks for."""
+    from .model import get_or_create_client_chat_session
+
+    existing = ChatSession.new(
+        "user-a",
+        dry_run=False,
+        session_id="sid-1",
+        expert_id="expert-a",
+        autopilot_mode="ask_first",
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+    create = mocker.patch(
+        "backend.copilot.model.create_chat_session", new_callable=mocker.AsyncMock
+    )
+
+    result = await get_or_create_client_chat_session(
+        "user-a",
+        "sid-1",
+        dry_run=False,
+        expert_id="expert-a",
+        autopilot_mode="unsupervised",
+    )
+
+    assert result is existing
+    assert result.metadata.autopilot_mode == "ask_first"
+    create.assert_not_awaited()
+
+
+def _mock_delete_dependencies(mocker: MockerFixture, *, deleted: bool):
+    db = mocker.MagicMock()
+    db.delete_chat_session = mocker.AsyncMock(return_value=deleted)
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    redis = mocker.MagicMock()
+    redis.delete = mocker.AsyncMock()
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new=mocker.AsyncMock(return_value=redis),
+    )
+    release = asyncio.Event()
+
+    async def wait_for_release(*_args, **_kwargs):
+        await release.wait()
+
+    close_browser = mocker.patch(
+        "backend.copilot.tools.agent_browser.close_browser_session",
+        new=mocker.AsyncMock(side_effect=wait_for_release),
+    )
+    delete_embedding = mocker.patch(
+        "backend.copilot.chat_session_embeddings.delete_chat_session_embedding",
+        new=mocker.AsyncMock(side_effect=wait_for_release),
+    )
+    return redis, release, close_browser, delete_embedding
+
+
+@pytest.mark.asyncio
+async def test_delete_chat_session_returns_before_cleanup_finishes(
+    mocker: MockerFixture,
+) -> None:
+    redis, release, close_browser, delete_embedding = _mock_delete_dependencies(
+        mocker, deleted=True
+    )
+    spawn = mocker.spy(chat_model, "spawn_background_task")
+    redis_started = asyncio.Event()
+    redis_release = asyncio.Event()
+
+    async def wait_for_redis_delete(*_args, **_kwargs):
+        redis_started.set()
+        await redis_release.wait()
+
+    redis.delete.side_effect = wait_for_redis_delete
+
+    delete_task = asyncio.create_task(delete_chat_session("sess-1", "user-1"))
+    await asyncio.wait_for(redis_started.wait(), 1)
+    assert not delete_task.done()
+    redis_release.set()
+    deleted = await asyncio.wait_for(delete_task, 1)
+
+    assert deleted is True
+    redis.delete.assert_awaited_once()
+    release.set()
+    await asyncio.wait_for(asyncio.gather(*spawn.spy_return_list), 1)
+    delete_embedding.assert_awaited_once_with("sess-1", "user-1")
+    close_browser.assert_awaited_once_with("sess-1", user_id="user-1")
+
+
+@pytest.mark.asyncio
+async def test_delete_chat_session_not_found_runs_no_cleanup(
+    mocker: MockerFixture,
+) -> None:
+    redis, _release, close_browser, delete_embedding = _mock_delete_dependencies(
+        mocker, deleted=False
+    )
+
+    deleted = await delete_chat_session("sess-missing", "user-1")
+
+    assert deleted is False
+    redis.delete.assert_not_called()
+    close_browser.assert_not_called()
+    delete_embedding.assert_not_called()
+
+
+def _mock_session_creation(
+    mocker: MockerFixture, *, flag_on: bool, expert_default: str | None = None
+) -> tuple[MagicMock, MagicMock]:
+    mock_experts_db = mocker.MagicMock()
+    mock_experts_db.resolve_private_expert_tenancy = mocker.AsyncMock(
+        return_value=("personal-org", "personal-team")
+    )
+    mock_experts_db.get_autopilot_mode = mocker.AsyncMock(return_value=expert_default)
+    mock_chat_db = mocker.MagicMock()
+    mock_chat_db.create_chat_session = mocker.AsyncMock(
+        side_effect=lambda **kwargs: mocker.MagicMock(expert_id=kwargs.get("expert_id"))
+    )
+    mocker.patch("backend.copilot.model.experts_db", return_value=mock_experts_db)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_chat_db)
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+    mocker.patch(
+        "backend.copilot.model.is_feature_enabled",
+        new_callable=mocker.AsyncMock,
+        return_value=flag_on,
+    )
+    return mock_experts_db, mock_chat_db
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_new_expert_thread_starts_on_the_experts_default_mode(
+    mocker: MockerFixture,
+) -> None:
+    mock_experts_db, mock_chat_db = _mock_session_creation(
+        mocker, flag_on=True, expert_default="ask_first"
+    )
+
+    session = await create_chat_session("owner-1", dry_run=False, expert_id="e-1")
+
+    assert session.metadata.autopilot_mode == "ask_first"
+    mock_experts_db.get_autopilot_mode.assert_awaited_once_with("owner-1", "e-1")
+    stored = mock_chat_db.create_chat_session.await_args.kwargs["metadata"]
+    assert stored.autopilot_mode == "ask_first"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_explicit_mode_beats_the_experts_default(
+    mocker: MockerFixture,
+) -> None:
+    mock_experts_db, _ = _mock_session_creation(
+        mocker, flag_on=True, expert_default="ask_first"
+    )
+
+    session = await create_chat_session(
+        "owner-1", dry_run=False, expert_id="e-1", autopilot_mode="unsupervised"
+    )
+
+    assert session.metadata.autopilot_mode == "unsupervised"
+    mock_experts_db.get_autopilot_mode.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_expert_without_a_default_leaves_the_platform_default(
+    mocker: MockerFixture,
+) -> None:
+    _mock_session_creation(mocker, flag_on=True, expert_default=None)
+
+    session = await create_chat_session("owner-1", dry_run=False, expert_id="e-1")
+
+    assert session.metadata.autopilot_mode is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_plain_chat_never_consults_the_flag_or_an_expert(
+    mocker: MockerFixture,
+) -> None:
+    mock_experts_db, _ = _mock_session_creation(mocker, flag_on=True)
+    flag = mocker.patch(
+        "backend.copilot.model.is_feature_enabled", new_callable=mocker.AsyncMock
+    )
+
+    session = await create_chat_session("owner-1", dry_run=False)
+
+    assert session.metadata.autopilot_mode is None
+    flag.assert_not_awaited()
+    mock_experts_db.get_autopilot_mode.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_stored_default_is_ignored_while_the_flag_is_off(
+    mocker: MockerFixture,
+) -> None:
+    mock_experts_db, _ = _mock_session_creation(
+        mocker, flag_on=False, expert_default="unsupervised"
+    )
+
+    session = await create_chat_session(
+        "owner-1", dry_run=False, expert_id="e-1", autopilot_mode="ask_first"
+    )
+
+    assert session.metadata.autopilot_mode is None
+    mock_experts_db.get_autopilot_mode.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_automation_session_never_reads_the_experts_default(
+    mocker: MockerFixture,
+) -> None:
+    """Routines and block-opened sessions are not gated, so the default
+    chosen for web chats must not be looked up for them."""
+    mock_experts_db, _ = _mock_session_creation(
+        mocker, flag_on=True, expert_default="ask_first"
+    )
+
+    session = await create_chat_session(
+        "owner-1", dry_run=False, expert_id="e-1", origin="automation"
+    )
+
+    assert session.metadata.autopilot_mode is None
+    mock_experts_db.get_autopilot_mode.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_inherited_mode_is_stored_as_is_without_the_flag_or_a_lookup(
+    mocker: MockerFixture,
+) -> None:
+    """Delegation hands over a constraint, not a pick: it survives the flag
+    being off and never re-reads the expert, so a default written to the
+    expert in between cannot loosen the thread."""
+    mock_experts_db, _ = _mock_session_creation(
+        mocker, flag_on=False, expert_default="unsupervised"
+    )
+    flag = mocker.patch(
+        "backend.copilot.model.is_feature_enabled", new_callable=mocker.AsyncMock
+    )
+
+    session = await create_chat_session(
+        "owner-1",
+        dry_run=False,
+        expert_id="e-1",
+        inherited_autopilot_mode="ask_first",
+    )
+
+    assert session.metadata.autopilot_mode == "ask_first"
+    flag.assert_not_awaited()
+    mock_experts_db.get_autopilot_mode.assert_not_awaited()

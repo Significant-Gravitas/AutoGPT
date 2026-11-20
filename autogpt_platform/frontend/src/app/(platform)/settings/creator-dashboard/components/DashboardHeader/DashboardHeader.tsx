@@ -1,6 +1,4 @@
 "use client";
-
-import { PlusIcon } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Button } from "@/components/atoms/Button/Button";
@@ -10,6 +8,8 @@ import type { PublishState } from "@/components/contextual/PublishAgentModal/use
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 
 import { EASE_OUT } from "../../helpers";
+import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   publishState: PublishState;
@@ -31,15 +31,15 @@ export function DashboardHeader({
       initial={reduceMotion ? false : { opacity: 0, y: 8 }}
       animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
       transition={reduceMotion ? undefined : { duration: 0.32, ease: EASE_OUT }}
-      className="flex flex-col gap-5 pb-2 pl-4 pr-1 md:flex-row md:items-end md:justify-between"
+      className="flex flex-col gap-5 pr-1 pb-2 pl-4 md:flex-row md:items-end md:justify-between"
     >
       <div className="flex min-w-0 flex-col">
-        <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">
+        <Text variant="h4" as="h1">
           Creator dashboard
         </Text>
-        <Text variant="body" className="mt-3 max-w-[640px] text-zinc-700">
+        <Text variant="body" tone="body" className="mt-3 max-w-[640px]">
           Track your store submissions, see how they perform, and ship updates
-          for the agents you publish.
+          for the workflows you publish.
         </Text>
       </div>
 
@@ -52,9 +52,9 @@ export function DashboardHeader({
             data-testid="submit-agent-button"
             size="large"
             onClick={onOpenSubmit}
-            leftIcon={<PlusIcon size={18} weight="bold" />}
+            leftIcon={<Icon icon={PlusSignIcon} size={18} />}
           >
-            Submit agent
+            Submit workflow
           </Button>
         }
       />

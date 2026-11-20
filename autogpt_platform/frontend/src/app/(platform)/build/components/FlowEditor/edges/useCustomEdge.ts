@@ -38,7 +38,7 @@ export const useCustomEdge = () => {
       const sourceNode = nodes.find((n) => n.id === conn.source);
       const isStatic = sourceNode?.data?.staticOutput;
 
-      const { colorClass, hexColor } = getEdgeColorFromOutputType(
+      const { colorClass } = getEdgeColorFromOutputType(
         sourceNode?.data?.outputSchema,
         conn.sourceHandle,
       );
@@ -51,7 +51,6 @@ export const useCustomEdge = () => {
         data: {
           isStatic,
           edgeColorClass: colorClass,
-          edgeHexColor: hexColor,
         },
       });
     },

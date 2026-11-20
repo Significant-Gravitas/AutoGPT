@@ -19,8 +19,10 @@ from openai.types.chat import ChatCompletion
 from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
+from backend.copilot import usage_activation_fixtures
+from backend.data.model import NodeExecutionStats
 from backend.executor.simulator import (
     _DEFAULT_SIMULATOR_MODEL,
     _MAX_JSON_RETRIES,
@@ -33,7 +35,17 @@ from backend.executor.simulator import (
     get_dry_run_credentials,
     prepare_dry_run,
     simulate_block,
+    track_dry_run_block_cost,
 )
+
+
+@pytest.fixture(autouse=True)
+def spend_refusal(monkeypatch) -> AsyncMock:
+    """The user has allowance left unless a test says otherwise."""
+    refusal = AsyncMock(return_value=None)
+    monkeypatch.setattr("backend.executor.simulator.platform_spend_refusal", refusal)
+    return refusal
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -172,17 +184,17 @@ class TestPrepareDryRun:
         assert result["agent_mode_max_iterations"] == 10
         assert result["other"] == "val"
         assert result["model"] != "gpt-4o"  # overridden to simulation model
-        # Simulation model must parse as a real LlmModel so OrchestratorBlock's
+        # Simulation model must parse as a real LLMModel so OrchestratorBlock's
         # Pydantic input validation accepts it.
-        assert LlmModel(result["model"]) is not None
-        # The injected model must be a canonical LlmModel value (string equal
+        assert LLMModel(result["model"]) is not None
+        # The injected model must be a canonical LLMModel value (string equal
         # to one of the enum's ``.value``s), not an OpenRouter alias slug —
         # OrchestratorBlock.validate_data → jsonschema only accepts literal
-        # ``LlmModel.value``s in the schema's ``enum``, and the alias map
-        # in ``LlmModel._missing_`` does not surface in the generated
+        # ``LLMModel.value``s in the schema's ``enum``, and the alias map
+        # in ``LLMModel._missing_`` does not surface in the generated
         # JSON Schema.  Anything else trips
         # ``"'<slug>' is not one of [...]"`` at runtime.
-        canonical_values = {m.value for m in LlmModel}
+        canonical_values = {m.value for m in LLMModel}
         assert result["model"] in canonical_values, (
             f"prepare_dry_run injected non-canonical model {result['model']!r}; "
             f"jsonschema validation will reject it"
@@ -197,7 +209,7 @@ class TestPrepareDryRun:
     ) -> None:
         """An invalid ``CHAT_SIMULATION_MODEL`` env value must not crash
         ``prepare_dry_run`` — fall back to the default so dry-run keeps
-        working.  Without the guard, ``LlmModel('<garbage>')`` raises
+        working.  Without the guard, ``LLMModel('<garbage>')`` raises
         ``ValueError`` and aborts every Orchestrator dry-run."""
         with (
             patch(
@@ -213,13 +225,13 @@ class TestPrepareDryRun:
                 OrchestratorBlock(),
                 {
                     "prompt": "test",
-                    "model": LlmModel.CLAUDE_4_7_OPUS.value,
+                    "model": LLMModel.CLAUDE_4_7_OPUS.value,
                     "agent_mode_max_iterations": 1,
                 },
             )
         assert result is not None
         # Must land on the default value, not the garbage override.
-        assert result["model"] == LlmModel(_DEFAULT_SIMULATOR_MODEL).value, (
+        assert result["model"] == LLMModel(_DEFAULT_SIMULATOR_MODEL).value, (
             "Invalid CHAT_SIMULATION_MODEL should fall back to default; "
             f"got {result['model']!r}"
         )
@@ -251,7 +263,7 @@ class TestPrepareDryRun:
                 block,
                 {
                     "prompt": "test",
-                    "model": LlmModel.CLAUDE_4_7_OPUS.value,
+                    "model": LLMModel.CLAUDE_4_7_OPUS.value,
                     "execution_mode": ExecutionMode.EXTENDED_THINKING.value,
                     "agent_mode_max_iterations": 1,
                 },
@@ -266,14 +278,14 @@ class TestPrepareDryRun:
         """The injected dry-run input must pass OrchestratorBlock.validate_data.
 
         Pinning this prevents the SECRT-2368 follow-up bug class where
-        prepare_dry_run injects an OpenRouter slug that LlmModel resolves
+        prepare_dry_run injects an OpenRouter slug that LLMModel resolves
         via the alias map at the Pydantic layer, but jsonschema enum
         validation (which runs *before* Pydantic) rejects.
         """
         block = OrchestratorBlock()
         user_input = {
             "prompt": "test",
-            "model": LlmModel.CLAUDE_4_7_OPUS.value,
+            "model": LLMModel.CLAUDE_4_7_OPUS.value,
             "credentials": {
                 "id": "00000000-0000-0000-0000-000000000000",
                 "provider": "open_router",
@@ -312,6 +324,16 @@ class TestPrepareDryRun:
             result = prepare_dry_run(block, {"agent_mode_max_iterations": 0})
         assert result is not None
         assert result["agent_mode_max_iterations"] == 0
+
+    def test_orchestrator_loop_until_finished_takes_the_cap(self) -> None:
+        block = OrchestratorBlock()
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value="sk-or-test-key",
+        ):
+            result = prepare_dry_run(block, {"agent_mode_max_iterations": -1})
+        assert result is not None
+        assert result["agent_mode_max_iterations"] == 10
 
     def test_orchestrator_falls_back_without_key(self) -> None:
         """Without platform OpenRouter key, OrchestratorBlock falls back
@@ -695,7 +717,7 @@ def _sim_completion(*, content: str, usage: CompletionUsage) -> ChatCompletion:
 class TestDefaultSimulatorModel:
     """Pin the default model.  Four guards line up with the constraints
     laid out next to ``_DEFAULT_SIMULATOR_MODEL`` in ``simulator.py``:
-    value pin, ``LlmModel`` parseability, OpenRouter slug shape, and
+    value pin, ``LLMModel`` parseability, OpenRouter slug shape, and
     ``open_router`` provider routing (so the BUILT_IN orchestrator path
     in ``llm.llm_call`` doesn't get routed through ``api.anthropic.com``
     with the platform OR key)."""
@@ -704,7 +726,7 @@ class TestDefaultSimulatorModel:
         assert _DEFAULT_SIMULATOR_MODEL == "google/gemini-2.5-flash-lite"
 
     def test_default_parses_as_llm_model(self) -> None:
-        assert LlmModel(_DEFAULT_SIMULATOR_MODEL) is LlmModel.GEMINI_2_5_FLASH_LITE
+        assert LLMModel(_DEFAULT_SIMULATOR_MODEL) is LLMModel.GEMINI_2_5_FLASH_LITE
 
     def test_default_is_openrouter_slug(self) -> None:
         # The LLM-simulation path hits OpenRouter's OpenAI-compat endpoint,
@@ -717,7 +739,7 @@ class TestDefaultSimulatorModel:
         # at ``api.anthropic.com`` → 401.  Pin ``open_router`` here so
         # a future default change that breaks this routing trips at
         # unit-test time.
-        assert LlmModel(_DEFAULT_SIMULATOR_MODEL).metadata.provider == "open_router"
+        assert LLMModel(_DEFAULT_SIMULATOR_MODEL).metadata.provider == "open_router"
 
 
 class TestExtractCostUsd:
@@ -823,6 +845,68 @@ class TestSimulatorCostTracking:
         assert track_kwargs["cost_usd"] == pytest.approx(0.000189)
         assert track_kwargs["session"] is None
         assert track_kwargs["log_prefix"] == "[simulator]"
+
+    @pytest.mark.asyncio
+    async def test_a_spent_allowance_never_calls_the_model(self, spend_refusal) -> None:
+        spend_refusal.return_value = "You've reached your daily usage limit."
+        get_client = MagicMock()
+        with patch("backend.executor.simulator.get_openai_client", get_client):
+            outputs = [
+                item
+                async for item in simulate_block(
+                    _make_block(), {"query": "hello"}, user_id="user-42"
+                )
+            ]
+        assert len(outputs) == 1
+        assert outputs[0][0] == "error"
+        assert "daily usage limit" in outputs[0][1]
+        get_client.assert_not_called()
+        spend_refusal.assert_awaited_once_with("user-42", surface="block")
+
+    @pytest.mark.asyncio
+    async def test_an_unparseable_response_is_still_recorded(self) -> None:
+        client, create_mock = self._mock_client(
+            _sim_completion(content="not json", usage=_sim_usage(cost=0.0001))
+        )
+        with (
+            patch("backend.executor.simulator.get_openai_client", return_value=client),
+            patch(
+                "backend.executor.simulator.persist_and_record_usage",
+                new=AsyncMock(return_value=1),
+            ) as mock_track,
+        ):
+            outputs = [
+                item
+                async for item in simulate_block(
+                    _make_block(), {"query": "hello"}, user_id="user-42"
+                )
+            ]
+        assert outputs[0][0] == "error"
+        assert create_mock.await_count == _MAX_JSON_RETRIES
+        assert mock_track.await_count == _MAX_JSON_RETRIES
+
+    @pytest.mark.asyncio
+    async def test_a_dry_run_blocks_spend_is_recorded_with_its_cost(self) -> None:
+        stats = NodeExecutionStats(
+            input_token_count=900,
+            output_token_count=120,
+            cache_read_token_count=40,
+            cache_creation_token_count=5,
+            provider_cost=0.0042,
+        )
+        with patch(
+            "backend.executor.simulator.persist_and_record_usage",
+            new=AsyncMock(return_value=1),
+        ) as mock_track:
+            await track_dry_run_block_cost(stats, user_id="user-42", model="m-1")
+
+        kwargs = mock_track.await_args.kwargs
+        assert kwargs["user_id"] == "user-42"
+        assert kwargs["cost_usd"] == pytest.approx(0.0042)
+        assert (kwargs["prompt_tokens"], kwargs["completion_tokens"]) == (900, 120)
+        assert kwargs["cache_read_tokens"] == 40
+        assert kwargs["cache_creation_tokens"] == 5
+        assert kwargs["model"] == "m-1"
 
     @pytest.mark.asyncio
     async def test_tracks_even_when_cost_absent(self) -> None:
@@ -996,3 +1080,6 @@ class TestSchemaConformantSimulation:
 
         assert parsed == {"main_result": ["still wrong"], "response": "ok"}
         assert create_mock.call_count == _MAX_JSON_RETRIES
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot

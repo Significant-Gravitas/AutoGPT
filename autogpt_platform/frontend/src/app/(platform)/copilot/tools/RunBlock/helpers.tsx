@@ -3,14 +3,15 @@ import type { BlockOutputResponse } from "@/app/api/__generated__/models/blockOu
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
-import { beautifyString } from "@/lib/utils";
-import {
-  PlayCircleIcon,
-  PlayIcon,
-  WarningDiamondIcon,
-} from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
 import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
+import { getBlockDisplayName } from "../../helpers/toolDisplay";
+import {
+  AlertDiamondIcon,
+  PlayCircleIcon,
+  PlayIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 /** Block details returned on first run_block attempt (before input_data provided). */
 export interface BlockDetailsResponse {
@@ -36,7 +37,6 @@ export interface ReviewRequiredResponse {
   block_id: string;
   block_name: string;
   review_id: string;
-  graph_exec_id: string;
   input_data: Record<string, unknown>;
 }
 
@@ -209,10 +209,9 @@ export function getBlockNamesById(
   if (response?.status !== 200) return undefined;
   const names = new Map<string, string>();
   for (const block of response.data) {
-    if (typeof block.id === "string" && typeof block.name === "string") {
-      // Same display treatment as the blocks menu: beautify and
-      // drop the redundant "Block" suffix
-      names.set(block.id, beautifyString(block.name).replace(/ Block$/, ""));
+    const name = getBlockDisplayName(block.name);
+    if (typeof block.id === "string" && name) {
+      names.set(block.id, name);
     }
   }
   return names;
@@ -226,18 +225,16 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return (
-      <WarningDiamondIcon size={14} weight="regular" className="text-red-500" />
-    );
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  return <PlayIcon size={14} weight="regular" className="text-neutral-400" />;
+  return <Icon icon={PlayIcon} size={14} tone="subtle" />;
 }
 
 export function AccordionIcon() {
-  return <PlayCircleIcon size={32} weight="light" />;
+  return <Icon icon={PlayCircleIcon} size={32} />;
 }
 
 export function formatMaybeJson(value: unknown): string {
@@ -313,10 +310,8 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
   }
 
   return {
-    icon: (
-      <WarningDiamondIcon size={32} weight="light" className="text-red-500" />
-    ),
+    icon: <Icon icon={AlertDiamondIcon} size={32} tone="error" />,
     title: "Error",
-    titleClassName: "text-red-500",
+    titleClassName: "text-error",
   };
 }

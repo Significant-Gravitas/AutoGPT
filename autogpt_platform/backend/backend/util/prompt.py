@@ -5,8 +5,12 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from tiktoken import encoding_for_model
+from tiktoken import encoding_for_model, encoding_name_for_model
 
+from backend.data.llm_registry.llm_models import (
+    CLAUDE_5_TOKENIZER_GENERATION_PREFIXES,
+    strip_anthropic_vendor_prefix,
+)
 from backend.util import json
 
 if TYPE_CHECKING:
@@ -20,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Message prefixes for important system messages that should be protected during compression
 MAIN_OBJECTIVE_PREFIX = "[Main Objective Prompt]: "
+_IMAGE_TOKEN_ESTIMATE = 4096
 
 # ---------------------------------------------------------------------------#
 #  INTERNAL UTILITIES                                                         #
@@ -27,8 +32,13 @@ MAIN_OBJECTIVE_PREFIX = "[Main Objective Prompt]: "
 
 
 def _tok_len(text: str, enc) -> int:
-    """True token length of *text* in tokenizer *enc* (no wrapper cost)."""
-    return len(enc.encode(str(text)))
+    """True token length of *text* in tokenizer *enc* (no wrapper cost).
+
+    Text that spells a special token, such as ``<|endoftext|>``, is counted as
+    plain text: tiktoken raises on it by default, and users or tool output can
+    write it.
+    """
+    return len(enc.encode(str(text), disallowed_special=()))
 
 
 def _msg_tokens(msg: dict, enc) -> int:
@@ -53,12 +63,12 @@ def _msg_tokens(msg: dict, enc) -> int:
     if msg.get("type") == "function_call_output":
         return (
             WRAPPER
-            + _tok_len(msg.get("output", ""), enc)
+            + _content_tokens(msg.get("output", ""), enc)
             + _tok_len(msg.get("call_id", ""), enc)
         )
 
     # Count content tokens
-    content_tokens = _tok_len(msg.get("content") or "", enc)
+    content_tokens = _content_tokens(msg.get("content") or "", enc)
 
     # Count tool call tokens for both OpenAI and Anthropic formats
     tool_call_tokens = 0
@@ -75,30 +85,32 @@ def _msg_tokens(msg: dict, enc) -> int:
                     tool_call["function"].get("arguments", ""), enc
                 )
 
-    # Anthropic format: tool_use within content array
-    content = msg.get("content")
-    if isinstance(content, list):
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "tool_use":
-                # Count the tool use structure tokens
-                tool_call_tokens += _tok_len(item.get("id", ""), enc)
-                tool_call_tokens += _tok_len(item.get("name", ""), enc)
-                tool_call_tokens += _tok_len(json.dumps(item.get("input", {})), enc)
-            elif isinstance(item, dict) and item.get("type") == "tool_result":
-                # Count tool result tokens
-                tool_call_tokens += _tok_len(item.get("tool_use_id", ""), enc)
-                tool_call_tokens += _tok_len(item.get("content", ""), enc)
-            elif isinstance(item, dict) and item.get("type") == "text":
-                # Count text block tokens (standard: "text" key, fallback: "content")
-                text_val = item.get("text") or item.get("content", "")
-                tool_call_tokens += _tok_len(text_val, enc)
-            elif isinstance(item, dict) and "content" in item:
-                # Other content types with content field
-                tool_call_tokens += _tok_len(item.get("content", ""), enc)
-        # For list content, override content_tokens since we counted everything above
-        content_tokens = 0
-
     return WRAPPER + content_tokens + tool_call_tokens
+
+
+def _content_tokens(content: Any, enc) -> int:
+    if not isinstance(content, list):
+        return _tok_len(content, enc)
+
+    tokens = 0
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        if item_type == "tool_use":
+            tokens += _tok_len(item.get("id", ""), enc)
+            tokens += _tok_len(item.get("name", ""), enc)
+            tokens += _tok_len(json.dumps(item.get("input", {})), enc)
+        elif item_type == "tool_result":
+            tokens += _tok_len(item.get("tool_use_id", ""), enc)
+            tokens += _content_tokens(item.get("content", ""), enc)
+        elif item_type in ("text", "input_text", "output_text"):
+            tokens += _tok_len(item.get("text") or item.get("content", ""), enc)
+        elif item_type in ("image_url", "image", "input_image"):
+            tokens += _IMAGE_TOKEN_ESTIMATE
+        elif "content" in item:
+            tokens += _tok_len(item.get("content", ""), enc)
+    return tokens
 
 
 def _is_tool_message(msg: dict) -> bool:
@@ -174,7 +186,7 @@ def _truncate_middle_tokens(text: str, enc, max_tok: int) -> str:
     Return *text* shortened to ≈max_tok tokens by keeping the head & tail
     and inserting an ellipsis token in the middle.
     """
-    ids = enc.encode(str(text))
+    ids = enc.encode(str(text), disallowed_special=())
     if len(ids) <= max_tok:
         return text  # nothing to do
 
@@ -202,7 +214,7 @@ def estimate_token_count(
     model: str = "gpt-4o",
 ) -> int:
     """
-    Return the true token count of *messages* when encoded for *model*.
+    Count text tokens for *model*, with a bounded estimate per image block.
 
     Parameters
     ----------
@@ -216,7 +228,8 @@ def estimate_token_count(
     """
     token_model = _normalize_model_for_tokenizer(model)
     enc = encoding_for_model(token_model)
-    return sum(_msg_tokens(m, enc) for m in messages)
+    raw = sum(_msg_tokens(m, enc) for m in messages)
+    return int(raw * _token_estimate_factor(model))
 
 
 def estimate_token_count_str(
@@ -240,7 +253,7 @@ def estimate_token_count_str(
     token_model = _normalize_model_for_tokenizer(model)
     enc = encoding_for_model(token_model)
     text = json.dumps(text) if not isinstance(text, str) else text
-    return _tok_len(text, enc)
+    return int(_tok_len(text, enc) * _token_estimate_factor(model))
 
 
 # ---------------------------------------------------------------------------#
@@ -251,6 +264,12 @@ def estimate_token_count_str(
 DEFAULT_TOKEN_THRESHOLD = 120_000
 DEFAULT_KEEP_RECENT = 15
 
+# Response headroom subtracted from the compression target.  Named (rather than
+# inlined in ``compress_context``'s signature) because the copilot's pre-query
+# predictor mirrors the early-return condition below and must read the same
+# value — a silent desync there opens compaction rows for work that never runs.
+DEFAULT_COMPRESSION_RESERVE = 2_048
+
 # Reserve tokens for system prompt, tool definitions, and per-turn overhead.
 # The actual model context limit minus this reserve = compression target.
 _CONTEXT_OVERHEAD_RESERVE = 60_000
@@ -259,22 +278,22 @@ _CONTEXT_OVERHEAD_RESERVE = 60_000
 def get_context_window(model: str) -> int | None:
     """Return the context window size for a model, or None if unknown.
 
-    Looks up the model in the :class:`LlmModel` enum (which already
+    Looks up the model in the :class:`LLMModel` enum (which already
     carries ``context_window`` via ``MODEL_METADATA``).  Handles
     provider-prefixed names (``anthropic/claude-opus-4-6``) and
     case-insensitive input automatically.
     """
-    from backend.blocks.llm import LlmModel  # lazy to avoid circular import
+    from backend.blocks.llm import LLMModel  # lazy to avoid circular import
 
     try:
-        llm_model = LlmModel(model)
+        llm_model = LLMModel(model)
         return llm_model.context_window
     except (ValueError, KeyError):
         pass
 
     # Retry with lowercase for case-insensitive lookup
     try:
-        llm_model = LlmModel(model.lower())
+        llm_model = LLMModel(model.lower())
         return llm_model.context_window
     except (ValueError, KeyError):
         return None
@@ -309,6 +328,25 @@ class CompressResult:
     messages_dropped: int = 0
 
 
+# Estimation correction for the Claude 5 family (sonnet-5/fable-5/
+# mythos-5, plus the shared 4.7/4.8 tokenizer generation): Anthropic ships
+# no local tokenizer, so estimates ride tiktoken o200k_base, which already
+# undercounts Claude 4.x by ~15-20%; the Claude 5 tokenizer additionally
+# counts ~30% MORE tokens for the same text (Anthropic migration guide).
+# 1.5 ≈ 1.175 x 1.3 — deliberately on the high side: overestimating
+# shrinks compaction targets and max_tokens headroom (safe), while
+# underestimating overflows the context window (a 400 at serve time).
+CLAUDE_5_TOKEN_FACTOR = 1.5
+
+
+def _token_estimate_factor(model: str) -> float:
+    if strip_anthropic_vendor_prefix(model).startswith(
+        CLAUDE_5_TOKENIZER_GENERATION_PREFIXES
+    ):
+        return CLAUDE_5_TOKEN_FACTOR
+    return 1.0
+
+
 def _normalize_model_for_tokenizer(model: str) -> str:
     """Normalize model name for tiktoken tokenizer selection."""
     if "/" in model:
@@ -316,6 +354,13 @@ def _normalize_model_for_tokenizer(model: str) -> str:
     if "claude" in model.lower() or not any(
         known in model.lower() for known in ["gpt", "o1", "chatgpt", "text-"]
     ):
+        return "gpt-4o"
+    try:
+        encoding_name_for_model(model)
+    except KeyError:
+        # GPT-named model newer than the pinned tiktoken's mapping table
+        # (e.g. gpt-5.6-*) — estimates must degrade to the default
+        # encoding, not crash the LLM call.
         return "gpt-4o"
     return model
 
@@ -709,7 +754,7 @@ async def compress_context(
     model: str = "gpt-4o",
     client: AsyncOpenAI | None = None,
     keep_recent: int = DEFAULT_KEEP_RECENT,
-    reserve: int = 2_048,
+    reserve: int = DEFAULT_COMPRESSION_RESERVE,
     start_cap: int = 8_192,
     floor_cap: int = 128,
 ) -> CompressResult:
@@ -765,8 +810,17 @@ async def compress_context(
     enc = encoding_for_model(token_model)
     msgs = deepcopy(messages)
 
+    # Compaction must measure in the same (corrected) space as estimation:
+    # for the Claude-5 tokenizer generation, raw tiktoken sums undercount
+    # by ~30-50%, so an uncorrected total can sit under the nominal target
+    # while exceeding the model's real budget.
+    factor = _token_estimate_factor(model)
+
+    def _scaled_msg_tokens(m: dict) -> int:
+        return int(_msg_tokens(m, enc) * factor)
+
     def total_tokens() -> int:
-        return sum(_msg_tokens(m, enc) for m in msgs)
+        return sum(_scaled_msg_tokens(m) for m in msgs)
 
     original_count = total_tokens()
 
@@ -852,12 +906,12 @@ async def compress_context(
     # Steps 3-5 repeatedly check the total size while mutating or deleting one
     # message at a time. Re-summing all messages there re-tokenizes the whole
     # history on each iteration, which is quadratic on long transcripts.
-    counts = [_msg_tokens(m, enc) for m in msgs]
+    counts = [_scaled_msg_tokens(m) for m in msgs]
     total = sum(counts)
 
     def _recount(i: int) -> None:
         nonlocal total
-        new = _msg_tokens(msgs[i], enc)
+        new = _scaled_msg_tokens(msgs[i])
         total += new - counts[i]
         counts[i] = new
 
@@ -927,7 +981,7 @@ async def compress_context(
     # to prevent API errors (e.g., Anthropic's "unexpected tool_use_id").
     final_msgs = validate_and_remove_orphan_tool_responses(final_msgs)
 
-    final_count = sum(_msg_tokens(m, enc) for m in final_msgs)
+    final_count = sum(_scaled_msg_tokens(m) for m in final_msgs)
     error = None
     if final_count + reserve > target_tokens:
         error = f"Could not compress below target ({final_count + reserve} > {target_tokens})"

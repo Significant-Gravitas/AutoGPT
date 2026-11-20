@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pika.exceptions import ChannelClosedByBroker
 
 from backend.data.diagnostics import (
     _calculate_total_runs,
@@ -46,7 +47,7 @@ async def test_get_execution_diagnostics_full():
             "backend.data.diagnostics.query_raw_with_schema",
             new_callable=AsyncMock,
             return_value=[mock_row],
-        ),
+        ) as mock_query,
         patch(
             "backend.data.diagnostics.get_rabbitmq_queue_depth",
             return_value=7,
@@ -62,6 +63,10 @@ async def test_get_execution_diagnostics_full():
         ),
     ):
         result = await get_execution_diagnostics()
+
+    sql = mock_query.await_args.args[0]
+    assert sql.count('AND "endedAt" >=') == 4
+    assert 'AND "updatedAt" >=' not in sql
 
     assert result.running_count == 10
     assert result.queued_db_count == 5
@@ -265,6 +270,29 @@ def test_rabbitmq_cancel_queue_depth_success():
         result = get_rabbitmq_cancel_queue_depth()
 
     assert result == 5
+
+
+def test_rabbitmq_cancel_queue_depth_is_zero_when_the_retired_queue_is_gone():
+    """An environment created after the per-pod split never declared the
+    fleet-wide queue; absent means nothing is stuck, not an error."""
+    mock_channel = MagicMock()
+    mock_channel.queue_declare.side_effect = ChannelClosedByBroker(404, "NOT_FOUND")
+    mock_rabbitmq = MagicMock()
+    mock_rabbitmq._channel = mock_channel
+
+    with (
+        patch(
+            "backend.data.diagnostics.create_execution_queue_config",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.data.diagnostics.SyncRabbitMQ",
+            return_value=mock_rabbitmq,
+        ),
+    ):
+        result = get_rabbitmq_cancel_queue_depth()
+
+    assert result == 0
 
 
 def test_rabbitmq_cancel_queue_depth_error():

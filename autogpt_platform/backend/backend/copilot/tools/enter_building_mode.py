@@ -88,7 +88,8 @@ class EnterAgentBuildingModeTool(BaseTool):
             # switch — the baseline loop ends this turn at the next
             # iteration boundary and the processor dispatches an SDK
             # continuation turn. The tool call in message history also
-            # pins all later turns to SDK (resolve_use_sdk_for_mode).
+            # pins all later turns to SDK (see the building-mode pin in
+            # executor.processor, which resolve_use_sdk defers to).
             engine_switch.request_switch(
                 session_id,
                 # The session owner is the authoritative identity — the

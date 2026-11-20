@@ -4,7 +4,6 @@ vi.mock("@sentry/nextjs", () => ({ captureMessage: vi.fn() }));
 
 import * as Sentry from "@sentry/nextjs";
 import {
-  isCorruptedCardToolPart,
   isUnparseableJsonOutput,
   reportCorruptedToolOutput,
 } from "../toolOutput";
@@ -36,47 +35,6 @@ describe("isUnparseableJsonOutput", () => {
     expect(isUnparseableJsonOutput("")).toBe(false);
     expect(isUnparseableJsonOutput(undefined)).toBe(false);
     expect(isUnparseableJsonOutput({ type: "setup_requirements" })).toBe(false);
-  });
-});
-
-describe("isCorruptedCardToolPart", () => {
-  const truncated = '{"type":"setup_requirements","message":"Conn';
-
-  it("flags a card-capable tool with truncated JSON output", () => {
-    expect(
-      isCorruptedCardToolPart({
-        type: "tool-run_block",
-        state: "output-available",
-        output: truncated,
-      }),
-    ).toBe(true);
-  });
-
-  it("ignores tools that never render cards", () => {
-    expect(
-      isCorruptedCardToolPart({
-        type: "tool-search_docs",
-        state: "output-available",
-        output: truncated,
-      }),
-    ).toBe(false);
-  });
-
-  it("ignores non-completed and valid-output parts", () => {
-    expect(
-      isCorruptedCardToolPart({
-        type: "tool-run_block",
-        state: "output-error",
-        output: truncated,
-      }),
-    ).toBe(false);
-    expect(
-      isCorruptedCardToolPart({
-        type: "tool-run_block",
-        state: "output-available",
-        output: '{"type":"block_output","block_id":"b1"}',
-      }),
-    ).toBe(false);
   });
 });
 

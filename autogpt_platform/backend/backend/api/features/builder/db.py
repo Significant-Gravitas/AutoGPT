@@ -19,7 +19,7 @@ from backend.blocks._base import (
     BlockSchema,
     BlockType,
 )
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LLMModel
 from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
 from backend.util.models import Pagination
@@ -37,7 +37,7 @@ from .model import (
 )
 
 logger = logging.getLogger(__name__)
-llm_models = [name.name.lower().replace("_", " ") for name in LlmModel]
+llm_models = [name.name.lower().replace("_", " ") for name in LLMModel]
 
 MAX_LIBRARY_AGENT_RESULTS = 100
 MAX_MARKETPLACE_AGENT_RESULTS = 100
@@ -46,7 +46,7 @@ MIN_SCORE_FOR_FILTERED_RESULTS = 10.0
 # Boost blocks over marketplace agents in search results
 BLOCK_SCORE_BOOST = 50.0
 
-# Bonus when a block exposes an LlmModel field and the query names an LLM model
+# Bonus when a block exposes an LLMModel field and the query names an LLM model
 LLM_MODEL_MATCH_BONUS = 20.0
 
 # Block IDs to exclude from search results
@@ -208,33 +208,30 @@ async def update_search(
     user_id: str, search: SearchEntry, organization_id: str | None = None
 ) -> str:
     """
-    Upsert a search request for the user and return the search ID.
+    Update the user's search entry with ``search.search_id``, or create one when
+    that id is missing or not the user's, and return the entry's ID.
     """
     if search.search_id:
-        # Update existing search
-        await prisma.models.BuilderSearchHistory.prisma().update(
-            where={
-                "id": search.search_id,
-            },
+        updated = await prisma.models.BuilderSearchHistory.prisma().update_many(
+            where={"id": search.search_id, "userId": user_id},
             data={
                 "searchQuery": search.search_query or "",
                 "filter": search.filter or [],  # type: ignore
                 "byCreator": search.by_creator or [],
             },
         )
-        return search.search_id
-    else:
-        # Create new search
-        new_search = await prisma.models.BuilderSearchHistory.prisma().create(
-            data={
-                "userId": user_id,
-                "searchQuery": search.search_query or "",
-                "filter": search.filter or [],  # type: ignore
-                "byCreator": search.by_creator or [],
-                **({"organizationId": organization_id} if organization_id else {}),
-            }
-        )
-        return new_search.id
+        if updated:
+            return search.search_id
+    new_search = await prisma.models.BuilderSearchHistory.prisma().create(
+        data={
+            "userId": user_id,
+            "searchQuery": search.search_query or "",
+            "filter": search.filter or [],  # type: ignore
+            "byCreator": search.by_creator or [],
+            **({"organizationId": organization_id} if organization_id else {}),
+        }
+    )
+    return new_search.id
 
 
 async def get_recent_searches(user_id: str, limit: int = 5) -> list[SearchEntry]:
@@ -450,7 +447,7 @@ def _text_search_blocks(
     Scoring:
         - Base: text relevance via _score_primary_fields, plus BLOCK_SCORE_BOOST
           to prioritize blocks over marketplace agents in combined results
-        - +20 if the block has an LlmModel field and the query matches an LLM model name
+        - +20 if the block has an LLMModel field and the query matches an LLM model name
     """
     if not include_blocks and not include_integrations:
         return [], 0, 0
@@ -701,7 +698,7 @@ def _contains_type(annotation: Any, target: type) -> bool:
 
 def _schema_has_llm_model(schema_cls: type[BlockSchema]) -> bool:
     return any(
-        _contains_type(field.annotation, LlmModel)
+        _contains_type(field.annotation, LLMModel)
         for field in schema_cls.model_fields.values()
     )
 

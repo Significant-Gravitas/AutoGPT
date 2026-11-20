@@ -1,12 +1,18 @@
 "use client";
+import { Text } from "@/components/atoms/Text/Text";
 
 import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { CheckIcon, GearSixIcon, PlusIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useOrgTeamSwitcher } from "../../OrgTeamSwitcher/useOrgTeamSwitcher";
+import {
+  PlusSignIcon,
+  Settings02Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function AccountMenuOrgList() {
   const { orgs, teams, activeOrg, activeTeam, switchOrg, switchTeam } =
@@ -24,12 +30,12 @@ export function AccountMenuOrgList() {
   const createOrgButton = (
     <button
       type="button"
-      className="flex w-full items-center gap-2 rounded-lg bg-neutral-100 px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-200"
+      className="flex w-full items-center gap-2 rounded-lg bg-surface-hover px-2 py-1.5 text-body text-foreground-body hover:bg-surface-active"
       onClick={handleCreateOrganization}
       data-testid="create-organization-button"
     >
       <span className="flex h-5 w-5 items-center justify-center">
-        <PlusIcon size={14} />
+        <Icon icon={PlusSignIcon} size={14} />
       </span>
       <span className="flex-1 truncate text-left">Create organization</span>
     </button>
@@ -38,7 +44,7 @@ export function AccountMenuOrgList() {
   if (orgs.length === 0) {
     return (
       <div className="flex flex-col gap-2 p-2">
-        <div className="px-2 py-1 text-sm text-neutral-500">
+        <div className="px-2 py-1 text-body text-foreground-tertiary">
           No organizations yet
         </div>
         {createOrgButton}
@@ -49,28 +55,30 @@ export function AccountMenuOrgList() {
   return (
     <div className="flex flex-col gap-2 p-2">
       <div className="flex flex-col gap-0.5">
-        <span className="px-2 py-1 text-xs font-medium uppercase text-neutral-400">
+        <span className="px-2 py-1 text-caption font-medium text-foreground-subtle uppercase">
           Organizations
         </span>
         {orgs.map((org) => (
           <button
             key={org.id}
             type="button"
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100"
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-body text-foreground-body hover:bg-surface-hover"
             onClick={() => switchOrg(org.id)}
           >
             <Avatar className="h-5 w-5">
               <AvatarImage src={org.avatarUrl ?? ""} alt="" />
-              <AvatarFallback className="text-xs">
+              <AvatarFallback className="text-caption">
                 {org.name.charAt(0)}
               </AvatarFallback>
             </Avatar>
             <span className="flex-1 truncate text-left">{org.name}</span>
             {org.isPersonal && (
-              <span className="text-xs text-neutral-400">Personal</span>
+              <Text variant="small-tight" as="span" tone="subtle">
+                Personal
+              </Text>
             )}
             {org.id === activeOrg?.id && (
-              <CheckIcon size={14} className="text-green-600" />
+              <Icon icon={Tick02Icon} size={14} tone="success" />
             )}
           </button>
         ))}
@@ -79,32 +87,34 @@ export function AccountMenuOrgList() {
 
       {teams.length > 0 && (
         <>
-          <div className="border-t border-neutral-100" />
+          <div className="border-t border-separator" />
           <div className="flex flex-col gap-0.5">
-            <span className="px-2 py-1 text-xs font-medium uppercase text-neutral-400">
+            <span className="px-2 py-1 text-caption font-medium text-foreground-subtle uppercase">
               Teams
             </span>
             {teams.map((team) => (
               <button
                 key={team.id}
                 type="button"
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100"
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-body text-foreground-body hover:bg-surface-hover"
                 onClick={() => switchTeam(team.id)}
               >
                 <span className="flex-1 truncate text-left">{team.name}</span>
                 {team.joinPolicy === "PRIVATE" && (
-                  <span className="text-xs text-neutral-400">Private</span>
+                  <Text variant="small-tight" as="span" tone="subtle">
+                    Private
+                  </Text>
                 )}
                 {team.id === activeTeam?.id && (
-                  <CheckIcon size={14} className="text-green-600" />
+                  <Icon icon={Tick02Icon} size={14} tone="success" />
                 )}
               </button>
             ))}
             <Link
               href="/org/teams"
-              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100"
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-body text-foreground-tertiary hover:bg-surface-hover"
             >
-              <GearSixIcon size={14} />
+              <Icon icon={Settings02Icon} size={14} />
               <span>Manage teams</span>
             </Link>
           </div>

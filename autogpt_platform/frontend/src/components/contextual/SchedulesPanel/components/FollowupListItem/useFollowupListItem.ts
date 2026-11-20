@@ -1,7 +1,7 @@
 import { useDeleteV1DeleteExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
@@ -36,7 +36,7 @@ export function useFollowupListItem({ followup }: Args) {
   );
 
   const recurrenceLabel = followup.cron
-    ? safeHumanizeCron(followup.cron)
+    ? safeHumanizeCronExpression(followup.cron)
     : "Runs once";
 
   function openDelete() {
@@ -89,12 +89,4 @@ export function useFollowupListItem({ followup }: Args) {
     closeView,
     fullMessage: followup.message || "(no message)",
   };
-}
-
-function safeHumanizeCron(cron: string): string {
-  try {
-    return humanizeCronExpression(cron);
-  } catch {
-    return cron;
-  }
 }

@@ -1,9 +1,16 @@
+import { authTokenUnavailableResponse } from "@/lib/auth/server/authTokenUnavailableResponse";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import { NextRequest, NextResponse } from "next/server";
 
 const DEFAULT_TRANSCRIPTION_API_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_TRANSCRIPTION_MODEL = "whisper-1";
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB - Whisper's limit
+// The composer sends its current draft as `context`; it rides upstream as
+// the transcription `prompt` so names already on screen are spelled the
+// same way in the transcript. Whisper only reads the last ~224 tokens of a
+// prompt, so a long draft is trimmed from the front rather than sent whole.
+const MAX_CONTEXT_CHARS = 800;
 
 function getTranscriptionApiBaseUrl(): string {
   return (
@@ -42,7 +49,15 @@ function getExtensionFromMimeType(mimeType: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const token = await getServerAuthToken();
+  let token: string | null;
+  try {
+    token = await getServerAuthToken();
+  } catch (error) {
+    if (error instanceof AuthTokenUnavailableError) {
+      return authTokenUnavailableResponse(error);
+    }
+    throw error;
+  }
 
   if (!token) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -79,6 +94,16 @@ export async function POST(request: NextRequest) {
     const whisperFormData = new FormData();
     whisperFormData.append("file", audioFile, `recording.${ext}`);
     whisperFormData.append("model", getTranscriptionModel());
+
+    const context = formData.get("context");
+    const prompt =
+      typeof context === "string"
+        ? context.trim().slice(-MAX_CONTEXT_CHARS)
+        : "";
+    if (prompt) {
+      whisperFormData.append("prompt", prompt);
+    }
+
     const headers = new Headers();
     if (apiKey) {
       headers.set("Authorization", `Bearer ${apiKey}`);

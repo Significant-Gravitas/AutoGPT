@@ -1,15 +1,16 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
-  FacebookLogo,
-  GithubLogo,
-  Globe,
-  InstagramLogo,
-  LinkedinLogo,
-  TiktokLogo,
-  XLogo,
-  YoutubeLogo,
-} from "@phosphor-icons/react";
+  Facebook02Icon,
+  GithubIcon,
+  Globe02Icon,
+  InstagramIcon,
+  Linkedin01Icon,
+  NewTwitterIcon,
+  TiktokIcon,
+  YoutubeIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface CreatorLinksProps {
   links: string[];
@@ -36,30 +37,30 @@ function getSocialIcon(url: string) {
   try {
     host = new URL(normalizeURL(url)).hostname.toLowerCase();
   } catch {
-    return <Globe className="h-4 w-4" />;
+    return <Icon icon={Globe02Icon} className="h-4 w-4" />;
   }
 
   if (host === "facebook.com" || host.endsWith(".facebook.com")) {
-    return <FacebookLogo className="h-4 w-4" />;
+    return <Icon icon={Facebook02Icon} className="h-4 w-4" />;
   } else if (
     host === "twitter.com" ||
     host.endsWith(".twitter.com") ||
     host === "x.com" ||
     host.endsWith(".x.com")
   ) {
-    return <XLogo className="h-4 w-4" />;
+    return <Icon icon={NewTwitterIcon} className="h-4 w-4" />;
   } else if (host === "instagram.com" || host.endsWith(".instagram.com")) {
-    return <InstagramLogo className="h-4 w-4" />;
+    return <Icon icon={InstagramIcon} className="h-4 w-4" />;
   } else if (host === "linkedin.com" || host.endsWith(".linkedin.com")) {
-    return <LinkedinLogo className="h-4 w-4" />;
+    return <Icon icon={Linkedin01Icon} className="h-4 w-4" />;
   } else if (host === "github.com" || host.endsWith(".github.com")) {
-    return <GithubLogo className="h-4 w-4" />;
+    return <Icon icon={GithubIcon} className="h-4 w-4" />;
   } else if (host === "youtube.com" || host.endsWith(".youtube.com")) {
-    return <YoutubeLogo className="h-4 w-4" />;
+    return <Icon icon={YoutubeIcon} className="h-4 w-4" />;
   } else if (host === "tiktok.com" || host.endsWith(".tiktok.com")) {
-    return <TiktokLogo className="h-4 w-4" />;
+    return <Icon icon={TiktokIcon} className="h-4 w-4" />;
   }
-  return <Globe className="h-4 w-4" />;
+  return <Icon icon={Globe02Icon} className="h-4 w-4" />;
 }
 
 export function CreatorLinks({ links }: CreatorLinksProps) {

@@ -1,10 +1,9 @@
 // Creating this hook, because we are using same saving stuff at multiple places in our builder
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import {
-  useGetV1GetSpecificGraph,
   usePostV1CreateNewGraph,
   usePutV1UpdateGraphVersion,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
@@ -22,6 +21,15 @@ import {
   clearTempFlowId,
   getTempFlowId,
 } from "@/services/builder-draft/draft-service";
+import {
+  describeSaveError,
+  markInvalidFields,
+} from "../helpers/saveGraphError";
+import {
+  getLoadedGraph,
+  isSaveCancelled,
+  waitForLoadedGraph,
+} from "../helpers/waitForLoadedGraph";
 
 export type SaveGraphOptions = {
   showToast?: boolean;
@@ -29,6 +37,7 @@ export type SaveGraphOptions = {
   onError?: (error: any) => void;
 };
 
+/** Needs useFlow mounted, which fills the loadedGraph that saves wait for. */
 export const useSaveGraph = ({
   showToast = true,
   onSuccess,
@@ -45,16 +54,8 @@ export const useSaveGraph = ({
     useShallow((state) => state.setGraphSchemas),
   );
 
-  const { data: graph } = useGetV1GetSpecificGraph(
-    flowID ?? "",
-    flowVersion !== null ? { version: flowVersion } : {},
-    {
-      query: {
-        select: (res) => res.data as GraphModel,
-        enabled: !!flowID,
-      },
-    },
-  );
+  // Saves waiting while the canvas is still loading the workflow they'd save.
+  const [canvasWaits, setCanvasWaits] = useState(0);
 
   const { mutateAsync: createNewGraph, isPending: isCreating } =
     usePostV1CreateNewGraph({
@@ -75,20 +76,11 @@ export const useSaveGraph = ({
           onSuccess?.(data);
           if (showToast) {
             toast({
-              title: "Graph saved successfully",
-              description: "The graph has been saved successfully.",
+              title: "Workflow saved successfully",
+              description: "The workflow has been saved successfully.",
               variant: "default",
             });
           }
-        },
-        onError: (error) => {
-          onError?.(error);
-          toast({
-            title: "Error saving graph",
-            description:
-              (error as any).message ?? "An unexpected error occurred.",
-            variant: "destructive",
-          });
         },
       },
     });
@@ -96,41 +88,44 @@ export const useSaveGraph = ({
   const { mutateAsync: updateGraph, isPending: isUpdating } =
     usePutV1UpdateGraphVersion({
       mutation: {
-        onSuccess: async (response) => {
+        onSuccess: async (response, { graphId }) => {
           const data = (response.data as UpdateGraphResponse).graph;
           setQueryStates({
             flowID: data.id,
             flowVersion: data.version,
           });
 
-          // Clear the draft for this flow after successful save
-          if (data.id) {
-            await draftService.deleteDraft(data.id);
+          // A save can answer with a copy under a new ID; the draft sits under the one sent.
+          for (const id of new Set([graphId, data.id])) {
+            if (id) await draftService.deleteDraft(id);
           }
 
           onSuccess?.(data);
           if (showToast) {
             toast({
-              title: "Graph saved successfully",
-              description: "The graph has been saved successfully.",
+              title: "Workflow saved successfully",
+              description: "The workflow has been saved successfully.",
               variant: "default",
             });
           }
         },
-        onError: (error) => {
-          onError?.(error);
-          toast({
-            title: "Error saving graph",
-            description:
-              (error as any).message ?? "An unexpected error occurred.",
-            variant: "destructive",
-          });
-        },
       },
     });
 
-  const saveGraph = useCallback(
+  const persistGraph = useCallback(
     async (values?: { name?: string; description?: string }) => {
+      // A saved workflow is saved as a new version of the graph the canvas
+      // shows, so while the canvas is still loading the one in the URL (just
+      // after a save, or as the page opens) the save waits for it.
+      let graph = flowID ? getLoadedGraph(flowID, flowVersion) : null;
+      if (flowID && !graph) {
+        setCanvasWaits((count) => count + 1);
+        try {
+          graph = await waitForLoadedGraph(flowID, flowVersion);
+        } finally {
+          setCanvasWaits((count) => count - 1);
+        }
+      }
       const graphNodes = useNodeStore.getState().getBackendNodes();
       const graphLinks = useEdgeStore.getState().getBackendLinks();
 
@@ -140,7 +135,7 @@ export const useSaveGraph = ({
           name:
             values?.name ||
             graph.name ||
-            `New Agent ${new Date().toISOString()}`,
+            `New Workflow ${new Date().toISOString()}`,
           description: values?.description ?? graph.description ?? "",
           nodes: graphNodes,
           links: graphLinks,
@@ -150,7 +145,7 @@ export const useSaveGraph = ({
           if (showToast) {
             toast({
               title: "No changes to save",
-              description: "The graph is the same as the saved version.",
+              description: "The workflow is the same as the saved version.",
               variant: "default",
             });
           }
@@ -169,7 +164,7 @@ export const useSaveGraph = ({
         return graphData;
       } else {
         const data: Graph = {
-          name: values?.name || `New Agent ${new Date().toISOString()}`,
+          name: values?.name || `New Workflow ${new Date().toISOString()}`,
           description: values?.description || "",
           nodes: graphNodes,
           links: graphLinks,
@@ -187,11 +182,39 @@ export const useSaveGraph = ({
         return graphData;
       }
     },
-    [graph, toast, createNewGraph, updateGraph],
+    [
+      flowID,
+      flowVersion,
+      showToast,
+      toast,
+      createNewGraph,
+      updateGraph,
+      setGraphSchemas,
+    ],
+  );
+
+  // Resolves to null when the save fails, and the user has been told why, or
+  // when the builder left the workflow before it loaded.
+  const saveGraph = useCallback(
+    async (values?: { name?: string; description?: string }) => {
+      let saved: GraphModel;
+      try {
+        saved = await persistGraph(values);
+      } catch (error) {
+        if (isSaveCancelled(error)) return null;
+        onError?.(error);
+        markInvalidFields(error);
+        toast(describeSaveError(error));
+        return null;
+      }
+      useNodeStore.getState().clearAllNodeErrors();
+      return saved;
+    },
+    [persistGraph, onError, toast],
   );
 
   return {
     saveGraph,
-    isSaving: isCreating || isUpdating,
+    isSaving: canvasWaits > 0 || isCreating || isUpdating,
   };
 };

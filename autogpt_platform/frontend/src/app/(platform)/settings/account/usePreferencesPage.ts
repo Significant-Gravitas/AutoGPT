@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
   getGetV1GetNotificationPreferencesQueryKey,
   getGetV1GetUserTimezoneQueryKey,
+  postV1ApplyAVolumeKnobChoiceFromABriefingFooterLink,
   useGetV1GetNotificationPreferences,
   useGetV1GetUserTimezone,
   usePostV1UpdateNotificationPreferences,
@@ -19,30 +21,39 @@ import { useAuth } from "@/lib/auth/hooks/useAuth";
 import {
   detectBrowserTimezone,
   dirtyKinds,
-  flagsToPreferenceMap,
   isFormDirty,
-  preferencesToFlags,
-  type NotificationFlags,
-  type NotificationKey,
+  preferencesToSettings,
+  describeFooterChoice,
+  settingsFromFooterLink,
+  type BriefingFrequency,
+  type NotificationSettings,
   type PreferencesFormState,
 } from "./helpers";
 
-const EMPTY_FLAGS: NotificationFlags = {
-  notifyOnAgentRun: false,
-  notifyOnBlockExecutionFailed: false,
-  notifyOnContinuousAgentError: false,
-  notifyOnAgentApproved: false,
-  notifyOnAgentRejected: false,
-  notifyOnZeroBalance: false,
-  notifyOnLowBalance: false,
-  notifyOnDailySummary: false,
-  notifyOnWeeklySummary: false,
-  notifyOnMonthlySummary: false,
+const DEFAULT_SETTINGS: NotificationSettings = {
+  briefingFrequency: "WEEKLY",
+  alertsEnabled: true,
+  storeVerdictsEnabled: true,
 };
 
 export function usePreferencesPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  // The Briefing footer's volume knob links here with
+  // ?f=daily|weekly|monthly|alerts|off. The design calls these "live one-click
+  // links — a volume knob instead of a trapdoor", so the choice is saved on
+  // arrival rather than pre-filling a form the reader still has to submit.
+  //
+  // The choice is only honoured with the signed token the email carried. The
+  // session is the wrong authority here: applying on arrival off a bare ?f=
+  // would let a third party change a signed-in reader's preferences just by
+  // getting them to follow a link. The backend verifies an HMAC that binds the
+  // choice to the recipient, so an unsigned or tampered link does nothing.
+  const searchParams = useSearchParams();
+  const footerChoice = searchParams.get("f");
+  const footerToken = searchParams.get("t");
+  const router = useRouter();
+  const pathname = usePathname();
 
   const preferencesQuery = useGetV1GetNotificationPreferences({
     query: {
@@ -67,28 +78,69 @@ export function usePreferencesPage() {
   const serverTimezone = timezoneQuery.data ?? "not-set";
   const formTimezone =
     serverTimezone !== "not-set" ? serverTimezone : detectBrowserTimezone();
-  const initialFlags = preferencesQuery.data
-    ? preferencesToFlags(preferencesQuery.data)
-    : EMPTY_FLAGS;
+  const initialSettings = preferencesQuery.data
+    ? preferencesToSettings(preferencesQuery.data)
+    : DEFAULT_SETTINGS;
   const initialFormState: PreferencesFormState = {
     timezone: formTimezone,
-    notifications: initialFlags,
+    notifications:
+      settingsFromFooterLink(footerChoice, initialSettings) ?? initialSettings,
   };
   const initialSavedState: PreferencesFormState = {
     timezone: serverTimezone,
-    notifications: initialFlags,
+    notifications: initialSettings,
   };
 
   const [formState, setFormState] = useState<PreferencesFormState>({
     timezone: detectBrowserTimezone(),
-    notifications: EMPTY_FLAGS,
+    notifications: DEFAULT_SETTINGS,
   });
   const [savedState, setSavedState] = useState<PreferencesFormState>({
     timezone: detectBrowserTimezone(),
-    notifications: EMPTY_FLAGS,
+    notifications: DEFAULT_SETTINGS,
   });
   const [isSaving, setIsSaving] = useState(false);
   const hasInitializedFormState = useRef(false);
+  const hasAppliedFooterChoice = useRef(false);
+
+  const updateTimezone = usePostV1UpdateUserTimezone();
+  const updateNotifications = usePostV1UpdateNotificationPreferences();
+
+  async function applyFooterChoice(
+    choice: string,
+    token: string,
+    next: NotificationSettings,
+  ) {
+    // Token-authenticated, not session-authenticated — see the note on
+    // footerChoice above. Goes through the backend proxy: a bare
+    // /api/auth/... fetch lands on the Next.js Better Auth catch-all and 404s.
+    // The generated client throws ApiError on a non-2xx response.
+    await postV1ApplyAVolumeKnobChoiceFromABriefingFooterLink({
+      choice,
+      token,
+    });
+    await queryClient.invalidateQueries({
+      queryKey: getGetV1GetNotificationPreferencesQueryKey(),
+    });
+    setFormState((prev) => ({ ...prev, notifications: next }));
+    setSavedState((prev) => ({ ...prev, notifications: next }));
+  }
+
+  async function applyNotificationSettings(next: NotificationSettings) {
+    await updateNotifications.mutateAsync({
+      data: {
+        email: user?.email ?? "",
+        briefing_frequency: next.briefingFrequency,
+        alerts_enabled: next.alertsEnabled,
+        store_verdicts_enabled: next.storeVerdictsEnabled,
+      },
+    });
+    await queryClient.invalidateQueries({
+      queryKey: getGetV1GetNotificationPreferencesQueryKey(),
+    });
+    setFormState((prev) => ({ ...prev, notifications: next }));
+    setSavedState((prev) => ({ ...prev, notifications: next }));
+  }
 
   useEffect(
     function syncFormStateOnce() {
@@ -107,6 +159,37 @@ export function usePreferencesPage() {
     ],
   );
 
+  useEffect(
+    function applyFooterChoiceOnArrival() {
+      if (hasAppliedFooterChoice.current) return;
+      if (!hasInitializedFormState.current) return;
+      if (!footerChoice || !footerToken) return;
+
+      const chosen = settingsFromFooterLink(footerChoice, initialSettings);
+      hasAppliedFooterChoice.current = true;
+      router.replace(pathname);
+
+      if (!chosen) return;
+
+      applyFooterChoice(footerChoice, footerToken, chosen)
+        .then(() => {
+          toast({
+            title: describeFooterChoice(footerChoice),
+            variant: "success",
+          });
+        })
+        .catch(() => {
+          // Leave the choice in the form so the reader can still hit Save.
+          toast({
+            title: "Couldn't update your email frequency",
+            description: "Your choice is selected below — press Save to retry.",
+            variant: "destructive",
+          });
+        });
+    },
+    [footerChoice, footerToken, initialSettings, pathname, router],
+  );
+
   const dirty = isFormDirty(savedState, formState);
   const dirtyParts = dirtyKinds(savedState, formState);
 
@@ -114,27 +197,30 @@ export function usePreferencesPage() {
     setFormState((prev) => ({ ...prev, timezone: value }));
   }
 
-  function toggleNotification(key: NotificationKey, value: boolean) {
+  function setBriefingFrequency(value: BriefingFrequency) {
     setFormState((prev) => ({
       ...prev,
-      notifications: { ...prev.notifications, [key]: value },
+      notifications: { ...prev.notifications, briefingFrequency: value },
     }));
   }
 
-  function setAllInGroup(keys: NotificationKey[], value: boolean) {
-    setFormState((prev) => {
-      const next = { ...prev.notifications };
-      for (const key of keys) next[key] = value;
-      return { ...prev, notifications: next };
-    });
+  function setAlertsEnabled(value: boolean) {
+    setFormState((prev) => ({
+      ...prev,
+      notifications: { ...prev.notifications, alertsEnabled: value },
+    }));
+  }
+
+  function setStoreVerdictsEnabled(value: boolean) {
+    setFormState((prev) => ({
+      ...prev,
+      notifications: { ...prev.notifications, storeVerdictsEnabled: value },
+    }));
   }
 
   function discardChanges() {
     setFormState(savedState);
   }
-
-  const updateTimezone = usePostV1UpdateUserTimezone();
-  const updateNotifications = usePostV1UpdateNotificationPreferences();
 
   async function savePreferences() {
     if (!dirty || isSaving || !user) return;
@@ -171,20 +257,7 @@ export function usePreferencesPage() {
 
     if (partsAtSubmit.notifications) {
       try {
-        await updateNotifications.mutateAsync({
-          data: {
-            email: user.email ?? "",
-            preferences: flagsToPreferenceMap(snapshot.notifications),
-            daily_limit: 0,
-          },
-        });
-        await queryClient.invalidateQueries({
-          queryKey: getGetV1GetNotificationPreferencesQueryKey(),
-        });
-        setSavedState((prev) => ({
-          ...prev,
-          notifications: snapshot.notifications,
-        }));
+        await applyNotificationSettings(snapshot.notifications);
         notificationsSaved = true;
       } catch (err) {
         failures.push(
@@ -227,8 +300,9 @@ export function usePreferencesPage() {
     dirty,
     isSaving,
     setTimezone,
-    toggleNotification,
-    setAllInGroup,
+    setBriefingFrequency,
+    setAlertsEnabled,
+    setStoreVerdictsEnabled,
     discardChanges,
     savePreferences,
   };

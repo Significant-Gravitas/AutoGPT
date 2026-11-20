@@ -1,0 +1,467 @@
+"""Pending-approval rows for gated tool calls, on the platform's HITL rails.
+
+``run_block`` already parks sensitive block executions in ``PendingHumanReview``
+under a ``copilot-session-<id>`` key, and the chat renders every such row via
+``extractGraphExecId`` -> ``CopilotPendingReviews``. Writing the same shape for
+a tool call inherits the Home "Needs You" row, the awaiting-review alert and
+the approve/reject endpoint; the payload carries what the approval card reads.
+"""
+
+import hashlib
+import json
+import logging
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Literal
+
+from prisma.enums import ReviewStatus
+from pydantic import BaseModel
+from pydantic_core import to_jsonable_python
+
+from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.blocks._preview import ChangePreview
+from backend.copilot.constants import (
+    COPILOT_NODE_EXEC_ID_SEPARATOR,
+    COPILOT_NODE_PREFIX,
+)
+from backend.copilot.model import ChatSession
+
+# The shared-chat redactor's key walk. It leaves strings as written, so the
+# card shows what the call will send.
+from backend.copilot.sharing.redaction import _redact_secret_keys
+from backend.data.db_accessors import review_db
+
+from .classifier import DecidedBy
+from .headline import Headline, headline_for
+from .policy import DEFAULT_MODE, PARKABLE, effect_for, is_irreversible
+from .references import Reference, listed_ids, resolve_references
+
+if TYPE_CHECKING:
+    from .subject import Subject as GateSubject
+
+logger = logging.getLogger(__name__)
+
+# At least the largest call the supervisor judges whole (25,650 bytes beside a
+# short request, classifier._fit), so a card it opens shows the call entire.
+_MAX_ARG_CHARS = 26_000
+CARD_ARGUMENT_CHARS = _MAX_ARG_CHARS
+
+GATE_NODE_PREFIX = f"{COPILOT_NODE_PREFIX}gate-"
+# Where a held call's card carries the generation of the park that opened it.
+HELD_GENERATION = "held_generation"
+
+ReasonKind = Literal["mode", "subject", "supervisor", "rule", "spend", "content"]
+
+
+class Subject(BaseModel):
+    kind: str = "tool"
+    key: str
+    name: str
+    effect: str
+    irreversible: bool = False
+    # A block's fields are labelled from its own input schema.
+    block_id: str | None = None
+
+
+class FieldLabel(BaseModel):
+    key: str
+    label: str
+    # How the card words the value, from the schema's ``format``.
+    format: str | None = None
+
+
+class WorkflowStep(BaseModel):
+    """The workflow step a card answers: its row is the step's own review."""
+
+    graph_exec_id: str
+    node_exec_id: str
+    graph_id: str
+    graph_version: int
+    name: str
+
+
+class GateReviewPayload(BaseModel):
+    """What the approval card, Home and the channels render: never the raw call."""
+
+    tool: str
+    arguments: dict[str, Any]
+    clipped: list[str] = []
+    fields: list[FieldLabel] = []
+    # What the call's ids name, as they were when it was held.
+    references: list[Reference] = []
+    # Ids per argument before clipping, so a long list still says "+N more".
+    reference_totals: dict[str, int] = {}
+    tool_call_id: str = ""
+    turn: int = 0
+    mode: str | None = None
+    subject: Subject
+    reason: str = ""
+    reason_kind: ReasonKind = "mode"
+    # Which supervisor stage decided a ``supervisor`` card.
+    decided_by: DecidedBy | None = None
+    # The rules this card can set on its subject, a bare tool included.
+    chat_rules_allowed: list[Literal["allow", "judge"]] = []
+    headline: Headline
+    # A money card's estimate, spend so far and ceiling.
+    spend: dict[str, int] | None = None
+    workflow: WorkflowStep | None = None
+    # What the block will create or change in a connected account; the card
+    # shows it in place of the arguments it covers.
+    preview: ChangePreview | None = None
+
+
+# An approval must not run a call long after the user gave it; the answered
+# card's turn normally runs it within seconds.
+APPROVAL_TTL = timedelta(hours=1)
+_SPEND = "spend"
+
+
+def node_id_for(tool_name: str) -> str:
+    return f"{GATE_NODE_PREFIX}{tool_name}"
+
+
+def review_id_for(
+    session_id: str, user_id: str, tool_name: str, args: dict[str, Any]
+) -> str:
+    """Bind an approval to this call, in this session, for this user.
+
+    Session and user are inside the hash because ``get_or_create_human_review``
+    upserts on ``nodeExecId`` alone, with no ``userId`` in the where clause —
+    two sessions issuing ``write_workspace_file(filename="report.md")`` would
+    otherwise share one row, and across users the second caller would upsert
+    onto the first's row and then be unable to read it back, wedging the gate.
+    """
+    # As a held call keeps them: its arguments come back from Redis as JSON
+    # (a datetime as ISO text, a set as a list), and its replay must name the
+    # same approval. For plain JSON arguments this must stay exactly
+    # json.dumps(args, sort_keys=True), or every open card's id would change.
+    canonical = json.dumps(to_jsonable_python(args, fallback=str), sort_keys=True)
+    digest = hashlib.sha256(
+        "\x00".join((session_id, user_id, tool_name, canonical)).encode()
+    ).hexdigest()[:16]
+    return f"{node_id_for(tool_name)}{COPILOT_NODE_EXEC_ID_SEPARATOR}{digest}"
+
+
+def review_payload(
+    tool_name: str,
+    args: dict[str, Any],
+    subject: "GateSubject | None" = None,
+    spend: dict[str, int] | None = None,
+    *,
+    reason: str = "",
+    reason_kind: ReasonKind = "mode",
+    decided_by: DecidedBy | None = None,
+    mode: str | None = None,
+    tool_call_id: str = "",
+    turn: int = 0,
+    references: list[Reference] | None = None,
+    workflow: WorkflowStep | None = None,
+) -> dict[str, Any]:
+    """The subject is kept as decided when the card opened: what the user saw,
+    not a recomputation over a tree that may have moved since."""
+    # A block's card lists the block's own inputs, each clipped on its own.
+    if subject is not None and subject.key.startswith("block:"):
+        block_input = args.get("input")
+        args = block_input if isinstance(block_input, dict) else {}
+    redacted = _redact_secret_keys(args)
+    shown = _clip_all(redacted, _MAX_ARG_CHARS)
+    return GateReviewPayload(
+        tool=tool_name,
+        arguments=shown,
+        clipped=[key for key in shown if shown[key] is not redacted[key]],
+        fields=_field_labels(tool_name, shown),
+        references=references or [],
+        reference_totals={
+            key: len(listed_ids(args.get(key)))
+            for key in {ref.key for ref in references or []}
+        },
+        tool_call_id=tool_call_id,
+        turn=turn,
+        mode=mode,
+        subject=_payload_subject(tool_name, args, subject),
+        reason=" ".join(reason.split())[:300],
+        reason_kind=reason_kind,
+        decided_by=decided_by,
+        chat_rules_allowed=_rules_offered(tool_name, subject, spend, reason_kind),
+        headline=_headline(tool_name, args, subject, references),
+        spend=spend,
+        workflow=workflow,
+        preview=subject.preview if subject is not None else None,
+    ).model_dump()
+
+
+def _headline(
+    tool_name: str,
+    args: dict[str, Any],
+    subject: "GateSubject | None",
+    references: list[Reference] | None,
+) -> Headline:
+    if subject is None:
+        return headline_for(tool_name, args, references)
+    if subject.preview is not None:
+        return Headline(ask=subject.preview.ask, object=subject.preview.object)
+    return Headline(ask="Run", object=subject.name)
+
+
+def is_spend_card(review: PendingHumanReviewModel) -> bool:
+    """The card asked because the turn was over its spend ceiling."""
+    return isinstance(review.payload, dict) and review.payload.get(_SPEND) is not None
+
+
+async def find_decision(
+    review_id: str, user_id: str, session_id: str
+) -> ReviewStatus | None:
+    """Status of this exact approval, or None if there isn't one.
+
+    Deliberately does NOT consult ``check_approval``: that also matches the
+    ``auto_approve_{graph_exec_id}_{node_id}`` records, which ignore arguments
+    entirely and never expire, so one "auto-approve future" toggle on one
+    ``bash_exec`` card would clear every later ``bash_exec`` in the session —
+    including ones an injected page dictates, and before the taint rule is
+    ever reached.
+    """
+    review = await find_review(review_id, user_id, session_id)
+    return review.status if review else None
+
+
+async def find_review(
+    review_id: str, user_id: str, session_id: str
+) -> PendingHumanReviewModel | None:
+    """This session's row, or None; an approval past its TTL is burnt and None."""
+    try:
+        reviews = await review_db().get_reviews_by_node_exec_ids([review_id], user_id)
+    except Exception:
+        logger.warning(f"Gate could not read review {review_id}", exc_info=True)
+        return None
+    review = reviews.get(review_id)
+    if review is None or review.session_id != session_id:
+        return None
+    approved_at = review.reviewed_at or review.updated_at or review.created_at
+    if (
+        review.status == ReviewStatus.APPROVED
+        and datetime.now(UTC) - approved_at > APPROVAL_TTL
+    ):
+        await discard(review, user_id)
+        return None
+    return review
+
+
+async def consume(review: PendingHumanReviewModel, user_id: str) -> bool:
+    """Spend the card as it was read. The delete IS the mutex.
+
+    Parallel dispatch is deliberate (every MCP tool is ``readOnlyHint=True``),
+    so two identical calls can both read APPROVED; only the one whose delete
+    removes the row may proceed. The delete matches the row's status and
+    creation time as read: once a card is spent, the same call proposed again
+    opens a fresh one under the same id, and a reader still holding the old
+    approval must not take the new card in its place. Raises when the delete
+    fails, so no caller runs on an approval it may not have taken.
+    """
+    deleted = await review_db().delete_review_as_read(
+        review.node_exec_id, user_id, review.status, review.created_at
+    )
+    return deleted == 1
+
+
+async def discard(review: PendingHumanReviewModel, user_id: str) -> None:
+    """:func:`consume` a card nothing runs on, such as a rejection or a lapsed
+    approval. A failed delete leaves the card for the next look."""
+    try:
+        await consume(review, user_id)
+    except Exception:
+        logger.warning(
+            f"Gate could not remove review {review.node_exec_id}", exc_info=True
+        )
+
+
+async def close(review_id: str, user_id: str) -> None:
+    """Remove a card whatever its state. Only for cards nothing runs on whose
+    id is never reused: a workflow step's card, once its step has an answer."""
+    try:
+        await review_db().delete_review_by_node_exec_id(review_id, user_id)
+    except Exception:
+        logger.warning(f"Gate could not close review {review_id}", exc_info=True)
+
+
+async def open_review(
+    review_id: str,
+    user_id: str,
+    session: ChatSession,
+    tool_name: str,
+    args: dict[str, Any],
+    reason: str,
+    subject: "GateSubject | None" = None,
+    spend: dict[str, int] | None = None,
+    reason_kind: ReasonKind = "mode",
+    tool_call_id: str = "",
+    decided_by: DecidedBy | None = None,
+    generation: str | None = None,
+) -> Headline | None:
+    """Park the call for approval; the card's headline, or None if nothing was
+    recorded. ``generation`` is stamped on a new card, as its held call has it."""
+    try:
+        references = await resolve_references(tool_name, args, user_id, session)
+        payload = review_payload(
+            tool_name,
+            args,
+            subject,
+            spend,
+            reason=reason,
+            reason_kind=reason_kind,
+            decided_by=decided_by,
+            mode=session.metadata.autopilot_mode or DEFAULT_MODE,
+            tool_call_id=tool_call_id,
+            turn=turn_of(session),
+            references=references,
+        )
+    except Exception:
+        logger.warning(
+            f"Gate could not build a review for {tool_name} in session "
+            f"{session.session_id}",
+            exc_info=True,
+        )
+        return None
+    headline = Headline.model_validate(payload["headline"])
+    if generation is not None:
+        payload[HELD_GENERATION] = generation
+    if not await open_review_row(review_id, user_id, session, payload, headline.text):
+        return None
+    return headline
+
+
+async def open_review_row(
+    review_id: str,
+    user_id: str,
+    session: ChatSession,
+    payload: dict[str, Any],
+    message: str,
+) -> bool:
+    try:
+        await review_db().get_or_create_human_review(
+            user_id=user_id,
+            node_exec_id=review_id,
+            chat_session_id=session.session_id,
+            input_data=payload,
+            message=message,
+            editable=False,
+            organization_id=session.organization_id,
+            team_id=session.team_id,
+        )
+        return True
+    except Exception:
+        logger.warning(
+            f"Gate could not open review {review_id} in session "
+            f"{session.session_id}",
+            exc_info=True,
+        )
+        return False
+
+
+def turn_of(session: ChatSession) -> int:
+    return sum(1 for m in session.messages if m.role == "user")
+
+
+def payload_headline(payload: dict[str, Any]) -> str:
+    return Headline.model_validate(payload["headline"]).text
+
+
+def _rules_offered(
+    tool_name: str,
+    subject: "GateSubject | None",
+    spend: dict[str, int] | None,
+    reason_kind: ReasonKind,
+) -> list[Literal["allow", "judge"]]:
+    # A money card or a held read rules on nothing: neither consults a rule.
+    if spend is not None or reason_kind == "content":
+        return []
+    if (subject.effect if subject else effect_for(tool_name)) not in PARKABLE:
+        return []
+    # The gate ignores a judge rule on a schedule.
+    return (
+        ["allow"] if subject is not None and subject.schedules else ["allow", "judge"]
+    )
+
+
+def _payload_subject(
+    tool_name: str, args: dict[str, Any], subject: "GateSubject | None"
+) -> Subject:
+    if subject is None:
+        # A rule on a bare tool covers every call of it, so it is named by the
+        # tool's action rather than this call's object.
+        return Subject(
+            key=tool_name,
+            name=headline_for(tool_name, {}).ask,
+            effect=effect_for(tool_name).value,
+            irreversible=is_irreversible(tool_name, args),
+        )
+    # ``block:<id>`` or ``workflow:<graph id>``.
+    kind, _, ident = subject.key.partition(":")
+    return Subject(
+        kind=kind or "tool",
+        key=subject.key,
+        name=subject.name,
+        effect=subject.effect.value,
+        irreversible=subject.irreversible,
+        block_id=ident if kind == "block" else None,
+    )
+
+
+def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:
+    """Labels, formats and order from the tool's own input schema, required first."""
+    from backend.copilot.tools import get_tool  # imports the gate
+
+    tool = get_tool(tool_name)
+    schema = tool.parameters if tool else {}
+    props = schema.get("properties") or {}
+    required = [k for k in schema.get("required") or [] if k in props]
+    order = required + [k for k in props if k not in required]
+    order += [k for k in shown if k not in order]
+    return [
+        FieldLabel(
+            key=key,
+            label=(props.get(key) or {}).get("title") or _humanize(key),
+            format=(props.get(key) or {}).get("format"),
+        )
+        for key in order
+        if key in shown
+    ]
+
+
+def _humanize(key: str) -> str:
+    # agent_ids -> "Workflows": the card shows names there, not ids, and users
+    # know a graph as a workflow.
+    plural = key.endswith("_ids")
+    words = key.removesuffix("_ids").removesuffix("_id").replace("_", " ").strip()
+    words = words.replace("agent", "workflow").replace("graph", "workflow")
+    words += "s" if plural else ""
+    return words[:1].upper() + words[1:]
+
+
+def card_shows_whole(args: dict[str, Any]) -> bool:
+    """Whether a card would show every one of these arguments without
+    cutting it short, as ``_payload`` builds it."""
+    redacted = _redact_secret_keys(args)
+    shown = _clip_all(redacted, _MAX_ARG_CHARS)
+    return all(shown[key] is redacted[key] for key in shown)
+
+
+def _clip_all(values: dict[str, Any], budget: int) -> dict[str, Any]:
+    # Short values take what they need and the long ones share the rest, so a
+    # long first argument cannot push the one that matters off the card.
+    shown: dict[str, Any] = {}
+    left = len(values)
+    for key in sorted(values, key=lambda k: len(_text(values[k]))):
+        share = max(200, budget // left)
+        shown[key] = _clip(values[key], share)
+        budget -= min(len(_text(values[key])), share)
+        left -= 1
+    return {key: shown[key] for key in values}
+
+
+def _clip(value: Any, limit: int) -> Any:
+    text = _text(value)
+    return value if len(text) <= limit else text[:limit] + "…"
+
+
+def _text(value: Any) -> str:
+    # A string is cut as its own text; its JSON form reaches the card escaped.
+    return value if isinstance(value, str) else json.dumps(value, default=str)

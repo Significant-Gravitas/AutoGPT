@@ -1,7 +1,7 @@
 import { FieldProps, getFirstMatchingOption, mergeSchemas } from "@rjsf/utils";
 import { useRef, useState } from "react";
-import validator from "@rjsf/validator-ajv8";
-import { getDefaultTypeIndex } from "./helpers";
+import { customValidator } from "../../utils/custom-validator";
+import { getDefaultTypeIndex, stripEmptyProperties } from "./helpers";
 import { cleanUpHandleId } from "../../helpers";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 
@@ -12,9 +12,9 @@ export const useAnyOfField = (props: FieldProps) => {
   const getInitialOption = () => {
     if (formData !== undefined && formData !== null) {
       const option = getFirstMatchingOption(
-        validator,
+        customValidator,
         formData,
-        options,
+        stripEmptyProperties(options),
         schema,
       );
       return option !== undefined ? option : getDefaultTypeIndex(options);

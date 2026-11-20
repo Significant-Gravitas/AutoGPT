@@ -1,14 +1,48 @@
 import datetime
 import enum
-from typing import TYPE_CHECKING, List, Self
+from typing import TYPE_CHECKING, Annotated, List, Self
 
 import prisma.enums
 import pydantic
 
 from backend.util.models import Pagination
+from backend.util.text_limits import (
+    MAX_CRON_LENGTH,
+    MAX_DESCRIPTION_LENGTH,
+    MAX_ID_LENGTH,
+    MAX_INSTRUCTIONS_LENGTH,
+    MAX_LIST_ENTRIES,
+    MAX_NAME_LENGTH,
+    MAX_SUMMARY_LENGTH,
+    MAX_URL_LENGTH,
+    IDText,
+    NameText,
+    URLText,
+)
+
+from .categories import validate_canonical_categories
 
 if TYPE_CHECKING:
     import prisma.models
+
+
+SUB_HEADING_MAX_LENGTH = 100
+
+# Surfaced as a one-line card subtitle, so it must be a short CTA rather than a
+# description; whitespace-only is stripped to "" and rejected as empty.
+SubHeading = Annotated[
+    str,
+    pydantic.StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=SUB_HEADING_MAX_LENGTH
+    ),
+    pydantic.Field(
+        description=(
+            "Short call-to-action line describing what the agent does for the "
+            "user, e.g. 'Find decision-makers at any company in seconds'. "
+            f"Required; max {SUB_HEADING_MAX_LENGTH} characters."
+        ),
+    ),
+]
 
 
 class ChangelogEntry(pydantic.BaseModel):
@@ -129,19 +163,28 @@ class StoreAgentDetails(pydantic.BaseModel):
         )
 
 
-class Profile(pydantic.BaseModel):
+class ProfileUpdateRequest(pydantic.BaseModel):
     """Marketplace user profile (only attributes that the user can update)"""
+
+    username: str | None = pydantic.Field(default=None, max_length=MAX_NAME_LENGTH)
+    name: str | None = pydantic.Field(default=None, max_length=MAX_NAME_LENGTH)
+    description: str | None = pydantic.Field(
+        default=None, max_length=MAX_DESCRIPTION_LENGTH
+    )
+    avatar_url: str | None = pydantic.Field(default=None, max_length=MAX_URL_LENGTH)
+    links: list[URLText] | None = pydantic.Field(
+        default=None, max_length=MAX_LIST_ENTRIES
+    )
+
+
+class ProfileDetails(pydantic.BaseModel):
+    """Marketplace user profile (including read-only fields)"""
 
     username: str
     name: str
     description: str
     avatar_url: str | None
     links: list[str]
-
-
-class ProfileDetails(Profile):
-    """Marketplace user profile (including read-only fields)"""
-
     is_featured: bool
 
     @classmethod
@@ -301,37 +344,70 @@ class StoreSubmissionsResponse(pydantic.BaseModel):
     stats: SubmissionStats
 
 
+class StoreCategoryInfo(pydantic.BaseModel):
+    value: str
+    label: str
+    description: str
+
+
 class StoreSubmissionRequest(pydantic.BaseModel):
     graph_id: str = pydantic.Field(
-        ..., min_length=1, description="Graph ID cannot be empty"
+        ...,
+        min_length=1,
+        max_length=MAX_ID_LENGTH,
+        description="Graph ID cannot be empty",
     )
     graph_version: int = pydantic.Field(
         ..., gt=0, description="Graph version must be greater than 0"
     )
-    slug: str
-    name: str
-    sub_heading: str
-    video_url: str | None = None
-    agent_output_demo_url: str | None = None
-    image_urls: list[str] = []
-    description: str = ""
-    instructions: str | None = None
-    categories: list[str] = []
-    changes_summary: str | None = None
-    recommended_schedule_cron: str | None = None
+    slug: str = pydantic.Field(..., max_length=MAX_NAME_LENGTH)
+    name: str = pydantic.Field(..., max_length=MAX_NAME_LENGTH)
+    sub_heading: SubHeading
+    video_url: str | None = pydantic.Field(default=None, max_length=MAX_URL_LENGTH)
+    agent_output_demo_url: str | None = pydantic.Field(
+        default=None, max_length=MAX_URL_LENGTH
+    )
+    image_urls: list[URLText] = pydantic.Field(default=[], max_length=MAX_LIST_ENTRIES)
+    description: str = pydantic.Field(default="", max_length=MAX_DESCRIPTION_LENGTH)
+    instructions: str | None = pydantic.Field(
+        default=None, max_length=MAX_INSTRUCTIONS_LENGTH
+    )
+    categories: list[NameText] = pydantic.Field(..., max_length=MAX_LIST_ENTRIES)
+    changes_summary: str | None = pydantic.Field(
+        default=None, max_length=MAX_SUMMARY_LENGTH
+    )
+    recommended_schedule_cron: str | None = pydantic.Field(
+        None, max_length=MAX_CRON_LENGTH
+    )
+
+    _canonical_categories = pydantic.field_validator("categories")(
+        validate_canonical_categories
+    )
 
 
 class StoreSubmissionEditRequest(pydantic.BaseModel):
-    name: str
-    sub_heading: str
-    video_url: str | None = None
-    agent_output_demo_url: str | None = None
-    image_urls: list[str] = []
-    description: str = ""
-    instructions: str | None = None
-    categories: list[str] = []
-    changes_summary: str | None = None
-    recommended_schedule_cron: str | None = None
+    name: str = pydantic.Field(..., max_length=MAX_NAME_LENGTH)
+    sub_heading: SubHeading
+    video_url: str | None = pydantic.Field(default=None, max_length=MAX_URL_LENGTH)
+    agent_output_demo_url: str | None = pydantic.Field(
+        default=None, max_length=MAX_URL_LENGTH
+    )
+    image_urls: list[URLText] = pydantic.Field(default=[], max_length=MAX_LIST_ENTRIES)
+    description: str = pydantic.Field(default="", max_length=MAX_DESCRIPTION_LENGTH)
+    instructions: str | None = pydantic.Field(
+        default=None, max_length=MAX_INSTRUCTIONS_LENGTH
+    )
+    categories: list[NameText] = pydantic.Field(..., max_length=MAX_LIST_ENTRIES)
+    changes_summary: str | None = pydantic.Field(
+        default=None, max_length=MAX_SUMMARY_LENGTH
+    )
+    recommended_schedule_cron: str | None = pydantic.Field(
+        None, max_length=MAX_CRON_LENGTH
+    )
+
+    _canonical_categories = pydantic.field_validator("categories")(
+        validate_canonical_categories
+    )
 
 
 class StoreSubmissionAdminView(StoreSubmission):
@@ -378,16 +454,22 @@ class StoreReview(pydantic.BaseModel):
 
 
 class StoreReviewCreate(pydantic.BaseModel):
-    store_listing_version_id: str
-    score: int
-    comments: str | None = None
+    store_listing_version_id: IDText
+    score: int = pydantic.Field(ge=1, le=5, description="Star rating, 1 to 5")
+    comments: str | None = pydantic.Field(
+        default=None, max_length=MAX_DESCRIPTION_LENGTH
+    )
 
 
 class ReviewSubmissionRequest(pydantic.BaseModel):
-    store_listing_version_id: str
+    store_listing_version_id: IDText
     is_approved: bool
-    comments: str  # External comments visible to creator
-    internal_comments: str | None = None  # Private admin notes
+    # External comments visible to creator
+    comments: str = pydantic.Field(..., max_length=MAX_DESCRIPTION_LENGTH)
+    # Private admin notes
+    internal_comments: str | None = pydantic.Field(
+        None, max_length=MAX_DESCRIPTION_LENGTH
+    )
 
 
 class UnifiedSearchResult(pydantic.BaseModel):

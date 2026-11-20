@@ -6,13 +6,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
-import { CaretRightIcon } from "@phosphor-icons/react";
 import * as React from "react";
 import { AccountMenuOrgList } from "./AccountMenuOrgList";
 import { InitialAvatar } from "./InitialAvatar";
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   userName?: string;
+  userHandle?: string;
   userEmail?: string;
   avatarSrc?: string;
   isLoading?: boolean;
@@ -20,6 +22,7 @@ interface Props {
 
 export function AccountMenuHeader({
   userName,
+  userHandle,
   userEmail,
   avatarSrc,
   isLoading = false,
@@ -31,12 +34,17 @@ export function AccountMenuHeader({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left outline-none transition-colors data-[state=open]:bg-neutral-100 hover:bg-neutral-100 focus-visible:bg-neutral-100"
+          className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors outline-none hover:bg-surface-hover focus-visible:bg-surface-hover data-[state=open]:bg-surface-hover"
           aria-controls={popupId}
           aria-haspopup="true"
           data-testid="account-menu-org-trigger"
         >
-          <InitialAvatar src={avatarSrc} name={userName} className="h-8 w-8" />
+          <InitialAvatar
+            src={avatarSrc}
+            name={userName}
+            username={userHandle}
+            className="h-8 w-8"
+          />
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             {isLoading || !userName || !userEmail ? (
               <>
@@ -45,22 +53,23 @@ export function AccountMenuHeader({
               </>
             ) : (
               <>
-                <span className="truncate text-sm font-semibold leading-tight text-neutral-900">
+                <span className="truncate text-body leading-tight font-semibold text-foreground-strong">
                   {userName}
                 </span>
                 <span
                   data-testid="account-menu-user-email"
-                  className="truncate text-sm leading-tight text-neutral-700"
+                  className="truncate text-body leading-tight text-foreground-body"
                 >
                   {userEmail}
                 </span>
               </>
             )}
           </div>
-          <CaretRightIcon
-            className="shrink-0 text-neutral-700"
+          <Icon
+            icon={ArrowRight01Icon}
+            tone="body"
+            className="shrink-0"
             size={16}
-            weight="regular"
             aria-hidden="true"
           />
         </button>
@@ -71,7 +80,7 @@ export function AccountMenuHeader({
         side="right"
         align="start"
         sideOffset={12}
-        className="w-64 rounded-2xl border border-neutral-200 p-0 shadow-lg"
+        className="w-64 rounded-2xl border border-border-base p-0 shadow-lg"
         data-testid="account-menu-org-popover"
       >
         <AccountMenuOrgList />

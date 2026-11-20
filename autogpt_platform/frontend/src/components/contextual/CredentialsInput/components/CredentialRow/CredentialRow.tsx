@@ -6,7 +6,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
-import { CaretDownIcon, DotsThreeVertical } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { CredentialsType } from "@/lib/autogpt-server-api/types";
 import {
@@ -17,6 +16,8 @@ import {
   MASKED_KEY_LENGTH,
   providerIcons,
 } from "../../helpers";
+import { ArrowDown01Icon, MoreVerticalIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type CredentialRowProps = {
   credential: {
@@ -85,7 +86,7 @@ export function CredentialRow({
     <div
       ref={containerRef}
       className={cn(
-        "flex min-w-[20rem] items-center gap-3 rounded-medium border border-zinc-200 bg-white p-3 transition-colors",
+        "flex min-w-[20rem] items-center gap-3 rounded-medium border border-border-base bg-surface p-3 transition-colors",
         asSelectTrigger && isNodeVariant
           ? "min-w-0 flex-1 overflow-hidden border-0 bg-transparent"
           : asSelectTrigger
@@ -93,18 +94,15 @@ export function CredentialRow({
             : readOnly
               ? "w-fit"
               : "",
+        (showCaret || asSelectTrigger) && "cursor-pointer",
+        readOnly && !showCaret && !asSelectTrigger && "cursor-default",
       )}
       onClick={readOnly || showCaret || asSelectTrigger ? undefined : onSelect}
-      style={
-        readOnly || showCaret || asSelectTrigger
-          ? { cursor: showCaret || asSelectTrigger ? "pointer" : "default" }
-          : undefined
-      }
     >
-      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900">
-        <ProviderIcon className="h-3 w-3 text-white" />
+      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action-hover">
+        <ProviderIcon className="h-3 w-3 text-action-foreground" />
       </div>
-      <TypeIcon className="h-5 w-5 shrink-0 text-zinc-800" />
+      <TypeIcon className="h-5 w-5 shrink-0 text-foreground-emphasis" />
       <div
         className={cn(
           "relative flex min-w-0 flex-1 flex-nowrap items-center gap-4",
@@ -114,15 +112,16 @@ export function CredentialRow({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Text
             variant="body"
+            tracking="tight"
             className={cn(
-              "min-w-0 shrink tracking-tight",
+              "min-w-0 shrink",
               isNodeVariant ? "truncate" : "line-clamp-1 text-ellipsis",
             )}
           >
             {getCredentialDisplayName(credential, displayName)}
           </Text>
           {isRealCredentialType && (
-            <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[0.625rem] font-medium leading-tight text-zinc-500">
+            <span className="shrink-0 rounded bg-surface-hover px-1.5 py-0.5 text-tiny leading-tight font-medium text-foreground-tertiary">
               {getCredentialTypeLabel(credType)}
             </span>
           )}
@@ -130,8 +129,10 @@ export function CredentialRow({
         {!(asSelectTrigger && isNodeVariant) && showMaskedKey && (
           <Text
             variant="large"
+            mono
+            tracking="tight"
             className={cn(
-              "absolute top-[65%] -translate-y-1/2 overflow-hidden whitespace-nowrap font-mono tracking-tight",
+              "absolute top-[65%] -translate-y-1/2 overflow-hidden whitespace-nowrap",
               asSelectTrigger ? "right-0" : "right-6",
             )}
           >
@@ -140,16 +141,20 @@ export function CredentialRow({
         )}
       </div>
       {(showCaret || (asSelectTrigger && !readOnly)) && (
-        <CaretDownIcon className="h-4 w-4 shrink-0 text-gray-400" />
+        <Icon
+          icon={ArrowDown01Icon}
+          tone="subtle"
+          className="h-4 w-4 shrink-0"
+        />
       )}
       {!readOnly && !showCaret && !asSelectTrigger && onDelete && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
+              className="ml-auto shrink-0 rounded p-1 hover:bg-surface-hover"
               onClick={(e) => e.stopPropagation()}
             >
-              <DotsThreeVertical className="h-5 w-5 text-gray-400" />
+              <Icon icon={MoreVerticalIcon} tone="subtle" className="h-5 w-5" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

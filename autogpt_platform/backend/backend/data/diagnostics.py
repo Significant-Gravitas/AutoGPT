@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from croniter import croniter
+from pika.exceptions import ChannelClosedByBroker
 from prisma.enums import AgentExecutionStatus
 from prisma.models import AgentGraph, AgentGraphExecution, LibraryAgent, User
 from pydantic import BaseModel
@@ -18,12 +19,16 @@ from backend.data.execution import get_graph_executions, get_graph_executions_co
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.utils import (
     GRAPH_EXECUTION_CANCEL_EXCHANGE,
-    GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
     GRAPH_EXECUTION_QUEUE_NAME,
+    LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
     CancelExecutionEvent,
     create_execution_queue_config,
 )
-from backend.util.clients import get_async_execution_queue, get_scheduler_client
+from backend.util.clients import (
+    get_async_execution_queue,
+    get_scheduler_client,
+    read_schedules,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +38,8 @@ SYSTEM_JOB_IDS = {
     "cleanup_expired_files",
     "report_late_executions",
     "report_block_error_rates",
-    "process_existing_batches",
-    "process_weekly_summary",
+    "flush_matured_alerts",
+    "send_due_briefings",
 }
 
 
@@ -230,11 +235,11 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
             ) AS orphaned_queued,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'FAILED'
-                AND "updatedAt" >= $2::timestamp
+                AND "endedAt" >= $2::timestamp
             ) AS failed_count_1h,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'FAILED'
-                AND "updatedAt" >= $1::timestamp
+                AND "endedAt" >= $1::timestamp
             ) AS failed_count_24h,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'RUNNING'
@@ -264,11 +269,11 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
             ) AS invalid_running_without_start,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'COMPLETED'
-                AND "updatedAt" >= $2::timestamp
+                AND "endedAt" >= $2::timestamp
             ) AS completed_1h,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'COMPLETED'
-                AND "updatedAt" >= $1::timestamp
+                AND "endedAt" >= $1::timestamp
             ) AS completed_24h
         FROM {schema_prefix}"AgentGraphExecution"
         WHERE "isDeleted" = false
@@ -379,7 +384,7 @@ async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
     # mis-counted as `validation_failed`. Copilot-turn schedules are
     # session-scoped (not orphan-prone in the same way) and surface in the
     # copilot UI, not in the platform health dashboard.
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
 
     # Filter user vs system schedules
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
@@ -583,10 +588,16 @@ def get_rabbitmq_queue_depth() -> int:
 
 def get_rabbitmq_cancel_queue_depth() -> int:
     """
-    Get the number of messages in the RabbitMQ cancel queue.
+    Get the number of messages left on the retired fleet-wide cancel queue.
+
+    Cancels now fan out to a per-pod queue each ExecutionManager declares for
+    itself, and those always have a consumer attached, so the only backlog this
+    can still show is the retired queue draining. An environment created after
+    the split never had that queue: absent means nothing is stuck, not an error.
 
     Returns:
-        Number of messages in cancel queue, or -1 if error
+        Number of messages left on the retired queue, 0 if it is gone, or -1 on
+        an unexpected failure.
     """
     try:
         # Create a temporary connection to query the queue
@@ -597,9 +608,14 @@ def get_rabbitmq_cancel_queue_depth() -> int:
         try:
             # Use passive queue_declare to get queue info without modifying it
             if rabbitmq._channel:
-                method_frame = rabbitmq._channel.queue_declare(
-                    queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME, passive=True
-                )
+                try:
+                    method_frame = rabbitmq._channel.queue_declare(
+                        queue=LEGACY_GRAPH_EXECUTION_CANCEL_QUEUE_NAME, passive=True
+                    )
+                except ChannelClosedByBroker as e:
+                    if e.reply_code != 404:
+                        raise
+                    return 0
             else:
                 raise RuntimeError("RabbitMQ channel not initialized")
 
@@ -635,7 +651,7 @@ async def get_all_schedules_details(
 
     # Get all graph schedules — diagnostics only surfaces graph-kind schedules
     # (copilot-turn followups are session-scoped and shown in the copilot UI).
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
 
     # Filter to user schedules only
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
@@ -690,7 +706,7 @@ async def get_orphaned_schedules_details() -> List[OrphanedScheduleDetail]:
     scheduler = get_scheduler_client()
 
     # Get all graph schedules — orphan detection is graph-specific.
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
     user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
 
     # Detect orphans with categorization
@@ -743,7 +759,7 @@ async def cleanup_orphaned_schedules_bulk(
     # Fetch all graph schedules once to avoid N+1 queries — orphan cleanup
     # is graph-specific (copilot-turn schedules self-clean via
     # `_self_delete_copilot_turn_schedule`).
-    all_schedules = await scheduler.get_graph_execution_schedules()
+    all_schedules = await read_schedules(scheduler.get_graph_execution_schedules())
     schedule_map = {s.id: s for s in all_schedules}
 
     # Delete schedules in parallel
@@ -952,7 +968,7 @@ async def get_failed_executions_count(hours: int = 24) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     count = await get_graph_executions_count(
         statuses=[AgentExecutionStatus.FAILED],
-        updated_time_gte=cutoff,
+        ended_time_gte=cutoff,
     )
     return count
 
@@ -976,13 +992,13 @@ async def get_failed_executions_details(
     executions = await AgentGraphExecution.prisma().find_many(
         where={
             "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": {"gte": cutoff},
+            "endedAt": {"gte": cutoff},
             "isDeleted": False,
         },
         include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
         skip=offset,
-        order={"updatedAt": "desc"},  # Most recent failures first
+        order={"endedAt": "desc"},  # Most recent failures first
     )
 
     results = []
@@ -1007,43 +1023,12 @@ async def get_failed_executions_details(
                 status=exec.executionStatus,
                 created_at=exec.createdAt,
                 started_at=exec.startedAt,
-                failed_at=exec.updatedAt,
+                failed_at=exec.endedAt,
                 error_message=error_message,
             )
         )
 
     return results
-
-
-async def cleanup_orphaned_execution(execution_id: str, admin_user_id: str) -> bool:
-    """
-    Cleanup orphaned execution by directly updating DB status.
-    For executions that are in DB but not actually running in executor.
-
-    Args:
-        execution_id: ID of the execution to cleanup
-        admin_user_id: ID of the admin user performing the operation
-
-    Returns:
-        True if execution was cleaned up, False otherwise
-    """
-    logger.info(
-        f"Admin user {admin_user_id} cleaning up orphaned execution {execution_id}"
-    )
-
-    # Update DB status directly without sending cancel signal
-    result = await AgentGraphExecution.prisma().update(
-        where={"id": execution_id},
-        data={
-            "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": datetime.now(timezone.utc),
-        },
-    )
-
-    logger.info(
-        f"Admin {admin_user_id} marked orphaned execution {execution_id} as FAILED"
-    )
-    return result is not None
 
 
 async def stop_all_long_running_executions(admin_user_id: str) -> int:
@@ -1092,6 +1077,7 @@ async def stop_all_long_running_executions(admin_user_id: str) -> int:
 
     # ALSO update DB status directly (don't rely on executor)
     # This ensures executions are marked FAILED even if executor restarted
+    now = datetime.now(timezone.utc)
     result = await AgentGraphExecution.prisma().update_many(
         where={
             "executionStatus": AgentExecutionStatus.RUNNING,
@@ -1100,7 +1086,8 @@ async def stop_all_long_running_executions(admin_user_id: str) -> int:
         },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": datetime.now(timezone.utc),
+            "updatedAt": now,
+            "endedAt": now,
         },
     )
 
@@ -1149,6 +1136,7 @@ async def cleanup_orphaned_executions_bulk(
     # Update all executions in DB directly (no cancel signals)
     # Only update executions still in RUNNING/QUEUED status to avoid
     # overwriting a legitimately COMPLETED execution (TOCTOU guard)
+    now = datetime.now(timezone.utc)
     result = await AgentGraphExecution.prisma().update_many(
         where={
             "id": {"in": execution_ids},
@@ -1159,7 +1147,8 @@ async def cleanup_orphaned_executions_bulk(
         },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": datetime.now(timezone.utc),
+            "updatedAt": now,
+            "endedAt": now,
         },
     )
 
@@ -1203,6 +1192,7 @@ async def cleanup_all_stuck_queued_executions(admin_user_id: str) -> int:
     # Find all stuck queued executions (>1h old)
     one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
 
+    now = datetime.now(timezone.utc)
     result = await AgentGraphExecution.prisma().update_many(
         where={
             "executionStatus": AgentExecutionStatus.QUEUED,
@@ -1211,7 +1201,8 @@ async def cleanup_all_stuck_queued_executions(admin_user_id: str) -> int:
         },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
-            "updatedAt": datetime.now(timezone.utc),
+            "updatedAt": now,
+            "endedAt": now,
         },
     )
 

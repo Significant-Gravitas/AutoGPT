@@ -3,20 +3,23 @@
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import { isCompletedWithErrors } from "@/lib/run-health";
 import { formatTimeAgo } from "@/lib/utils/time";
-import {
-  ArrowUpRightIcon,
-  CheckCircleIcon,
-  ClockIcon,
-  StopCircleIcon,
-  WarningIcon,
-  SpinnerIcon,
-  MinusCircleIcon,
-} from "@phosphor-icons/react";
-import { cn } from "@/lib/utils";
 import Link, { useLinkStatus } from "next/link";
+import { useNowSecond } from "@/hooks/useNowSecond";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
+import {
+  Alert01Icon,
+  Alert02Icon,
+  ArrowUpRight01Icon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  Loading03Icon,
+  MinusSignCircleIcon,
+  StopCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 function ActivityNavIndicator() {
   const { pending } = useLinkStatus();
@@ -24,15 +27,17 @@ function ActivityNavIndicator() {
     return (
       <LoadingSpinner
         size="small"
-        className="shrink-0 text-neutral-400"
+        className="shrink-0 text-foreground-subtle"
         aria-hidden="true"
       />
     );
   }
   return (
-    <ArrowUpRightIcon
+    <Icon
+      icon={ArrowUpRight01Icon}
       size={16}
-      className="shrink-0 text-neutral-400"
+      tone="subtle"
+      className="shrink-0"
       aria-hidden="true"
     />
   );
@@ -40,29 +45,41 @@ function ActivityNavIndicator() {
 
 interface Props {
   execution: AgentExecutionWithInfo;
-  // New sidebar layout variant — gated behind the AUTOGPT_NEW_LAYOUT flag.
-  newLayout?: boolean;
 }
 
-export function ActivityItem({ execution, newLayout = false }: Props) {
+export function ActivityItem({ execution }: Props) {
+  const isActiveStatus =
+    execution.status === AgentExecutionStatus.RUNNING ||
+    execution.status === AgentExecutionStatus.QUEUED;
+  // Tick every second so live elapsed advances without waiting for stats.
+  const nowMs = useNowSecond(isActiveStatus);
+
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
-        return <ClockIcon size={18} className="text-purple-500" />;
+        return <Icon icon={Clock01Icon} size={18} tone="brand" />;
       case AgentExecutionStatus.RUNNING:
-        return (
-          <SpinnerIcon size={18} className="animate-spin text-purple-500" />
-        );
+        return <Icon icon={Loading03Icon} size={18} spin tone="brand" />;
       case AgentExecutionStatus.COMPLETED:
-        return <CheckCircleIcon size={18} className="text-purple-500" />;
+        return isCompletedWithErrors(execution) ? (
+          <Icon icon={Alert02Icon} size={18} tone="warning" />
+        ) : (
+          <Icon icon={CheckmarkCircle02Icon} size={18} tone="brand" />
+        );
       case AgentExecutionStatus.FAILED:
-        return <WarningIcon size={18} className="text-purple-500" />;
+        return <Icon icon={Alert01Icon} size={18} tone="brand" />;
       case AgentExecutionStatus.TERMINATED:
-        return <StopCircleIcon size={18} className="text-purple-500" />;
+        return <Icon icon={StopCircleIcon} size={18} tone="brand" />;
       case AgentExecutionStatus.INCOMPLETE:
-        return <MinusCircleIcon size={18} className="text-purple-500" />;
+        return <Icon icon={MinusSignCircleIcon} size={18} tone="brand" />;
       case AgentExecutionStatus.REVIEW:
-        return <WarningIcon size={18} className="text-yellow-600" />;
+        return (
+          <Icon
+            icon={Alert01Icon}
+            size={18}
+            className="text-yellow-foreground"
+          />
+        );
       default:
         return null;
     }
@@ -70,10 +87,6 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
 
   function getItemDisplay() {
     // Handle active statuses (running/queued)
-    const isActiveStatus =
-      execution.status === AgentExecutionStatus.RUNNING ||
-      execution.status === AgentExecutionStatus.QUEUED;
-
     if (isActiveStatus) {
       const timeAgo = execution.started_at
         ? formatTimeAgo(execution.started_at.toString())
@@ -81,7 +94,7 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
       const statusText =
         execution.status === AgentExecutionStatus.QUEUED ? "queued" : "running";
       return [
-        `Started ${timeAgo}, ${getExecutionDuration(execution)} ${statusText}`,
+        `Started ${timeAgo}, ${getExecutionDuration(execution, new Date(nowMs))} ${statusText}`,
       ];
     }
 
@@ -95,7 +108,9 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
     let statusText = "ended";
     switch (execution.status) {
       case AgentExecutionStatus.COMPLETED:
-        statusText = "completed";
+        statusText = isCompletedWithErrors(execution)
+          ? "completed with errors"
+          : "completed";
         break;
       case AgentExecutionStatus.FAILED:
         statusText = "failed";
@@ -129,10 +144,7 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
       {/* Icon + Agent Name */}
       <div className="flex items-center space-x-2">
         {getStatusIcon()}
-        <Text
-          variant={newLayout ? "small-medium" : "body-medium"}
-          className="max-w-44 truncate text-gray-900"
-        >
+        <Text variant="small-medium" className="max-w-44 truncate">
           {execution.agent_name}
         </Text>
       </div>
@@ -143,7 +155,7 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
           <Text
             key={index}
             variant="small"
-            className={index === 0 ? "!text-zinc-600" : "!text-zinc-500"}
+            tone={index === 0 ? "secondary" : "muted"}
           >
             {line}
           </Text>
@@ -153,34 +165,16 @@ export function ActivityItem({ execution, newLayout = false }: Props) {
   );
 
   if (withExecutionLink) {
-    return newLayout ? (
+    return (
       <Link
-        className="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-bgLightGrey"
+        className="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-surface-hover"
         href={linkUrl}
-        role="button"
       >
         <div className="min-w-0 flex-1">{content}</div>
         <ActivityNavIndicator />
       </Link>
-    ) : (
-      <Link
-        className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-bgLightGrey"
-        href={linkUrl}
-        role="button"
-      >
-        {content}
-      </Link>
     );
   }
 
-  return (
-    <div
-      className={cn(
-        "block px-2 py-3",
-        newLayout ? "rounded-xl" : "border-b border-slate-50 last:border-b-0",
-      )}
-    >
-      {content}
-    </div>
-  );
+  return <div className="block rounded-xl px-2 py-3">{content}</div>;
 }

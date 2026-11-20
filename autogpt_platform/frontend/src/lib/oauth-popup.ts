@@ -7,6 +7,7 @@
  */
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const LOCAL_CALLBACK_GRACE_MS = 500;
 
 export const OAUTH_ERROR_WINDOW_CLOSED = "Sign-in window was closed";
 export const OAUTH_ERROR_FLOW_CANCELED = "OAuth flow was canceled";
@@ -19,6 +20,8 @@ export const OAUTH_ERROR_POPUP_BLOCKED_NO_TAB =
 export type OAuthPopupResult = {
   code: string;
   state: string;
+  /** RFC 9207 issuer identifier from the authorization response, if sent. */
+  iss?: string;
 };
 
 export type OAuthPopupOptions = {
@@ -41,6 +44,12 @@ export type OAuthPopupOptions = {
    * stripped by COOP headers, popup-blocked → new-tab fallback, etc.).
    */
   useCrossOriginListeners?: boolean;
+  /**
+   * The entire popup flow stays on this origin, including its callback.
+   * Enables close detection without disabling cross-tab result delivery.
+   * Do not set this for a local URL that redirects to an OAuth provider.
+   */
+  sameOriginFlow?: boolean;
   /** BroadcastChannel name (default: "oauth_popup") */
   broadcastChannelName?: string;
   /** localStorage key for cross-origin fallback (default: "oauth_popup_result") */
@@ -49,6 +58,8 @@ export type OAuthPopupOptions = {
   acceptMessageTypes?: string[];
   /** Timeout in ms (default: 5 minutes) */
   timeout?: number;
+  /** Same-origin endpoint that cancels provider-side pending state on abort */
+  cancelUrl?: string | null;
 };
 
 type Cleanup = {
@@ -111,10 +122,12 @@ export function openOAuthPopup(
     stateToken,
     preOpenedWindow,
     useCrossOriginListeners = false,
+    sameOriginFlow = false,
     broadcastChannelName = "oauth_popup",
     localStorageKey = "oauth_popup_result",
     acceptMessageTypes = ["oauth_popup_result", "mcp_oauth_result"],
     timeout = DEFAULT_TIMEOUT_MS,
+    cancelUrl,
   } = options;
 
   const controller = new AbortController();
@@ -126,6 +139,7 @@ export function openOAuthPopup(
   // straight from a click handler.
   const popup =
     preOpenedWindow !== undefined ? preOpenedWindow : preOpenOAuthPopup();
+  let activeWindow = popup;
 
   let popupBlocked = false;
   let fallbackBlocked = false;
@@ -136,6 +150,7 @@ export function openOAuthPopup(
     // still complete via postMessage / BroadcastChannel / localStorage poll.
     popupBlocked = true;
     const fallback = window.open(loginUrl, "_blank");
+    activeWindow = fallback;
     // The fallback open can be blocked too — iOS Safari blocks every
     // window.open() after an async break, so when the caller pre-opened
     // (and lost) the window, this open has no gesture context either. No
@@ -143,9 +158,25 @@ export function openOAuthPopup(
     fallbackBlocked = !fallback || fallback.closed;
   }
 
-  // Close popup on abort
+  let cancelRequested = false;
+  function cancelServerAttempt() {
+    if (!cancelUrl || cancelRequested) return;
+    cancelRequested = true;
+    try {
+      const url = new URL(cancelUrl, window.location.origin);
+      if (url.origin !== window.location.origin) return;
+      void fetch(url.toString(), {
+        method: "POST",
+        credentials: "same-origin",
+        keepalive: true,
+      }).catch(() => {});
+    } catch {}
+  }
+
+  // Close popup and cancel provider-side pending state on abort
   controller.signal.addEventListener("abort", () => {
-    if (popup && !popup.closed) popup.close();
+    if (controller.signal.reason !== "completed") cancelServerAttempt();
+    if (activeWindow && !activeWindow.closed) activeWindow.close();
   });
 
   // Scope the localStorage key by stateToken so concurrent OAuth flows do
@@ -172,6 +203,7 @@ export function openOAuthPopup(
     if (fallbackBlocked) {
       handled = true;
       reject(new Error(OAUTH_ERROR_POPUP_BLOCKED_NO_TAB));
+      controller.abort("popup_blocked");
       return;
     }
 
@@ -193,11 +225,26 @@ export function openOAuthPopup(
       if (!data.success) {
         reject(new Error(data.message || "OAuth authentication failed"));
       } else {
-        resolve({ code: data.code, state: data.state });
+        resolve({
+          code: data.code,
+          state: data.state,
+          iss: typeof data.iss === "string" ? data.iss : undefined,
+        });
       }
 
       controller.abort("completed");
     };
+
+    function consumeStoredResult() {
+      try {
+        const stored = localStorage.getItem(scopedLocalStorageKey);
+        if (stored) {
+          const data = JSON.parse(stored);
+          localStorage.removeItem(scopedLocalStorageKey);
+          handleResult(data);
+        }
+      } catch {}
+    }
 
     // Listener: postMessage (works for same-origin popups)
     window.addEventListener(
@@ -220,108 +267,58 @@ export function openOAuthPopup(
       } catch {}
 
       // Listener: localStorage polling (most reliable cross-tab fallback)
-      const pollInterval = setInterval(() => {
-        try {
-          const stored = localStorage.getItem(scopedLocalStorageKey);
-          if (stored) {
-            const data = JSON.parse(stored);
-            localStorage.removeItem(scopedLocalStorageKey);
-            handleResult(data);
-          }
-        } catch {}
-      }, 500);
+      const pollInterval = setInterval(consumeStoredResult, 500);
       controller.signal.addEventListener("abort", () =>
         clearInterval(pollInterval),
       );
     }
 
-    // Detect popup closed without completing sign-in.
-    //
-    // Three timeouts apply to the OAuth flow, only the outermost bounds
-    // user time:
-    //   1. ``timeout`` (default 5 min) — overall deadline; rejects with
-    //      OAUTH_ERROR_FLOW_TIMED_OUT if the user never finishes signing
-    //      in.  This is the only timeout that limits how long the user
-    //      has to log in.
-    //   2. 500 ms polling on ``popup.closed`` — only fires after the
-    //      popup window actually goes away (user closed it OR callback
-    //      page self-closed).  Doesn't run while the popup is open.
-    //   3. POPUP_CLOSE_GRACE_MS (3000 ms) — only starts after step 2
-    //      observes a closed popup; gives in-flight result messages a
-    //      chance to land before we declare failure.
-    //
-    // Why the grace at all?  The callback page (see
-    // ``frontend/src/app/(platform)/auth/integrations/mcp_callback/route.ts``)
-    // does:
-    //   bc.postMessage(...); localStorage.setItem(...); setTimeout(close, 1500)
-    // BroadcastChannel delivery is async across-origin; the parent's
-    // localStorage poll fires every 500 ms.  Without a grace window the
-    // ``popup.closed`` rejection can win the race against a successful
-    // result that's a few hundred ms behind, surfacing the bogus
-    // "Sign-in window was closed" error John screenshotted.
-    //
-    // On detected close we ALSO do one synchronous final localStorage
-    // read — covers the case where the BroadcastChannel listener never
-    // fired (storage-partitioning / BCG isolation) and the poll tick
-    // hasn't run yet.  The grace then handles any remaining
-    // post-message latency.
-    //
-    // The setTimeout lives in a plain JS closure, not React state — it
-    // does NOT stack across re-renders, and the AbortController cleanup
-    // tears it down if the caller aborts before grace expires.
-    // Skip the close-poll entirely when the popup was blocked.  The
-    // ``window.open("about:blank", ...)`` reference can be non-null but
-    // already-closed in that branch (we fell back to a separate new-tab
-    // ``window.open(loginUrl, "_blank")`` whose handle we deliberately
-    // don't keep — the new tab is the user's primary surface and
-    // pre-emptively rejecting on its ``closed`` state would short-circuit
-    // a successful sign-in arriving via BroadcastChannel/localStorage.
-    if (popup && !popupBlocked) {
-      // Grace window only applies to cross-origin flows.  Same-origin
-      // OAuth resolves via ``window.opener.postMessage`` which the
-      // parent receives synchronously on the same event-loop tick the
-      // popup posts it — there's no async delivery race to wait for,
-      // and adding 3 s of fake spinner after a manual close hurts UX.
-      const POPUP_CLOSE_GRACE_MS = useCrossOriginListeners ? 3000 : 0;
-      const finalLocalStorageCheck = () => {
-        if (!useCrossOriginListeners || handled) return;
-        try {
-          const stored = localStorage.getItem(scopedLocalStorageKey);
-          if (stored) {
-            const data = JSON.parse(stored);
-            localStorage.removeItem(scopedLocalStorageKey);
-            handleResult(data);
-          }
-        } catch {}
-      };
+    // A device flow can keep its popup local while opening verification in
+    // another window. Only its explicit lifetime guarantee permits polling
+    // alongside cross-tab delivery; a local initial URL alone is not enough.
+    let localFlow = false;
+    if (sameOriginFlow) {
+      try {
+        localFlow =
+          new URL(loginUrl, window.location.href).origin ===
+          window.location.origin;
+      } catch {}
+    }
+    const watchedWindow = localFlow
+      ? activeWindow
+      : !popupBlocked && !useCrossOriginListeners
+        ? popup
+        : null;
+    // Cross-origin providers can sever the handle with COOP while their
+    // window stays open. Keep awaiting their callback, timeout or explicit
+    // abort; no close-based deadline is safe for those flows.
+    if (watchedWindow) {
+      function rejectClosedWindow() {
+        if (handled) return;
+        if (useCrossOriginListeners) consumeStoredResult();
+        if (handled) return;
+        handled = true;
+        reject(new Error(OAUTH_ERROR_WINDOW_CLOSED));
+        controller.abort("popup_closed");
+      }
 
       const closedPollInterval = setInterval(() => {
-        if (popup.closed && !handled) {
+        if (watchedWindow.closed && !handled) {
           clearInterval(closedPollInterval);
-          finalLocalStorageCheck();
+          if (useCrossOriginListeners) consumeStoredResult();
           if (handled) return;
-          if (POPUP_CLOSE_GRACE_MS === 0) {
-            // Same-origin path: the ``window.addEventListener("message", …)``
-            // at line 149 fires synchronously when the popup posts before
-            // closing, so any successful result has already been handled
-            // by the time ``popup.closed`` flips.  Reject immediately —
-            // no async-delivery race to wait for.
-            handled = true;
-            reject(new Error(OAUTH_ERROR_WINDOW_CLOSED));
-            controller.abort("popup_closed");
-            return;
+          if (localFlow && useCrossOriginListeners) {
+            // The callback queues messages before closing even if storage fails.
+            const closeTimeout = setTimeout(
+              rejectClosedWindow,
+              LOCAL_CALLBACK_GRACE_MS,
+            );
+            controller.signal.addEventListener("abort", () =>
+              clearTimeout(closeTimeout),
+            );
+          } else {
+            rejectClosedWindow();
           }
-          const graceTimeout = setTimeout(() => {
-            if (handled) return;
-            finalLocalStorageCheck();
-            if (handled) return;
-            handled = true;
-            reject(new Error(OAUTH_ERROR_WINDOW_CLOSED));
-            controller.abort("popup_closed");
-          }, POPUP_CLOSE_GRACE_MS);
-          controller.signal.addEventListener("abort", () =>
-            clearTimeout(graceTimeout),
-          );
         }
       }, 500);
       controller.signal.addEventListener("abort", () =>

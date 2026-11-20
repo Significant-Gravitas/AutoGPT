@@ -18,9 +18,10 @@ from backend.data.includes import (
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
-from backend.integrations.webhooks.utils import webhook_ingress_url
+from backend.integrations.webhooks.utils import loggable_event_type, webhook_ingress_url
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
+from backend.util.url_redaction import mask_credential
 
 from .db import BaseDbModel
 from .graph import NodeModel
@@ -49,9 +50,9 @@ class Webhook(BaseDbModel):
     def url(self) -> str:
         return webhook_ingress_url(self.provider, self.id)
 
-    @staticmethod
-    def from_db(webhook: IntegrationWebhook):
-        return Webhook(
+    @classmethod
+    def from_db(cls, webhook: IntegrationWebhook):
+        return cls(
             id=webhook.id,
             user_id=webhook.userId,
             provider=ProviderName(webhook.provider),
@@ -67,9 +68,22 @@ class Webhook(BaseDbModel):
         )
 
 
-# LibraryAgentPreset import must be after Webhook definition to avoid
-# broken circular import:
-# integrations.py → library/model.py → integrations.py (for Webhook)
+class WebhookWithoutSecrets(Webhook):
+    """
+    Webhook variant that excludes the signing secret and the provider's webhook
+    id from serialization (GHSA-4m2w-qfr5-9f3v).
+
+    Used where a webhook leaves the backend: API responses and the
+    database-manager RPC. The defaults let the payload validate back on the
+    other side, so a preset survives the trip instead of arriving as a dict.
+    """
+
+    secret: str = Field(default="", exclude=True)
+    provider_webhook_id: str = Field(default="", exclude=True)
+
+
+# LibraryAgentPreset import must be after the webhook models to avoid a
+# circular import: integrations.py → library/model.py → integrations.py
 from backend.api.features.library.model import LibraryAgentPreset  # noqa: E402
 
 # Resolve forward refs
@@ -80,15 +94,15 @@ class WebhookWithRelations(Webhook):
     triggered_nodes: list[NodeModel]
     triggered_presets: list[LibraryAgentPreset]
 
-    @staticmethod
-    def from_db(webhook: IntegrationWebhook):
+    @classmethod
+    def from_db(cls, webhook: IntegrationWebhook):
         if webhook.AgentNodes is None or webhook.AgentPresets is None:
             raise ValueError(
                 "AgentNodes and AgentPresets must be included in "
                 "IntegrationWebhook query with relations"
             )
 
-        return WebhookWithRelations(
+        return cls(
             **Webhook.from_db(webhook).model_dump(),
             triggered_nodes=[NodeModel.from_db(node) for node in webhook.AgentNodes],
             triggered_presets=[
@@ -145,7 +159,7 @@ async def get_webhook(
         include=INTEGRATION_WEBHOOK_INCLUDE if include_relations else None,
     )
     if not webhook:
-        raise NotFoundError(f"Webhook #{webhook_id} not found")
+        raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
     return (WebhookWithRelations if include_relations else Webhook).from_db(webhook)
 
 
@@ -193,6 +207,8 @@ async def find_webhook_by_credentials_and_props(
     credentials_id: str,
     webhook_type: str,
     resource: str,
+    organization_id: str | None,
+    team_id: str | None,
     events: list[str] | None = None,
 ) -> Webhook | None:
     where: IntegrationWebhookWhereInput = {
@@ -200,10 +216,29 @@ async def find_webhook_by_credentials_and_props(
         "credentialsId": credentials_id,
         "webhookType": webhook_type,
         "resource": resource,
+        "organizationId": organization_id,
+        "teamId": team_id,
     }
     if events is not None:
         where["events"] = {"has_every": events}
     webhook = await IntegrationWebhook.prisma().find_first(where=where)
+    return Webhook.from_db(webhook) if webhook else None
+
+
+async def find_webhook_by_credentials_and_props_any_tenant(
+    user_id: str,
+    credentials_id: str,
+    webhook_type: str,
+    resource: str,
+) -> Webhook | None:
+    webhook = await IntegrationWebhook.prisma().find_first(
+        where={
+            "userId": user_id,
+            "credentialsId": credentials_id,
+            "webhookType": webhook_type,
+            "resource": resource,
+        }
+    )
     return Webhook.from_db(webhook) if webhook else None
 
 
@@ -214,7 +249,13 @@ async def find_webhook_by_graph_and_props(
     graph_id: Optional[str] = None,
     preset_id: Optional[str] = None,
 ) -> Webhook | None:
-    """Either `graph_id` or `preset_id` must be provided."""
+    """Either `graph_id` or `preset_id` must be provided.
+
+    Deliberately does NOT filter by tenancy: the only caller
+    (`get_manual_webhook`) must find a manual webhook whose org/team lag the
+    graph/preset's current tenancy (e.g. after an expert rehome) so it can
+    move the row along instead of minting a new ingress URL.
+    """
     where_clause: IntegrationWebhookWhereInput = {
         "userId": user_id,
         "provider": provider,
@@ -232,6 +273,27 @@ async def find_webhook_by_graph_and_props(
         where=where_clause,
     )
     return Webhook.from_db(webhook) if webhook else None
+
+
+async def set_webhook_tenancy(
+    webhook_id: str,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+) -> Webhook:
+    """Move a webhook to the tenant of the graph/preset it triggers.
+
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+    Both fields are always overwritten (resource-follows-parent), so passing
+    ``None`` clears the corresponding column.
+    """
+    updated_webhook = await IntegrationWebhook.prisma().update(
+        where={"id": webhook_id},
+        data={"organizationId": organization_id, "teamId": team_id},
+    )
+    if updated_webhook is None:
+        raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
+    return Webhook.from_db(updated_webhook)
 
 
 async def update_webhook(
@@ -253,7 +315,7 @@ async def update_webhook(
         data=data,
     )
     if _updated_webhook is None:
-        raise NotFoundError(f"Webhook #{webhook_id} not found")
+        raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
     return Webhook.from_db(_updated_webhook)
 
 
@@ -321,7 +383,7 @@ async def unlink_webhook_from_graph(
     webhook_manager = get_webhook_manager(webhook.provider)
     creds_manager = IntegrationCredentialsManager()
     credentials = (
-        await creds_manager.get(user_id, webhook.credentials_id)
+        await creds_manager.get(user_id, webhook.credentials_id, allow_sdk_default=True)
         if webhook.credentials_id
         else None
     )
@@ -333,7 +395,7 @@ async def delete_webhook(user_id: str, webhook_id: str) -> None:
         where={"id": webhook_id, "userId": user_id}
     )
     if deleted < 1:
-        raise NotFoundError(f"Webhook #{webhook_id} not found")
+        raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
 
 
 # --------------------- WEBHOOK EVENTS --------------------- #
@@ -352,6 +414,12 @@ class WebhookEventBus(AsyncRedisEventBus[WebhookEvent]):
     @property
     def event_bus_name(self) -> str:
         return "webhooks"
+
+    def _loggable_key(self, channel_key: str) -> str:
+        # A channel is named for its webhook, whose ID is the credential in its
+        # ingress URL.
+        webhook_id, _, event_type = channel_key.partition("/")
+        return f"{mask_credential(webhook_id)}/{loggable_event_type(event_type, webhook_id)}"
 
 
 _webhook_event_bus = WebhookEventBus()

@@ -3,8 +3,11 @@
 import logging
 from typing import Any
 
-from backend.copilot.graphiti.config import is_enabled_for_user
-from backend.copilot.graphiti.ingest import MAX_EPISODE_BODY_BYTES, enqueue_episode
+from backend.copilot.graphiti.ingest import (
+    MAX_EPISODE_BODY_BYTES,
+    enqueue_episode,
+    resolve_user_name,
+)
 from backend.copilot.graphiti.memory_model import (
     MemoryEnvelope,
     MemoryKind,
@@ -14,6 +17,7 @@ from backend.copilot.graphiti.memory_model import (
     RuleMemory,
     SourceKind,
 )
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -23,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class MemoryStoreTool(BaseTool):
-    """Store a memory/fact in the user's temporal knowledge graph."""
+    """Store a fact in the current assistant's temporal knowledge graph."""
 
     @property
     def name(self) -> str:
@@ -32,7 +36,8 @@ class MemoryStoreTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Store a memory or fact about the user for future recall. "
+            "Store a memory or fact about the user for this assistant to recall "
+            "in future sessions. "
             "Use when the user shares preferences, business context, decisions, "
             "relationships, or other important information worth remembering "
             "across sessions. Supports optional metadata for scoping and classification."
@@ -173,15 +178,17 @@ class MemoryStoreTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        if not await is_enabled_for_user(user_id):
-            return ErrorResponse(
-                message="Memory features are not enabled for your account.",
-                session_id=session.session_id,
-            )
-
         if not name or not content:
             return ErrorResponse(
                 message="Both 'name' and 'content' are required.",
+                session_id=session.session_id,
+            )
+
+        try:
+            memory_scope = MemoryScope.build(user_id, session.expert_id)
+        except ValueError:
+            return ErrorResponse(
+                message="Invalid user ID for memory operations.",
                 session_id=session.session_id,
             )
 
@@ -227,6 +234,7 @@ class MemoryStoreTool(BaseTool):
             provenance = f"session:{session.session_id}"
 
         envelope = MemoryEnvelope(
+            user=await resolve_user_name(user_id),
             content=content,
             source_kind=resolved_source,
             scope=scope,
@@ -255,7 +263,7 @@ class MemoryStoreTool(BaseTool):
             )
 
         queued = await enqueue_episode(
-            user_id,
+            memory_scope,
             session.session_id,
             name=name,
             episode_body=episode_body,

@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import { hasGroupedSessionTitle } from "./sessionGroups";
 import {
   flattenSessions,
   SESSION_LIST_QUERY_KEY,
@@ -18,7 +19,8 @@ interface Args {
 /**
  * After a chat stream completes, the backend generates a title asynchronously.
  * Poll the session list until the new title appears (or give up) so the sidebar
- * animates in without a manual refresh.
+ * animates in without a manual refresh. The sidebar reads the grouped list, so
+ * a title there counts as arrived too.
  */
 export function useSessionTitlePoll({
   sessionId,
@@ -26,7 +28,7 @@ export function useSessionTitlePoll({
   isReconnecting,
 }: Args) {
   const queryClient = useQueryClient();
-  const titlePollRef = useRef<ReturnType<typeof setInterval>>();
+  const titlePollRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const prevStatusRef = useRef(status);
 
   useEffect(() => {
@@ -47,9 +49,9 @@ export function useSessionTitlePoll({
       const data = queryClient.getQueryData<SessionListInfiniteData>(
         SESSION_LIST_QUERY_KEY,
       );
-      const hasTitle = flattenSessions(data).some(
-        (s) => s.id === sid && s.title,
-      );
+      const hasTitle =
+        flattenSessions(data).some((s) => s.id === sid && s.title) ||
+        hasGroupedSessionTitle(queryClient, sid);
       if (hasTitle || attempts >= TITLE_POLL_MAX_ATTEMPTS) {
         clearInterval(titlePollRef.current);
         titlePollRef.current = undefined;

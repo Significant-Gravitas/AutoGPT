@@ -1,4 +1,5 @@
 import { getWebSocketToken } from "@/lib/auth/actions";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { environment } from "@/services/environment";
 
 interface WorkspaceUploadResponse {
@@ -18,10 +19,10 @@ interface WorkspaceUploadResponse {
  */
 
 // Backend upload size limits (keep in sync with the backend):
-// - store submission media (agent thumbnails, profile avatars): 50MB
-//   (backend/api/features/store/media.py)
+// - private submission images (agent thumbnails, profile avatars): 4MB so the
+//   authenticated Vercel proxy can buffer the entire response safely
 // - OAuth app logos: 3MB (backend/api/features/oauth.py)
-export const SUBMISSION_MEDIA_MAX_SIZE_MB = 50;
+export const SUBMISSION_MEDIA_MAX_SIZE_MB = 4;
 export const OAUTH_LOGO_MAX_SIZE_MB = 3;
 
 const BYTES_PER_MB = 1024 * 1024;
@@ -78,7 +79,9 @@ async function postFileToBackend({
     throw new Error("Authentication error — please sign in again.");
   }
 
-  const url = new URL(path, environment.getAGPTServerBaseUrl());
+  const baseURL = new URL(environment.getAGPTServerBaseUrl());
+  baseURL.pathname = `${baseURL.pathname.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
+  const url = baseURL;
   for (const [key, value] of Object.entries(searchParams ?? {})) {
     url.searchParams.set(key, value);
   }
@@ -94,6 +97,11 @@ async function postFileToBackend({
     // Generous so large (up to 50MB) uploads on slow links aren't cut off.
     signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
   });
+}
+
+// Keeps the status, so a caller can tell a missing plan (402) from a failure.
+async function uploadError(res: Response): Promise<ApiError> {
+  return new ApiError(await readUploadError(res), res.status, null);
 }
 
 async function readUploadError(res: Response): Promise<string> {
@@ -133,20 +141,24 @@ export async function uploadFileDirect(
       ...(sessionID ? { session_id: sessionID } : {}),
     },
   });
-  if (!res.ok) throw new Error(await readUploadError(res));
+  if (!res.ok) throw await uploadError(res);
   return res.json();
 }
 
 /**
  * Uploads store submission media (agent thumbnails, profile avatars) directly
- * to the backend. Returns the public URL of the stored media.
+ * to private storage through the backend. Returns its authenticated media URL.
  */
-export async function uploadSubmissionMediaDirect(file: File): Promise<string> {
+export async function uploadSubmissionMediaDirect(
+  file: File,
+  purpose: "submission" | "expert-avatar" = "submission",
+): Promise<string> {
   const res = await postFileToBackend({
     path: "/api/store/submissions/media",
     file,
+    searchParams: purpose === "expert-avatar" ? { purpose } : undefined,
   });
-  if (!res.ok) throw new Error(await readUploadError(res));
+  if (!res.ok) throw await uploadError(res);
   // The endpoint returns the URL as a JSON string.
   const url = (await res.json()) as unknown;
   return typeof url === "string" ? url : String(url);
@@ -161,5 +173,5 @@ export async function uploadOAuthAppLogoDirect(
     path: `/api/oauth/apps/${encodeURIComponent(appId)}/logo/upload`,
     file,
   });
-  if (!res.ok) throw new Error(await readUploadError(res));
+  if (!res.ok) throw await uploadError(res);
 }

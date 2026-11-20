@@ -2,33 +2,39 @@
 
 import { DeleteChatDialog } from "@/app/(platform)/copilot/components/DeleteChatDialog/DeleteChatDialog";
 import { ShareChatDialog } from "@/app/(platform)/copilot/sharing/ShareChatDialog";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/atoms/Avatar/Avatar";
-import { getExpertAccent } from "@/app/(platform)/marketplace/components/ExpertsSection/helpers";
-import { groupSessionsByExpert } from "@/app/(platform)/copilot/useSessionList";
 import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
+import type { SessionGroupResponse } from "@/app/api/__generated__/models/sessionGroupResponse";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { SidebarMenu } from "@/components/ui/sidebar";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { SidebarMenu } from "@/components/molecules/Sidebar/Sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { cn } from "@/lib/utils";
+import { PinIcon } from "@hugeicons/core-free-icons";
+import { useState } from "react";
+import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
+import { NewExpertGroup } from "./components/NewExpertGroup/NewExpertGroup";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
-import { groupSessionsByDate } from "./helpers";
+import { getNewChatHref, getNewExpertsWithoutChats } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
 
 export function RecentChats() {
-  const chatSharingEnabled = useGetFlag(Flag.CHAT_SHARING);
-  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const { expertsById } = useExpertMap();
+  const chatPinningEnabled = useGetFlag(Flag.CHAT_PINNING);
+
+  const isLearningEnabled = useGetFlag(Flag.DREAM_SKILL_LEARNING_ENABLED);
+  const { expertsById, activeExperts, activeExpertIds } = useExpertMap();
+  // The week a new expert keeps their entry is measured from when the list
+  // mounted: an expert who joins later counts as new, and one only ages out
+  // on a later visit.
+  const [mountedAt] = useState(() => Date.now());
   const {
-    sessions,
+    groups,
+    pinnedSessions,
     isLoading,
-    hasMore,
-    isLoadingMore,
-    loadMore,
+    loadError,
+    retryLoad,
     activeSessionId,
+    togglePin,
     editingSessionId,
     editingTitle,
     setEditingTitle,
@@ -39,132 +45,136 @@ export function RecentChats() {
     exportChat,
     sharingSessionId,
     setSharingSessionId,
+    excludeFromLearning,
     sessionToDelete,
     isDeleting,
     requestDelete,
     confirmDelete,
     cancelDelete,
-  } = useRecentChats();
+  } = useRecentChats({ pinnedSeparately: chatPinningEnabled });
 
   if (isLoading) {
     return (
       <div className="flex justify-center py-4">
-        <LoadingSpinner size="small" className="text-neutral-500" />
+        <LoadingSpinner size="small" className="text-foreground-tertiary" />
       </div>
     );
   }
 
-  if (!sessions.length) {
+  // A failed read must not pass for an empty history.
+  if (loadError) {
     return (
-      <p className="px-2 py-2 text-sm text-neutral-500">No conversations yet</p>
+      <ErrorCard
+        className="mt-2"
+        context="your chats"
+        responseError={{
+          message: loadError instanceof Error ? loadError.message : undefined,
+        }}
+        onRetry={() => void retryLoad()}
+      />
     );
   }
 
-  function renderItem(session: (typeof sessions)[number]) {
+  // A pinned chat counts too: with pinning on it sits outside the groups.
+  const newExperts = getNewExpertsWithoutChats(
+    activeExperts,
+    [
+      ...groups.map((group) => group.expert_id),
+      ...pinnedSessions.map((session) => session.expert_id),
+    ],
+    mountedAt,
+  );
+
+  if (!groups.length && !pinnedSessions.length && !newExperts.length) {
+    return (
+      <div className="px-2 py-2">
+        <Text variant="body-tight" as="p" tone="muted">
+          No conversations yet
+        </Text>
+      </div>
+    );
+  }
+
+  function renderItem(session: (typeof pinnedSessions)[number]) {
+    const isEditing = editingSessionId === session.id;
     return (
       <RecentChatItem
         key={session.id}
         session={session}
         isActive={session.id === activeSessionId}
-        isEditing={editingSessionId === session.id}
-        editingTitle={editingTitle}
+        isEditing={isEditing}
+        editingTitle={isEditing ? editingTitle : ""}
         onEditingTitleChange={setEditingTitle}
         onSubmitRename={submitRename}
         onCancelRename={cancelRename}
         isExporting={exportingIds.has(session.id)}
         isDeleting={isDeleting}
-        chatSharingEnabled={chatSharingEnabled}
+        chatPinningEnabled={chatPinningEnabled}
+        onPin={togglePin}
         onRename={startRename}
         onExport={exportChat}
         onShare={setSharingSessionId}
+        isLearningEnabled={isLearningEnabled}
+        onExcludeFromLearning={excludeFromLearning}
         onDelete={requestDelete}
       />
     );
   }
 
-  const groups = isExpertsEnabled
-    ? groupSessionsByExpert(sessions).map((group) => ({
-        key: group.expertId ?? "autopilot",
-        label: group.expertId
-          ? (expertsById.get(group.expertId)?.name ?? "Expert")
-          : "Autopilot",
-        avatarUrl: group.expertId
-          ? (expertsById.get(group.expertId)?.avatarUrl ?? null)
-          : null,
-        role: group.expertId
-          ? (expertsById.get(group.expertId)?.role ?? null)
-          : null,
-        showAvatar: true,
-        sessions: group.sessions,
-      }))
-    : groupSessionsByDate(sessions).map((group) => ({
-        key: group.label,
-        label: group.label,
-        avatarUrl: null,
-        role: null,
-        showAvatar: false,
-        sessions: group.sessions,
-      }));
+  // Otto stays first; an expert waiting to be greeted comes next, ahead of
+  // the experts the user already talks to, who follow their latest chat.
+  const ottoGroups = groups.filter((group) => !group.expert_id);
+  const expertGroups = groups.filter((group) => !!group.expert_id);
+
+  function renderGroup(group: SessionGroupResponse) {
+    const expertId = group.expert_id ?? null;
+    const expert = expertId ? expertsById.get(expertId) : null;
+    return (
+      // Keyed by expert id so each group's open state and loaded pages
+      // survive the grouped read's periodic refetch.
+      <ExpertChatGroup
+        key={expertId ?? "autopilot"}
+        expertId={expertId}
+        label={expertId ? (expert?.name ?? "Expert") : "Otto"}
+        role={expertId ? expert?.jobTitle || expert?.role : "Head of AI"}
+        avatarUrl={expert?.avatarUrl ?? null}
+        color={expert?.color ?? null}
+        newChatHref={getNewChatHref(expertId, activeExpertIds)}
+        isAutopilot={!expertId}
+        total={group.total}
+        previewSessions={group.sessions}
+        pinnedSeparately={chatPinningEnabled}
+        activeSessionId={activeSessionId}
+        renderItem={renderItem}
+      />
+    );
+  }
 
   return (
     <>
       <div className="mt-2 flex flex-col gap-4">
-        {groups.map((group) => (
-          <div key={group.key}>
-            <div
-              className={cn(
-                "flex items-center px-2 pb-1.5",
-                group.showAvatar
-                  ? "gap-2 text-[13px] font-medium text-zinc-900"
-                  : "gap-1.5 text-xs font-medium text-zinc-500",
-              )}
-            >
-              {group.showAvatar && (
-                <Avatar className="h-5 w-5">
-                  {group.avatarUrl ? (
-                    <AvatarImage src={group.avatarUrl} alt={group.label} />
-                  ) : null}
-                  <AvatarFallback className="text-[9px]">
-                    {group.label}
-                  </AvatarFallback>
-                </Avatar>
-              )}
-              <span className="truncate">{group.label}</span>
-              {group.role ? (
-                <span
-                  className={cn(
-                    "shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium",
-                    getExpertAccent(group.role).pill,
-                  )}
-                >
-                  {group.role}
-                </span>
-              ) : null}
+        {pinnedSessions.length > 0 && (
+          <div>
+            <div className="flex items-center gap-1.5 px-2 pb-1.5 text-foreground-tertiary">
+              <Icon icon={PinIcon} className="size-3.5" />
+              <Text
+                variant="small-medium-tight"
+                as="span"
+                tone="muted"
+                className="truncate"
+              >
+                Pinned
+              </Text>
             </div>
-            {group.showAvatar ? (
-              <div className="ml-[17px] border-l border-zinc-200 pl-1.5">
-                <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
-              </div>
-            ) : (
-              <SidebarMenu>{group.sessions.map(renderItem)}</SidebarMenu>
-            )}
+            <SidebarMenu>{pinnedSessions.map(renderItem)}</SidebarMenu>
           </div>
+        )}
+        {ottoGroups.map(renderGroup)}
+        {newExperts.map((expert) => (
+          <NewExpertGroup key={`new-${expert.id}`} expert={expert} />
         ))}
+        {expertGroups.map(renderGroup)}
       </div>
-
-      {hasMore && (
-        <button
-          type="button"
-          onClick={() => loadMore()}
-          disabled={isLoadingMore}
-          className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-zinc-200 px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-300 disabled:opacity-60"
-        >
-          {isLoadingMore && (
-            <LoadingSpinner size="small" className="size-4 text-zinc-500" />
-          )}
-          {isLoadingMore ? "Loading…" : "Load more"}
-        </button>
-      )}
 
       <DeleteChatDialog
         session={sessionToDelete}

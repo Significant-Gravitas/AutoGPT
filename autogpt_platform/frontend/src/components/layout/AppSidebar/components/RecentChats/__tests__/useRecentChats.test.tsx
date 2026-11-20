@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 
 import { useRecentChats } from "../useRecentChats";
+import { sidebarBackend } from "./sidebarBackend";
 
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
@@ -35,26 +36,9 @@ function makeWrapper() {
   return Wrapper;
 }
 
-function sessionsHandler() {
-  return http.get("*/api/chat/sessions", () =>
-    HttpResponse.json({
-      sessions: [
-        {
-          id: "s1",
-          title: "Chat one",
-          is_processing: false,
-          created_at: "2026-06-30T00:00:00Z",
-          updated_at: "2026-06-30T00:00:00Z",
-        },
-      ],
-      total: 1,
-    }),
-  );
-}
-
 beforeEach(() => {
   toastMock.mockClear();
-  server.use(sessionsHandler());
+  server.use(...sidebarBackend(() => [{ id: "s1", title: "Chat one" }]));
 });
 
 afterEach(() => {
@@ -127,6 +111,51 @@ describe("useRecentChats — rename", () => {
       );
     });
     expect(result.current.editingSessionId).toBeNull();
+  });
+});
+
+describe("useRecentChats — pin", () => {
+  it("sends the flipped is_pinned value", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.patch("*/api/chat/sessions/:id/pinned", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({});
+      }),
+    );
+    const { result } = renderHook(() => useRecentChats(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => result.current.togglePin("s1", false));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toEqual({ is_pinned: true });
+
+    act(() => result.current.togglePin("s1", true));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toEqual({ is_pinned: false });
+  });
+
+  it("toasts when the pin request fails", async () => {
+    server.use(
+      http.patch("*/api/chat/sessions/:id/pinned", () =>
+        HttpResponse.json({ detail: "nope" }, { status: 500 }),
+      ),
+    );
+    const { result } = renderHook(() => useRecentChats(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => result.current.togglePin("s1", false));
+
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Failed to update chat",
+          variant: "destructive",
+        }),
+      );
+    });
   });
 });
 

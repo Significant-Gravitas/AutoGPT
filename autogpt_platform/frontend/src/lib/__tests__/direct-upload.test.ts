@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
+
 import {
   getFileSizeError,
   OAUTH_LOGO_MAX_SIZE_MB,
@@ -10,17 +12,21 @@ import {
 } from "../direct-upload";
 
 const getTokenMock = vi.hoisted(() => vi.fn());
+const getServerBaseUrlMock = vi.hoisted(() =>
+  vi.fn(() => "http://backend.test"),
+);
 vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: getTokenMock,
 }));
 
 beforeEach(() => {
   getTokenMock.mockResolvedValue({ token: "test-token" });
+  getServerBaseUrlMock.mockReturnValue("http://backend.test");
 });
 
 vi.mock("@/services/environment", () => ({
   environment: {
-    getAGPTServerBaseUrl: () => "http://backend.test",
+    getAGPTServerBaseUrl: getServerBaseUrlMock,
   },
 }));
 
@@ -53,6 +59,7 @@ afterEach(() => {
 describe("getFileSizeError", () => {
   it("returns null when the file is within the limit", () => {
     const file = makeFile(1024);
+    expect(SUBMISSION_MEDIA_MAX_SIZE_MB).toBe(4);
     expect(getFileSizeError(file, SUBMISSION_MEDIA_MAX_SIZE_MB)).toBeNull();
   });
 
@@ -65,6 +72,18 @@ describe("getFileSizeError", () => {
 });
 
 describe("uploadSubmissionMediaDirect", () => {
+  it("requests review for Expert appearance uploads", async () => {
+    const fetchMock = mockFetchOnce({
+      ok: true,
+      status: 200,
+      json: () => "https://cdn.test/approved.png",
+    });
+    await uploadSubmissionMediaDirect(makeFile(10), "expert-avatar");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://backend.test/api/store/submissions/media?purpose=expert-avatar",
+    );
+  });
+
   it("bypasses the proxy and hits the backend directly", async () => {
     const fetchMock = mockFetchOnce({
       ok: true,
@@ -83,6 +102,22 @@ describe("uploadSubmissionMediaDirect", () => {
       }),
     );
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBeInstanceOf(FormData);
+  });
+
+  it("preserves a same-origin backend path prefix", async () => {
+    getServerBaseUrlMock.mockReturnValue("http://autogpt.test/_agpt");
+    const fetchMock = mockFetchOnce({
+      ok: true,
+      status: 200,
+      json: () => "http://autogpt.test/media/uploaded.png",
+    });
+
+    await uploadSubmissionMediaDirect(makeFile(10));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://autogpt.test/_agpt/api/store/submissions/media",
+      expect.any(Object),
+    );
   });
 
   it("surfaces a clear size message on HTTP 413 instead of a bare status", async () => {
@@ -104,6 +139,21 @@ describe("uploadSubmissionMediaDirect", () => {
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
       "File too large. Maximum size is 50MB",
     );
+  });
+
+  it("keeps the status, so a missing plan reads as one", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 402,
+      text: () => JSON.stringify({ detail: "A subscription is required." }),
+    });
+
+    const error = await uploadSubmissionMediaDirect(makeFile(10)).catch(
+      (e: unknown) => e,
+    );
+
+    expect(isPaywallError(error)).toBe(true);
+    expect((error as Error).message).toBe("A subscription is required.");
   });
 });
 

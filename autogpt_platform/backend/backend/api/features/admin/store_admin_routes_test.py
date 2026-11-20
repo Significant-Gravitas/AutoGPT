@@ -7,6 +7,7 @@ Tests are organized by what they protect:
   and add-to-library uses get_graph_as_admin (not get_graph)
 """
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,10 +17,14 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from prisma.enums import SubmissionStatus
 
-from backend.data.graph import get_graph_as_admin
+from backend.api.features.store.model import ReviewSubmissionRequest
+from backend.api.features.store.skill_model import SkillReviewRequest
+from backend.data.graph import get_graph, get_graph_as_admin
 from backend.util.exceptions import NotFoundError
 
+from . import store_admin_routes
 from .store_admin_routes import router as store_admin_router
 
 # Shared constants
@@ -98,7 +103,7 @@ async def test_admin_download_pending_agent_with_subagents() -> None:
         )
 
     assert result is mock_graph_model
-    mock_get_sub.assert_awaited_once_with(mock_graph)
+    mock_get_sub.assert_awaited_once_with(mock_graph, client=None)
     mock_from_db.assert_called_once_with(
         graph=mock_graph,
         sub_graphs=[mock_sub_graph],
@@ -141,6 +146,16 @@ def test_add_to_library_requires_admin(mock_jwt_user) -> None:
     """Non-admin users must get 403 on the add-to-library endpoint."""
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     response = client.post(f"/admin/submissions/{SLV_ID}/add-to-library")
+    assert response.status_code == 403
+
+
+def test_skill_submission_file_requires_admin(mock_jwt_user) -> None:
+    """This route reads a package nobody has approved, addressed by version id
+    with no ownership check of its own — the admin gate is the whole check."""
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+
+    response = client.get(f"/admin/skills/submissions/{SLV_ID}/files/scripts/run.sh")
+
     assert response.status_code == 403
 
 
@@ -256,7 +271,7 @@ async def test_resolve_graph_admin_uses_get_graph_as_admin() -> None:
     assert result is mock_graph_model
     assert resolved_slv is mock_slv
     mock_admin.assert_awaited_once_with(
-        graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id=ADMIN_USER_ID
+        graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id=ADMIN_USER_ID, client=None
     )
     mock_regular.assert_not_awaited()
 
@@ -287,7 +302,7 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
             return_value=mock_graph_model,
         ) as mock_regular,
     ):
-        mock_prisma.return_value.find_unique = AsyncMock(return_value=mock_slv)
+        mock_prisma.return_value.find_first = AsyncMock(return_value=mock_slv)
 
         result, resolved_slv = await resolve_graph_for_library(
             SLV_ID, "regular-user-id", admin=False
@@ -295,10 +310,16 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
 
     assert result is mock_graph_model
     assert resolved_slv is mock_slv
+    # `skip_access_check` is required: the agent isn't in the user's library
+    # yet, so get_graph() would deny the install it is being called for.
     mock_regular.assert_awaited_once_with(
-        graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id="regular-user-id"
+        graph_id=GRAPH_ID,
+        version=GRAPH_VERSION,
+        user_id="regular-user-id",
+        skip_access_check=True,
     )
     mock_admin.assert_not_awaited()
+    mock_prisma.return_value.find_first.assert_awaited_once()
 
 
 # ---- Library membership grants graph access (product decision) ---- #
@@ -307,7 +328,9 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
 @pytest.mark.asyncio
 async def test_library_member_can_view_pending_agent_in_builder() -> None:
     """After adding a pending agent to their library, the user should be
-    able to load the graph in the builder via get_graph()."""
+    able to load the graph in the builder via get_graph(). This is why
+    PENDING counts as submitted — requiring APPROVED would break review.
+    """
     mock_graph = _make_mock_graph()
     mock_graph_model = MagicMock(name="GraphModel")
     mock_library_agent = MagicMock()
@@ -315,9 +338,6 @@ async def test_library_member_can_view_pending_agent_in_builder() -> None:
 
     with (
         patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
-        patch(
-            "backend.data.graph.StoreListingVersion.prisma",
-        ) as mock_slv_prisma,
         patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
         patch(
             "backend.data.graph.GraphModel.from_db",
@@ -325,12 +345,9 @@ async def test_library_member_can_view_pending_agent_in_builder() -> None:
         ),
     ):
         mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
         mock_lib_prisma.return_value.find_first = AsyncMock(
             return_value=mock_library_agent
         )
-
-        from backend.data.graph import get_graph
 
         result = await get_graph(
             graph_id=GRAPH_ID,
@@ -339,3 +356,45 @@ async def test_library_member_can_view_pending_agent_in_builder() -> None:
         )
 
     assert result is mock_graph_model, "Library membership should grant graph access"
+    # Review would break if PENDING were not an accepted status.
+    lib_where = mock_lib_prisma.return_value.find_first.await_args.kwargs["where"]
+    statuses = set(
+        lib_where["AgentGraph"]["is"]["StoreListingVersions"]["some"][
+            "submissionStatus"
+        ]["in"]
+    )
+    assert SubmissionStatus.PENDING in statuses
+
+
+@pytest.mark.asyncio
+async def test_approving_a_submission_clears_the_store_caches_off_the_event_loop(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    routes = store_admin_routes
+    mocker.patch.object(routes.store_db, "review_store_submission", AsyncMock())
+    mocker.patch.object(
+        routes.skill_submission_db, "review_skill_submission", AsyncMock()
+    )
+    clears: list[str] = []
+
+    def clear_all_caches() -> None:
+        try:
+            asyncio.get_running_loop()
+            clears.append("on the event loop")
+        except RuntimeError:
+            clears.append("off the event loop")
+
+    mocker.patch.object(routes.store_cache, "clear_all_caches", clear_all_caches)
+
+    await routes.review_submission(
+        SLV_ID,
+        ReviewSubmissionRequest(
+            store_listing_version_id=SLV_ID, is_approved=True, comments=""
+        ),
+        user_id=ADMIN_USER_ID,
+    )
+    await routes.review_skill_submission(
+        SLV_ID, SkillReviewRequest(is_approved=True, comments=""), user_id=ADMIN_USER_ID
+    )
+
+    assert clears == ["off the event loop"] * 2

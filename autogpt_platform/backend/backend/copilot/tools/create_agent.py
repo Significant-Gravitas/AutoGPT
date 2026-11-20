@@ -4,6 +4,8 @@ import logging
 import uuid
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_library_check_outcome
 
@@ -11,9 +13,12 @@ from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_sav
 from .agent_json_input import (
     AGENT_JSON_REF_SCHEMA,
     AGENT_JSON_SCHEMA,
+    reads_workspace_file,
     resolve_agent_json_or_error,
 )
 from .base import BaseTool
+from .expert_scope import install_saved_agent
+from .external_scope import external_tenancy
 from .helpers import require_guide_read, require_library_check
 from .models import ErrorResponse, ToolResponseBase
 
@@ -28,10 +33,22 @@ class CreateAgentTool(BaseTool):
         return "create_agent"
 
     @property
+    def allow_external_use(self):
+        return True, [
+            APIKeyPermission.WRITE_GRAPH,
+            APIKeyPermission.WRITE_LIBRARY,
+            APIKeyPermission.READ_LIBRARY,  # for finding relevant library (sub-)agents
+        ]
+
+    def external_permissions(self, args: dict[str, Any]) -> list[APIKeyPermission]:
+        # Reading the graph from a workspace file is a read of the caller's files.
+        return [APIKeyPermission.READ_FILES] if reads_workspace_file(args) else []
+
+    @property
     def description(self) -> str:
         return (
             "Create a new agent from JSON (nodes + links). Validates, "
-            "auto-fixes, and saves. Requires get_agent_building_guide and "
+            "auto-fixes, and saves. Requires tool:get_agent_building_guide and "
             "find_library_agent(for_creation=true) first."
         )
 
@@ -50,6 +67,8 @@ class CreateAgentTool(BaseTool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Library agent IDs as building blocks.",
+                    "title": "Building blocks",
+                    "entity": "library_agent",
                 },
                 "save": {
                     "type": "boolean",
@@ -59,6 +78,7 @@ class CreateAgentTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "Folder ID to save into (default: root).",
+                    "entity": "library_folder",
                 },
                 "is_hidden": {
                     "type": "boolean",
@@ -69,11 +89,13 @@ class CreateAgentTool(BaseTool):
                         "from AgentExecutorBlock usage in the graph)."
                     ),
                     "default": False,
+                    "title": "Hidden from your library",
                 },
                 "library_check_ack": {
                     "type": "boolean",
                     "description": "Bypass library-similarity gate after user declined.",
                     "default": False,
+                    "title": "Skips the library check",
                 },
             },
             "required": [],
@@ -116,10 +138,10 @@ class CreateAgentTool(BaseTool):
             session=session,
             session_id=session_id,
             missing_message=(
-                "Please provide agent_json with the complete agent graph "
+                "Please provide agent_json with the complete workflow "
                 '(inline or as an "@@agptfile:<path>" string), or '
-                "agent_json_ref pointing at the workspace agent file. "
-                "Use find_block to discover blocks, then generate the JSON."
+                "agent_json_ref pointing at the workspace workflow file. "
+                'Use find_capability(context="graph") to discover blocks, then generate the JSON.'
             ),
         )
         if resolve_error is not None:
@@ -133,7 +155,8 @@ class CreateAgentTool(BaseTool):
         if not nodes:
             return ErrorResponse(
                 message=(
-                    "The agent JSON has no nodes. " "An agent needs at least one block."
+                    "The agent JSON has no nodes. "
+                    "A workflow needs at least one block."
                 ),
                 error="empty_agent",
                 session_id=session_id,
@@ -149,15 +172,22 @@ class CreateAgentTool(BaseTool):
 
         # Fetch library agents for AgentExecutorBlock validation
         library_agents = await fetch_library_agents(user_id, library_agent_ids)
+        organization_id, team_id = external_tenancy(session)
 
-        return await fix_validate_and_save(
+        saved = await fix_validate_and_save(
             agent_json,
             user_id=user_id,
             session_id=session_id,
             save=save,
             is_update=False,
-            default_name="Generated Agent",
+            default_name="Generated Workflow",
             library_agents=library_agents,
             folder_id=folder_id,
             is_hidden=is_hidden,
+            organization_id=organization_id,
+            team_id=team_id,
+            external_caller=session.external_caller,
         )
+        if user_id:
+            return await install_saved_agent(user_id, session, saved)
+        return saved

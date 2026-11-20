@@ -185,44 +185,30 @@ describe("subscribeToPush", () => {
 });
 
 describe("unsubscribeFromPush", () => {
-  it("unsubscribes existing subscription", async () => {
+  it("unsubscribes the given subscription", async () => {
     const subscription = { unsubscribe: vi.fn().mockResolvedValue(true) };
-    const registration = {
-      pushManager: {
-        getSubscription: vi.fn().mockResolvedValue(subscription),
-      },
-    } as unknown as ServiceWorkerRegistration;
 
-    const result = await unsubscribeFromPush(registration);
+    const result = await unsubscribeFromPush(
+      subscription as unknown as PushSubscription,
+    );
 
     expect(result).toBe(true);
     expect(subscription.unsubscribe).toHaveBeenCalled();
-  });
-
-  it("returns true when no subscription exists", async () => {
-    const registration = {
-      pushManager: {
-        getSubscription: vi.fn().mockResolvedValue(null),
-      },
-    } as unknown as ServiceWorkerRegistration;
-
-    const result = await unsubscribeFromPush(registration);
-
-    expect(result).toBe(true);
   });
 
   it("returns false when unsubscribe fails", async () => {
     const subscription = {
       unsubscribe: vi.fn().mockRejectedValue(new Error("failed")),
     };
-    const registration = {
-      pushManager: {
-        getSubscription: vi.fn().mockResolvedValue(subscription),
-      },
-    } as unknown as ServiceWorkerRegistration;
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
-    const result = await unsubscribeFromPush(registration);
+    const result = await unsubscribeFromPush(
+      subscription as unknown as PushSubscription,
+    );
 
     expect(result).toBe(false);
+    consoleError.mockRestore();
   });
 });

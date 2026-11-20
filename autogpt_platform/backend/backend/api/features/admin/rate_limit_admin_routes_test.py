@@ -9,6 +9,7 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.copilot.rate_limit import CoPilotUsageStatus, SubscriptionTier, UsageWindow
 
 from .rate_limit_admin_routes import router as rate_limit_admin_router
@@ -364,6 +365,77 @@ def test_set_user_tier(
     mock_set.assert_awaited_once_with(target_user_id, SubscriptionTier.ENTERPRISE)
 
 
+def test_set_user_tier_returns_sweep_revert_warning(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """A grant the Stripe sweep will undo is still written, and the response
+    carries the warning so the admin UI can show it."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=_TARGET_EMAIL,
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.NO_TIER,
+    )
+    mock_set = mocker.patch(
+        f"{_MOCK_MODULE}.set_user_tier",
+        new_callable=AsyncMock,
+    )
+    mock_warning = mocker.patch(
+        f"{_MOCK_MODULE}.get_stripe_sweep_revert_warning",
+        new_callable=AsyncMock,
+        return_value="The Stripe reconciliation sweep will revert this grant.",
+    )
+
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "PRO"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tier"] == "PRO"
+    assert data["warning"] == "The Stripe reconciliation sweep will revert this grant."
+    mock_set.assert_awaited_once_with(target_user_id, SubscriptionTier.PRO)
+    mock_warning.assert_awaited_once_with(target_user_id, SubscriptionTier.PRO)
+
+
+def test_set_user_tier_warning_lookup_failure_does_not_fail_request(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """The tier is already written when the check runs, so a Stripe or DB
+    error there degrades to no warning rather than a 500."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=_TARGET_EMAIL,
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.NO_TIER,
+    )
+    mocker.patch(f"{_MOCK_MODULE}.set_user_tier", new_callable=AsyncMock)
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_stripe_sweep_revert_warning",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("stripe down"),
+    )
+
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "PRO"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["warning"] is None
+
+
 def test_set_user_tier_downgrade(
     mocker: pytest_mock.MockerFixture,
     target_user_id: str,
@@ -585,3 +657,49 @@ def test_search_users_requires_admin_role(mock_jwt_user) -> None:
 
     response = client.get("/admin/rate_limit/search_users", params={"query": "test"})
     assert response.status_code == 403
+
+
+def test_search_users_nul_query_is_400_without_db_error(
+    mocker: pytest_mock.MockerFixture,
+    admin_user_id: str,
+) -> None:
+    """A NUL in the query is rejected before the DB, with the production
+    ValueError mapping (400), and no Postgres/engine text in the body."""
+    find_many = AsyncMock(return_value=[])
+    mocker.patch("backend.data.user.prisma").user.find_many = find_many
+    prod_app = fastapi.FastAPI()
+    prod_app.include_router(rate_limit_admin_router)
+    add_exception_handlers(prod_app)
+    prod_app.dependency_overrides = app.dependency_overrides
+    prod_client = fastapi.testclient.TestClient(prod_app, raise_server_exceptions=False)
+
+    response = prod_client.get(
+        "/admin/rate_limit/search_users", params={"query": "dan\x00a"}
+    )
+
+    assert response.status_code == 400
+    assert "NUL" in response.json()["detail"]
+    assert "22021" not in response.text
+    assert "ConnectorError" not in response.text
+    find_many.assert_not_called()
+
+
+def test_search_users_escapes_like_wildcards(
+    mocker: pytest_mock.MockerFixture,
+    admin_user_id: str,
+) -> None:
+    """`_` and `%` reach Prisma's `contains` escaped, so they match literally."""
+    find_many = AsyncMock(return_value=[])
+    mocker.patch("backend.data.user.prisma").user.find_many = find_many
+
+    response = client.get(
+        "/admin/rate_limit/search_users", params={"query": " first_last%"}
+    )
+
+    assert response.status_code == 200
+    assert find_many.await_args is not None
+    where = find_many.await_args.kwargs["where"]
+    assert where["OR"] == [
+        {"email": {"contains": r"first\_last\%", "mode": "insensitive"}},
+        {"name": {"contains": r"first\_last\%", "mode": "insensitive"}},
+    ]

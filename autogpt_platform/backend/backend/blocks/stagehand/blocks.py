@@ -8,14 +8,16 @@ from backend.blocks.llm import (
     MODEL_METADATA,
     AICredentials,
     AICredentialsField,
-    LlmModel,
+    LLMModel,
     ModelMetadata,
 )
 from backend.blocks.stagehand._config import stagehand as stagehand_provider
+from backend.data.block import BlockInput
 from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -26,19 +28,23 @@ from backend.sdk import (
 logger = logging.getLogger(__name__)
 
 
-class StagehandRecommendedLlmModel(str, Enum):
+class StagehandRecommendedLLMModel(str, Enum):
+    """A subset of ``LLMModel`` (canonical home:
+    ``backend/data/llm_registry/llm_models.py``, re-exported from
+    ``blocks/llm.py``) containing only the models recommended by Stagehand.
     """
-    This is subset of LLModel from autogpt_platform/backend/backend/blocks/llm.py
 
-    It contains only the models recommended by Stagehand
-    """
+    @classmethod
+    def _missing_(cls, value: object) -> "StagehandRecommendedLLMModel | None":
+        """A node saved on a model this list no longer offers runs on its
+        replacement (``_RETIRED_MODELS``)."""
+        return _replacement_for(value)
 
     # OpenAI
     GPT41 = "gpt-4.1-2025-04-14"
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
 
     # Anthropic
-    CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"  # Keep for backwards compat
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
 
     @property
@@ -47,7 +53,7 @@ class StagehandRecommendedLlmModel(str, Enum):
         Returns the provider name for the model in the required format for Stagehand:
         provider/model_name
         """
-        model_metadata = MODEL_METADATA[LlmModel(self.value)]
+        model_metadata = MODEL_METADATA[LLMModel(self.value)]
         model_name = self.value
 
         if len(model_name.split("/")) == 1 and not self.value.startswith(
@@ -63,23 +69,53 @@ class StagehandRecommendedLlmModel(str, Enum):
 
     @property
     def provider(self) -> str:
-        return MODEL_METADATA[LlmModel(self.value)].provider
+        return MODEL_METADATA[LLMModel(self.value)].provider
 
     @property
     def metadata(self) -> ModelMetadata:
-        return MODEL_METADATA[LlmModel(self.value)]
+        return MODEL_METADATA[LLMModel(self.value)]
 
     @property
     def context_window(self) -> int:
-        return MODEL_METADATA[LlmModel(self.value)].context_window
+        return MODEL_METADATA[LLMModel(self.value)].context_window
 
     @property
     def max_output_tokens(self) -> int | None:
-        return MODEL_METADATA[LlmModel(self.value)].max_output_tokens
+        return MODEL_METADATA[LLMModel(self.value)].max_output_tokens
+
+
+# Models this block offered that their provider has retired, and what a node
+# saved on one runs on. Anthropic retires Claude Sonnet 4.5 on 2026-11-30;
+# Sonnet 4.6, this block's default, costs the same.
+_RETIRED_MODELS: dict[str, StagehandRecommendedLLMModel] = {
+    LLMModel.CLAUDE_4_5_SONNET.value: StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
+}
+
+
+def _replacement_for(value: object) -> StagehandRecommendedLLMModel | None:
+    """The current model a saved retired value runs as; None for any other."""
+    return _RETIRED_MODELS.get(value) if isinstance(value, str) else None
+
+
+class _StagehandInput(BlockSchemaInput):
+    @classmethod
+    def validate_data(
+        cls,
+        data: BlockInput,
+        exclude_fields: set[str] | None = None,
+    ) -> str | None:
+        """Check a node saved on a retired model as its replacement: the JSON
+        schema lists only the current models, so it would refuse the saved
+        value before the ``model`` field resolves it. Works on a copy, so the
+        caller's data keeps the saved value."""
+        replacement = _replacement_for(data.get("model"))
+        if replacement is not None:
+            data = {**data, "model": replacement.value}
+        return super().validate_data(data, exclude_fields=exclude_fields)
 
 
 class StagehandObserveBlock(Block):
-    class Input(BlockSchemaInput):
+    class Input(_StagehandInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(
@@ -90,13 +126,15 @@ class StagehandObserveBlock(Block):
             description="Browserbase project ID (required if using Browserbase)",
         )
         # Model selection and credentials (provider-discriminated like llm.py)
-        model: StagehandRecommendedLlmModel = SchemaField(
+        model: StagehandRecommendedLLMModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_4_6_SONNET,
+            default=StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
-        model_credentials: AICredentials = AICredentialsField()
+        model_credentials: AICredentials = AICredentialsField(
+            allow_credential_free=False
+        )
         url: str = SchemaField(
             description="URL to navigate to.",
         )
@@ -124,6 +162,7 @@ class StagehandObserveBlock(Block):
             categories={BlockCategory.AI, BlockCategory.DEVELOPER_TOOLS},
             input_schema=StagehandObserveBlock.Input,
             output_schema=StagehandObserveBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -162,7 +201,7 @@ class StagehandObserveBlock(Block):
 
 
 class StagehandActBlock(Block):
-    class Input(BlockSchemaInput):
+    class Input(_StagehandInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(
@@ -173,13 +212,15 @@ class StagehandActBlock(Block):
             description="Browserbase project ID (required if using Browserbase)",
         )
         # Model selection and credentials (provider-discriminated like llm.py)
-        model: StagehandRecommendedLlmModel = SchemaField(
+        model: StagehandRecommendedLLMModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_4_6_SONNET,
+            default=StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
-        model_credentials: AICredentials = AICredentialsField()
+        model_credentials: AICredentials = AICredentialsField(
+            allow_credential_free=False
+        )
         url: str = SchemaField(
             description="URL to navigate to.",
         )
@@ -215,6 +256,7 @@ class StagehandActBlock(Block):
             categories={BlockCategory.AI, BlockCategory.DEVELOPER_TOOLS},
             input_schema=StagehandActBlock.Input,
             output_schema=StagehandActBlock.Output,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(
@@ -258,7 +300,7 @@ class StagehandActBlock(Block):
 
 
 class StagehandExtractBlock(Block):
-    class Input(BlockSchemaInput):
+    class Input(_StagehandInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (
             stagehand_provider.credentials_field(
@@ -269,13 +311,15 @@ class StagehandExtractBlock(Block):
             description="Browserbase project ID (required if using Browserbase)",
         )
         # Model selection and credentials (provider-discriminated like llm.py)
-        model: StagehandRecommendedLlmModel = SchemaField(
+        model: StagehandRecommendedLLMModel = SchemaField(
             title="LLM Model",
             description="LLM to use for Stagehand (provider is inferred)",
-            default=StagehandRecommendedLlmModel.CLAUDE_4_6_SONNET,
+            default=StagehandRecommendedLLMModel.CLAUDE_4_6_SONNET,
             advanced=False,
         )
-        model_credentials: AICredentials = AICredentialsField()
+        model_credentials: AICredentials = AICredentialsField(
+            allow_credential_free=False
+        )
         url: str = SchemaField(
             description="URL to navigate to.",
         )
@@ -298,6 +342,7 @@ class StagehandExtractBlock(Block):
             categories={BlockCategory.AI, BlockCategory.DEVELOPER_TOOLS},
             input_schema=StagehandExtractBlock.Input,
             output_schema=StagehandExtractBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(

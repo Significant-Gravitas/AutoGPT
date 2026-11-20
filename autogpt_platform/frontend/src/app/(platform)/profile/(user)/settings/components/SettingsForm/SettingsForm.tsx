@@ -1,7 +1,7 @@
 "use client";
 
 import { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { Separator } from "@/components/atoms/Separator/Separator";
 import type { User } from "@/lib/auth/types";
 import { EmailForm } from "./components/EmailForm/EmailForm";
 import { NotificationForm } from "./components/NotificationForm/NotificationForm";

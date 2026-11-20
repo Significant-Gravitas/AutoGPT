@@ -7,11 +7,10 @@ import { preprocessInputSchema } from "@/components/renderers/InputRenderer/util
 import { cn } from "@/lib/utils";
 import { RJSFSchema } from "@rjsf/utils";
 import { NodeProps, Node as XYNode } from "@xyflow/react";
-import React from "react";
+import React, { useMemo } from "react";
 import { BlockUIType } from "../../../types";
 import { FormCreator } from "../FormCreator";
 import { OutputHandler } from "../OutputHandler";
-import { AyrshareConnectButton } from "./components/AyrshareConnectButton";
 import { NodeAdvancedToggle } from "./components/NodeAdvancedToggle";
 import { NodeContainer } from "./components/NodeContainer";
 import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
@@ -57,6 +56,12 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
       data,
       nodeId,
     });
+    // xyflow re-renders the node on every drag frame (position props), so a
+    // fresh clone here would defeat FormCreator's memo and re-run RJSF.
+    const formSchema = useMemo(
+      () => preprocessInputSchema(inputSchema),
+      [inputSchema],
+    );
 
     const isAgent = data.uiType === BlockUIType.AGENT;
 
@@ -75,8 +80,6 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
       BlockUIType.WEBHOOK,
       BlockUIType.WEBHOOK_MANUAL,
     ].includes(data.uiType);
-
-    const isAyrshare = data.uiType === BlockUIType.AYRSHARE;
 
     const hasConfigErrors =
       data.errors &&
@@ -102,18 +105,17 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
 
     const node = (
       <NodeContainer selected={selected} nodeId={nodeId} hasErrors={hasErrors}>
-        <div className="rounded-xlarge bg-white">
+        <div className="rounded-xlarge bg-node-surface">
           <NodeHeader data={data} nodeId={nodeId} />
           {isAgent && <SubAgentUpdateFeature nodeID={nodeId} nodeData={data} />}
           {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}
-          {isAyrshare && <AyrshareConnectButton />}
           <FormCreator
-            jsonSchema={preprocessInputSchema(inputSchema)}
+            jsonSchema={formSchema}
             nodeId={nodeId}
             uiType={data.uiType}
             isMCPWithTool={isMCPWithTool}
             className={cn(
-              "bg-white px-4",
+              "bg-surface px-4",
               isWebhook && "pointer-events-none opacity-50",
             )}
             showHandles={showHandles}

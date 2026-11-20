@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { cleanUpHandleId, isArrayItem } from "../../helpers";
 import { InputNodeHandle } from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
+import { getFieldDomId } from "../../field-accessibility";
 
 export default function TitleField(props: TitleFieldProps) {
   const { id, title, required, schema, registry, uiSchema } = props;
@@ -40,24 +41,23 @@ export default function TitleField(props: TitleFieldProps) {
         <InputNodeHandle handleId={uiOptions.handleId} nodeId={nodeId} />
       )}
       <Text
-        variant={isArrayItemFlag ? "small" : "body"}
-        id={id}
-        className={cn(
-          "line-clamp-1",
-          smallText && "text-sm text-zinc-700",
-          isInputBroken && "text-red-500 line-through",
-        )}
+        variant={smallText ? "body-tight" : "body"}
+        id={getFieldDomId(id, registry.formContext)}
+        tone={isInputBroken ? "error" : smallText ? "body" : undefined}
+        decoration={isInputBroken ? "line-through" : undefined}
+        className="line-clamp-1"
       >
         {title}
       </Text>
-      <Text variant="small" className={"mr-1 text-red-500"}>
+      <Text variant="small" tone="error" className="mr-1">
         {required ? "*" : null}
       </Text>
       {!isAnyOf && (
         <Text
           variant="small"
-          className={cn("ml-2", isInputBroken && "line-through", colorClass)}
-          id={description_id}
+          decoration={isInputBroken ? "line-through" : undefined}
+          className={cn("ml-2", colorClass)}
+          id={getFieldDomId(description_id, registry.formContext)}
         >
           ({displayType})
         </Text>

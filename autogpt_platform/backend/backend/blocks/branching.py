@@ -1,9 +1,13 @@
+import json
+import math
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any
 
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -19,6 +23,52 @@ class ComparisonOperator(Enum):
     LESS_THAN = "<"
     GREATER_THAN_OR_EQUAL = ">="
     LESS_THAN_OR_EQUAL = "<="
+
+
+def _normalize_operand(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    # int() first: float() keeps only 53 bits, so big integer strings would round.
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        number = float(text)
+    except ValueError:
+        return text
+    try:
+        decimal = Decimal(text)
+    except InvalidOperation:
+        return number
+    if not math.isfinite(number):
+        # inf and nan stay floats. A finite number too big for a float, such
+        # as an integer past int()'s 4300-digit limit, stays an exact Decimal,
+        # never an int: comparing Decimals costs no more than reading them.
+        return decimal if decimal.is_finite() else number
+    # A float steps by 1 from 2**52 and by 2 from 2**53, so it can't hold a
+    # fraction from 2**52 or every whole value from 2**53. Decimal keeps both
+    # exact; a whole value becomes an int, of at most 309 digits here.
+    if decimal == decimal.to_integral_value():
+        if abs(decimal) >= 2**53:
+            return int(decimal)
+        return number
+    if abs(number) >= 2**52:
+        return decimal
+    return number
+
+
+def _passthrough(raw: Any, value: Any) -> Any:
+    # Block outputs are serialized with orjson, which rejects ints outside
+    # the 64-bit range and does not encode Decimal; emit the float such
+    # inputs produced before.
+    if isinstance(value, Decimal):
+        return float(value)
+    out_of_range = isinstance(value, int) and not -(2**63) <= value < 2**64
+    if isinstance(raw, str) and out_of_range:
+        return float(raw.strip())
+    return value
 
 
 class ConditionBlock(Block):
@@ -75,27 +125,22 @@ class ConditionBlock(Block):
                 ("result", True),
                 ("yes_output", "Greater"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         operator = input_data.operator
 
-        value1 = input_data.value1
-        if isinstance(value1, str):
-            try:
-                value1 = float(value1.strip())
-            except ValueError:
-                value1 = value1.strip()
+        value1 = _normalize_operand(input_data.value1)
+        value2 = _normalize_operand(input_data.value2)
 
-        value2 = input_data.value2
-        if isinstance(value2, str):
-            try:
-                value2 = float(value2.strip())
-            except ValueError:
-                value2 = value2.strip()
-
-        yes_value = input_data.yes_value if input_data.yes_value is not None else value1
-        no_value = input_data.no_value if input_data.no_value is not None else value2
+        passthrough = _passthrough(input_data.value1, value1)
+        yes_value = (
+            input_data.yes_value if input_data.yes_value is not None else passthrough
+        )
+        no_value = (
+            input_data.no_value if input_data.no_value is not None else passthrough
+        )
 
         comparison_funcs = {
             ComparisonOperator.EQUAL: lambda a, b: a == b,
@@ -108,6 +153,10 @@ class ConditionBlock(Block):
 
         try:
             result = comparison_funcs[operator](value1, value2)
+        except InvalidOperation:
+            # A number a float can't hold is kept as a Decimal, and ordering
+            # a Decimal against NaN raises where a float compares False.
+            result = False
         except Exception as e:
             raise ValueError(f"Comparison failed: {e}") from e
 
@@ -117,6 +166,74 @@ class ConditionBlock(Block):
             yield "yes_output", yes_value
         else:
             yield "no_output", no_value
+
+
+def _parse_exact_float(text: str) -> float | Decimal:
+    """``parse_float`` hook for ``json.loads`` that keeps decimal values exact.
+
+    A float is returned only when it represents *text* exactly; otherwise the
+    exact ``Decimal`` is kept, which never equals a float. This applies the
+    scalar rule to numbers nested in lists and dicts, so "[0.10000000000000001]"
+    no longer matches [0.1].
+    """
+    number = float(text)
+    if Decimal(text) == Decimal(repr(number)):
+        return number
+    return Decimal(text)
+
+
+def _convert_for_match(value: Any, target: Any) -> Any:
+    """Convert *value* to the type of *target* only when the conversion is lossless.
+
+    ``convert`` is deliberately lenient (non-numeric text becomes 0, a list
+    becomes its length, any text other than "true"/"1" becomes False), which
+    is fine for filling block inputs but makes unrelated values compare equal.
+    Values that cannot be converted faithfully are returned unchanged.
+    """
+    input_type = type(target)
+    if input_type in (Any, object):
+        return value
+    if issubclass(input_type, bool):
+        # Preserve the boolean spellings accepted by convert().
+        if isinstance(value, str):
+            text = value.strip().lower()
+            if text in ("true", "1"):
+                return True
+            if text in ("false", "0"):
+                return False
+        return value
+    if issubclass(input_type, (int, float)):
+        if isinstance(value, str):
+            # Compare exact decimal values: float() would round, so that
+            # "9007199254740993" matched 9007199254740992.
+            text = value.strip()
+            try:
+                number = Decimal(text)
+            except InvalidOperation:
+                return value
+            if number.is_finite() and number == Decimal(str(target)):
+                return target
+        return value
+    if issubclass(input_type, (list, tuple, set, dict)):
+        # convert() wraps a scalar into a container (["x"], {"value": "x"}),
+        # which made "x" match ["x"]. Accept only text that parses to the
+        # same shape, or a list/tuple holding the same items.
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value, parse_float=_parse_exact_float)
+            except ValueError:
+                return value
+            if issubclass(input_type, dict):
+                return parsed if isinstance(parsed, dict) else value
+            if not isinstance(parsed, list):
+                return value
+            converted = input_type(parsed)
+            # A set drops duplicates, so "[1, 1]" is not the set {1}.
+            return converted if len(converted) == len(parsed) else value
+        if isinstance(value, (list, tuple)) and issubclass(input_type, (list, tuple)):
+            return input_type(value)
+        return value
+    return convert(value, input_type)
 
 
 class IfInputMatchesBlock(Block):
@@ -188,6 +305,7 @@ class IfInputMatchesBlock(Block):
                 # ("result", True),
                 # ("yes_output", "Yes"),
             ],
+            effect=BlockEffect.NONE,
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -200,10 +318,9 @@ class IfInputMatchesBlock(Block):
             try:
                 # Only attempt conversion if input is not None and value is not None
                 if input_data.input is not None and input_data.value is not None:
-                    input_type = type(input_data.input)
-                    # Avoid converting if input_type is Any or object
-                    if input_type not in (Any, object):
-                        input_data.value = convert(input_data.value, input_type)
+                    input_data.value = _convert_for_match(
+                        input_data.value, input_data.input
+                    )
             except Exception:
                 pass  # If conversion fails, just leave value as is
 

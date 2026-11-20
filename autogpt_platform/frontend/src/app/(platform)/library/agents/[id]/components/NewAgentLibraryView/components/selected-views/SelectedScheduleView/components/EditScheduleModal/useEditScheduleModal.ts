@@ -1,15 +1,27 @@
 "use client";
 
 import { getGetV1ListGraphExecutionsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { usePatchV1UpdateExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { validateSchedule } from "../../../../modals/ScheduleAgentModal/components/ModalScheduleSection/helpers";
 import {
-  parseCronToForm,
-  validateSchedule,
-} from "../../../../modals/ScheduleAgentModal/components/ModalScheduleSection/helpers";
+  buildCron,
+  DAY_ITEMS,
+  type EditScheduleForm,
+  formFromSchedule,
+  REPEAT_OPTIONS,
+} from "./helpers";
+
+interface FormErrors {
+  scheduleName?: string;
+  time?: string;
+  days?: string;
+}
 
 export function useEditScheduleModal(
   graphId: string,
@@ -18,108 +30,84 @@ export function useEditScheduleModal(
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
-  const [name, setName] = useState(schedule.name);
+  const [form, setForm] = useState(() => formFromSchedule(schedule));
+  const [errors, setErrors] = useState<FormErrors>({});
 
-  const parsed = useMemo(() => parseCronToForm(schedule.cron), [schedule.cron]);
-  const [repeat, setRepeat] = useState<string>(parsed?.repeat || "daily");
-  const [selectedDays, setSelectedDays] = useState<string[]>(
-    parsed?.selectedDays || [],
-  );
-  const [time, setTime] = useState<string>(parsed?.time || "00:00");
-  const [errors, setErrors] = useState<{
-    scheduleName?: string;
-    time?: string;
-  }>({});
-
-  const repeatOptions = useMemo(
-    () => [
-      { value: "daily", label: "Daily" },
-      { value: "weekly", label: "Weekly" },
-    ],
-    [],
-  );
-
-  const dayItems = useMemo(
-    () => [
-      { value: "0", label: "Su" },
-      { value: "1", label: "Mo" },
-      { value: "2", label: "Tu" },
-      { value: "3", label: "We" },
-      { value: "4", label: "Th" },
-      { value: "5", label: "Fr" },
-      { value: "6", label: "Sa" },
-    ],
-    [],
-  );
-
-  function humanizeToCron(): string {
-    const [hh, mm] = time.split(":");
-    const minute = Number(mm || 0);
-    const hour = Number(hh || 0);
-    if (repeat === "weekly") {
-      const dow = selectedDays.length ? selectedDays.join(",") : "*";
-      return `${minute} ${hour} * * ${dow}`;
-    }
-    return `${minute} ${hour} * * *`;
+  function update(fields: Partial<EditScheduleForm>) {
+    setForm((current) => ({ ...current, ...fields }));
   }
 
-  const { mutateAsync, isPending } = useMutation({
-    mutationKey: ["patchSchedule", schedule.id],
-    mutationFn: async () => {
-      const errorsNow = validateSchedule({ scheduleName: name, time });
-      setErrors(errorsNow);
-      if (Object.keys(errorsNow).length > 0) throw new Error("Invalid form");
+  // The dialog stays mounted while the selected schedule changes, so the form
+  // reloads from whichever schedule is current each time it opens.
+  function handleOpenChange(open: boolean) {
+    if (open) {
+      setForm(formFromSchedule(schedule));
+      setErrors({});
+    }
+    setIsOpen(open);
+  }
 
-      const cron = humanizeToCron();
-      const res = await fetch(`/api/schedules/${schedule.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, cron }),
-      });
-      if (!res.ok) {
-        let message = "Failed to update schedule";
-        try {
-          const data = await res.json();
-          message = data?.message || data?.detail || message;
-        } catch {
-          try {
-            message = await res.text();
-          } catch {}
-        }
-        throw new Error(message);
-      }
-      return res.json();
-    },
-    onSuccess: async () => {
-      invalidateAllScheduleQueries(queryClient, graphId);
-      const runsKey = getGetV1ListGraphExecutionsQueryKey(graphId);
-      await queryClient.invalidateQueries({ queryKey: runsKey });
-      setIsOpen(false);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "❌ Failed to update schedule",
-        description: error?.message || "An unexpected error occurred.",
-        variant: "destructive",
-      });
-    },
-  });
+  const { mutate: updateSchedule, isPending } =
+    usePatchV1UpdateExecutionSchedule({
+      mutation: {
+        onSuccess: async () => {
+          invalidateAllScheduleQueries(queryClient, graphId);
+          const runsKey = getGetV1ListGraphExecutionsQueryKey(graphId);
+          await queryClient.invalidateQueries({ queryKey: runsKey });
+          setIsOpen(false);
+        },
+        onError: (error) => {
+          toast({
+            title: "Failed to update schedule",
+            description:
+              error instanceof Error
+                ? error.message
+                : "An unexpected error occurred.",
+            variant: "destructive",
+          });
+        },
+      },
+    });
+
+  function handleSave() {
+    const errorsNow: FormErrors = validateSchedule({
+      scheduleName: form.name,
+      time: form.canEditTiming ? form.time : undefined,
+    });
+    if (
+      form.canEditTiming &&
+      form.repeat === "weekly" &&
+      form.selectedDays.length === 0
+    ) {
+      errorsNow.days = "Pick at least one day";
+    }
+    setErrors(errorsNow);
+    if (Object.keys(errorsNow).length > 0) return;
+    updateSchedule({
+      scheduleId: schedule.id,
+      data: form.canEditTiming
+        ? { name: form.name, cron: buildCron(form) }
+        : { name: form.name },
+    });
+  }
 
   return {
     isOpen,
-    setIsOpen,
-    name,
-    setName,
-    repeat,
-    setRepeat,
-    selectedDays,
-    setSelectedDays,
-    time,
-    setTime,
+    setIsOpen: handleOpenChange,
+    name: form.name,
+    setName: (name: string) => update({ name }),
+    canEditTiming: form.canEditTiming,
+    recurrenceLabel: safeHumanizeCronExpression(schedule.cron),
+    repeat: form.repeat,
+    setRepeat: (repeat: string) => update({ repeat }),
+    selectedDays: form.selectedDays,
+    setSelectedDays: (selectedDays: string[]) => update({ selectedDays }),
+    time: form.time,
+    setTime: (time: string) => update({ time }),
     errors,
-    repeatOptions,
-    dayItems,
-    mutateAsync,
+    repeatOptions: REPEAT_OPTIONS,
+    dayItems: DAY_ITEMS,
+    handleSave,
     isPending,
-  } as const;
+  };
 }

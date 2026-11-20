@@ -1,4 +1,4 @@
-import type { Icon } from "@phosphor-icons/react";
+import type { IconSvgElement } from "@hugeicons/react";
 
 export interface TourPlanStep {
   description: string;
@@ -63,7 +63,7 @@ export interface TourScenario {
   id: string;
   /** Chip label — kept in sync with the product page's scenario chips. */
   label: string;
-  icon: Icon;
+  icon: IconSvgElement;
   script: TourScript;
   completionArtifact: TourCompletionArtifact;
 }

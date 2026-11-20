@@ -1,0 +1,21 @@
+from pathlib import Path
+
+import yaml
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+def test_test_database_matches_ci_without_mounting_development_data():
+    compose = yaml.safe_load((BACKEND_DIR / "docker-compose.test.yaml").read_text())
+    database = compose["services"]["db"]
+
+    assert database["image"] == "pgvector/pgvector:pg15"
+    assert "extends" not in database
+    assert database["environment"]["POSTGRES_DB"] == "agpt_test"
+    assert database["ports"] == ["127.0.0.1:${POSTGRES_PORT:-5432}:5432"]
+    assert database["volumes"] == [
+        "../db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro",
+        "../db/entrypoint.sh:/usr/local/bin/autogpt-db-entrypoint.sh:ro",
+        "test-db-data:/var/lib/postgresql/data",
+    ]
+    assert "vector" not in compose["services"]

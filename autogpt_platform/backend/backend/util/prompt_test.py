@@ -17,6 +17,7 @@ from backend.util.prompt import (
     _truncate_tool_message_content,
     compress_context,
     estimate_token_count,
+    estimate_token_count_str,
     get_compression_target,
     get_context_window,
 )
@@ -222,6 +223,15 @@ class TestMsgTokens:
 class TestEstimateTokenCount:
     """Test the estimate_token_count function with conversations containing tool calls."""
 
+    def test_text_that_spells_a_special_token_is_counted(self):
+        """tiktoken raises on special-token text by default; users and tool
+        output can write it, so it counts as plain text."""
+        plain = [{"role": "user", "content": "say please"}]
+        spelled = [{"role": "user", "content": "say <|endoftext|> please"}]
+
+        assert estimate_token_count(spelled) > estimate_token_count(plain)
+        assert estimate_token_count_str("<|endoftext|>") > 1
+
     def test_conversation_with_tool_calls(self):
         """Test token counting for a complete conversation with tool calls."""
         conversation = [
@@ -411,6 +421,11 @@ class TestTruncateMiddleTokens:
         result = _truncate_middle_tokens(short_text, enc, max_tok=100)
 
         assert result == short_text
+
+    def test_truncates_text_that_spells_a_special_token(self, enc):
+        result = _truncate_middle_tokens("<|endoftext|> " * 200, enc, max_tok=20)
+
+        assert "…" in result
 
 
 class TestEnsureToolPairsIntact:
@@ -1119,3 +1134,104 @@ class TestGetCompressionTarget:
     def test_small_model_returns_default(self) -> None:
         # Unknown models fall back to DEFAULT_TOKEN_THRESHOLD
         assert get_compression_target("some-tiny-model") == DEFAULT_TOKEN_THRESHOLD
+
+
+class TestClaude5TokenFactor:
+    """The Claude 5 family tokenizes ~30% denser than 4.x and ships no
+    local tokenizer — estimates get the conservative correction factor."""
+
+    def test_sonnet_5_estimate_is_scaled(self):
+        text = "hello world " * 200
+        base = estimate_token_count_str(text, model="claude-sonnet-4-6")
+        scaled = estimate_token_count_str(text, model="claude-sonnet-5")
+        # Literal 1.5, not CLAUDE_5_TOKEN_FACTOR: importing the constant
+        # under test would let a wrong magnitude pass unnoticed.
+        assert scaled == int(base * 1.5)
+
+    @pytest.mark.parametrize(
+        "prefixed",
+        [
+            "anthropic/claude-sonnet-5",
+            "anthropic.claude-sonnet-5",
+            "openrouter/anthropic/claude-sonnet-5",
+            "us.anthropic.claude-sonnet-5",
+            "anthropic/claude-opus-5",
+        ],
+    )
+    def test_factor_applies_through_vendor_prefix(self, prefixed: str):
+        text = "hello world " * 200
+        assert estimate_token_count_str(
+            text, model=prefixed
+        ) == estimate_token_count_str(text, model="claude-sonnet-5")
+
+    def test_unknown_gpt_model_falls_back_to_default_encoding(self):
+        """A GPT-named model tiktoken doesn't know (newer than its mapping
+        table) must fall back to the default encoding, not KeyError — this
+        is the llm_call path for every catalog default."""
+        text = "hello world " * 200
+        assert estimate_token_count_str(
+            text, model="gpt-5.6-terra"
+        ) == estimate_token_count_str(text, model="gpt-4o")
+
+    @pytest.mark.parametrize("model", ["claude-sonnet-4-6", "claude-opus-4-6"])
+    def test_pre_4_7_generation_unscaled(self, model: str):
+        text = "hello world " * 200
+        assert estimate_token_count_str(text, model=model) == estimate_token_count_str(
+            text, model="gpt-4o"
+        )
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-4-7",
+            "claude-opus-4-8",
+            "claude-opus-5",
+        ],
+    )
+    def test_opus_4_7_generation_shares_the_new_tokenizer(self, model: str):
+        text = "hello world " * 200
+        assert estimate_token_count_str(text, model=model) == estimate_token_count_str(
+            text, model="claude-sonnet-5"
+        )
+
+
+class TestClaude5FactorOnMessagePaths:
+    """The factor must reach the paths that gate real behavior: the
+    messages-based estimator (max_tokens sizing) and compaction totals."""
+
+    def _messages(self):
+        return [
+            {"role": "user", "content": "hello world " * 300},
+            {"role": "assistant", "content": "reply text " * 300},
+        ]
+
+    def test_estimate_token_count_messages_scaled(self):
+        base = estimate_token_count(self._messages(), model="claude-sonnet-4-6")
+        scaled = estimate_token_count(self._messages(), model="claude-sonnet-5")
+        assert scaled == int(base * 1.5)
+
+    @pytest.mark.asyncio
+    async def test_compaction_measures_in_corrected_space(self):
+        """A history under the nominal target in raw tiktoken space but
+        over it in corrected space must trigger compaction for Sonnet 5
+        (and must NOT for 4.6)."""
+        msgs = self._messages()
+        raw = estimate_token_count(msgs, model="claude-sonnet-4-6")
+        target = int(raw * 1.2)  # between raw (1.0x) and corrected (1.5x)
+
+        r46 = await compress_context(
+            messages=msgs,
+            model="claude-sonnet-4-6",
+            target_tokens=target,
+            reserve=0,
+        )
+        assert r46.was_compacted is False
+
+        r5 = await compress_context(
+            messages=msgs,
+            model="claude-sonnet-5",
+            target_tokens=target,
+            reserve=0,
+        )
+        assert r5.was_compacted is True
+        assert r5.original_token_count > target

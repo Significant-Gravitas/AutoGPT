@@ -1,5 +1,6 @@
 """Tests for BlockDetailsResponse in RunBlockTool."""
 
+from copy import deepcopy
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -151,3 +152,95 @@ async def test_run_block_returns_details_when_only_credentials_provided():
     assert isinstance(response, BlockDetailsResponse)
     assert response.block.id == "api-block-id"
     assert response.block.name == "API Call"
+
+
+def make_annotated_block(block_id: str = "annotated-block-id"):
+    """A block whose schema carries builder-UI annotations, plus properties
+    literally named ``secret`` and ``title`` so the strip can't be a blind
+    key filter."""
+    mock = make_mock_block_with_inputs(block_id, "Annotated Block")
+    mock.input_schema.jsonschema.return_value = {
+        "properties": {
+            "model": {
+                "type": "string",
+                "enum": ["gpt-5", "claude-opus-5"],
+                "llm_model": True,
+                "llm_model_metadata": {
+                    "gpt-5": {"price_tier": "high", "creator": "OpenAI"},
+                },
+                "advanced": False,
+                "secret": False,
+            },
+            "secret": {"type": "string", "description": "A field named secret"},
+            "repo_url": {"type": "string", "title": "Repo Url"},
+            "sys_prompt": {"type": "string", "title": "System Prompt"},
+            "title": {"type": "string", "description": "A field named title"},
+        },
+        "required": ["model"],
+    }
+    mock.output_schema.jsonschema.return_value = {
+        "properties": {"result": {"type": "string", "advanced": True}},
+    }
+    return mock
+
+
+async def _details_for(block, flag_on: bool) -> BlockDetailsResponse:
+    session = make_session(user_id=_TEST_USER_ID)
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=block),
+        patch(
+            "backend.copilot.tools.helpers.resolve_block_credentials",
+            new_callable=AsyncMock,
+            return_value=({}, []),
+        ),
+    ):
+        response = await RunBlockTool()._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            block_id=block.id,
+            input_data={},
+            dry_run=False,
+        )
+    assert isinstance(response, BlockDetailsResponse)
+    return response
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_flag_on_strips_presentation_annotations_from_both_schemas():
+    block = make_annotated_block()
+    response = await _details_for(block, flag_on=True)
+    model = response.block.inputs["properties"]["model"]
+    assert set(model) == {"type", "enum"}
+    assert model["enum"] == ["gpt-5", "claude-opus-5"]
+    assert "advanced" not in response.block.outputs["properties"]["result"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_flag_on_keeps_properties_that_share_an_annotation_name():
+    """``secret`` and ``title`` are both UI annotations and legal field names."""
+    response = await _details_for(make_annotated_block(), flag_on=True)
+    assert {"secret", "title"} <= set(response.block.inputs["properties"])
+    assert response.block.inputs["required"] == ["model"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_flag_on_drops_a_title_that_only_re_cases_its_property_name():
+    """The card derives the same string from the key, so the title is weight."""
+    response = await _details_for(make_annotated_block(), flag_on=True)
+    assert response.block.inputs["properties"]["repo_url"] == {"type": "string"}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_flag_on_keeps_a_title_the_property_name_does_not_give():
+    response = await _details_for(make_annotated_block(), flag_on=True)
+    prompt = response.block.inputs["properties"]["sys_prompt"]
+    assert prompt["title"] == "System Prompt"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_source_schema_is_not_mutated_by_the_strip():
+    """The frontend reads the same registry object through other endpoints."""
+    block = make_annotated_block()
+    original = deepcopy(block.input_schema.jsonschema.return_value)
+    await _details_for(block, flag_on=True)
+    assert block.input_schema.jsonschema.return_value == original

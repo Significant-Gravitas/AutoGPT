@@ -4,9 +4,14 @@ import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotT
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { ChatCircleTextIcon, EyeIcon, TrashIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useFollowupListItem } from "./useFollowupListItem";
+import {
+  Comment01Icon,
+  Delete02Icon,
+  EyeIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   followup: CopilotTurnJobInfo;
@@ -33,7 +38,7 @@ export function FollowupListItem({ followup }: Props) {
   const kindBadgeLabel = followup.session_id ? "Same chat" : "New chat";
   const kindBadge = (
     <span
-      className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
+      className="rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
       data-testid="followup-kind-badge"
     >
       {kindBadgeLabel}
@@ -42,29 +47,26 @@ export function FollowupListItem({ followup }: Props) {
 
   const detailContent = (
     <>
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-yellow-50">
-        <ChatCircleTextIcon
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-separator bg-warning-surface">
+        <Icon
+          icon={Comment01Icon}
           size={18}
-          className="text-yellow-700"
-          weight="bold"
+          className="text-yellow-foreground"
         />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
-        <Text
-          variant="body-medium"
-          className="block w-full truncate text-ellipsis"
-        >
+        <Text variant="body-medium" className="block w-full text-ellipsis">
           {messagePreview}
         </Text>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <Text variant="small" className="!text-zinc-500" title={nextRunTitle}>
+          <Text variant="small" tone="muted" title={nextRunTitle}>
             {nextRunLabel}
           </Text>
-          <span className="text-zinc-300">•</span>
-          <Text variant="small" className="!text-zinc-500">
+          <span className="text-foreground-disabled">•</span>
+          <Text variant="small" tone="muted">
             {recurrenceLabel}
           </Text>
-          <span className="text-zinc-300">•</span>
+          <span className="text-foreground-disabled">•</span>
           {kindBadge}
         </div>
       </div>
@@ -73,7 +75,7 @@ export function FollowupListItem({ followup }: Props) {
 
   return (
     <div
-      className="flex w-full flex-col gap-3 rounded-large border border-zinc-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+      className="flex w-full flex-col gap-3 rounded-large border border-border-base bg-surface p-4 sm:flex-row sm:items-center sm:justify-between"
       data-testid="followup-row"
       data-followup-id={followup.id}
     >
@@ -102,7 +104,7 @@ export function FollowupListItem({ followup }: Props) {
           data-testid="followup-view-button"
           aria-label="View follow-up"
         >
-          <EyeIcon className="mr-1 h-4 w-4" />
+          <Icon icon={EyeIcon} className="mr-1 h-4 w-4" />
           View
         </Button>
         <Button
@@ -112,7 +114,7 @@ export function FollowupListItem({ followup }: Props) {
           data-testid="followup-delete-button"
           aria-label="Delete follow-up"
         >
-          <TrashIcon className="mr-1 h-4 w-4" />
+          <Icon icon={Delete02Icon} className="mr-1 h-4 w-4" />
           Delete
         </Button>
       </div>
@@ -125,19 +127,18 @@ export function FollowupListItem({ followup }: Props) {
         <Dialog.Content>
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <Text variant="small" className="!text-zinc-500">
+              <Text variant="small" tone="muted">
                 {nextRunLabel}
               </Text>
-              <span className="text-zinc-300">•</span>
-              <Text variant="small" className="!text-zinc-500">
+              <span className="text-foreground-disabled">•</span>
+              <Text variant="small" tone="muted">
                 {recurrenceLabel}
               </Text>
-              <span className="text-zinc-300">•</span>
+              <span className="text-foreground-disabled">•</span>
               {kindBadge}
             </div>
             <pre
-              className="max-h-[60vh] overflow-auto rounded-medium bg-zinc-50 p-3 text-sm text-zinc-800"
-              style={{ whiteSpace: "pre-wrap" }}
+              className="max-h-[60vh] overflow-auto rounded-medium bg-surface-muted p-3 text-body whitespace-pre-wrap text-foreground-emphasis"
               data-testid="followup-view-body"
             >
               {fullMessage}
@@ -154,8 +155,8 @@ export function FollowupListItem({ followup }: Props) {
         <Dialog.Content>
           <div className="flex flex-col gap-4">
             <Text variant="large">
-              Delete this scheduled follow-up? AutoPilot will not send the
-              message and you can recreate it from chat if needed.
+              Delete this scheduled follow-up? The message will not be sent. You
+              can recreate it from chat if needed.
             </Text>
             <Dialog.Footer>
               <Button

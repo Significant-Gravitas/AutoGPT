@@ -1,47 +1,63 @@
 "use client";
 
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
-import { SidebarHeader, useSidebar } from "@/components/ui/sidebar";
+import {
+  SidebarHeader,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
-import { SidebarSimpleIcon } from "@phosphor-icons/react";
 import Link from "next/link";
+import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
-// Mirror of AppSidebarHeader, with the logo pointing back at the tour
-// instead of the (auth-gated) copilot home.
 export function TourSidebarHeader() {
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
 
-  return (
-    <SidebarHeader className="flex animate-fade-in flex-row items-center justify-between gap-2 p-2 group-data-[collapsible=icon]:flex-col">
-      <Link
-        href="/tour"
-        aria-label="AutoGPT"
-        className={cn(
-          "flex items-center",
-          isCollapsed && "group-focus-within:hidden group-hover:hidden",
-        )}
-      >
-        {isCollapsed ? (
-          <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-8" />
-        ) : (
-          <AutoGPTLogo className="h-9 w-auto" />
-        )}
-      </Link>
+  const toggleButton = (
+    <button
+      type="button"
+      aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      onClick={toggleSidebar}
+      className={cn(
+        "size-8 shrink-0 items-center justify-center rounded-md text-foreground-emphasis transition-colors hover:bg-surface-active",
+        isCollapsed
+          ? "absolute inset-0 hidden group-focus-within:flex group-hover:flex"
+          : "flex",
+      )}
+    >
+      <Icon icon={SidebarLeftIcon} className="size-5" />
+    </button>
+  );
 
-      <button
-        type="button"
-        aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        onClick={toggleSidebar}
+  return (
+    // oxlint-disable-next-line design-system/no-restyle -- one-off mount fade; SidebarHeader has no motion variant
+    <SidebarHeader className="flex animate-fade-in flex-row items-center justify-between group-data-[collapsible=icon]:flex-col">
+      <div
         className={cn(
-          "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200",
-          isCollapsed
-            ? "hidden group-focus-within:flex group-hover:flex"
-            : "flex",
+          "relative flex items-center",
+          isCollapsed && "size-8 shrink-0",
         )}
       >
-        <SidebarSimpleIcon className="size-5 text-sidebar-foreground" />
-      </button>
+        <Link
+          href="/marketplace"
+          aria-label="AutoGPT"
+          className={cn(
+            "flex items-center",
+            isCollapsed &&
+              "size-8 items-center justify-center group-focus-within:hidden group-hover:hidden",
+          )}
+        >
+          {isCollapsed ? (
+            <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-8" />
+          ) : (
+            <AutoGPTLogo className="h-9 w-auto" />
+          )}
+        </Link>
+        {isCollapsed ? toggleButton : null}
+      </div>
+
+      {isCollapsed ? null : toggleButton}
     </SidebarHeader>
   );
 }
