@@ -60,6 +60,7 @@ def normalize_user_supplied_credentials(credentials: Credentials) -> Credentials
         if not credentials.headers:
             raise InvalidCredentialInputError("At least one header is required")
         headers: dict[str, SecretStr] = {}
+        seen_names: set[str] = set()
         for name, value in credentials.headers.items():
             name = name.strip()
             stripped_value = value.get_secret_value().strip()
@@ -68,8 +69,10 @@ def normalize_user_supplied_credentials(credentials: Credentials) -> Credentials
             if not stripped_value:
                 # Name the header (not its value) so the user can find it.
                 raise InvalidCredentialInputError(f"Header '{name}' must have a value")
-            if name.lower() in (seen.lower() for seen in headers):
+            lowered_name = name.lower()
+            if lowered_name in seen_names:
                 raise InvalidCredentialInputError(f"Header '{name}' is repeated")
+            seen_names.add(lowered_name)
             headers[name] = SecretStr(stripped_value)
         credentials.host = host
         credentials.headers = headers

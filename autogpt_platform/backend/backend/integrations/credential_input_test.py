@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from pydantic import SecretStr
 
@@ -96,6 +98,20 @@ def test_blank_or_repeated_values_are_rejected(submitted: Credentials, error: st
         normalize_user_supplied_credentials(submitted)
 
     assert str(exc.value) == error
+
+
+def test_checking_many_headers_stays_linear():
+    """A request can carry any number of headers, and the check runs on the
+    event loop; comparing each name with every earlier one took about 6 s
+    for 16,000 headers."""
+    submitted = _host_scoped({f"X-Header-{i}": "v" for i in range(20_000)})
+    started = time.thread_time()
+
+    normalize_user_supplied_credentials(submitted)
+
+    # CPU time on this thread, so a runner that pauses the test doesn't count.
+    assert time.thread_time() - started < 1
+    assert len(submitted.headers) == 20_000
 
 
 @pytest.mark.parametrize(
