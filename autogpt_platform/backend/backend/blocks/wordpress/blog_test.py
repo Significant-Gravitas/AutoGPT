@@ -75,7 +75,7 @@ DOWN = {
     "empty": ({"status": 502}, "502 - "),
     "html-page": (
         {"status": 503, "text": _ERROR_PAGE, "content_type": "text/html"},
-        f"503 - {truncate(_ERROR_PAGE, _api.ERROR_BODY_LIMIT)}",
+        f"503 - {truncate(_ERROR_PAGE, 300)}",
     ),
 }
 
@@ -152,5 +152,5 @@ async def test_a_block_against_a_wordpress_that_is_down_fails_instead_of_hanging
     assert said in message
     assert "bound method" not in message
     # The error stays short whatever the answer's size.
-    assert len(message) <= _api.ERROR_BODY_LIMIT + 100
+    assert len(message) <= 400
     assert received == [request_line] * DEFAULT_RETRY_MAX_ATTEMPTS

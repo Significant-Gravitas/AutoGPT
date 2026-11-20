@@ -13,7 +13,6 @@ from aiohttp.test_utils import TestServer
 
 from backend.blocks.wordpress import _api
 from backend.util.request import DEFAULT_RETRY_MAX_ATTEMPTS, Requests
-from backend.util.truncate import truncate
 
 ENDS_WITHIN_SECONDS = 10
 PAGES = {
@@ -70,8 +69,13 @@ async def test_a_call_against_a_wordpress_that_is_down_carries_the_pages_text(
         await asyncio.wait_for(CALLS[call](), ENDS_WITHIN_SECONDS)
 
     message = str(raised.value)
-    assert truncate(page, _api.ERROR_BODY_LIMIT) in message
     assert "bound method" not in message
-    # The error stays short whatever the page's size.
-    assert len(message) <= _api.ERROR_BODY_LIMIT + 100
+    # Each message ends with the status, then what the page said.
+    said = message.split(" 503 ", 1)[1]
+    if len(page) <= 300:
+        assert said == page
+    else:
+        # Cut to 300 characters: its start and its end.
+        assert len(said) == 300
+        assert said.startswith(page[:100]) and said.endswith(page[-100:])
     assert len(received) == DEFAULT_RETRY_MAX_ATTEMPTS
