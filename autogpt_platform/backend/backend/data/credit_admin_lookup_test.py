@@ -55,3 +55,21 @@ async def test_a_search_matches_literally_and_pages(monkeypatch):
     assert 'u."email" ILIKE $1' in page_sql
     assert 'ORDER BY ct."createdAt" DESC' in page_sql
     assert query.await_args_list[1].args[1:] == tuple(page_args[:3])
+
+
+@pytest.mark.asyncio
+async def test_a_search_with_a_nul_is_refused_before_querying(monkeypatch):
+    """Postgres can't take a NUL; the ValueError is a 400, not an engine error."""
+    query = AsyncMock(return_value=[])
+    monkeypatch.setattr(credit_admin_lookup, "query_raw_with_schema", query)
+
+    with pytest.raises(ValueError):
+        await credit_admin_lookup.search_history_keys(
+            "a\x00b",
+            include_inactive=False,
+            transaction_filter=None,
+            skip=0,
+            take=10,
+        )
+
+    query.assert_not_awaited()

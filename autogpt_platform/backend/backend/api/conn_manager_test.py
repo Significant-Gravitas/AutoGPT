@@ -2,7 +2,9 @@ import ast
 import asyncio
 import gc
 import json
+import sys
 from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -24,7 +26,8 @@ from backend.api.conn_manager import (
     graph_exec_channel_key,
 )
 from backend.api.model import WSMethod
-from backend.data.execution import GraphExecutionMeta
+from backend.api.ws_outbox import ENTRY_OVERHEAD_BYTES, WSBacklog, WSOutbox
+from backend.data.execution import GraphExecutionMeta, graph_all_channel
 from backend.data.sharded_pubsub import EventStreamLostError
 
 
@@ -108,6 +111,14 @@ async def connection_manager():
     # Stop every pump a test left running.
     for ws in list(cm._ws_streams):
         await cm.disconnect_socket(ws, user_id="user-1")
+
+
+@pytest.fixture
+async def outbox():
+    """The socket's outbox a test's shard stream sends through."""
+    box = WSOutbox(on_overflow=AsyncMock(), backlog=WSBacklog())
+    yield box
+    await box.stop()
 
 
 @pytest.fixture
@@ -473,8 +484,9 @@ async def test_a_refused_accept_frees_the_users_slot(
 @pytest.mark.asyncio
 async def test_stream_subscribes_each_channel_on_one_connection(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
         await stream.add("{u/g}/exec/b", AsyncMock())
@@ -487,12 +499,13 @@ async def test_stream_subscribes_each_channel_on_one_connection(
 @pytest.mark.asyncio
 async def test_stream_add_returns_once_redis_confirms_the_channel(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
     """The socket's answer to a subscribe means the channel is live: a view
     re-reads its state then, and an event published before Redis applied the
     SSUBSCRIBE would never arrive."""
     on_a = AsyncMock()
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     adding: asyncio.Task[None] | None = None
     try:
         await stream.add("{u/g}/exec/a", on_a)
@@ -524,11 +537,12 @@ async def test_stream_add_returns_once_redis_confirms_the_channel(
 @pytest.mark.asyncio
 async def test_stream_refuses_a_second_subscribe_of_a_channel_being_confirmed(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
     """ws_api handles a socket's messages one at a time, so this can't happen
     today; a caller that ever did it must fail at once, not wait 15 s."""
     first, second = AsyncMock(), AsyncMock()
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     adding: asyncio.Task[None] | None = None
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
@@ -551,11 +565,12 @@ async def test_stream_refuses_a_second_subscribe_of_a_channel_being_confirmed(
 @pytest.mark.asyncio
 async def test_stream_delivers_a_message_right_behind_the_confirmation(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
     """The pump reads a buffered message right after the confirmation without
     pausing, so the channel's handler must be in place before it."""
     on_b = AsyncMock()
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
         pubsub = fake_redis.pubsubs[0]
@@ -578,11 +593,12 @@ async def test_stream_delivers_a_message_right_behind_the_confirmation(
 @pytest.mark.asyncio
 async def test_stream_add_fails_at_once_once_the_stream_has_ended(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
     """Nothing reads a confirmation after the pump ends, and the socket is
     already closing; a subscribe then must not wait out the timeout."""
     on_lost = AsyncMock()
-    stream = _ShardStream(on_lost=on_lost)
+    stream = _ShardStream(on_lost=on_lost, outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
         fake_redis.pubsubs[0].inbox.put_nowait(RedisConnectionError("shard gone"))
@@ -598,8 +614,9 @@ async def test_stream_add_fails_at_once_once_the_stream_has_ended(
 @pytest.mark.asyncio
 async def test_stream_add_fails_when_the_stream_is_lost_before_redis_confirms(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
         pubsub = fake_redis.pubsubs[0]
@@ -616,10 +633,10 @@ async def test_stream_add_fails_when_the_stream_is_lost_before_redis_confirms(
 
 @pytest.mark.asyncio
 async def test_stream_add_times_out_when_redis_never_confirms(
-    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch, outbox: WSOutbox
 ) -> None:
     monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.1)
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
         fake_redis.pubsubs[0].ssubscribe.side_effect = None
@@ -633,14 +650,14 @@ async def test_stream_add_times_out_when_redis_never_confirms(
 
 @pytest.mark.asyncio
 async def test_a_subscribe_that_times_out_takes_its_channel_back(
-    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch, outbox: WSOutbox
 ) -> None:
     """Redis may apply an SSUBSCRIBE whose confirmation comes too late: the
     stream sends SUNSUBSCRIBE, so the channel doesn't stay subscribed with no
     handler, and its late confirmation and events change nothing."""
     monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.1)
     on_a, on_b, on_lost = AsyncMock(), AsyncMock(), AsyncMock()
-    stream = _ShardStream(on_lost=on_lost)
+    stream = _ShardStream(on_lost=on_lost, outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", on_a)
         pubsub = fake_redis.pubsubs[0]
@@ -670,14 +687,14 @@ async def test_a_subscribe_that_times_out_takes_its_channel_back(
 
 @pytest.mark.asyncio
 async def test_events_of_a_channel_being_taken_back_reach_no_handler(
-    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch, outbox: WSOutbox
 ) -> None:
     """The timed-out subscription's handler stays registered until its take
     back is written; an event Redis sent it meanwhile must not get through."""
     monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.1)
     monkeypatch.setattr("backend.api.conn_manager._TAKE_BACK_TIMEOUT_S", 60.0)
     on_a, on_b = AsyncMock(), AsyncMock()
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     written = asyncio.Event()
     adding: asyncio.Task[None] | None = None
     try:
@@ -712,13 +729,14 @@ async def test_events_of_a_channel_being_taken_back_reach_no_handler(
 
 @pytest.mark.asyncio
 async def test_a_retry_after_a_take_back_waits_for_its_own_confirmation(
-    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch, outbox: WSOutbox
 ) -> None:
-    """The late confirmation of the first SSUBSCRIBE comes before the take
-    back's SUNSUBSCRIBE is answered, so it can't stand for the retry's."""
+    """The late confirmation of the first SSUBSCRIBE, and any event sent to
+    it, come before the take back's SUNSUBSCRIBE is answered, so neither can
+    stand for the retry's confirmation or reach the retry's handler."""
     monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.1)
-    on_a = AsyncMock()
-    stream = _ShardStream(on_lost=AsyncMock())
+    on_a, retry_on_b = AsyncMock(), AsyncMock()
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     retrying: asyncio.Task[None] | None = None
     try:
         await stream.add("{u/g}/exec/a", on_a)
@@ -728,12 +746,13 @@ async def test_a_retry_after_a_take_back_waits_for_its_own_confirmation(
             await stream.add("{u/g}/exec/b", AsyncMock())
         # Ten times the waits below, so only a missing confirmation ends it.
         monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 60.0)
-        retrying = asyncio.create_task(stream.add("{u/g}/exec/b", AsyncMock()))
+        retrying = asyncio.create_task(stream.add("{u/g}/exec/b", retry_on_b))
         await _until(lambda: pubsub.ssubscribe.await_count == 3)
 
         for message, markers in (
             ({"type": "ssubscribe", "channel": "{u/g}/exec/b"}, 1),
-            ({"type": "sunsubscribe", "channel": "{u/g}/exec/b"}, 2),
+            ({"type": "smessage", "channel": "{u/g}/exec/b", "data": "old"}, 2),
+            ({"type": "sunsubscribe", "channel": "{u/g}/exec/b"}, 3),
         ):
             pubsub.inbox.put_nowait(message)
             pubsub.inbox.put_nowait(
@@ -741,9 +760,15 @@ async def test_a_retry_after_a_take_back_waits_for_its_own_confirmation(
             )
             await _until(lambda n=markers: on_a.await_count == n)
             assert not retrying.done()
+        retry_on_b.assert_not_awaited()
 
         pubsub.inbox.put_nowait({"type": "ssubscribe", "channel": "{u/g}/exec/b"})
         await asyncio.wait_for(retrying, timeout=5)
+        pubsub.inbox.put_nowait(
+            {"type": "smessage", "channel": "{u/g}/exec/b", "data": "new"}
+        )
+        await _until(lambda: retry_on_b.await_count == 1)
+        retry_on_b.assert_awaited_once_with("new")
     finally:
         await _join(retrying)
         await stream.stop()
@@ -751,13 +776,13 @@ async def test_a_retry_after_a_take_back_waits_for_its_own_confirmation(
 
 @pytest.mark.asyncio
 async def test_a_take_back_that_fails_retires_the_stream(
-    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch, outbox: WSOutbox
 ) -> None:
     """Without the SUNSUBSCRIBE, the channel may stay subscribed with no
     handler; closing the stream drops it, and the socket resubscribes."""
     monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.1)
     on_lost = AsyncMock()
-    stream = _ShardStream(on_lost=on_lost)
+    stream = _ShardStream(on_lost=on_lost, outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
         pubsub = fake_redis.pubsubs[0]
@@ -774,13 +799,37 @@ async def test_a_take_back_that_fails_retires_the_stream(
 
 
 @pytest.mark.asyncio
+async def test_a_take_back_that_fails_unexpectedly_still_retires_the_stream(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch, outbox: WSOutbox
+) -> None:
+    """Not only a lost stream or the deadline: any failure of the write leaves
+    no confirmation coming, so the count must drop and the stream retire."""
+    monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.1)
+    on_lost = AsyncMock()
+    stream = _ShardStream(on_lost=on_lost, outbox=outbox)
+    try:
+        await stream.add("{u/g}/exec/a", AsyncMock())
+        pubsub = fake_redis.pubsubs[0]
+        pubsub.ssubscribe.side_effect = None
+        pubsub.sunsubscribe.side_effect = RuntimeError("unexpected")
+
+        with pytest.raises(TimeoutError):
+            await stream.add("{u/g}/exec/b", AsyncMock())
+        on_lost.assert_awaited_once()
+        fake_redis.clients[0].aclose.assert_awaited_once()
+        assert stream._unsubscribing == {}
+    finally:
+        await stream.stop()
+
+
+@pytest.mark.asyncio
 async def test_a_take_back_that_never_finishes_retires_the_stream(
-    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch, outbox: WSOutbox
 ) -> None:
     monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.1)
     monkeypatch.setattr("backend.api.conn_manager._TAKE_BACK_TIMEOUT_S", 0.1)
     on_lost = AsyncMock()
-    stream = _ShardStream(on_lost=on_lost)
+    stream = _ShardStream(on_lost=on_lost, outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
         pubsub = fake_redis.pubsubs[0]
@@ -803,10 +852,11 @@ async def test_a_take_back_that_never_finishes_retires_the_stream(
 @pytest.mark.asyncio
 async def test_a_failed_write_leaves_no_unread_confirmation_error(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
     """The pump can fail the confirmation (the stream ended) while the
     SSUBSCRIBE write is still out, and then the write fails too."""
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     loop = asyncio.get_running_loop()
     previous_handler = loop.get_exception_handler()
     unread: list[dict[str, Any]] = []
@@ -833,18 +883,22 @@ async def test_a_failed_write_leaves_no_unread_confirmation_error(
 @pytest.mark.asyncio
 async def test_stream_rejects_wildcard_channel_before_redis(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
     with pytest.raises(ValueError):
-        await _ShardStream(on_lost=AsyncMock()).add("{u/g}/exec/*", AsyncMock())
+        await _ShardStream(on_lost=AsyncMock(), outbox=outbox).add(
+            "{u/g}/exec/*", AsyncMock()
+        )
     assert fake_redis.clients == []
 
 
 @pytest.mark.asyncio
 async def test_stream_forwards_smessages_to_their_channels_handler(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
     on_a, on_b = AsyncMock(), AsyncMock()
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", on_a)
         await stream.add("{u/g}/exec/b", on_b)
@@ -864,15 +918,17 @@ async def test_stream_forwards_smessages_to_their_channels_handler(
 
 
 @pytest.mark.asyncio
-async def test_stream_survives_a_failing_handler(fake_redis: _FakeRedis) -> None:
+async def test_stream_survives_a_failing_handler(
+    fake_redis: _FakeRedis, outbox: WSOutbox
+) -> None:
     handler = AsyncMock(side_effect=[RuntimeError("boom"), None])
     on_lost = AsyncMock()
-    stream = _ShardStream(on_lost=on_lost)
+    stream = _ShardStream(on_lost=on_lost, outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", handler)
         inbox = fake_redis.pubsubs[0].inbox
-        inbox.put_nowait({"type": "smessage", "channel": "{u/g}/exec/a", "data": 1})
-        inbox.put_nowait({"type": "smessage", "channel": "{u/g}/exec/a", "data": 2})
+        inbox.put_nowait({"type": "smessage", "channel": "{u/g}/exec/a", "data": "1"})
+        inbox.put_nowait({"type": "smessage", "channel": "{u/g}/exec/a", "data": "2"})
         await _until(lambda: handler.await_count == 2)
         on_lost.assert_not_awaited()
     finally:
@@ -889,9 +945,11 @@ async def test_stream_survives_a_failing_handler(fake_redis: _FakeRedis) -> None
     ],
     ids=["redis-error", "crash", "server-sunsubscribe"],
 )
-async def test_stream_reports_a_lost_stream(fake_redis: _FakeRedis, event: Any) -> None:
+async def test_stream_reports_a_lost_stream(
+    fake_redis: _FakeRedis, event: Any, outbox: WSOutbox
+) -> None:
     on_lost = AsyncMock()
-    stream = _ShardStream(on_lost=on_lost)
+    stream = _ShardStream(on_lost=on_lost, outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
         fake_redis.pubsubs[0].inbox.put_nowait(event)
@@ -903,17 +961,18 @@ async def test_stream_reports_a_lost_stream(fake_redis: _FakeRedis, event: Any) 
 @pytest.mark.asyncio
 async def test_stream_keeps_flowing_after_its_own_sunsubscribe(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
     on_b = AsyncMock()
     on_lost = AsyncMock()
-    stream = _ShardStream(on_lost=on_lost)
+    stream = _ShardStream(on_lost=on_lost, outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
         await stream.add("{u/g}/exec/b", on_b)
         await stream.remove("{u/g}/exec/a")
         inbox = fake_redis.pubsubs[0].inbox
         inbox.put_nowait({"type": "sunsubscribe", "channel": "{u/g}/exec/a"})
-        inbox.put_nowait({"type": "smessage", "channel": "{u/g}/exec/b", "data": 1})
+        inbox.put_nowait({"type": "smessage", "channel": "{u/g}/exec/b", "data": "1"})
         await _until(lambda: on_b.await_count == 1)
         on_lost.assert_not_awaited()
         fake_redis.pubsubs[0].sunsubscribe.assert_awaited_once_with("{u/g}/exec/a")
@@ -924,9 +983,10 @@ async def test_stream_keeps_flowing_after_its_own_sunsubscribe(
 @pytest.mark.asyncio
 async def test_a_failed_sunsubscribe_does_not_hide_a_later_drop(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
     on_lost = AsyncMock()
-    stream = _ShardStream(on_lost=on_lost)
+    stream = _ShardStream(on_lost=on_lost, outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
         await stream.add("{u/h}/exec/b", AsyncMock())
@@ -944,10 +1004,11 @@ async def test_a_failed_sunsubscribe_does_not_hide_a_later_drop(
 @pytest.mark.asyncio
 async def test_unsubscribing_forgets_a_channel_once_its_sunsubscribe_confirms(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
     """A long-lived stream must not keep a {channel: 0} entry per channel it
     has ever unsubscribed from."""
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     try:
         await stream.add("{u/g}/exec/keep", AsyncMock())
         inbox = fake_redis.pubsubs[0].inbox
@@ -965,10 +1026,11 @@ async def test_unsubscribing_forgets_a_channel_once_its_sunsubscribe_confirms(
 @pytest.mark.asyncio
 async def test_a_quick_resubscribe_is_not_read_as_a_lost_stream(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
     on_a = AsyncMock()
     on_lost = AsyncMock()
-    stream = _ShardStream(on_lost=on_lost)
+    stream = _ShardStream(on_lost=on_lost, outbox=outbox)
     adding: asyncio.Task[None] | None = None
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
@@ -984,7 +1046,7 @@ async def test_a_quick_resubscribe_is_not_read_as_a_lost_stream(
         inbox.put_nowait({"type": "sunsubscribe", "channel": "{u/g}/exec/a"})
         inbox.put_nowait({"type": "ssubscribe", "channel": "{u/g}/exec/a"})
         await asyncio.wait_for(adding, timeout=5)
-        inbox.put_nowait({"type": "smessage", "channel": "{u/g}/exec/a", "data": 1})
+        inbox.put_nowait({"type": "smessage", "channel": "{u/g}/exec/a", "data": "1"})
         await _until(lambda: on_a.await_count == 1)
         on_lost.assert_not_awaited()
     finally:
@@ -995,6 +1057,7 @@ async def test_a_quick_resubscribe_is_not_read_as_a_lost_stream(
 @pytest.mark.asyncio
 async def test_opening_a_stream_gives_up_when_redis_does_not_answer(
     monkeypatch: pytest.MonkeyPatch,
+    outbox: WSOutbox,
 ) -> None:
     """The shard may have failed over, so giving up must refresh the slot map
     for the client's reconnect: a bound of the socket's own around the open
@@ -1006,7 +1069,7 @@ async def test_opening_a_stream_gives_up_when_redis_does_not_answer(
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
 
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     # The outer bound turns a missing open timeout into a failure, not a hang.
     async with asyncio.timeout(5):
         with (
@@ -1026,6 +1089,7 @@ async def test_opening_a_stream_gives_up_when_redis_does_not_answer(
 async def test_a_stalled_ssubscribe_does_not_hang_past_the_open_timeout(
     fake_redis: _FakeRedis,
     monkeypatch: pytest.MonkeyPatch,
+    outbox: WSOutbox,
 ) -> None:
     """Opening's timeout must cover SSUBSCRIBE too, not just opening the
     connection, or a stalled subscribe holds the stream slot forever."""
@@ -1041,7 +1105,7 @@ async def test_a_stalled_ssubscribe_does_not_hang_past_the_open_timeout(
         fake_redis.pubsubs[-1].ssubscribe.side_effect = never_subscribes
         return client
 
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     # The outer bound turns a missing subscribe timeout into a failure, not a hang.
     async with asyncio.timeout(5):
         with (
@@ -1060,11 +1124,12 @@ async def test_a_stalled_ssubscribe_does_not_hang_past_the_open_timeout(
 async def test_a_stalled_ssubscribe_on_an_open_stream_gives_up(
     fake_redis: _FakeRedis,
     monkeypatch: pytest.MonkeyPatch,
+    outbox: WSOutbox,
 ) -> None:
     """Adding a channel to an open stream has its own bound; the stream and
     its other channels stay as they were."""
     monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 0.05)
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     try:
         await stream.add("{u/g}/exec/a", AsyncMock())
 
@@ -1084,9 +1149,10 @@ async def test_a_stalled_ssubscribe_on_an_open_stream_gives_up(
 @pytest.mark.asyncio
 async def test_removing_the_last_channel_closes_the_connection(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
     on_lost = AsyncMock()
-    stream = _ShardStream(on_lost=on_lost)
+    stream = _ShardStream(on_lost=on_lost, outbox=outbox)
     await stream.add("{u/g}/exec/a", AsyncMock())
 
     await stream.remove("{u/g}/exec/a")
@@ -1099,8 +1165,9 @@ async def test_removing_the_last_channel_closes_the_connection(
 @pytest.mark.asyncio
 async def test_a_failed_first_subscribe_closes_the_connection(
     fake_redis: _FakeRedis,
+    outbox: WSOutbox,
 ) -> None:
-    stream = _ShardStream(on_lost=AsyncMock())
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
     original_connect = fake_redis.connect
 
     async def connect_then_fail(channel: str) -> MagicMock:
@@ -1239,6 +1306,7 @@ async def test_disconnect_closes_every_stream_and_clears_bookkeeping(
         client.aclose.assert_awaited_once()
     assert mock_websocket not in connection_manager._ws_subs
     assert mock_websocket not in connection_manager._ws_streams
+    assert mock_websocket not in connection_manager._outboxes
     assert mock_websocket not in connection_manager._ws_notifications
     assert connection_manager.subscriptions == {}
     assert connection_manager._user_sockets == {}
@@ -1277,6 +1345,699 @@ async def _join(task: asyncio.Task[Any] | None) -> None:
     await asyncio.wait([task])
     if not task.cancelled():
         task.exception()
+
+
+# ---------- a client that reads slowly (#16916) ----------
+
+# Only a step that never comes keeps a wait going this long.
+_HANG_SECONDS = 10.0
+
+
+def _graph_event(graph_id: str) -> dict[str, Any]:
+    """An event on a graph's runs channel, as Redis delivers it."""
+    payload = {
+        "event_type": "graph_execution_update",
+        "id": f"exec-{graph_id}",
+        "graph_id": graph_id,
+        "status": "RUNNING",
+    }
+    return {
+        "type": "smessage",
+        "channel": event_bus_channel(graph_all_channel("user-1", graph_id)),
+        "data": json.dumps({"payload": payload}),
+    }
+
+
+class _StuckClient:
+    """A socket's client that has stopped reading: each send waits until
+    ``reading`` is set, as uvicorn's does while the transport is paused."""
+
+    def __init__(self, websocket: AsyncMock) -> None:
+        self.reading = asyncio.Event()
+        self.waited_on = asyncio.Event()
+        self.cancelled = asyncio.Event()
+        websocket.send_text = AsyncMock(side_effect=self._send)
+
+    async def _send(self, message: str) -> None:
+        self.waited_on.set()
+        try:
+            await self.reading.wait()
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
+
+
+@pytest.mark.asyncio
+async def test_a_subscribe_is_confirmed_while_a_send_waits_on_the_client(
+    connection_manager: ConnectionManager,
+    mock_websocket: AsyncMock,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """While an event's send waits on the client, the shard stream still
+    reads Redis's confirmation of the next subscribe on it, so the subscribe
+    is answered instead of waiting out its bound."""
+    monkeypatch.setattr("backend.api.conn_manager._SUBSCRIBE_TIMEOUT_S", 60.0)
+    client = _StuckClient(mock_websocket)
+    await connection_manager.subscribe_graph_execs(
+        user_id="user-1", graph_id="graph-a", websocket=mock_websocket
+    )
+    fake_redis.pubsubs[0].inbox.put_nowait(_graph_event("graph-a"))
+    try:
+        async with asyncio.timeout(_HANG_SECONDS):
+            await client.waited_on.wait()
+            await connection_manager.subscribe_graph_execs(
+                user_id="user-1", graph_id="graph-b", websocket=mock_websocket
+            )
+        graph_b = event_bus_channel(graph_all_channel("user-1", "graph-b"))
+        assert graph_b in fake_redis.subscribed()
+        assert len(fake_redis.pubsubs) == 1
+        # The first event's send, still waiting on the client.
+        assert mock_websocket.send_text.await_count == 1
+    finally:
+        client.reading.set()
+
+
+@pytest.mark.asyncio
+async def test_a_socket_waiting_on_its_client_holds_up_no_other_socket(
+    connection_manager: ConnectionManager, fake_redis: _FakeRedis
+) -> None:
+    stuck_ws: AsyncMock = AsyncMock(spec=WebSocket)
+    stuck = _StuckClient(stuck_ws)
+    healthy_ws: AsyncMock = AsyncMock(spec=WebSocket)
+    healthy_ws.send_text = AsyncMock()
+    for ws, graph_id in ((stuck_ws, "graph-a"), (healthy_ws, "graph-b")):
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id=graph_id, websocket=ws
+        )
+    stuck_inbox, healthy_inbox = (p.inbox for p in fake_redis.pubsubs)
+    try:
+        stuck_inbox.put_nowait(_graph_event("graph-a"))
+        async with asyncio.timeout(_HANG_SECONDS):
+            await stuck.waited_on.wait()
+        healthy_inbox.put_nowait(_graph_event("graph-b"))
+        await _until(lambda: healthy_ws.send_text.await_count == 1)
+    finally:
+        stuck.reading.set()
+
+
+@pytest.mark.asyncio
+async def test_a_sockets_streams_on_every_shard_share_its_bound(
+    connection_manager: ConnectionManager,
+    mock_websocket: AsyncMock,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The client is what falls behind, so its events count against one
+    bound whichever shard they come from, and go out through one sender."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    fake_redis.shard_of = lambda channel: ("redis", 2 if "graph-b" in channel else 1)
+    client = _StuckClient(mock_websocket)
+    for graph_id in ("graph-a", "graph-b"):
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id=graph_id, websocket=mock_websocket
+        )
+    first, second = (p.inbox for p in fake_redis.pubsubs)
+    try:
+        first.put_nowait(_graph_event("graph-a"))
+        async with asyncio.timeout(_HANG_SECONDS):
+            await client.waited_on.wait()
+        second.put_nowait(_graph_event("graph-b"))
+        await _until(lambda: mock_websocket.close.await_count == 1)
+        mock_websocket.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
+        )
+        assert mock_websocket.send_text.await_count == 1
+    finally:
+        client.reading.set()
+
+
+@pytest.mark.asyncio
+async def test_a_queued_event_of_a_dropped_subscription_never_reaches_the_client(
+    fake_redis: _FakeRedis, outbox: WSOutbox
+) -> None:
+    """An event waits behind a slow send while the client unsubscribes and
+    subscribes again: it belongs to the old subscription, and the new one's
+    view has re-read its state since."""
+    reading = asyncio.Event()
+
+    async def wait_on_the_client(data: Any) -> None:
+        await reading.wait()
+
+    old, new = AsyncMock(), AsyncMock()
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
+    try:
+        await stream.add("{u/g}/exec/slow", AsyncMock(side_effect=wait_on_the_client))
+        await stream.add("{u/g}/exec/x", old)
+        pubsub = fake_redis.pubsubs[0]
+        for channel, data in (("slow", "first"), ("x", "stale")):
+            pubsub.inbox.put_nowait(
+                {"type": "smessage", "channel": f"{{u/g}}/exec/{channel}", "data": data}
+            )
+        # Its confirmation comes after both events, so they are queued now.
+        await asyncio.wait_for(
+            stream.add("{u/g}/exec/marker", AsyncMock()), _HANG_SECONDS
+        )
+
+        await stream.remove("{u/g}/exec/x")
+        pubsub.inbox.put_nowait({"type": "sunsubscribe", "channel": "{u/g}/exec/x"})
+        await asyncio.wait_for(stream.add("{u/g}/exec/x", new), _HANG_SECONDS)
+        pubsub.inbox.put_nowait(
+            {"type": "smessage", "channel": "{u/g}/exec/x", "data": "fresh"}
+        )
+        reading.set()
+
+        await _until(lambda: new.await_count == 1)
+        new.assert_awaited_once_with("fresh")
+        old.assert_not_awaited()
+    finally:
+        reading.set()
+        await stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_socket_whose_client_falls_too_far_behind_is_closed(
+    connection_manager: ConnectionManager,
+    mock_websocket: AsyncMock,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Past the outbox's bound the client would miss events anyway, so it is
+    closed as for a lost stream: it reconnects, resubscribes and refetches.
+    The warning names the bound and how far behind the client was."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 3)
+    client = _StuckClient(mock_websocket)
+    await connection_manager.subscribe_graph_execs(
+        user_id="user-1", graph_id="graph-a", websocket=mock_websocket
+    )
+    inbox = fake_redis.pubsubs[0].inbox
+    inbox.put_nowait(_graph_event("graph-a"))
+    try:
+        async with asyncio.timeout(_HANG_SECONDS):
+            await client.waited_on.wait()
+        for _ in range(3):
+            inbox.put_nowait(_graph_event("graph-a"))
+        await _until(lambda: mock_websocket.close.await_count == 1)
+        mock_websocket.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
+        )
+        assert client.cancelled.is_set()
+        assert "fell too far behind (MAX_QUEUED_EVENTS: 3 events," in caplog.text
+    finally:
+        client.reading.set()
+
+
+@pytest.mark.asyncio
+async def test_a_socket_closed_for_falling_behind_stops_reading_redis(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Its shard streams would only drop what they read, and its close may
+    never get through to a client that stopped reading, so they stop at once.
+    Retired, it opens no stream on a shard it hadn't used either. Another
+    socket's stream on the same shard reads on."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    fake_redis.shard_of = lambda channel: ("redis", 2 if "graph-c" in channel else 1)
+    stuck_ws: AsyncMock = AsyncMock(spec=WebSocket)
+    stuck = _StuckClient(stuck_ws)
+    healthy_ws: AsyncMock = AsyncMock(spec=WebSocket)
+    healthy_ws.send_text = AsyncMock()
+    for ws, graph_id in ((stuck_ws, "graph-a"), (healthy_ws, "graph-b")):
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id=graph_id, websocket=ws
+        )
+    stuck_redis, healthy_redis = fake_redis.clients
+    stuck_inbox, healthy_inbox = (p.inbox for p in fake_redis.pubsubs)
+    try:
+        stuck_inbox.put_nowait(_graph_event("graph-a"))
+        async with asyncio.timeout(_HANG_SECONDS):
+            await stuck.waited_on.wait()
+        stuck_inbox.put_nowait(_graph_event("graph-a"))
+        await _until(lambda: stuck_ws.close.await_count == 1)
+        stuck_redis.aclose.assert_awaited_once()
+        with pytest.raises(EventStreamLostError):
+            await connection_manager.subscribe_graph_execs(
+                user_id="user-1", graph_id="graph-c", websocket=stuck_ws
+            )
+        assert len(fake_redis.clients) == 2
+
+        healthy_redis.aclose.assert_not_awaited()
+        healthy_inbox.put_nowait(_graph_event("graph-b"))
+        await _until(lambda: healthy_ws.send_text.await_count == 1)
+    finally:
+        stuck.reading.set()
+
+
+async def _two_streams_one_slow_to_stop(
+    connection_manager: ConnectionManager, fake_redis: _FakeRedis
+) -> tuple[AsyncMock, _StuckClient, _ShardStream, asyncio.Event, asyncio.Event]:
+    """A socket subscribed on two shards, "graph-a" and "graph-b", whose
+    first stream's stop waits on ``release`` once ``stopping`` is set."""
+    shard_of = {"graph-a": 1, "graph-b": 2, "graph-c": 3, "graph-d": 4}
+    fake_redis.shard_of = lambda channel: next(
+        ("redis", shard) for graph_id, shard in shard_of.items() if graph_id in channel
+    )
+    ws: AsyncMock = AsyncMock(spec=WebSocket)
+    client = _StuckClient(ws)
+    for graph_id in ("graph-a", "graph-b"):
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id=graph_id, websocket=ws
+        )
+    first, _ = connection_manager._ws_streams[ws].values()
+    stopping, release = asyncio.Event(), asyncio.Event()
+
+    async def close_slowly() -> None:
+        stopping.set()
+        await release.wait()
+
+    fake_redis.clients[0].aclose.side_effect = close_slowly
+    return ws, client, first, stopping, release
+
+
+async def _fall_behind(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    ws: AsyncMock,
+    client: _StuckClient,
+) -> None:
+    """Past a bound of one event on the socket's first stream."""
+    inbox = fake_redis.pubsubs[0].inbox
+    inbox.put_nowait(_graph_event("graph-a"))
+    async with asyncio.timeout(_HANG_SECONDS):
+        await client.waited_on.wait()
+    inbox.put_nowait(_graph_event("graph-a"))
+    await _until(lambda: connection_manager._outboxes[ws]._closer is not None)
+
+
+@pytest.mark.asyncio
+async def test_a_slow_client_is_closed_while_its_socket_changes_streams(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The close runs in its own task while the socket's messages are still
+    handled. While one stream stops, the socket drops another and asks for a
+    new shard: it is closed anyway with nothing left raised, the retired
+    socket gets no new stream, and another socket still subscribes."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    ws, client, _, stopping, release = await _two_streams_one_slow_to_stop(
+        connection_manager, fake_redis
+    )
+    healthy_ws: AsyncMock = AsyncMock(spec=WebSocket)
+    healthy_ws.send_text = AsyncMock()
+    try:
+        await _fall_behind(connection_manager, fake_redis, ws, client)
+        async with asyncio.timeout(_HANG_SECONDS):
+            await stopping.wait()
+        await connection_manager.unsubscribe_graph_execs(
+            user_id="user-1", graph_id="graph-b", websocket=ws
+        )
+        with pytest.raises(EventStreamLostError):
+            await connection_manager.subscribe_graph_execs(
+                user_id="user-1", graph_id="graph-c", websocket=ws
+            )
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id="graph-d", websocket=healthy_ws
+        )
+        release.set()
+
+        closer = connection_manager._outboxes[ws]._closer
+        assert closer is not None
+        async with asyncio.timeout(_HANG_SECONDS):
+            await asyncio.wait([closer])
+        assert closer.exception() is None
+        ws.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
+        )
+        # The retired socket's two streams, then the healthy socket's one.
+        assert len(fake_redis.clients) == 3
+        fake_redis.pubsubs[2].inbox.put_nowait(_graph_event("graph-d"))
+        await _until(lambda: healthy_ws.send_text.await_count == 1)
+    finally:
+        release.set()
+        client.reading.set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stop", ["raises", "is-cancelled"])
+async def test_a_slow_client_is_closed_whatever_a_stream_stop_does(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+    stop: str,
+) -> None:
+    """A stop that fails, or a close cancelled midway (as disconnecting the
+    socket does), still sends the client its close."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    ws, client, first, stopping, release = await _two_streams_one_slow_to_stop(
+        connection_manager, fake_redis
+    )
+    failing_stop = (
+        patch.object(first, "stop", AsyncMock(side_effect=RuntimeError("boom")))
+        if stop == "raises"
+        else nullcontext()
+    )
+    try:
+        with failing_stop:
+            await _fall_behind(connection_manager, fake_redis, ws, client)
+            closer = connection_manager._outboxes[ws]._closer
+            assert closer is not None
+            if stop == "is-cancelled":
+                async with asyncio.timeout(_HANG_SECONDS):
+                    await stopping.wait()
+                closer.cancel()
+            release.set()
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.wait([closer])
+        ws.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
+        )
+        if stop == "raises":
+            assert closer.exception() is None
+            # The stream after the failed one still stopped.
+            fake_redis.clients[1].aclose.assert_awaited()
+    finally:
+        release.set()
+        client.reading.set()
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_stream_takes_no_new_subscribe(
+    fake_redis: _FakeRedis, outbox: WSOutbox
+) -> None:
+    """Retired with its socket closing, it would otherwise reopen a Redis
+    connection for a client that is gone."""
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
+    await stream.add("{u/g}/exec/a", AsyncMock())
+    await stream.stop()
+    with pytest.raises(EventStreamLostError):
+        await stream.add("{u/g}/exec/b", AsyncMock())
+    assert len(fake_redis.clients) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("window", ["opening", "confirmed"])
+async def test_a_stream_stopped_while_a_subscribe_waits_keeps_nothing_running(
+    fake_redis: _FakeRedis, outbox: WSOutbox, window: str
+) -> None:
+    """A slow client's close stops its streams from another task, so a stop
+    can land while ``add()`` waits: on the first channel's connection, which
+    it finds not there yet to close, or right after a later channel's
+    confirmation. The subscribe fails, the connection is closed, and no pump
+    is left running."""
+    stream = _ShardStream(on_lost=AsyncMock(), outbox=outbox)
+    stopping: list[asyncio.Task[None]] = []
+    adding: asyncio.Task[None] | None = None
+    try:
+        if window == "opening":
+            connecting, connected = asyncio.Event(), asyncio.Event()
+            connect = fake_redis.connect
+
+            async def connect_slowly(channel: str) -> MagicMock:
+                connecting.set()
+                await connected.wait()
+                return await connect(channel)
+
+            with patch(
+                "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
+                side_effect=connect_slowly,
+            ):
+                adding = asyncio.create_task(stream.add("{u/g}/exec/a", AsyncMock()))
+                async with asyncio.timeout(_HANG_SECONDS):
+                    await connecting.wait()
+                    await stream.stop()
+                connected.set()
+                async with asyncio.timeout(_HANG_SECONDS):
+                    await asyncio.wait([adding])
+            channel = "{u/g}/exec/a"
+        else:
+            await stream.add("{u/g}/exec/a", AsyncMock())
+            pubsub = fake_redis.pubsubs[0]
+
+            async def confirm_then_stop(channel: str) -> None:
+                pubsub.inbox.put_nowait({"type": "ssubscribe", "channel": channel})
+                stopping.append(asyncio.create_task(stream.stop()))
+
+            pubsub.ssubscribe.side_effect = confirm_then_stop
+            adding = asyncio.create_task(stream.add("{u/g}/exec/b", AsyncMock()))
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.wait([adding])
+                # Started during the add; a failed stop fails the test.
+                assert len(stopping) == 1
+                await stopping[0]
+            channel = "{u/g}/exec/b"
+        assert isinstance(adding.exception(), EventStreamLostError)
+        assert channel not in stream.handlers
+        assert stream._task is None
+        fake_redis.clients[0].aclose.assert_awaited()
+    finally:
+        await _join(adding)
+        for task in stopping:
+            await _join(task)
+        await stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_stream_stopped_while_it_opens_keeps_nothing_open(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A subscribe can be opening the socket's stream on a new shard when the
+    client falls behind and the socket's streams stop. That stop finds
+    nothing to close yet, so the subscribe must close what it opened rather
+    than start a pump on a retired stream."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    fake_redis.shard_of = lambda channel: ("redis", 2 if "graph-c" in channel else 1)
+    ws: AsyncMock = AsyncMock(spec=WebSocket)
+    client = _StuckClient(ws)
+    await connection_manager.subscribe_graph_execs(
+        user_id="user-1", graph_id="graph-a", websocket=ws
+    )
+    opening, opened = asyncio.Event(), asyncio.Event()
+    connect = fake_redis.connect
+
+    async def connect_slowly(channel: str) -> MagicMock:
+        if "graph-c" in channel:
+            opening.set()
+            await opened.wait()
+        return await connect(channel)
+
+    subscribing: asyncio.Task[str] | None = None
+    try:
+        with patch(
+            "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
+            side_effect=connect_slowly,
+        ):
+            subscribing = asyncio.create_task(
+                connection_manager.subscribe_graph_execs(
+                    user_id="user-1", graph_id="graph-c", websocket=ws
+                )
+            )
+            async with asyncio.timeout(_HANG_SECONDS):
+                await opening.wait()
+            await _fall_behind(connection_manager, fake_redis, ws, client)
+            closer = connection_manager._outboxes[ws]._closer
+            assert closer is not None
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.wait([closer])
+            ws.close.assert_awaited_once()
+            opened.set()
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.wait([subscribing])
+        assert isinstance(subscribing.exception(), EventStreamLostError)
+        fake_redis.clients[-1].aclose.assert_awaited()
+        assert ("redis", 2) not in connection_manager._ws_streams[ws]
+    finally:
+        opened.set()
+        client.reading.set()
+        await _join(subscribing)
+
+
+@pytest.mark.asyncio
+async def test_a_subscribe_that_opens_after_its_socket_retired_fails_at_once(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A subscribe can finish opening a new shard's stream after its socket
+    fell behind, while the close is still stopping another shard. It fails
+    then and frees the shard's slot at once, rather than telling a closing
+    socket it subscribed; the close goes out after."""
+    monkeypatch.setattr("backend.api.ws_outbox.MAX_QUEUED_EVENTS", 1)
+    fake_redis.shard_of = lambda channel: ("redis", 2 if "graph-c" in channel else 1)
+    ws: AsyncMock = AsyncMock(spec=WebSocket)
+    client = _StuckClient(ws)
+    await connection_manager.subscribe_graph_execs(
+        user_id="user-1", graph_id="graph-a", websocket=ws
+    )
+    first_stopping, first_stopped = asyncio.Event(), asyncio.Event()
+
+    async def close_first_slowly() -> None:
+        first_stopping.set()
+        await first_stopped.wait()
+
+    fake_redis.clients[0].aclose.side_effect = close_first_slowly
+    opening, opened = asyncio.Event(), asyncio.Event()
+    connect = fake_redis.connect
+
+    async def connect_slowly(channel: str) -> MagicMock:
+        if "graph-c" in channel:
+            opening.set()
+            await opened.wait()
+        return await connect(channel)
+
+    subscribing: asyncio.Task[str] | None = None
+    try:
+        with patch(
+            "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
+            side_effect=connect_slowly,
+        ):
+            subscribing = asyncio.create_task(
+                connection_manager.subscribe_graph_execs(
+                    user_id="user-1", graph_id="graph-c", websocket=ws
+                )
+            )
+            async with asyncio.timeout(_HANG_SECONDS):
+                await opening.wait()
+            second = connection_manager._ws_streams[ws][("redis", 2)]
+            await _fall_behind(connection_manager, fake_redis, ws, client)
+            async with asyncio.timeout(_HANG_SECONDS):
+                await first_stopping.wait()
+            opened.set()
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.wait([subscribing])
+            assert isinstance(subscribing.exception(), EventStreamLostError)
+            # Freed while the close still waits on the first shard.
+            assert ("redis", 2) not in connection_manager._ws_streams[ws]
+            assert ("redis", 2) not in connection_manager._streams_per_shard
+            assert second._task is None
+            fake_redis.clients[1].aclose.assert_awaited()
+            ws.close.assert_not_awaited()
+
+            first_stopped.set()
+            closer = connection_manager._outboxes[ws]._closer
+            assert closer is not None
+            async with asyncio.timeout(_HANG_SECONDS):
+                await asyncio.wait([closer])
+        assert closer.exception() is None
+        ws.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
+        )
+    finally:
+        opened.set()
+        first_stopped.set()
+        client.reading.set()
+        await _join(subscribing)
+
+
+@pytest.mark.asyncio
+async def test_a_full_process_closes_the_socket_furthest_behind(
+    connection_manager: ConnectionManager,
+    fake_redis: _FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every socket's outbox counts against one budget for the process, so
+    sockets stuck behind can't add up past it: the one furthest behind is
+    closed to make room for another socket's event."""
+    stuck_ws: AsyncMock = AsyncMock(spec=WebSocket)
+    stuck = _StuckClient(stuck_ws)
+    healthy_ws: AsyncMock = AsyncMock(spec=WebSocket)
+    healthy_ws.send_text = AsyncMock()
+    for ws, graph_id in ((stuck_ws, "graph-a"), (healthy_ws, "graph-b")):
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id=graph_id, websocket=ws
+        )
+    stuck_inbox, healthy_inbox = (p.inbox for p in fake_redis.pubsubs)
+    # What each queued event counts: its payload and the queue entry itself.
+    held = 2 * (sys.getsizeof(_graph_event("graph-a")["data"]) + ENTRY_OVERHEAD_BYTES)
+    needed = sys.getsizeof(_graph_event("graph-b")["data"]) + ENTRY_OVERHEAD_BYTES
+    monkeypatch.setattr(
+        "backend.api.ws_outbox.MAX_QUEUED_BYTES_PER_PROCESS", held + needed - 1
+    )
+    try:
+        stuck_inbox.put_nowait(_graph_event("graph-a"))
+        async with asyncio.timeout(_HANG_SECONDS):
+            await stuck.waited_on.wait()
+        stuck_inbox.put_nowait(_graph_event("graph-a"))
+        await _until(lambda: connection_manager._backlog.queued_bytes == held)
+
+        healthy_inbox.put_nowait(_graph_event("graph-b"))
+        await _until(lambda: stuck_ws.close.await_count == 1)
+        stuck_ws.close.assert_awaited_once_with(
+            code=WS_CLOSE_EVENT_STREAM_LOST, reason="Client fell behind"
+        )
+        await _until(lambda: healthy_ws.send_text.await_count == 1)
+        healthy_ws.close.assert_not_awaited()
+    finally:
+        stuck.reading.set()
+
+
+@pytest.mark.asyncio
+async def test_a_disconnect_cancelled_mid_stop_still_frees_the_sockets_backlog(
+    connection_manager: ConnectionManager,
+    mock_websocket: AsyncMock,
+    fake_redis: _FakeRedis,
+) -> None:
+    """At shutdown a socket's handler is cancelled, maybe while one of its
+    streams is stopping; its outbox must stop anyway, so its backlog stops
+    counting against the process and its send stops waiting."""
+    client = _StuckClient(mock_websocket)
+    await connection_manager.subscribe_graph_execs(
+        user_id="user-1", graph_id="graph-a", websocket=mock_websocket
+    )
+    fake_redis.pubsubs[0].inbox.put_nowait(_graph_event("graph-a"))
+    stopping, release = asyncio.Event(), asyncio.Event()
+
+    async def close_slowly() -> None:
+        stopping.set()
+        await release.wait()
+
+    fake_redis.clients[0].aclose.side_effect = close_slowly
+    disconnecting: asyncio.Task[None] | None = None
+    try:
+        async with asyncio.timeout(_HANG_SECONDS):
+            await client.waited_on.wait()
+        assert connection_manager._backlog.queued_bytes > 0
+        disconnecting = asyncio.create_task(
+            connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
+        )
+        async with asyncio.timeout(_HANG_SECONDS):
+            await stopping.wait()
+        disconnecting.cancel()
+        async with asyncio.timeout(_HANG_SECONDS):
+            await asyncio.wait([disconnecting])
+        assert disconnecting.cancelled()
+        assert connection_manager._backlog.queued_bytes == 0
+        assert mock_websocket not in connection_manager._outboxes
+        assert client.cancelled.is_set()
+    finally:
+        release.set()
+        client.reading.set()
+        await _join(disconnecting)
+
+
+@pytest.mark.asyncio
+async def test_disconnect_ends_a_send_waiting_on_the_client(
+    connection_manager: ConnectionManager,
+    mock_websocket: AsyncMock,
+    fake_redis: _FakeRedis,
+) -> None:
+    client = _StuckClient(mock_websocket)
+    await connection_manager.subscribe_graph_execs(
+        user_id="user-1", graph_id="graph-a", websocket=mock_websocket
+    )
+    fake_redis.pubsubs[0].inbox.put_nowait(_graph_event("graph-a"))
+    try:
+        async with asyncio.timeout(_HANG_SECONDS):
+            await client.waited_on.wait()
+            await connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
+        assert client.cancelled.is_set()
+        assert mock_websocket not in connection_manager._outboxes
+    finally:
+        client.reading.set()
 
 
 # ---------- _forward_exec_event ----------

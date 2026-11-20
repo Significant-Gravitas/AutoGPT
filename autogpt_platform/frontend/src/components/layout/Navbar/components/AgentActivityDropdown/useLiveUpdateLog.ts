@@ -91,16 +91,23 @@ export function createLiveUpdateLog() {
     },
     /**
      * What the list fetched at `dataUpdatedAt` may predate, in arrival
-     * order. Forgets the rest, which every later list includes, and makes a
-     * read by ID of a run in the list give way if the list started later. A
-     * list whose fetch start went unseen counts as older than everything.
+     * order. Forgets the rest, which every later list includes. A read by ID
+     * gives way to a list that started later and either has the run or has
+     * every run (`complete`), so the run is gone. A list whose fetch start
+     * went unseen counts as older than everything.
      */
-    updatesNewerThan(dataUpdatedAt: number, listed: { id: string }[]) {
+    updatesNewerThan(
+      dataUpdatedAt: number,
+      listed: { id: string }[],
+      complete: boolean,
+    ) {
       const since = listSequences.get(dataUpdatedAt) ?? 0;
-      for (const { id } of listed) {
-        const read = reads.get(id);
-        if (read && since > read.started) read.superseded = true;
-      }
+      const listedIDs = new Set(listed.map(({ id }) => id));
+      reads.forEach((read, id) => {
+        if (since > read.started && (complete || listedIDs.has(id))) {
+          read.superseded = true;
+        }
+      });
       const newer: RunStatus[] = [];
       updates.forEach((update, id) => {
         if (update.sequence > since) newer.push(update.execution);

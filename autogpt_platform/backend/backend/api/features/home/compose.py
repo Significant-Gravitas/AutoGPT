@@ -41,6 +41,7 @@ def compose_home_dashboard(
     work_events: list[ActivityEvent] | None = None,
     session_titles: dict[str, str | None] | None = None,
     paused_chats: list[PausedScheduledChat] | None = None,
+    schedules_unavailable: bool = False,
 ) -> HomeDashboardResponse:
     hired = [
         expert
@@ -106,4 +107,5 @@ def compose_home_dashboard(
             agent_by_graph=agent_by_graph,
             session_titles=session_titles or {},
         ),
+        schedules_unavailable=schedules_unavailable,
     )

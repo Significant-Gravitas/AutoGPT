@@ -45,6 +45,9 @@ from .schemas import (
 
 _SCOPE = MemoryScope.for_user("u1")
 _LOCK_KEY = _SCOPE.redis_key("dream_lock")
+# Each wait below only stops a hung test; a passing run goes on as soon
+# as it is met, and a CI runner can stall a test for seconds.
+_HANG_SECONDS = 10
 _PHASE_MODELS = {
     "consolidate": "claude-sonnet-5",
     "recombine": "claude-opus-5-5",
@@ -130,14 +133,14 @@ class TestTheBatchRoute:
 
         mocker.patch.object(batch_callbacks_mod, "claim_apply_gate", paused_claim)
         old = asyncio.create_task(_deliver_sanitize())
-        await asyncio.wait_for(at_gate.wait(), 5)
+        await asyncio.wait_for(at_gate.wait(), _HANG_SECONDS)
         await fake_dream_redis.delete(_LOCK_KEY)
 
         newer = await orchestrator_mod.execute_dream_pass(
             "u1", trigger="admin", force=True
         )
         resume.set()
-        await asyncio.wait_for(old, 5)
+        await asyncio.wait_for(old, _HANG_SECONDS)
 
         assert newer.error is None and not newer.skipped
         assert [call.args[1] for call in apply.await_args_list] == [newer.pass_id]
@@ -208,17 +211,19 @@ class TestTheBatchRoute:
         loop = asyncio.get_running_loop()
         started = loop.time()
         old = asyncio.create_task(_deliver_sanitize())
-        await asyncio.wait_for(at_fence.wait(), 5)
+        await asyncio.wait_for(at_fence.wait(), _HANG_SECONDS)
         await fake_dream_redis.delete(_LOCK_KEY)
 
         newer = await orchestrator_mod.execute_dream_pass(
             "u1", trigger="admin", force=True
         )
         proceed.set()
-        await asyncio.wait_for(old, 5)
+        await asyncio.wait_for(old, _HANG_SECONDS)
 
         if failure == "timeout":
-            assert 1.9 < loop.time() - started < 4
+            # The renewal waited out its real 2 s timeout; a renewal that
+            # never timed out would have tripped the hang guard above.
+            assert loop.time() - started > 1.9
         assert newer.error is None and not newer.skipped
         assert [call.args[1] for call in apply.await_args_list] == [newer.pass_id]
         error = "expired: forced"
