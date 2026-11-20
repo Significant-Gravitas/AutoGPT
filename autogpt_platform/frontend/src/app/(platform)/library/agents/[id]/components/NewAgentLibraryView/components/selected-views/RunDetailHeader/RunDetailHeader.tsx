@@ -1,13 +1,13 @@
 "use client";
 
-import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
 import { useNowSecond } from "@/hooks/useNowSecond";
-import { formatDistanceToNow, formatDistanceStrict } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
+import { formatRunDuration, isLiveRun } from "./helpers";
 import { FlaskConicalIcon, TimeScheduleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
@@ -21,32 +21,9 @@ type Props = {
   onClearSelectedRun?: () => void;
 };
 
-function formatRunDuration(run: GraphExecution, nowMs: number): string | null {
-  const isLive =
-    run.status === AgentExecutionStatus.RUNNING ||
-    run.status === AgentExecutionStatus.QUEUED;
-
-  // Finished: prefer finalized stats.duration when present.
-  if (!isLive && run.stats?.duration != null) {
-    return formatDistanceStrict(0, run.stats.duration * 1000);
-  }
-
-  // Live: started_at → now. Finished without stats: started_at → ended_at.
-  if (!run.started_at) return null;
-  const start = new Date(run.started_at).getTime();
-  if (Number.isNaN(start)) return null;
-  const endedMs = run.ended_at ? new Date(run.ended_at).getTime() : null;
-  const end = isLive ? nowMs : endedMs;
-  if (end === null || Number.isNaN(end) || end < start) return null;
-  return formatDistanceStrict(0, end - start);
-}
-
 export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
   const isBillingEnabled = useIsBillingEnabled();
-  const isLive =
-    run?.status === AgentExecutionStatus.RUNNING ||
-    run?.status === AgentExecutionStatus.QUEUED;
-  const nowMs = useNowSecond(Boolean(isLive && run?.started_at));
+  const nowMs = useNowSecond(isLiveRun(run) && Boolean(run?.started_at));
   const durationLabel = run ? formatRunDuration(run, nowMs) : null;
 
   return (
