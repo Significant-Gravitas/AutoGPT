@@ -112,7 +112,8 @@ _SPEND_BURNED_ELAPSED_FRACTION = 0.9
 
 # A retry gets only what is left of the shared deadline. Below this it would
 # almost surely be cut off mid-inference, billed and wasted, so stop instead.
-# Matches the lowest llm_request_timeout_seconds the settings allow.
+# Capped at half the budget: at the shortest budget the settings allow (30s),
+# a 30s floor would rule out every retry.
 LLM_MIN_ATTEMPT_SECONDS = 30
 
 # One clock for the retry deadline and timeout classification; tests patch it.
@@ -771,6 +772,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         llm_model = input_data.model
         total_provider_cost: float | None = None
         per_attempt_timeout = LLM_REQUEST_TIMEOUT_SECONDS
+        min_attempt_timeout = min(LLM_MIN_ATTEMPT_SECONDS, per_attempt_timeout / 2)
         deadline = _now() + per_attempt_timeout
 
         attempt_timeout = per_attempt_timeout
@@ -779,7 +781,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 attempt_timeout = remaining_attempt_timeout(
                     deadline, per_attempt_timeout, _now()
                 )
-                if attempt_timeout < LLM_MIN_ATTEMPT_SECONDS:
+                if attempt_timeout < min_attempt_timeout:
                     error_feedback_message = (
                         f"LLM retry budget of {per_attempt_timeout}s ran out after "
                         f"{retry_count} attempt(s) without a valid response."
@@ -1167,18 +1169,13 @@ def _log_timeout_outcome(
 
 
 def _block_timeout_error(
-    llm_model: LLMModel,
-    max_tokens: int | None,
-    timeout_seconds: float | None = None,
+    llm_model: LLMModel, max_tokens: int | None, timeout_seconds: float
 ) -> TimeoutError:
     """Provider-agnostic timeout text plus the one remedy only blocks expose."""
     budget = max_tokens or llm_model.max_output_tokens
     hint = f" (currently {budget})" if budget else ""
-    timeout = (
-        LLM_REQUEST_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
-    )
     return TimeoutError(
-        f"{timeout_error(f'{llm_model.metadata.provider}/{llm_model.value}', timeout)}"
+        f"{timeout_error(f'{llm_model.metadata.provider}/{llm_model.value}', timeout_seconds)}"
         f" You can also lower the advanced Max Tokens setting{hint}."
     )
 
