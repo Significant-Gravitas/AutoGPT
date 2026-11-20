@@ -1,3 +1,4 @@
+import { formatRelativeDuration } from "@/app/(platform)/library/hooks/executionHelpers";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { formatDistanceStrict } from "date-fns";
@@ -24,7 +25,7 @@ export function formatRunDuration(
   if (Number.isNaN(start)) return null;
 
   // The clock is floored to the second, so it can lag a run that has just started.
-  if (isLive) return formatDistanceStrict(0, Math.max(0, nowMs - start));
+  if (isLive) return formatRelativeDuration(Math.max(0, nowMs - start));
 
   const end = run.ended_at ? new Date(run.ended_at).getTime() : Number.NaN;
   if (Number.isNaN(end) || end < start) return null;

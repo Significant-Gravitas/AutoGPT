@@ -3,8 +3,6 @@ import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExe
 
 export const SEVENTY_TWO_HOURS_MS = 72 * 60 * 60 * 1000;
 
-// Match AgentActivityDropdown/helpers.tsx getExecutionDuration: only the first
-// few seconds stay vague; after that show second-level precision (#9690 Part 2).
 const SHORT_DURATION_THRESHOLD_SECONDS = 5;
 
 // Shared scheduled-predicate used by fleet summary, sitrep, status-map, and the

@@ -51,7 +51,7 @@ export function ActivityItem({ execution }: Props) {
   const isActiveStatus =
     execution.status === AgentExecutionStatus.RUNNING ||
     execution.status === AgentExecutionStatus.QUEUED;
-  // Tick every second so live elapsed advances without waiting for stats (#9690).
+  // Tick every second so live elapsed advances without waiting for stats.
   const nowMs = useNowSecond(isActiveStatus);
 
   function getStatusIcon() {

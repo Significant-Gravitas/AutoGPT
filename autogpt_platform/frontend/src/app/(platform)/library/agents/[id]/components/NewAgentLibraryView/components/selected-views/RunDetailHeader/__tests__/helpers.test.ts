@@ -25,19 +25,30 @@ describe("formatRunDuration", () => {
       stats: { duration: 3 },
     });
 
-    expect(formatRunDuration(run, NOW)).toBe("16 seconds");
+    expect(formatRunDuration(run, NOW)).toBe("16s");
   });
 
   it("counts a queued run that has started up to now", () => {
     const run = makeRun({ status: AgentExecutionStatus.QUEUED });
 
-    expect(formatRunDuration(run, NOW)).toBe("16 seconds");
+    expect(formatRunDuration(run, NOW)).toBe("16s");
   });
 
-  it("shows 0 seconds, not nothing, while the floored clock lags a run that just started", () => {
+  it("keeps counting each second past the first minute", () => {
+    const run = makeRun();
+
+    expect(formatRunDuration(run, Date.parse("2026-07-21T12:01:30Z"))).toBe(
+      "1m 30s",
+    );
+    expect(formatRunDuration(run, Date.parse("2026-07-21T12:01:31Z"))).toBe(
+      "1m 31s",
+    );
+  });
+
+  it("shows a few seconds, not nothing, while the floored clock lags a run that just started", () => {
     const run = makeRun({ started_at: "2026-07-21T12:00:16.400Z" });
 
-    expect(formatRunDuration(run, NOW)).toBe("0 seconds");
+    expect(formatRunDuration(run, NOW)).toBe("a few seconds");
   });
 
   it("uses stats.duration once the run has finished", () => {

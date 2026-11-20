@@ -3,6 +3,7 @@ import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExe
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -76,7 +77,7 @@ describe("ExecutionListSection", () => {
   });
 
   it("counts a running item with no activity status up each second", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-21T12:00:10Z"));
     try {
       const agents = [makeAgent({ id: "lib-1", graph_id: "g-1" })];
@@ -91,10 +92,12 @@ describe("ExecutionListSection", () => {
       );
 
       render(<ExecutionListSection activeTab="running" agents={agents} />);
-      expect(await screen.findByText("Running for 10s")).toBeDefined();
+      // Runs the zero-delay timers that deliver the list without leaving 12:00:10.
+      await act(() => vi.advanceTimersByTimeAsync(100));
+      expect(screen.getByText("Running for 10s")).toBeDefined();
 
-      vi.setSystemTime(new Date("2026-07-21T12:00:16Z"));
-      expect(await screen.findByText("Running for 16s")).toBeDefined();
+      await act(() => vi.advanceTimersByTimeAsync(6_000));
+      expect(screen.getByText("Running for 16s")).toBeDefined();
     } finally {
       vi.useRealTimers();
     }

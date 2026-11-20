@@ -24,18 +24,18 @@ function makeRun(overrides: Partial<GraphExecution> = {}): GraphExecution {
 }
 
 describe("RunDetailHeader", () => {
-  it("counts a running run's duration up each second", () => {
+  it("counts a running run's duration up each second, past the first minute", () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-07-21T12:00:10Z"));
+    vi.setSystemTime(new Date("2026-07-21T12:01:30Z"));
     try {
       render(<RunDetailHeader agent={AGENT} run={makeRun()} />);
-      expect(screen.getByText("Duration: 10 seconds")).toBeDefined();
+      expect(screen.getByText("Duration: 1m 30s")).toBeDefined();
 
       act(() => {
-        vi.advanceTimersByTime(6_000);
+        vi.advanceTimersByTime(1_000);
       });
 
-      expect(screen.getByText("Duration: 16 seconds")).toBeDefined();
+      expect(screen.getByText("Duration: 1m 31s")).toBeDefined();
     } finally {
       vi.useRealTimers();
     }

@@ -82,6 +82,27 @@ describe("ActivityItem", () => {
     }
   });
 
+  it.each([
+    [AgentExecutionStatus.RUNNING, /, 16s running$/],
+    [AgentExecutionStatus.QUEUED, /, 16s queued$/],
+  ])("counts a %s run up to now, past a stale ended_at", (status, line) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-21T12:00:16Z"));
+    try {
+      render(
+        <ActivityItem
+          execution={makeExecution({
+            status,
+            ended_at: new Date("2026-07-21T12:00:03Z"),
+          })}
+        />,
+      );
+      expect(screen.getByText(line)).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows 0s, not Unknown, when a running execution started after the floored now", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-21T12:00:00.400Z"));
