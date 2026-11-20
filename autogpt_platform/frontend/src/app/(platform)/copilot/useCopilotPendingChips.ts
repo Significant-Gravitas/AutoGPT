@@ -3,7 +3,10 @@ import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { UIMessage } from "ai";
 import { useEffect, useInsertionEffect, useRef, useState } from "react";
 
-import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
+import {
+  makePromotedUserBubble,
+  promotedBubbleId,
+} from "./helpers/makePromotedBubble";
 import { v4 as uuidv4 } from "uuid";
 import { PENDING_DRAINED_PART_TYPE } from "./messageParts";
 
@@ -108,8 +111,7 @@ export function useCopilotPendingChips({
   /** Returns the chip's id, for `unqueueMessage`. */
   function queueMessage(text: string) {
     // Options force uuid's getRandomValues path: crypto.randomUUID does not
-    // exist on a plain-HTTP LAN origin, where it took the whole chat page
-    // down instead of queueing.
+    // exist on a plain-HTTP LAN origin.
     const id = uuidv4({});
     setQueue((prev) => [...prev, { id, text }]);
     return id;
@@ -422,7 +424,7 @@ function bubbleIdFor(entryId: string): string {
 function isPromotedBubbleFor(message: UIMessage, entryId: string): boolean {
   const suffix = bubbleIdFor(entryId);
   return PROMOTION_FLAVOURS.some(
-    (flavour) => message.id === makePromotedUserBubble("", flavour, suffix).id,
+    (flavour) => message.id === promotedBubbleId(flavour, suffix),
   );
 }
 

@@ -61,8 +61,20 @@ export function useHeldFollowUps(sessionId: string | null) {
 
   /** It went out, was queued, or went back to the composer. */
   function release(followUp: HeldFollowUp) {
-    setEntries((prev) => prev.filter((entry) => entry.id !== followUp.id));
+    drop(followUp);
     forgetHeldFollowUp(followUp.sessionId, followUp.text);
+  }
+
+  /**
+   * Another workflow's chat is on screen, so the composer is not its own: it
+   * keeps its stored copy, which goes back when its own chat opens again.
+   */
+  function setAside(followUp: HeldFollowUp) {
+    drop(followUp);
+  }
+
+  function drop(followUp: HeldFollowUp) {
+    setEntries((prev) => prev.filter((entry) => entry.id !== followUp.id));
   }
 
   return {
@@ -72,6 +84,7 @@ export function useHeldFollowUps(sessionId: string | null) {
     hold,
     setQueuing,
     release,
+    setAside,
   };
 }
 
@@ -91,5 +104,22 @@ export function returnFailedFollowUp(text: string, error: unknown) {
     title: "Couldn't send message",
     error,
     recovery: "your message is back in the composer",
+  });
+}
+
+/** For a follow-up set aside for its own chat, which is no longer on screen. */
+export function noteSetAside(reason: string) {
+  toast({
+    title: "Follow-up not sent",
+    description: `${reason} It will be back in its chat's composer.`,
+  });
+}
+
+/** For a set-aside follow-up whose queue request failed. */
+export function noteFailedSetAside(error: unknown) {
+  toastSendFailure({
+    title: "Couldn't send message",
+    error,
+    recovery: "your message will be back in its chat's composer",
   });
 }

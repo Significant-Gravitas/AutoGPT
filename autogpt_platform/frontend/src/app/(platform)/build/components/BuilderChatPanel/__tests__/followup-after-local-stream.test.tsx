@@ -260,7 +260,7 @@ describe("useBuilderChatSend — follow-up refused by the backend", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("hands it back to the composer when the panel opens another workflow", async () => {
+  it("keeps it for its own workflow's chat when the panel opens another workflow", async () => {
     const chat = renderBuilderChat();
     chat.send("and then?");
     await flush();
@@ -268,29 +268,87 @@ describe("useBuilderChatSend — follow-up refused by the backend", () => {
     // The next workflow's chat is idle, so its stream reads as settled in
     // the very commit that switches to it.
     chat.update({ sessionId: "session-2", status: "ready" });
-    await waitFor(() => expect(recoveredDraft()).toBe("and then?"));
-
-    expect(sendMessage).not.toHaveBeenCalled();
-    expect(toast).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ title: "Follow-up not sent" }),
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ title: "Follow-up not sent" }),
+      ),
     );
+
+    // Not in this workflow's composer, where Enter would send it here.
+    expect(recoveredDraft()).toBeNull();
+    expect(sendMessage).not.toHaveBeenCalled();
     expect(chat.result.current.queuedMessages).toEqual([]);
+    expect(window.sessionStorage.getItem(HELD_KEY)).toContain("and then?");
+
+    chat.update({ sessionId: "session-1" });
+    await waitFor(() => expect(recoveredDraft()).toBe("and then?"));
     expect(window.sessionStorage.getItem(HELD_KEY)).toBeNull();
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("hands it back as soon as the panel leaves its workflow, before any stream settles", async () => {
+  it("gives it back on its own workflow when the panel leaves before any stream settles", async () => {
     const chat = renderBuilderChat();
     chat.send("and then?");
     await flush();
 
     chat.update({ sessionId: "session-2" });
-    await waitFor(() => expect(recoveredDraft()).toBe("and then?"));
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
+    expect(recoveredDraft()).toBeNull();
 
     // Back on the first workflow, its stream settles with nothing to send.
     chat.update({ sessionId: "session-1", status: "ready" });
+    await waitFor(() => expect(recoveredDraft()).toBe("and then?"));
     await flush();
     expect(sendMessage).not.toHaveBeenCalled();
-    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a held follow-up the backend refuses again, and sends it after the next turn", async () => {
+    const chat = renderBuilderChat();
+    chat.send("first");
+    chat.send("second");
+    await flush();
+
+    // "first" goes out as a new turn; "second" re-queues behind it, and the
+    // backend refuses it again before that turn registers.
+    chat.update({ status: "ready" });
+    await waitFor(() => expect(queueFollowUpMessage).toHaveBeenCalledTimes(3));
+    expect(sendMessage).toHaveBeenCalledExactlyOnceWith({ text: "first" });
+    await waitFor(() =>
+      expect(chat.result.current.queuedMessages).toEqual(["second"]),
+    );
+    expect(window.sessionStorage.getItem(HELD_KEY)).toContain("second");
+
+    chat.update({ status: "streaming" });
+    chat.update({ status: "ready" });
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(2));
+    expect(sendMessage).toHaveBeenLastCalledWith({ text: "second" });
+    await waitFor(() => expect(chat.result.current.queuedMessages).toEqual([]));
+    expect(window.sessionStorage.getItem(HELD_KEY)).toBeNull();
+  });
+
+  it("keeps a held follow-up for its own chat when its queue request fails after the panel moved on", async () => {
+    const chat = renderBuilderChat();
+    chat.send("first");
+    chat.send("second");
+    await flush();
+
+    const request = deferred<typeof ACCEPTED>();
+    queueFollowUpMessage.mockReturnValue(request.promise);
+    chat.update({ status: "ready" });
+    await waitFor(() => expect(queueFollowUpMessage).toHaveBeenCalledTimes(3));
+
+    chat.update({ sessionId: "session-2" });
+    const failure = new Error("Expected 200 from /messages/pending; got 500");
+    await act(async () => request.reject(failure));
+    await flush();
+
+    expect(captureException).toHaveBeenCalledExactlyOnceWith(failure);
+    expect(toast).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ title: "Couldn't send message" }),
+    );
+    expect(recoveredDraft()).toBeNull();
+    expect(window.sessionStorage.getItem(HELD_KEY)).toContain("second");
   });
 });
 

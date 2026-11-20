@@ -3,11 +3,12 @@ import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendi
 import { useSettleGate } from "@/app/(platform)/copilot/useSettleGate";
 import * as Sentry from "@sentry/nextjs";
 import type { ChatStatus } from "ai";
-import { useInsertionEffect, useRef } from "react";
+import { useEffect, useInsertionEffect, useRef } from "react";
 import { isQueueRefusal } from "./helpers";
 import {
+  noteFailedSetAside,
+  noteSetAside,
   returnFailedFollowUp,
-  returnToComposer,
   useHeldFollowUps,
   type HeldFollowUp,
 } from "./useHeldFollowUps";
@@ -49,6 +50,13 @@ export function useBuilderChatSend({
     isInFlightRef.current = isInFlight;
     sessionIdRef.current = sessionId;
   });
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
   // The server's turn can end before the screen does: the smoothing
   // transform paces text out word by word, and the post-finish probe may
   // still turn into a reconnect. Sending while this stream is live cuts the
@@ -105,9 +113,10 @@ export function useBuilderChatSend({
 
   /**
    * Sends a held follow-up as a new turn once this panel's stream settles.
-   * If the panel unmounts first, its stored copy goes back to the composer
-   * the next time this chat opens; if the panel moves to another workflow,
-   * it goes back now.
+   * If the panel unmounts or moves to another workflow first, its stored copy
+   * goes back to the composer the next time its own chat opens: the composer
+   * on screen belongs to another chat, where a quick Enter would send it to
+   * the wrong workflow.
    */
   async function sendOnceSettled(followUp: HeldFollowUp) {
     for (;;) {
@@ -115,11 +124,8 @@ export function useBuilderChatSend({
         sessionIdRef.current === followUp.sessionId &&
         (await waitUntilSettled());
       if (sessionIdRef.current !== followUp.sessionId) {
-        held.release(followUp);
-        returnToComposer(
-          followUp.text,
-          "You opened another workflow before it went out.",
-        );
+        held.setAside(followUp);
+        noteSetAside("You opened another workflow before it went out.");
         return;
       }
       if (!isSettled) return;
@@ -144,10 +150,19 @@ export function useBuilderChatSend({
       held.release(followUp);
     } catch (error) {
       Sentry.captureException(error);
-      held.release(followUp);
-      returnFailedFollowUp(followUp.text, error);
+      if (isOwnChatShown(followUp)) {
+        held.release(followUp);
+        returnFailedFollowUp(followUp.text, error);
+      } else {
+        held.setAside(followUp);
+        noteFailedSetAside(error);
+      }
     }
     return true;
+  }
+
+  function isOwnChatShown(followUp: HeldFollowUp) {
+    return isMountedRef.current && sessionIdRef.current === followUp.sessionId;
   }
 
   function dispatch(text: string) {
