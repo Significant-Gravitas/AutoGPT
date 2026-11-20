@@ -152,3 +152,33 @@ tester.run(
     ],
   },
 );
+
+tester.run(
+  "no-networkidle",
+  plugin.rules["no-networkidle"] as unknown as TesterRule,
+  {
+    valid: [
+      'async function open(page) { await page.waitForLoadState("domcontentloaded"); }',
+      'async function open(page) { await page.getByTestId("store-card").waitFor(); }',
+      "async function open(page, state) { await page.waitForLoadState(`${state}`); }",
+    ],
+    invalid: [
+      {
+        code: 'async function open(page) { await page.waitForLoadState("networkidle"); }',
+        errors: [{ message: /ready signal/ }],
+      },
+      {
+        code: 'async function open(page) { await page.goto("/", { waitUntil: "networkidle" }); }',
+        errors: [{ message: /ready signal/ }],
+      },
+      {
+        code: "async function open(page) { await page.waitForLoadState(`networkidle`); }",
+        errors: [{ message: /ready signal/ }],
+      },
+      {
+        code: "async function open(page) { await page.waitForLoadState(String.raw`networkidle`); }",
+        errors: [{ message: /ready signal/ }],
+      },
+    ],
+  },
+);

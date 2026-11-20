@@ -26,6 +26,7 @@ from .registry_fakes_test import (
     ACCOUNT,
     ACTIVE,
     EXPERT,
+    PROMPT,
     USER,
     Hang,
     HangingTransport,
@@ -33,9 +34,6 @@ from .registry_fakes_test import (
     install_registry_env,
     use_short_deadline,
 )
-
-# Wall-clock allowance for a call bounded by the short deadline.
-PROMPT = 1.0
 
 
 @pytest.fixture
@@ -54,13 +52,12 @@ async def test_ensure_is_bounded_when_the_database_manager_hangs(env, monkeypatc
     transport = HangingTransport()
     rpc = transport.client(DatabaseManagerAsyncClient, request_retry=True)
     _use_registry_rpc(monkeypatch, rpc)
-    started = time.monotonic()
     try:
-        result = await registry.ensure_scope_scheduled(ACCOUNT)
+        async with asyncio.timeout(PROMPT):
+            result = await registry.ensure_scope_scheduled(ACCOUNT)
     finally:
         await rpc.aclose()
 
-    assert time.monotonic() - started < PROMPT
     assert {r["reason"] for r in result.values()} == {
         "registry_unavailable",
         "skill_learning_disabled",
@@ -83,13 +80,12 @@ async def test_a_retrying_database_manager_client_is_cut_off(env, monkeypatch):
         transport=httpx.MockTransport(refuse), base_url="http://refusing"
     )
     _use_registry_rpc(monkeypatch, rpc)
-    started = time.monotonic()
     try:
-        result = await registry.ensure_scope_scheduled(ACCOUNT)
+        async with asyncio.timeout(PROMPT):
+            result = await registry.ensure_scope_scheduled(ACCOUNT)
     finally:
         await rpc.aclose()
 
-    assert time.monotonic() - started < PROMPT
     assert {r["reason"] for r in result.values()} == {
         "registry_unavailable",
         "skill_learning_disabled",
@@ -102,13 +98,12 @@ async def test_a_hanging_scheduler_is_cut_off_and_reported(env, monkeypatch):
     transport = HangingTransport()
     scheduler = transport.client(SchedulerClient, request_retry=False)
     monkeypatch.setattr(scope_jobs, "get_scheduler_client", lambda: scheduler)
-    started = time.monotonic()
     try:
-        result = await registry.ensure_scope_scheduled(ACCOUNT)
+        async with asyncio.timeout(PROMPT):
+            result = await registry.ensure_scope_scheduled(ACCOUNT)
     finally:
         await scheduler.aclose()
 
-    assert time.monotonic() - started < PROMPT
     assert {r["reason"] for r in result.values()} == {
         "registration_failed",
         "skill_learning_disabled",
@@ -128,11 +123,9 @@ async def test_a_lifecycle_change_is_bounded_as_a_whole(env, monkeypatch, active
     hang = Hang()
     for rpc in ("remove_scope_memory_jobs", "add_scope_nightly_batch_schedule"):
         monkeypatch.setattr(env.scheduler, rpc, hang.forever)
-    started = time.monotonic()
+    async with asyncio.timeout(PROMPT):
+        await registry.sync_expert_scope(USER, "expert-1", active=active)
 
-    await registry.sync_expert_scope(USER, "expert-1", active=active)
-
-    assert time.monotonic() - started < PROMPT
     # Whichever deadline fires first, nothing that started is left running.
     assert hang.started >= 1
     assert hang.cancelled == hang.started
@@ -147,6 +140,7 @@ async def test_a_slow_resume_is_cut_off_as_a_whole_not_per_call(env, monkeypatch
     monkeypatch.setattr(deadline, "REGISTRY_CALL_TIMEOUT_SECONDS", 0.2)
     await registry.pause_scope(EXPERT)
     step = 0.06
+    cut: list[str] = []
     for owner, name in (
         (env.db, "set_scope_state"),
         (env.db, "get_scope_schedule"),
@@ -156,18 +150,26 @@ async def test_a_slow_resume_is_cut_off_as_a_whole_not_per_call(env, monkeypatch
         (scope_jobs, "evaluate_feature_flag"),
         (registry, "resolve_user_timezone"),
     ):
-        monkeypatch.setattr(owner, name, _slowed(getattr(owner, name), step))
-    started = time.monotonic()
+        slowed = _slowed(getattr(owner, name), step, name, cut)
+        monkeypatch.setattr(owner, name, slowed)
 
     await registry.sync_expert_scope(USER, "expert-1", active=True)
 
-    # One deadline is 0.2 s; the six steps alone would take 0.36 s or more.
-    assert time.monotonic() - started < 0.3
+    # One deadline is 0.2 s and the six steps alone take 0.36 s or more, so
+    # it ran out inside a step and cancelled it. Were each call bounded on
+    # its own, every step would answer inside its deadline and finish.
+    assert cut
 
 
-def _slowed(call: Callable[..., Awaitable[Any]], seconds: float):
+def _slowed(
+    call: Callable[..., Awaitable[Any]], seconds: float, name: str, cut: list[str]
+):
     async def slow(*args: Any, **kwargs: Any) -> Any:
-        await asyncio.sleep(seconds)
+        try:
+            await asyncio.sleep(seconds)
+        except asyncio.CancelledError:
+            cut.append(name)
+            raise
         return await call(*args, **kwargs)
 
     return slow
@@ -177,11 +179,9 @@ def _slowed(call: Callable[..., Awaitable[Any]], seconds: float):
 async def test_a_new_expert_registration_is_bounded_when_flags_hang(env, monkeypatch):
     hang = Hang()
     monkeypatch.setattr(scope_jobs, "evaluate_feature_flag", hang.forever)
-    started = time.monotonic()
+    async with asyncio.timeout(PROMPT):
+        await registry.ensure_expert_scheduled(USER, "expert-1")
 
-    await registry.ensure_expert_scheduled(USER, "expert-1")
-
-    assert time.monotonic() - started < PROMPT
     assert hang.started == hang.cancelled == 1
     # The row the community sweep reads is claimed all the same.
     assert env.db.rows[EXPERT.scope_key].state == ACTIVE
@@ -192,11 +192,9 @@ async def test_a_new_expert_registration_is_bounded_when_flags_hang(env, monkeyp
 async def test_a_timezone_change_is_bounded_when_the_listing_hangs(env, monkeypatch):
     hang = Hang()
     monkeypatch.setattr(env.db, "list_user_scope_schedules", hang.forever)
-    started = time.monotonic()
+    async with asyncio.timeout(PROMPT):
+        results = await registry.reregister_user(USER)
 
-    results = await registry.reregister_user(USER)
-
-    assert time.monotonic() - started < PROMPT
     assert hang.started == hang.cancelled == 1
     assert list(results) == [USER]  # the account still goes through
 
@@ -220,15 +218,18 @@ async def test_a_step_at_the_deadline_does_not_extend_a_lifecycle_change(
         # A loop stall carries it past the deadline with no await after it, so
         # the deadline lands in the record, not in this registration.
         time.sleep(max(0.0, started + budget + 0.04 - loop.time()))
+        # A deadline armed from here on would outlast PROMPT.
+        monkeypatch.setattr(deadline, "REGISTRY_CALL_TIMEOUT_SECONDS", 3600)
         return added
 
     hang = Hang()
     monkeypatch.setattr(env.scheduler, "add_scope_nightly_batch_schedule", nightly)
     monkeypatch.setattr(env.db, "record_scope_jobs", hang.forever)
 
-    await registry.sync_expert_scope(USER, "expert-1", active=True)
+    await asyncio.wait_for(
+        registry.sync_expert_scope(USER, "expert-1", active=True), PROMPT
+    )
 
-    # Nothing ran on after the deadline: no record on a fresh deadline (that
-    # took twice the budget), and the one that started was cancelled.
-    assert loop.time() - started < budget + 0.25
+    # Nothing ran on after the deadline: a record on a fresh deadline would
+    # have waited past PROMPT, and the one that started was cancelled.
     assert hang.started == hang.cancelled == 1

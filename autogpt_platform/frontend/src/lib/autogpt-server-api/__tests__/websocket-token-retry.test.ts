@@ -17,6 +17,8 @@ describe("WebSocket token issuance recovery", () => {
     "00000000-0000-4000-8000-000000000001" as GraphExecutionID;
   beforeEach(() => {
     vi.useFakeTimers();
+    // The top of each jittered retry window: the full backoff step.
+    vi.spyOn(Math, "random").mockReturnValue(1 - Number.EPSILON);
     vi.stubGlobal("WebSocket", FakeWebSocket);
     FakeWebSocket.instances = [];
     vi.mocked(getWebSocketToken)
@@ -80,6 +82,11 @@ describe("WebSocket token issuance recovery", () => {
           data: { graph_exec_id: executionID },
         }),
       );
+      // Caught up (its ordering ping answered after the refetch spread) and
+      // up long enough to count as healthy, so the backoff starts over.
+      await vi.advanceTimersByTimeAsync(2000);
+      next.pong();
+      await vi.advanceTimersByTimeAsync(10_000);
       next.serverClose(1006);
       await vi.advanceTimersByTimeAsync(1000);
       expect(FakeWebSocket.instances).toHaveLength(3);

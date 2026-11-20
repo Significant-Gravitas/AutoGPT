@@ -26,7 +26,11 @@ from backend.blocks.llm import (
 from backend.data.model import APIKeyCredentials, NodeExecutionStats, SchemaField
 
 # Minimum max_output_tokens accepted by OpenAI-compatible APIs.
-# A true/false answer fits comfortably within this budget.
+# A true/false answer fits comfortably within this budget. A model that reasons
+# or thinks before answering would spend it on that, so on a call this small
+# the provider layer asks it for its least reasoning, and raises the cap for a
+# model that still reasons (``small_call_openai_reasoning``,
+# ``small_call_anthropic_thinking``, ``small_call_reasoning``).
 MIN_LLM_OUTPUT_TOKENS = 16
 
 

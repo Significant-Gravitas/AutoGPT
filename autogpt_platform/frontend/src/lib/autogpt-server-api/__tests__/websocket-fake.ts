@@ -26,10 +26,12 @@ export class FakeWebSocket {
     this.onopen?.();
   }
   pong() {
+    this.receive({ method: "heartbeat", data: "pong" });
+  }
+  /** A message from the server. */
+  receive(message: unknown) {
     this.onmessage?.(
-      new MessageEvent("message", {
-        data: JSON.stringify({ method: "heartbeat", data: "pong" }),
-      }),
+      new MessageEvent("message", { data: JSON.stringify(message) }),
     );
   }
   beginClose() {

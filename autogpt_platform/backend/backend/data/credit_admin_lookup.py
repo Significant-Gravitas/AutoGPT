@@ -12,6 +12,7 @@ from prisma.enums import CreditTransactionType
 from prisma.models import User
 
 from backend.data.db import query_raw_with_schema
+from backend.util.sql import escape_like
 
 _LOOKUP_CHUNK = 1000
 
@@ -55,7 +56,7 @@ async def search_history_keys(
     `search` (case-insensitive), newest first, as (transaction key, user ID)
     pairs, and how many match in all."""
     args = (
-        f"%{_escape_like(search)}%",
+        f"%{escape_like(search)}%",
         include_inactive,
         transaction_filter.value if transaction_filter else None,
     )
@@ -63,8 +64,3 @@ async def search_history_keys(
     counted = await query_raw_with_schema(_COUNT, *args)
     total = int(counted[0]["n"]) if counted else 0
     return [(row["key"], row["user_id"]) for row in rows], total
-
-
-def _escape_like(value: str) -> str:
-    """Match the text literally, as Prisma's `contains` did."""
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

@@ -13,12 +13,14 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.copilot.rate_limit import is_user_paywalled as _REAL_IS_USER_PAYWALLED
 from backend.data.pro_activation import UsageActivationState
+from backend.data.user import is_user_account_closed as _REAL_IS_USER_ACCOUNT_CLOSED
 from backend.data.user import is_user_banned as _REAL_IS_USER_BANNED
 from backend.data.user import is_user_refused as _REAL_IS_USER_REFUSED
 
 # Every module that imports the check by name.
 _PAYWALL_CHECK_SITES = (
     "backend.copilot.rate_limit.is_user_paywalled",
+    "backend.api.features.chat.routes.is_user_paywalled",
     "backend.executor.utils.is_user_paywalled",
     "backend.api.features.integrations.router.is_user_paywalled",
     "backend.api.external.v2.mcp_calls.is_user_paywalled",
@@ -34,9 +36,10 @@ _BAN_CHECK_SITES = (
 # Background work is refused for a banned or a closed account.
 _REFUSAL_CHECK_SITES = (
     "backend.api.features.integrations.router.is_user_refused",
-    "backend.api.ws_api.is_user_refused",
     "backend.executor.utils.is_user_refused",
 )
+# A WebSocket's per-message check reads the ban, then the closure.
+_CLOSURE_CHECK_SITES = ("backend.api.ws_api.is_user_account_closed",)
 
 
 @pytest.fixture
@@ -155,7 +158,7 @@ def _no_bans(mocker):
     session test has connected Prisma, the real lookup would query it from
     TestClient's own event loop."""
     ban_off = mocker.AsyncMock(return_value=False)
-    for site in _BAN_CHECK_SITES + _REFUSAL_CHECK_SITES:
+    for site in _BAN_CHECK_SITES + _REFUSAL_CHECK_SITES + _CLOSURE_CHECK_SITES:
         mocker.patch(site, new=ban_off)
 
 
@@ -166,6 +169,8 @@ def real_ban_lookup(mocker):
         mocker.patch(site, new=_REAL_IS_USER_BANNED)
     for site in _REFUSAL_CHECK_SITES:
         mocker.patch(site, new=_REAL_IS_USER_REFUSED)
+    for site in _CLOSURE_CHECK_SITES:
+        mocker.patch(site, new=_REAL_IS_USER_ACCOUNT_CLOSED)
 
 
 @pytest.fixture
