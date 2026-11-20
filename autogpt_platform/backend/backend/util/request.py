@@ -5,7 +5,8 @@ import random
 import re
 import socket
 import ssl
-from collections.abc import Awaitable, Iterable
+from asyncio import sleep
+from collections.abc import Iterable
 from typing import Any, Callable, Optional
 from urllib.parse import ParseResult as URL
 from urllib.parse import quote, urljoin, urlparse
@@ -14,7 +15,7 @@ import aiohttp
 import idna
 from aiohttp import abc
 from aiohttp.client import DEFAULT_TIMEOUT
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from backend.util.json import loads
 from backend.util.request_body import PreparedBody, Uploads, prepare_body
@@ -598,18 +599,13 @@ class _RetryBudget:
     URL gets ``attempts`` sends, and a redirect chain makes at most that many
     throttled sends in all, however many hops it has.
 
-    ``sleep`` waits out each backoff; a test passes one that notes the waits.
+    It waits with this module's own ``sleep``, which a test patches to note
+    the waits instead of sleeping them.
     """
 
-    def __init__(
-        self,
-        attempts: int,
-        max_wait: float,
-        sleep: Callable[[float], Awaitable[object]] = asyncio.sleep,
-    ):
+    def __init__(self, attempts: int, max_wait: float):
         self._attempts = attempts
         self._max_wait = max_wait
-        self._sleep = sleep
         self._spent = 0
 
     async def send_again(self) -> bool:
@@ -617,13 +613,21 @@ class _RetryBudget:
         self._spent += 1
         if self._spent >= self._attempts:
             return False
-        backoff = 2 ** (self._spent - 1) + random.uniform(0, 1)
-        await self._sleep(max(0.0, min(backoff, self._max_wait)))
+        # The doubling stops at 2 ** 30 s, past any cap: from the 1,025th
+        # retry on, 2 ** n is too large to add to a float.
+        backoff = 2 ** min(self._spent - 1, 30) + random.uniform(0, 1)
+        await sleep(max(0.0, min(backoff, self._max_wait)))
         return True
 
 
 class _Redirect(BaseModel):
-    """Where a hop's redirect leads, and what the next hop sends with it."""
+    """Where a hop's redirect leads, and what the next hop sends with it.
+
+    Frozen, and built with ``model_construct`` from values this module made,
+    so a hop neither validates nor copies it; ``_request`` gives it copies of
+    the headers and kwargs of its own."""
+
+    model_config = ConfigDict(frozen=True)
 
     url: str
     headers: dict[str, Any]
@@ -716,11 +720,9 @@ class Requests:
             return self.retry_max_attempts
         return 1 if self.raise_for_status else DEFAULT_RETRY_MAX_ATTEMPTS
 
-    def _retry_budget(
-        self, sleep: Callable[[float], Awaitable[object]] = asyncio.sleep
-    ) -> _RetryBudget:
+    def _retry_budget(self) -> _RetryBudget:
         """The throttled sends one request may make, and their waits."""
-        return _RetryBudget(self._max_attempts(), self.retry_max_wait, sleep)
+        return _RetryBudget(self._max_attempts(), self.retry_max_wait)
 
     async def request(
         self,
@@ -956,7 +958,7 @@ class Requests:
                         redirect_kwargs.pop("auth", None)
                         redirect_kwargs.pop("cookies", None)
 
-                    return _Redirect(
+                    return _Redirect.model_construct(
                         url=redirect_url.geturl(),
                         headers=new_headers,
                         drop_headers=drop_headers

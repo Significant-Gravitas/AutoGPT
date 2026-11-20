@@ -9,6 +9,7 @@ from urllib.parse import ParseResult
 import pytest
 from aiohttp import ClientConnectorError, web
 
+from backend.util import request as request_module
 from backend.util.request import (
     DEFAULT_RETRY_MAX_ATTEMPTS,
     HTTPClientError,
@@ -320,3 +321,126 @@ async def test_a_redirect_chain_sends_again_only_the_throttled_hop(
         await runner.cleanup()
 
     assert {path: len(bodies) for path, bodies in received.items()} == sends
+
+
+# --- The waits between attempts, noted instead of slept ---
+
+
+@pytest.fixture
+def backoff_waits(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The waits between attempts, through the ``sleep`` the module bound."""
+    waits: list[float] = []
+
+    async def note(seconds: float) -> None:
+        waits.append(seconds)
+
+    monkeypatch.setattr(request_module, "sleep", note)
+    return waits
+
+
+@pytest.mark.asyncio
+async def test_each_retry_waits_a_doubling_backoff_and_none_follows_the_last_attempt(
+    backoff_waits: list[float],
+):
+    """1 s, 2 s, 4 s and 8 s, each plus up to 1 s of jitter, between five
+    attempts, and no wait after the last."""
+    app, served = scripted(503)
+    runner, base = await serve(app)
+
+    try:
+        await asyncio.wait_for(
+            local_requests(raise_for_status=False, retry_max_attempts=5).get(base),
+            ENDS_WITHIN_SECONDS,
+        )
+    finally:
+        await runner.cleanup()
+
+    assert len(served) == 5
+    assert len(backoff_waits) == 4
+    for retry, wait in enumerate(backoff_waits):
+        assert 2**retry <= wait < 2**retry + 1
+    # Jittered, so that clients throttled together don't retry in lockstep.
+    assert any(wait != 2**retry for retry, wait in enumerate(backoff_waits))
+
+
+@pytest.mark.asyncio
+async def test_a_backoff_wait_never_passes_retry_max_wait(backoff_waits: list[float]):
+    app, served = scripted(503)
+    runner, base = await serve(app)
+
+    try:
+        await asyncio.wait_for(
+            local_requests(
+                raise_for_status=False, retry_max_attempts=6, retry_max_wait=1.5
+            ).get(base),
+            ENDS_WITHIN_SECONDS,
+        )
+    finally:
+        await runner.cleanup()
+
+    assert len(served) == 6
+    assert max(backoff_waits) == 1.5
+    assert all(wait <= 1.5 for wait in backoff_waits)
+
+
+@pytest.mark.asyncio
+async def test_a_budget_past_a_thousand_retries_waits_no_more_than_its_cap():
+    """2 ** n is too large to add to a float from the 1,025th retry on; the
+    backoff stops doubling well before that."""
+    waits = await retry_waits(
+        Requests(raise_for_status=False, retry_max_attempts=1100, retry_max_wait=0.01)
+    )
+
+    assert len(waits) == 1099
+    assert max(waits) == 0.01
+
+
+@pytest.mark.asyncio
+async def test_a_call_cancelled_while_it_waits_to_retry_is_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The wait between attempts is where a retrying call spends its time: a
+    cancel there must end the call, not be taken for the wake-up that sends
+    again."""
+    waiting = asyncio.Event()
+
+    async def hold_the_first_wait(seconds: float) -> None:
+        if waiting.is_set():
+            return
+        waiting.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(request_module, "sleep", hold_the_first_wait)
+    app, served = scripted(503)
+    runner, base = await serve(app)
+    call = asyncio.create_task(local_requests(raise_for_status=False).get(base))
+
+    try:
+        await asyncio.wait_for(waiting.wait(), ENDS_WITHIN_SECONDS)
+        call.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(call, ENDS_WITHIN_SECONDS)
+    finally:
+        call.cancel()
+        await runner.cleanup()
+
+    assert served == [503]
+
+
+@pytest.mark.asyncio
+async def test_a_redirect_loop_ends_at_max_redirects():
+    app, received = _chain({"/a": [(302, "/a")]})
+    runner, base = await serve(app)
+
+    try:
+        with pytest.raises(Exception, match="Too many redirects"):
+            await asyncio.wait_for(
+                local_requests(raise_for_status=False, retry_max_wait=0).get(
+                    f"{base}/a", max_redirects=3
+                ),
+                ENDS_WITHIN_SECONDS,
+            )
+    finally:
+        await runner.cleanup()
+
+    assert len(received["/a"]) == 4

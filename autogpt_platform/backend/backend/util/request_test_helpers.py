@@ -1,8 +1,11 @@
 """Local servers for the ``Requests`` tests, and the clients that reach them."""
 
+from unittest.mock import patch
+
 import pytest
 from aiohttp import web
 
+from backend.util import request as request_module
 from backend.util.request import Requests
 
 # Every request in these tests talks to a local server, so its attempts take
@@ -37,9 +40,10 @@ async def retry_waits(client: Requests) -> list[float]:
     async def note(seconds: float) -> None:
         waits.append(seconds)
 
-    budget = client._retry_budget(sleep=note)
-    while await budget.send_again():
-        pass
+    with patch.object(request_module, "sleep", note):
+        budget = client._retry_budget()
+        while await budget.send_again():
+            pass
     return waits
 
 
