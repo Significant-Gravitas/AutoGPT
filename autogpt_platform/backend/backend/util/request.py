@@ -624,15 +624,107 @@ class _Redirect(BaseModel):
     """Where a hop's redirect leads, and what the next hop sends with it.
 
     Frozen, and built with ``model_construct`` from values this module made,
-    so a hop neither validates nor copies it; ``_request`` gives it copies of
+    so a hop neither validates nor copies it; ``_next_hop`` gives it copies of
     the headers and kwargs of its own."""
 
     model_config = ConfigDict(frozen=True)
 
     url: str
+    method: str
+    # False once the redirect has turned the request into a GET: the body is
+    # then left behind for the rest of the chain.
+    sends_body: bool
     headers: dict[str, Any]
     drop_headers: frozenset[str]
     kwargs: dict[str, Any]
+
+
+def _next_hop(
+    method: str,
+    status: int,
+    url: URL,
+    location: str,
+    *,
+    headers: dict,
+    drop_headers: frozenset[str],
+    sensitive_headers: Iterable[str],
+    kwargs: dict[str, Any],
+) -> _Redirect:
+    """The hop a redirect from *url* to *location* leads to, and what it sends.
+
+    A 303, and a 301 or 302 answering a POST, makes it a GET without the
+    body, the headers that describe the body or the aiohttp options that
+    frame it. A hop to another origin also leaves the credentials behind.
+    """
+    # Joined onto the URL just requested, so a relative redirect resolves;
+    # parsed with ``parse_url`` because the next hop parses it that way, and
+    # only that folds a backslash in the authority into a slash, naming the
+    # host that is connected to.
+    redirect_url = parse_url(urljoin(url.geturl(), location))
+    # Decided once, for every carrier of the credential below.
+    cross_origin = _is_cross_origin(url, redirect_url)
+    drops_body = _drops_body(method, status)
+    new_headers = _remove_insecure_headers(
+        dict(headers), cross_origin, sensitive_headers
+    )
+    if drops_body:
+        _drop_headers(new_headers, [k for k in new_headers if _describes_body(k)])
+
+    # ``auth=`` and ``cookies=`` are not headers at this point — aiohttp
+    # builds ``Authorization`` and ``Cookie`` from them per request,
+    # downstream of the strip above — so the header dance cannot see either,
+    # and both would be regenerated for the new origin. Drop them with the
+    # headers they stand in for. Same-origin hops keep them:
+    # ``_remove_insecure_headers`` keeps the header spellings there too, and
+    # an authenticated same-origin redirect is a normal flow.
+    next_kwargs = dict(kwargs)
+    if cross_origin:
+        next_kwargs.pop("auth", None)
+        next_kwargs.pop("cookies", None)
+    if drops_body:
+        for name in _BODY_KWARGS:
+            next_kwargs.pop(name, None)
+
+    return _Redirect.model_construct(
+        url=redirect_url.geturl(),
+        method="GET" if drops_body else method,
+        sends_body=not drops_body,
+        headers=new_headers,
+        # A dropped header stays dropped for the rest of the chain, though
+        # ``extra_headers`` would put it back on every hop.
+        drop_headers=drop_headers
+        | {k.lower() for k in headers.keys() - new_headers.keys()},
+        kwargs=next_kwargs,
+    )
+
+
+def _drops_body(method: str, status: int) -> bool:
+    """Whether a redirect with *status* makes the next hop a GET without the
+    body, as RFC 9110 §15.4 has it: a 303 does for every method but HEAD, and
+    a 301 or 302 does for a POST, as browsers and aiohttp's own redirects do.
+    A 307 or 308, and a 301 or 302 answering any other method, sends the same
+    method and body again."""
+    if status == 303:
+        return method.upper() != "HEAD"
+    return status in (301, 302) and method.upper() == "POST"
+
+
+# The headers that describe a request's body besides the ``Content-*`` ones
+# (``Content-Type``, ``Content-Length``, ``Content-Encoding`` and the rest):
+# they go with the body when a redirect leaves it behind.
+_BODY_HEADERS = frozenset(
+    {"transfer-encoding", "expect", "trailer", "digest", "repr-digest"}
+)
+# aiohttp options that frame a body, which a GET without one must not get:
+# ``chunked`` would send a body-less GET a chunked body's terminator, which
+# servers read as the start of the next request, and ``expect100`` asks for a
+# ``100 Continue`` that RFC 9110 §10.1.1 forbids without content.
+_BODY_KWARGS = ("chunked", "expect100")
+
+
+def _describes_body(header: str) -> bool:
+    name = header.lower()
+    return name.startswith("content-") or name in _BODY_HEADERS
 
 
 def _send_timeout(timeout: Any) -> float | None:
@@ -672,6 +764,15 @@ class Requests:
     timeout is never retried. Only the hop that meets a throttle status is
     sent again, never the hops that redirected to it, and a redirect chain
     shares the attempts: it makes at most that many throttled sends in all.
+
+    A redirect is followed as RFC 9110 §15.4 has it, and as browsers and
+    aiohttp's own redirects do. After a 303, and after a 301 or 302 that
+    answers a POST, the next hop is a GET without the body, the headers that
+    describe it (``Content-Type``, ``Content-Length`` and the rest) or
+    aiohttp's ``chunked`` and ``expect100``; a HEAD stays a HEAD. A 307 or
+    308, and a 301 or 302 answering any other method, sends the same method
+    and body again. Every hop goes through the same URL checks as the first,
+    and a hop to another origin goes without the credentials.
 
     A request that may send its body more than once, because it retries or
     follows redirects, sends all of it every time; ``prepare_body`` in
@@ -745,7 +846,8 @@ class Requests:
         after decompression; a longer body comes back cut to that many bytes
         plus one, so the caller can tell it was cut.
 
-        A throttle status is retried as the class docstring sets out.
+        A throttle status is retried, and a redirect followed, as the class
+        docstring sets out.
         """
         if files is not None and json is not None:
             raise ValueError(
@@ -791,7 +893,8 @@ class Requests:
     ) -> Response:
         """One hop: sent, and sent again on its own while it meets a throttle
         status and the budget lasts, then the hop its redirect names. A hop
-        is never sent twice for a later hop's sake."""
+        is never sent twice for a later hop's sake, and a hop its redirect
+        turned into a GET sends no body, so nothing reads it again."""
         while True:
             try:
                 hop = await self._request(
@@ -820,11 +923,13 @@ class Requests:
         if not isinstance(hop, _Redirect):
             return hop
         return await self._hop(
-            method,
+            hop.method,
             hop.url,
             headers=hop.headers,
-            request_body=request_body,
-            json=json,
+            request_body=(
+                request_body if hop.sends_body else PreparedBody.as_it_is(None, None)
+            ),
+            json=json if hop.sends_body else None,
             allow_redirects=allow_redirects,
             max_redirects=max_redirects - 1,
             drop_headers=hop.drop_headers,
@@ -929,41 +1034,15 @@ class Requests:
                             ),
                         )
 
-                    # Joined onto the URL just requested, so a relative
-                    # redirect resolves; parsed with ``parse_url`` because the
-                    # hop below parses it that way, and only that folds a
-                    # backslash in the authority into a slash, naming the host
-                    # that is connected to.
-                    redirect_url = parse_url(urljoin(parsed_url.geturl(), location))
-                    # Decided once, for every carrier of the credential below.
-                    cross_origin = _is_cross_origin(parsed_url, redirect_url)
-                    # Carry forward the same headers but update Host
-                    new_headers = _remove_insecure_headers(
-                        dict(req_headers),
-                        cross_origin,
-                        self.sensitive_headers,
-                    )
-
-                    # ``auth=`` and ``cookies=`` are not headers at this point
-                    # — aiohttp builds ``Authorization`` and ``Cookie`` from
-                    # them per request, downstream of the strip above — so the
-                    # header dance cannot see either, and both would be
-                    # regenerated for the new origin. Drop them with the
-                    # headers they stand in for. Same-origin hops keep them:
-                    # ``_remove_insecure_headers`` keeps the header spellings
-                    # there too, and an authenticated same-origin redirect is
-                    # a normal flow.
-                    redirect_kwargs = dict(kwargs)
-                    if cross_origin:
-                        redirect_kwargs.pop("auth", None)
-                        redirect_kwargs.pop("cookies", None)
-
-                    return _Redirect.model_construct(
-                        url=redirect_url.geturl(),
-                        headers=new_headers,
-                        drop_headers=drop_headers
-                        | {k.lower() for k in req_headers.keys() - new_headers.keys()},
-                        kwargs=redirect_kwargs,
+                    return _next_hop(
+                        method,
+                        response.status,
+                        parsed_url,
+                        location,
+                        headers=req_headers,
+                        drop_headers=drop_headers,
+                        sensitive_headers=self.sensitive_headers,
+                        kwargs=kwargs,
                     )
 
                 # Reset response URL to original host for clarity
