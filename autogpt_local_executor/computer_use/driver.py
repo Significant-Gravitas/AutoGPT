@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextlib
-import importlib.util
 import logging
 import os
 import shutil
@@ -171,18 +170,35 @@ def _executable_name() -> str:
 
 
 def bundled_binary() -> Path | None:
-    """The binary inside the installed `cua-driver` wheel. The package is
-    found without importing it: its __init__ loads a native library."""
-    try:
-        spec = importlib.util.find_spec("cua_driver")
-    except (ImportError, ValueError):
-        return None
-    if spec is None or not spec.submodule_search_locations:
-        return None
-    for location in spec.submodule_search_locations:
-        candidate = Path(location) / "bin" / _executable_name()
-        if candidate.is_file():
-            return candidate
+    """The binary inside the installed `cua-driver` wheel, which puts it at
+    `cua_driver/bin/` in a folder Python imports from: the first folder of
+    sys.path that holds it there, as an absolute path.
+
+    Looked for in those folders directly, not through the import system.
+    importlib.util.find_spec holds the interpreter's import lock while each
+    of its finders looks, and a finder stats its folder. With a folder of
+    sys.path on a mount that stopped answering, this look, in its thread,
+    held that lock for as long as the mount stalled, and the first import of
+    any module on any other thread waits for that lock. The event loop's
+    thread is one of them: the loop stopped, and no caller's bound on the
+    look could run out. A folder that stalls still holds this look, and
+    nothing else.
+
+    Nor is the package imported: its __init__ loads a native library."""
+    name = _executable_name()
+    for folder in list(sys.path):
+        if not isinstance(folder, str):
+            continue
+        # An empty entry is the current folder, as Python reads it.
+        candidate = Path(folder or os.curdir, "cua_driver", "bin", name)
+        try:
+            mode = os.stat(candidate).st_mode
+        except (OSError, ValueError):
+            # Not there, or the entry is no folder (an archive), or it
+            # can't be read.
+            continue
+        if stat.S_ISREG(mode):
+            return candidate.absolute()
     return None
 
 
