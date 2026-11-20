@@ -140,7 +140,12 @@ export const AgentInfo = ({
       <div className="mb-8 rounded-2xl bg-gradient-to-r from-info/30 to-indigo/30 p-px">
         <div className="flex flex-col rounded-large bg-surface-muted p-4">
           {/* Title */}
-          <Text variant="h2" data-testid="agent-title" className="mb-3 w-full">
+          <Text
+            variant="h2"
+            as="h1"
+            data-testid="agent-title"
+            className="mb-3 w-full"
+          >
             {name}
           </Text>
 

@@ -1,6 +1,7 @@
 import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { environment } from "@/services/environment";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { useSignInConnection } from "./steps/AccessStep/useSignInConnection";
 import { useSignInProvider } from "./steps/AccessStep/useSignInProvider";
 import { buildStepLayout, resolveStepOrder, type Step } from "./store";
 import { useFrozenPerUser } from "./useFrozenPerUser";
@@ -20,6 +21,7 @@ export function useOnboardingLayout({
   const payment = usePlatformPayment();
   const stepOrder = useFlagStatus(Flag.ONBOARDING_STEP_ORDER);
   const signIn = useSignInProvider(userID);
+  const connection = useSignInConnection(userID, signIn.provider);
 
   const flagsReady = payment.isResolved;
   // Resolved once per account: a setting or flag change must not reorder an
@@ -33,10 +35,11 @@ export function useOnboardingLayout({
   );
   const placement = useFrozenPerUser(
     userID,
-    stepOrder.ready && signIn.isReady && !isUserLoading,
+    stepOrder.ready && signIn.isReady && connection.isReady && !isUserLoading,
     () => ({
       requestedOrder: stepOrder.enabled,
-      hasAccess: signIn.provider !== null,
+      // A sign-in that already connected everything needs no access step.
+      hasAccess: signIn.provider !== null && !connection.isConnected,
     }),
   );
   // The paywall moves the access step, so the order follows payment as the

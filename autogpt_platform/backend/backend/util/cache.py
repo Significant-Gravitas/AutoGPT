@@ -17,15 +17,20 @@ import logging
 import pickle
 import threading
 import time
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from functools import cache, wraps
 from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
 
 import sentry_sdk
-from redis.cluster import ClusterNode, RedisCluster
+from redis.cluster import RedisCluster
+from redis.exceptions import MaxConnectionsError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from backend.util import tracing
-from backend.util.retry import conn_retry
+from backend.util.cache_redis import REDIS_OP_TIMEOUT_S
+from backend.util.cache_redis import get_async_redis as _get_async_redis
+from backend.util.cache_redis import get_redis as _get_redis
 from backend.util.settings import Settings
 
 P = ParamSpec("P")
@@ -48,29 +53,6 @@ _SCAN_BATCH_SIZE = 1000
 #   maxmemory-policy allkeys-lru    # Evict least recently used keys when memory limit reached
 #   maxmemory 2gb                   # Set memory limit (adjust based on your needs)
 #   save ""                         # Disable persistence if using Redis purely for caching
-
-
-@cache
-@conn_retry("Redis", "Acquiring cache connection")
-def _get_redis() -> RedisCluster:
-    """Lazily-initialized shared-cache Redis Cluster client (singleton)."""
-    # Local import breaks the redis_client <-> cache module cycle.
-    from backend.data.redis_client import _address_remap
-
-    c = RedisCluster(
-        startup_nodes=[
-            ClusterNode(settings.config.redis_host, settings.config.redis_port)
-        ],
-        password=settings.config.redis_password or None,
-        decode_responses=False,  # Binary mode for pickle
-        max_connections=50,
-        socket_keepalive=True,
-        socket_connect_timeout=5,
-        retry_on_timeout=True,
-        address_remap=_address_remap,
-    )
-    c.ping()
-    return c
 
 
 class _MissingType:
@@ -96,6 +78,126 @@ class _MissingType:
 # "no entry exists" — distinct from a cached ``None`` value, which is a
 # valid result for callers that opt into caching it.
 _MISSING = _MissingType()
+
+
+class _UnreachableType:
+    """Sentinel for a Redis read that got no answer in time, or failed. Unlike
+    a miss, asking Redis again, or storing the value in it, would only wait
+    again, so the caller computes the value and moves on."""
+
+    def __repr__(self) -> str:
+        return "<UNREACHABLE>"
+
+
+_UNREACHABLE = _UnreachableType()
+
+
+# Redis didn't answer in time, or this process has too many commands in flight
+# to send one more: logged as a warning, since a stalled shard or a burst
+# would otherwise turn every cached call into a Sentry event.
+_NOT_NOW = (TimeoutError, RedisTimeoutError, MaxConnectionsError)
+
+# A coroutine's misses of different keys call the decorated function
+# concurrently, up to this many at once per function and event loop (per
+# process for the API servers, which run one loop), so a flood of distinct
+# keys, such as public store searches, can't flood the database behind them.
+# ``cached(max_concurrent_misses=...)`` overrides it. A miss holds its turn
+# while the function runs, so a cached coroutine must not call itself: each
+# nested miss waits for a turn, and at this depth none is left. Nothing in the
+# backend does.
+MAX_CONCURRENT_MISSES = 8
+
+
+def _is_hit(result: Any) -> bool:
+    return result is not _MISSING and result is not _UNREACHABLE
+
+
+class _InFlight:
+    """The computation running for each key on one event loop. Callers that
+    miss the key while it runs wait for it and share its result, stored or
+    not, so one computation answers them all. A computation calls the cached
+    function during one of ``turns``, at most ``max_concurrent`` at once. For
+    one event loop: a future belongs to one."""
+
+    def __init__(self, max_concurrent: int) -> None:
+        self._flights: dict[Any, asyncio.Future[Any]] = {}
+        self.turns = asyncio.Semaphore(max_concurrent)
+
+    async def run(
+        self,
+        key: Any,
+        compute: Callable[[], Awaitable[T]],
+        snapshot: Callable[[T], Callable[[], T]],
+    ) -> T:
+        """``compute()``'s result, or the running computation's for ``key``:
+        each waiting caller gets one from ``snapshot``, taken when the value
+        is computed, so whatever its own caller then does to it can't reach
+        theirs. Its error is raised to every caller that waited for it; if
+        its own caller is cancelled, a waiting one computes instead."""
+        while (flight := self._flights.get(key)) is not None:
+            try:
+                copy = await asyncio.shield(flight)
+            except asyncio.CancelledError:
+                caller = asyncio.current_task()
+                # Only the computation was cancelled, not this caller too.
+                if flight.cancelled() and not (caller and caller.cancelling()):
+                    # Yields before looking again, so a flight that is never
+                    # replaced can't spin the loop past every bound.
+                    await asyncio.sleep(0)
+                    continue
+                raise
+            return copy()
+        flight = self._flights[key] = asyncio.get_running_loop().create_future()
+        try:
+            value = await compute()
+        except Exception as e:
+            flight.set_exception(e)
+            flight.exception()  # Retrieved: an error nobody waited for logs nothing.
+            raise
+        else:
+            flight.set_result(snapshot(value))
+            return value
+        finally:
+            if not flight.done():
+                flight.cancel()
+            if self._flights.get(key) is flight:
+                del self._flights[key]
+
+
+def _private_copies(value: T) -> Callable[[], T]:
+    """Copies of a shared-cache value, one per waiting caller, who, as from
+    Redis, each get their own: made from the bytes it pickles to now. A value
+    that can't be pickled is shared."""
+    try:
+        pickled = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+    except Exception:
+        return lambda: value
+    return lambda: pickle.loads(pickled)
+
+
+def _the_same(value: T) -> Callable[[], T]:
+    """The value itself for every waiting caller, as the in-memory cache
+    hands out on a hit."""
+    return lambda: value
+
+
+# Each loop keeps the coordinators of its misses, one per decorated function,
+# so they live exactly as long as the loop: a map from loops elsewhere would
+# keep each loop alive through the semaphore that binds to it.
+_IN_FLIGHT_ATTR = "_shared_cache_in_flight"
+
+
+def _in_flight_on(
+    loop: asyncio.AbstractEventLoop, function: object, max_concurrent: int
+) -> _InFlight:
+    by_function: dict[object, _InFlight] | None = getattr(loop, _IN_FLIGHT_ATTR, None)
+    if by_function is None:
+        by_function = {}
+        setattr(loop, _IN_FLIGHT_ATTR, by_function)
+    in_flight = by_function.get(function)
+    if in_flight is None:
+        in_flight = by_function[function] = _InFlight(max_concurrent)
+    return in_flight
 
 
 @dataclass
@@ -186,22 +288,32 @@ def cached(
     shared_cache: bool = False,
     refresh_ttl_on_get: bool = False,
     cache_none: bool = True,
+    max_concurrent_misses: int = MAX_CONCURRENT_MISSES,
 ) -> Callable[[Callable[P, R]], CachedFunction[P, R]]:
     """
     Thundering herd safe cache decorator for both sync and async functions.
 
     Uses double-checked locking to prevent multiple threads/coroutines from
-    executing the expensive operation simultaneously during cache misses.
+    executing the expensive operation simultaneously during cache misses. For
+    a coroutine, concurrent misses of one key share one computation, and
+    misses of other keys compute alongside it, up to
+    ``max_concurrent_misses`` at once.
 
     Args:
         maxsize: Maximum number of cached entries (only for in-memory cache)
         ttl_seconds: Time to live in seconds. Required - entries must expire.
-        shared_cache: If True, use Redis for cross-process caching
+        shared_cache: If True, use Redis for cross-process caching. A
+            coroutine's reads and writes never block its event loop, and are
+            best effort: when Redis doesn't answer within
+            ``REDIS_OP_TIMEOUT_S``, the value is computed instead.
         refresh_ttl_on_get: If True, refresh TTL when cache entry is accessed (LRU behavior)
         cache_none: If True (default) ``None`` is cached like any other value.
             Set to ``False`` for functions that return ``None`` to signal a
             transient error and should be re-tried on the next call without
             poisoning the cache (e.g. external API calls that may fail).
+        max_concurrent_misses: For a coroutine, how many misses of different
+            keys may compute at once on one event loop; the rest wait for a
+            turn. Bounds the load a burst of distinct keys puts behind it.
 
     Returns:
         Decorated function with caching capabilities
@@ -222,11 +334,18 @@ def cached(
             ...
     """
 
+    if max_concurrent_misses < 1:
+        # No miss could ever start computing.
+        raise ValueError(
+            f"max_concurrent_misses must be at least 1, not {max_concurrent_misses}"
+        )
+
     def decorator(target_func: Callable[P, R]) -> CachedFunction[P, R]:
         func_name = target_func.__name__
         signature = inspect.signature(target_func)
         cache_storage: dict[tuple, CachedValue] = {}
-        _event_loop_locks: dict[Any, asyncio.Lock] = {}
+        # Names this function's coordinator on each loop.
+        in_flight_token = object()
 
         def _get_from_redis(redis_key: str) -> Any:
             """Get value from Redis, optionally refreshing TTL.
@@ -235,37 +354,80 @@ def cached(
             module-level ``_MISSING`` sentinel on a miss / corrupt entry.
             Callers must compare with ``is _MISSING`` so cached ``None`` values
             are not mistaken for misses.
-
-            Values are expected to carry an HMAC-SHA256 prefix for integrity
-            verification.  Unsigned (legacy) or tampered entries are silently
-            discarded and treated as cache misses, so the caller recomputes and
-            re-stores them with a valid signature.
             """
             try:
                 if refresh_ttl_on_get:
                     cached_bytes = _get_redis().getex(redis_key, ex=ttl_seconds)
                 else:
                     cached_bytes = _get_redis().get(redis_key)
-
-                if cached_bytes and isinstance(cached_bytes, bytes):
-                    payload = _verify_and_strip(cached_bytes)
-                    if payload is None:
-                        logger.warning(
-                            "[SECURITY] Cache HMAC verification failed "
-                            f"for {func_name}, discarding entry: "
-                            "possible tampering or legacy unsigned value"
-                        )
-                        return _MISSING
-                    return pickle.loads(payload)
+                return _decode(cached_bytes)
             except Exception as e:
                 logger.error(f"Redis error during cache check for {func_name}: {e}")
             return _MISSING
+
+        def _decode(cached_bytes: Any) -> Any:
+            """The value a stored entry holds, or ``_MISSING``.
+
+            Values are expected to carry an HMAC-SHA256 prefix for integrity
+            verification.  Unsigned (legacy) or tampered entries are silently
+            discarded and treated as cache misses, so the caller recomputes and
+            re-stores them with a valid signature.
+            """
+            if not cached_bytes or not isinstance(cached_bytes, bytes):
+                return _MISSING
+            payload = _verify_and_strip(cached_bytes)
+            if payload is None:
+                logger.warning(
+                    "[SECURITY] Cache HMAC verification failed "
+                    f"for {func_name}, discarding entry: "
+                    "possible tampering or legacy unsigned value"
+                )
+                return _MISSING
+            return pickle.loads(payload)
 
         def _set_to_redis(redis_key: str, value: Any) -> None:
             """Set HMAC-signed pickled value in Redis with TTL."""
             try:
                 pickled = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
                 _get_redis().setex(redis_key, ttl_seconds, _sign_payload(pickled))
+            except Exception as e:
+                logger.error(f"Redis error storing cache for {func_name}: {e}")
+
+        async def _aget_from_redis(redis_key: str) -> Any:
+            """``_get_from_redis`` for a coroutine: the event loop runs others
+            while Redis answers, and stops waiting after ``REDIS_OP_TIMEOUT_S``.
+            Returns ``_UNREACHABLE`` when Redis didn't answer, or failed."""
+            try:
+                async with asyncio.timeout(REDIS_OP_TIMEOUT_S):
+                    redis = await _get_async_redis()
+                    if refresh_ttl_on_get:
+                        cached_bytes = await redis.getex(redis_key, ex=ttl_seconds)
+                    else:
+                        cached_bytes = await redis.get(redis_key)
+            except _NOT_NOW as e:
+                logger.warning(
+                    f"Cache check for {func_name} gave up on Redis ({e!r}); "
+                    "computing it instead"
+                )
+                return _UNREACHABLE
+            except Exception as e:
+                logger.error(f"Redis error during cache check for {func_name}: {e}")
+                return _UNREACHABLE
+            try:
+                return _decode(cached_bytes)
+            except Exception as e:
+                logger.error(f"Unreadable cache entry for {func_name}: {e}")
+                return _MISSING
+
+        async def _aset_to_redis(redis_key: str, value: Any) -> None:
+            """``_set_to_redis`` for a coroutine, bounded the same way."""
+            try:
+                pickled = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+                async with asyncio.timeout(REDIS_OP_TIMEOUT_S):
+                    redis = await _get_async_redis()
+                    await redis.set(redis_key, _sign_payload(pickled), ex=ttl_seconds)
+            except _NOT_NOW as e:
+                logger.warning(f"Cache write for {func_name} gave up on Redis ({e!r})")
             except Exception as e:
                 logger.error(f"Redis error storing cache for {func_name}: {e}")
 
@@ -298,16 +460,10 @@ def cached(
 
         if inspect.iscoroutinefunction(target_func):
 
-            def _get_cache_lock():
-                """Get or create an asyncio.Lock for the current event loop."""
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-
-                if loop not in _event_loop_locks:
-                    return _event_loop_locks.setdefault(loop, asyncio.Lock())
-                return _event_loop_locks[loop]
+            def _in_flight() -> _InFlight:
+                return _in_flight_on(
+                    asyncio.get_running_loop(), in_flight_token, max_concurrent_misses
+                )
 
             @wraps(target_func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs):
@@ -316,39 +472,51 @@ def cached(
 
                 # Fast path: check cache without lock
                 if shared_cache:
-                    result = _get_from_redis(redis_key)
-                    if result is not _MISSING:
-                        return result
+                    result = await _aget_from_redis(redis_key)
                 else:
                     result = _get_from_memory(key)
-                    if result is not _MISSING:
-                        return result
+                if _is_hit(result):
+                    return result
 
-                # Slow path: acquire lock for cache miss/expiry
-                async with _get_cache_lock():
-                    # Double-check: another coroutine might have populated cache
-                    if shared_cache:
-                        result = _get_from_redis(redis_key)
-                        if result is not _MISSING:
-                            return result
-                    else:
-                        result = _get_from_memory(key)
-                        if result is not _MISSING:
-                            return result
+                in_flight = _in_flight()
 
-                    # Cache miss - execute function
+                async def compute() -> Any:
+                    # Double-check: another coroutine might have populated
+                    # cache. Not when Redis just went unanswered: asking it
+                    # again, or storing the value, would only wait again.
+                    found = result
+                    if found is not _UNREACHABLE:
+                        if shared_cache:
+                            found = await _aget_from_redis(redis_key)
+                        else:
+                            found = _get_from_memory(key)
+                        if _is_hit(found):
+                            return found
+
+                    # Cache miss - execute function, during a turn: only the
+                    # call itself, so a Redis that stalls the reads and the
+                    # write around it holds no turn from other keys' misses.
                     logger.debug(f"Cache miss for {func_name}")
-                    result = await target_func(*args, **kwargs)
+                    async with in_flight.turns:
+                        value = await target_func(*args, **kwargs)
 
                     # Store result (skip ``None`` if the caller opted out of
                     # caching it — used for transient-error sentinels).
-                    if cache_none or result is not None:
+                    if found is not _UNREACHABLE and (cache_none or value is not None):
                         if shared_cache:
-                            _set_to_redis(redis_key, result)
+                            await _aset_to_redis(redis_key, value)
                         else:
-                            _set_to_memory(key, result)
+                            _set_to_memory(key, value)
+                    return value
 
-                    return result
+                # Slow path: one caller per key computes it, and the ones that
+                # miss it meanwhile share its result; misses for other keys
+                # don't wait for it.
+                # The shared cache's own key: arguments Python counts as equal,
+                # such as ``True`` and ``1``, are different entries in Redis.
+                if shared_cache:
+                    return await in_flight.run(redis_key, compute, _private_copies)
+                return await in_flight.run(key, compute, _the_same)
 
             wrapper = async_wrapper
 

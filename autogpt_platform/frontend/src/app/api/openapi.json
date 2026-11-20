@@ -864,19 +864,36 @@
             "name": "limit",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 100, "title": "Limit" }
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
           },
           {
             "name": "offset",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
           },
           {
             "name": "hours",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 24, "title": "Hours" }
+            "schema": {
+              "type": "integer",
+              "maximum": 8760,
+              "minimum": 1,
+              "default": 24,
+              "title": "Hours"
+            }
           }
         ],
         "responses": {
@@ -3685,6 +3702,66 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/auth/sign-in-connection": {
+      "get": {
+        "tags": ["integrations"],
+        "summary": "The OAuth clients a sign-in must use to bring its connection",
+        "description": "Public, like the client IDs themselves: every sign-in link carries one.",
+        "operationId": "getSignInConnectionClients",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInConnectionClients"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["integrations"],
+        "summary": "Keep the connection a Google or Microsoft sign-in granted",
+        "operationId": "connectFromSignIn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInConnectionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not the frontend's sign-in connection token"
+          },
+          "409": {
+            "description": "Login and connections use different OAuth clients"
+          },
+          "422": {
+            "description": "The provider didn't accept the sign-in's tokens"
+          },
+          "501": {
+            "description": "The provider's connections aren't configured"
+          }
+        },
+        "security": [{ "HTTPBearer": [] }]
       }
     },
     "/api/auth/user": {
@@ -12263,7 +12340,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Folder not found" },
+          "404": { "description": "Agent or folder not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -32802,7 +32879,7 @@
       "NotificationPreference": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
-          "email": { "type": "string", "format": "email", "title": "Email" },
+          "email": { "type": "string", "title": "Email" },
           "briefing_frequency": {
             "$ref": "#/components/schemas/BriefingFrequency",
             "default": "WEEKLY"
@@ -32832,7 +32909,6 @@
         "properties": {
           "email": {
             "type": "string",
-            "format": "email",
             "title": "Email",
             "description": "The account's address, as shown in the form. Ignored on update: an account's address changes only through the verified change-email flow."
           },
@@ -37085,6 +37161,86 @@
         ],
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
+      },
+      "SignInConnectionClients": {
+        "properties": {
+          "google": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Google"
+          },
+          "microsoft": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Microsoft"
+          }
+        },
+        "type": "object",
+        "title": "SignInConnectionClients",
+        "description": "The OAuth client each provider's connections use, or null when this\ndeployment has no such connections."
+      },
+      "SignInConnectionRequest": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": ["google", "microsoft"],
+            "title": "Provider"
+          },
+          "access_token": {
+            "type": "string",
+            "maxLength": 16384,
+            "format": "password",
+            "title": "Access Token",
+            "writeOnly": true
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16384,
+                "format": "password",
+                "writeOnly": true
+              },
+              { "type": "null" }
+            ],
+            "title": "Refresh Token"
+          },
+          "expires_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Expires At"
+          },
+          "scope": {
+            "type": "string",
+            "maxLength": 4096,
+            "title": "Scope",
+            "default": ""
+          },
+          "id_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 16384,
+                "format": "password",
+                "writeOnly": true
+              },
+              { "type": "null" }
+            ],
+            "title": "Id Token"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "access_token"],
+        "title": "SignInConnectionRequest"
+      },
+      "SignInConnectionResponse": {
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": ["created", "updated", "kept", "skipped", "held"],
+            "title": "Result"
+          }
+        },
+        "type": "object",
+        "required": ["result"],
+        "title": "SignInConnectionResponse"
       },
       "SkillLearningDetail": {
         "properties": {

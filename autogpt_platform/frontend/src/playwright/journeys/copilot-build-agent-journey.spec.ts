@@ -79,7 +79,7 @@ test.describe("copilot build agent journey", () => {
 
     const journal = await readJournal(run.nonce);
     expectEachTurnOnce(journal, SCRIPT);
-    await expectChargedWhatWasBilled(userID(journeyUser), journal);
+    await expectChargedWhatWasBilled(userID(journeyUser), [run.nonce]);
   });
 });
 

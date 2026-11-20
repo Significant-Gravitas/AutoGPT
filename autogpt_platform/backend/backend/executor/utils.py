@@ -337,14 +337,21 @@ def _coerce_usd(stats: NodeExecutionStats | None) -> float:
 
 def _with_schema_defaults(block: Block, input_data: BlockInput) -> BlockInput:
     """The input `Block._execute` runs on: `None` values dropped, schema defaults
-    filled in. Cost filters are matched against this, with each credentials
-    input marked by whether the platform pays for its key."""
+    filled in, and a model the catalog has switched off replaced by its
+    fallback from its shutdown date. Cost filters are matched against this,
+    with each credentials input marked by whether the platform pays for its
+    key. The shutdown date is read when this is called, so a settlement
+    prices the model as of the day it settles: a node still running at
+    00:00 UTC on a model's shutdown date ran the model itself, but settles at
+    its fallback's rates."""
     defaults = {
         name: field.get_default(call_default_factory=True)
         for name, field in block.input_schema.model_fields.items()
         if not field.is_required()
     }
-    merged = {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
+    merged = block.with_retired_models_replaced(
+        {**defaults, **{k: v for k, v in input_data.items() if v is not None}}
+    )
     for field_name in block.input_schema.get_credentials_fields():
         if isinstance(credentials := merged.get(field_name), dict):
             merged[field_name] = {
@@ -376,6 +383,21 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 # ============ Execution Input Helpers ============ #
 
 # Dynamic field utilities are now imported from backend.data.dynamic_fields
+
+
+def _clear_unset_optional_credentials(
+    schema: type[BlockSchema], data: BlockInput
+) -> BlockInput:
+    """Set optional credentials fields that carry no credential id to None."""
+    required_fields = schema.get_required_fields()
+    cleared = {
+        field_name: None
+        for field_name in schema.get_credentials_fields()
+        if field_name not in required_fields
+        and isinstance(value := data.get(field_name), dict)
+        and not value.get("id")
+    }
+    return {**data, **cleared} if cleared else data
 
 
 class InputMismatchError(ValueError):
@@ -447,6 +469,14 @@ def validate_exec(
     data = {**input_default, **data}
     if resolve_input:
         data = merge_execution_input(data)
+
+    # An optional credentials field holding an id-less object (e.g. `{}`) means
+    # "not configured". Treat it like an unset field so it doesn't fail the
+    # nested credentials schema below; required fields stay strict. An MCP
+    # tool's arguments stand in for the block's inputs here, and a tool may
+    # declare its own `credentials`, so those are left as they are.
+    if node_block.block_type != BlockType.MCP_TOOL:
+        data = _clear_unset_optional_credentials(schema, data)
 
     # Coerce first: some blocks' missing-input checks read the converted values.
     # A value that can't be converted is reported after that check, so a node

@@ -241,7 +241,10 @@ async def log_system_credential_cost(
             ):
                 continue
 
-            model_name = _extract_model_name(input_data.get("model"))
+            # The model that ran: a switched-off model's fallback from its date.
+            model_name = _extract_model_name(
+                block.with_retired_models_replaced(input_data).get("model")
+            )
 
             # Pass stats so post-flight branches (SECOND/ITEMS/COST_USD/TOKENS)
             # compute the *actual* charge from the captured stats. Without this
