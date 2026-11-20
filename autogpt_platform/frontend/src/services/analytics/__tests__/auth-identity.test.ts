@@ -294,6 +294,68 @@ describe("analytics identity on account transitions", () => {
 
       expect(getAnonymousID()).toBe("merged-id");
     });
+
+    describe("and an earlier visitor's landing stored", () => {
+      const THIS_PAGE = "/signup?utm_source=new&utm_campaign=launch";
+
+      beforeEach(() => {
+        window.localStorage.setItem(
+          "agpt_first_landing",
+          JSON.stringify({
+            path: "/pricing?utm_source=earlier",
+            referrer: null,
+            utm_source: "earlier",
+            utm_medium: null,
+            utm_campaign: null,
+            at: "2026-01-01T00:00:00.000Z",
+          }),
+        );
+        window.history.replaceState(null, "", THIS_PAGE);
+        captureFirstLanding();
+      });
+
+      afterEach(() => {
+        window.history.replaceState(null, "", "/");
+      });
+
+      function expectThisPageLanding() {
+        expect(getAnonymousID()).not.toBe("merged-id");
+        expect(readFirstLanding()).toMatchObject({
+          path: THIS_PAGE,
+          utm_source: "new",
+          utm_campaign: "launch",
+        });
+        expect(
+          JSON.parse(window.localStorage.getItem("agpt_first_landing") ?? "{}"),
+        ).toMatchObject({ path: THIS_PAGE });
+      }
+
+      it("gives the new id this page's landing when the page turns out to be signed out", async () => {
+        vi.mocked(fetchUser).mockResolvedValue({
+          user: null,
+          hasLoadedUser: false,
+          isUserLoading: false,
+        });
+        vi.mocked(validateSession).mockResolvedValue({
+          isValid: true,
+          shouldUpdateUser: false,
+        });
+
+        await useAuthStore.getState().initialize({
+          api: {} as never,
+          router: {} as never,
+          path: "/signup",
+        });
+
+        expectThisPageLanding();
+      });
+
+      it("gives the new id this page's landing when another account signs in", () => {
+        useAuthStore.setState({ user: userB });
+
+        expectThisPageLanding();
+      });
+    });
   });
 
   it("preserves the anonymous identity through login and same-user refreshes", () => {

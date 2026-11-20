@@ -602,10 +602,13 @@ useAuthStore.subscribe((state, previousState) => {
 });
 
 // Tell the anonymous id who is signed in (null: nobody). If an earlier page
-// merged it into another account, rotate it before this visitor uses it.
+// merged it into another account, rotate it before this visitor uses it,
+// keeping this page's landing for them.
 function reportAnalyticsSession(userID: string | null): void {
   setAnalyticsIdentitySignedIn(userID);
-  if (isAnonymousIDSpentFor(userID)) resetAnalyticsIdentity();
+  if (isAnonymousIDSpentFor(userID)) {
+    resetAnalyticsIdentity({ keepLanding: true });
+  }
 }
 
 // Loaded lazily: the copilot store pulls in React hooks the auth store

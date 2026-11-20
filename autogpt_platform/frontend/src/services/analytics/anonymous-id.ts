@@ -229,12 +229,22 @@ function forgetStoredIdentity(): void {
   removeStorage(FIRST_LANDING_KEY);
 }
 
+interface ResetArgs {
+  nextID?: string;
+  // The new id is for the visitor who loaded this page (a spent id rotated
+  // once the session is known), so this page's landing becomes its first.
+  keepLanding?: boolean;
+}
+
 /**
  * Rotate the browser identity and clear its first landing. With consent the
  * new identity is persisted immediately so old PostHog storage cannot restore
  * the last visitor.
  */
-export function resetAnonymousID(nextID?: string): void {
+export function resetAnonymousID({
+  nextID,
+  keepLanding = false,
+}: ResetArgs = {}): void {
   if (typeof window === "undefined") {
     memoryID = null;
     return;
@@ -244,9 +254,11 @@ export function resetAnonymousID(nextID?: string): void {
   ownDeviceID = null;
   websiteID = null;
   spentFor = null;
-  pageLanding = null;
+  if (!keepLanding) pageLanding = null;
   forgetStoredIdentity();
-  if (hasConsentFor("analytics")) writeStorage(ANONYMOUS_ID_KEY, memoryID);
+  if (!hasConsentFor("analytics")) return;
+  writeStorage(ANONYMOUS_ID_KEY, memoryID);
+  persistFirstLanding();
 }
 
 export function resetAnonymousIDForTests(): void {

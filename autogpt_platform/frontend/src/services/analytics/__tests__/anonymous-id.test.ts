@@ -112,7 +112,7 @@ describe("resetAnonymousID", () => {
     );
     expect(getAnonymousID()).toBe("old-device");
 
-    resetAnonymousID("fresh-device");
+    resetAnonymousID({ nextID: "fresh-device" });
     resetAnonymousIDForTests();
 
     expect(getAnonymousID()).toBe("fresh-device");
