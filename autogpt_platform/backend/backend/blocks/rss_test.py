@@ -170,6 +170,43 @@ async def test_continuous_mode_outputs_each_entry_once(monkeypatch, polls, expec
     assert polled == expected
 
 
+async def test_continuous_mode_outputs_each_entry_once_with_missing_fields(
+    monkeypatch,
+):
+    """Undated entries are skipped, and ones with no title or link stay apart."""
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    undated = {"title": "undated", "link": "https://example.com/undated"}
+    a, b = _feed_entry("a", now), _feed_entry("b", now)
+    future = _feed_entry("future", now + timedelta(days=365))
+    later = _feed_entry("later", now + timedelta(hours=1))
+    one, two = (
+        {"summary": text, "published_parsed": now.timetuple()} for text in ("1", "2")
+    )
+    block = ReadRSSFeedBlock()
+    parse_feed = AsyncMock(
+        side_effect=[
+            {"entries": [undated, a, future, one]},
+            {"entries": [undated, b, a, future, one, two, later]},
+        ]
+    )
+    sleep = AsyncMock(side_effect=[None, asyncio.CancelledError])
+    monkeypatch.setattr(block, "parse_feed", parse_feed)
+    monkeypatch.setattr("backend.blocks.rss.sleep", sleep)
+
+    input_data = ReadRSSFeedBlock.Input(
+        rss_url="https://example.com/rss",
+        polling_rate=60,
+        run_continuously=True,
+    )
+    polled = []
+    with pytest.raises(asyncio.CancelledError):
+        async for name, value in block.run(input_data):
+            if name == "entries":
+                polled.append([e.title or e.description for e in value])
+
+    assert polled == [["a", "future", "1"], ["b", "2", "later"]]
+
+
 async def test_entries_missing_fields_do_not_abort_block():
     outputs = await run_block(RSS_WITH_MISSING_FIELDS)
 

@@ -189,9 +189,9 @@ class ReadRSSFeedBlock(Block):
                 )
 
             yield "entries", all_entries
-            # Later polls skip what is older than the newest entry output, but a
-            # future-dated entry moves the cutoff no further than this poll.
-            cutoff = min(max(output.values(), default=cutoff), polled_at)
+            # Later polls skip what is older than the newest entry output; a
+            # future-dated one is remembered instead, so it holds back nothing.
+            cutoff = max((d for d in output.values() if d <= polled_at), default=cutoff)
             output = {key: date for key, date in output.items() if date >= cutoff}
             if input_data.run_continuously:
                 await sleep(max(input_data.polling_rate, self.MIN_POLLING_RATE_SECONDS))
